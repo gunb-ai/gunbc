@@ -14,7 +14,7 @@ data control_stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   conclusion: Success,
 }
 
-test fn deployed_gate_pure_predicate_would_block_stale_base() -> Bool {
+test fn deployed_gate_pure_predicate_would_block_stale_base() -> Bool  {
   merge_admission_would_block(
     receipt: control_stale_base_receipt,
     merge_target_tree_hash: control_base_b1,
@@ -22,7 +22,7 @@ test fn deployed_gate_pure_predicate_would_block_stale_base() -> Bool {
   )
 }
 
-test fn deployed_gate_admits_stale_base_while_gating_deferred() -> Bool {
+test fn deployed_gate_admits_stale_base_while_gating_deferred() -> Bool  {
   let deployed_blocks = merge_admission_blocks_merge(
     receipt: control_stale_base_receipt,
     merge_target_tree_hash: control_base_b1,

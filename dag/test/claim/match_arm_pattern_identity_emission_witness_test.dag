@@ -33,7 +33,7 @@ fn arm_reaches_emission(source: String, path: String, markers: List<String>) -> 
 // arm's body would go missing (or the first's would be duplicated onto it)
 // in the emitted program -- this cannot pass vacuously, since a collapsed or
 // misrouted arm drops one of the required marker strings from the output.
-test fn w_match_arms_distinct_literal_patterns_all_reachable_test() -> Bool {
+test fn w_match_arms_distinct_literal_patterns_all_reachable_test() -> Bool  {
   arm_reaches_emission(
     "module match_literal_distinct\nfn probe(x: Int) -> String {\n  match x {\n    0 => \"branch_zero_marker\"\n    1 => \"branch_one_marker\"\n    _ => \"branch_other_marker\"\n  }\n}\n",
     "src/match_literal_distinct.rs",
@@ -43,7 +43,7 @@ test fn w_match_arms_distinct_literal_patterns_all_reachable_test() -> Bool {
 
 // Two arms differing ONLY in variant name, same shape as above but over a
 // coproduct's variant tag rather than a literal.
-test fn w_match_arms_distinct_variant_names_all_reachable_test() -> Bool {
+test fn w_match_arms_distinct_variant_names_all_reachable_test() -> Bool  {
   arm_reaches_emission(
     "module match_variant_distinct\ntype Choice = A | B\nfn probe(x: Choice) -> String {\n  match x {\n    A => \"branch_a_marker\"\n    B => \"branch_b_marker\"\n  }\n}\n",
     "src/match_variant_distinct.rs",

@@ -66,21 +66,21 @@ fn observed_within(action: OobPowerAction, samples: List<ChassisPowerObservation
   }
 }
 
-test fn an_off_host_selects_power_up_not_the_restart_verb() -> Bool {
+test fn an_off_host_selects_power_up_not_the_restart_verb() -> Bool  {
   match oob_power_action_selection(observed: off()) {
     PowerActionSelected { action: a } => oob_power_action_verb(action: a) == "on"
     PowerActionUnselectable { observed_state: _ } => false
   }
 }
 
-test fn an_on_host_selects_power_cycle_and_never_power_up() -> Bool {
+test fn an_on_host_selects_power_cycle_and_never_power_up() -> Bool  {
   match oob_power_action_selection(observed: on()) {
     PowerActionSelected { action: a } => oob_power_action_verb(action: a) == "cycle"
     PowerActionUnselectable { observed_state: _ } => false
   }
 }
 
-test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
+test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool  {
   let unread = match oob_power_action_selection(observed: ChassisUnreadable) {
     PowerActionUnselectable { observed_state: _ } => true
     PowerActionSelected { action: _ } => false
@@ -94,7 +94,7 @@ test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
 
 // A REPEATED System Power LINE IS NOT A POWER STATE (side chat on gunbc#12247): two lines, even
 // agreeing ones, select no action, so a write is never chosen from ambiguous output.
-test fn two_system_power_lines_select_nothing() -> Bool {
+test fn two_system_power_lines_select_nothing() -> Bool  {
   (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on\nSystem Power         : on\n")) {
     PowerActionUnselectable { observed_state: _ } => true
     PowerActionSelected { action: _ } => false
@@ -106,7 +106,7 @@ test fn two_system_power_lines_select_nothing() -> Bool {
 
 // EXACTLY ONE KEY AND ONE VALUE (review 5326561042): a System Power line with trailing fields is
 // malformed, never the on or off it starts with, so no action is selected from it.
-test fn a_system_power_line_with_trailing_fields_selects_nothing() -> Bool {
+test fn a_system_power_line_with_trailing_fields_selects_nothing() -> Bool  {
   (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on : trailing\n")) {
     PowerActionUnselectable { observed_state: _ } => true
     PowerActionSelected { action: _ } => false
@@ -121,11 +121,11 @@ test fn a_system_power_line_with_trailing_fields_selects_nothing() -> Bool {
 
 // THE INCIDENT ITSELF: a cycle at an off host, exit 0, the chassis never moves. Every sample reads
 // off, so the off-then-on transition is never completed and the read-back refuses.
-test fn an_off_host_cycled_with_no_transition_is_not_observed() -> Bool {
+test fn an_off_host_cycled_with_no_transition_is_not_observed() -> Bool  {
   !observed_within(action: OobPowerCycle, samples: [off(), off(), off(), off()])
 }
 
-test fn a_cycle_that_never_leaves_on_is_not_observed() -> Bool {
+test fn a_cycle_that_never_leaves_on_is_not_observed() -> Bool  {
   match read_back(action: OobPowerCycle, samples: [on(), on(), on()]) {
     ReadbackExhausted { progress: PowerNeverLeftOn } => true
     _ => false
@@ -134,7 +134,7 @@ test fn a_cycle_that_never_leaves_on_is_not_observed() -> Bool {
 
 // REVIEW 5310234917 ITEM 2: ON -> OFF -> unreadable established the OFF half, and exhaustion must
 // keep it rather than reporting the last (unreadable) sample as "no transition".
-test fn a_cycle_that_reached_off_and_exhausted_keeps_the_off_half() -> Bool {
+test fn a_cycle_that_reached_off_and_exhausted_keeps_the_off_half() -> Bool  {
   (match read_back(action: OobPowerCycle, samples: [on(), off(), ChassisUnreadable, ChassisUnreadable]) {
     ReadbackExhausted { progress: PowerReachedOffNotReturnedOn } => true
     _ => false
@@ -144,11 +144,11 @@ test fn a_cycle_that_reached_off_and_exhausted_keeps_the_off_half() -> Bool {
   })
 }
 
-test fn a_cycle_observed_off_then_on_within_the_bound_passes() -> Bool {
+test fn a_cycle_observed_off_then_on_within_the_bound_passes() -> Bool  {
   observed_within(action: OobPowerCycle, samples: [on(), off(), ChassisUnreadable, on()])
 }
 
-test fn a_power_up_observed_on_within_the_bound_passes() -> Bool {
+test fn a_power_up_observed_on_within_the_bound_passes() -> Bool  {
   observed_within(action: OobPowerUp, samples: [off(), off(), on()])
     && (match read_back(action: OobPowerUp, samples: [off(), ChassisUnreadable, off()]) {
       ReadbackExhausted { progress: PowerNeverReachedOn } => true
@@ -190,23 +190,23 @@ fn chassis_action_source(action: String) -> String {
   action_source(arg_import: concat("import extdeps.bmc.ipmi_chassis_control { ", action, " }"), arg: action)
 }
 
-test fn the_modeled_power_action_compiles_clean() -> Bool {
+test fn the_modeled_power_action_compiles_clean() -> Bool  {
   not_inhabited_count(source: action_source(arg_import: "import gunbc.machine_intake_oob_boot_handoff { OobPowerCycle }", arg: "OobPowerCycle")) == 0
 }
 
-test fn power_down_cannot_reach_the_power_write() -> Bool {
+test fn power_down_cannot_reach_the_power_write() -> Bool  {
   not_inhabited_count(source: chassis_action_source(action: "IpmiChassisPowerDown")) >= 1
 }
 
-test fn hard_reset_cannot_reach_the_power_write() -> Bool {
+test fn hard_reset_cannot_reach_the_power_write() -> Bool  {
   not_inhabited_count(source: chassis_action_source(action: "IpmiChassisHardReset")) >= 1
 }
 
-test fn a_broad_power_up_cannot_reach_the_power_write() -> Bool {
+test fn a_broad_power_up_cannot_reach_the_power_write() -> Bool  {
   not_inhabited_count(source: chassis_action_source(action: "IpmiChassisPowerUp")) >= 1
 }
 
-test fn the_psu2_ac_loss_carries_the_operator_report() -> Bool {
+test fn the_psu2_ac_loss_carries_the_operator_report() -> Bool  {
   match mtcollins1_psu2_ac_loss_cause {
     SupplyUncabledOperatorReported { reported_at: at, statement: _ } => at == "2026-09-24"
     _ => false

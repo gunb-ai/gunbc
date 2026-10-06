@@ -128,7 +128,7 @@ fn receipt_fx_at(attempt: WalkAttemptId, head: CommitSha, base_commit: CommitSha
   }
 }
 
-test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
+test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool  {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
@@ -169,7 +169,7 @@ fn synthetic_changed_roster_receipt() -> MergeAdmissionReceiptV2 {
   }
 }
 
-test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
+test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool  {
   (synthetic_changed_roster_hash() != current_gate_roster_hash)
     && match classify_merge_admission_verdict_v2(
       current_attempt_id: attempt_a(),
@@ -187,7 +187,7 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
     }
 }
 
-test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bool {
+test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bool  {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
@@ -204,7 +204,7 @@ test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bo
   }
 }
 
-test fn current_roster_receipt_admits_against_live_roster() -> Bool {
+test fn current_roster_receipt_admits_against_live_roster() -> Bool  {
   let receipt = MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
@@ -229,7 +229,7 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
   }
 }
 
-test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
+test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool  {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
@@ -247,7 +247,7 @@ test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
 // the stale-base half of the claim would vanish while the row stayed green -- which a blanket
 // fixture rewrite did to this row before review caught it. Precedence ordering rots invisibly: a
 // reordering regression leaves this row green unless every dominated arm is really armed.
-test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
+test fn wrong_attempt_precedes_every_other_refusal() -> Bool  {
   let r = MergeAdmissionReceiptV2 {
     attempt_id: attempt_b(),
     pr_number: none,
@@ -276,7 +276,7 @@ test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
 // before the operand existed. Dropping either comparison turns that row green while the other
 // stays red; matching_attempt_and_subject_with_fresh_base_admits is the positive control, so an
 // always-refuse implementation cannot satisfy them either.
-test fn receipt_base_commit_that_differs_from_the_captured_subject_refuses() -> Bool {
+test fn receipt_base_commit_that_differs_from_the_captured_subject_refuses() -> Bool  {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx_at(attempt: attempt_a(), head: head_sha_fx, base_commit: base_commit_fx),
@@ -304,7 +304,7 @@ test fn receipt_base_commit_that_differs_from_the_captured_subject_refuses() -> 
 // now. They are the binding's discriminating pair: each varies exactly ONE field from the admitting
 // case above, so dropping either comparison turns that row green while the other stays red.
 
-test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
+test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool  {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
@@ -322,7 +322,7 @@ test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
 // receipt_base_commit_that_differs_from_the_captured_subject_refuses above: a differing commit
 // implies a differing tree, so the commit comparison refuses strictly more.
 
-test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> Bool {
+test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> Bool  {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_b(), head: head_sha_fx),
@@ -338,7 +338,7 @@ test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> B
 // advanced base TREE and is now an advanced base COMMIT, strictly stronger: a base moving to a
 // commit with an identical tree is caught here -- the cherry-pick-then-revert case that classified
 // MergeAdmitted before this change.
-test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() -> Bool {
+test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() -> Bool  {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
@@ -348,7 +348,7 @@ test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() ->
   ) { MergeDeniedStaleBase => true  _ => false }
 }
 
-test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
+test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool  {
   let r = receipt_fx(attempt: attempt_a(), head: head_sha_fx)
   match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
     Present { value: parsed } =>
@@ -362,7 +362,7 @@ test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
   }
 }
 
-test fn wire_v2_roundtrips_without_pr() -> Bool {
+test fn wire_v2_roundtrips_without_pr() -> Bool  {
   let r = MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: none,
@@ -378,7 +378,7 @@ test fn wire_v2_roundtrips_without_pr() -> Bool {
   }
 }
 
-test fn v1_wire_refused_by_v2_parser() -> Bool {
+test fn v1_wire_refused_by_v2_parser() -> Bool  {
   let v1 = render_receipt_wire(receipt: stamp_floor_receipt_with_conclusion(
     pr_number: Present { value: 7470 },
     head_sha: head_sha_fx,
@@ -396,7 +396,7 @@ test fn v1_wire_refused_by_v2_parser() -> Bool {
 // supplied-but-unreadable collapsing into not-supplied. Each row varies one thing from a wire that
 // parses, so a regression that relaxes arity back to a superset turns exactly that row green.
 
-test fn receipt_wire_with_a_trailing_line_refuses() -> Bool {
+test fn receipt_wire_with_a_trailing_line_refuses() -> Bool  {
   let good = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
   match parse_receipt_wire_v2(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
@@ -404,7 +404,7 @@ test fn receipt_wire_with_a_trailing_line_refuses() -> Bool {
   }
 }
 
-test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Bool {
+test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Bool  {
   let no_pr = render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: none,
@@ -419,7 +419,7 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
   }
 }
 
-test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
+test fn subject_wire_with_a_trailing_line_refuses() -> Bool  {
   let good = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx))
   match parse_tested_subject_wire(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
@@ -427,7 +427,7 @@ test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
   }
 }
 
-test fn tested_subject_wire_roundtrips() -> Bool {
+test fn tested_subject_wire_roundtrips() -> Bool  {
   let subj = subject_fx(attempt: attempt_a(), head: head_sha_fx)
   match parse_tested_subject_wire(text: render_tested_subject_wire(subject: subj)) {
     Present { value: parsed } =>
@@ -452,7 +452,7 @@ test fn tested_subject_wire_roundtrips() -> Bool {
 // the unevaluable authoring shape red in the focused admission witness, not after the ordinary
 // floor.
 
-test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool {
+test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool  {
   merge_admission_fetch_stall_deadline_seconds == 240
 }
 
@@ -461,7 +461,7 @@ test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool {
 // format change, so the expected bytes and schema tag (v2) change with it. Updating a golden pin
 // is legitimate only when the change is intended and stated -- the sixth line and the tag are
 // exactly that change, and had either moved WITHOUT the other this row would still be red.
-test fn tested_subject_wire_bytes_are_pinned_including_the_base_commit_line() -> Bool {
+test fn tested_subject_wire_bytes_are_pinned_including_the_base_commit_line() -> Bool  {
   render_tested_subject_wire(
     subject: subject_fx(attempt: attempt_a(), head: head_sha_fx)
   ) == join([
@@ -473,7 +473,7 @@ test fn tested_subject_wire_bytes_are_pinned_including_the_base_commit_line() ->
   ], "\n")
 }
 
-test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
+test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool  {
   let subj = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx))
   let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
   match parse_receipt_wire_v2(text: subj) { Present { value: _ } => false  Absent => true }
@@ -486,7 +486,7 @@ test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
 // syntax is not identification, and a receipt binding such a value would compare equal to nothing
 // real while typechecking perfectly.
 
-test fn object_id_wire_refuses_wrong_length_and_nonhex() -> Bool {
+test fn object_id_wire_refuses_wrong_length_and_nonhex() -> Bool  {
   let sha256_hex = "3333333333333333333333333333333333333333333333333333333333333333"
   match parse_git_object_id_wire(raw: "sha1:1111") { Present { value: _ } => false  Absent => true }
     && match parse_git_object_id_wire(raw: concat("sha1:", sha256_hex)) { Present { value: _ } => false  Absent => true }
@@ -497,7 +497,7 @@ test fn object_id_wire_refuses_wrong_length_and_nonhex() -> Bool {
     && match parse_git_object_id_wire(raw: "sha1:") { Present { value: _ } => false  Absent => true }
 }
 
-test fn object_id_wire_carries_its_format_and_refuses_an_anonymous_hex() -> Bool {
+test fn object_id_wire_carries_its_format_and_refuses_an_anonymous_hex() -> Bool  {
   let sha1_wire = render_git_object_id_wire(oid: base_tree_fx())
   match parse_git_object_id_wire(raw: sha1_wire) {
     Present { value: back } => git_object_id_eq(left: back, right: base_tree_fx())
@@ -514,7 +514,7 @@ test fn object_id_wire_carries_its_format_and_refuses_an_anonymous_hex() -> Bool
 // Blank, non-hex, uppercase, and wrong-length fingerprints all bound into receipts that typechecked
 // while comparing equal to nothing real.
 
-test fn gate_roster_hash_wire_refuses_blank_malformed_and_wrong_length() -> Bool {
+test fn gate_roster_hash_wire_refuses_blank_malformed_and_wrong_length() -> Bool  {
   match parse_gate_roster_hash_wire(line: "") { Present { value: _ } => false  Absent => true }
     && match parse_gate_roster_hash_wire(line: "not-hex") { Present { value: _ } => false  Absent => true }
     && match parse_gate_roster_hash_wire(line: "ABCDEF0123456789") { Present { value: _ } => false  Absent => true }
@@ -522,7 +522,7 @@ test fn gate_roster_hash_wire_refuses_blank_malformed_and_wrong_length() -> Bool
     && match parse_gate_roster_hash_wire(line: "1111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
 }
 
-test fn gate_roster_hash_wire_roundtrips_valid_fingerprint() -> Bool {
+test fn gate_roster_hash_wire_roundtrips_valid_fingerprint() -> Bool  {
   let wire = render_gate_roster_hash_wire(hash: roster_fx())
   match parse_gate_roster_hash_wire(line: wire) {
     Present { value: back } => back == roster_fx()
@@ -530,14 +530,14 @@ test fn gate_roster_hash_wire_roundtrips_valid_fingerprint() -> Bool {
   }
 }
 
-test fn attempt_id_composes_from_nonempty_parts() -> Bool {
+test fn attempt_id_composes_from_nonempty_parts() -> Bool  {
   match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci") {
     Present { value: id } => (id as String) == "12345-1-ci"
     Absent => false
   }
 }
 
-test fn attempt_id_refuses_any_empty_part() -> Bool {
+test fn attempt_id_refuses_any_empty_part() -> Bool  {
   match compose_walk_attempt_id(run_id: "", run_attempt: "1", job: "ci") { Present { value: _ } => false  Absent => true }
     && match compose_walk_attempt_id(run_id: "12345", run_attempt: "", job: "ci") { Present { value: _ } => false  Absent => true }
     && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "") { Present { value: _ } => false  Absent => true }
@@ -551,7 +551,7 @@ test fn attempt_id_refuses_any_empty_part() -> Bool {
 // They are checked through BOTH constructors because both read operator-controlled environment
 // strings.
 
-test fn attempt_id_refuses_path_traversal_and_separators() -> Bool {
+test fn attempt_id_refuses_path_traversal_and_separators() -> Bool  {
   match compose_explicit_walk_attempt_id(explicit: "../other-attempt") { Present { value: _ } => false  Absent => true }
     && match compose_explicit_walk_attempt_id(explicit: "a/b") { Present { value: _ } => false  Absent => true }
     && match compose_explicit_walk_attempt_id(explicit: "..") { Present { value: _ } => false  Absent => true }
@@ -560,14 +560,14 @@ test fn attempt_id_refuses_path_traversal_and_separators() -> Bool {
     && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci/deploy") { Present { value: _ } => false  Absent => true }
 }
 
-test fn attempt_id_refuses_embedded_line_terminators() -> Bool {
+test fn attempt_id_refuses_embedded_line_terminators() -> Bool  {
   match compose_explicit_walk_attempt_id(explicit: "a\nb") { Present { value: _ } => false  Absent => true }
     && match compose_explicit_walk_attempt_id(explicit: "a\x0db") { Present { value: _ } => false  Absent => true }
     && match compose_explicit_walk_attempt_id(explicit: "a\x00b") { Present { value: _ } => false  Absent => true }
     && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1\n2", job: "ci") { Present { value: _ } => false  Absent => true }
 }
 
-test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool {
+test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool  {
   let subj = merge_admission_tested_subject_path(root: "/repo", attempt_id: attempt_a())
   let rec_a = merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_a())
   let rec_b = merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_b())
@@ -591,7 +591,7 @@ test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool {
 //
 // The distinctness conjunct does separate work: the subject and receipt wires are parsed by
 // different readers, and a shared tag would let each accept the other's bytes.
-test fn schemas_are_distinct_and_pinned_to_their_declared_versions() -> Bool {
+test fn schemas_are_distinct_and_pinned_to_their_declared_versions() -> Bool  {
   !(merge_admission_receipt_schema_v2 == merge_admission_tested_subject_schema)
     && (merge_admission_receipt_schema_v2 == "gunbc.merge_admission_receipt.v3")
     && (merge_admission_tested_subject_schema == "gunbc.merge_admission_tested_subject.v2")
@@ -632,7 +632,7 @@ fn v2_refuses(text: String) -> Bool {
 // field the accepted class carries is asserted, so a rewrite that reads the wrong line -- an
 // off-by-one in a `skip`, a field crossed with its neighbour -- goes red here rather than passing
 // as an unchanged verdict.
-test fn wire_v2_built_from_explicit_lines_parses_with_every_field_bound() -> Bool {
+test fn wire_v2_built_from_explicit_lines_parses_with_every_field_bound() -> Bool  {
   match parse_receipt_wire_v2(text: wire_v2_with_lines(
     schema: merge_admission_receipt_schema_v2,
     attempt: attempt_a_raw,
@@ -652,7 +652,7 @@ test fn wire_v2_built_from_explicit_lines_parses_with_every_field_bound() -> Boo
   }
 }
 
-test fn wire_v2_refuses_a_wrong_schema_line() -> Bool {
+test fn wire_v2_refuses_a_wrong_schema_line() -> Bool  {
   v2_refuses(text: wire_v2_with_lines(
     schema: "gunbc.merge_admission_receipt.v2",
     attempt: attempt_a_raw,
@@ -663,7 +663,7 @@ test fn wire_v2_refuses_a_wrong_schema_line() -> Bool {
   ))
 }
 
-test fn wire_v2_refuses_a_blank_gate_roster_hash_line() -> Bool {
+test fn wire_v2_refuses_a_blank_gate_roster_hash_line() -> Bool  {
   v2_refuses(text: wire_v2_with_lines(
     schema: merge_admission_receipt_schema_v2,
     attempt: attempt_a_raw,
@@ -674,7 +674,7 @@ test fn wire_v2_refuses_a_blank_gate_roster_hash_line() -> Bool {
   ))
 }
 
-test fn wire_v2_refuses_a_blank_head_sha_line() -> Bool {
+test fn wire_v2_refuses_a_blank_head_sha_line() -> Bool  {
   v2_refuses(text: wire_v2_with_lines(
     schema: merge_admission_receipt_schema_v2,
     attempt: attempt_a_raw,
@@ -685,7 +685,7 @@ test fn wire_v2_refuses_a_blank_head_sha_line() -> Bool {
   ))
 }
 
-test fn wire_v2_refuses_a_blank_base_commit_line() -> Bool {
+test fn wire_v2_refuses_a_blank_base_commit_line() -> Bool  {
   v2_refuses(text: wire_v2_with_lines(
     schema: merge_admission_receipt_schema_v2,
     attempt: attempt_a_raw,
@@ -701,21 +701,21 @@ test fn wire_v2_refuses_a_blank_base_commit_line() -> Bool {
 // accepts sha1 and rejects md5 leaves the sha256 comparison free to become always-false, which is
 // the exact failure class this change exists to prevent. Caught in review of #9912, which is the
 // same defect one parser over from the one the mutation control caught.
-test fn object_id_wire_accepts_a_valid_sha1_wire() -> Bool {
+test fn object_id_wire_accepts_a_valid_sha1_wire() -> Bool  {
   match parse_git_object_id_wire(raw: "sha1:abc1234def5678901234567890abcd1234567890") {
     Present { value: oid } => git_object_id_wire_hex(oid: oid) == "abc1234def5678901234567890abcd1234567890"
     Absent => false
   }
 }
 
-test fn object_id_wire_accepts_a_valid_sha256_wire() -> Bool {
+test fn object_id_wire_accepts_a_valid_sha256_wire() -> Bool  {
   match parse_git_object_id_wire(raw: "sha256:abc1234def5678901234567890abcd12abc1234def5678901234567890abcd12") {
     Present { value: oid } => git_object_id_wire_hex(oid: oid) == "abc1234def5678901234567890abcd12abc1234def5678901234567890abcd12"
     Absent => false
   }
 }
 
-test fn object_id_wire_refuses_an_undeclared_algorithm() -> Bool {
+test fn object_id_wire_refuses_an_undeclared_algorithm() -> Bool  {
   match parse_git_object_id_wire(raw: "md5:abc1234def5678901234567890abcd1234567890") {
     Present { value: _ } => false
     Absent => true
@@ -739,7 +739,7 @@ fn subject_refuses(text: String) -> Bool {
 // Positive control for the builder, at carrier grain for the same reason as the receipt one above:
 // `base_ref`, `head_sha` and `base_commit_sha` are three consecutive lines, so a rewrite that reads
 // the wrong one keeps the verdict and changes the value.
-test fn subject_wire_built_from_explicit_lines_parses_with_every_field_bound() -> Bool {
+test fn subject_wire_built_from_explicit_lines_parses_with_every_field_bound() -> Bool  {
   match parse_tested_subject_wire(text: subject_wire_with_lines(
     schema: merge_admission_tested_subject_schema,
     attempt: attempt_a_raw,
@@ -756,7 +756,7 @@ test fn subject_wire_built_from_explicit_lines_parses_with_every_field_bound() -
   }
 }
 
-test fn subject_wire_refuses_a_wrong_schema_line() -> Bool {
+test fn subject_wire_refuses_a_wrong_schema_line() -> Bool  {
   subject_refuses(text: subject_wire_with_lines(
     schema: "gunbc.merge_admission_tested_subject.v1",
     attempt: attempt_a_raw,
@@ -766,7 +766,7 @@ test fn subject_wire_refuses_a_wrong_schema_line() -> Bool {
   ))
 }
 
-test fn subject_wire_refuses_a_blank_base_ref_line() -> Bool {
+test fn subject_wire_refuses_a_blank_base_ref_line() -> Bool  {
   subject_refuses(text: subject_wire_with_lines(
     schema: merge_admission_tested_subject_schema,
     attempt: attempt_a_raw,
@@ -776,7 +776,7 @@ test fn subject_wire_refuses_a_blank_base_ref_line() -> Bool {
   ))
 }
 
-test fn subject_wire_refuses_a_blank_head_sha_line() -> Bool {
+test fn subject_wire_refuses_a_blank_head_sha_line() -> Bool  {
   subject_refuses(text: subject_wire_with_lines(
     schema: merge_admission_tested_subject_schema,
     attempt: attempt_a_raw,
@@ -786,7 +786,7 @@ test fn subject_wire_refuses_a_blank_head_sha_line() -> Bool {
   ))
 }
 
-test fn subject_wire_refuses_a_blank_base_commit_line() -> Bool {
+test fn subject_wire_refuses_a_blank_base_commit_line() -> Bool  {
   subject_refuses(text: subject_wire_with_lines(
     schema: merge_admission_tested_subject_schema,
     attempt: attempt_a_raw,
@@ -826,7 +826,7 @@ fn stage_wire_observation(
   )
 }
 
-test fn an_unreadable_but_listed_subject_wire_is_unobservable_not_missing() -> Bool {
+test fn an_unreadable_but_listed_subject_wire_is_unobservable_not_missing() -> Bool  {
   match tested_subject_wire_observation_of(o: stage_wire_observation(
     listing_success: true,
     entries: "tested-subject.txt\n",
@@ -846,7 +846,7 @@ test fn an_unreadable_but_listed_subject_wire_is_unobservable_not_missing() -> B
   }
 }
 
-test fn an_unlistable_stage_wire_directory_is_unobservable_not_missing() -> Bool {
+test fn an_unlistable_stage_wire_directory_is_unobservable_not_missing() -> Bool  {
   match tested_subject_wire_observation_of(o: stage_wire_observation(
     listing_success: false,
     entries: "",
@@ -861,7 +861,7 @@ test fn an_unlistable_stage_wire_directory_is_unobservable_not_missing() -> Bool
   }
 }
 
-test fn a_subject_wire_absent_from_the_listing_is_the_only_missing_route() -> Bool {
+test fn a_subject_wire_absent_from_the_listing_is_the_only_missing_route() -> Bool  {
   match tested_subject_wire_observation_of(o: stage_wire_observation(
     listing_success: true,
     entries: "other.txt\n",
@@ -876,7 +876,7 @@ test fn a_subject_wire_absent_from_the_listing_is_the_only_missing_route() -> Bo
   }
 }
 
-test fn a_listed_and_decodable_subject_wire_reads() -> Bool {
+test fn a_listed_and_decodable_subject_wire_reads() -> Bool  {
   match tested_subject_wire_observation_of(o: stage_wire_observation(
     listing_success: true,
     entries: "tested-subject.txt\n",
@@ -895,7 +895,7 @@ test fn a_listed_and_decodable_subject_wire_reads() -> Bool {
   }
 }
 
-test fn an_unreadable_but_listed_floor_receipt_is_unobservable_not_missing() -> Bool {
+test fn an_unreadable_but_listed_floor_receipt_is_unobservable_not_missing() -> Bool  {
   match floor_receipt_wire_observation_of(o: filesystem_file_observation(
     listing: filesystem_listing_observation(
       directory: "/repo/target/merge-admission",
@@ -921,7 +921,7 @@ test fn an_unreadable_but_listed_floor_receipt_is_unobservable_not_missing() -> 
   }
 }
 
-test fn a_listed_and_decodable_floor_receipt_reads() -> Bool {
+test fn a_listed_and_decodable_floor_receipt_reads() -> Bool  {
   match floor_receipt_wire_observation_of(o: filesystem_file_observation(
     listing: filesystem_listing_observation(
       directory: "/repo/target/merge-admission",

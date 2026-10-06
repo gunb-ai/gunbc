@@ -52,7 +52,7 @@ fn scope_cites(scope: ExternalModelScope, authority: ExternalAuthority) -> Bool 
 // authority, or paired with an unrelated public status - the three ways this can silently rot. So
 // the claim is the JOIN: both fact modules cite THIS authority, and THIS document's status is what
 // upstream_fact_carriage admits.
-test fn w_both_fact_modules_cite_the_guide_whose_status_admits_carriage() -> Bool {
+test fn w_both_fact_modules_cite_the_guide_whose_status_admits_carriage() -> Bool  {
   scope_cites(scope: mt_collins_memory_population_model_scope, authority: mt_collins_gsg_authority)
     && scope_cites(scope: mt_collins_platform_model_scope, authority: mt_collins_gsg_authority)
     && publication_status_is_publicly_published(status: mt_collins_gsg_publication_status)
@@ -63,7 +63,7 @@ test fn w_both_fact_modules_cite_the_guide_whose_status_admits_carriage() -> Boo
 // THE STATUS IS THE MARKED-PUBLIC ARM SPECIFICALLY, not merely some arm that happens to admit.
 // Without this, replacing the guide's status with any other public value leaves the join above
 // green while the document's actual terms have gone unrecorded.
-test fn w_the_guide_status_is_the_marked_public_arm() -> Bool {
+test fn w_the_guide_status_is_the_marked_public_arm() -> Bool  {
   match mt_collins_gsg_publication_status {
     PubliclyPublishedWithRestrictiveMarking { marking } =>
       (marking as String) == "Ampere Computing Proprietary and Confidential, document AMP 2021-00511"
@@ -76,7 +76,7 @@ test fn w_the_guide_status_is_the_marked_public_arm() -> Bool {
 // THE PAIRED NEGATIVE, on the same kernel and the same axis. The barred population is the
 // reference-board collateral, and it must refuse while the guide admits - one call each, so a
 // kernel that started admitting everything reds here rather than passing quietly.
-test fn w_red_the_customer_connect_collateral_is_barred_while_the_guide_admits() -> Bool {
+test fn w_red_the_customer_connect_collateral_is_barred_while_the_guide_admits() -> Bool  {
   let barred = upstream_fact_carriage(status: ampere_customer_connect_collateral_status)
   !publication_status_is_publicly_published(status: ampere_customer_connect_collateral_status)
     && !carriage_permits_facts(carriage: barred)
@@ -87,7 +87,7 @@ test fn w_red_the_customer_connect_collateral_is_barred_while_the_guide_admits()
 // THE THIRD PUBLIC ARM CARRIES ITS OWN CONTROL. A document that states no terms is public and
 // admits, and the brief is the live instance: it is the first_citation of both fact modules, so if
 // this arm were ever mapped to a refusal the two modules that depend on it would go with it.
-test fn w_a_document_that_states_no_terms_is_public_and_admits() -> Bool {
+test fn w_a_document_that_states_no_terms_is_public_and_admits() -> Bool  {
   match mt_collins_product_brief_publication_status {
     PubliclyPublishedWithoutStatedTerms { absence_basis: _ } => true
     PubliclyPublishedWithRestrictiveMarking { marking: _ } => false
@@ -101,7 +101,7 @@ test fn w_a_document_that_states_no_terms_is_public_and_admits() -> Bool {
 
 // THE CITATION RELATION IS NON-VACUOUS. scope_cites over an empty or wrong-authority relation must
 // be false, or the membership assertions above are satisfied by any scope at all.
-test fn w_red_scope_cites_is_false_for_an_authority_the_scope_does_not_carry() -> Bool {
+test fn w_red_scope_cites_is_false_for_an_authority_the_scope_does_not_carry() -> Bool  {
   !scope_cites(scope: mt_collins_memory_population_model_scope, authority: ampere_absent_probe_authority)
     && !scope_cites(scope: mt_collins_platform_model_scope, authority: ampere_absent_probe_authority)
     && list_length(items: external_model_scope_citations(scope: mt_collins_memory_population_model_scope)) == 2

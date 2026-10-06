@@ -262,7 +262,7 @@ fn a_current_available_instrument_status() -> DevbootWorkStatus? {
 // POSITIVE CONTROL. Without this, every RED below is satisfied by a predicate that refuses
 // unconditionally — one incapable of ever reporting a bound observation, which is exactly the
 // broken instrument shape this work item exists about.
-test fn both_sides_available_yields_a_bound_observation() -> Bool {
+test fn both_sides_available_yields_a_bound_observation() -> Bool  {
   match a_current_available_instrument_status() {
     Absent => false
     Present { value: instrument } =>
@@ -276,7 +276,7 @@ test fn both_sides_available_yields_a_bound_observation() -> Bool {
 // THE DISCRIMINATING RED FOR SPECIMEN (3). A build that failed behind an unguarded pipe must
 // not let the downstream measurement be reported as bound to any instrument at all — there is
 // no arm on Observation carrying a record for the plausible value to ride along with.
-test fn w_RED_a_failed_instrument_build_never_yields_a_bound_observation() -> Bool {
+test fn w_RED_a_failed_instrument_build_never_yields_a_bound_observation() -> Bool  {
   match an_instrument_status(
     tree_hex: current_tree_hex,
     execution: a_failed_build(),
@@ -293,7 +293,7 @@ test fn w_RED_a_failed_instrument_build_never_yields_a_bound_observation() -> Bo
 
 // THE SAME LAW ON THE SUBJECT HALF, SPECIMEN (4). A treatment merge that refused on a shallow
 // clone must not let the baseline's numbers be reported as though they described the treatment.
-test fn w_RED_an_unfetchable_subject_never_yields_a_bound_observation() -> Bool {
+test fn w_RED_an_unfetchable_subject_never_yields_a_bound_observation() -> Bool  {
   match a_current_available_instrument_status() {
     Absent => false
     Present { value: instrument } =>
@@ -312,7 +312,7 @@ test fn w_RED_an_unfetchable_subject_never_yields_a_bound_observation() -> Bool 
 // digest that success recorded. That is the stale-binary specimen exactly: a past success read
 // as evidence about a present binary. observe selects on availability alone, so history has no
 // vote and this refuses.
-test fn w_RED_a_past_build_success_does_not_bind_when_the_artifact_is_corrupt_now() -> Bool {
+test fn w_RED_a_past_build_success_does_not_bind_when_the_artifact_is_corrupt_now() -> Bool  {
   match an_instrument_status(
     tree_hex: current_tree_hex,
     execution: ExecutionProduced,
@@ -348,7 +348,7 @@ fn observed_instrument_matches(o: Observation<Int>, expected: BuildSubject) -> B
 // subject, and one built from a different tree does not. Asserting only the second would be
 // satisfied by a comparison that is false for everything, which is the broken-instrument shape.
 // Before this revision neither conjunct was writable — the bound arm had no subject at all.
-test fn a_bound_observation_carries_the_instrument_source_vintage() -> Bool {
+test fn a_bound_observation_carries_the_instrument_source_vintage() -> Bool  {
   match a_subject(tree_hex: current_tree_hex) {
     Absent => false
     Present { value: current_subject } =>
@@ -399,7 +399,7 @@ test fn a_bound_observation_carries_the_instrument_source_vintage() -> Bool {
 // carries the execution axis with it so the caller can still answer 'is retry pointless'.
 // Asserted rather than assumed, since DESIGN section 5 forbids a failure arm absorbing a second
 // failure into silence.
-test fn a_doubly_unavailable_fold_reports_the_instrument_refusal() -> Bool {
+test fn a_doubly_unavailable_fold_reports_the_instrument_refusal() -> Bool  {
   match an_instrument_status(
     tree_hex: current_tree_hex,
     execution: a_failed_build(),
@@ -443,7 +443,7 @@ fn bound_with_instrument_availability(availability: ArtifactAvailability) -> Boo
 // it is executed here on every arm of ArtifactAvailability instead of asserted in a comment.
 // If devboot ever changes which arms permit retrieval and this fold does not follow, this goes
 // red — which is the point of writing it as a join rather than as two independent rules.
-test fn binding_agrees_with_devboot_availability_authority_on_every_arm() -> Bool {
+test fn binding_agrees_with_devboot_availability_authority_on_every_arm() -> Bool  {
   match an_available_instrument() {
     Absent => false
     Present { value: available } =>

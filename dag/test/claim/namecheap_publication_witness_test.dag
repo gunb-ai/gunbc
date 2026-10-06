@@ -22,22 +22,22 @@ fn refused_without_echo(result: NamecheapHostsRead, decoded: Bool) -> Bool {
     _ => false
   }
 }
-test fn raw_credential_echo_refuses() -> Bool {
+test fn raw_credential_echo_refuses() -> Bool  {
   refused_without_echo(result: publication(result: echo_result(address: fixture_key as String, extra_host: "", extra_result: "")), decoded: false)
 }
-test fn uri_encoded_credential_echo_refuses() -> Bool {
+test fn uri_encoded_credential_echo_refuses() -> Bool  {
   refused_without_echo(result: publication(result: echo_result(address: fixture_key_wire, extra_host: "", extra_result: "")), decoded: false)
 }
-test fn xml_encoded_address_credential_echo_refuses() -> Bool {
+test fn xml_encoded_address_credential_echo_refuses() -> Bool  {
   refused_without_echo(result: publication(result: echo_result(address: "fixture-only-not-a-key&amp;value", extra_host: "", extra_result: "")), decoded: true)
 }
-test fn xml_encoded_unknown_host_credential_echo_refuses() -> Bool {
+test fn xml_encoded_unknown_host_credential_echo_refuses() -> Bool  {
   refused_without_echo(result: publication(result: echo_result(address: "ordinary", extra_host: "Future='fixture-only-not-a-key&amp;value'", extra_result: "")), decoded: true)
 }
-test fn xml_encoded_result_credential_echo_refuses() -> Bool {
+test fn xml_encoded_result_credential_echo_refuses() -> Bool  {
   refused_without_echo(result: publication(result: echo_result(address: "ordinary", extra_host: "", extra_result: "Future='fixture-only-not-a-key&amp;value'")), decoded: true)
 }
-test fn ordinary_entities_remain_complete() -> Bool {
+test fn ordinary_entities_remain_complete() -> Bool  {
   match publication(result: echo_result(address: "a&amp;b", extra_host: "Future='&lt;ordinary&gt;'", extra_result: "Future='&quot;ordinary&quot;'")) {
     NamecheapHostsObserved { domain: observed_domain, hosts, result_fields } => observed_domain == "gunb.ai" && count(hosts) == 1
       && all(hosts, h => h.fields.any(f => f.name == "Address" && f.value == "a&b") && h.fields.any(f => f.name == "Future" && f.value == "<ordinary>"))

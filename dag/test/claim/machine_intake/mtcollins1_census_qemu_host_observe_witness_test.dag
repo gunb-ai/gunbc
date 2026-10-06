@@ -40,7 +40,7 @@ fn pinned_digest() -> QemuPresence {
 
 data other_digest: QemuPresence = QemuExecutable { digest: Sha256FileDigest { digest: sha256_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") } }
 
-test fn exact_banner_and_pinned_digest_is_the_pinned_build() -> Bool {
+test fn exact_banner_and_pinned_digest_is_the_pinned_build() -> Bool  {
   match qemu_binary_standing_of(root: witness_root, build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)" }) {
     QemuPinnedBuild { binary: b, banner: _ } => b == "/home/ghrunner/.local/share/gunbc-census-qemu/r/usr/bin/qemu-system-aarch64"
     _ => false
@@ -48,7 +48,7 @@ test fn exact_banner_and_pinned_digest_is_the_pinned_build() -> Bool {
 }
 
 // PREFIX ALIAS: starts with "QEMU emulator version 8.2.2" and contains the package version.
-test fn a_prefix_alias_banner_is_not_the_pinned_build() -> Bool {
+test fn a_prefix_alias_banner_is_not_the_pinned_build() -> Bool  {
   match qemu_binary_standing_of(root: witness_root, build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.20 (Debian 1:8.2.2+ds-0ubuntu1.18)" }) {
     QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: p } => !p
     _ => false
@@ -56,7 +56,7 @@ test fn a_prefix_alias_banner_is_not_the_pinned_build() -> Bool {
 }
 
 // SUFFIX ALIAS: contains "1:8.2.2+ds-0ubuntu1.18" as a substring of a later package version.
-test fn a_suffix_alias_banner_is_not_the_pinned_build() -> Bool {
+test fn a_suffix_alias_banner_is_not_the_pinned_build() -> Bool  {
   match qemu_binary_standing_of(root: witness_root, build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.180)" }) {
     QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: p } => !p
     _ => false
@@ -64,14 +64,14 @@ test fn a_suffix_alias_banner_is_not_the_pinned_build() -> Bool {
 }
 
 // THE BANNER ALONE NEVER DISCHARGES READINESS: exact banner, different bytes.
-test fn an_exact_banner_over_different_bytes_is_another_build() -> Bool {
+test fn an_exact_banner_over_different_bytes_is_another_build() -> Bool  {
   match qemu_binary_standing_of(root: witness_root, build: qemu_8_2_2_ubuntu_noble_arm64, presence: other_digest, banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)" }) {
     QemuOtherBuild { binary: _, observed_sha256: h, banner: _, banner_is_pinned: p } => p && string_contains(s: h, pattern: "0000")
     _ => false
   }
 }
 
-test fn an_unreadable_binary_is_absent() -> Bool {
+test fn an_unreadable_binary_is_absent() -> Bool  {
   match qemu_binary_standing_of(root: witness_root, build: qemu_8_2_2_ubuntu_noble_arm64, presence: QemuExecutable { digest: Sha256FileDigestUnavailable { path: "/usr/bin/qemu-system-aarch64", reason: "sha256sum could not digest the input" } }, banner: QemuBannerNotRead) {
     QemuAbsent { binary: _, detail: _ } => true
     _ => false
@@ -80,7 +80,7 @@ test fn an_unreadable_binary_is_absent() -> Bool {
 
 // THE srv1 CASE (fleet-converge run 36806730263): no executable at the pinned path. The banner may
 // NOT be read -- spawning it refused the whole run -- and the standing is QemuAbsent with nothing run.
-test fn an_absent_binary_is_never_spawned_and_reads_absent() -> Bool {
+test fn an_absent_binary_is_never_spawned_and_reads_absent() -> Bool  {
   !qemu_banner_may_be_read(presence: QemuNotExecutable)
     && !qemu_banner_may_be_read(presence: QemuExecutable { digest: Sha256FileDigestUnavailable { path: "/usr/bin/qemu-system-aarch64", reason: "No such file or directory" } })
     && qemu_banner_may_be_read(presence: pinned_digest())
@@ -91,7 +91,7 @@ test fn an_absent_binary_is_never_spawned_and_reads_absent() -> Bool {
 }
 
 // THE RECEIPT IS RENDERED IN THE ABSENT ARM: the text names the absence and says not ready.
-test fn the_receipt_text_carries_the_absent_arm() -> Bool {
+test fn the_receipt_text_carries_the_absent_arm() -> Bool  {
   let text = census_qemu_host_standing_text(s: CensusQemuHostStanding {
     host: "srv1",
     root: witness_root,
@@ -117,14 +117,14 @@ fn pinned_standing_with(libraries_output: String) -> CensusQemuHostStanding {
 }
 
 // THE POSITIVE CONTROL: every fact pinned and every library resolved is ready.
-test fn every_fact_pinned_and_libraries_resolved_is_ready() -> Bool {
+test fn every_fact_pinned_and_libraries_resolved_is_ready() -> Bool  {
   let s = pinned_standing_with(libraries_output: ldd_resolved)
   census_qemu_host_ready(s: s) && string_contains(s: census_qemu_host_standing_text(s: s), pattern: "libraries=resolved\n")
 }
 
 // THE DISCRIMINATING RED: the same standing with two unresolved sonames is NOT ready, however the
 // binary's bytes and banner read, and the receipt names both sonames.
-test fn an_unresolved_library_is_not_ready_and_is_named() -> Bool {
+test fn an_unresolved_library_is_not_ready_and_is_named() -> Bool  {
   let s = pinned_standing_with(libraries_output: ldd_missing)
   let text = census_qemu_host_standing_text(s: s)
   !census_qemu_host_ready(s: s)
@@ -133,13 +133,13 @@ test fn an_unresolved_library_is_not_ready_and_is_named() -> Bool {
 }
 
 // Unrecognized ldd output is not a resolved reading.
-test fn unreadable_ldd_output_is_not_ready() -> Bool {
+test fn unreadable_ldd_output_is_not_ready() -> Bool  {
   !census_qemu_host_ready(s: pinned_standing_with(libraries_output: "\tnot a dynamic executable\n"))
     && !census_qemu_host_ready(s: pinned_standing_with(libraries_output: ""))
 }
 
 // ROOT-RELATIVE: a firmware file is judged at <root><packaged path>, never at the host's /usr.
-test fn firmware_is_read_under_the_root() -> Bool {
+test fn firmware_is_read_under_the_root() -> Bool  {
   match firmware_file_standing_of(root: witness_root, file: aavmf_2024_02_ubuntu_noble.code, reading: Sha256FileDigestUnavailable { path: "x", reason: "absent" }) {
     FirmwareFileUnreadable { path: p, reason: _ } => p == "/home/ghrunner/.local/share/gunbc-census-qemu/r/usr/share/AAVMF/AAVMF_CODE.fd"
     _ => false
@@ -148,7 +148,7 @@ test fn firmware_is_read_under_the_root() -> Bool {
 
 // THE ARCHIVE SET IS THE PINNED ROWS, qemu first, then the firmware, then the libraries -- read from
 // the real rows, with the download location derived from the index Filename.
-test fn the_archive_set_carries_the_pinned_qemu_and_firmware_debs() -> Bool {
+test fn the_archive_set_carries_the_pinned_qemu_and_firmware_debs() -> Bool  {
   match census_qemu_archives() {
     Cons { head: q, tail: Cons { head: f, tail: _ } } =>
       (q.sha256 as String) == "3f7024459848a11bd171045da5d3c8f2e0a93e67e5651ab6b164f45bad954200"
@@ -160,7 +160,7 @@ test fn the_archive_set_carries_the_pinned_qemu_and_firmware_debs() -> Bool {
 
 // THE ROOT IS NAMED BY ITS RECIPE: adding one library deb moves the root, so a changed pin set never
 // lands over a tree a consumer may hold paths into; the same set names the same root.
-test fn a_changed_pin_set_names_a_different_root() -> Bool {
+test fn a_changed_pin_set_names_a_different_root() -> Bool  {
   let extra = UbuntuArchiveBinaryPackage { package: "libfdt1", version: "1.7.0-2build1", architecture: "arm64", filename: "pool/main/d/device-tree-compiler/libfdt1_1.7.0-2build1_arm64.deb", sha256: "0000000000000000000000000000000000000000000000000000000000000000" }
   let base = census_qemu_archives_of(build: qemu_8_2_2_ubuntu_noble_arm64, firmware: aavmf_2024_02_ubuntu_noble, libraries: [])
   let more = census_qemu_archives_of(build: qemu_8_2_2_ubuntu_noble_arm64, firmware: aavmf_2024_02_ubuntu_noble, libraries: [extra])
@@ -174,7 +174,7 @@ test fn a_changed_pin_set_names_a_different_root() -> Bool {
 
 // THE SHARED STAGING ROUTE, AS A .deb TAKES IT: kept at its pool path under the archives directory
 // (whose directory is created before the download), and unpacked with `dpkg-deb -x` at the tree root.
-test fn a_deb_is_fetched_to_its_pool_path_and_unpacked_at_the_root() -> Bool {
+test fn a_deb_is_fetched_to_its_pool_path_and_unpacked_at_the_root() -> Bool  {
   let a = census_qemu_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
   let fetch = map(staged_archive_fetch_commands(archives_dir: "/b/archives", a: a), c => join(argv_words(command: c), " "))
   let install = map(staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: a), c => join(argv_words(command: c), " "))

@@ -33,7 +33,7 @@ fn pre_os_sol_crlf() -> String { join(pre_os_sol_crlf_lines, "") }
 
 // THE FRAMING: the channel's CR belongs to the terminator; no framed line carries it, and content
 // whitespace (the kernel timestamp's leading spaces) is untouched.
-test fn w_sol_crlf_framed_lines_carry_no_mapped_cr() -> Bool {
+test fn w_sol_crlf_framed_lines_carry_no_mapped_cr() -> Bool  {
   let lines = termios_onlcr_output_lines(text: pre_os_sol_crlf())
   !any(lines, line => ends_with(s: line, suffix: "\r"))
     && any(lines, line => line == "[    5.817433] DMI: Memory slots populated: 16/32")
@@ -42,21 +42,21 @@ test fn w_sol_crlf_framed_lines_carry_no_mapped_cr() -> Bool {
 // THE ROUTE: every pre_os reader, fed the CR NL bytes with no trim of its own, reaches its verdict.
 test fn w_sol_crlf_banner_is_seen() -> Bool { pre_os_has_banner(text: pre_os_sol_crlf()) }
 
-test fn w_sol_crlf_ddr_statement_has_no_cr() -> Bool {
+test fn w_sol_crlf_ddr_statement_has_no_cr() -> Bool  {
   match pre_os_terminal_from_console(text: pre_os_sol_crlf()) {
     ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => statement as String == "ERROR:   DDR initialization failure. STOP!"
     _ => false
   }
 }
 
-test fn w_sol_crlf_userspace_boot_is_established() -> Bool {
+test fn w_sol_crlf_userspace_boot_is_established() -> Bool  {
   match pre_os_host_userspace_boot(text: pre_os_sol_crlf(), host_mac: mtcollins1_host_nic_mac) {
     ObservationEstablished { observed: BootReachedOperatingSystem } => true
     _ => false
   }
 }
 
-test fn w_sol_crlf_population_statement_has_no_cr() -> Bool {
+test fn w_sol_crlf_population_statement_has_no_cr() -> Bool  {
   match pre_os_host_population_statement(text: pre_os_sol_crlf()) {
     ObservationEstablished { observed: row } => row as String == "[    5.817433] DMI: Memory slots populated: 16/32"
     _ => false

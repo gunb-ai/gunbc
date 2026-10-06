@@ -55,7 +55,7 @@ fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
 // asserts: the census RAN, and a clean source over the same module yields NO row of either class the
 // REDs count. A red below is therefore the probe's own forgery or outside call, joined by class and
 // subject name, and not background the harness emits for any importer.
-test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool  {
   let c = census_of(source: harness_control_source)
   blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
     && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
@@ -66,12 +66,12 @@ fn probe() -> CompileDiagnosticCensus {
 }
 
 // A PROOF CANNOT BE AUTHORED OUTSIDE THE LIVE ACQUIRE.
-test fn a_forged_unit_hold_proof_is_refused_at_the_literal() -> Bool {
+test fn a_forged_unit_hold_proof_is_refused_at_the_literal() -> Bool  {
   blocking_count_for_class_and_subject(c: probe(), wanted: "SoleConstructorViolation", subject: "UnitHoldProof") >= 1
 }
 
 // EACH SEALED WRITE REFUSES A CALLER FROM OUTSIDE ITS ADMITTED ROOTS, named per callee.
-test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
+test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool  {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_drive_handoff") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_handoff_when_media_ready") >= 1
@@ -86,7 +86,7 @@ test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
 // NO PUBLIC ROUTE REACHES A PROOF OR AN ACTUATION FROM OUTSIDE ITS ROOTS: the hold-owning boot path
 // admits only the wet entry, the boot's actuation is sealed to the hold-owning path, and the unit-hold
 // acquire (the proof's only mint) is sealed to the two roots.
-test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool {
+test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool  {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_actuate") >= 1
@@ -98,7 +98,7 @@ test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool 
 // mtcollins1_boot_actuate, which returns -- carrying all three frozen in its record -- before
 // mtcollins1_boot_under_live_unit_hold applies unit_hold_release to the same proof. So none of them
 // can be taken after the release: each outside call below is refused at compile time.
-test fn the_hold_observations_cannot_be_taken_outside_the_actuation() -> Bool {
+test fn the_hold_observations_cannot_be_taken_outside_the_actuation() -> Bool  {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_param5_under_hold") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_power_after_poll") >= 1

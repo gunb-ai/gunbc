@@ -19,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool {
+test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool  {
   fold(expansion_candidates, init: false, f: (hit, c) =>
     hit || match c.context {
       InstalledUnobserved { ordered: _, ordered_bracket: _, arrived: _, host: _, relay_message: _ } =>
@@ -28,7 +28,7 @@ test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool {
     })
 }
 
-test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool {
+test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool  {
   match connectx4lx_host_observation {
     Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: drv, discharges_at: _ } =>
       string_contains(s: drv as String, pattern: mlx5_core_module_name as String)
@@ -36,7 +36,7 @@ test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool {
   }
 }
 
-test fn seated_transceiver_identity_is_unobserved() -> Bool {
+test fn seated_transceiver_identity_is_unobserved() -> Bool  {
   match seated_transceiver_observation {
     SeatedTransceiverUnobserved { read_obligation: o } =>
       string_contains(s: o as String, pattern: "fs_145681")
@@ -44,7 +44,7 @@ test fn seated_transceiver_identity_is_unobserved() -> Bool {
   }
 }
 
-test fn crs812_sfp56_publishes_25g_but_has_no_25gbase_cr_wire() -> Bool {
+test fn crs812_sfp56_publishes_25g_but_has_no_25gbase_cr_wire() -> Bool  {
   sfp56_group_publishes_25g()
     && mtcollins1_to_crs812_link_plan.nic_port_connector == "SFP28"
     && mtcollins1_to_crs812_link_plan.switch_port_connector == "SFP56"
@@ -58,7 +58,7 @@ test fn crs812_sfp56_publishes_25g_but_has_no_25gbase_cr_wire() -> Bool {
     }
 }
 
-test fn undeclared_cable_coding_refuses_the_purchase() -> Bool {
+test fn undeclared_cable_coding_refuses_the_purchase() -> Bool  {
   match mtcollins1_crs812_cable_order_today {
     OrderRefused { reason: OrderCodingUndeclared { required: r } } => link_mode_eq(a: r, b: ieee_25gbase_cr)
     _ => false
@@ -68,7 +68,7 @@ test fn undeclared_cable_coding_refuses_the_purchase() -> Bool {
   }
 }
 
-test fn fleet_intent_is_undeclared_not_invented() -> Bool {
+test fn fleet_intent_is_undeclared_not_invented() -> Bool  {
   match mtcollins1_connectx4lx_fleet_intent {
     NicIntentUndeclared { host: h, asked_of: _ } => host_identity_eq(a: h, b: operator_host_mtcollins1)
     NicIntentDeclared { host: _, purpose: _ } => false

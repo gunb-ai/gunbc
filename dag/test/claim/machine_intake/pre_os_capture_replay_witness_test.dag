@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Actual committed source bytes reach the SAME inventory/parser path as replay.
 // First cycle of socket0-only is partial, but its later cycle has the complete
 // inventory. Missing process footers on two files are kept separate from that.
-test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -> Bool {
+test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -> Bool  {
   match pre_os_archive_specs() {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: specs } => count(specs) == 4 && all(specs, spec =>
@@ -44,7 +44,7 @@ test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -
 
 // A synthetic acquisition receipt exercises the absence consumer against real
 // bytes; it does not claim the historical collector had that receipt.
-test fn w_truncated_configuration_cannot_support_absence() -> Bool {
+test fn w_truncated_configuration_cannot_support_absence() -> Bool  {
   match pre_os_archive_specs() {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: specs } => all(specs, spec =>
@@ -82,7 +82,7 @@ fn quiet_archive_regression() -> Bool {
   }
 }
 
-test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool {
+test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool  {
   quiet_archive_regression() && firmware_selection_regression() &&
   match replay_pre_os_host_archive() {
     ObservationRefused { cause: _ } => false
@@ -117,7 +117,7 @@ fn firmware_selection_regression() -> Bool {
   }
 }
 
-test fn w_early_exit_refuses_absence_on_real_bytes() -> Bool {
+test fn w_early_exit_refuses_absence_on_real_bytes() -> Bool  {
   match pre_os_archive_specs() {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: specs } => all(specs, spec => match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {

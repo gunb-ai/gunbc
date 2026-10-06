@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // asserted, not only the answer: the receipt must be RecordedManagerDecoded with the fields the
 // bytes carry, and its standing must be AmiMegaRac. Editing one byte of the artifact, or its
 // recorded digest, or the observed link, reds this claim through a typed refusal.
-test fn w_the_committed_capture_decodes_bound_to_mtjade1_as_megarac() -> Bool {
+test fn w_the_committed_capture_decodes_bound_to_mtjade1_as_megarac() -> Bool  {
   let receipt = read_mtjade1_recorded_manager_identity()
   let fields = match receipt.decoded {
     RecordedManagerDecoded { observation: o } =>
@@ -41,7 +41,7 @@ test fn w_the_committed_capture_decodes_bound_to_mtjade1_as_megarac() -> Bool {
 
 // THE PRODUCTION CONSUMER OF THAT STANDING: the current fan convergence selects the MegaRAC route,
 // which is unbound and carries its read obligation.
-test fn w_the_current_jade_fan_convergence_selects_the_observed_megarac_route_unbound() -> Bool {
+test fn w_the_current_jade_fan_convergence_selects_the_observed_megarac_route_unbound() -> Bool  {
   match jade_current_fan_policy_convergence() {
     JadeFanRouteSelected { route: r } => match r {
       ConvergeRouteUnbound { authority: _, read_obligation: _ } => true

@@ -141,14 +141,14 @@ fn fixture_refused(result: PredictiveModelResult<Int, Int>, expected: Predictive
   }
 }
 
-test fn prediction_must_have_a_distinguishable_falsifier() -> Bool {
+test fn prediction_must_have_a_distinguishable_falsifier() -> Bool  {
   fixture_refused(
     result: begin_predictive_model(prediction: fixture_prediction(window: BoundedPredictionWindow { duration: 1000 }, falsifier: 0)),
     expected: IndistinguishablePredictionAndFalsifier,
   )
 }
 
-test fn commitment_must_strictly_precede_start() -> Bool {
+test fn commitment_must_strictly_precede_start() -> Bool  {
   all([200, 201], at => fixture_refused(
     result: fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "late",
       registered: true, isolated: true, recorded_at: at, started_at: 200, observed_at: 300),
@@ -156,7 +156,7 @@ test fn commitment_must_strictly_precede_start() -> Bool {
   ))
 }
 
-test fn observation_must_follow_start_and_respect_committed_bound() -> Bool {
+test fn observation_must_follow_start_and_respect_committed_bound() -> Bool  {
   fixture_refused(result: fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "early",
     registered: true, isolated: true, recorded_at: 100, started_at: 200, observed_at: 199),
     expected: PredictionObservationBeforeStart)
@@ -165,21 +165,21 @@ test fn observation_must_follow_start_and_respect_committed_bound() -> Bool {
     expected: PredictionObservationBeyondBound)
 }
 
-test fn a_snapshot_cannot_be_committed_before_the_evidence_it_contains() -> Bool {
+test fn a_snapshot_cannot_be_committed_before_the_evidence_it_contains() -> Bool  {
   fixture_refused(result: fixture_observe(
     result: fixture_run(result: fixture_model(), configuration: 1, value: 0, id: "earlier"),
     configuration: 2, value: 0, id: "later", registered: true, isolated: true,
     recorded_at: 100, started_at: 200, observed_at: 300), expected: PredictionSnapshotPredatesItsEvidence)
 }
 
-test fn a_missing_approximate_or_zero_window_cannot_be_preregistered() -> Bool {
+test fn a_missing_approximate_or_zero_window_cannot_be_preregistered() -> Bool  {
   all([PredictionWindowNotRecorded, ApproximatePredictionWindow { duration: 1000 }, BoundedPredictionWindow { duration: 0 }], window =>
     fixture_refused(result: fixture_run(
       result: begin_predictive_model(prediction: fixture_prediction(window: window, falsifier: 1)),
       configuration: 1, value: 0, id: "invalid-window"), expected: PredictionWindowRequired))
 }
 
-test fn no_tests_and_five_surviving_tests_are_different_standings() -> Bool {
+test fn no_tests_and_five_surviving_tests_are_different_standings() -> Bool  {
   let initial = fixture_model()
   let tested = fold([1, 2, 3, 4, 5], init: initial, f: (acc, n) =>
     fixture_run(result: acc, configuration: n, value: 0, id: concat("test-", to_string(n))))
@@ -199,7 +199,7 @@ test fn no_tests_and_five_surviving_tests_are_different_standings() -> Bool {
   }
 }
 
-test fn confounding_and_missing_preregistration_each_weaken_a_match() -> Bool {
+test fn confounding_and_missing_preregistration_each_weaken_a_match() -> Bool  {
   all([true, false], registered => {
     let result = fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "weak",
       registered: registered, isolated: !registered, recorded_at: 100, started_at: 200, observed_at: 300)
@@ -214,7 +214,7 @@ test fn confounding_and_missing_preregistration_each_weaken_a_match() -> Bool {
   })
 }
 
-test fn unknown_outcome_is_not_confirmation() -> Bool {
+test fn unknown_outcome_is_not_confirmation() -> Bool  {
   match fixture_run(result: fixture_model(), configuration: 1, value: 2, id: "unknown") {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
@@ -225,7 +225,7 @@ test fn unknown_outcome_is_not_confirmation() -> Bool {
   }
 }
 
-test fn falsification_blocks_further_testing_until_narrowing() -> Bool {
+test fn falsification_blocks_further_testing_until_narrowing() -> Bool  {
   let killed = fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "counterexample")
   fixture_refused(result: fixture_run(result: killed, configuration: 2, value: 0, id: "ignore-counterexample"),
     expected: PredictionRequiresNarrowing)
@@ -234,14 +234,14 @@ test fn falsification_blocks_further_testing_until_narrowing() -> Bool {
     expected: PredictionRequiresNarrowing)
 }
 
-test fn narrowing_must_exclude_the_counterexample_and_change_revision() -> Bool {
+test fn narrowing_must_exclude_the_counterexample_and_change_revision() -> Bool  {
   let killed = fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "counterexample")
   fixture_refused(result: fixture_narrow(result: killed, revision: "fixture-v2", threshold: 0), expected: NarrowingRetainsCounterexample)
   && fixture_refused(result: fixture_narrow(result: killed, revision: "fixture-v1", threshold: 1), expected: PredictionRevisionReused)
   && fixture_refused(result: fixture_narrow(result: fixture_model(), revision: "fixture-v2", threshold: 1), expected: PredictionNotFalsified)
 }
 
-test fn twice_narrowed_lineage_preserves_both_killed_versions_and_cannot_widen() -> Bool {
+test fn twice_narrowed_lineage_preserves_both_killed_versions_and_cannot_widen() -> Bool  {
   let first = fixture_narrow(result: fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "first"), revision: "fixture-v2", threshold: 1)
   let second = fixture_narrow(result: fixture_run(result: first, configuration: 2, value: 1, id: "second"), revision: "fixture-v3", threshold: 2)
   match second {
@@ -266,13 +266,13 @@ test fn twice_narrowed_lineage_preserves_both_killed_versions_and_cannot_widen()
   }
 }
 
-test fn a_replayed_receipt_cannot_be_counted_twice() -> Bool {
+test fn a_replayed_receipt_cannot_be_counted_twice() -> Bool  {
   fixture_refused(result: fixture_run(
     result: fixture_run(result: fixture_model(), configuration: 1, value: 0, id: "same"),
     configuration: 1, value: 0, id: "same"), expected: DuplicatePredictionObservation)
 }
 
-test fn narrowing_cannot_erase_the_entire_scope() -> Bool {
+test fn narrowing_cannot_erase_the_entire_scope() -> Bool  {
   match fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "counterexample") {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => fixture_refused(
@@ -285,7 +285,7 @@ test fn narrowing_cannot_erase_the_entire_scope() -> Bool {
   }
 }
 
-test fn a_surviving_test_never_discharges_the_standing_obligation() -> Bool {
+test fn a_surviving_test_never_discharges_the_standing_obligation() -> Bool  {
   all([0, 1], outcome => match fixture_run(result: fixture_model(), configuration: 1, value: outcome, id: "obligation") {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => match predictive_next_obligation(model: model) {
@@ -295,7 +295,7 @@ test fn a_surviving_test_never_discharges_the_standing_obligation() -> Bool {
   })
 }
 
-test fn tonight_is_one_weak_conversation_match_and_not_preregistered() -> Bool {
+test fn tonight_is_one_weak_conversation_match_and_not_preregistered() -> Bool  {
   match memory_prediction_review() {
     MemoryPredictionReviewRefused { result: _ } => false
     MemoryPredictionReported { model: result, standing: standing, next_obligation: _, report: report, census_frontier: _ } => {
@@ -318,7 +318,7 @@ test fn tonight_is_one_weak_conversation_match_and_not_preregistered() -> Bool {
   }
 }
 
-test fn a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration() -> Bool {
+test fn a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration() -> Bool  {
   match fixture_model() {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => match record_committed_prediction_test(
@@ -337,7 +337,7 @@ test fn a_commit_without_witnessed_order_is_distinct_from_conversation_and_prere
   }
 }
 
-test fn spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass() -> Bool {
+test fn spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass() -> Bool  {
   match spare_screen_prediction_review() {
     SpareScreenPredictionRefused { cause: _ } => false
     SpareScreenPredictionReported { model: model, standing: standing, next_obligation: obligation, outcome_report: report } => {
@@ -357,7 +357,7 @@ test fn spare_screen_archives_the_falsified_commit_and_narrows_without_inventing
   }
 }
 
-test fn a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen() -> Bool {
+test fn a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen() -> Bool  {
   let original = spare_screen_outcome_report
   let late = SpareScreenOutcomeReport {
     message_id: original.message_id, restart_after_power_on: 400000,
@@ -379,7 +379,7 @@ test fn a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen() 
   }
 }
 
-test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool {
+test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool  {
   match begin_predictive_model(prediction: spare_screen_prediction()) {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => match record_committed_prediction_test(
@@ -399,7 +399,7 @@ test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool
   }
 }
 
-test fn archival_publication_never_earns_committed_or_preregistered_match_standing() -> Bool {
+test fn archival_publication_never_earns_committed_or_preregistered_match_standing() -> Bool  {
   match begin_predictive_model(prediction: spare_screen_prediction()) {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => match record_archived_prediction_test(
@@ -420,7 +420,7 @@ test fn archival_publication_never_earns_committed_or_preregistered_match_standi
   }
 }
 
-test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() -> Bool {
+test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() -> Bool  {
   let conversation_visible = match memory_prediction_cli() {
     CliWireUnprintable { cause: _ } => false
     CliWirePrintable { bytes: bytes, exit: exit } => match exit {

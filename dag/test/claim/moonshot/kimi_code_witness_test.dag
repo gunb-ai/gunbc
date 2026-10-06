@@ -41,7 +41,7 @@ import extdeps.moonshot.kimi_code {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn kimi_for_coding_wire_is_unchanged_while_served_version_changes() -> Bool {
+test fn kimi_for_coding_wire_is_unchanged_while_served_version_changes() -> Bool  {
   (kimi_code_request_id_wire(id: kimi_for_coding_k28_preview_assignment.request_id) as String)
       == (kimi_for_coding_wire_id as String)
     && (kimi_for_coding_wire_id as String) == "kimi-for-coding"
@@ -77,7 +77,7 @@ test fn kimi_for_coding_wire_is_unchanged_while_served_version_changes() -> Bool
     }
 }
 
-test fn k2_8_preview_name_is_not_a_request_model_id() -> Bool {
+test fn k2_8_preview_name_is_not_a_request_model_id() -> Bool  {
   (kimi_k28_preview_served_version_name as String) != (kimi_code_request_id_wire(id: KimiForCoding) as String)
     && (kimi_k28_preview_served_version_name as String) != (kimi_code_request_id_wire(id: KimiK3) as String)
     && (kimi_k28_preview_served_version_name as String) != (kimi_code_request_id_wire(id: KimiK3_256k) as String)
@@ -85,7 +85,7 @@ test fn k2_8_preview_name_is_not_a_request_model_id() -> Bool {
       != (kimi_code_request_id_wire(id: KimiForCodingHighspeed) as String)
 }
 
-test fn k2_8_preview_declares_low_high_max() -> Bool {
+test fn k2_8_preview_declares_low_high_max() -> Bool  {
   let low = kimi_code_thinking_effort_wire(effort: KimiCodeEffortLow)
   let high = kimi_code_thinking_effort_wire(effort: KimiCodeEffortHigh)
   let max = kimi_code_thinking_effort_wire(effort: KimiCodeEffortMax)
@@ -94,11 +94,11 @@ test fn k2_8_preview_declares_low_high_max() -> Bool {
     && (max as String) == "max"
 }
 
-test fn k2_8_preview_declared_context_ceiling_is_1048576() -> Bool {
+test fn k2_8_preview_declared_context_ceiling_is_1048576() -> Bool  {
   token_count_value(t: kimi_k28_declared_context_ceiling) == 1048576
 }
 
-test fn thinking_disabled_routes_k3_ids_to_k2_8_without_relabeling_the_request() -> Bool {
+test fn thinking_disabled_routes_k3_ids_to_k2_8_without_relabeling_the_request() -> Bool  {
   match kimi_code_route(requested: KimiK3, thinking: KimiThinkingOff) {
     KimiCodeRouteResolved { route: k3 } =>
       (kimi_code_request_id_wire(id: k3.requested_id) as String) == "k3"
@@ -150,7 +150,7 @@ test fn thinking_disabled_routes_k3_ids_to_k2_8_without_relabeling_the_request()
     }
 }
 
-test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
+test fn highspeed_remains_k2_7_code_highspeed() -> Bool  {
   match kimi_for_coding_highspeed_assignment.served_version {
     ServedK27CodeHighspeed => true
     ServedK28Preview => false
@@ -191,7 +191,7 @@ test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
     }
 }
 
-test fn provider_integration_frontier_names_the_route() -> Bool {
+test fn provider_integration_frontier_names_the_route() -> Bool  {
   (kimi_code_provider_integration_frontier |> count) == 4
     && (kimi_code_provider_integration_frontier |> any(row =>
       match row.subject {

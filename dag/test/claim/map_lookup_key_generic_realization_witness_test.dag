@@ -38,22 +38,22 @@ fn file_contains(path: String, pattern: String) -> Bool {
   string_contains(s: src.content, pattern: pattern)
 }
 
-test fn dag_authority_realizes_lookup_key_generically() -> Bool {
+test fn dag_authority_realizes_lookup_key_generically() -> Bool  {
   file_contains(path: runtime_rust_dag_path, pattern: key_generic_signature)
 }
 
-test fn checked_in_seed_agrees_with_the_dag_authority() -> Bool {
+test fn checked_in_seed_agrees_with_the_dag_authority() -> Bool  {
   file_contains(path: runtime_rust_seed_path, pattern: key_generic_signature)
 }
 
-test fn generated_runtime_agrees_with_both() -> Bool {
+test fn generated_runtime_agrees_with_both() -> Bool  {
   file_contains(path: v1_rt_generated_path, pattern: key_generic_signature)
 }
 
 // The discriminating RED: the exact pre-fix spelling must be absent from all three files. A
 // signature-presence check alone greens if someone adds a second, String-pinned overload beside
 // the generic one, or reverts one of the three files while the other two still carry the pattern.
-test fn w_RED_string_pinned_lookup_is_absent_from_every_file() -> Bool {
+test fn w_RED_string_pinned_lookup_is_absent_from_every_file() -> Bool  {
   !file_contains(path: runtime_rust_dag_path, pattern: string_pinned_signature)
     && !file_contains(path: runtime_rust_seed_path, pattern: string_pinned_signature)
     && !file_contains(path: v1_rt_generated_path, pattern: string_pinned_signature)

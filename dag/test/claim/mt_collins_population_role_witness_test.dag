@@ -51,21 +51,21 @@ fn outcome_refuses_with(outcome: MtCollinsPopulationRoleOutcome, cause: MtCollin
 // connector for a pair with no 1DPC member at all. The refusal must be the NEITHER cause
 // specifically - answering BOTH here would mean the function reached the right verdict from the
 // wrong reading.
-test fn w_a_pair_with_no_one_dpc_member_refuses() -> Bool {
+test fn w_a_pair_with_no_one_dpc_member_refuses() -> Bool  {
   outcome_refuses_with(outcome: mt_collins_population_role_of_pair(pair: probe_pair(left: 2, right: 4)), cause: NeitherMemberAtOneDpc)
 }
 
 // THE DISCRIMINATING RED, ARM TWO. {J1, J3}: both connectors appear in the 16-DIMM row. The
 // superseded form returned J3 as "additional at 2DPC" while J3 is already populated at 1DPC - a
 // plausible role that contradicts the row it was derived from.
-test fn w_a_pair_with_two_one_dpc_members_refuses() -> Bool {
+test fn w_a_pair_with_two_one_dpc_members_refuses() -> Bool  {
   outcome_refuses_with(outcome: mt_collins_population_role_of_pair(pair: probe_pair(left: 1, right: 3)), cause: BothMembersAtOneDpc)
 }
 
 // THE AGGREGATE REFUSES AS A WHOLE, which is the property a per-pair refusal alone does not give.
 // Fifteen sound pairs beside one broken pair must not yield fifteen roles: the standing carries
 // refusals and NO roles, so a consumer cannot read past the deficit.
-test fn w_one_bad_pair_withholds_every_role() -> Bool {
+test fn w_one_bad_pair_withholds_every_role() -> Bool  {
   let drifted = concat(mt_collins_channel_connector_pairs, [probe_pair(left: 2, right: 4)])
   match mt_collins_population_role_standing(pairs: drifted) {
     PopulationRolesRefused { refusals: fs } => list_length(items: fs) == 1
@@ -77,7 +77,7 @@ test fn w_one_bad_pair_withholds_every_role() -> Bool {
 // everything. The real 16 source pairs resolve, all 16 of them, and the roles carry the exact
 // values the deleted literal table carried - including the four descending pairs per socket where
 // the role order inverts against the printed left-to-right order.
-test fn w_the_source_pairs_all_resolve() -> Bool {
+test fn w_the_source_pairs_all_resolve() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesResolved { roles: rs } =>
       list_length(items: rs) == 16
@@ -95,7 +95,7 @@ test fn w_the_source_pairs_all_resolve() -> Bool {
 // THE INVERSION IS REAL, asserted where it would be lost. MCU7 on socket 0 prints J16 then J15,
 // and its role is J15 at 1DPC with J16 added at 2DPC. A join that quietly took the printed left
 // member would pass every other assertion here and fail this one.
-test fn w_a_descending_pair_inverts_against_printed_order() -> Bool {
+test fn w_a_descending_pair_inverts_against_printed_order() -> Bool  {
   match mt_collins_population_role_of_pair(pair: MtCollinsChannelConnectorPair {
     processor_socket: 0,
     memory_controller: 7,

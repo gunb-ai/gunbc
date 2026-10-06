@@ -66,7 +66,7 @@ fn contains_str(xs: List<String>, want: String) -> Bool {
 // be absent and this reds — which is precisely the regression that reached main-adjacent review
 // unnoticed.
 
-test fn witness_reference_only_dependency_reaches_the_union() -> Bool {
+test fn witness_reference_only_dependency_reaches_the_union() -> Bool  {
   let ref_targets = fact_targets(facts: fixture_reference_facts())
   let imp_targets = fact_targets(facts: fixture_import_facts())
   let edge_targets = targets_of(edges: fixture_edges())
@@ -75,27 +75,27 @@ test fn witness_reference_only_dependency_reaches_the_union() -> Bool {
     && contains_str(xs: edge_targets, want: referenced_provider)
 }
 
-test fn witness_import_only_dependency_reaches_the_union() -> Bool {
+test fn witness_import_only_dependency_reaches_the_union() -> Bool  {
   let imp_targets = fact_targets(facts: fixture_import_facts())
   let edge_targets = targets_of(edges: fixture_edges())
   contains_str(xs: imp_targets, want: imported_provider)
     && contains_str(xs: edge_targets, want: imported_provider)
 }
 
-test fn witness_every_producer_row_reaches_the_union() -> Bool {
+test fn witness_every_producer_row_reaches_the_union() -> Bool  {
   let edge_targets = targets_of(edges: fixture_edges())
   let produced = concat(fact_targets(facts: fixture_import_facts()),
                         fact_targets(facts: fixture_reference_facts()))
   fold(produced, init: true, f: fn(acc, t) { acc && contains_str(xs: edge_targets, want: t) })
 }
 
-test fn witness_union_has_no_duplicate_target() -> Bool {
+test fn witness_union_has_no_duplicate_target() -> Bool  {
   let edge_targets = targets_of(edges: fixture_edges())
   count_of(xs: edge_targets, want: imported_provider) == 1
     && count_of(xs: edge_targets, want: referenced_provider) == 1
 }
 
-test fn witness_union_carries_no_surplus_target() -> Bool {
+test fn witness_union_carries_no_surplus_target() -> Bool  {
   let edge_targets = targets_of(edges: fixture_edges())
   fold(edge_targets, init: true, f: fn(acc, t) {
     acc && (contains_str(xs: fact_targets(facts: fixture_import_facts()), want: t)

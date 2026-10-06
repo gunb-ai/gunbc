@@ -115,7 +115,7 @@ fn population_holds(population: ModelPopulation, id: ReleaseIdentity) -> Bool {
 // tests rather than as prose because a comment cannot go red.
 
 // RED 1 -- the original defect, verbatim. A 404 from one distributor's registry.
-test fn w_ollama_local_absence_does_not_remove_from_the_open_weight_population() -> Bool {
+test fn w_ollama_local_absence_does_not_remove_from_the_open_weight_population() -> Bool  {
   let absent_from_ollama = DistributionObservation {
     subject: deepseek_v4_flash_id,
     channel: OllamaLibrary,
@@ -128,7 +128,7 @@ test fn w_ollama_local_absence_does_not_remove_from_the_open_weight_population()
 }
 
 // RED 2 -- a cloud tag existing was read as proof that local weights do not.
-test fn w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable() -> Bool {
+test fn w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable() -> Bool  {
   let cloud_present = DistributionObservation {
     subject: deepseek_v4_flash_id,
     channel: OllamaCloudEndpoint,
@@ -150,7 +150,7 @@ test fn w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable() -
 // verdict about a REALIZATION and this population is keyed by release -- see PopulationStage. The
 // invariant it was witnessing is the one asserted here, and it is the stronger statement: NO
 // narrowing, empty or otherwise, reaches back into its parent.
-test fn w_an_empty_narrowing_does_not_remove_from_the_open_weight_population() -> Bool {
+test fn w_an_empty_narrowing_does_not_remove_from_the_open_weight_population() -> Bool  {
   let outcome = narrow_population(parent: root(), stage: LocallyPackagedStage, admits: [])
   was_produced(outcome: outcome)
     && length(produced_or_empty(outcome: outcome).members) == 0
@@ -158,7 +158,7 @@ test fn w_an_empty_narrowing_does_not_remove_from_the_open_weight_population() -
 }
 
 // RED 4 -- narrowing must not introduce a member the parent lacked.
-test fn w_narrowing_cannot_introduce_a_member_the_parent_lacked() -> Bool {
+test fn w_narrowing_cannot_introduce_a_member_the_parent_lacked() -> Bool  {
   let stranger = ReleaseIdentity {
     publisher: "nobody" as NonEmptyStr,
     family: "Never-Discovered" as NonEmptyStr,
@@ -178,13 +178,13 @@ test fn w_narrowing_cannot_introduce_a_member_the_parent_lacked() -> Bool {
 
 // The positive control that the root filter discriminates at all -- without it every test above
 // would pass on an unfiltered list.
-test fn w_a_closed_weight_release_is_excluded_from_the_open_weight_population() -> Bool {
+test fn w_a_closed_weight_release_is_excluded_from_the_open_weight_population() -> Bool  {
   length(root().members) == 1
 }
 
 // RED 5 -- the DISCOVERY half, which the layer split alone does not repair. A census assembled from
 // one distributor's catalog must refuse to say how complete it is.
-test fn w_completeness_refuses_when_every_source_is_a_single_distributor() -> Bool {
+test fn w_completeness_refuses_when_every_source_is_a_single_distributor() -> Bool  {
   let ollama_shaped = open_weight_population(discovered: discovered(), sources: [ollama_only_source])
   is_refusal(verdict: completeness(
     population: ollama_shaped,
@@ -199,7 +199,7 @@ fn is_refusal(verdict: CompletenessVerdict) -> Bool {
 }
 
 // Positive control for RED 5: the publisher whose catalogue IS held does answer.
-test fn w_completeness_answers_for_the_publisher_whose_catalog_is_held() -> Bool {
+test fn w_completeness_answers_for_the_publisher_whose_catalog_is_held() -> Bool  {
   match completeness(
     population: root(),
     question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }) {
@@ -214,7 +214,7 @@ test fn w_completeness_answers_for_the_publisher_whose_catalog_is_held() -> Bool
 // `CompletenessAnswerable` for ANY publisher-catalogue source, so it would have reported the
 // open-weight universe as fully enumerated from one publisher's index -- a real count over the wrong
 // population, which is the original error verbatim.
-test fn w_one_publishers_catalog_does_not_answer_for_another_publisher() -> Bool {
+test fn w_one_publishers_catalog_does_not_answer_for_another_publisher() -> Bool  {
   is_refusal(verdict: completeness(
     population: root(),
     question: CompleteForPublisher { publisher: "qwen" as NonEmptyStr }))
@@ -223,7 +223,7 @@ test fn w_one_publishers_catalog_does_not_answer_for_another_publisher() -> Bool
 // RED 7 -- and it never answers for the UNIVERSE, whatever sources are held. There is no arm that
 // can return Answerable here, which is the honest terminal rather than a stall: no source shape this
 // module can hold spans every publisher.
-test fn w_universe_completeness_is_never_answerable() -> Bool {
+test fn w_universe_completeness_is_never_answerable() -> Bool  {
   is_refusal(verdict: completeness(
     population: root(), question: CompleteForOpenWeightUniverse))
     && is_refusal(verdict: completeness(
@@ -234,7 +234,7 @@ test fn w_universe_completeness_is_never_answerable() -> Bool {
 // RED 8 -- a BACKWARD transition is not a narrowing. Re-keying a locally-packaged population as
 // open-weight would assert that failing a later test restored membership in an earlier stage, which
 // is the module's invariant inverted. Same-stage is refused for the same reason.
-test fn w_a_backward_or_same_stage_transition_refuses() -> Bool {
+test fn w_a_backward_or_same_stage_transition_refuses() -> Bool  {
   let packaged = produced_or_empty(outcome: narrow_population(
     parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
   !was_produced(outcome: narrow_population(
@@ -247,7 +247,7 @@ test fn w_a_backward_or_same_stage_transition_refuses() -> Bool {
 
 // A later stage refuses completeness about the universe: it is a verdict about realizations and
 // under-reports by construction.
-test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe() -> Bool {
+test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe() -> Bool  {
   let narrowed = produced_or_empty(outcome: narrow_population(
     parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id],
   ))
@@ -262,7 +262,7 @@ test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
 // is NOT held, and the one it does carry IS. The forbidden edge -- a channel-absent observation
 // removing a release -- is asserted directly by RED 1 above; what was missing, and is supplied
 // here, is evidence that the membership predicate can answer false at all.
-test fn w_population_membership_discriminates_in_both_directions() -> Bool {
+test fn w_population_membership_discriminates_in_both_directions() -> Bool  {
   let stranger = ReleaseIdentity {
     publisher: "nobody" as NonEmptyStr,
     family: "Never-Discovered" as NonEmptyStr,

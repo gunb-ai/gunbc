@@ -78,26 +78,26 @@ fn class_label(c: DependentClass) -> String {
   }
 }
 
-test fn witness_same_uid_is_owner_class() -> Bool {
+test fn witness_same_uid_is_owner_class() -> Bool  {
   class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: owner_user())) == "owner"
 }
 
-test fn witness_shared_gid_is_group_class() -> Bool {
+test fn witness_shared_gid_is_group_class() -> Bool  {
   class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: group_mate_user())) == "group"
 }
 
-test fn witness_unrelated_principal_is_other_class() -> Bool {
+test fn witness_unrelated_principal_is_other_class() -> Bool  {
   class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: stranger_user())) == "other"
 }
 
-test fn witness_sole_owner_dependent_derives_0700() -> Bool {
+test fn witness_sole_owner_dependent_derives_0700() -> Bool  {
   let d = dir_with(dependents: [
     DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
   ])
   managed_directory_mode_octal(d: d) == "0700"
 }
 
-test fn witness_group_reader_widens_to_0750() -> Bool {
+test fn witness_group_reader_widens_to_0750() -> Bool  {
   let d = dir_with(dependents: [
     DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
     DirectoryDependent { who: group_mate_user(), needs: [Read, Execute] },
@@ -105,7 +105,7 @@ test fn witness_group_reader_widens_to_0750() -> Bool {
   managed_directory_mode_octal(d: d) == "0750"
 }
 
-test fn witness_unrelated_reader_widens_to_0755() -> Bool {
+test fn witness_unrelated_reader_widens_to_0755() -> Bool  {
   let d = dir_with(dependents: [
     DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
     DirectoryDependent { who: group_mate_user(), needs: [Read, Execute] },
@@ -114,11 +114,11 @@ test fn witness_unrelated_reader_widens_to_0755() -> Bool {
   managed_directory_mode_octal(d: d) == "0755"
 }
 
-test fn witness_no_dependents_derives_no_permission() -> Bool {
+test fn witness_no_dependents_derives_no_permission() -> Bool  {
   managed_directory_mode_octal(d: dir_with(dependents: [])) == "0000"
 }
 
-test fn witness_verbs_union_within_a_class() -> Bool {
+test fn witness_verbs_union_within_a_class() -> Bool  {
   let d = dir_with(dependents: [
     DirectoryDependent { who: owner_user(), needs: [Read] },
     DirectoryDependent { who: owner_user(), needs: [Write] },
@@ -127,7 +127,7 @@ test fn witness_verbs_union_within_a_class() -> Bool {
   perms.mode.owner.read && perms.mode.owner.write && !perms.mode.owner.execute
 }
 
-test fn witness_octal_renders_special_bits_digit() -> Bool {
+test fn witness_octal_renders_special_bits_digit() -> Bool  {
   let mode = FileMode {
     owner: PermissionBits { read: true, write: true, execute: true },
     group: PermissionBits { read: true, write: false, execute: true },
@@ -144,7 +144,7 @@ test fn witness_octal_renders_special_bits_digit() -> Bool {
 // the special digit when it is zero, so "660" and "0660" must reach the same FileMode; that pair is
 // the reason the reader slices digits from the least significant end rather than branching on
 // length.
-test fn the_octal_parse_is_the_inverse_of_the_render_for_three_and_four_digit_forms() -> Bool {
+test fn the_octal_parse_is_the_inverse_of_the_render_for_three_and_four_digit_forms() -> Bool  {
   let setgid_mode = FileMode {
     owner: PermissionBits { read: true, write: true, execute: true },
     group: PermissionBits { read: true, write: false, execute: true },
@@ -184,7 +184,7 @@ test fn the_octal_parse_is_the_inverse_of_the_render_for_three_and_four_digit_fo
 // "this host does not delegate", sending an operator to fix a udev rule that is fine, when what
 // actually happened is that the probe failed. An octal digit above 7 is the sharp case -- "680" is
 // digits all the way down and still not a mode.
-test fn an_unreadable_octal_mode_refuses_rather_than_reading_as_all_denied() -> Bool {
+test fn an_unreadable_octal_mode_refuses_rather_than_reading_as_all_denied() -> Bool  {
   (match file_mode_of_octal_text(text: "") { Absent => true  Present { value: _ } => false })
     && (match file_mode_of_octal_text(text: "rw-rw----") { Absent => true  Present { value: _ } => false })
     && (match file_mode_of_octal_text(text: "680") { Absent => true  Present { value: _ } => false })
@@ -220,25 +220,25 @@ fn writers_dir(group: PosixUser) -> ManagedDirectory {
   }
 }
 
-test fn witness_second_writer_group_derives_setgid_2770() -> Bool {
+test fn witness_second_writer_group_derives_setgid_2770() -> Bool  {
   managed_directory_mode_octal(d: writers_dir(group: stranger_user())) == "2770"
 }
 
-test fn witness_second_writer_group_is_admitted() -> Bool {
+test fn witness_second_writer_group_is_admitted() -> Bool  {
   match managed_directory_admit(d: writers_dir(group: stranger_user())) {
     ManagedDirectoryAdmitted { dir: _ } => true
     ManagedDirectoryRefused { member: _, path: _, writer: _ } => false
   }
 }
 
-test fn witness_uncovered_writer_refuses_naming_it() -> Bool {
+test fn witness_uncovered_writer_refuses_naming_it() -> Bool  {
   match managed_directory_admit(d: writers_dir(group: owner_user())) {
     ManagedDirectoryAdmitted { dir: _ } => false
     ManagedDirectoryRefused { member: _, path: _, writer } => (writer as String) == "outsider"
   }
 }
 
-test fn witness_uncovered_writer_would_have_derived_world_write() -> Bool {
+test fn witness_uncovered_writer_would_have_derived_world_write() -> Bool  {
   managed_directory_permissions(d: writers_dir(group: owner_user())).mode.other.write
 }
 
@@ -258,26 +258,26 @@ fn entry_mode_octal_or_refused(d: ManagedDirectory) -> String {
   }
 }
 
-test fn witness_owner_reads_second_writers_entry_through_other() -> Bool {
+test fn witness_owner_reads_second_writers_entry_through_other() -> Bool  {
   class_label(c: entry_class_of(d: writers_dir(group: stranger_user()), writer: stranger_user(), reader: owner_user())) == "other"
 }
 
-test fn witness_second_writer_reads_owners_entry_through_group() -> Bool {
+test fn witness_second_writer_reads_owners_entry_through_group() -> Bool  {
   class_label(c: entry_class_of(d: writers_dir(group: stranger_user()), writer: owner_user(), reader: stranger_user())) == "group"
 }
 
-test fn witness_two_writer_store_entries_derive_0444() -> Bool {
+test fn witness_two_writer_store_entries_derive_0444() -> Bool  {
   entry_mode_octal_or_refused(d: writers_dir(group: stranger_user())) == "0444"
 }
 
-test fn witness_entry_repair_adds_exactly_the_derived_read_bits() -> Bool {
+test fn witness_entry_repair_adds_exactly_the_derived_read_bits() -> Bool  {
   match managed_directory_entry_mode(d: writers_dir(group: stranger_user())) {
     ManagedEntryModeDerived { mode } => entry_mode_add_read_symbolic(mode: mode) == "u+r,g+r,o+r"
     ManagedEntryModeRefused { member: _, path: _, reason: _ } => false
   }
 }
 
-test fn witness_single_writer_entries_derive_owner_read_only() -> Bool {
+test fn witness_single_writer_entries_derive_owner_read_only() -> Bool  {
   entry_mode_octal_or_refused(d: dir_with(dependents: [DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] }])) == "0400"
 }
 
@@ -300,10 +300,10 @@ fn store_other_can_traverse() -> ManagedDirectory {
   }
 }
 
-test fn witness_other_traverse_directory_grants_o_x() -> Bool {
+test fn witness_other_traverse_directory_grants_o_x() -> Bool  {
   managed_directory_permissions(d: store_other_can_traverse()).mode.other.execute
 }
 
-test fn witness_entry_other_read_refuses_when_other_can_traverse() -> Bool {
+test fn witness_entry_other_read_refuses_when_other_can_traverse() -> Bool  {
   entry_mode_octal_or_refused(d: store_other_can_traverse()) == "refused"
 }

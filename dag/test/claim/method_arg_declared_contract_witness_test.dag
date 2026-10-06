@@ -56,7 +56,7 @@ fn method_arg_declared_contract_fixture_source() -> String {
 // declared Int parameter contract, so a NonEmptyStr-typed argument at the index
 // position was silently accepted -- a String masquerading as a list index, never
 // refused. Fixed, the same call is a real, located type mismatch and must refuse.
-test fn w_method_arg_infers_against_declared_contract_not_element_type_test() -> Bool {
+test fn w_method_arg_infers_against_declared_contract_not_element_type_test() -> Bool  {
   !compile_dag_rust_emit_check(
     method_arg_declared_contract_fixture_source(),
     "src/argfix_probe.rs",

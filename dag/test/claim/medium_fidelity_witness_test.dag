@@ -36,7 +36,7 @@ fn mis_tagged_prose_medium() -> extdeps.communication.medium.Medium<String> {
   }
 }
 
-test fn text_medium_tag_is_lossless() -> Bool {
+test fn text_medium_tag_is_lossless() -> Bool  {
   let m = text_medium_lossless()
   match m.fidelity {
     Lossless => true
@@ -44,7 +44,7 @@ test fn text_medium_tag_is_lossless() -> Bool {
   }
 }
 
-test fn probe_medium_tag_is_lossless() -> Bool {
+test fn probe_medium_tag_is_lossless() -> Bool  {
   let m = probe_medium_lossless()
   match m.fidelity {
     Lossless => true
@@ -52,7 +52,7 @@ test fn probe_medium_tag_is_lossless() -> Bool {
   }
 }
 
-test fn probe_carried_is_non_text() -> Bool {
+test fn probe_carried_is_non_text() -> Bool  {
   let m = probe_medium_lossless()
   match m.carried {
     Dominates => true
@@ -60,7 +60,7 @@ test fn probe_carried_is_non_text() -> Bool {
   }
 }
 
-test fn prose_medium_tag_is_lossy() -> Bool {
+test fn prose_medium_tag_is_lossy() -> Bool  {
   let m = prose_medium()
   match m.fidelity {
     Lossy => true
@@ -68,11 +68,11 @@ test fn prose_medium_tag_is_lossy() -> Bool {
   }
 }
 
-test fn lossy_prose_not_advertised_lossless() -> Bool {
+test fn lossy_prose_not_advertised_lossless() -> Bool  {
   !is_lossless(prose_medium().fidelity)
 }
 
-test fn red_mistag_certifies_lossless_by_tag_alone() -> Bool {
+test fn red_mistag_certifies_lossless_by_tag_alone() -> Bool  {
   is_lossless(mis_tagged_prose_medium().fidelity)
 }
 

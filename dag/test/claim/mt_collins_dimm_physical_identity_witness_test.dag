@@ -51,14 +51,14 @@ fn refuses(connector: Nat, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtC
   }
 }
 
-test fn w_missing_and_duplicate_identities_refuse() -> Bool {
+test fn w_missing_and_duplicate_identities_refuse() -> Bool  {
   refuses(connector: 1, banks: [], pairs: mt_collins_channel_connector_pairs, cause: ConnectorMissingFromLayout)
   && refuses(connector: 1, banks: concat(dimm_figure_banks, dimm_figure_banks), pairs: mt_collins_channel_connector_pairs, cause: ConnectorRepeatedInLayout)
   && refuses(connector: 1, banks: dimm_figure_banks, pairs: [], cause: ConnectorMissingFromPairTable)
   && refuses(connector: 1, banks: dimm_figure_banks, pairs: concat(mt_collins_channel_connector_pairs, mt_collins_channel_connector_pairs), cause: ConnectorRepeatedInPairTable)
 }
 
-test fn w_socket_disagreement_and_role_deficit_refuse() -> Bool {
+test fn w_socket_disagreement_and_role_deficit_refuse() -> Bool  {
   refuses(connector: 1, banks: dimm_figure_banks, pairs: [MtCollinsChannelConnectorPair {
     processor_socket: 1, memory_controller: 0, table_left_connector: 1, table_right_connector: 2,
   }], cause: ProcessorSocketDisagrees)
@@ -68,7 +68,7 @@ test fn w_socket_disagreement_and_role_deficit_refuse() -> Bool {
 }
 
 // Duplicating a key inside ONE bank or ONE pair must not evade a row-count check.
-test fn w_duplicate_within_a_row_refuses() -> Bool {
+test fn w_duplicate_within_a_row_refuses() -> Bool  {
   refuses(connector: 1, banks: [MtCollinsDimmFigureBank {
     figure: memory_connector_layout_figure, processor_socket: 0, processor_figure_label: "CPU0",
     side: LeftOfProcessor, connectors_left_to_right: [1, 1],
@@ -80,7 +80,7 @@ test fn w_duplicate_within_a_row_refuses() -> Bool {
 
 // All connector identities (not just the selected odd keys) must join. The reversed
 // banks distinguish spatial order from ascending numeric or channel order.
-test fn w_every_figure_connector_resolves() -> Bool {
+test fn w_every_figure_connector_resolves() -> Bool  {
   fold(dimm_figure_banks, init: true, f: (acc, bank) => acc && fold(bank.connectors_left_to_right, init: true, f: (ok, c) => ok && match resolve_dimm_diagram_identity(connector: c, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
     DimmDiagramIdentityResolved { identity: i } => i.connector == c && i.channel.processor_socket == bank.processor_socket
     DimmDiagramIdentityRefused { connector: _, cause: _ } => false
@@ -91,7 +91,7 @@ test fn w_every_figure_connector_resolves() -> Bool {
   }
 }
 
-test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
+test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool  {
   match sixteen_dimm_diagram_identity() {
     PopulationDiagramResolved { population: p, slots: slots, orientation: o, physical_gaps: gaps, photographed_colours: colours, user_guide_citation: citation, mirror_read: mirror } =>
       list_length(items: slots) == p.dimm_count && p.dimm_count == 16
@@ -106,7 +106,7 @@ test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
   }
 }
 
-test fn w_bad_population_never_returns_partial_slots() -> Bool {
+test fn w_bad_population_never_returns_partial_slots() -> Bool  {
   let missing = match population_diagram_identity(population: MtCollinsDimmPopulationRow { dimm_count: 2, connectors: [1, 99] }) {
     PopulationDiagramRefused { unresolved: us } => list_length(items: us) == 1
     PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => false
@@ -129,7 +129,7 @@ test fn w_bad_population_never_returns_partial_slots() -> Bool {
 }
 
 // The operator report must never turn into a platform-wide colour lookup.
-test fn w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps() -> Bool {
+test fn w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps() -> Bool  {
   let actual = match colour_evidence_for_unit(unit: observed_unit) {
     UnitColourEvidence { divergence: d } => match d {
       PhysicalColourDiffersFromDiagramRole { observation: o, observed_population_diagram: diagram, same_colour_diagram_role: role } =>
@@ -156,7 +156,7 @@ test fn w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps()
 }
 
 // Agreement is a comparison of separate observations, not an authored constant.
-test fn w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts() -> Bool {
+test fn w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts() -> Bool  {
   let different = SpecificationCitationReadReceipt {
     subject: mt_collins_2u_user_guide_subject_ref,
     provenance: DocumentMirrorLocatorFetchedAndTextIngested {

@@ -83,21 +83,21 @@ fn is_not_unique(result: UniqueReleaseRelativeMaximum<Int>, expected_rank: Int, 
 
 // EMPTY IS ITS OWN ANSWER, not a fabricated alternative. This is the arm that a fold seeded with a
 // synthetic row would have destroyed, and no Ollama fixture reaches it with an empty roster.
-test fn w_no_alternatives_is_its_own_arm() -> Bool {
+test fn w_no_alternatives_is_its_own_arm() -> Bool  {
   is_no_alternative(result: unique_release_relative_maximum(alternatives: []))
 }
 
 // THE PAYLOAD COMES BACK EXACTLY, which is the whole opacity claim. A kernel that reconstructed its
 // answer from parts it inspected could still return something equal-looking here; returning the
 // identical supplied value is what this row holds.
-test fn w_a_single_alternative_returns_the_exact_payload_supplied() -> Bool {
+test fn w_a_single_alternative_returns_the_exact_payload_supplied() -> Bool  {
   is_unique_payload(result: unique_release_relative_maximum(alternatives: [ranked_a(rank: 7, payload: 41)]),
     expected: 41)
 }
 
 // ORDER-INDEPENDENCE, asserted in BOTH roster orders. A maximum that depends on input order is the
 // defect this module's tie refusal exists to prevent, and one order alone cannot detect it.
-test fn w_the_higher_rank_wins_in_both_roster_orders() -> Bool {
+test fn w_the_higher_rank_wins_in_both_roster_orders() -> Bool  {
   is_unique_payload(result: unique_release_relative_maximum(
     alternatives: [ranked_a(rank: 3, payload: 10), ranked_a(rank: 9, payload: 20)]), expected: 20)
     && is_unique_payload(result: unique_release_relative_maximum(
@@ -107,7 +107,7 @@ test fn w_the_higher_rank_wins_in_both_roster_orders() -> Bool {
 // NEGATIVE RANKS ORDER CORRECTLY, with no nonnegative assumption anywhere. The predecessor used
 // `0 - 1` as a sentinel for "not admissible", which would have collided with a release that ranks
 // its own artifacts from -1; this row is the standing control that no such assumption returned.
-test fn w_negative_ranks_order_without_a_nonnegative_assumption() -> Bool {
+test fn w_negative_ranks_order_without_a_nonnegative_assumption() -> Bool  {
   is_unique_payload(result: unique_release_relative_maximum(
     alternatives: [ranked_a(rank: 0 - 5, payload: 10), ranked_a(rank: 0 - 1, payload: 20)]), expected: 20)
     && is_unique_payload(result: unique_release_relative_maximum(
@@ -119,7 +119,7 @@ test fn w_negative_ranks_order_without_a_nonnegative_assumption() -> Bool {
 // this pair demands a difference outside the represented domain and wraps, traps or refuses
 // depending on the execution path. Every Ollama fixture rank is small and positive, so no
 // integration row could ever have reached this state.
-test fn w_the_comparator_is_total_at_the_bounds_of_int() -> Bool {
+test fn w_the_comparator_is_total_at_the_bounds_of_int() -> Bool  {
   is_unique_payload(result: unique_release_relative_maximum(alternatives: [
     ranked_a(rank: 0 - 9223372036854775807, payload: 10),
     ranked_a(rank: 9223372036854775807, payload: 20),
@@ -132,7 +132,7 @@ test fn w_the_comparator_is_total_at_the_bounds_of_int() -> Bool {
 
 // NO CROSS-RELEASE ORDER EXISTS, in both orders, and the count is complete. Returning a maximum
 // here would manufacture an ordering the inputs never carried.
-test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool {
+test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool  {
   is_no_common_scale(result: unique_release_relative_maximum(
     alternatives: [ranked_a(rank: 1, payload: 10), ranked_b(rank: 2, payload: 20)]), expected_releases: 2)
     && is_no_common_scale(result: unique_release_relative_maximum(
@@ -160,7 +160,7 @@ test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool {
 // membership. This row deliberately does NOT call that one -- a conjunct here would make the
 // interleaved fact fail BOTH rows under one mutant, which is the opposite of the localization the
 // annotation below claims.
-test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
+test fn w_the_release_count_counts_releases_and_not_rows() -> Bool  {
   is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
     ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20), ranked_b(rank: 1, payload: 30),
   ]), expected_releases: 2)
@@ -172,7 +172,7 @@ test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
 // THE REPEATS ARE SEPARATED, which is the only arrangement that fails a previous-entry-only
 // membership test. Held as its own row rather than folded into the arm above so that a failure names
 // the interleaving rather than a three-way conjunction.
-test fn w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent() -> Bool {
+test fn w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent() -> Bool  {
   is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
     ranked_a(rank: 1, payload: 10), ranked_b(rank: 1, payload: 30), ranked_a(rank: 2, payload: 20),
   ]), expected_releases: 2)
@@ -181,7 +181,7 @@ test fn w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent() ->
 // A TIE REFUSES rather than picking, in both orders, and reports the same top quality and
 // multiplicity either way. Keeping the earlier entry is the one rule whose answer changes when the
 // roster is reversed, so both orders are required to hold the refusal.
-test fn w_an_equal_top_rank_refuses_in_both_orders() -> Bool {
+test fn w_an_equal_top_rank_refuses_in_both_orders() -> Bool  {
   is_not_unique(result: unique_release_relative_maximum(
     alternatives: [ranked_a(rank: 4, payload: 10), ranked_a(rank: 4, payload: 20)]),
     expected_rank: 4, expected_tied: 2)
@@ -192,7 +192,7 @@ test fn w_an_equal_top_rank_refuses_in_both_orders() -> Bool {
 
 // A TIE BELOW THE MAXIMUM IS NOT A TIE. Uniqueness is a property of the TOP rank alone, and a
 // kernel that counted ties anywhere in the roster would refuse a question that has an answer.
-test fn w_a_tie_beneath_a_unique_maximum_does_not_refuse() -> Bool {
+test fn w_a_tie_beneath_a_unique_maximum_does_not_refuse() -> Bool  {
   is_unique_payload(result: unique_release_relative_maximum(alternatives: [
     ranked_a(rank: 2, payload: 10), ranked_a(rank: 2, payload: 20), ranked_a(rank: 8, payload: 30),
   ]), expected: 30)
@@ -201,7 +201,7 @@ test fn w_a_tie_beneath_a_unique_maximum_does_not_refuse() -> Bool {
 // THE SAME ALTERNATIVE SUPPLIED TWICE IS TWO ALTERNATIVES. Silently deduplicating would answer a
 // question the caller did not ask -- whether two rows denote one artifact is the caller's identity
 // question, and this module has no key with which to decide it.
-test fn w_a_duplicated_top_alternative_is_not_silently_deduplicated() -> Bool {
+test fn w_a_duplicated_top_alternative_is_not_silently_deduplicated() -> Bool  {
   is_not_unique(result: unique_release_relative_maximum(
     alternatives: [ranked_a(rank: 6, payload: 99), ranked_a(rank: 6, payload: 99)]),
     expected_rank: 6, expected_tied: 2)
@@ -209,7 +209,7 @@ test fn w_a_duplicated_top_alternative_is_not_silently_deduplicated() -> Bool {
 
 // THE COMPARATOR REFUSES ACROSS RELEASES AT ITS OWN GRAIN, beneath the maximum fold. The fold could
 // mask a comparator that invented an ordering, so the primitive is held directly.
-test fn w_the_comparator_itself_has_no_cross_release_answer() -> Bool {
+test fn w_the_comparator_itself_has_no_cross_release_answer() -> Bool  {
   match compare_within_release(
     a: WithinReleaseQuality { identity: release_a, rank: 1 },
     b: WithinReleaseQuality { identity: release_b, rank: 1 },

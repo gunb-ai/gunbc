@@ -68,11 +68,11 @@ fn reading_of(capture: SolCaptureUnderCondition) -> SolCaptureReading {
 
 // ── custody: the rows name the bytes they were taken from ─────────────────────────────────────
 
-test fn every_boot_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool {
+test fn every_boot_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool  {
   all(mtcollins1_restore_boot_captures, c => capture_content(capture: c).length() == c.bytes.count)
 }
 
-test fn the_sel_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool {
+test fn the_sel_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool  {
   Filesystem.Read(path: mtcollins1_stable_boot_window_capture.artifact_path as String).content.length()
     == mtcollins1_stable_boot_window_capture.byte_count.count
 }
@@ -80,7 +80,7 @@ test fn the_sel_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool {
 // A MISSING PATH READS AS EMPTY CONTENT ON THIS ROUTE (measured by the fan-program witness), so
 // a zero-length read must never satisfy a count check; the rows carry non-zero counts, and this
 // control keeps the comparison honest about what an absent file looks like.
-test fn an_absent_capture_reads_as_zero_bytes_and_fails_the_count() -> Bool {
+test fn an_absent_capture_reads_as_zero_bytes_and_fails_the_count() -> Bool  {
   Filesystem.Read(path: "artifacts/bmc/mtcollins1-no-such-capture.txt").content.length() == 0
     && mtcollins1_sixteen_module_restore_capture.bytes.count > 0
 }
@@ -104,7 +104,7 @@ fn sel_content() -> String {
   Filesystem.Read(path: mtcollins1_stable_boot_window_capture.artifact_path as String).content
 }
 
-test fn every_transcribed_sel_event_is_in_the_capture() -> Bool {
+test fn every_transcribed_sel_event_is_in_the_capture() -> Bool  {
   let content = sel_content()
   all(mtcollins1_stable_boot_window_capture.events, e => contains(content, rendering_in_sel_columns(rendering: e.bmc_clock_rendering)))
 }
@@ -112,7 +112,7 @@ test fn every_transcribed_sel_event_is_in_the_capture() -> Bool {
 // THE COUNT IS AN IDENTITY JOIN IN THE OTHER DIRECTION: the file's record lines -- those carrying
 // the capture date in the controller's date column -- number exactly the rows transcribed, so a
 // record the transcription dropped is red as well as one it invented.
-test fn the_capture_carries_exactly_the_transcribed_record_count() -> Bool {
+test fn the_capture_carries_exactly_the_transcribed_record_count() -> Bool  {
   let record_lines = filter(sel_content().split(sep: "\n"), l => contains(l, " | 09/12/2026 | "))
   list_length(items: record_lines) == list_length(items: mtcollins1_stable_boot_window_capture.events)
 }
@@ -122,7 +122,7 @@ test fn the_capture_carries_exactly_the_transcribed_record_count() -> Bool {
 // ALL THREE CAPTURES ARE HOST BYTES: the firmware grammar recognises checkpoint lines in each, so
 // none reads as banner-only or unattributed -- the discriminating contrast with the four
 // byte-identical 86-byte captures of the 32-DIMM corpus.
-test fn every_boot_capture_reads_as_host_bytes() -> Bool {
+test fn every_boot_capture_reads_as_host_bytes() -> Bool  {
   all(mtcollins1_restore_boot_captures, c => match reading_of(capture: c) {
     SolHostBytesObserved { capture_path: _, bytes: _, report: _ } => true
     _ => false
@@ -131,7 +131,7 @@ test fn every_boot_capture_reads_as_host_bytes() -> Bool {
 
 // RUN A STATED NO TERMINAL: every recognised line is a checkpoint, and the run ends in the PXE
 // loop before UEFI prints a boot-option error.
-test fn run_a_states_no_terminal() -> Bool {
+test fn run_a_states_no_terminal() -> Bool  {
   match reading_of(capture: mtcollins1_run_a_sparse_reference_capture) {
     SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
       match r {
@@ -158,18 +158,18 @@ fn reads_as_unrecognised_boot_option_error(capture: SolCaptureUnderCondition) ->
   }
 }
 
-test fn run_b_carries_the_uefi_boot_option_error_unrecognised() -> Bool {
+test fn run_b_carries_the_uefi_boot_option_error_unrecognised() -> Bool  {
   reads_as_unrecognised_boot_option_error(capture: mtcollins1_run_b_sparse_samsung_capture)
 }
 
-test fn the_restore_verification_carries_the_uefi_boot_option_error_unrecognised() -> Bool {
+test fn the_restore_verification_carries_the_uefi_boot_option_error_unrecognised() -> Bool  {
   reads_as_unrecognised_boot_option_error(capture: mtcollins1_sixteen_module_restore_capture)
 }
 
 // THE GRAMMAR STILL DISCRIMINATES: the held-session capture whose firmware refused the mixture
 // reads as a training refusal through the same fold, so "no refusal" above is not the grammar
 // having gone blind.
-test fn the_same_grammar_reads_the_mixture_capture_as_a_refusal() -> Bool {
+test fn the_same_grammar_reads_the_mixture_capture_as_a_refusal() -> Bool  {
   match mtcollins1_dram_training_reading() {
     SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
       match r {
@@ -181,7 +181,7 @@ test fn the_same_grammar_reads_the_mixture_capture_as_a_refusal() -> Bool {
 }
 
 // NO TRAINED CAPTURE READS AS A REFUSAL.
-test fn no_trained_capture_reads_as_a_refusal() -> Bool {
+test fn no_trained_capture_reads_as_a_refusal() -> Bool  {
   all(mtcollins1_restore_boot_captures, c => match reading_of(capture: c) {
     SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
       match r {
@@ -194,18 +194,18 @@ test fn no_trained_capture_reads_as_a_refusal() -> Bool {
 
 // ── the verdicts ──────────────────────────────────────────────────────────────────────────────
 
-test fn the_loop_before_the_restore_is_the_bounded_terminal() -> Bool {
+test fn the_loop_before_the_restore_is_the_bounded_terminal() -> Bool  {
   exit_ok(e: check_loop_before_restore_is_the_bounded_terminal())
 }
 
-test fn the_restore_window_is_undetermined_not_terminal() -> Bool {
+test fn the_restore_window_is_undetermined_not_terminal() -> Bool  {
   exit_ok(e: check_restore_window_is_undetermined_not_terminal(console: reading_of(capture: mtcollins1_sixteen_module_restore_capture)))
 }
 
 // THE CAUSE IS THE CONSOLE'S: the fold decides an unrecognised ERROR: statement before it reads
 // the window, so the observation module's check refuses any cause but that line. The window
 // itself is checked next, through the cycle fold, because this verdict never reaches it.
-test fn the_restore_verdict_is_undetermined_by_the_unrecognised_uefi_line() -> Bool {
+test fn the_restore_verdict_is_undetermined_by_the_unrecognised_uefi_line() -> Bool  {
   match reading_of(capture: mtcollins1_sixteen_module_restore_capture) {
     SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
       match r {
@@ -220,6 +220,6 @@ test fn the_restore_verdict_is_undetermined_by_the_unrecognised_uefi_line() -> B
 // ZERO RESTARTS AFTER THE SWAP, AS AN EXECUTED FOLD OVER THE ROWS: a restart row added after 0x640
 // closes the power-up's cycle and turns this red (planted and measured while the check was written);
 // so does dropping the power-up itself.
-test fn no_restart_closes_a_cycle_after_the_swap() -> Bool {
+test fn no_restart_closes_a_cycle_after_the_swap() -> Bool  {
   exit_ok(e: check_no_restart_after_the_swap())
 }

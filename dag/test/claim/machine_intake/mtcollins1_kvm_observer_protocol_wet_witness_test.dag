@@ -168,7 +168,7 @@ fn port_of(start: KvmObserverStart) -> String {
 
 // ESTABLISHED FOR THIS SUBJECT, ADMITTED FOR THE HANDOFF, AND THE TRIGGERED STILL IS HASH-BOUND. The
 // controller saw a real login, the owning logout, and closed the stream when the model said so.
-test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> Bool {
+test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> Bool  {
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
   let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
@@ -190,7 +190,7 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
 // by evaluating a fetch inside it journalled "failed ... Execution context was destroyed" against this
 // transport, the hardware journal line for line, and was never established. The ROUTE is asserted, not
 // only the answer: the controller saw the login and never served its root page.
-test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
+test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool  {
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
   let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
   let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
@@ -205,7 +205,7 @@ test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
 // unguarded sessionStorage.features.indexOf throws, the page error is journalled, /kvm is never
 // requested, and the observer refuses for want of a frame -- never established. The route is asserted:
 // the controller saw the login and no kvm connect.
-test fn a_viewer_without_its_feature_list_never_opens_kvm() -> Bool {
+test fn a_viewer_without_its_feature_list_never_opens_kvm() -> Bool  {
   let r = rig_with(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true), features_json: "")
   let refused = match kvm_observer_standing_now(start: r.start) { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
   let page_error = match r.start { KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } => any(kvm_journal_events_at(dir: d as String), e => match e { KvmJournalPageError { at: _, phase: p, detail: x } => p == "viewer" && string_contains(s: x, pattern: "indexOf")  _ => false })  _ => false }
@@ -219,7 +219,7 @@ test fn a_viewer_without_its_feature_list_never_opens_kvm() -> Bool {
 
 // VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that count,
 // never connects, releases its session -- and the handoff is refused with that standing.
-test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool {
+test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool  {
   let r = rig(w: world(other_viewers: 1, close_at: no_close(), canvas_readable: true))
   let refused = match kvm_observer_standing_now(start: r.start) { KvmObserverRefused { at: _, refusal: x } => match x { KvmSeatBusy { viewer_count: n } => n == "1"  _ => false }  _ => false }
   let handoff = match kvm_handoff_admission(start: r.start) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "viewer_count=1")  _ => false }
@@ -232,7 +232,7 @@ test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool {
 // CONNECTION LOST MID-BOOT: the model closes the stream at its scheduled instant. The browser's close
 // is journalled as connection-lost, the boot's tick report freezes it, the standing is Lost (so a
 // handoff after it is refused), and a still asked after it is not-connected.
-test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it() -> Bool {
+test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it() -> Bool  {
   let r = rig(w: world(other_viewers: 0, close_at: Present { value: 8 }, canvas_readable: true))
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 10))
   let reported = mtcollins1_boot_screen_boundary_report(screen: r.start, already: [])
@@ -248,7 +248,7 @@ test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it(
 
 // CANVAS UNREADABLE: the world's browser-side flag makes the page's canvas unexportable; the still asked
 // for is acquisition-failed canvas-unreadable with the browser's own words.
-test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> Bool {
+test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> Bool  {
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: false))
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
@@ -265,7 +265,7 @@ test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> 
 //
 // READINESS IS BOUND TO THE WHOLE INSTANCE: a listening line from another pid, or from the SAME pid with
 // an earlier start time, is not readiness, whatever it says. Pure over what the launch would have read.
-test fn a_stale_listening_line_from_another_pid_is_not_readiness() -> Bool {
+test fn a_stale_listening_line_from_another_pid_is_not_readiness() -> Bool  {
   let stale = "1 pid=999 listening start=50 port=4242\n1 pid=4242 listening start=99 port=4343\n"
   let running = OwnedRunning { pid: "4242", start_time: "100" }
   let not_yet = match megarac_web_transport_readiness(standing: running, out: "", events: stale) { Absent => true  Present { value: _ } => false }
@@ -278,7 +278,7 @@ test fn a_stale_listening_line_from_another_pid_is_not_readiness() -> Bool {
 // AN IMMEDIATE EXIT, EXECUTED: a "node" that exits at once never becomes serving. Which typed cause it
 // gets is a race the launch reports honestly: exited-before-ready when its (pid, start time) was
 // published first, pid-unpublished when it was gone before its start time could be read. Never serving.
-test fn a_transport_that_exits_at_once_is_not_serving() -> Bool {
+test fn a_transport_that_exits_at_once_is_not_serving() -> Bool  {
   let dir = scratch_dir()
   let s = megarac_web_transport_serve(dir: dir, table: empty_table, node_binary: "false")
   let _gone = shell.Remove.RecursiveForce(path: dir)
@@ -294,7 +294,7 @@ test fn a_transport_that_exits_at_once_is_not_serving() -> Bool {
 
 // A FAILED PID PUBLICATION, EXECUTED: a pid path that cannot be written stops the child the launch
 // started and says so; nothing is left running.
-test fn a_launch_that_cannot_publish_its_pid_stops_its_child() -> Bool {
+test fn a_launch_that_cannot_publish_its_pid_stops_its_child() -> Bool  {
   let dir = scratch_dir()
   let _blocker = shell.Mkdir.Parents(path: concat(dir, "/transport.pid") as FilePath)
   let s = megarac_web_transport_serve(dir: dir, table: empty_table, node_binary: "sleep")
@@ -312,7 +312,7 @@ test fn a_launch_that_cannot_publish_its_pid_stops_its_child() -> Bool {
 // disposition cannot be set through the LaunchOwned operation (its launcher argv is the production
 // one), so the script is run directly; the operation itself is still executed for real by
 // a_launch_that_cannot_publish_its_pid_stops_its_child.
-test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -> Bool {
+test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -> Bool  {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/child.pid")
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
@@ -338,7 +338,7 @@ test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -
 // (merge-group run 37120556276, observed failed with no change touching this path).
 // Scope discovery and cleanup to this scratch directory's argv[0]. A fixed sleep duration
 // matched children from concurrent runner slots, and cleanup could kill another witness's child.
-test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child() -> Bool {
+test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child() -> Bool  {
   let dir = scratch_dir()
   let bin = concat(dir, "/bin")
   let _b = shell.Mkdir.Parents(path: bin as FilePath)
@@ -363,7 +363,7 @@ test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child
 // kvm_observer_launch_in with an unreadable credential, so it refuses before loading Playwright and
 // journals that refusal; the boot reads it from the one resolved location, and no doubled
 // <dir>/<dir> journal exists.
-test fn a_relative_observer_directory_is_resolved_once() -> Bool {
+test fn a_relative_observer_directory_is_resolved_once() -> Bool  {
   let made = shell.Mktemp.DirWithTemplate(template: "target/gunbc_kvmrel.XXXXXX")
   let dir = trim(s: made.path as String)
   match runner_browser_toolchain_here_wet() {
@@ -386,7 +386,7 @@ test fn a_relative_observer_directory_is_resolved_once() -> Bool {
 
 // WRONG IDENTITY, EXECUTED: a pid record whose start time does not match the live process of that pid
 // is Foreign, and the release leaves it alone.
-test fn a_record_naming_another_process_is_foreign_and_not_released() -> Bool {
+test fn a_record_naming_another_process_is_foreign_and_not_released() -> Bool  {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/foreign.pid")
   let _rec = Filesystem.Write(path: pid_path, content: "1 999999999999\n")
@@ -400,7 +400,7 @@ test fn a_record_naming_another_process_is_foreign_and_not_released() -> Bool {
 
 // RELEASE, EXECUTED AND OBSERVED: an owned process is signalled and then observed gone; a second
 // release of the same record reports it already gone rather than succeeding again.
-test fn an_owned_process_is_released_and_observed_gone() -> Bool {
+test fn an_owned_process_is_released_and_observed_gone() -> Bool  {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/sleeper.pid")
   let _l = gunbc.owned_process.launch.LaunchOwned(pid_path: pid_path as NonEmptyStr, log_path: concat(dir, "/sleeper.log") as NonEmptyStr, command: ["sleep", "60"])

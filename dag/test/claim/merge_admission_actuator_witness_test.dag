@@ -15,11 +15,11 @@ data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   conclusion: Success,
 }
 
-test fn enforcement_policy_is_keyed_receipt() -> Bool {
+test fn enforcement_policy_is_keyed_receipt() -> Bool  {
   merge_admission_enforcement_policy == KeyedReceipt
 }
 
-test fn enforcement_denies_stale_base_verdict() -> Bool {
+test fn enforcement_denies_stale_base_verdict() -> Bool  {
   match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b1,
@@ -34,7 +34,7 @@ test fn enforcement_denies_stale_base_verdict() -> Bool {
   }
 }
 
-test fn enforcement_denies_stale_roster_verdict() -> Bool {
+test fn enforcement_denies_stale_roster_verdict() -> Bool  {
   match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -49,7 +49,7 @@ test fn enforcement_denies_stale_roster_verdict() -> Bool {
   }
 }
 
-test fn enforcement_admits_fresh_verdict() -> Bool {
+test fn enforcement_admits_fresh_verdict() -> Bool  {
   match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -64,7 +64,7 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
   }
 }
 
-test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
+test fn enforcement_denies_skipped_fresh_receipt() -> Bool  {
   let receipt = MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
     head_sha: scenario_pr_x_receipt.head_sha,
@@ -86,7 +86,7 @@ test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
   }
 }
 
-test fn enforcement_denies_failure_fresh_receipt() -> Bool {
+test fn enforcement_denies_failure_fresh_receipt() -> Bool  {
   let receipt = MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
     head_sha: scenario_pr_x_receipt.head_sha,
@@ -108,7 +108,7 @@ test fn enforcement_denies_failure_fresh_receipt() -> Bool {
   }
 }
 
-test fn enforcement_red_on_revert_stale_base() -> Bool {
+test fn enforcement_red_on_revert_stale_base() -> Bool  {
   let fresh = match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -136,7 +136,7 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
   fresh && stale
 }
 
-test fn activation_deferred_blocks_merge_false_for_stale() -> Bool {
+test fn activation_deferred_blocks_merge_false_for_stale() -> Bool  {
   (gating_is_enforced(s: merge_freshness_gating_status) == false)
     && merge_admission_would_block(
       receipt: scenario_pr_x_receipt,

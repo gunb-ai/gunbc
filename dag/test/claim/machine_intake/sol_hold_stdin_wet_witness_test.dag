@@ -164,7 +164,7 @@ fn read_until_contains(path: String, pattern: String, remaining: Int) -> String 
 }
 
 // Zero bytes, and the read was still open when the probe's own three-second bound ended it.
-test fn the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed() -> Bool {
+test fn the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: stdin_probe_script, pid_path: concat(dir, "/collector.pid"))
   let capture = read_until_contains(path: run.capture_path, pattern: "stdin-probe", remaining: poll_attempts)
@@ -174,7 +174,7 @@ test fn the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed() -> Bo
 
 // A pid destination that cannot be written (here: a directory) is not published, and the child the
 // launch created is stopped before it reports; the supervisor records both facts in the client file.
-test fn a_launch_that_cannot_publish_its_pid_stops_the_child_it_created() -> Bool {
+test fn a_launch_that_cannot_publish_its_pid_stops_the_child_it_created() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: stdin_probe_script, pid_path: dir)
   let client = read_until_contains(path: mtcollins1_sol_client_diagnostic_path(capture_path: run.capture_path), pattern: sol_hold_exit_record_prefix, remaining: poll_attempts)
@@ -189,7 +189,7 @@ test fn a_launch_that_cannot_publish_its_pid_stops_the_child_it_created() -> Boo
 // a live collector and a pending capture for more than one tick, the collector then writes END and
 // exits, and the verdict is the closed envelope's (it refuses: no sections were written) -- never
 // ObservationChannelLost, and nothing is frozen as an incident.
-test fn an_end_written_before_exit_is_judged_on_the_final_bytes() -> Bool {
+test fn an_end_written_before_exit_is_judged_on_the_final_bytes() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: end_then_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 2))
@@ -205,7 +205,7 @@ test fn an_end_written_before_exit_is_judged_on_the_final_bytes() -> Bool {
 // INCOMPLETE AT EXIT, THROUGH THE REAL WATCH: the collector leaves with the envelope open, the watch
 // reports ObservationChannelLost at once, and the incident is on disk -- frozen before any enrichment
 // read, so deleting the freeze from the watch's loss arm turns this red.
-test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> Bool {
+test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
@@ -223,7 +223,7 @@ test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> 
 // freeze, and with no observer established the ask is recorded as not answerable -- carried, never
 // raised: the outcome is still the loss verdict and the incident is still frozen. Deleting the ask
 // from the loss arm turns this red.
-test fn a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict() -> Bool {
+test fn a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
@@ -238,7 +238,7 @@ test fn a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict()
 
 // AN AUTHENTIC CLIENT EXIT: the client's own stderr diagnostic and exit status reach the incident,
 // in neutral words -- the line is reported as what the client printed, not as the BMC's decision.
-test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
+test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: client_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
@@ -258,7 +258,7 @@ test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
 // runs before the deactivate: it snapshots the capture and client diagnostics as they stand and
 // writes a timestamped workflow event. Lines the session writes afterwards -- here the close line our
 // own deactivate would provoke -- are absent from the snapshot and follow the recorded act.
-test fn our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept() -> Bool {
+test fn our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept() -> Bool  {
   let dir = scratch_dir()
   let capture_path = concat(dir, "/capture")
   let client_path = mtcollins1_sol_client_diagnostic_path(capture_path: capture_path)
@@ -304,15 +304,15 @@ fn establishment(script: String) -> SolEstablishment {
   e
 }
 
-test fn a_session_is_established_by_its_banner() -> Bool {
+test fn a_session_is_established_by_its_banner() -> Bool  {
   match establishment(script: banner_then_quiet_probe()) { SolEstablished { at: _ } => true  _ => false }
 }
 
-test fn a_live_silent_collector_is_not_established() -> Bool {
+test fn a_live_silent_collector_is_not_established() -> Bool  {
   match establishment(script: silent_probe()) { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorHeld, allowance: _ } } => true  _ => false }
 }
 
-test fn a_refused_activation_carries_its_cause() -> Bool {
+test fn a_refused_activation_carries_its_cause() -> Bool  {
   match establishment(script: refused_probe()) { SolNotEstablished { failure: SolActivateRefused { refusal: _ } } => true  _ => false }
 }
 
@@ -347,7 +347,7 @@ fn failed_on(ds: List<SolNoticeDelivery>, channel_key: String) -> Int {
 // /dev/full: it fails, no marker is written, the summary (a separate channel) still lands. The next
 // pass, with a writable live log, delivers the annotation it had not delivered and leaves the summary
 // alone; the ledger records FAILED before delivered.
-test fn a_failed_annotation_write_is_retried_not_marked_delivered() -> Bool {
+test fn a_failed_annotation_write_is_retried_not_marked_delivered() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
   let summary = concat(dir, "/summary")
@@ -365,7 +365,7 @@ test fn a_failed_annotation_write_is_retried_not_marked_delivered() -> Bool {
 }
 
 // The same for the step summary, with the live log healthy throughout.
-test fn a_failed_summary_write_is_retried_not_marked_delivered() -> Bool {
+test fn a_failed_summary_write_is_retried_not_marked_delivered() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: "", incident: "mtcollins1 boot: ObservationChannelLost control\n")
   let log = concat(dir, "/log")
@@ -382,7 +382,7 @@ test fn a_failed_summary_write_is_retried_not_marked_delivered() -> Bool {
 // AN INTERRUPTION BETWEEN A WRITE AND ITS MARKER YIELDS A DUPLICATE, NEVER A DROP. The marker of a
 // delivered annotation is removed, as a kill before the marker write would leave it; the next pass
 // delivers the annotation again (the ledger records both deliveries), and the pass after that does not.
-test fn an_interrupted_delivery_is_redelivered_not_dropped() -> Bool {
+test fn an_interrupted_delivery_is_redelivered_not_dropped() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
   let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
@@ -400,7 +400,7 @@ test fn an_interrupted_delivery_is_redelivered_not_dropped() -> Bool {
 
 // A RECORD IS PUBLISHED ONLY ONCE IT IS COMPLETE. The supervisor's exit line without its newline is
 // not yet a record; with it, it is.
-test fn a_partial_exit_record_is_not_published() -> Bool {
+test fn a_partial_exit_record_is_not_published() -> Bool  {
   let dir = scratch_dir()
   let partial = notice_sources(dir: dir, exit_record: "gunbc-sol-hold: collector exited status=1 at=2026-09-28T00:0", incident: "")
   let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
@@ -416,7 +416,7 @@ test fn a_partial_exit_record_is_not_published() -> Bool {
 // exits after a second) is launched and nothing polls it but the watcher. Once the hold has published
 // the collector's pid (so an exit is owed, as it is when the step's trap asks the watcher to stop), the
 // stop request is written; the watcher drains until that exit is observed and delivered, and returns.
-test fn the_watcher_publishes_a_collector_exit_without_the_boot_watch() -> Bool {
+test fn the_watcher_publishes_a_collector_exit_without_the_boot_watch() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let paths = SolNoticePaths { capture: run.capture_path, pid_path: run.pid_path, summary: concat(dir, "/summary"), live_log: concat(dir, "/log") }
@@ -433,7 +433,7 @@ test fn the_watcher_publishes_a_collector_exit_without_the_boot_watch() -> Bool 
 
 // A SUMMARY THAT EXISTS BUT CANNOT BE READ IS NOT OVERWRITTEN. The summary path is a directory: the
 // read fails for a reason other than absence, so the summary channel refuses and writes nothing.
-test fn an_unreadable_summary_is_refused_not_overwritten() -> Bool {
+test fn an_unreadable_summary_is_refused_not_overwritten() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
   let pass = sol_notice_pass(paths: notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: dir)).deliveries
@@ -444,7 +444,7 @@ test fn an_unreadable_summary_is_refused_not_overwritten() -> Bool {
 
 // A SECOND EXIT IN THE SAME STEP IS A NEW NOTICE. After one exit is delivered, a later record (a
 // restarted or adopted collector) is delivered too; the first one's markers do not suppress it.
-test fn a_later_collector_exit_is_not_suppressed_by_an_earlier_one() -> Bool {
+test fn a_later_collector_exit_is_not_suppressed_by_an_earlier_one() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
   let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
@@ -458,7 +458,7 @@ test fn a_later_collector_exit_is_not_suppressed_by_an_earlier_one() -> Bool {
 // AN ADOPTED COLLECTOR IS ESTABLISHED ONLY BY A RECEIPT NAMING THIS INSTANCE. A live probe collector
 // whose receipt names its own "<pid> <starttime>" is established; the same collector with a receipt
 // naming another instance, or none, is not.
-test fn an_adopted_collector_needs_a_receipt_naming_its_instance() -> Bool {
+test fn an_adopted_collector_needs_a_receipt_naming_its_instance() -> Bool  {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/collector.pid")
   let run = probe_launch(dir: dir, script: silent_probe(), pid_path: pid_path)
@@ -489,7 +489,7 @@ fn early_exit_probe() -> String {
   "#!/bin/sh\nsleep 1\nexit 3\n"
 }
 
-test fn establishment_waits_for_publication_and_refuses_an_exit_before_the_banner() -> Bool {
+test fn establishment_waits_for_publication_and_refuses_an_exit_before_the_banner() -> Bool  {
   (match establishment(script: slow_banner_probe()) { SolEstablished { at: _ } => true  _ => false })
     && (match establishment(script: early_exit_probe()) { SolNotEstablished { failure: SolActivationUnconfirmed { collector: _, allowance: _ } } => false  SolNotEstablished { failure: _ } => true  _ => false })
 }
@@ -514,16 +514,16 @@ fn unreadable_source_control(suffix: String, role: String) -> Bool {
     && string_contains(s: log, pattern: "could not be read (")
 }
 
-test fn an_unreadable_incident_is_reported_and_is_not_success() -> Bool {
+test fn an_unreadable_incident_is_reported_and_is_not_success() -> Bool  {
   unreadable_source_control(suffix: ".loss", role: "incident")
 }
 
-test fn an_unreadable_request_history_is_reported_and_is_not_success() -> Bool {
+test fn an_unreadable_request_history_is_reported_and_is_not_success() -> Bool  {
   unreadable_source_control(suffix: ".workflow", role: "request-history")
 }
 
 // The client file is the exit records' source, so its absent positive has no exit to deliver.
-test fn an_unreadable_client_file_is_reported_and_is_not_success() -> Bool {
+test fn an_unreadable_client_file_is_reported_and_is_not_success() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: "", incident: "")
   let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
@@ -539,7 +539,7 @@ test fn an_unreadable_client_file_is_reported_and_is_not_success() -> Bool {
 
 // AN OWED EXIT THAT NEVER APPEARS IS A FAILURE. The pid file records a collector but no exit record
 // exists: the drain does not report success; once the record appears it does.
-test fn an_owed_exit_never_observed_is_not_success() -> Bool {
+test fn an_owed_exit_never_observed_is_not_success() -> Bool  {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: "", incident: "")
   let pid_path = concat(dir, "/collector.pid")
@@ -554,7 +554,7 @@ test fn an_owed_exit_never_observed_is_not_success() -> Bool {
 
 // TWO EXITS PRESENT BEFORE ONE PASS ARE BOTH DELIVERED; AN EARLIER EXIT WHOSE SUMMARY FAILED IS STILL
 // DEMANDED AFTER A LATER ONE APPEARS. Both records share one second.
-test fn earlier_exits_stay_demanded_when_later_ones_appear() -> Bool {
+test fn earlier_exits_stay_demanded_when_later_ones_appear() -> Bool  {
   let dir = scratch_dir()
   let two = concat(exit_record_line, "gunbc-sol-hold: collector exited status=143 at=2026-09-28T00:00:00Z\n")
   let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
@@ -606,12 +606,12 @@ fn owned_release(script: String, receipt_of_own: Bool) -> Bool {
   run.launched && identity != "" && ok
 }
 
-test fn our_collector_is_released_observed_gone_and_its_record_retired() -> Bool {
+test fn our_collector_is_released_observed_gone_and_its_record_retired() -> Bool  {
   owned_release(script: silent_probe(), receipt_of_own: true)
     && owned_release(script: slow_exit_probe(), receipt_of_own: true)
 }
 
-test fn a_record_this_attempt_did_not_establish_is_not_released() -> Bool {
+test fn a_record_this_attempt_did_not_establish_is_not_released() -> Bool  {
   let dir = scratch_dir()
   let none_ok = match mtcollins1_sol_release_owned(pid_path: concat(dir, "/absent.pid")) { SolReleaseNoRecord => true  _ => false }
   let _removed = shell.Remove.RecursiveForce(path: dir)
@@ -621,7 +621,7 @@ test fn a_record_this_attempt_did_not_establish_is_not_released() -> Bool {
 // THE WATCH NOTICES ITS OBSERVER'S DEATH. With the collector alive and quiet (pending), a watcher record
 // naming a process that has exited stops the watch at its next tick with the observer as the cause;
 // the same quiet collector with a live observer stays pending until the watch's own budget ends.
-test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives() -> Bool {
+test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: "#!/bin/sh\nsleep 30\n", pid_path: concat(dir, "/collector.pid"))
   let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
@@ -650,7 +650,7 @@ test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives(
 // THE RELEASE SIGNALS ONLY THE RECORDED INSTANCE, EXECUTED. A live probe collector is left running when
 // the record carries its pid with a different start time (a reused-pid record), and is stopped when the
 // record is its own; the owned check agrees in both directions.
-test fn the_release_signals_only_the_recorded_instance() -> Bool {
+test fn the_release_signals_only_the_recorded_instance() -> Bool  {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/collector.pid")
   let run = probe_launch(dir: dir, script: silent_probe(), pid_path: pid_path)
@@ -679,7 +679,7 @@ fn term_ignoring_probe() -> String {
   "#!/bin/sh\ntrap '' TERM\necho gunbc-term-ignoring-probe >&2\nwhile :; do sleep 1; done\n"
 }
 
-test fn a_publication_failure_stops_even_a_term_ignoring_child() -> Bool {
+test fn a_publication_failure_stops_even_a_term_ignoring_child() -> Bool  {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: term_ignoring_probe(), pid_path: dir)
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 7))
@@ -701,7 +701,7 @@ test fn a_publication_failure_stops_even_a_term_ignoring_child() -> Bool {
 // only once `test -r` confirms the record is unreadable; where it is not, the claim is RED without
 // touching any process -- an environment that cannot host this claim, never a pass.
 // The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
-test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
+test fn an_unreadable_record_is_unobservable_not_ended() -> Bool  {
   let dir = scratch_dir()
   let record = concat(dir, "/rec.pid")
   let _w = Filesystem.Write(path: record, content: "1 1\n").success
@@ -735,7 +735,7 @@ fn pid_one_unsignalable() -> Bool {
   shell.Exec.RunArgv(program: "bash", arguments: ["-c", "kill -0 1 2>/dev/null"]).exit_code != 0
 }
 
-test fn an_unconfirmed_termination_is_residue_and_the_supervisor_returns() -> Bool {
+test fn an_unconfirmed_termination_is_residue_and_the_supervisor_returns() -> Bool  {
   if !pid_one_unsignalable() {
     false
   } else {

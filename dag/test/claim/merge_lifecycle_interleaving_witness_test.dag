@@ -52,17 +52,17 @@ fn incident_trace() -> List<LifecycleEvent> {
   ]
 }
 
-test fn incident_trace_reds_main_under_per_pr_gate_only() -> Bool {
+test fn incident_trace_reds_main_under_per_pr_gate_only() -> Bool  {
   lifecycle_admits_unverified_tip(policy: PerPrGateOnly, events: incident_trace())
 }
 
-test fn incident_trace_final_merge_refused_under_keyed_receipt() -> Bool {
+test fn incident_trace_final_merge_refused_under_keyed_receipt() -> Bool  {
   let end_state = simulate_lifecycle(policy: KeyedReceipt, events: incident_trace())
   let tip_after_b_only = squash_result_tree(pr: pr_b, base: initial_lifecycle_state().main_tip)
   !end_state.unverified_tip_seen && end_state.main_tip == tip_after_b_only
 }
 
-test fn incident_trace_lands_verified_when_pr_a_reruns_ci_first() -> Bool {
+test fn incident_trace_lands_verified_when_pr_a_reruns_ci_first() -> Bool  {
   let refreshed = [
     RunPrCi { pr: pr_a },
     RunPrCi { pr: pr_b },
@@ -75,7 +75,7 @@ test fn incident_trace_lands_verified_when_pr_a_reruns_ci_first() -> Bool {
   !end_state.unverified_tip_seen && end_state.main_tip == squash_result_tree(pr: pr_a, base: tip_b)
 }
 
-test fn healed_head_cannot_reuse_old_head_evidence() -> Bool {
+test fn healed_head_cannot_reuse_old_head_evidence() -> Bool  {
   let events = [
     RunPrCi { pr: pr_a },
     MergePr { pr: pr_a_healed },
@@ -84,7 +84,7 @@ test fn healed_head_cannot_reuse_old_head_evidence() -> Bool {
   !end_state.unverified_tip_seen && end_state.main_tip == initial_lifecycle_state().main_tip
 }
 
-test fn healed_head_lands_after_exact_head_revalidation() -> Bool {
+test fn healed_head_lands_after_exact_head_revalidation() -> Bool  {
   let events = [
     RunPrCi { pr: pr_a },
     RunPrCi { pr: pr_a_healed },
@@ -121,15 +121,15 @@ fn window_4_sequences() -> List<List<LifecycleEvent>> {
   event_sequences_of_length_4(alphabet: interleaving_alphabet())
 }
 
-test fn window_4_enumerates_all_1296_sequences() -> Bool {
+test fn window_4_enumerates_all_1296_sequences() -> Bool  {
   length(window_4_sequences()) == 1296
 }
 
-test fn keyed_receipt_admits_no_unverified_tip_across_window_4() -> Bool {
+test fn keyed_receipt_admits_no_unverified_tip_across_window_4() -> Bool  {
   count_unverified_admitting_sequences(policy: KeyedReceipt, seqs: window_4_sequences()) == 0
 }
 
-test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool {
+test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool  {
   count_unverified_admitting_sequences(policy: PerPrGateOnly, seqs: window_4_sequences()) > 0
 }
 
@@ -144,7 +144,7 @@ test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool {
 // violations; the paired heal witnesses locate the exact-head discrimination rather than relying
 // on the aggregate zero.
 
-test fn require_up_to_date_base_misses_the_roster_axis_in_window_4() -> Bool {
+test fn require_up_to_date_base_misses_the_roster_axis_in_window_4() -> Bool  {
   count_unverified_admitting_sequences(policy: RequireUpToDateBase, seqs: window_4_sequences()) > 0
 }
 
@@ -157,18 +157,18 @@ test fn require_up_to_date_base_misses_the_roster_axis_in_window_4() -> Bool {
 // under a policy_admits_absent_receipt that answered true for everything, which is exactly the
 // defect the fold seed used to hide in the opposite direction.
 
-test fn a_merge_before_any_run_lands_an_unverified_tip_under_the_live_policy() -> Bool {
+test fn a_merge_before_any_run_lands_an_unverified_tip_under_the_live_policy() -> Bool  {
   lifecycle_admits_unverified_tip(
     policy: ReportedContextsAtMergeInstant,
     events: [MergePr { pr: pr_a }],
   )
 }
 
-test fn a_merge_before_any_run_is_refused_under_per_pr_gate_only() -> Bool {
+test fn a_merge_before_any_run_is_refused_under_per_pr_gate_only() -> Bool  {
   !lifecycle_admits_unverified_tip(policy: PerPrGateOnly, events: [MergePr { pr: pr_a }])
 }
 
-test fn a_merge_before_any_run_is_refused_under_keyed_receipt() -> Bool {
+test fn a_merge_before_any_run_is_refused_under_keyed_receipt() -> Bool  {
   !lifecycle_admits_unverified_tip(policy: KeyedReceipt, events: [MergePr { pr: pr_a }])
 }
 
@@ -177,7 +177,7 @@ test fn a_merge_before_any_run_is_refused_under_keyed_receipt() -> Bool {
 // merges precede their runs, so an implementation that made the new arm behave like the old one
 // would keep both positive counts and fail here.
 
-test fn the_live_policy_admits_strictly_more_unverified_tips_than_per_pr_gate_only() -> Bool {
+test fn the_live_policy_admits_strictly_more_unverified_tips_than_per_pr_gate_only() -> Bool  {
   count_unverified_admitting_sequences(
     policy: ReportedContextsAtMergeInstant,
     seqs: window_4_sequences(),

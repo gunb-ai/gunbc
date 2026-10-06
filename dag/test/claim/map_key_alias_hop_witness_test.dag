@@ -30,10 +30,10 @@ fn w_realized_alias_does_not_hop() -> Bool {
   )
 }
 
-test fn structural_alias_hop_follows_to_its_target() -> Bool {
+test fn structural_alias_hop_follows_to_its_target() -> Bool  {
   w_structural_alias_hop_follows_to_its_target()
 }
 
-test fn realized_alias_does_not_hop() -> Bool {
+test fn realized_alias_does_not_hop() -> Bool  {
   w_realized_alias_does_not_hop()
 }

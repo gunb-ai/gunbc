@@ -50,19 +50,19 @@ fn non_exhaustive_blocking_count(source: String) -> Int {
   }
 }
 
-test fn w_exhaustive_coproduct_match_observes_zero_non_exhaustive() -> Bool {
+test fn w_exhaustive_coproduct_match_observes_zero_non_exhaustive() -> Bool  {
   non_exhaustive_blocking_count(source: exhaustive_coproduct_source) == 0
 }
 
-test fn w_missing_coproduct_arm_reports_one_non_exhaustive() -> Bool {
+test fn w_missing_coproduct_arm_reports_one_non_exhaustive() -> Bool  {
   non_exhaustive_blocking_count(source: missing_arm_coproduct_source) == 1
 }
 
-test fn w_imported_projected_missing_arm_reports_one_non_exhaustive() -> Bool {
+test fn w_imported_projected_missing_arm_reports_one_non_exhaustive() -> Bool  {
   non_exhaustive_blocking_count(source: imported_projected_missing_arm_source) == 1
 }
 
-test fn w_imported_projected_exhaustive_match_observes_zero_non_exhaustive() -> Bool {
+test fn w_imported_projected_exhaustive_match_observes_zero_non_exhaustive() -> Bool  {
   non_exhaustive_blocking_count(source: imported_projected_exhaustive_source) == 0
 }
 
@@ -93,21 +93,21 @@ fn fixture_blocking_class_count(o: MultiModuleCompileFixtureOutcome, wanted: Str
   }
 }
 
-test fn w_cross_module_missing_c_reports_one_non_exhaustive() -> Bool {
+test fn w_cross_module_missing_c_reports_one_non_exhaustive() -> Bool  {
   fixture_blocking_class_count(
     o: cross_module_run(provider: cross_module_trio_provider, consumer: cross_module_missing_consumer),
     wanted: "NonExhaustiveMatch"
   ) == 1
 }
 
-test fn w_cross_module_complete_match_is_clean() -> Bool {
+test fn w_cross_module_complete_match_is_clean() -> Bool  {
   fixture_blocking_class_count(
     o: cross_module_run(provider: cross_module_trio_provider, consumer: cross_module_complete_consumer),
     wanted: "NonExhaustiveMatch"
   ) == 0
 }
 
-test fn w_cross_module_catch_all_is_permitted() -> Bool {
+test fn w_cross_module_catch_all_is_permitted() -> Bool  {
   fixture_blocking_class_count(
     o: cross_module_run(provider: cross_module_trio_provider, consumer: cross_module_catch_all_consumer),
     wanted: "NonExhaustiveMatch"
@@ -115,14 +115,14 @@ test fn w_cross_module_catch_all_is_permitted() -> Bool {
 }
 
 // THE CONSUMER IS UNCHANGED: widening only the provider adds D, and the same match must red.
-test fn w_cross_module_provider_growth_reports_one_non_exhaustive() -> Bool {
+test fn w_cross_module_provider_growth_reports_one_non_exhaustive() -> Bool  {
   fixture_blocking_class_count(
     o: cross_module_run(provider: cross_module_quartet_provider, consumer: cross_module_complete_consumer),
     wanted: "NonExhaustiveMatch"
   ) == 1
 }
 
-test fn w_unresolved_scrutinee_refuses_instead_of_becoming_not_a_coproduct() -> Bool {
+test fn w_unresolved_scrutinee_refuses_instead_of_becoming_not_a_coproduct() -> Bool  {
   let run = compile_fixture(MultiModuleCompileFixture {
     sources: [fixture_source("exhaust/unresolved.dag", unresolved_scrutinee_consumer)],
     entry: "exhaust/unresolved.dag"
@@ -157,27 +157,27 @@ data nested_pair_missing_source: String = "module exhaust_nested_pair_missing\nt
 
 data nested_pair_complete_source: String = "module exhaust_nested_pair_complete\ntype Inner = P | Q\ntype Outer = A { x: Inner, y: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { x: P, y: P } => true\n    A { x: P, y: Q } => true\n    A { x: Q, y: P } => false\n    A { x: Q, y: Q } => false\n    B => false\n  }\n}\n"
 
-test fn w_nested_variant_pattern_restricting_a_field_reports_one_non_exhaustive() -> Bool {
+test fn w_nested_variant_pattern_restricting_a_field_reports_one_non_exhaustive() -> Bool  {
   non_exhaustive_blocking_count(source: nested_missing_source) == 1
 }
 
-test fn w_nested_variant_pattern_covering_every_inner_arm_is_clean() -> Bool {
+test fn w_nested_variant_pattern_covering_every_inner_arm_is_clean() -> Bool  {
   non_exhaustive_blocking_count(source: nested_complete_source) == 0
 }
 
-test fn w_wildcard_field_binding_still_covers_its_variant() -> Bool {
+test fn w_wildcard_field_binding_still_covers_its_variant() -> Bool  {
   non_exhaustive_blocking_count(source: nested_wildcard_field_source) == 0
 }
 
-test fn w_named_field_binding_still_covers_its_variant() -> Bool {
+test fn w_named_field_binding_still_covers_its_variant() -> Bool  {
   non_exhaustive_blocking_count(source: nested_bare_head_source) == 0
 }
 
-test fn w_two_nested_columns_are_judged_jointly_not_per_field() -> Bool {
+test fn w_two_nested_columns_are_judged_jointly_not_per_field() -> Bool  {
   non_exhaustive_blocking_count(source: nested_pair_missing_source) == 1
 }
 
-test fn w_two_nested_columns_covered_pairwise_are_clean() -> Bool {
+test fn w_two_nested_columns_covered_pairwise_are_clean() -> Bool  {
   non_exhaustive_blocking_count(source: nested_pair_complete_source) == 0
 }
 
@@ -189,7 +189,7 @@ test fn w_two_nested_columns_covered_pairwise_are_clean() -> Bool {
 // default matrix is admissible only when some declared constructor appears at no row head at all.
 data nested_overlapping_wildcard_source: String = "module exhaust_nested_overlapping\ntype Inner = P | Q\ntype Outer = A { x: Inner, y: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { x: P, y: _ } => true\n    A { x: _, y: P } => true\n    A { x: Q, y: Q } => false\n    B => false\n  }\n}\n"
 
-test fn w_overlapping_wildcard_columns_are_not_over_refused() -> Bool {
+test fn w_overlapping_wildcard_columns_are_not_over_refused() -> Bool  {
   non_exhaustive_blocking_count(source: nested_overlapping_wildcard_source) == 0
 }
 
@@ -211,11 +211,11 @@ data optional_nested_missing_source: String = "module exhaust_optional_nested_mi
 
 data optional_nested_complete_source: String = "module exhaust_optional_nested_complete\ntype Kind = KA { n: Bool } | KB { n: Bool } | KC\nfn f(v: Kind?) -> Bool {\n  match v {\n    Absent => false\n    Present { value: KA { n: n } } => n\n    Present { value: KB { n: n } } => n\n    Present { value: KC } => true\n  }\n}\n"
 
-test fn w_optional_nested_missing_inner_variant_reports_one_non_exhaustive() -> Bool {
+test fn w_optional_nested_missing_inner_variant_reports_one_non_exhaustive() -> Bool  {
   non_exhaustive_blocking_count(source: optional_nested_missing_source) == 1
 }
 
-test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool {
+test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool  {
   non_exhaustive_blocking_count(source: optional_nested_complete_source) == 0
 }
 
@@ -288,11 +288,11 @@ data variant_type_position_parent_roster_source: String = "module exhaust_varian
 
 data variant_type_position_parent_covered_source: String = "module exhaust_variant_type_position_covered\ntype Obs = VPresent | VAbsent { tool: Bool }\nfn producer() -> VAbsent? { none }\nfn f() -> Bool {\n  match producer() {\n    Present { value: VAbsent { tool: t } } => t\n    Present { value: VPresent } => false\n    Absent => false\n  }\n}\n"
 
-test fn w_variant_named_in_type_position_is_judged_against_its_parent_roster() -> Bool {
+test fn w_variant_named_in_type_position_is_judged_against_its_parent_roster() -> Bool  {
   non_exhaustive_blocking_count(source: variant_type_position_parent_roster_source) == 1
 }
 
-test fn w_variant_type_position_covering_the_parent_roster_is_clean() -> Bool {
+test fn w_variant_type_position_covering_the_parent_roster_is_clean() -> Bool  {
   non_exhaustive_blocking_count(source: variant_type_position_parent_covered_source) == 0
 }
 
@@ -335,20 +335,20 @@ fn fixture_all_blocking_count(o: MultiModuleCompileFixtureOutcome) -> Int {
   }
 }
 
-test fn w_dotted_declared_arm_covered_by_bare_patterns_compiles_clean() -> Bool {
+test fn w_dotted_declared_arm_covered_by_bare_patterns_compiles_clean() -> Bool  {
   fixture_all_blocking_count(
     o: single_source_run(path: "dotted/covered.dag", source: dotted_declared_arm_source)
   ) == 0
 }
 
-test fn w_dotted_declared_arm_is_not_reported_missing() -> Bool {
+test fn w_dotted_declared_arm_is_not_reported_missing() -> Bool  {
   fixture_blocking_class_count(
     o: single_source_run(path: "dotted/covered.dag", source: dotted_declared_arm_source),
     wanted: "NonExhaustiveMatch"
   ) == 0
 }
 
-test fn w_bare_pattern_resolves_against_a_dotted_declared_arm() -> Bool {
+test fn w_bare_pattern_resolves_against_a_dotted_declared_arm() -> Bool  {
   fixture_blocking_class_count(
     o: single_source_run(path: "dotted/covered.dag", source: dotted_declared_arm_source),
     wanted: "VariantNotFound"
@@ -357,7 +357,7 @@ test fn w_bare_pattern_resolves_against_a_dotted_declared_arm() -> Bool {
 
 // THE NEGATIVE. Keying both sides must not make a real gap disappear: omitting `Beta` from the
 // same declaration still refuses, and with exactly one missing arm rather than a widened roster.
-test fn w_dotted_declaration_with_a_genuinely_missing_arm_still_refuses() -> Bool {
+test fn w_dotted_declaration_with_a_genuinely_missing_arm_still_refuses() -> Bool  {
   fixture_blocking_class_count(
     o: single_source_run(path: "dotted/missing.dag", source: dotted_declared_arm_missing_source),
     wanted: "NonExhaustiveMatch"
@@ -370,7 +370,7 @@ test fn w_dotted_declaration_with_a_genuinely_missing_arm_still_refuses() -> Boo
 // parser fact this change does not touch, and it is the reason the subject above is written with
 // the dotted arm first. It is asserted as a REFUSAL, not as an exhaustiveness count: a parse
 // refusal and a clean compile both report zero rows of any later class.
-test fn w_dotted_arm_in_later_position_refuses_at_parse() -> Bool {
+test fn w_dotted_arm_in_later_position_refuses_at_parse() -> Bool  {
   fixture_all_blocking_count(
     o: single_source_run(path: "dotted/later.dag", source: dotted_later_arm_source)
   ) > 0
@@ -400,7 +400,7 @@ test fn w_dotted_arm_in_later_position_refuses_at_parse() -> Bool {
 
 data colliding_leaf_declaration_source: String = "module colliding_leaf_decl\ntype T = a.b.Alpha | Alpha\nfn f(t: T) -> Bool {\n  match t {\n    Alpha => true\n  }\n}\n"
 
-test fn w_two_declared_arms_sharing_a_leaf_key_refuse_rather_than_bind_the_first() -> Bool {
+test fn w_two_declared_arms_sharing_a_leaf_key_refuse_rather_than_bind_the_first() -> Bool  {
   fixture_all_blocking_count(
     o: single_source_run(path: "dotted/collide.dag", source: colliding_leaf_declaration_source)
   ) > 0

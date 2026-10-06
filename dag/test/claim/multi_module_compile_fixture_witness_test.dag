@@ -169,7 +169,7 @@ fn compiler_digest_of(o: MultiModuleCompileFixtureOutcome) -> String {
 // "could not run" is not merely distinguishable from "ran and found nothing": the second has no
 // spelling on this arm. The empty manifest is refused rather than compiled BECAUSE an empty
 // subject compiles clean vacuously, which is could-not-measure wearing the subject's verdict.
-test fn unreached_compile_cannot_render_as_a_clean_one() -> Bool {
+test fn unreached_compile_cannot_render_as_a_clean_one() -> Bool  {
   is_instrument_refused(entry_names_no_supplied_source_run())
     && is_instrument_refused(empty_manifest_run())
     && is_instrument_refused(duplicate_path_run())
@@ -180,7 +180,7 @@ test fn unreached_compile_cannot_render_as_a_clean_one() -> Bool {
 // CONTROL 1. A valid two-module program compiles: no diagnostics of ANY severity, and emitted
 // files exist. The zero-of-any-severity form is deliberate -- a blocking-only assertion would go
 // green if a landed wall were demoted to advisory.
-test fn valid_two_module_program_compiles() -> Bool {
+test fn valid_two_module_program_compiles() -> Bool  {
   completed_with_no_diagnostics(two_module_run(peer_source, entry_source))
 }
 
@@ -188,7 +188,7 @@ test fn valid_two_module_program_compiles() -> Bool {
 // the entry imports a symbol its peer does not export, and the compile answers MissingExport.
 // Naming the class is what makes this a control rather than a change detector: a probe asserting
 // only "something refused" passes on a typo in the fixture source itself.
-test fn invalid_cross_module_program_refuses_with_the_intended_diagnostic() -> Bool {
+test fn invalid_cross_module_program_refuses_with_the_intended_diagnostic() -> Bool  {
   refused_with_class(two_module_run(peer_source, entry_missing_export), "MissingExport")
 }
 
@@ -196,7 +196,7 @@ test fn invalid_cross_module_program_refuses_with_the_intended_diagnostic() -> B
 // length of the supplied list, so this is a join between two producers. Both directions are
 // asserted: two supplied modules report two, three report three. One row alone would be
 // satisfied by a constant.
-test fn discovered_module_count_equals_the_supplied_manifest() -> Bool {
+test fn discovered_module_count_equals_the_supplied_manifest() -> Bool  {
   module_count_is(two_module_run(peer_source, entry_source), 2)
     && module_count_is(three_module_run(), 3)
     && !module_count_is(three_module_run(), 2)
@@ -205,7 +205,7 @@ test fn discovered_module_count_equals_the_supplied_manifest() -> Bool {
 // CONTROL 4. No default corpus roots are loaded. The entry imports std.types -- a real corpus
 // module, present in every ordinary compile of this repository -- and does not supply it. If any
 // module index were consulted the import would bind; it refuses UnresolvedImport instead.
-test fn no_default_corpus_roots_are_loaded() -> Bool {
+test fn no_default_corpus_roots_are_loaded() -> Bool  {
   refused_with_class(
     two_module_run(peer_source, entry_imports_unsupplied_corpus_module),
     "UnresolvedImport"
@@ -216,7 +216,7 @@ test fn no_default_corpus_roots_are_loaded() -> Bool {
 // binds the FIXTURE's declaration. The supplied module is spelled std.logic and exports
 // mmfx_only_sentinel, which the real std.logic does not have, so this compile can only succeed
 // against the authored bytes.
-test fn corpus_module_spelling_does_not_bind_the_corpus_declaration() -> Bool {
+test fn corpus_module_spelling_does_not_bind_the_corpus_declaration() -> Bool  {
   completed_with_no_diagnostics(two_module_run(corpus_spelled_peer, entry_on_corpus_spelling))
 }
 
@@ -226,7 +226,7 @@ test fn corpus_module_spelling_does_not_bind_the_corpus_declaration() -> Bool {
 // The compiler digest is asserted equal across the two runs and non-empty -- one running binary,
 // one identity -- which is what lets a receipt quoting this instrument name the transform that
 // produced it.
-test fn the_fixtures_source_and_compiler_digests_travel_with_the_result() -> Bool {
+test fn the_fixtures_source_and_compiler_digests_travel_with_the_result() -> Bool  {
   let a = two_module_run(peer_source, entry_source)
   let b = two_module_run(peer_source, entry_source)
   let c = two_module_run(peer_source, entry_source_perturbed)

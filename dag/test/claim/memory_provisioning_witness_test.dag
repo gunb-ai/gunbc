@@ -160,7 +160,7 @@ fn rdimm_32g_ddr5() -> DramModuleCatalogRow {
 
 // The two providers whose arm64 surfaces publish three GB per vCPU. Asserted
 // through the derivation so the number comes from the fetched rows.
-test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
+test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool  {
   let rows = surveyed_runner_shapes()
   match memory_per_vcpu(rows: rows, provider: ubicloud_provider_identity, architecture: Aarch64) {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
@@ -182,7 +182,7 @@ test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
 }
 
 // Depot publishes four GB per arm vCPU, so the market is not one ratio.
-test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
+test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool  {
   match memory_per_vcpu(
     rows: surveyed_runner_shapes(),
     provider: depot_provider_identity,
@@ -200,7 +200,7 @@ test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
 // refuses instead of reporting a provider-level constant. GitHub's arm64 sizes
 // are mostly four GB per vCPU but include a 5-vCPU/14 GB size, so a collapsed
 // figure would have silently discarded a real published shape.
-test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
+test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool  {
   match memory_per_vcpu(
     rows: surveyed_runner_shapes(),
     provider: github_actions_provider_identity,
@@ -216,7 +216,7 @@ test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
 
 // The x64 side is not uniformly four either: CircleCI's x86 Docker classes are
 // two GB per vCPU. This is the row that refutes "1:4 everywhere".
-test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
+test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool  {
   match memory_per_vcpu(
     rows: surveyed_runner_shapes(),
     provider: circleci_provider_identity,
@@ -233,7 +233,7 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
 // Only one surveyed provider states what a vCPU is backed by; the rest are
 // Unstated. Asserted in BOTH directions so the unstated arm is known to be a
 // real reading of the pages and not a constructor nobody reaches.
-test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
+test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool  {
   let ubicloud_arm = filter(
     runner_shape_rows(availability: ubicloud_runner_catalog_shapes),
     r => r.architecture == Aarch64,
@@ -259,7 +259,7 @@ test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
 // Ubicloud's x64 vCPU is an SMT thread, so its four GB per vCPU is EIGHT GB
 // per physical core — the cross-frame comparison this whole model exists to
 // make visible.
-test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
+test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool  {
   all(
     filter(runner_shape_rows(availability: ubicloud_runner_catalog_shapes), r => r.architecture == X86_64),
     r => match r.entitlement {
@@ -287,7 +287,7 @@ test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
 // Ubicloud publishes three GB per arm vCPU and the value SKU declares three GB,
 // so its standing is support — and the supporting arm carries the number of
 // agreeing sizes, so "supported" is a reading of the census rather than a flag.
-test fn ubicloud_supports_the_three_gb_value_sku() -> Bool {
+test fn ubicloud_supports_the_three_gb_value_sku() -> Bool  {
   match classify_benchmark(
     declared: arm_value_profile.guaranteed_memory_per_entitlement,
     benchmark: ubicloud_arm_benchmark,
@@ -306,7 +306,7 @@ test fn ubicloud_supports_the_three_gb_value_sku() -> Bool {
 // actually publishes. One benchmark, two declared figures, two standings —
 // which is what makes the polarity a function of the evidence rather than of
 // the author's intent.
-test fn ubicloud_contradicts_the_four_gb_memory_sku() -> Bool {
+test fn ubicloud_contradicts_the_four_gb_memory_sku() -> Bool  {
   match classify_benchmark(
     declared: arm_memory_profile.guaranteed_memory_per_entitlement,
     benchmark: ubicloud_arm_benchmark,
@@ -331,7 +331,7 @@ test fn ubicloud_contradicts_the_four_gb_memory_sku() -> Bool {
 // a statement about the benchmark rather than about one number: there is no
 // declared figure that could move GitHub's arm64 rows onto the supporting arm,
 // so no future edit to a SKU can quietly recruit it as support.
-test fn github_arm_cannot_support_any_declared_figure() -> Bool {
+test fn github_arm_cannot_support_any_declared_figure() -> Bool  {
   match classify_benchmark(
     declared: arm_memory_profile.guaranteed_memory_per_entitlement,
     benchmark: github_arm_benchmark,
@@ -360,7 +360,7 @@ test fn github_arm_cannot_support_any_declared_figure() -> Bool {
 // the providers that agree looks better sourced while hiding the spread — and
 // carrying it is now safe precisely because it cannot inflate the support
 // count.
-test fn circleci_contrasts_with_the_x64_sku_rather_than_supporting_it() -> Bool {
+test fn circleci_contrasts_with_the_x64_sku_rather_than_supporting_it() -> Bool  {
   match classify_benchmark(
     declared: x64_standard_profile.guaranteed_memory_per_entitlement,
     benchmark: circleci_x64_benchmark,
@@ -378,7 +378,7 @@ test fn circleci_contrasts_with_the_x64_sku_rather_than_supporting_it() -> Bool 
 // what was consulted so the emptiness is visible rather than implied. This is
 // the arm that makes the polarity load-bearing instead of decorative: a
 // profile standing only on contradictions cannot be read at all.
-test fn a_sku_standing_only_on_contradictions_is_unsupported() -> Bool {
+test fn a_sku_standing_only_on_contradictions_is_unsupported() -> Bool  {
   match evidence_verdict(
     declared: arm_value_profile.guaranteed_memory_per_entitlement,
     benchmarks: [depot_arm_benchmark, github_arm_benchmark],
@@ -401,7 +401,7 @@ test fn a_sku_standing_only_on_contradictions_is_unsupported() -> Bool {
 // Only Ubicloud states an entitlement among the arm benchmarks, and the
 // benchmark rows record that silence rather than promoting a marketing phrase
 // to a modeled fact.
-test fn arm_benchmarks_record_the_providers_own_entitlement_silence() -> Bool {
+test fn arm_benchmarks_record_the_providers_own_entitlement_silence() -> Bool  {
   match ubicloud_arm_benchmark.advertised_entitlement {
     DedicatedPhysicalCore =>
       match github_arm_benchmark.advertised_entitlement {
@@ -430,7 +430,7 @@ test fn arm_benchmarks_record_the_providers_own_entitlement_silence() -> Bool {
 // precisely because the declaration is a statement about gunbc's own hardware,
 // and it was a miscitation before only because the same field claimed to be
 // sourced from those providers.
-test fn the_sku_entitlement_is_declared_not_inherited() -> Bool {
+test fn the_sku_entitlement_is_declared_not_inherited() -> Bool  {
   match arm_memory_profile.advertised_entitlement {
     DedicatedPhysicalCore =>
       !any(
@@ -454,7 +454,7 @@ test fn the_sku_entitlement_is_declared_not_inherited() -> Bool {
 // RED CONTROL, item 2a. The x64 SKU against the Q80-30 refuses, and the
 // refusal NAMES both architectures so a buyer is told which pairing was
 // attempted rather than being handed an empty option list.
-test fn the_x64_sku_refuses_on_the_q8030() -> Bool {
+test fn the_x64_sku_refuses_on_the_q8030() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -481,7 +481,7 @@ test fn the_x64_sku_refuses_on_the_q8030() -> Bool {
 // LARGEST fabricated target of any row in the tree — the more cores the
 // mismatched processor has, the more plausible and the more wrong the number
 // the old fold returned.
-test fn the_x64_sku_refuses_on_the_m12830() -> Bool {
+test fn the_x64_sku_refuses_on_the_m12830() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -504,7 +504,7 @@ test fn the_x64_sku_refuses_on_the_m12830() -> Bool {
 
 // RED CONTROL, item 2c — the mismatch in the OTHER direction, so the join is
 // an equality rather than a one-way "arm boards reject x64 SKUs" special case.
-test fn an_arm_sku_refuses_on_an_x64_processor() -> Bool {
+test fn an_arm_sku_refuses_on_an_x64_processor() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -528,7 +528,7 @@ test fn an_arm_sku_refuses_on_an_x64_processor() -> Bool {
 // POSITIVE CONTROL for the three refusals above: the SAME board, modules and
 // fold with a MATCHING architecture derives normally. Without this the arch
 // arm would be indistinguishable from a fold that refuses everything.
-test fn a_matching_architecture_still_derives() -> Bool {
+test fn a_matching_architecture_still_derives() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -551,7 +551,7 @@ test fn a_matching_architecture_still_derives() -> Bool {
 // synthetic on every other axis and its capacity comfortably reaches the
 // target, so the old fold derived a clean, correctly-arithmetic population for
 // memory the platform cannot electrically accept.
-test fn a_ddr5_module_refuses_against_the_ddr4_platform() -> Bool {
+test fn a_ddr5_module_refuses_against_the_ddr4_platform() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -582,7 +582,7 @@ test fn a_ddr5_module_refuses_against_the_ddr4_platform() -> Bool {
 // remainder — a silently-dropped row would narrow the answer while reporting
 // success, and the caller would never learn the stick they intended to buy is
 // the wrong generation.
-test fn one_incompatible_module_refuses_the_whole_offer() -> Bool {
+test fn one_incompatible_module_refuses_the_whole_offer() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -617,7 +617,7 @@ test fn one_incompatible_module_refuses_the_whole_offer() -> Bool {
 // DOES provide (45, memory-bound) beside the shortfall that separates it from
 // admission — which is what lets a partially provisioned host participate
 // instead of waiting to be fully provisioned first.
-test fn an_existing_128gib_host_reports_what_it_provides_and_its_shortfall() -> Bool {
+test fn an_existing_128gib_host_reports_what_it_provides_and_its_shortfall() -> Bool  {
   match observe_installed_capacity(
     cpu: altra_q6430_catalog,
     profile: arm_value_profile,
@@ -645,7 +645,7 @@ test fn an_existing_128gib_host_reports_what_it_provides_and_its_shortfall() -> 
 // split: the admission fold's bound axis had only two arms because a
 // memory-bound population could never be admitted, and calling that a complete
 // vocabulary confused "cannot be admitted" with "cannot exist".
-test fn the_admission_fold_and_the_observation_disagree_on_reachable_bounds() -> Bool {
+test fn the_admission_fold_and_the_observation_disagree_on_reachable_bounds() -> Bool  {
   match observe_installed_capacity(
     cpu: altra_q6430_catalog,
     profile: arm_value_profile,
@@ -668,7 +668,7 @@ test fn the_admission_fold_and_the_observation_disagree_on_reachable_bounds() ->
 
 // An exactly-sized machine is EVENLY bound and meets with zero surplus, so the
 // three-arm axis is total by execution rather than by inspection.
-test fn an_exactly_sized_machine_is_evenly_bound() -> Bool {
+test fn an_exactly_sized_machine_is_evenly_bound() -> Bool  {
   match observe_installed_capacity(
     cpu: altra_q6430_catalog,
     profile: arm_memory_profile,
@@ -693,7 +693,7 @@ test fn an_exactly_sized_machine_is_evenly_bound() -> Bool {
 // admission fold, so a mismatched architecture cannot be observed either. If
 // the two had their own gates, the cheaper entry point would become the way
 // around the expensive one's refusals.
-test fn observation_refuses_a_mismatched_architecture_too() -> Bool {
+test fn observation_refuses_a_mismatched_architecture_too() -> Bool  {
   match observe_installed_capacity(
     cpu: altra_q8030_catalog,
     profile: x64_standard_profile,
@@ -724,7 +724,7 @@ test fn observation_refuses_a_mismatched_architecture_too() -> Bool {
 // than vanishing — and its coverage says exactly how many channels it leaves
 // dark. "We do not sell this" and "the board cannot do this" are now different
 // answers.
-test fn the_documented_four_module_shape_is_declined_not_invalid() -> Bool {
+test fn the_documented_four_module_shape_is_declined_not_invalid() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -751,7 +751,7 @@ test fn the_documented_four_module_shape_is_declined_not_invalid() -> Bool {
 // The SAME board under the permissive policy ADMITS the documented shapes,
 // including the partial one. Two policies, one board, different admitted sets
 // — which is what proves the exclusion above was policy and not capability.
-test fn the_permissive_policy_admits_the_documented_partial_shapes() -> Bool {
+test fn the_permissive_policy_admits_the_documented_partial_shapes() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: AnyBoardDocumentedPopulation,
@@ -773,7 +773,7 @@ test fn the_permissive_policy_admits_the_documented_partial_shapes() -> Bool {
 // two per channel and publishes no supported-population table, so the honest
 // answer to "which partial populations does it support" is that we do not
 // know.
-test fn a_board_without_a_cited_population_table_refuses_the_permissive_policy() -> Bool {
+test fn a_board_without_a_cited_population_table_refuses_the_permissive_policy() -> Bool  {
   match derive_populations(
     geometry: supermicro_r12spd_a_geometry,
     policy: AnyBoardDocumentedPopulation,
@@ -802,7 +802,7 @@ test fn a_board_without_a_cited_population_table_refuses_the_permissive_policy()
 // authority's closed topology set times the board's channel count and need no
 // per-board population table. The refusal is therefore about the permissive
 // policy's missing input, not about the board being unusable.
-test fn the_same_uncited_board_derives_under_the_full_channel_policy() -> Bool {
+test fn the_same_uncited_board_derives_under_the_full_channel_policy() -> Bool  {
   match derive_populations(
     geometry: supermicro_r12spd_a_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -833,7 +833,7 @@ test fn the_same_uncited_board_derives_under_the_full_channel_policy() -> Bool {
 // per channel, and sixteen per socket at two per channel. The agreement is a
 // consequence of the Altra memory controller and is DERIVED here, so a board
 // row edited to disagree with its geometry has nowhere to hide.
-test fn three_boards_are_answered_and_every_channel_count_is_derived() -> Bool {
+test fn three_boards_are_answered_and_every_channel_count_is_derived() -> Bool  {
   answered_candidate_board_count() == 3
     && asrock_altrad8ud_1l2t_geometry.channels == 8
     && supermicro_r12spd_a_geometry.channels == 8
@@ -843,7 +843,7 @@ test fn three_boards_are_answered_and_every_channel_count_is_derived() -> Bool {
 // The two new boards are 2DPC and the ASRock is not, which is the fact that
 // makes them worth carrying separately: the richer geometry reaches a target
 // the ASRock cannot, on the same processor and the same modules.
-test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
+test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -894,7 +894,7 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
 // reaching the same standing, and a single unreadable arm covering both would
 // not show that the x64 SKU — whose support comes from Depot and WarpBuild —
 // also consults a provider it cannot read.
-test fn github_x64_is_unreadable_rather_than_contradicting() -> Bool {
+test fn github_x64_is_unreadable_rather_than_contradicting() -> Bool  {
   match classify_benchmark(
     declared: x64_standard_profile.guaranteed_memory_per_entitlement,
     benchmark: github_x64_benchmark,
@@ -918,7 +918,7 @@ test fn github_x64_is_unreadable_rather_than_contradicting() -> Bool {
 // also consults at least one that does not support it. Both halves matter: the
 // first is the wall, and the second shows the wall is not being cleared by
 // quietly dropping the inconvenient citations.
-test fn every_declared_sku_is_supported_and_still_carries_its_contradictions() -> Bool {
+test fn every_declared_sku_is_supported_and_still_carries_its_contradictions() -> Bool  {
   !any(
     declared_product_profiles(),
     p => match profile_evidence_verdict(profile: p) {
@@ -937,7 +937,7 @@ test fn every_declared_sku_is_supported_and_still_carries_its_contradictions() -
 // ---------------------------------------------------------------------------
 
 // A declared decimal basis converts, and the number is the decimal one.
-test fn a_declared_decimal_basis_converts_to_bytes() -> Bool {
+test fn a_declared_decimal_basis_converts_to_bytes() -> Bool  {
   match entitlement_bytes(profile: arm_value_profile) {
     EntitlementBytesDeclared { bytes } => byte_size_count(b: bytes) == 3 * gb
     EntitlementBytesBasisUndeclared => false
@@ -948,7 +948,7 @@ test fn a_declared_decimal_basis_converts_to_bytes() -> Bool {
 // why the basis is a constructor choice rather than a field: the gap is 7.4
 // percent, and on a 192 GB target that is over 14 GB — more than the margin
 // between two DIMM SKUs.
-test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool {
+test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool  {
   match entitlement_bytes(
     profile: RunnerProductProfile {
       label: "synthetic-binary",
@@ -966,7 +966,7 @@ test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool {
 
 // RED CONTROL. A profile quoting a bare numeral under an unstated unit word
 // refuses the whole derivation rather than picking a reading.
-test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool {
+test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -995,7 +995,7 @@ test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool {
 // RED CONTROL. An unstated entitlement cannot be counted, and refuses rather
 // than falling back to cores — a fallback would make the profile silently
 // claim the more conservative number and therefore READ as the safe choice.
-test fn an_unstated_entitlement_refuses_rather_than_assuming_cores() -> Bool {
+test fn an_unstated_entitlement_refuses_rather_than_assuming_cores() -> Bool  {
   match cpu_entitlement_supply(cpu: altra_q6430_catalog, entitlement: EntitlementUnstated) {
     EntitlementKindUnstated => true
     EntitlementsAvailable { count } => false
@@ -1004,7 +1004,7 @@ test fn an_unstated_entitlement_refuses_rather_than_assuming_cores() -> Bool {
 
 // The same refusal reached through the fold, so the arm is live on the real
 // acceptance path rather than only on the helper.
-test fn an_unstated_entitlement_refuses_through_the_fold() -> Bool {
+test fn an_unstated_entitlement_refuses_through_the_fold() -> Bool  {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -1033,7 +1033,7 @@ test fn an_unstated_entitlement_refuses_through_the_fold() -> Bool {
 // RED CONTROL. Offering no modules at all refuses DISTINCTLY from an
 // unreachable target: one says the caller supplied nothing, the other says
 // what was supplied is too small, and a buyer's next action differs.
-test fn no_offered_modules_refuses_distinctly() -> Bool {
+test fn no_offered_modules_refuses_distinctly() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -1060,7 +1060,7 @@ test fn no_offered_modules_refuses_distinctly() -> Bool {
 // platform authority in this tree admits one, and admitting it because the
 // capacities happen to sum past the target would read an arithmetic result as
 // a support statement.
-test fn a_mixed_capacity_population_is_refused() -> Bool {
+test fn a_mixed_capacity_population_is_refused() -> Bool  {
   match admit_mixed_capacity_population(geometry: asrock_altrad8ud_1l2t_geometry) {
     PopulationDerivationRefused { board_label, cause } =>
       match cause {
@@ -1082,7 +1082,7 @@ test fn a_mixed_capacity_population_is_refused() -> Bool {
 // reading is now a REFUSAL sitting beside two derived answers rather than a
 // third number. Before the architecture join all three returned populations,
 // which is the shape this asserts against.
-test fn the_fan_out_answers_once_per_sku_and_refuses_the_x64_one() -> Bool {
+test fn the_fan_out_answers_once_per_sku_and_refuses_the_x64_one() -> Bool  {
   let results = derive_all_profile_capacities(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -1113,7 +1113,7 @@ test fn the_fan_out_answers_once_per_sku_and_refuses_the_x64_one() -> Bool {
 // 1DPC board there is exactly one full-channel shape, and it is eight modules.
 // The coverage arm names the topology it came from, so a population cannot
 // claim full coverage without saying which admitted topology produced it.
-test fn full_channel_populations_are_topology_derived() -> Bool {
+test fn full_channel_populations_are_topology_derived() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -1138,7 +1138,7 @@ test fn full_channel_populations_are_topology_derived() -> Bool {
 // The overshoot is NAMED. Eight 32 GB modules against a 192 GB target is 256
 // GB, so 64 GB is bought beyond the requirement — reporting only "met" would
 // let a purchase round silently up to the next SKU.
-test fn the_population_names_its_overshoot() -> Bool {
+test fn the_population_names_its_overshoot() -> Bool  {
   match derive_populations(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
@@ -1163,7 +1163,7 @@ test fn the_population_names_its_overshoot() -> Bool {
 // the divergent row is the tail — under the old fold it would have returned
 // "GiB" happily, so the control fails against the defect rather than merely
 // passing against the fix.
-test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
+test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool  {
   match memory_per_vcpu(
     rows: [
       synthetic_shape(vcpus: 2, numeral: 6, decimal: false),
@@ -1183,7 +1183,7 @@ test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
 // POSITIVE CONTROL on the same instrument: the identical rows in one unit do
 // yield a ratio, so the refusal above is discriminating on the label axis and
 // not on the synthetic rows generally.
-test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool {
+test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool  {
   match memory_per_vcpu(
     rows: [
       synthetic_shape(vcpus: 2, numeral: 6, decimal: true),
