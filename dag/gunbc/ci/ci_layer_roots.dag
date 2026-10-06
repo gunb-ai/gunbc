@@ -531,7 +531,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_digest_stdin_reason,
     dissolution: excl_local_repo_wet_digest_stdin_dissolve},
   WitnessExclusionRow {
-    pattern: "megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+    pattern: "mtcollins_sol_host_payload_integrity_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
@@ -1156,11 +1156,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
-  WitnessExclusionRow {
-    pattern: "mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-    classification: LocalRepoWetLane,
-    reason: "SUBSTANTIATED per-row: every fn launches the real held KVM observer -- the pinned node, Playwright and headless Chromium that gunbc.runner_browser_toolchain runner_browser_toolchain_here_wet resolves on the floor pool (converged green on srv1, run 36377598915) -- against a loopback controller whose every answer is a gunbc.bmc_model transition served by gunbc.bmc_megarac_web_adapter on ephemeral ports, and writes only inside a shell.Mktemp.Dir directory it removes. shell.Mktemp.Dir, Filesystem.Write, the transport launch and the observer launch carry no mock_response, so hermetic discovery refuses them by construction; their subject is what a real browser and a real WebSocket report (seat busy, a controller-closed /kvm stream, an unexportable canvas), which no mock honestly supplies. No network beyond loopback, no remote host, no BMC, no credential." as String,
-    dissolution: unbound_dissolution(description: "a .dag browser-automation realization can drive a page and observe its WebSocket lifecycle hermetically against gunbc.bmc_model, so these assertions re-run without a real browser or process; then the fns re-enrol as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")},
   WitnessExclusionRow {
     pattern: "sol_hold_stdin_wet_witness_test.dag",
     classification: LocalRepoWetLane,

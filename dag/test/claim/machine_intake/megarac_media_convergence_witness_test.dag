@@ -5,7 +5,6 @@ import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
-import gunbc.machine_intake_megarac_ui_features { megarac_rmedia_status_0_32 }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
@@ -95,11 +94,8 @@ import gunbc.machine_intake_megarac_media_attach {
   PresentationUnobserved,
   PresentationReadyButSessionHeld,
   CdErrorUncatalogued,
-  CdErrorStopReason,
-  StopReasonNoFault,
-  StopReasonPresentationFailure,
+  CdErrorDeviceEjected,
   MegaRacPresentationStopped,
-  megarac_stop_reason_class,
   share_binding_standing,
   ShareBound,
   ShareMismatch,
@@ -493,8 +489,8 @@ test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
   }
 }
 
-// THE CODE IS THE VENDOR'S LATCHED LAST-STOP REASON (operator-approved 2026-10-01; the UI bundle's
-// rmedia view, extdeps.bmc.megarac megarac_rmedia_status_0_32). 18:37Z: code 16 while the re-attached
+// THE CODE IS A LATCHED LAST-STOP REASON; ONLY 16 (DEVICE EJECTED) IS GROUNDED, on the executed receipt
+// of boot run 36721915217. 18:37Z: code 16 while the re-attached
 // image read Started, session 0 -- a healthy presentation with the reason the stale image's stop left.
 data cd_clean: CdErrorReading = CdErrorRead { code: CdErrorNone }
 data cd_16: CdErrorReading = cd_error_reading(body: mtcollins1_media_general_2026_09_27, firmware: megarac_firmware_0_32)
@@ -519,41 +515,27 @@ fn gate_of(outcome: MegaRacAttachOutcome) -> String {
   }
 }
 
-// ─── THE TABLE IS READ AS THE VENDOR'S, AND EVERY ROW IS CLASSIFIED ─────────────────────────────
-// An identity join over the DERIVED table: each code the 0.32 bundle names has a class, and the
-// classes are the ones the policy states. A row the policy does not name would fall to Uncatalogued.
-test fn every_stop_reason_of_the_0_32_table_is_classified() -> Bool {
-  count(megarac_rmedia_status_0_32) == 17
-    && all(megarac_rmedia_status_0_32, st => match megarac_stop_reason_class(status: st) { Present { value: _ } => true  Absent => false })
-    && all(megarac_rmedia_status_0_32, st => match megarac_stop_reason_class(status: st) {
-         Present { value: StopReasonNoFault } => st.code == 1 || st.code == 7 || st.code == 15 || st.code == 16
-         Present { value: StopReasonPresentationFailure } => st.code != 1 && st.code != 7 && st.code != 15 && st.code != 16
-         Absent => false
-       })
-}
-
-// The 18:37Z code reads BY NAME, and a code outside the table, or any code on a build with no table,
-// stays uncatalogued.
-test fn a_code_reads_by_the_vendors_name_and_only_inside_the_table() -> Bool {
-  (match cd_16 { CdErrorRead { code: CdErrorStopReason { status: st, class: StopReasonNoFault } } => st.code == 16 && (st.name as String) == "Device Ejected"  _ => false })
-    && (match cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32) { CdErrorRead { code: CdErrorStopReason { status: st, class: StopReasonPresentationFailure } } => (st.name as String) == "Mount Error"  _ => false })
+// ─── ONLY CODE 16 IS GROUNDED ───────────────────────────────────────────────────────────────────
+// The executed receipt grounds 16 as device ejected; every other nonzero code is uncatalogued, on any build.
+test fn only_code_16_reads_as_device_ejected_and_any_other_code_is_uncatalogued() -> Bool {
+  (match cd_16 { CdErrorRead { code: CdErrorDeviceEjected } => true  _ => false })
+    && (match cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32) { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 11  _ => false })
     && (match cd_error_reading(body: general_coded(code: "18"), firmware: megarac_firmware_0_32) { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 18  _ => false })
-    && (match cd_error_reading(body: general_coded(code: "16"), firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33")) { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16  _ => false })
 }
 
 // ─── STARTED: THE CODE IS RECORDED, NEVER WITHHELD ON ───────────────────────────────────────────
 test fn a_named_code_beside_a_started_presentation_is_ready_and_recorded() -> Bool {
   (match ready_after(cd_before: cd_16, general: general_coded(code: "11")) {
     MegaRacPresentationReady { route: _, evidence: e } =>
-      (match e.cd_at_ready { CdErrorRead { code: CdErrorStopReason { status: st, class: _ } } => st.code == 11  _ => false })
-        && (match e.cd_before_any_write { CdErrorRead { code: CdErrorStopReason { status: st, class: _ } } => st.code == 16  _ => false })
+      (match e.cd_at_ready { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 11  _ => false })
+        && (match e.cd_before_any_write { CdErrorRead { code: CdErrorDeviceEjected } => true  _ => false })
     _ => false
   })
     && gate_of(outcome: ready_after(cd_before: cd_16, general: mtcollins1_media_general_2026_09_27)) == "READY"
 }
 
-// A CODE OUTSIDE THE TABLE BESIDE STARTED IS ALSO ONLY RECORDED: the vendor does not consult the code
-// while started, whatever it reads. The red for this arm is the unread code below.
+// AN UNCATALOGUED CODE BESIDE STARTED IS ALSO ONLY RECORDED: the code is never withheld on while
+// started, whatever it reads. The red for this arm is the unread code below.
 test fn a_code_outside_the_table_beside_a_started_presentation_is_ready_and_recorded() -> Bool {
   (match ready_after(cd_before: cd_clean, general: general_coded(code: "42")) {
     MegaRacPresentationReady { route: _, evidence: e } => (match e.cd_at_ready { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 42  _ => false })
@@ -580,7 +562,7 @@ test fn a_clean_code_at_readiness_is_ready() -> Bool {
 // RECEIPT, VERBATIM (run 36721915217, artifact mtcollins1-boot-receipts, mtcollins1-boot-diagnostics.txt):
 // general settings at readiness (answered at 1790776024628) and the configurations row of the Started
 // look (session_index 0). cd_error_code read 16 before any write, after the stop and at readiness; the
-// run refused as "cannot establish the media state". Under the vendor's reading it is ready.
+// run refused as "cannot establish the media state". Under the grounded reading it is ready.
 data run_36721915217_general_at_ready: String = "{ \"id\": 1, \"local_media_support\": 0, \"remote_media_support\": 1, \"same_settings\": 0, \"cd_remote_server_address\": \"192.168.1.188\", \"cd_remote_source_path\": \"\\/srv\\/bmc\", \"cd_remote_share_type\": \"nfs\", \"cd_remote_domain_name\": \"\", \"cd_remote_user_name\": \"\", \"mount_cd\": 1, \"cd_image_name\": \"\", \"cd_error_code\": 16, \"mount_hd\": 0, \"hd_remote_server_address\": \"\", \"hd_remote_source_path\": \"\", \"hd_remote_share_type\": \"\", \"hd_remote_domain_name\": \"\", \"hd_remote_user_name\": \"\", \"hd_image_name\": \"\", \"hd_error_code\": 0, \"rmedia_retry_count\": 3, \"rmedia_retry_interval\": 15 }"
 
 data run_36721915217_configurations_at_ready: String = "[ { \"id\": 1, \"media_type\": 1, \"media_index\": 0, \"session_index\": 0, \"image_name\": \"gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso\", \"redirection_status\": 1 } ]"
@@ -594,7 +576,7 @@ test fn boot_run_36721915217_readings_now_admit() -> Bool {
   (match outcome {
     MegaRacPresentationReady { route: _, evidence: e } =>
       e.session_index == Present { value: "0" }
-        && (match e.cd_at_ready { CdErrorRead { code: CdErrorStopReason { status: st, class: StopReasonNoFault } } => st.code == 16  _ => false })
+        && (match e.cd_at_ready { CdErrorRead { code: CdErrorDeviceEjected } => true  _ => false })
     _ => false
   })
     && (match megarac_boot_media_gate(record: MediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: StalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none } }) {
@@ -605,29 +587,21 @@ test fn boot_run_36721915217_readings_now_admit() -> Bool {
 
 // ─── STOPPED: REFUSED BY NAME, WITH ITS CLASS ───────────────────────────────────────────────────
 // The wait closes on a look that finds nothing presented (the row stopped, status 0) while the code
-// names a reason: the refusal is the vendor's "Stopped - <name>", not a timeout.
+// names a reason: the refusal names the grounded reason, not a timeout.
 fn closed_stopped(general: String) -> MegaRacAttachOutcome {
   readiness_wait_outcome(wait: ReadinessWaitClosed { last: look(at: 43000, status: "0", session: "255"), deadline: 43000, looks: 16 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_clean, general_at_end: raw_at(body: general))
 }
 
-test fn a_stopped_presentation_with_mount_error_refuses_as_a_presentation_failure() -> Bool {
-  (match closed_stopped(general: general_coded(code: "11")) {
-    MegaRacPresentationStopped { image_name: _, route: _, look: _, looks: n, cd_before_any_write: _, stop: st, class: StopReasonPresentationFailure, general_at_refusal: _ } => n == 16 && st.code == 11 && (st.name as String) == "Mount Error"
-    _ => false
-  })
-    && string_contains(s: gate_of(outcome: closed_stopped(general: general_coded(code: "11"))), pattern: "Stopped - Mount Error")
-}
-
 test fn a_stopped_presentation_with_device_ejected_refuses_as_no_fault() -> Bool {
   (match closed_stopped(general: mtcollins1_media_general_2026_09_27) {
-    MegaRacPresentationStopped { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, stop: st, class: StopReasonNoFault, general_at_refusal: _ } => st.code == 16
+    MegaRacPresentationStopped { image_name: _, route: _, look: _, looks: n, cd_before_any_write: _, general_at_refusal: _ } => n == 16
     _ => false
   })
-    && string_contains(s: gate_of(outcome: closed_stopped(general: mtcollins1_media_general_2026_09_27)), pattern: "Stopped - Device Ejected")
+    && string_contains(s: gate_of(outcome: closed_stopped(general: mtcollins1_media_general_2026_09_27)), pattern: "Stopped - device ejected")
 }
 
 // THE CONTROLS: a clean code, and a code outside the table, beside the same stopped look are an
-// ordinary timeout -- the name comes only from the table.
+// ordinary timeout -- the name comes only from the grounded code.
 test fn a_stopped_presentation_without_a_named_code_is_a_timeout() -> Bool {
   (match closed_stopped(general: mtcollins1_media_general_2026_09_27_morning_as_reported) { MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => true  _ => false })
     && (match closed_stopped(general: general_coded(code: "42")) { MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: CdErrorRead { code: CdErrorUncatalogued { wire: w } } } => w == 42  _ => false })
@@ -635,8 +609,8 @@ test fn a_stopped_presentation_without_a_named_code_is_a_timeout() -> Bool {
 
 // ─── BEFORE ANY WRITE ───────────────────────────────────────────────────────────────────────────
 // A read code is a past stop's reason: the desired image presented goes straight to the readiness fold
-// with no write, host on or off, whatever the code reads; nothing presented is attached on a named
-// code (the vendor's stopped view leaves Start enabled).
+// with no write, host on or off, whatever the code reads; nothing presented is attached on the grounded
+// code 16.
 test fn a_read_code_before_any_write_never_withdraws_the_desired_presentation() -> Bool {
   (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_16) { ConvergeStepAwaitReadiness => true  _ => false })
     && (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_on, cd_before: cd_16) { ConvergeStepAwaitReadiness => true  _ => false })
@@ -644,8 +618,7 @@ test fn a_read_code_before_any_write_never_withdraws_the_desired_presentation() 
 }
 
 test fn a_named_code_with_nothing_presented_attaches() -> Bool {
-  (match step_with_cd(configurations: "[]", detach: host_on, cd_before: cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32)) { ConvergeStepAttachFromListing => true  _ => false })
-    && (match step_with_cd(configurations: "[]", detach: host_off, cd_before: cd_16) { ConvergeStepAttachFromListing => true  _ => false })
+  (match step_with_cd(configurations: "[]", detach: host_off, cd_before: cd_16) { ConvergeStepAttachFromListing => true  _ => false })
 }
 
 // A CODE OUTSIDE THE TABLE WITH NOTHING PRESENTED is the one pre-write knowledge refusal left: the
@@ -750,7 +723,7 @@ test fn the_recheck_withholds_when_its_own_session_was_not_released() -> Bool {
     && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
 }
 
-// AT THE RECHECK: Started with any read code is still served; an unread look is unobserved; a stopped row with a named code is an affirmed loss that names the vendor's reason.
+// AT THE RECHECK: Started with any read code is still served; an unread look is unobserved; a stopped row with code 16 is an affirmed loss that names it.
 test fn a_started_look_with_code_16_is_still_served_at_the_recheck() -> Bool {
   match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "1", session: "0"))) {
     PresentationStillReady => true
@@ -772,9 +745,9 @@ test fn a_started_look_with_an_unread_code_is_unobserved_at_the_recheck() -> Boo
   }
 }
 
-test fn a_stopped_row_with_a_named_code_is_no_longer_served_by_name() -> Bool {
-  match presentation_still_served(result: observed(general: general_coded(code: "11"), configurations: presenting_in(name: desired_census as String, status: "0", session: "255"))) {
-    PresentationNoLongerReady { reason: r } => string_contains(s: r as String, pattern: "Stopped - Mount Error")
+test fn a_stopped_row_with_code_16_is_no_longer_served_by_name() -> Bool {
+  match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "0", session: "255"))) {
+    PresentationNoLongerReady { reason: r } => string_contains(s: r as String, pattern: "Stopped - device ejected")
     _ => false
   }
 }

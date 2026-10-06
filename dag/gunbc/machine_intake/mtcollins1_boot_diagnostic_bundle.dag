@@ -128,7 +128,7 @@ import gunbc.machine_intake_megarac_media_attach {
   CdErrorUnread,
   CdErrorNone,
   CdErrorUncatalogued,
-  CdErrorStopReason,
+  CdErrorDeviceEjected,
   MegaRacPresentationStopped,
   stop_reason_text,
   megarac_share_type_wire,
@@ -506,7 +506,7 @@ fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
 fn cd_reading_text(r: CdErrorReading) -> String {
   match r {
     CdErrorRead { code: CdErrorNone } => "0"
-    CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => concat(to_string(st.code), concat(" ", stop_reason_text(status: st, class: k)))
+    CdErrorRead { code: CdErrorDeviceEjected } => concat("16 ", stop_reason_text())
     CdErrorRead { code: CdErrorUncatalogued { wire: w } } => concat(to_string(w), " (uncatalogued)")
     CdErrorUnread { detail: d } => concat("UNREAD: ", d)
   }
@@ -597,8 +597,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the presentation of '", n as String, "' did not reach Started with a bound session before ", to_string(d), " (", to_string(k), " looks, route: ", attach_route_text(route: r), "); last look ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
     MegaRacReadinessRefused { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_refusal: ca } =>
       Present { value: join(["the presentation of '", n as String, "' was refused by the readiness policy after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
-    MegaRacPresentationStopped { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, stop: st, class: c, general_at_refusal: g } =>
-      Present { value: join(["the presentation of '", n as String, "' is ", stop_reason_text(status: st, class: c), " after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), " (general settings ", raw_read_text(r: g), "). No boot-device or power handoff was made"], "") }
+    MegaRacPresentationStopped { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, general_at_refusal: g } =>
+      Present { value: join(["the presentation of '", n as String, "' is ", stop_reason_text(), " after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), " (general settings ", raw_read_text(r: g), "). No boot-device or power handoff was made"], "") }
     MegaRacReadinessClockUnreadable { image_name: n, route: r, detail: d } =>
       Present { value: join(["the clock could not be read, so the readiness window for '", n as String, "' could not be declared or judged: ", d, " (route: ", attach_route_text(route: r), ")"], "") }
     MegaRacConfigurationsUnreadable { detail: d } =>

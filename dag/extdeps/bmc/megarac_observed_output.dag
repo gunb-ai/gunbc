@@ -53,9 +53,7 @@ fn megarac_image_row(image_name: String, image_index: Int) -> String {
 // test.claim.machine_intake.megarac_session_release_witness_test, `{"error":"invalid session"}` with 401.
 data megarac_invalid_session_body: String = "{\"error\":\"invalid session\"}"
 
-// POST /api/session. NO SESSION REPLY IS RETAINED VERBATIM. The member names are those the firmware's
-// own web UI reads (source.min.js, probed 2026-09-27 on branch session/eager-koi-811), and the production
-// decoder reads only CSRFToken.
+// POST /api/session. NO SESSION REPLY IS RETAINED VERBATIM. The production decoder reads only CSRFToken.
 data megarac_session_body_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "a retained POST /api/session reply from the Mt. Collins MegaRAC, cited by digest" as NonEmptyStr
 }

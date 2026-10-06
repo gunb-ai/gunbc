@@ -14,7 +14,6 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
-import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_string, serialize_json_array }
 import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -106,7 +105,7 @@ data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/settings/media/remote/start-media",
-  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status started or connecting via megarac_redirection_status_of_wire, session_index bound)",
+  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes (the executed sequence above always carries it). Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status started or connecting via megarac_redirection_status_of_wire, session_index bound)",
 }
 
 data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
@@ -162,14 +161,8 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// SERVED SP-X UI SURFACE CATALOG, keyed to firmware identity 0.32. The capture receipt (path
-// and digest) is gunbc.machine_intake_megarac_served_ui_catalog_observation; this module keeps
-// only firmware-identity-keyed facts about that surface. The catalog is a FACT ABOUT THIS
-// FIRMWARE'S SERVED UI PATHS, not a family-wide MegaRAC claim, and not a redirection_status map:
-// AMI advertises Redfish on other builds; this surface does not carry it. Status-code meanings
-// are a separate fact, cited on megarac_redirection_status_of_wire.
-// ---------------------------------------------------------------------------------------------
+// FIRMWARE IDENTITY 0.32: the Foxconn Mt. Collins build these rows were executed against. Status-code
+// meanings are cited on megarac_redirection_status_of_wire.
 data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.32",
@@ -178,15 +171,15 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
-// REDIRECTION_STATUS. The 255-path catalog does not contain these mappings. The codes that this
+// REDIRECTION_STATUS. The codes that this
 // decoder names are the ones committed observations actually returned on firmware 0.32:
 // 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started
 // and 100 connecting (gunbc.machine_intake_mtcollins1_diskless_boot_receipt
 // mtcollins1_diskless_boot_artifact_path, and
 // gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
 // Connecting is presenting: the same unit booted GRUB from a session that still read 100.
-// Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial
-// recovered from source.min.js (those bytes are not in the tree). A firmware identity this row
+// Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial.
+// A firmware identity this row
 // does not catalog refuses rather than inheriting 0.32's numbers.
 type MegaRacRedirectionStatus
   = RedirectionStopped
@@ -295,125 +288,6 @@ data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = megarac_recorde
 
 data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
 
-// WHAT THIS SERVED UI CAN AND CANNOT DO, as PATH PRESENCE in the 0.32 catalog. They are not
-// omissions and not unit telemetry. Per-DIMM AEP inventory and api/fru ARE in the catalog
-// (api/aep_inventory/aep_dimm_info, api/fru); a controller answering nothing through those paths
-// is a unit observation, not a served-surface absence. BIOS *settings* (`settings/bios`) are
-// absent; flash/version (`api/maintenance/hpm/getbiosversions`) is present. MegaRacWebEventLogOemDescriptionUnknown
-// was the same fork: the renderer answering unknown is not a missing path. Ampere OEM SEL
-// producer layout is extdeps.ampere.oem_sel.
-//
-// §3c frontier: megarac_served_ui_surface_standing. Consumer: the PreOs capability axes that
-// would claim Redfish or a BIOS/UEFI settings surface, on
-// gunbc.machine_intake_pre_os_observation_capabilities (gunbc#11110; this PR does not mint that
-// file). Until that lands, a firmware this decoder does not catalog cannot refuse an inherited
-// 0.32 presence map. The coproduct carries present surfaces so Absent is not the only
-// constructible known answer: a Bool that can only be true is a decoration.
-type MegaRacServedUiSurface
-  = RedfishService
-  | BiosUefiSettings
-  | FruInventory
-  | AepDimmInventory
-  | BiosVersionFlash
-
-type MegaRacServedUiSurfacePresence
-  = ServedUiSurfacePresent
-  | ServedUiSurfaceAbsent
-
-// THE CATALOG SUBSTRING EACH SURFACE IS NAMED BY. The presence map below is a transcription of the
-// 0.32 served-UI catalog (gunbc.machine_intake_megarac_served_ui_catalog_observation, hashed and
-// committed); this row is the join that makes it checkable against the bytes rather than a second
-// authored list beside them (review 66694): the integrity witness asks, for every surface, that
-// the catalog contains the substring exactly when the map says Present.
-fn megarac_served_ui_surface_catalog_token(surface: MegaRacServedUiSurface) -> NonEmptyStr {
-  match surface {
-    RedfishService => "redfish"
-    BiosUefiSettings => "settings/bios"
-    FruInventory => "api/fru"
-    AepDimmInventory => "api/aep_inventory/aep_dimm_info"
-    BiosVersionFlash => "api/maintenance/hpm/getbiosversions"
-  }
-}
-
-data megarac_served_ui_surfaces: List<MegaRacServedUiSurface> = [RedfishService, BiosUefiSettings, FruInventory, AepDimmInventory, BiosVersionFlash]
-
-fn megarac_served_ui_surface_presence_at_0_32(surface: MegaRacServedUiSurface) -> MegaRacServedUiSurfacePresence {
-  match surface {
-    RedfishService => ServedUiSurfaceAbsent
-    BiosUefiSettings => ServedUiSurfaceAbsent
-    FruInventory => ServedUiSurfacePresent
-    AepDimmInventory => ServedUiSurfacePresent
-    BiosVersionFlash => ServedUiSurfacePresent
-  }
-}
-
-type MegaRacServedUiFactLookup
-  = ServedUiFactKnown { firmware: BmcFirmwareReleaseIdentity, presence: MegaRacServedUiSurfacePresence }
-  | ServedUiFactFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
-
-fn megarac_served_ui_surface_standing(
-  firmware: BmcFirmwareReleaseIdentity,
-  surface: MegaRacServedUiSurface,
-) -> MegaRacServedUiFactLookup {
-  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
-    ServedUiFactKnown {
-      firmware: firmware,
-      presence: megarac_served_ui_surface_presence_at_0_32(surface: surface),
-    }
-  } else {
-    ServedUiFactFirmwareUncatalogued { firmware: firmware }
-  }
-}
-
-// SCREEN CAPTURE SURFACES AT 0.32. Read-only probe 2026-09-27 of the bundles served at
-// https://192.168.1.228/source.min.js (gzip, sha256 5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3)
-// and /viewer.min.js (sha256 8bdfbb72c6449eaf64ab232a413abe257c2eec5af5d46fbe960c14534fab3e17).
-// THERE IS NO SERVER-SIDE ON-DEMAND STILL. The H5 viewer's "Capture Screen" is captureScreen():
-// document.getElementById("kvm").toDataURL("image/jpeg") saved as CaptureScreen.jpeg. That is a canvas
-// the browser painted by decoding the AST2100 stream from wss://<bmc>/kvm (session token from
-// /api/kvm/token), so a still exists only where a KVM client is running. The firmware itself
-// keeps two retained screens: the last BSOD JPEG (feature CAPTURE_BSOD_JPEG, GET
-// /api/settings/download_image), and framebuffer recordings made by FramebufferRecorder when an
-// armed /api/settings/video/triggers event fires (chassis power on/off/reset, lpc reset, watchdog,
-// critical/non-critical/non-recoverable, fan state, or a date_time schedule), listed at
-// /api/logs/video with bytes at /api/logs/video-data?file=. No IPMI OEM capture command appears
-// in either bundle.
-type MegaRacScreenCaptureRoute
-  = KvmClientCanvasJpeg
-  | LastBsodJpeg
-  | TriggeredFramebufferRecording
-  | ServerSideOnDemandStill
-
-type MegaRacScreenCaptureStanding
-  = ScreenCaptureServedOnDemand
-  | ScreenCaptureEventRetainedOnly
-  | ScreenCaptureClientSideOnly
-  | ScreenCaptureAbsent
-
-fn megarac_screen_capture_standing_at_0_32(route: MegaRacScreenCaptureRoute) -> MegaRacScreenCaptureStanding {
-  match route {
-    KvmClientCanvasJpeg => ScreenCaptureClientSideOnly
-    LastBsodJpeg => ScreenCaptureEventRetainedOnly
-    TriggeredFramebufferRecording => ScreenCaptureEventRetainedOnly
-    ServerSideOnDemandStill => ScreenCaptureAbsent
-  }
-}
-
-type MegaRacScreenCaptureLookup
-  = ScreenCaptureFactKnown { firmware: BmcFirmwareReleaseIdentity, standing: MegaRacScreenCaptureStanding }
-  | ScreenCaptureFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
-
-fn megarac_screen_capture_standing(
-  firmware: BmcFirmwareReleaseIdentity,
-  route: MegaRacScreenCaptureRoute,
-) -> MegaRacScreenCaptureLookup {
-  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
-    ScreenCaptureFactKnown { firmware: firmware, standing: megarac_screen_capture_standing_at_0_32(route: route) }
-  } else {
-    ScreenCaptureFirmwareUncatalogued { firmware: firmware }
-  }
-}
-
 // EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
 // template are manufacturer bytes; they have no Sender constructor. Ampere's published producer
 // layout for those manufacturer bytes is extdeps.ampere.oem_sel.
@@ -429,47 +303,6 @@ type MegaRacEventLogLayout
 data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
 
 data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
-
-// THE WEB SESSION AND KVM VIEWER WIRE, AS THE 0.32 UI READS IT. Recovered from the bundles served at
-// https://192.168.1.228 on 2026-09-27 (source.min.js, gzip sha256
-// 5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3; viewer.min.js sha256
-// 8bdfbb72c6449eaf64ab232a413abe257c2eec5af5d46fbe960c14534fab3e17):
-// - POST /api/session (form fields username, password) answers JSON; the login handler treats
-//   `ok === 0` as success and reads CSRFToken, privilege, extendedpriv and racsession_id from it, then
-//   sends X-CSRFTOKEN on every later request.
-// - GET /api/settings/services answers a JSON list of service rows; the KVM launcher finds the row
-//   whose service_name is "kvm" and opens viewer.html only when its viewer_count is 0.
-// - DELETE /api/session (X-CSRFTOKEN) ends the session (the viewer's own logout).
-// - The H5 viewer opens a WebSocket at /kvm (subprotocols binary, base64) and paints canvas#kvm.
-// A REFUSED LOGIN'S BODY AND STATUS ON 0.32 HAVE NOT BEEN CAPTURED, so this module states none: what
-// the UI establishes is only that a reply without ok === 0 is not a session. A simulated controller's
-// refusal is its renderer's choice (gunbc.bmc_megarac_web_adapter), never this upstream's.
-// These are the fields the UI reads, not the whole reply: a reply may carry more.
-data megarac_kvm_websocket_path: NonEmptyStr = "/kvm"
-
-type MegaRacLoginSession {
-  csrf_token: String
-  privilege: Int
-  extended_privilege: Int
-  racsession_id: Int
-}
-
-fn megarac_login_session_json(session: MegaRacLoginSession) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "ok", value: json_int(n: 0)),
-    json_kv(key: "CSRFToken", value: json_string(s: session.csrf_token)),
-    json_kv(key: "privilege", value: json_int(n: session.privilege)),
-    json_kv(key: "extendedpriv", value: json_int(n: session.extended_privilege)),
-    json_kv(key: "racsession_id", value: json_int(n: session.racsession_id)),
-  ])
-}
-
-fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
-  json_array(elements: [json_object(members: [
-    json_kv(key: "service_name", value: json_string(s: "kvm")),
-    json_kv(key: "viewer_count", value: json_int(n: viewer_count)),
-  ])])
-}
 
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the
@@ -508,8 +341,8 @@ fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
 // positive control that the stored bytes log in.
 //
 // StartMedia's json_body MUST CARRY image_redirection AND ITS ABSENCE IS OPAQUE. The contract note
-// on the operation row above records that omitting it makes the firmware refuse with codes
-// 13410/13460, recovered from the firmware's own UI bundle rather than from documentation. The body
+// on the operation row above records that omitting it makes the firmware refuse with opaque
+// codes; every executed attach carries it. The body
 // is a caller parameter rather than a baked literal because image_index is resolved by READING the
 // images listing, never assumed, and megarac_image_redirection_wire is the authority for the field
 // itself.
@@ -620,44 +453,6 @@ service megarac.Media {
     exit {
       0 => Unit
       nonzero => String "megarac session DELETE failed"
-    }
-  }
-}
-
-// THE VALUE THE SP-X UI STORES AS sessionStorage "features": JSON.stringify of its project-configurations
-// collection, an array of {"feature": NAME} objects; the viewer's KVM view reads it with unguarded
-// indexOf calls. Which names a given build carries is an OBSERVATION this repository made of that
-// build's served bundle, so it is a receipt in the observing layer
-// (gunbc.machine_intake_megarac_ui_features megarac_ui_features_0_32_receipt), not a fact owned here.
-fn megarac_ui_features_json(names: List<NonEmptyStr>) -> String {
-  serialize_json_array(elements: map(names, n => json_object(members: [json_kv(key: "feature", value: json_string(s: n as String))])))
-}
-
-// THE FIRMWARE'S OWN UI BUNDLE, SERVED AT A FIXED PATH. The SP-X web UI is one minified bundle the
-// login page loads before any session exists, so the GET carries no cookie and no token and opens no
-// session to release. The codes this module cites as "recovered from source.min.js" (start-media's
-// 13410/13460, the served api/ surface, the KVM wire) were read from these bytes; the operation is the
-// route that re-reads them instead of a hand-run probe.
-//
-// THE BYTES ARE WRITTEN AS SERVED. `Accept-Encoding: gzip` without --compressed asks for the encoding
-// the 2026-09-27 read recorded (gzip) and leaves it undecoded, so a digest of dest_file is a digest of
-// the served bytes, comparable with that read. stdout carries only the write-out: the HTTP status and
-// the byte count, space-separated on one line.
-data megarac_ui_bundle_path: NonEmptyStr = "/source.min.js"
-
-service megarac.Ui {
-
-  operation GetServedBundle {
-    requires Network
-    input { bmc_host: NonEmptyStr, bundle_path: NonEmptyStr, dest_file: NonEmptyStr, max_time: NonEmptyStr }
-    output { writeout: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-H", "Accept-Encoding: gzip", "-o", "{dest_file}", "-w", "%\{http_code} %\{size_download}", "https://{bmc_host}{bundle_path}"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac UI bundle GET failed"
     }
   }
 }

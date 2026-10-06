@@ -85,11 +85,11 @@ fn bmc_world(power: BmcPower) -> BmcWorld {
   }
 }
 
-// THE WEB AND KVM SURFACE OF A MegaRAC SP-X CONTROLLER (firmware 0.32; operations and wire shapes in
-// extdeps.bmc.megarac, cited there to the served source.min.js and viewer.min.js). World state only:
+// THE WEB AND KVM SURFACE OF A MANAGEMENT CONTROLLER, as this repository's own model (no vendor wire
+// shape is carried here). World state only:
 // the web sessions the controller holds, the account it accepts, the KVM viewers other clients hold,
 // and the one KVM stream this world's client may open. `canvas_readable` is a BROWSER-side fact the
-// protocol adapter reads -- whether the page's canvas can be exported -- and no transition changes it.
+// a protocol adapter would read -- whether the page's canvas can be exported -- and no transition changes it.
 type BmcWebSession {
   id: Int
   csrf_token: String
@@ -200,7 +200,7 @@ fn bmc_web_session_of_token(world: BmcWorld, csrf_token: String) -> List<BmcWebS
   filter(world.web.sessions, s => s.csrf_token == csrf_token)
 }
 
-// GET /api/settings/services, the kvm row: every viewer the controller is serving, ours included.
+// The KVM viewer count: every viewer the controller is serving, ours included.
 fn bmc_kvm_viewer_count(world: BmcWorld) -> Int {
   world.web.other_kvm_viewers + match world.web.kvm {
     BmcKvmStreaming { session: _ } => 1
@@ -216,12 +216,11 @@ type BmcKvmConnectStep {
 
 // The /kvm WebSocket for a session this world holds. A token naming no session is refused.
 //
-// OCCUPIED SEAT, A MODELING DECISION (not a captured 0.32 fact): while a stream is held -- by this
+// OCCUPIED SEAT, A MODELING DECISION (not a captured fact): while a stream is held -- by this
 // world's client or by another viewer (other_kvm_viewers) -- a further connect is REFUSED, never
-// allowed to take the stream over. The 0.32 UI checks viewer_count before it opens viewer.html and
-// reports "only one KVM session is allowed", but a read of viewer_count does not exclude a competing
-// connect arriving after it, so the model answers the connect itself. A captured multi-viewer answer
-// from the controller replaces this decision.
+// allowed to take the stream over. A read of the viewer count does not exclude a competing connect
+// arriving after it, so the model answers the connect itself. A captured multi-viewer answer from a
+// controller replaces this decision.
 fn bmc_kvm_connect(world: BmcWorld, csrf_token: String) -> BmcKvmConnectStep {
   let occupied = bmc_kvm_viewer_count(world: world) > 0
   match bmc_web_session_of_token(world: world, csrf_token: csrf_token).first() {

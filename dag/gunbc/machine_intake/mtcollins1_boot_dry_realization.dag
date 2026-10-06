@@ -32,12 +32,6 @@ import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { millisecond }
 import v2.std.operation_argv { InputText, InputTextList }
-import gunbc.machine_intake_megarac_kvm_still {
-  KvmInstant, KvmJournalEvent, KvmJournalRendered, KvmJournalRenderRefused, kvm_journal_line,
-  KvmJournalConnectionRequested, KvmJournalConnectionOpen, KvmJournalEstablished, KvmJournalStill,
-  KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped,
-  KvmJournalRefused, KvmNoFrame,
-}
 
 // THE DRY REALIZATION OF ONE mtcollins1 BOOT ATTEMPT'S WHOLE EFFECT DEMAND. The scenario world
 // composes the one BMC model with what the worker running the attempt has around it: its filesystem
@@ -57,7 +51,6 @@ type MtCollins1BootWorld {
   worker: ModeledWorker
   console: ModeledHostConsole
   media: MegaRacMediaWorld
-  screen: ModeledKvmViewer
 }
 
 // THE WORKER'S SSH AGENT: whether it holds the fleet automation key. Its listing follows
@@ -115,23 +108,23 @@ type ModeledHostConsole {
 }
 
 fn with_bmc(w: MtCollins1BootWorld, bmc: BmcWorld) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
+  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
 }
 
 fn with_fs(w: MtCollins1BootWorld, fs: ModeledFilesystem) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
 }
 
 fn with_worker(w: MtCollins1BootWorld, worker: ModeledWorker) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console, media: w.media, screen: w.screen }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console, media: w.media }
 }
 
 fn with_console(w: MtCollins1BootWorld, console: ModeledHostConsole) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console, media: w.media, screen: w.screen }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console, media: w.media }
 }
 
 fn with_media(w: MtCollins1BootWorld, media: MegaRacMediaWorld) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: media, screen: w.screen }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: media }
 }
 
 fn appended(fs: ModeledFilesystem, path: String, text: String) -> ModeledFilesystem {
@@ -247,7 +240,7 @@ fn with_notice_watcher(w: MtCollins1BootWorld, capture_path: String, token: Stri
   let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: second(count: 0)), comm: "bash", cmdline: "bash -c gunbc-sol-notice-watch", capture_path: capture_path, diagnostic_path: "", alive: true }
   let fs = fs_with_file(fs: fs_with_file(fs: w.fs, path: concat(capture_path, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n")), path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path), content: process_identity(p: p))
   let env = list_append(w.environment, ModeledVariable { name: mtcollins1_sol_notice_token_env as String, value: token })
-  started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }, p: p, fs: fs)
+  started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }, p: p, fs: fs)
 }
 
 fn exited_step<S>(state: S, stdout: String, exit_code: Int) -> OperationStep<S> {
@@ -399,262 +392,7 @@ fn boot_world_idle(w: MtCollins1BootWorld) -> Bool {
 
 fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
   let stepped = if boot_world_idle(w: w) { w } else { with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now)) }
-  kvm_observers_advance(w: console_advance(w: collectors_follow_session(w: stepped), now: now), now: now)
-}
-
-// THE BMC KVM VIEWER AND THE OBSERVER HELD AGAINST IT (gunbc#12492: the boot's handoff is admitted
-// only while the observer it started is established). The observer is the process
-// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_megarac_kvm_still
-// kvm_observer_launch_in's node command. The model starts it the way the launch does -- a live process
-// in /proc, its "<pid> <start>" record at the pid path -- and writes its journal ONLY through
-// kvm_journal_line, the writer the production parser is the inverse of, so the dry observer cannot
-// speak a grammar the boot does not read. A line kvm_journal_line refuses is a harness fault, never a
-// line written anyway.
-//
-// What it answers, as the observer script does once the viewer's /kvm socket delivers a frame: the
-// connection lines, then established with the quoted host:port the base URL names, the viewer
-// session, the attempt and the generation; then, while it lives, one still per trigger file (the
-// script's 'trigger:'+name reason) and, on the stop file, stop-requested, the session release, the
-// browser close and stopped, after which the process has exited. It takes no periodic still: the
-// boot's attempt ends well inside megarac_kvm_observer_cadence's first period in every scenario
-// the matrix runs, and a longer one reports the gap through kvm_still_gaps as the real journal would.
-//
-// A still's bytes are one fixed modeled frame, and its digest is supplied beside it (the precedent is
-// gunbc.remote_host_model ModeledRemoteFile.sha256): sha256sum answers that digest for exactly those
-// bytes, reports a missing file as sha256sum does, and refuses as a harness fault for any other bytes
-// rather than inventing a digest.
-type ModeledKvmViewer {
-  session: String
-  still_bytes: String
-  still_sha256: String
-  observers: List<ModeledKvmObserver>
-}
-
-type ModeledKvmObserver {
-  pid: Int
-  dir: String
-  seq: Int
-  seen_files: Int
-}
-
-// printf '%s' '<modeled kvm still jpeg>' | sha256sum
-fn healthy_kvm_viewer() -> ModeledKvmViewer {
-  ModeledKvmViewer { session: "7", still_bytes: "<modeled kvm still jpeg>", still_sha256: "550277e71ddf7d978137c4bd140a9b5cfda25500b365a7375fb91db8790f584c", observers: [] }
-}
-
-fn with_screen(w: MtCollins1BootWorld, screen: ModeledKvmViewer) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: screen }
-}
-
-data kvm_observer_generation: String = "1"
-
-// The observer script writes Date.now() and its toISOString(); the model's wall clock is whole seconds.
-fn kvm_instant(w: MtCollins1BootWorld, now: Second) -> KvmInstant? {
-  let unix = wall_clock_unix(clock: w.clock, now: now)
-  match checked_int_to_nat(n: unix * 1000) {
-    Present { value: ms } => Present { value: KvmInstant { since_epoch: millisecond(count: ms), iso: concat(join(split(s: iso8601_utc_text(unix: unix), delimiter: "Z"), ""), ".000Z") } }
-    Absent => none
-  }
-}
-
-// The journal lines for these events, or the first event kvm_journal_line refuses to write.
-type KvmModeledLines
-  = KvmModeledRendered { text: String }
-  | KvmModeledRefused { event_word: String, would_write: String }
-
-fn kvm_lines(events: List<KvmJournalEvent>) -> KvmModeledLines {
-  fold(events, init: KvmModeledRendered { text: "" }, f: fn(acc, e) {
-    match acc {
-      KvmModeledRendered { text: t } => match kvm_journal_line(event: e) {
-        KvmJournalRendered { line: l } => KvmModeledRendered { text: concat(t, concat(l, "\n")) }
-        KvmJournalRenderRefused { event_word: word, would_write: line } => KvmModeledRefused { event_word: word, would_write: line }
-      }
-      refused => refused
-    }
-  })
-}
-
-fn operation_input_list(call: OperationCall, name: String) -> List<String>? {
-  fold(call.invocation.bindings, init: none, f: fn(acc, b) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => if b.name == name { match b.value { InputTextList { items: xs } => Present { value: xs } InputText { text: _ } => none } } else { none }
-    }
-  })
-}
-
-// kvm_observer_launch_in's operands end the node command: base URL, user, credential path, dir,
-// attempt, cadence, frame wait, periodic limit, playwright module, viewer feature-list path.
-data kvm_observer_operand_count: Int = 10
-
-// THE VIEWER READS ITS FEATURE LIST UNGUARDED (KVM probe run 36788605665): the healthy viewer reaches
-// established only when the feature-list operand names a file the launch wrote; without one the vendor's
-// viewer throws in its KVM view's initialize() and never opens /kvm, which the observer journals as a
-// refusal for want of a frame.
-data kvm_observer_features_operand: Int = 9
-
-fn kvm_operand(command: List<String>, i: Int) -> String {
-  match command.skip(n: count(command) - kvm_observer_operand_count + i).first() { Present { value: v } => v Absent => "" }
-}
-
-fn url_host(base_url: String) -> String {
-  match split(s: base_url, delimiter: "://").skip(n: 1).first() {
-    Present { value: rest } => match split(s: rest, delimiter: "/").first() { Present { value: h } => h Absent => "" }
-    Absent => ""
-  }
-}
-
-// gunbc.owned_process LaunchOwned: starts the command detached, publishes "<pid> <starttime>" to the
-// pid path, and exits 0. The observer it starts reaches established at once in the healthy viewer.
-fn owned_launch_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  match operation_input_text(invocation: call.invocation, name: "pid_path") {
-    Absent => OperationHarnessFault { reason: "LaunchOwned was dispatched without a pid path" as NonEmptyStr }
-    Present { value: pid_path } => match operation_input_list(call: call, name: "command") {
-      Absent => OperationHarnessFault { reason: "LaunchOwned was dispatched without a command" as NonEmptyStr }
-      Present { value: command } =>
-        if count(command) < kvm_observer_operand_count { OperationHarnessFault { reason: "LaunchOwned's command is not the KVM observer's; the dry worker models no other owned process" as NonEmptyStr } }
-        else { match kvm_instant(w: w, now: call.now) {
-          Absent => OperationHarnessFault { reason: "the modeled wall clock reads before the epoch" as NonEmptyStr }
-          Present { value: at } => {
-            let dir = kvm_operand(command: command, i: 3)
-            let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: call.now), comm: "node", cmdline: join(command, " "), capture_path: "", diagnostic_path: "", alive: true }
-            let features = kvm_operand(command: command, i: kvm_observer_features_operand)
-            let seeded = features != "" && match fs_file(fs: w.fs, path: features) { Present { value: _ } => true  Absent => false }
-            let journal = if seeded {
-              kvm_lines(events: [
-                KvmJournalConnectionRequested { at: at },
-                KvmJournalConnectionOpen { at: at, gen: kvm_observer_generation },
-                KvmJournalEstablished { at: at, host: concat("\"", concat(url_host(base_url: kvm_operand(command: command, i: 0)), "\"")), session: w.screen.session, attempt: kvm_operand(command: command, i: 4), gen: kvm_observer_generation },
-              ])
-            } else {
-              kvm_lines(events: [KvmJournalRefused { at: at, refusal: KvmNoFrame { detail: "\"the viewer was opened without its feature list\"" } }])
-            }
-            match journal {
-              KvmModeledRefused { event_word: word, would_write: line } => OperationHarnessFault { reason: concat("kvm_journal_line refused the modeled ", concat(word, concat(" line: ", line))) as NonEmptyStr }
-              KvmModeledRendered { text: t } => {
-                let fs = appended(fs: fs_write(fs: w.fs, path: pid_path, content: process_identity(p: p), create_new: false).fs, path: concat(dir, "/journal"), text: t)
-                let screen = ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: list_append(w.screen.observers, ModeledKvmObserver { pid: p.pid, dir: dir, seq: 0, seen_files: 0 }) }
-                exited_step(state: with_screen(w: started(w: w, p: p, fs: fs), screen: screen), stdout: "", exit_code: 0)
-              }
-            }
-          }
-        } }
-    }
-  }
-}
-
-fn kvm_observer_alive(w: MtCollins1BootWorld, o: ModeledKvmObserver) -> Bool {
-  !all(w.worker.processes, p => !(p.alive && p.pid == o.pid))
-}
-
-// THE OBSERVER'S LOOP, one pass per advance, in the script's order: the stop file ends it; otherwise
-// each trigger file, in name order, is consumed and answered with a still.
-fn kvm_observers_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
-  if count(w.screen.observers) == 0 { w } else {
-    fold(w.screen.observers, init: w, f: fn(acc, o) { if kvm_observer_alive(w: acc, o: o) { kvm_observer_pass(w: acc, o: o, now: now) } else { acc } })
-  }
-}
-
-// A stop request and a trigger each arrive as a NEW file in the observer's directory, so a pass whose
-// filesystem holds the same number of files as the last pass looked at has nothing to answer: nearly
-// every dispatch of a boot is that pass, and it neither scans the files nor takes an instant. A pass
-// that does look records the count it left behind.
-fn kvm_observer_pass(w: MtCollins1BootWorld, o: ModeledKvmObserver, now: Second) -> MtCollins1BootWorld {
-  let n = count(w.fs.files)
-  if n == o.seen_files { w } else {
-    let answered = kvm_observer_look(w: w, o: o, now: now)
-    with_kvm_seen(w: answered, pid: o.pid, seen: count(answered.fs.files))
-  }
-}
-
-fn with_kvm_seen(w: MtCollins1BootWorld, pid: Int, seen: Int) -> MtCollins1BootWorld {
-  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: o.seq, seen_files: seen } } else { o }) })
-}
-
-// The instant is taken only when a line is written.
-fn kvm_observer_look(w: MtCollins1BootWorld, o: ModeledKvmObserver, now: Second) -> MtCollins1BootWorld {
-  match fs_file(fs: w.fs, path: concat(o.dir, "/stop")) {
-    Present { value: _ } => match kvm_instant(w: w, now: now) {
-      Present { value: at } => kvm_observer_stopped(w: w, o: o, at: at)
-      Absent => w
-    }
-    Absent => {
-      let triggers = kvm_trigger_files(w: w, o: o)
-      if count(triggers) == 0 { w } else {
-        match kvm_instant(w: w, now: now) {
-          Present { value: at } => kvm_observer_answer_triggers(w: w, o: o, at: at, triggers: triggers)
-          Absent => w
-        }
-      }
-    }
-  }
-}
-
-fn kvm_journal_appended(w: MtCollins1BootWorld, o: ModeledKvmObserver, events: List<KvmJournalEvent>) -> MtCollins1BootWorld {
-  match kvm_lines(events: events) {
-    KvmModeledRendered { text: t } => with_fs(w: w, fs: appended(fs: w.fs, path: concat(o.dir, "/journal"), text: t))
-    KvmModeledRefused { event_word: _, would_write: _ } => w
-  }
-}
-
-fn kvm_observer_stopped(w: MtCollins1BootWorld, o: ModeledKvmObserver, at: KvmInstant) -> MtCollins1BootWorld {
-  let journalled = kvm_journal_appended(w: w, o: o, events: [
-    KvmJournalStopRequested { at: at, by: "stop-file" },
-    KvmJournalSessionRelease { at: at, result: "released" },
-    KvmJournalBrowserClose { at: at, result: "closed" },
-    KvmJournalStopped { at: at, session: "released", browser: "closed" },
-  ])
-  exit_processes(w: journalled, ending: fn(p) { p.pid == o.pid })
-}
-
-fn kvm_trigger_files(w: MtCollins1BootWorld, o: ModeledKvmObserver) -> List<String> {
-  map(filter(w.fs.files, f => starts_with(s: f.path, prefix: concat(o.dir, "/trigger-"))), f => f.path).sort_by(p => p)
-}
-
-fn kvm_observer_answer_triggers(w: MtCollins1BootWorld, o: ModeledKvmObserver, at: KvmInstant, triggers: List<String>) -> MtCollins1BootWorld {
-  if count(triggers) == 0 { w } else {
-    let answered = fold(triggers, init: w, f: fn(acc, path) {
-      let seq = kvm_observer_seq(w: acc, pid: o.pid) + 1
-      let file = concat("still-", concat(to_string(seq), ".jpg"))
-      let name = join(split(s: path, delimiter: concat(o.dir, "/trigger-")), "")
-      let consumed = with_fs(w: acc, fs: fs_with_file(fs: fs_without_file(fs: acc.fs, path: path), path: concat(o.dir, concat("/", file)), content: acc.screen.still_bytes))
-      with_kvm_seq(w: kvm_journal_appended(w: consumed, o: o, events: [KvmJournalStill { at: at, seq: to_string(seq), reason: concat("trigger:", name), file: file, gen: kvm_observer_generation }]), pid: o.pid, seq: seq)
-    })
-    answered
-  }
-}
-
-fn kvm_observer_seq(w: MtCollins1BootWorld, pid: Int) -> Int {
-  fold(w.screen.observers, init: 0, f: fn(acc, o) { if o.pid == pid { o.seq } else { acc } })
-}
-
-fn with_kvm_seq(w: MtCollins1BootWorld, pid: Int, seq: Int) -> MtCollins1BootWorld {
-  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: seq, seen_files: o.seen_files } } else { o }) })
-}
-
-data owned_process_launch_operation: OperationRef = OperationRef {
-  path: "dag/gunbc/owned_process.dag",
-  service: "gunbc.owned_process.launch",
-  operation: "LaunchOwned",
-}
-
-data sha256sum_digest_file_operation: OperationRef = OperationRef {
-  path: "dag/extdeps/tools/sha256sum.dag",
-  service: "sha256sum.Sha256",
-  operation: "DigestFile",
-}
-
-// sha256sum(1): "<digest>  <path>" and exit 0; a missing file is "No such file or directory", exit 1.
-fn digest_file_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  match operation_input_text(invocation: call.invocation, name: "path") {
-    Absent => OperationHarnessFault { reason: "DigestFile was dispatched without a path" as NonEmptyStr }
-    Present { value: path } => match fs_file(fs: w.fs, path: path) {
-      Absent => OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: concat("sha256sum: ", concat(path, ": No such file or directory\n")) } }, state: w, elapsed: second(count: 0) }
-      Present { value: f } =>
-        if f.content == w.screen.still_bytes { exited_step(state: w, stdout: concat(w.screen.still_sha256, concat("  ", concat(path, "\n"))), exit_code: 0) }
-        else { OperationHarnessFault { reason: concat("no digest is modeled for the bytes of ", path) as NonEmptyStr } }
-    }
-  }
+  console_advance(w: collectors_follow_session(w: stepped), now: now)
 }
 
 data sol_hold_activate_held_operation: OperationRef = OperationRef {
@@ -712,8 +450,6 @@ fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1Boo
     OperationBinding { at: sol_hold_release_held_operation, handler: sol_release_held_handler },
     OperationBinding { at: linux_procfs_read_uptime_operation, handler: uptime_handler },
     OperationBinding { at: os_hostname_read_short_operation, handler: hostname_handler },
-    OperationBinding { at: owned_process_launch_operation, handler: owned_launch_handler },
-    OperationBinding { at: sha256sum_digest_file_operation, handler: digest_file_handler },
   ]
   OperationRealization {
     identity: identity,

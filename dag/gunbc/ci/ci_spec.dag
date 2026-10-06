@@ -1030,11 +1030,6 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
-data gunbc_ci_mtcollins1_ui_bundle_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_ui_bundle_observe.dag",
-  function: "mtcollins1_ui_bundle_observe_wet",
-}
-
 data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
   function: "mtcollins1_kvm_observer_observe_wet",
@@ -1391,7 +1386,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
-    gunbc_ci_mtcollins1_ui_bundle_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
@@ -1988,10 +1982,6 @@ fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) ->
     gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem), set_e: false), "\n",
     gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
   ], "")
-}
-
-fn gunbc_ci_mtcollins1_ui_bundle_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-bundle", target: gunbc_ci_mtcollins1_ui_bundle_observe_target)
 }
 
 fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {

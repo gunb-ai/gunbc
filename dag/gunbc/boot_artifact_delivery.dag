@@ -614,7 +614,7 @@ fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDelive
 // MegaRAC's proprietary remote media: the OEM capability, the OEM surface, AND
 // the route fact its start-media contract calls required. A profile whose
 // MegaRAC route leaves image_redirection Unset cannot plan this arm — that is
-// the executed refusal (opaque codes 13410/13460) modeled as a standing.
+// the executed refusal modeled as a standing.
 fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   if release_row_has_capability(row: ctx.capability_row, cap: CapabilityOemRemoteMedia) == false {
     CandidateIneligible { cause: CandidateCapabilityAbsent }

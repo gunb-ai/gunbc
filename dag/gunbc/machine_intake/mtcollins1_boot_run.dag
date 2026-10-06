@@ -119,7 +119,7 @@ import gunbc.owned_process { owned_process_record, OwnedRecorded, OwnedUnrecorde
 import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet, RunnerBrowserToolchainResolution }
 import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
-  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
+  kvm_observer_standing_now, kvm_standing_text,
   KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
   KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverFailed, KvmObserverPending,
   megarac_kvm_observer_start, megarac_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
@@ -1649,6 +1649,24 @@ fn mtcollins1_sol_supervised(stage: SolLossStage, pid_path: String, capture_path
   }
 }
 
+// THE HANDOFF'S REQUIRED OBSERVER IS THE SOL COLLECTOR OF THIS RUN (gunbc.rung_drop
+// handoff_observer_is_sol_not_kvm_viewer, operator decision msg_bb46c20f over gunbc#12492). The handoff is
+// admitted only over the SolHeldAt that mtcollins1_sol_supervised returned for THIS attempt's collector
+// (its pid and capture paths are the attempt's), and with no SOL observation the handoff refuses: this is
+// a typed admission over a run-bound observation, never an open gate. The KVM viewer that #12492 also
+// required is not started in public (megarac_kvm_observer_start answers NotStarted), so it is no longer
+// a precondition.
+type SolHandoffAdmission
+  = SolHandoffAdmitted { held_at: NonEmptyStr }
+  | SolHandoffRefused { cause: String }
+
+fn sol_handoff_admission(sol: SolSupervision) -> SolHandoffAdmission {
+  match sol {
+    SolHeldAt { at: a } => SolHandoffAdmitted { held_at: a }
+    SolLostAt { outcome: o } => SolHandoffRefused { cause: sol_supervision_refusal_reason(outcome: o) as String }
+  }
+}
+
 // A supervision refusal's reason, as the media record's non-empty reason.
 fn sol_supervision_refusal_reason(outcome: ProcessExit) -> NonEmptyStr {
   match outcome {
@@ -1880,12 +1898,8 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 // the boot parameter 5 read and before the attach, so the phase clock counts its bounded wait
 // (megarac_kvm_observer_establish_wait) inside media_attach. Bound to the BMC host, the web session
 // it logs in with (the established line carries its id) and the attempt. The toolchain is resolved,
-// never assumed (gunbc.runner_browser_toolchain). FOR THIS DIAGNOSTIC PROFILE THE OBSERVER IS
-// REQUIRED: mtcollins1_boot_actuate re-reads it through kvm_handoff_admission immediately before the
-// handoff, and issues no handoff unless it is established for this BMC host and this attempt -- a
-// runner without the browser toolchain, a busy viewer seat, a mismatched subject or a lost connection
-// all stop the boot there, with that standing as the cause. It gates on the witness existing, never on
-// what the screen shows.
+// never assumed (gunbc.runner_browser_toolchain). // NOT REQUIRED IN PUBLIC: no public KVM client exists, so this answers NotStarted with its typed reason
+// and the record carries it; the handoff's required observer is the SOL collector (sol_handoff_admission).
 fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
   match admit_megarac_host(host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
     MegaRacHostRefused { cause: c } => KvmObserverNotStarted { reason: megarac_host_refusal_text(cause: c) }
@@ -2379,13 +2393,13 @@ fn mtcollins1_boot_actuate(
         MediaGateWithheld { reason: why } => exit_failure(reason: why as String)
       }
       let attach_verified = proc_uptime_read()
-      let gated = match kvm_handoff_admission(start: screen) {
-        KvmHandoffRefused { cause: why } => MediaGatedHandoff {
-          result: boot_handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: the required KVM observer was not established: ", why))),
-          media: HandoffMediaNotReached { reason: concat("the required KVM observer was not established: ", why) as NonEmptyStr },
+      let gated = match sol_handoff_admission(sol: before_attach) {
+        SolHandoffRefused { cause: why } => MediaGatedHandoff {
+          result: boot_handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: no SOL observation of this run holds: ", why))),
+          media: HandoffMediaNotReached { reason: concat("no SOL observation of this run holds: ", why) as NonEmptyStr },
           live_at: attach_live_at,
         }
-        KvmHandoffAdmitted { session: _ } => mtcollins1_boot_handoff_when_media_ready(
+        SolHandoffAdmitted { held_at: _ } => mtcollins1_boot_handoff_when_media_ready(
           proof: proof,
           media: media,
           subject: subject,

@@ -2,6 +2,7 @@ module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
 import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { exit_failure }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
@@ -21,7 +22,7 @@ import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage
 import gunbc.machine_intake_mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
   mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
-  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process, healthy_kvm_viewer,
+  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
@@ -30,15 +31,16 @@ import v2.std.operation_realization {
 import gunbc.machine_intake_mtcollins1_boot_run {
   MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
+  SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
 }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, Mtcollins1CensusImageDerived }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
 import gunbc.runner_browser_toolchain {
   RunnerBrowserToolchainResolution, RunnerBrowserToolchainLocation, RunnerBrowserToolchainStanding,
-  BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+  BrowserToolchainReady, BrowserToolchainUnresolved,
   BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission,
-  TreeAdmission, TreeAdmitted, TreeAbsent, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
+  TreeAdmission, TreeAdmitted, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
 import gunbc.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
@@ -77,7 +79,6 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
   "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path",
-  "gunbc.owned_process.launch", "sha256sum.Sha256",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -100,11 +101,7 @@ fn matrix_frame_over(realization: OperationRealization<MtCollins1BootWorld>) -> 
 // tree against its pin, the host libraries, the versions and a launch probe -- which is a different
 // subject with its own witnesses. The matrix supplies each resolution arm the boot can meet, built from
 // the production location and probe values, and the inner entry calls it where the observer starts.
-// PAIRING (DESIGN s3): the real resolution is executed by
-// test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness
-// a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound, whose rig calls
-// runner_browser_toolchain_here_wet on the floor pool and returns false on every arm but Ready, so
-// deleting that integration turns it red; it also launches the real observer over the resolved location.
+// The real resolution is a different subject, witnessed where the wet entry runs it.
 fn srv1_toolchain_location() -> RunnerBrowserToolchainLocation? {
   match runner_browser_toolchain_host_admission(host: "srv1" as NonEmptyStr) {
     BrowserToolchainHostAdmitted { deploy: _, location: loc } => Present { value: loc }
@@ -130,17 +127,6 @@ fn ready_toolchain() -> RunnerBrowserToolchainResolution {
     Present { value: loc } => BrowserToolchainReady { location: loc, standing: toolchain_standing(loc: loc, tree: TreeAdmitted) }
     Absent => BrowserToolchainUnresolved { cause: "matrix: srv1 is not admitted to the browser-toolchain pool" }
   }
-}
-
-fn not_ready_toolchain() -> RunnerBrowserToolchainResolution {
-  match srv1_toolchain_location() {
-    Present { value: loc } => BrowserToolchainNotReady { standing: toolchain_standing(loc: loc, tree: TreeAbsent { tree: loc.root }) }
-    Absent => BrowserToolchainUnresolved { cause: "matrix: srv1 is not admitted to the browser-toolchain pool" }
-  }
-}
-
-fn unresolved_toolchain() -> RunnerBrowserToolchainResolution {
-  BrowserToolchainUnresolved { cause: "runner_browser_toolchain: hostname -s returned empty output" }
 }
 
 fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
@@ -216,7 +202,6 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400 },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
     media: healthy_media(),
-    screen: healthy_kvm_viewer(),
   })
 }
 
@@ -336,39 +321,45 @@ test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
   }
 }
 
-// THE RUNNER'S BROWSER TOOLCHAIN IS NOT READY, OR CANNOT BE RESOLVED (operator-accepted ruling A: the
-// matrix supplies the resolution). The observer is REQUIRED for the handoff, so neither arm starts a
-// viewer with a toolchain it could not vouch for: no observer directory is made, no process is launched,
-// and the handoff refuses with the toolchain's own standing as its cause -- before any boot override or
-// power action.
-fn run_attempt_with_toolchain(world: MtCollins1BootWorld, toolchain: RunnerBrowserToolchainResolution) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
-  evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { boot_with_toolchain(toolchain: toolchain) })
+// THE HANDOFF REQUIRES A SOL OBSERVATION OF THIS RUN (rung drop handoff_observer_is_sol_not_kvm_viewer).
+// With no public KVM client the required observer is the SOL collector: a SOL session held elsewhere
+// leaves no SOL observation, and the attempt refuses before any media write or power action. The
+// CONTROL of the drop is the typed admission itself: SolHeldAt admits, SolLostAt refuses, and a mutant
+// that opens the gate (admits every supervision) is distinguished from the real one by the lost arm.
+fn gate_admits(a: SolHandoffAdmission) -> Bool {
+  match a {
+    SolHandoffAdmitted { held_at: _ } => true
+    SolHandoffRefused { cause: _ } => false
+  }
 }
 
-fn no_observer_and_no_power_action(route: List<DispatchRecord>) -> Bool {
-  count_named(route: route, name: "shell.Mkdir.Parents") == 0
-    && count_named(route: route, name: "gunbc.owned_process.launch.LaunchOwned") == 0
-    && reached_no_power_action(route: route)
+fn open_gate_mutant(sol: SolSupervision) -> SolHandoffAdmission {
+  SolHandoffAdmitted { held_at: "mutant" as NonEmptyStr }
 }
 
-test fn a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() -> Bool {
-  match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: not_ready_toolchain()) {
+fn lost_sol() -> SolSupervision {
+  SolLostAt { outcome: exit_failure(reason: "no SOL observation holds") }
+}
+
+test fn the_handoff_refuses_when_no_sol_observation_holds() -> Bool {
+  let w = world_with_console(lines: [])
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_sol_session(world: w.bmc, open: true))) {
     WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
-        && string_contains(s: outcome_reason(a: value), pattern: "the runner browser toolchain is not ready")
-        && no_observer_and_no_power_action(route: route)
+      string_contains(s: outcome_reason(a: value), pattern: "SOL collector not established")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
     _ => false
   }
 }
 
-test fn an_unresolved_toolchain_starts_no_observer_and_no_power_action() -> Bool {
-  match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: unresolved_toolchain()) {
-    WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
-        && string_contains(s: outcome_reason(a: value), pattern: "the runner browser toolchain is unresolved")
-        && no_observer_and_no_power_action(route: route)
-    _ => false
-  }
+test fn the_sol_handoff_admission_refuses_a_lost_observation_and_admits_a_held_one() -> Bool {
+  let held = SolHeldAt { at: "pid 1" as NonEmptyStr }
+  gate_admits(a: sol_handoff_admission(sol: held))
+    && !gate_admits(a: sol_handoff_admission(sol: lost_sol()))
+}
+
+test fn a_gate_that_opens_for_a_lost_observation_is_distinguished_from_the_real_gate() -> Bool {
+  gate_admits(a: open_gate_mutant(sol: lost_sol())) && !gate_admits(a: sol_handoff_admission(sol: lost_sol()))
 }
 
 // THE SAME UNIT HELD BY ANOTHER RUN. Before this attempt starts, a different run's boot holds the
@@ -636,7 +627,7 @@ fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld
 fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
   let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
   let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
 }
 
 // THE NEXT ATTEMPT RECOVERS THE DEAD RUN'S HOLD (finding 2, repaired in #12555). The interrupted run
@@ -717,7 +708,7 @@ fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1Boo
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
     clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
-    worker: w.worker, console: w.console, media: w.media, screen: w.screen,
+    worker: w.worker, console: w.console, media: w.media,
   }
 }
 
@@ -755,10 +746,8 @@ test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Boo
 // ─── CD ERROR CODE ────────────────────────────────────────────────────────────────────────────────
 // cd_error_code on the general route: 16 is the value the Mt. Collins MegaRAC answered on 2026-09-27
 // with nothing presented (test.claim.machine_intake.megarac_media_convergence_witness_test
-// mtcollins1_media_general_2026_09_27). Its meaning is the vendor's: extdeps.bmc.megarac
-// megarac_rmedia_status_0_32 names it "Device Ejected", and the vendor UI reads the code only while the
-// row is stopped, so beside a Started row it is a latched last-stop reason, recorded and never
-// withheld on. Whether a stop clears it is not observed, so the stale-image cases run both arms of the
+// mtcollins1_media_general_2026_09_27). Its grounded meaning is device ejected (CdErrorDeviceEjected, the executed receipt), a latched
+// last-stop reason beside a Started row, recorded and never withheld on. Whether a stop clears it is not observed, so the stale-image cases run both arms of the
 // model's parameter.
 fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
@@ -902,7 +891,7 @@ fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> Mt
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs,
     environment: concat(w.environment, [ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_RECEIPT", value: path }, ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_NONCE", value: nonce }]),
-    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen,
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media,
   }
 }
 

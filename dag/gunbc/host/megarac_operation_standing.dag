@@ -74,28 +74,6 @@ type MegaRacFirmwareTransition sole_constructor {
   record: DeclarationRef
 }
 
-// AN OPERATION'S ROUTE RECOVERED FROM AN ARTIFACT THE CONTROLLER SERVES, NOT EXECUTED. The KVM canvas
-// still's route (extdeps.bmc.megarac MegaRacScreenCaptureRoute) was read from the web UI bundle the
-// controller serves to any browser at a given build. That is an OBSERVATION OF WHAT THE DEVICE SERVES --
-// the same standing as gunbc.machine_intake_megarac_served_ui_catalog_observation and
-// gunbc.machine_intake_megarac_ui_features -- not a disassembly of firmware and not a proprietary-notice
-// document, and it is distinct from O1a's cited-source arm, which cites an upstream-published source.
-// WHAT IT DOES NOT ESTABLISH: that the operation was ever executed. It grounds the route at the identity
-// that served it, and nothing that requires an executed standing admits on it
-// (megarac_operation_executed_at, and the current-build gate, refuse this arm).
-type ServedArtifactCapture
-  = ServedArtifactCommitted { evidence: EvidenceRef }
-  | ServedArtifactDigestOnly { digest: ContentHash }
-
-type MegaRacOperationServedArtifactRecovery sole_constructor {
-  operation: MegaRacOperation
-  identity: BmcObservedIdentity
-  served_by: BmcControllerEndpoint
-  artifact: NonEmptyStr
-  capture: ServedArtifactCapture
-  read_at: EpochMs
-}
-
 // THE WHOLE EVIDENCE POPULATION, SEALED. An operation's grounding and a controller's current build are
 // conclusions over the COMPLETE population: drop a recorded transition from otherwise genuine rows and a
 // superseded build reads as current. So the population is sole_constructor too, and its one mint is
@@ -105,14 +83,12 @@ type MegaRacOperationEvidence sole_constructor {
   readings: List<MegaRacBuildReading>
   receipts: List<MegaRacOperationReceipt>
   transitions: List<MegaRacFirmwareTransition>
-  recoveries: List<MegaRacOperationServedArtifactRecovery>
 }
 
 fn megarac_operation_evidence_of(
   readings: List<MegaRacBuildReading>,
   receipts: List<MegaRacOperationReceipt>,
   transitions: List<MegaRacFirmwareTransition>,
-  recoveries: List<MegaRacOperationServedArtifactRecovery>,
 ) -> MegaRacOperationEvidence
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
@@ -122,7 +98,7 @@ fn megarac_operation_evidence_of(
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
   ]
 {
-  MegaRacOperationEvidence { readings: readings, receipts: receipts, transitions: transitions, recoveries: recoveries }
+  MegaRacOperationEvidence { readings: readings, receipts: receipts, transitions: transitions }
 }
 
 fn megarac_build_reading(endpoint: BmcControllerEndpoint, identity: BmcObservedIdentity, evidence: EvidenceRef, observed_at: EpochMs) -> MegaRacBuildReading
@@ -156,14 +132,6 @@ fn megarac_firmware_transition(endpoint: BmcControllerEndpoint, from: BmcFirmwar
   ]
 {
   MegaRacFirmwareTransition { endpoint: endpoint, from: from, to: to, not_before: not_before, not_after: not_after, record: record }
-}
-
-fn megarac_operation_served_artifact_recovery(operation: MegaRacOperation, identity: BmcObservedIdentity, served_by: BmcControllerEndpoint, artifact: NonEmptyStr, capture: ServedArtifactCapture, read_at: EpochMs) -> MegaRacOperationServedArtifactRecovery
-  admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
-  ]
-{
-  MegaRacOperationServedArtifactRecovery { operation: operation, identity: identity, served_by: served_by, artifact: artifact, capture: capture, read_at: read_at }
 }
 
 // ── THE JOIN ─────────────────────────────────────────────────────────────────────────────────────
@@ -200,7 +168,6 @@ fn receipt_joins_reading(evidence: MegaRacOperationEvidence, receipt: MegaRacOpe
 
 type MegaRacOperationGrounding
   = OperationExecutedAtBuild { receipt: MegaRacOperationReceipt, build: MegaRacBuildReading }
-  | OperationRecoveredFromServedArtifact { recovery: MegaRacOperationServedArtifactRecovery }
 
 // ONE OPERATION GROUNDED AT ONE OBSERVED CONTROLLER IDENTITY. sole_constructor and minted only by the
 // join below, so a grounding cannot be authored beside the evidence that would have to produce it.
@@ -211,19 +178,14 @@ type MegaRacOperationStanding sole_constructor {
 }
 
 fn megarac_operation_standings(evidence: MegaRacOperationEvidence) -> List<MegaRacOperationStanding> {
-  concat(
-    flat_map(evidence.receipts, rc =>
-      flat_map(filter(evidence.readings, rd => receipt_joins_reading(evidence: evidence, receipt: rc, reading: rd)), rd =>
-        [MegaRacOperationStanding { operation: rc.operation, identity: rd.identity, grounding: OperationExecutedAtBuild { receipt: rc, build: rd } }])),
-    map(evidence.recoveries, rv =>
-      MegaRacOperationStanding { operation: rv.operation, identity: rv.identity, grounding: OperationRecoveredFromServedArtifact { recovery: rv } }),
-  )
+  flat_map(evidence.receipts, rc =>
+    flat_map(filter(evidence.readings, rd => receipt_joins_reading(evidence: evidence, receipt: rc, reading: rd)), rd =>
+      [MegaRacOperationStanding { operation: rc.operation, identity: rd.identity, grounding: OperationExecutedAtBuild { receipt: rc, build: rd } }]))
 }
 
 fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
   match g {
     OperationExecutedAtBuild { receipt: _, build: _ } => true
-    OperationRecoveredFromServedArtifact { recovery: _ } => false
   }
 }
 
@@ -239,7 +201,7 @@ fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: 
   standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: false)
 }
 
-// EXECUTED AT THIS IDENTITY, and only executed: a route recovered from a served artifact does not count.
+// EXECUTED AT THIS IDENTITY.
 fn megarac_operation_executed_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
   standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: true)
 }

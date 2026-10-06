@@ -156,9 +156,8 @@ fn megarac_media_advance(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaW
 }
 
 // A START THE CONTROLLER ACCEPTS AND THEN DROPS: stop_at_ready, when set, is the code the row falls back
-// to Stopped with at the instant it would have become Started -- the vendor UI's "Stopped - <name>"
-// (extdeps.bmc.megarac megarac_rmedia_status_0_32), e.g. 11 Mount Error for an image the share serves
-// but the controller cannot mount. The row reads cleared and cd_error_code carries the code.
+// to Stopped with at the instant it would have become Started -- e.g. a mount
+// error for an image the share serves but the controller cannot mount. The row reads cleared and cd_error_code carries the code.
 fn megarac_media_ready(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaWorld {
   match world.cd.ready_at {
     Absent => world
