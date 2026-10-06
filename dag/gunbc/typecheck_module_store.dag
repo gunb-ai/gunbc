@@ -6,13 +6,13 @@ import std.interface_summary { InterfaceHash }
 import std.measure { ByteSize }
 import std.materialization_provider {
   ArtifactRequest,
-  ArtifactPayload,
   TypecheckModuleRequest,
   compiler_identity_input,
   output_typed_module_interface,
   output_typecheck_diagnostics,
 }
 import std.materialization_object {
+  ArtifactPayload,
   store_commit_prepare,
   StoreCommitPrepared,
   StoreCommitNotPrepared,

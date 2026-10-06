@@ -6,8 +6,9 @@ import std.types { Bool, List, String, NonEmptyStr, EpochMs }
 import std.measure { measure_count }
 import std.content_hash { content_hash_atom }
 import std.interface_summary { InterfaceHash }
-import std.materialization_provider { output_typed_module_interface, ArtifactRequest, ArtifactPayload }
+import std.materialization_provider { output_typed_module_interface, ArtifactRequest }
 import std.materialization_object {
+  ArtifactPayload,
   store_lookup_is_hit,
   store_lookup_is_miss,
   store_lookup_payload,
@@ -90,7 +91,7 @@ fn object_path(root_path: String, req: ArtifactRequest) -> String {
 fn millis_or_zero(read: gunbc.clock_read.ObserverClockRead) -> EpochMs {
   match read {
     ObserverClockObserved { instant: i } => i.millis
-    ObserverClockUnreadable { detail: _ } => 0
+    ObserverClockUnreadable { detail: _ } => 0 as EpochMs
   }
 }
 
@@ -110,19 +111,19 @@ fn typecheck_module_store_cold_warm_receipt(capability: LocalStoreCapability, re
           let t2 = observer_clock_read()
           let warm = typecheck_module_serve(capability: capability, req: req)
           let t3 = observer_clock_read()
-          let cold_ms = if millis_or_zero(read: t2) < millis_or_zero(read: t0) { 0 } else { millis_or_zero(read: t2) - millis_or_zero(read: t0) }
-          let warm_ms = if millis_or_zero(read: t3) < millis_or_zero(read: t2) { 0 } else { millis_or_zero(read: t3) - millis_or_zero(read: t2) }
+          let cold_ms = if millis_or_zero(read: t2) < millis_or_zero(read: t0) { 0 as EpochMs } else { millis_or_zero(read: t2) - millis_or_zero(read: t0) }
+          let warm_ms = if millis_or_zero(read: t3) < millis_or_zero(read: t2) { 0 as EpochMs } else { millis_or_zero(read: t3) - millis_or_zero(read: t2) }
           TypecheckStoreColdWarmReceipt {
             cold_was_miss: true,
             warm_was_hit: match warm { TypecheckModuleHit { lookup: h } => store_lookup_is_hit(l: h) TypecheckModuleMiss { lookup: _ } => false TypecheckModuleRefused { lookup: _ } => false },
-            saved_millis: if cold_ms < warm_ms { 0 } else { cold_ms - warm_ms }
+            saved_millis: if cold_ms < warm_ms { 0 as EpochMs } else { cold_ms - warm_ms }
           }
         }
         std.materialization_object.StoreCommitRefused { key: _, refusal: _ } =>
-          TypecheckStoreColdWarmReceipt { cold_was_miss: true, warm_was_hit: false, saved_millis: 0 }
+          TypecheckStoreColdWarmReceipt { cold_was_miss: true, warm_was_hit: false, saved_millis: 0 as EpochMs }
       }
-    TypecheckModuleHit { lookup: _ } => TypecheckStoreColdWarmReceipt { cold_was_miss: false, warm_was_hit: false, saved_millis: 0 }
-    TypecheckModuleRefused { lookup: _ } => TypecheckStoreColdWarmReceipt { cold_was_miss: false, warm_was_hit: false, saved_millis: 0 }
+    TypecheckModuleHit { lookup: _ } => TypecheckStoreColdWarmReceipt { cold_was_miss: false, warm_was_hit: false, saved_millis: 0 as EpochMs }
+    TypecheckModuleRefused { lookup: _ } => TypecheckStoreColdWarmReceipt { cold_was_miss: false, warm_was_hit: false, saved_millis: 0 as EpochMs }
   }
 }
 
