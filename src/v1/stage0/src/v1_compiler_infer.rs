@@ -3067,6 +3067,16 @@ pub fn node_admits_list_literal(
             }))
 }
 
+pub fn empty_list_expected_element_is_unknown(
+    expected: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (!crate::v1_compiler_infer_types::node_is_element_collection(
+        expected.clone(),
+        source_indices.clone(),
+    ) && !conformance_ground_type(expected.clone(), source_indices.clone()))
+}
+
 pub fn declared_callable_list_element(
     elem_expected: Option<Rc<Node>>,
     elements: Rc<Vec<Rc<Node>>>,
@@ -14955,10 +14965,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 elem.clone(),
                                             )
                                         }
-                                        std::option::Option::None => unit_type(),
+                                        std::option::Option::None => {
+                                            type_variable_node("empty_list_element".to_string())
+                                        }
                                     }
                                 } else {
-                                    unit_type()
+                                    type_variable_node("empty_list_element".to_string())
                                 }
                             }
                             std::option::Option::None => {
@@ -14985,11 +14997,19 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 )]),
                             }
                         } else {
-                            Rc::new(vec![inference_error(
-                                "empty list literal: expected type is not a collection".to_string(),
-                                span.clone(),
-                                scope.module_name.clone(),
-                            )])
+                            if empty_list_expected_element_is_unknown(
+                                exp.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                Rc::new(vec![])
+                            } else {
+                                Rc::new(vec![inference_error(
+                                    "empty list literal: expected type is not a collection"
+                                        .to_string(),
+                                    span.clone(),
+                                    scope.module_name.clone(),
+                                )])
+                            }
                         }
                     }
                     std::option::Option::None => Rc::new(vec![]),
@@ -23619,7 +23639,11 @@ pub fn unify_generics(
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                    if unify_binding_is_uninformative(actual.clone()) {
+                        break acc.clone();
+                    } else {
+                        break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                    }
                 }
                 Some(_) => {
                     break acc.clone();

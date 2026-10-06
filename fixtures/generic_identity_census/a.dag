@@ -50,3 +50,26 @@ fn unbox<Q>(b: Box<Q>) -> Q {
 fn same_spelling_as_a_record_parameter<Q>(b: Box<Q>, q: Q) -> Q {
   q
 }
+
+type NlMod {
+  module: String
+}
+
+fn nl_ms() -> List<NlMod> {
+  [NlMod { module: "a" }]
+}
+
+fn nl_fold_list<T, A>(xs: List<T>, empty: A, cons: fn(A, T) -> A) -> A {
+  match xs |> first {
+    Present { value: h } => nl_fold_list(xs: xs |> skip(1), empty: cons(empty, h), cons: cons)
+    Absent => empty
+  }
+}
+
+fn caller_nl_fold() -> String {
+  let modules = nl_fold_list(xs: nl_ms(), empty: [], cons: fn(acc, m) { list_push(xs: acc, item: m) })
+  match modules |> first {
+    Present { value: m } => m.module
+    Absent => ""
+  }
+}
