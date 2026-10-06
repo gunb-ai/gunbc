@@ -79,7 +79,7 @@ fn w_obligation_for(a: ServingFrontDoorAvailabilityVerdict, launch: VllmEndpoint
 
 // THE POSITIVE CONTROL. Launch A before, the models probe answers, launch A after: available FROM A, and
 // an offer on A is ready at the observed time.
-test fn a_front_door_bracketed_by_one_launch_is_available_from_that_launch_and_ready_for_it() -> Bool {
+test fn a_front_door_bracketed_by_one_launch_is_available_from_that_launch_and_ready_for_it() -> Bool  {
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
   w_available_from(a: a, field: "1789300000.12")
     && (match spark_serving_readiness_of(verdict: a, launch: w_launch(field: "1789300000.12")) {
@@ -92,7 +92,7 @@ test fn a_front_door_bracketed_by_one_launch_is_available_from_that_launch_and_r
 // it. The answer is attributed to neither: the route is unavailable naming both, and no offer on B is
 // ready. A fold that read the launch only once, after the models probe, would call this available from B
 // on A's answer, which is exactly the pairing this witness exists to refuse.
-test fn a_restart_between_the_launch_reads_is_not_available_and_no_offer_on_the_new_process_is_ready() -> Bool {
+test fn a_restart_between_the_launch_reads_is_not_available_and_no_offer_on_the_new_process_is_ready() -> Bool  {
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789399999.50"), now: w_now)
   (match a.reading {
     ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: e, observed: o }, receipt: _ } =>
@@ -107,7 +107,7 @@ test fn a_restart_between_the_launch_reads_is_not_available_and_no_offer_on_the_
 
 // AN AVAILABLE READING FROM ONE PROCESS NEVER MAKES AN OFFER ON ANOTHER READY. The bracketed reading is
 // available from launch A; readiness for an offer on B refuses, naming both.
-test fn readiness_refuses_an_availability_reading_from_a_different_endpoint_process() -> Bool {
+test fn readiness_refuses_an_availability_reading_from_a_different_endpoint_process() -> Bool  {
   let from_a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
   w_ready_for(a: from_a, launch: w_launch(field: "1789300000.12"))
     && !w_ready_for(a: from_a, launch: w_launch(field: "1789399999.50"))
@@ -119,7 +119,7 @@ test fn readiness_refuses_an_availability_reading_from_a_different_endpoint_proc
 // carries no front-door evidence, so it cannot reach the offer binder at all. That it cannot is a type
 // fact, checked by a cross-module compile fixture rather than here; this witness asserts the three arms
 // the fence consumes.
-test fn the_launch_only_read_reports_continuity_and_its_three_arms() -> Bool {
+test fn the_launch_only_read_reports_continuity_and_its_three_arms() -> Bool  {
   let bound = w_launch(field: "1789300000.12")
   let unchanged = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: w_seen(field: "1789300000.12"), now: w_now).reading
   let replaced = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: w_seen(field: "1789399999.50"), now: w_now).reading
@@ -145,7 +145,7 @@ test fn the_launch_only_read_reports_continuity_and_its_three_arms() -> Bool {
 
 // A FRONT DOOR THAT DID NOT ANSWER IS UNAVAILABLE WITH THE BOUND IT MISSED, and says nothing stronger than
 // the transport established: no successful answer inside the bound.
-test fn a_front_door_that_did_not_answer_within_the_bound_is_unavailable_and_not_ready() -> Bool {
+test fn a_front_door_that_did_not_answer_within_the_bound_is_unavailable_and_not_ready() -> Bool  {
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: HarnessBackendUnreachable { url: "http://192.168.1.225:30000/v1/models" }, after: w_seen(field: "1789300000.12"), now: w_now)
   (match a.reading {
     ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: b }, receipt: _ } =>
@@ -161,7 +161,7 @@ test fn a_front_door_that_did_not_answer_within_the_bound_is_unavailable_and_not
 // MODEL ADMISSION IS NOT AVAILABILITY. A route answering with a model this harness is not admitted to ask
 // is AVAILABLE -- another consumer may use it -- and the admission refusal stays on the model standing.
 // An unreadable answer, or a launch that could not be read on either side, is UNREAD.
-test fn an_unadmitted_model_is_still_available_and_unreadable_readings_are_unread() -> Bool {
+test fn an_unadmitted_model_is_still_available_and_unreadable_readings_are_unread() -> Bool  {
   let not_admitted = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: HarnessBackendModelNotAdmitted { advertised: "tinyllama-1.1b" }, after: w_seen(field: "1789300000.12"), now: w_now)
   let unreadable = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: HarnessBackendUnreadable { cause: "unexpected token" }, after: w_seen(field: "1789300000.12"), now: w_now)
   let before_unread = harness_route_availability(endpoint: w_endpoint, before: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr }, standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
@@ -176,7 +176,7 @@ test fn an_unadmitted_model_is_still_available_and_unreadable_readings_are_unrea
 // routed. Under the hermetic envelope the bounded GET answers from its declared mock and the observers
 // refuse; the unbounded GET they used to call has no mock, so the same witness there refuses the run
 // instead of passing. Run live, the bounded GET gives up inside its bound.
-test fn both_harness_probes_refuse_a_front_door_that_never_answers() -> Bool {
+test fn both_harness_probes_refuse_a_front_door_that_never_answers() -> Bool  {
   (match harness_observe_replica(endpoint: w_unroutable_endpoint) {
     HarnessBackendUnreachable { url: u } => u.contains("192.0.2.1:30000/v1/models")
     HarnessBackendServing { model: _, unit: _, readback: _ } => false

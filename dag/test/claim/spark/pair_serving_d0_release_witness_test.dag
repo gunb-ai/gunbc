@@ -120,7 +120,7 @@ fn rw_not_quiescent(d: D0Decision, fragment: String) -> Bool {
 
 // THE POSITIVE CONTROL: a silent route, a quiet head and every host read with no occupant releases --
 // and the next authority is ReleasedToFleet naming exactly the recorded receipt, which commits no host.
-test fn rw_every_host_quiescent_releases_under_the_receipt() -> Bool {
+test fn rw_every_host_quiescent_releases_under_the_receipt() -> Bool  {
   rw_with(scenario: fn(h) {
     let d = rw_decide(h: h, incumbent: rw_quiet_route(), vacancy: rw_quiet_vacancy())
     d0_decision_is_eligible(d: d)
@@ -133,19 +133,19 @@ test fn rw_every_host_quiescent_releases_under_the_receipt() -> Bool {
 }
 
 // ONE REFUSAL PER OCCUPANT READING KIND.
-test fn rw_an_answering_front_door_refuses_the_release() -> Bool {
+test fn rw_an_answering_front_door_refuses_the_release() -> Bool  {
   rw_with(scenario: fn(h) { rw_not_quiescent(d: rw_decide(h: h, incumbent: IncumbentAnsweredUnread { cause: "witness 500" as NonEmptyStr }, vacancy: rw_quiet_vacancy()), fragment: "front door answered") })
 }
 
-test fn rw_a_listener_on_the_head_refuses_the_release() -> Bool {
+test fn rw_a_listener_on_the_head_refuses_the_release() -> Bool  {
   rw_with(scenario: fn(h) { rw_not_quiescent(d: rw_decide(h: h, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: 30000, rows: [] as List<TcpSocketRow> } }, vacancy: rw_quiet_vacancy()), fragment: "LISTEN on port 30000") })
 }
 
-test fn rw_an_engine_process_on_the_head_refuses_the_release() -> Bool {
+test fn rw_an_engine_process_on_the_head_refuses_the_release() -> Bool  {
   rw_with(scenario: fn(h) { rw_not_quiescent(d: rw_decide(h: h, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointEngineProcess { listing: "4242 vllm" } }, vacancy: rw_quiet_vacancy()), fragment: "engine process") })
 }
 
-test fn rw_a_running_serving_unit_on_any_host_refuses_the_release() -> Bool {
+test fn rw_a_running_serving_unit_on_any_host_refuses_the_release() -> Bool  {
   rw_with(scenario: fn(h) {
     let vacancy = concat(
       [RankVacancyReading { host: operator_host_srv7, reading: HostOccupancyRead { occupants: [ServingUnitActive { unit: spark_pair_worker_unit_name, state: Active }], available: kibibyte(count: 1) } }],
@@ -154,7 +154,7 @@ test fn rw_a_running_serving_unit_on_any_host_refuses_the_release() -> Bool {
   })
 }
 
-test fn rw_a_gpu_process_on_any_host_refuses_the_release() -> Bool {
+test fn rw_a_gpu_process_on_any_host_refuses_the_release() -> Bool  {
   rw_with(scenario: fn(h) {
     let vacancy = concat(
       [RankVacancyReading { host: operator_host_srv8, reading: HostOccupancyRead { occupants: [GpuComputeProcess { pid: 99, process_name: "python3", used: UsedMemoryReported { used: mebibyte(count: 1000) } }], available: kibibyte(count: 1) } }],
@@ -164,7 +164,7 @@ test fn rw_a_gpu_process_on_any_host_refuses_the_release() -> Bool {
 }
 
 // ABSENCE IS NOT VACANCY: an unread host, and a host with no reading at all, refuse.
-test fn rw_an_unread_or_missing_host_refuses_the_release() -> Bool {
+test fn rw_an_unread_or_missing_host_refuses_the_release() -> Bool  {
   rw_with(scenario: fn(h) {
     let unread = concat(
       [RankVacancyReading { host: operator_host_srv5, reading: HostOccupancyUnread { cause: "witness: nvidia-smi did not run" } }],
@@ -176,7 +176,7 @@ test fn rw_an_unread_or_missing_host_refuses_the_release() -> Bool {
 }
 
 // AN UNREAD ROUTE FENCES as D0's other unread readings do, never releases.
-test fn rw_an_unread_route_never_releases() -> Bool {
+test fn rw_an_unread_route_never_releases() -> Bool  {
   rw_with(scenario: fn(h) {
     match rw_decide(h: h, incumbent: IncumbentRouteUnread { cause: "witness" as NonEmptyStr }, vacancy: rw_quiet_vacancy()) {
       D0DecidedRelease { group: _, hosts: _ } => false
@@ -189,7 +189,7 @@ test fn rw_an_unread_route_never_releases() -> Bool {
 
 // AN ALREADY-RELEASED GROUP IS REFUSED: a held claim with no write and an authority that is not Active
 // has nothing to do under this consent, so the recovery join aborts the claim rather than writing.
-test fn rw_an_already_released_group_is_refused() -> Bool {
+test fn rw_an_already_released_group_is_refused() -> Bool  {
   rw_with(scenario: fn(h) {
     match d0_recovery(
       claim: D0ClaimAt { state: ClaimedBy { attempt: "tx-rel" as AttemptIdentity, claimed_at: "2026-10-03T00:00:00Z" }, generation: 1 },
@@ -207,7 +207,7 @@ test fn rw_an_already_released_group_is_refused() -> Bool {
 
 // ── THE INTENT: A RELEASE ROUND-TRIPS UNDER ITS OWN SCOPE, AND IS NOT A SUSPENSION ─────────────────
 
-test fn rw_a_release_intent_round_trips_under_the_release_scope() -> Bool {
+test fn rw_a_release_intent_round_trips_under_the_release_scope() -> Bool  {
   match d0_intent_text(subject: rw_release_subject(), group: FabricGroupA, transaction: "tx-rel" as NonEmptyStr) {
     Absent => false
     Present { value: text } =>
@@ -227,7 +227,7 @@ test fn rw_a_release_intent_round_trips_under_the_release_scope() -> Bool {
 
 // THE RELEASE IS REQUESTED BY ITS ROW: the row's escalation yields a release subject for Group A, any
 // other escalation the suspension for the keyed successor.
-test fn rw_the_approved_release_row_names_group_a_and_its_escalation() -> Bool {
+test fn rw_the_approved_release_row_names_group_a_and_its_escalation() -> Bool  {
   match d0_release_row_for(group: FabricGroupA, escalation_id: d0_release_lifecycle_escalation_id) {
     Absent => false
     Present { value: r } => string_contains(s: r.approval as String, pattern: "operator approval 2026-10-03")
@@ -237,7 +237,7 @@ test fn rw_the_approved_release_row_names_group_a_and_its_escalation() -> Bool {
 
 // THE STORE WALL ADMITS EXACTLY THE RULED RELEASE LIFECYCLE: its escalation on Group A while the row
 // stands; another escalation, Group B, or the row retired all refuse.
-test fn rw_the_store_wall_admits_only_the_ruled_release_lifecycle() -> Bool {
+test fn rw_the_store_wall_admits_only_the_ruled_release_lifecycle() -> Bool  {
   d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: d0_release_lifecycle_escalation_id)
     && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: "d0-group-a-something-else" as NonEmptyStr)
     && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupB, escalation_id: d0_release_lifecycle_escalation_id)
@@ -260,7 +260,7 @@ fn rw_release_request(group: FabricGroup, hosts: List<HostIdentity>, h: ContentH
 
 // THE POSITIVE CONTROL: a Group A release over srv5-srv8 is admitted under the standing grant, and the
 // grant it mints is permitted by std.scoped_authorization authorize over that exact request.
-test fn rw_a_group_a_release_is_admitted_under_the_standing_grant() -> Bool {
+test fn rw_a_group_a_release_is_admitted_under_the_standing_grant() -> Bool  {
   rw_with(scenario: fn(h) {
     let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
     match d0_standing_grant_for(request: req) {
@@ -275,7 +275,7 @@ test fn rw_a_group_a_release_is_admitted_under_the_standing_grant() -> Bool {
 }
 
 // THE SAME REQUEST FOR GROUP B IS NOT COVERED: it goes to the broker, and refuses without it.
-test fn rw_the_same_release_for_group_b_is_not_covered() -> Bool {
+test fn rw_the_same_release_for_group_b_is_not_covered() -> Bool  {
   rw_with(scenario: fn(h) {
     match d0_standing_grant_for(request: rw_release_request(group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB), h: h)) {
       Present { value: _ } => false
@@ -286,7 +286,7 @@ test fn rw_the_same_release_for_group_b_is_not_covered() -> Bool {
 
 // AN EFFECT OUTSIDE THE SCOPE IS NOT COVERED: a host outside srv5-srv8, and a suspension (an effect the
 // grant does not name) both fall back to the broker.
-test fn rw_an_effect_outside_the_scope_is_not_covered() -> Bool {
+test fn rw_an_effect_outside_the_scope_is_not_covered() -> Bool  {
   rw_with(scenario: fn(h) {
     let foreign_host = match d0_standing_grant_for(request: rw_release_request(group: FabricGroupA, hosts: concat(fabric_group_hosts(g: FabricGroupA), ["srv9" as HostIdentity]), h: h)) { Present { value: _ } => false  Absent => true }
     let suspend = AuthorizationRequest {
@@ -337,7 +337,7 @@ fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
 // THE BINDING: two runs of one standing release with different windows bind the same lifecycle and name
 // the grant; the expiry is not in it. (A broker grant keeps its expiry: d0_binding_lifecycle_term's other
 // arm, unchanged, exercised by the suspension witnesses.)
-test fn rw_a_standing_release_binds_one_lifecycle_across_windows() -> Bool {
+test fn rw_a_standing_release_binds_one_lifecycle_across_windows() -> Bool  {
   rw_with(scenario: fn(h) {
     rw_two_runs(h: h, f: fn(a, b) {
       a == b && string_contains(s: a, pattern: join(["standing_grant=", group_a_dev_standing_grant.identity as String], "")) && !string_contains(s: a, pattern: "expires_at=")
@@ -347,7 +347,7 @@ test fn rw_a_standing_release_binds_one_lifecycle_across_windows() -> Bool {
 
 // PENDING -> A LATER RERUN RESUMES: the first run wrote the pending state under its binding and died; the
 // later run, with a later window, presents its own binding and the recovery join resumes.
-test fn rw_a_pending_release_is_resumed_by_a_later_rerun() -> Bool {
+test fn rw_a_pending_release_is_resumed_by_a_later_rerun() -> Bool  {
   rw_with(scenario: fn(h) {
     rw_two_runs(h: h, f: fn(a, b) {
       let first = content_hash_of_value(value: a as NonEmptyStr)
@@ -369,7 +369,7 @@ test fn rw_a_pending_release_is_resumed_by_a_later_rerun() -> Bool {
 
 // SETTLED RELEASE -> A LATER RERUN COMPLETES THE CLAIM: the release landed (ReleasedToFleet) and the run
 // died before completing its claim; the later run finds its own lifecycle's settling record and completes.
-test fn rw_a_settled_release_is_completed_by_a_later_rerun() -> Bool {
+test fn rw_a_settled_release_is_completed_by_a_later_rerun() -> Bool  {
   rw_with(scenario: fn(h) {
     rw_two_runs(h: h, f: fn(a, b) {
       let first = content_hash_of_value(value: a as NonEmptyStr)
@@ -395,7 +395,7 @@ test fn rw_a_settled_release_is_completed_by_a_later_rerun() -> Bool {
 // The judgement over the two reads, supplied at its interface: identical bytes honor; a main with no row,
 // a branch-edited row, or an unreadable executed row do not. Then the door's coverage under each standing:
 // the same covered Group A release is honored on main and NOT honored off it, so it takes the broker path.
-test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool {
+test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool  {
   (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => true  StandingGrantRowNotOnMain { cause: _ } => false })
     && (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "", main_read: false, main_stderr: "fatal: path does not exist in origin/main") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "has not merged") })
     && (match standing_grant_row_judged(executed: "row edited", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "differs") })
@@ -406,7 +406,7 @@ test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool {
 // producer sees only the captured content, so a working path that changed after capture -- here back to
 // main's bytes -- cannot rescue a captured row that differs from main, and the proof's digest is always
 // the captured row's. RED: a judgment that hashed the path again would admit the changed row.
-test fn rw_admission_follows_the_captured_row_not_the_path() -> Bool {
+test fn rw_admission_follows_the_captured_row_not_the_path() -> Bool  {
   let blob_of = fn(c) { GrantRowBlobRead { blob: join(["blob(", c, ")"], "") } }
   let main = GrantRowBlobRead { blob: "blob(main row)" }
   let captured_changed = ExecutedGrantRowRead { content: "branch-edited row", digest: "sha256:edited" as NonEmptyStr }
@@ -420,7 +420,7 @@ test fn rw_admission_follows_the_captured_row_not_the_path() -> Bool {
     && (match grant_row_standing_over(executed: captured_main, blob_of: fn(c) { GrantRowBlobUnread { cause: "witness" } }, on_main: main) { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
 }
 
-test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> Bool {
+test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> Bool  {
   rw_with(scenario: fn(h) {
     let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
     let row = ExecutedGrantRowRead { content: "row", digest: "sha256:aa" as NonEmptyStr }
@@ -432,7 +432,7 @@ test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> 
 }
 
 // THE FILING CARRIES THE PROOF AND ROUND-TRIPS; WITHOUT ONE IT IS BYTE-IDENTICAL TO BEFORE.
-test fn rw_the_frozen_filing_round_trips_its_grant_proof() -> Bool {
+test fn rw_the_frozen_filing_round_trips_its_grant_proof() -> Bool  {
   let with_proof = d0_frozen_filing_text_with(intent_text: "a=b\n", execution_revision: "aaaa" as NonEmptyStr, proof: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr })
   let without = d0_frozen_filing_text_with(intent_text: "a=b\n", execution_revision: "aaaa" as NonEmptyStr, proof: D0GrantRowUnproven)
   without == "a=b\nexecution_revision=aaaa\n"
@@ -443,7 +443,7 @@ test fn rw_the_frozen_filing_round_trips_its_grant_proof() -> Bool {
 // PROVENANCE (side-chat review of #13102): the SAME covered release, authorized by the BROKER, keeps broker
 // lifecycle identity and expiry -- two windows are two lifecycles, and no standing-grant term appears. Only an
 // authorization issued from the grant carries the grant's identity. The grant never relabels a broker one.
-test fn rw_a_broker_authorized_covered_release_keeps_broker_identity() -> Bool {
+test fn rw_a_broker_authorized_covered_release_keeps_broker_identity() -> Bool  {
   rw_with(scenario: fn(h) {
     let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
     match rw_permitted(req: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z", at: "2026-10-03T05:11:00Z") {

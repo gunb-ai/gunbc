@@ -48,7 +48,7 @@ fn reached_on_attempt(n: Int) -> fn(Int) -> SparkPairHostApplyOutcome {
 
 // ── THE LEG READING: IN-BAND STATUS DECIDES, NOT ssh's 255 ALONE ──────────────────────────────
 
-test fn w_a_connect_timeout_with_no_began_line_reads_unreached() -> Bool {
+test fn w_a_connect_timeout_with_no_began_line_reads_unreached() -> Bool  {
   spark_pair_host_unreached(o: spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 255, success: false, stdout: "",
     stderr: "ssh: connect to host 192.168.1.232 port 22: Connection timed out",
@@ -57,7 +57,7 @@ test fn w_a_connect_timeout_with_no_began_line_reads_unreached() -> Bool {
 
 // THE RED: a script that began and whose reply was lost ALSO exits 255 at the client. It ran, so it is
 // Failed and never retry-eligible.
-test fn w_a_255_after_the_script_began_is_failed_not_unreached() -> Bool {
+test fn w_a_255_after_the_script_began_is_failed_not_unreached() -> Bool  {
   let o = spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 255, success: false, stdout: join([remote_leg_began_word, "\nrestarted\n"], ""),
     stderr: "Connection to 192.168.1.232 closed by remote host.",
@@ -65,7 +65,7 @@ test fn w_a_255_after_the_script_began_is_failed_not_unreached() -> Bool {
   !spark_pair_host_unreached(o: o) && !spark_pair_host_applied(o: o)
 }
 
-test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> Bool {
+test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> Bool  {
   let o = spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 1, success: false,
     stdout: join([remote_leg_began_word, "\nPREFLIGHT-REFUSED-image-absent\n", spark_pair_leg_exit_prefix, "1\n"], ""),
@@ -78,7 +78,7 @@ test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> 
   }
 }
 
-test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool {
+test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool  {
   match spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 0, success: true,
     stdout: join([remote_leg_began_word, "\npreflight-ok\n", spark_pair_leg_exit_prefix, "0\n"], ""),
@@ -94,7 +94,7 @@ test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool {
 // THE PAYLOAD THE REAL LEG SENDS carries both in-band lines around the script, so the reading above has
 // something to read on the production route; the script runs in a subshell so its own `exit` reaches
 // the exit line.
-test fn w_the_privileged_payload_reports_began_and_exit_around_the_script() -> Bool {
+test fn w_the_privileged_payload_reports_began_and_exit_around_the_script() -> Bool  {
   let p = spark_pair_leg_payload(script: "set -e\necho preflight-ok\n")
   string_contains(s: p, pattern: join(["echo ", remote_leg_began_word, "\n(\nset -e\necho preflight-ok\n"], ""))
     && string_contains(s: p, pattern: join(["echo ", spark_pair_leg_exit_prefix, "$gunbc_leg_rc"], ""))
@@ -103,30 +103,30 @@ test fn w_the_privileged_payload_reports_began_and_exit_around_the_script() -> B
 
 // ── THE BOUNDED RETRY ─────────────────────────────────────────────────────────────────────────
 
-test fn w_an_unreached_then_reached_leg_succeeds_on_attempt_two() -> Bool {
+test fn w_an_unreached_then_reached_leg_succeeds_on_attempt_two() -> Bool  {
   let r = spark_native_leg_with_retry(budget: spark_native_unreached_leg_attempt_budget, attempt: reached_on_attempt(n: 2))
   spark_pair_host_applied(o: r.outcome) && spark_native_leg_attempt_count(r: r) == 2 && count(r.earlier_unreached) == 1
 }
 
 // THE RED FOR THE BUDGET ITSELF: with a budget of one, the same sequence stays Unreached.
-test fn w_a_budget_of_one_does_not_retry() -> Bool {
+test fn w_a_budget_of_one_does_not_retry() -> Bool  {
   let r = spark_native_leg_with_retry(budget: 1, attempt: reached_on_attempt(n: 2))
   spark_pair_host_unreached(o: r.outcome) && spark_native_leg_attempt_count(r: r) == 1
 }
 
-test fn w_a_leg_that_ran_and_failed_is_not_retried() -> Bool {
+test fn w_a_leg_that_ran_and_failed_is_not_retried() -> Bool  {
   let r = spark_native_leg_with_retry(budget: spark_native_unreached_leg_attempt_budget, attempt: fn(i) { if i == 1 { ran_and_refused() } else { applied(word: "preflight-ok") } })
   !spark_pair_host_applied(o: r.outcome) && !spark_pair_host_unreached(o: r.outcome) && spark_native_leg_attempt_count(r: r) == 1
 }
 
-test fn w_an_always_unreached_leg_stops_at_the_budget_and_reports_every_attempt() -> Bool {
+test fn w_an_always_unreached_leg_stops_at_the_budget_and_reports_every_attempt() -> Bool  {
   let r = spark_native_leg_with_retry(budget: spark_native_unreached_leg_attempt_budget, attempt: fn(i) { unreached() })
   spark_pair_host_unreached(o: r.outcome) && spark_native_leg_attempt_count(r: r) == 3 && count(r.earlier_unreached) == 2
 }
 
 // ── RE-EXECUTION IS A NO-OP WHERE THE DESIRED STATE HOLDS ─────────────────────────────────────
 
-test fn w_preserve_commit_and_rollback_read_before_they_write() -> Bool {
+test fn w_preserve_commit_and_rollback_read_before_they_write() -> Bool  {
   let unit = "gunbc-v41-tp4-rank.service" as NonEmptyStr
   let preserve = spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
   let commit = spark_native_commit_script(unit_name: unit, transaction_id: "T")
@@ -190,37 +190,37 @@ fn refused_with(d: SparkNativeLeftoverDecision, word: String) -> Bool {
 }
 
 // THE SRV7 STATE: had-no-unit marker and fence, no unit file, no container, fence a day old.
-test fn w_consistent_had_no_unit_leftovers_resolve() -> Bool {
+test fn w_consistent_had_no_unit_leftovers_resolve() -> Bool  {
   resolution_is(
     d: decide(stdout: observed(fence: "present", age: "86400", backup: "absent", marker: "present", unresolved: "absent", unit: "absent", same: "not-same", ctr: "absent")),
     want: ResolveHadNoUnitAndNothingStands)
 }
 
-test fn w_a_had_no_unit_marker_beside_a_unit_file_refuses() -> Bool {
+test fn w_a_had_no_unit_marker_beside_a_unit_file_refuses() -> Bool  {
   refused_with(
     d: decide(stdout: observed(fence: "present", age: "86400", backup: "absent", marker: "present", unresolved: "absent", unit: "present", same: "not-same", ctr: "absent")),
     word: "LEFTOVER-CONTRADICTION")
 }
 
-test fn w_a_had_no_unit_marker_beside_a_running_container_refuses() -> Bool {
+test fn w_a_had_no_unit_marker_beside_a_running_container_refuses() -> Bool  {
   refused_with(
     d: decide(stdout: observed(fence: "present", age: "86400", backup: "absent", marker: "present", unresolved: "absent", unit: "absent", same: "not-same", ctr: "present")),
     word: "LEFTOVER-CONTRADICTION")
 }
 
-test fn w_an_unread_container_is_not_absent() -> Bool {
+test fn w_an_unread_container_is_not_absent() -> Bool  {
   refused_with(
     d: decide(stdout: observed(fence: "present", age: "86400", backup: "absent", marker: "present", unresolved: "absent", unit: "absent", same: "not-same", ctr: "unread")),
     word: "LEFTOVER-UNREAD")
 }
 
-test fn w_both_markers_refuse() -> Bool {
+test fn w_both_markers_refuse() -> Bool  {
   refused_with(
     d: decide(stdout: observed(fence: "present", age: "86400", backup: "present", marker: "present", unresolved: "absent", unit: "absent", same: "not-same", ctr: "absent")),
     word: "LEFTOVER-CONTRADICTION")
 }
 
-test fn w_an_untouched_incumbent_resolves_and_a_replaced_one_refuses() -> Bool {
+test fn w_an_untouched_incumbent_resolves_and_a_replaced_one_refuses() -> Bool  {
   resolution_is(
     d: decide(stdout: observed(fence: "present", age: "86400", backup: "present", marker: "absent", unresolved: "absent", unit: "present", same: "same", ctr: "present")),
     want: ResolveIncumbentUnitUntouched)
@@ -230,27 +230,27 @@ test fn w_an_untouched_incumbent_resolves_and_a_replaced_one_refuses() -> Bool {
 }
 
 // A FENCE INSIDE THE HORIZON MAY BE A LIVE TRANSACTION: the same consistent srv7 state, ten minutes old.
-test fn w_a_young_fence_refuses_as_possibly_live() -> Bool {
+test fn w_a_young_fence_refuses_as_possibly_live() -> Bool  {
   refused_with(
     d: decide(stdout: observed(fence: "present", age: "600", backup: "absent", marker: "present", unresolved: "absent", unit: "absent", same: "not-same", ctr: "absent")),
     word: "LEFTOVER-POSSIBLY-LIVE")
 }
 
-test fn w_the_unresolved_rollback_marker_still_refuses() -> Bool {
+test fn w_the_unresolved_rollback_marker_still_refuses() -> Bool  {
   refused_with(
     d: decide(stdout: observed(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "present", unit: "present", same: "not-same", ctr: "present")),
     word: "LEFTOVER-UNRESOLVED-ROLLBACK")
 }
 
-test fn w_a_missing_field_is_unread_not_absent() -> Bool {
+test fn w_a_missing_field_is_unread_not_absent() -> Bool  {
   refused_with(d: decide(stdout: "management-lan fence=absent\nincumbent_backup=absent\n"), word: "LEFTOVER-UNREAD")
 }
 
-test fn w_an_unreached_observation_refuses() -> Bool {
+test fn w_an_unreached_observation_refuses() -> Bool  {
   refused_with(d: spark_native_leftover_decision_of_leg(o: unreached()), word: "LEFTOVER-UNREAD")
 }
 
-test fn w_a_clean_host_has_no_leftovers() -> Bool {
+test fn w_a_clean_host_has_no_leftovers() -> Bool  {
   match decide(stdout: observed(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "absent", unit: "present", same: "not-same", ctr: "present")) {
     LeftoversNone { host: _ } => true
     LeftoversResolvable { host: _, resolution: _, holder: _ } => false
@@ -262,7 +262,7 @@ test fn w_a_clean_host_has_no_leftovers() -> Bool {
 
 // THE RESOLUTION RE-READS ITS PREMISES AND REMOVES EXACTLY ITS KIND'S FILES, compare-and-set on the
 // observed fence holder; the observation leg removes nothing.
-test fn w_the_had_no_unit_resolution_rechecks_and_removes_only_marker_and_fence() -> Bool {
+test fn w_the_had_no_unit_resolution_rechecks_and_removes_only_marker_and_fence() -> Bool  {
   let unit = "gunbc-v41-tp4-rank.service" as NonEmptyStr
   let script = spark_native_leftover_resolve_script(unit_name: unit, container_name: glm_native_container_name, resolution: ResolveHadNoUnitAndNothingStands, holder: "H-1")
   let observe = spark_native_leftover_observe_script(unit_name: unit, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n")
@@ -282,7 +282,7 @@ test fn w_the_had_no_unit_resolution_rechecks_and_removes_only_marker_and_fence(
 // every host kept the fence, the fp8-24 incumbent backup and the nvfp4 unit, and the head later exited.
 
 // One host as the run left it: past the horizon, incumbent backup, the PLANNED unit installed.
-test fn w_a_host_carrying_this_arms_planned_unit_under_an_old_fence_is_adoptable() -> Bool {
+test fn w_a_host_carrying_this_arms_planned_unit_under_an_old_fence_is_adoptable() -> Bool  {
   match decide(stdout: observed_with(fence: "present", age: "86400", backup: "present", marker: "absent", unresolved: "absent", unit: "present", same: "not-same", ctr: "present", planned: "same", running: "yes")) {
     LeftoversAdoptable { host: _, holder: t, running: r } => r && t == "2026-10-01T03:12:44Z/0f0e0d0c-0b0a-0908-0706-050403020100"
     LeftoversRecoverable { host: _, holder: _ } => false
@@ -294,14 +294,14 @@ test fn w_a_host_carrying_this_arms_planned_unit_under_an_old_fence_is_adoptable
 
 // THE RED FOR THE SPEC TEST: the same leftovers with a unit that is NOT this launch's plan stay the
 // contradiction they were -- adoption never reaches another spec's transaction.
-test fn w_a_different_spec_under_the_same_fence_is_not_adopted() -> Bool {
+test fn w_a_different_spec_under_the_same_fence_is_not_adopted() -> Bool  {
   refused_with(
     d: decide(stdout: observed_with(fence: "present", age: "86400", backup: "present", marker: "absent", unresolved: "absent", unit: "present", same: "not-same", ctr: "present", planned: "not-same", running: "yes")),
     word: "LEFTOVER-CONTRADICTION")
 }
 
 // The horizon still binds an adoption: a young fence may be a live transaction.
-test fn w_a_young_adoptable_fence_still_refuses_as_possibly_live() -> Bool {
+test fn w_a_young_adoptable_fence_still_refuses_as_possibly_live() -> Bool  {
   refused_with(
     d: decide(stdout: observed_with(fence: "present", age: "600", backup: "present", marker: "absent", unresolved: "absent", unit: "present", same: "not-same", ctr: "present", planned: "same", running: "yes")),
     word: "LEFTOVER-POSSIBLY-LIVE")
@@ -309,7 +309,7 @@ test fn w_a_young_adoptable_fence_still_refuses_as_possibly_live() -> Bool {
 
 // THE DEAD-RANK ARM: every host adoptable under one holder, the head not running -> the adopted
 // transaction with the dead rank named, which the body rolls back by its own path with no apply leg.
-test fn w_an_adopted_transaction_with_a_dead_rank_names_it_for_rollback() -> Bool {
+test fn w_an_adopted_transaction_with_a_dead_rank_names_it_for_rollback() -> Bool  {
   match spark_native_adoption_of(decisions: [
     LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: false },
     LeftoversAdoptable { host: operator_host_srv5, holder: "T1", running: true },
@@ -324,7 +324,7 @@ test fn w_an_adopted_transaction_with_a_dead_rank_names_it_for_rollback() -> Boo
 }
 
 // THE LIVE ARM: every rank running -> adopted with no dead rank, so readback and verdict run, no apply.
-test fn w_an_adopted_transaction_with_every_rank_running_resumes_at_readback() -> Bool {
+test fn w_an_adopted_transaction_with_every_rank_running_resumes_at_readback() -> Bool  {
   match spark_native_adoption_of(decisions: [
     LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: true },
     LeftoversAdoptable { host: operator_host_srv5, holder: "T1", running: true },
@@ -337,7 +337,7 @@ test fn w_an_adopted_transaction_with_every_rank_running_resumes_at_readback() -
 }
 
 // WHOLE OR NOT AT ALL: one host without the transaction, or two holders, refuses.
-test fn w_a_partial_or_split_adoption_refuses() -> Bool {
+test fn w_a_partial_or_split_adoption_refuses() -> Bool  {
   let partial = spark_native_adoption_of(decisions: [
     LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: true },
     LeftoversNone { host: operator_host_srv5 },
@@ -358,7 +358,7 @@ test fn w_a_partial_or_split_adoption_refuses() -> Bool {
 // whose RESTORED unit is this launch's planned unit (byte-identical, read on the host) with its rank
 // running is recoverable; the transaction then runs only the readback, and only a clean readback clears
 // the marker. The RED: the same marker with the rank not running -- or the unit not the plan -- refuses.
-test fn w_a_restored_running_arm_under_its_marker_is_recoverable() -> Bool {
+test fn w_a_restored_running_arm_under_its_marker_is_recoverable() -> Bool  {
   match decide(stdout: observed_with(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "present", unit: "present", same: "not-same", ctr: "present", planned: "same", running: "yes")) {
     LeftoversRecoverable { host: _, holder: t } => t == "2026-10-04T08:59:18Z/ccb8bf05"
     LeftoversAdoptable { host: _, holder: _, running: _ } => false
@@ -368,7 +368,7 @@ test fn w_a_restored_running_arm_under_its_marker_is_recoverable() -> Bool {
   }
 }
 
-test fn w_a_marker_over_a_dead_or_unplanned_rank_still_refuses() -> Bool {
+test fn w_a_marker_over_a_dead_or_unplanned_rank_still_refuses() -> Bool  {
   refused_with(
     d: decide(stdout: observed_with(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "present", unit: "present", same: "not-same", ctr: "absent", planned: "same", running: "no")),
     word: "LEFTOVER-UNRESOLVED-ROLLBACK")
@@ -377,7 +377,7 @@ test fn w_a_marker_over_a_dead_or_unplanned_rank_still_refuses() -> Bool {
       word: "LEFTOVER-UNRESOLVED-ROLLBACK")
 }
 
-test fn w_a_recovery_is_read_whole_or_refused() -> Bool {
+test fn w_a_recovery_is_read_whole_or_refused() -> Bool  {
   let whole = spark_native_adoption_of(decisions: [
     LeftoversRecoverable { host: operator_host_srv6, holder: "T1" },
     LeftoversRecoverable { host: operator_host_srv5, holder: "T1" },

@@ -19,38 +19,38 @@ fn matches_known(text: String, known: String) -> Bool {
   sha256_hex_of_text(text: text) == known
 }
 
-test fn the_host_digest_of_the_empty_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_the_empty_text_is_the_known_answer() -> Bool  {
   matches_known(text: "", known: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
 }
 
-test fn the_host_digest_of_abc_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_abc_is_the_known_answer() -> Bool  {
   matches_known(text: "abc", known: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 }
 
-test fn the_host_digest_of_a_55_octet_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_a_55_octet_text_is_the_known_answer() -> Bool  {
   matches_known(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318")
 }
 
-test fn the_host_digest_of_a_56_octet_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_a_56_octet_text_is_the_known_answer() -> Bool  {
   matches_known(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a")
 }
 
-test fn the_host_digest_of_a_63_octet_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_a_63_octet_text_is_the_known_answer() -> Bool  {
   matches_known(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34")
 }
 
-test fn the_host_digest_of_a_64_octet_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_a_64_octet_text_is_the_known_answer() -> Bool  {
   matches_known(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb")
 }
 
-test fn the_host_digest_of_a_65_octet_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_a_65_octet_text_is_the_known_answer() -> Bool  {
   matches_known(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0")
 }
 
-test fn the_host_digest_of_a_130_octet_three_block_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_a_130_octet_three_block_text_is_the_known_answer() -> Bool  {
   matches_known(text: "gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-abcd", known: "3de7e15aa1b453dc3833d796643b52713e80cdff8bf8738fece1c2d4a352a052")
 }
 
-test fn the_host_digest_of_the_nist_448_bit_text_is_the_known_answer() -> Bool {
+test fn the_host_digest_of_the_nist_448_bit_text_is_the_known_answer() -> Bool  {
   matches_known(text: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", known: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
 }

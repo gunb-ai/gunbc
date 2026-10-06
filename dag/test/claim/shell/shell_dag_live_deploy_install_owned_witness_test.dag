@@ -29,7 +29,7 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 // RED TODAY: an install path carrying a command separator is rendered into the privileged install
 // line. Greens when the typed fs-write and ownership realization refuses the hazard or carries the
 // path as data — an ownership the typed effect cannot express refuses.
-test fn adversarial_install_path_renders_no_shell_control_word() -> Bool {
+test fn adversarial_install_path_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(
     s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state; rm -rf /opt/gunbc"),
     pattern: w
@@ -38,7 +38,7 @@ test fn adversarial_install_path_renders_no_shell_control_word() -> Bool {
 
 // POSITIVE CONTROL, green today and after: the benign install surface carries no shell control
 // word, so the red arm discriminates on the hazard it plants and not on the honest rendering.
-test fn benign_install_line_renders_no_shell_control_word() -> Bool {
+test fn benign_install_line_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(
     s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"),
     pattern: w
@@ -48,7 +48,7 @@ test fn benign_install_line_renders_no_shell_control_word() -> Bool {
 // TYPED-FORM POSITIVE CONTROL, green today and after: the install realizes the declared path owned
 // by the deployment's declared service principal — the typed write and ownership effect decide the
 // same path and the same principal.
-test fn install_line_realizes_the_declared_path_and_principal() -> Bool {
+test fn install_line_realizes_the_declared_path_and_principal() -> Bool  {
   string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: "/opt/gunbc/attempt-state")
     && string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: deployment_spec_srv1().service.service_user as String)
 }

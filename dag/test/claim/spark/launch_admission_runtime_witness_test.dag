@@ -42,19 +42,19 @@ fn w_refuses(rev: ModelledVllmDefaultsRevision?, p: ServingLaunchProfile) -> Boo
   }
 }
 
-test fn w_the_gate_resolves_on_a_revision_that_has_it() -> Bool {
+test fn w_the_gate_resolves_on_a_revision_that_has_it() -> Bool  {
   !w_refuses(rev: Present { value: Vllm8d09804 }, p: w_profile(ceiling: 14, admission: w_gate()))
 }
 
-test fn w_a_watermark_on_a_revision_without_the_field_refuses_at_the_wall() -> Bool {
+test fn w_a_watermark_on_a_revision_without_the_field_refuses_at_the_wall() -> Bool  {
   w_refuses(rev: Present { value: Vllm1967a5627 }, p: w_profile(ceiling: 14, admission: w_gate()))
 }
 
-test fn w_a_stated_control_on_an_unmodelled_revision_refuses_at_the_wall() -> Bool {
+test fn w_a_stated_control_on_an_unmodelled_revision_refuses_at_the_wall() -> Bool  {
   w_refuses(rev: Absent, p: w_profile(ceiling: 14, admission: w_gate()))
 }
 
 // THE FLOOR WITH NOTHING STATED NEEDS NO RUNTIME RESOLUTION -- the converged 8/8 launch is unchanged.
-test fn w_the_floor_with_no_controls_is_not_refused_on_an_unmodelled_revision() -> Bool {
+test fn w_the_floor_with_no_controls_is_not_refused_on_an_unmodelled_revision() -> Bool  {
   !w_refuses(rev: Absent, p: w_profile(ceiling: 8, admission: vllm_scheduler_admission_omitted))
 }

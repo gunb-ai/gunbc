@@ -92,7 +92,7 @@ fn w_released(h: ContentHash) -> PairServingGroupAuthority {
 // APPLY ACTS ONLY WHEN ACTIVE. The four negatives are the content of this claim: an apply seam that
 // converged under any of them would be reconverging a realization whose authority was suspended out
 // from under it, which is the specific harm the carrier exists to prevent.
-test fn only_an_active_authority_admits_the_apply_seam() -> Bool {
+test fn only_an_active_authority_admits_the_apply_seam() -> Bool  {
   with_w_hash(scenario: h => {
     pair_serving_apply_admits(a: w_active())
       && (pair_serving_apply_admits(a: w_pending(h: h, stale: false)) == false)
@@ -106,7 +106,7 @@ test fn only_an_active_authority_admits_the_apply_seam() -> Bool {
 // false under suspension frees four held hosts to another lane mid-replacement with no cleanup and no
 // readback. Fencing holds them too -- refusing to act is not the same as letting go. Only an explicit
 // release drops them.
-test fn only_release_drops_the_host_commitment() -> Bool {
+test fn only_release_drops_the_host_commitment() -> Bool  {
   with_w_hash(scenario: h => {
     pair_serving_commits_hosts(a: w_active())
       && pair_serving_commits_hosts(a: w_pending(h: h, stale: false))
@@ -119,7 +119,7 @@ test fn only_release_drops_the_host_commitment() -> Bool {
 // EXPIRY REMOVES THE RIGHT TO START AND KEEPS THE RIGHT TO FINISH. Both halves are asserted on the
 // same stale lease, because either alone is satisfied by a degenerate answer: may_start false for
 // everything, or may_finish true for everything.
-test fn an_expired_lease_stops_launching_but_not_finishing() -> Bool {
+test fn an_expired_lease_stops_launching_but_not_finishing() -> Bool  {
   with_w_hash(scenario: h => {
     pair_serving_successor_may_launch(a: w_suspended(h: h, stale: false))
       && (pair_serving_successor_may_launch(a: w_suspended(h: h, stale: true)) == false)
@@ -134,7 +134,7 @@ test fn an_expired_lease_stops_launching_but_not_finishing() -> Bool {
 // ONLY THE AUTHORIZED SUCCESSOR MAY LAUNCH. The incumbent never launches through this projection --
 // it applies, which is a different question with a different projection -- and the three other arms
 // have no launch authority at all, which is what stops this collapsing into "not released".
-test fn only_an_authorized_successor_may_launch() -> Bool {
+test fn only_an_authorized_successor_may_launch() -> Bool  {
   with_w_hash(scenario: h => {
     (pair_serving_successor_may_launch(a: w_active()) == false)
       && (pair_serving_successor_may_launch(a: w_pending(h: h, stale: false)) == false)
@@ -146,7 +146,7 @@ test fn only_an_authorized_successor_may_launch() -> Bool {
 
 // CAPACITY SEES THREE SUBJECTS AND NEVER AN ABSENCE. A suspended group reports a reason; it does not
 // vanish from the population, which is the property the instrument's empty-roster guard relies on.
-test fn capacity_partitions_into_three_present_subjects() -> Bool {
+test fn capacity_partitions_into_three_present_subjects() -> Bool  {
   with_w_hash(scenario: h => {
     (match pair_serving_capacity_subject(a: w_active()) {
       CapacityOrdinarySubject { group: _ } => true
@@ -176,7 +176,7 @@ test fn capacity_partitions_into_three_present_subjects() -> Bool {
 // removing the authority filter from the commitment fold left every count identical -- a claim that
 // passed whether or not the integration existed. Supplying a RELEASED authority is what makes the
 // filter observable: four hosts must leave.
-test fn a_released_authority_removes_its_hosts_from_the_commitment() -> Bool {
+test fn a_released_authority_removes_its_hosts_from_the_commitment() -> Bool  {
   with_w_hash(scenario: h => {
     let live = spark_claimed_members_under(authorities: spark_pair_serving_authorities)
     let released = spark_claimed_members_under(authorities: [w_released(h: h)])
@@ -197,7 +197,7 @@ fn w_plan_refused(p: SparkPairApplyPlan) -> Bool {
   }
 }
 
-test fn the_apply_seam_refuses_a_suspended_or_absent_authority() -> Bool {
+test fn the_apply_seam_refuses_a_suspended_or_absent_authority() -> Bool  {
   with_w_hash(scenario: h => {
     let r = spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupA))
     w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_pending(h: h, stale: false) }))
@@ -209,7 +209,7 @@ test fn the_apply_seam_refuses_a_suspended_or_absent_authority() -> Bool {
 
 // THE LIVE ROUTE STILL RUNS, which is what stops the three claims above from being satisfied by a seam
 // that refuses everything. This one calls the real production folds over the live authority population.
-test fn the_live_commitment_fold_still_claims_every_group_a_host() -> Bool {
+test fn the_live_commitment_fold_still_claims_every_group_a_host() -> Bool  {
   length(spark_claimed_serving_group_members())
     == length(fabric_group_hosts(g: FabricGroupA))
     && all(spark_pair_serving_authorities, a => pair_serving_commits_hosts(a: a))
@@ -217,7 +217,7 @@ test fn the_live_commitment_fold_still_claims_every_group_a_host() -> Bool {
 
 // AN UNCLAIMED GROUP HAS NO AUTHORITY AT ALL, which is the discriminating input for the lookup: a
 // lookup that ignored its argument would answer Present here too.
-test fn an_unclaimed_group_has_no_authority_row() -> Bool {
+test fn an_unclaimed_group_has_no_authority_row() -> Bool  {
   match pair_serving_authority_for(group: FabricGroupB) {
     Absent => true
     Present { value: _ } => false

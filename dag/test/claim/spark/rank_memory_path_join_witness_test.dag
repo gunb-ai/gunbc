@@ -65,20 +65,20 @@ fn is_provenance_mismatch(r: RankMemoryPathReading?) -> Bool {
   }
 }
 
-test fn two_incarnations_on_one_host_refuse() -> Bool {
+test fn two_incarnations_on_one_host_refuse() -> Bool  {
   is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_b, rank: 0), device: "0"))
 }
 
-test fn one_incarnation_attributed_to_two_node_ranks_refuses() -> Bool {
+test fn one_incarnation_attributed_to_two_node_ranks_refuses() -> Bool  {
   is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 1), device: "0"))
 }
 
-test fn one_id_on_two_hosts_refuses() -> Bool {
+test fn one_id_on_two_hosts_refuses() -> Bool  {
   is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv10, id: id_a, rank: 0), device: "0"))
 }
 
 // THE NCCL LINES CAME FROM LOCAL DEVICE 1 AND THE PROBE ASKED DEVICE 0.
-test fn lines_from_a_device_the_probe_did_not_ask_refuse() -> Bool {
+test fn lines_from_a_device_the_probe_did_not_ask_refuse() -> Bool  {
   match joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 0), device: "1") {
     Present { value: RankMemoryPathDeviceMismatch { probed: p, announced: _ } } => p == 0
     _ => false
@@ -87,7 +87,7 @@ test fn lines_from_a_device_the_probe_did_not_ask_refuse() -> Bool {
 
 // A CONTAINER NAME IS NOT AN INCARNATION ID, so the mutable name cannot be put on both sides of the
 // join to satisfy it across a recreate.
-test fn a_container_name_is_not_an_incarnation_id() -> Bool {
+test fn a_container_name_is_not_an_incarnation_id() -> Bool  {
   match container_incarnation_id(id: "glm-native-tp4") {
     Absent => true
     Present { value: _ } => false
@@ -97,7 +97,7 @@ test fn a_container_name_is_not_an_incarnation_id() -> Bool {
 // THE GREEN CONTROL, and the derivation it rests on: one incarnation, the probed device, and a raw
 // probe reply of 0 derive the platform-supported staged standing -- there is no stored capability
 // that could say otherwise.
-test fn one_incarnation_and_the_probed_device_join_and_derive_from_the_raw_reply() -> Bool {
+test fn one_incarnation_and_the_probed_device_join_and_derive_from_the_raw_reply() -> Bool  {
   match joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 0), device: "0") {
     Present { value: RankMemoryPathRead { facet: f } } =>
       match f.standing {

@@ -62,7 +62,7 @@ fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -
 //
 // A roster that silently dropped an unresolvable host would leave an engine waiting forever for a
 // peer nobody started, which is why the roster refuses whole rather than shrinking.
-test fn w_the_group_b_arm_plans_exactly_four_ranks() -> Bool {
+test fn w_the_group_b_arm_plans_exactly_four_ranks() -> Bool  {
   planned_lines(f: ls => length(ls) == 4)
 }
 
@@ -73,7 +73,7 @@ test fn w_the_group_b_arm_plans_exactly_four_ranks() -> Bool {
 // rank reported `NET/IB : No device found.` and then `Using network Socket`. A plan that renders
 // those three empty is the defect, and this row is what makes it fail to be planned rather than
 // fail in production two and a half days later.
-test fn w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory() -> Bool {
+test fn w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory() -> Bool  {
   planned_lines(f: ls => all(ls, l =>
     length(filter(l.container.devices, d => (d.host_path as String) == "/dev/infiniband")) == 1
       && length(filter(l.container.cap_add, c => (c as String) == "IPC_LOCK")) == 1
@@ -85,7 +85,7 @@ test fn w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory() -> Bool
 // The interface and the HCA are read off the fabric lane this fleet already observes. Asserting the
 // concrete values is deliberate: a plan that rendered SOME interface would pass a shape check while
 // naming a device that is not on this wire.
-test fn w_every_rank_names_this_fleets_leg_and_hca() -> Bool {
+test fn w_every_rank_names_this_fleets_leg_and_hca() -> Bool  {
   planned_lines(f: ls => all(ls, l =>
     any(l.container.env, e => (e.name as String) == "NCCL_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
       && any(l.container.env, e => (e.name as String) == "GLOO_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
@@ -97,7 +97,7 @@ test fn w_every_rank_names_this_fleets_leg_and_hca() -> Bool {
 //
 // `NET/IB : No device found.` versus `Using network IB` is the line this entire repair is judged by,
 // and it exists only at NCCL_DEBUG=INFO with the INIT,NET subsystems selected.
-test fn w_every_rank_keeps_the_transport_evidence_producer_on() -> Bool {
+test fn w_every_rank_keeps_the_transport_evidence_producer_on() -> Bool  {
   planned_lines(f: ls => all(ls, l =>
     any(l.container.env, e => (e.name as String) == "NCCL_DEBUG" && e.value == "INFO")
       && any(l.container.env, e => (e.name as String) == "NCCL_DEBUG_SUBSYS" && e.value == "INIT,NET")))
@@ -108,7 +108,7 @@ test fn w_every_rank_keeps_the_transport_evidence_producer_on() -> Bool {
 // max_num_seqs is why the live aggregate reads as a single stream at 1, and 2048 is an explicit flag
 // rather than a default nobody chose. Both are asserted against the profile rather than a literal,
 // so the row states that the argv AGREES WITH THE PROFILE and does not quietly re-declare a policy.
-test fn w_the_engine_argv_states_the_profiles_batching_bounds() -> Bool {
+test fn w_the_engine_argv_states_the_profiles_batching_bounds() -> Bool  {
   planned_lines(f: ls => all(ls, l =>
     argv_pair_is(argv: l.engine_argv, flag: "--max-num-seqs", value: to_string(glm_native_initial_profile.max_num_seqs))
       && argv_pair_is(argv: l.engine_argv, flag: "--max-num-batched-tokens", value: to_string(token_count_value(t: glm_native_initial_profile.max_num_batched_tokens)))
@@ -143,7 +143,7 @@ data fx_socket_rank: ArmNode = arm_node(
   transport: SocketOverInterface { interface: "enp1s0f1np1" as NonEmptyStr },
 )
 
-test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool {
+test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool  {
   match serving_checkpoint_row(c: Glm53NativeFp8) {
     Absent => false
     Present { value: crow } =>
@@ -196,7 +196,7 @@ fn plan_refusal_cause(p: ArmLaunchPlan) -> String {
   }
 }
 
-test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer() -> Bool {
+test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer() -> Bool  {
   (match plan_unrun_subject(intent: ArmNormalServing) {
     ArmLaunchRefused { cause: _ } => true
     ArmLaunchPlanned { lines: _, master: _ } => false
@@ -229,7 +229,7 @@ fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
   )
 }
 
-test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
+test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool  {
   match plan_measured_subject(intent: ArmNormalServing) {
     ArmLaunchRefused { cause: c } =>
       string_contains(s: c as String, pattern: "UNESTABLISHED")
@@ -265,7 +265,7 @@ test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
 // the planner the aggregate screen (gunbc.spark.serving_arm serving_arm_admits_under) and the
 // roster refuse tp1 first -- a planner-level row would go green on THEIR refusal and say nothing
 // about this one.
-test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
+test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool  {
   match arm_memory_fit_subject_for_launch(
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: SingleSparkTp1,
@@ -302,7 +302,7 @@ fn w_restoration_profile() -> ServingLaunchProfile {
   }
 }
 
-test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool {
+test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool  {
   match arm_memory_fit_subject_for_launch(
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
@@ -335,7 +335,7 @@ test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations()
 // argument beside a profile that also carried one, so a caller could hand the renderer 8567 while
 // the compatibility subject -- which is keyed by the profile -- said 8400, and both typechecked.
 // The argument is gone; there is one value and no second place for it to disagree with itself.
-test fn w_the_utilisation_argv_is_the_profiles_value_at_full_precision() -> Bool {
+test fn w_the_utilisation_argv_is_the_profiles_value_at_full_precision() -> Bool  {
   planned_lines(f: ls => all(ls, l =>
     argv_pair_is(argv: l.engine_argv, flag: "--gpu-memory-utilization", value: "0.84")))
     && planned_experiment_lines(profile: glm_native_concurrent_profile, f: ls => all(ls, l =>
@@ -383,7 +383,7 @@ fn w_plan_with_checkpoint_for_glm_profile(c: ServingCheckpoint) -> ArmLaunchPlan
   )
 }
 
-test fn w_a_profile_from_another_checkpoints_policy_refuses_at_the_launch_seam() -> Bool {
+test fn w_a_profile_from_another_checkpoints_policy_refuses_at_the_launch_seam() -> Bool  {
   string_contains(s: plan_refusal_cause(p: w_plan_with_checkpoint_for_glm_profile(c: DeepseekV41FlashDba1be0a)), pattern: "another checkpoint")
     && (match w_plan_with_checkpoint_for_glm_profile(c: Glm53NativeFp8) {
       ArmLaunchPlanned { lines: _, master: _ } => true

@@ -108,7 +108,7 @@ fn w_receipt_from(invocation: String, blocks: Nat, pool: VllmObservedKvPool) -> 
   }
 }
 
-test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bool {
+test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bool  {
   spark_pair_serving_minimum_cold_sessions.sessions == harness_interactive_quality_seats
     && (match w_pool(tokens: 31250 * 16) {
           Absent => false
@@ -138,7 +138,7 @@ test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bo
         })
 }
 
-test fn halving_the_declared_budget_halves_the_requirement() -> Bool {
+test fn halving_the_declared_budget_halves_the_requirement() -> Bool  {
   let half = MinimumColdSessions { maximum_sequence_tokens: token_count(count: 250000), sessions: 3 }
   match w_pool(tokens: 93749 * 16) {
     Absent => false
@@ -154,7 +154,7 @@ test fn halving_the_declared_budget_halves_the_requirement() -> Bool {
   }
 }
 
-test fn an_unestablished_capacity_withdraws_the_engine() -> Bool {
+test fn an_unestablished_capacity_withdraws_the_engine() -> Bool  {
   match w_pool(tokens: 11767856) {
     Absent => false
     Present { value: p } =>
@@ -180,7 +180,7 @@ test fn an_unestablished_capacity_withdraws_the_engine() -> Bool {
   }
 }
 
-test fn a_busy_engine_below_floor_is_withdrawn_but_not_restarted() -> Bool {
+test fn a_busy_engine_below_floor_is_withdrawn_but_not_restarted() -> Bool  {
   match w_pool(tokens: 20000 * 16) {
     Absent => false
     Present { value: p } =>
@@ -204,7 +204,7 @@ test fn a_busy_engine_below_floor_is_withdrawn_but_not_restarted() -> Bool {
   }
 }
 
-test fn an_admitting_engine_is_never_restarted() -> Bool {
+test fn an_admitting_engine_is_never_restarted() -> Bool  {
   match w_pool(tokens: 31250 * 16) {
     Absent => false
     Present { value: p } =>
@@ -221,7 +221,7 @@ test fn an_admitting_engine_is_never_restarted() -> Bool {
   }
 }
 
-test fn a_drained_withdrawn_engine_still_refuses_restart_naming_the_missing_memory_plan() -> Bool {
+test fn a_drained_withdrawn_engine_still_refuses_restart_naming_the_missing_memory_plan() -> Bool  {
   match w_pool(tokens: 20000 * 16) {
     Absent => false
     Present { value: p } =>
@@ -244,7 +244,7 @@ test fn a_drained_withdrawn_engine_still_refuses_restart_naming_the_missing_memo
   }
 }
 
-test fn re_admission_is_decided_by_the_new_receipt_not_by_the_restart_having_happened() -> Bool {
+test fn re_admission_is_decided_by_the_new_receipt_not_by_the_restart_having_happened() -> Bool  {
   match w_pool(tokens: 20000 * 16) {
     Absent => false
     Present { value: short_pool } =>

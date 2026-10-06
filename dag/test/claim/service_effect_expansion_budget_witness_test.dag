@@ -80,12 +80,12 @@ fn completed(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // discriminate is the refusing and the truncating-at-a-chosen-depth behaviours, not the emitted
 // parameter list. The next-rung trigger is a fixture instrument that can assert over emitted
 // content; until it exists this class is a regression control and is reported as one.
-test fn chain_deeper_than_any_chosen_pass_count_still_converges() -> Bool {
+test fn chain_deeper_than_any_chosen_pass_count_still_converges() -> Bool  {
   completed(deep_run())
 }
 
 // THE SHALLOW CONTROL. Without it the test above is satisfied by an analysis that never refuses
 // anything, including one that has stopped propagating altogether.
-test fn chain_within_a_single_pass_still_emits() -> Bool {
+test fn chain_within_a_single_pass_still_emits() -> Bool  {
   completed(shallow_run())
 }

@@ -26,7 +26,7 @@ data sid_authored_service_source: String = "module sid_authored_service\n\nimpor
 
 data sid_module_imported_service_source: String = "module sid_module_imported_service\n\nimport std.types \{ FilePath }\nimport extdeps.tools.diffutils\n\nfn sid_same(left: FilePath, right: FilePath) -> Bool \{\n  let d = shell.Diff.Recursive(left: left, right: right)\n  d.identical\n}\n"
 
-test fn an_authored_service_import_is_not_emitted_a_second_time() -> Bool {
+test fn an_authored_service_import_is_not_emitted_a_second_time() -> Bool  {
   compile_dag_rust_emit_check(
     sid_authored_service_source,
     "src/sid_authored_service.rs",
@@ -35,7 +35,7 @@ test fn an_authored_service_import_is_not_emitted_a_second_time() -> Bool {
   )
 }
 
-test fn a_service_import_no_authored_line_binds_is_still_emitted() -> Bool {
+test fn a_service_import_no_authored_line_binds_is_still_emitted() -> Bool  {
   compile_dag_rust_emit_check(
     sid_module_imported_service_source,
     "src/sid_module_imported_service.rs",

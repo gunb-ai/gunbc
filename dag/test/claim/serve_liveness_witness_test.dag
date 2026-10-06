@@ -43,7 +43,7 @@ data seed_liveness_body: String = join([
 // one meaning, two names, and the second existed only to be read back. This claim is what keeps
 // them one: the fixture builds its member from that authority, so a rename there reds here rather
 // than silently producing a document this reader cannot parse.
-test fn the_liveness_reader_accepts_the_served_document() -> Bool {
+test fn the_liveness_reader_accepts_the_served_document() -> Bool  {
   match observe_serve_liveness(body: seed_liveness_body) {
     ServeLivenessObserved { revision: rev } => rev as String == liveness_fixture_revision
     _ => false
@@ -55,7 +55,7 @@ test fn the_liveness_reader_accepts_the_served_document() -> Bool {
 // state the old arrangement stayed green on: the `.dag` producer still had the field, so the claim
 // passed while the served bytes had lost it. The reader refuses it, and that refusal is what stage
 // 2 reports.
-test fn a_liveness_document_without_the_revision_refuses() -> Bool {
+test fn a_liveness_document_without_the_revision_refuses() -> Bool  {
   match observe_serve_liveness(body: "{\"live\":true,\"bound_port\":8085}") {
     ServeLivenessRevisionAbsent => true
     _ => false
@@ -66,7 +66,7 @@ test fn a_liveness_document_without_the_revision_refuses() -> Bool {
 // gunbc.running_release_identity uses for /healthz rather than a second one. A branch name, an
 // abbreviated sha or an empty launch argument reaching the wire are all this arm, and every stage
 // after "prove release" would otherwise be reasoning about a build nobody can name.
-test fn a_liveness_document_with_a_branch_name_refuses() -> Bool {
+test fn a_liveness_document_with_a_branch_name_refuses() -> Bool  {
   let body = join(["{\"", running_release_revision_key, "\":\"main\"}"], "")
   match observe_serve_liveness(body: body) {
     ServeLivenessRevisionMalformed { text: t } => t == "main"
@@ -77,7 +77,7 @@ test fn a_liveness_document_with_a_branch_name_refuses() -> Bool {
 // THE WRONG PROCESS ON THE PORT IS ITS OWN ARM, not a parse failure. During the cutover two gunbc
 // processes are listening on one host and a third thing may hold a port; "answered something that
 // is not an object" and "answered nothing readable" send an operator to different places.
-test fn a_non_object_liveness_body_is_distinguished_from_unparseable_bytes() -> Bool {
+test fn a_non_object_liveness_body_is_distinguished_from_unparseable_bytes() -> Bool  {
   let not_object = match observe_serve_liveness(body: "[1,2,3]") {
     ServeLivenessBodyNotAnObject => true
     _ => false
@@ -102,7 +102,7 @@ test fn a_non_object_liveness_body_is_distinguished_from_unparseable_bytes() -> 
 //
 // THE RED: change release_readback_from_read so any refusing reading still yields ReleaseReadBack,
 // and the `bad` direction fails; break observe_serve_liveness's validation and `good` fails.
-test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool {
+test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool  {
   let good = match release_readback_from_read(read: observe_serve_liveness(body: seed_liveness_body)) {
     ReleaseReadBack { revision: rev } => rev as String == liveness_fixture_revision
     ReleaseNotReadBack { detail: _ } => false
@@ -124,7 +124,7 @@ test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool
 // The broker binds the same address from its dark install onward, so the probe reaches the same
 // process at every stage -- which is what makes a release readback taken here describe the process
 // that later serves.
-test fn the_stage_two_probe_targets_the_liveness_path_on_the_broker_port() -> Bool {
+test fn the_stage_two_probe_targets_the_liveness_path_on_the_broker_port() -> Bool  {
   let url = approval_broker_liveness_url(port: approval_broker_listen_port) as String
   string_contains(s: url, pattern: serve_liveness_path as String)
     && string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))

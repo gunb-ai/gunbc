@@ -26,28 +26,28 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 
 // RED TODAY: the rendered invoke carries the prelude's absorbing fallback and stderr swallow.
 // Greens when the toplevel read is typed git.Core.ShowToplevel with a nonzero-refuse arm.
-test fn deploy_invoke_prelude_renders_no_shell_control_word() -> Bool {
+test fn deploy_invoke_prelude_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: w))
 }
 
 // RED TODAY, the absorbing fallback named alone: `|| pwd` substitutes the working directory for a
 // failed toplevel read and reports nothing. Greens when the fallback spelling is deleted, not
 // preserved.
-test fn deploy_invoke_prelude_has_no_pwd_fallback() -> Bool {
+test fn deploy_invoke_prelude_has_no_pwd_fallback() -> Bool  {
   !string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: "|| pwd")
 }
 
 // TYPED-FORM POSITIVE CONTROL, green today and after: the invoke still reads the repository
 // toplevel — the rebind changes who constructs the read (typed git.Core.ShowToplevel over the same
 // upstream argv), never what is read.
-test fn deploy_invoke_still_reads_the_repo_toplevel() -> Bool {
+test fn deploy_invoke_still_reads_the_repo_toplevel() -> Bool  {
   string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: "rev-parse")
     && string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: "--show-toplevel")
 }
 
 // POSITIVE CONTROL, green today and after: the invoke runs the declared stage's entry and
 // function — the rest of the thin-invoke is untouched by the rebind.
-test fn deploy_invoke_runs_the_declared_stage() -> Bool {
+test fn deploy_invoke_runs_the_declared_stage() -> Bool  {
   string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: gunbc_ci_deploy_srv1_stage.entry)
     && string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: gunbc_ci_deploy_srv1_stage.function)
 }

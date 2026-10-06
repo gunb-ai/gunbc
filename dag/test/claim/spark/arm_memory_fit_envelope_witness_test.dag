@@ -69,7 +69,7 @@ fn w_proof_subject(p: ServingLaunchProfile) -> MemoryProofSubject? {
 }
 
 // THE POSITIVE CONTROL: a ceiling of ten over six cold seats, gate stated, prices SIX cold seats.
-test fn w_the_launch_wall_prices_the_cold_floor_not_the_ceiling() -> Bool {
+test fn w_the_launch_wall_prices_the_cold_floor_not_the_ceiling() -> Bool  {
   match w_subject_seats(p: w_profile(ceiling: 10, cold: 6, admission: w_gate())) {
     Present { value: n } => n == 6
     Absent => false
@@ -77,7 +77,7 @@ test fn w_the_launch_wall_prices_the_cold_floor_not_the_ceiling() -> Bool {
 }
 
 // AT THE FLOOR NOTHING CHANGES: six of six with no flag prices six, as before the split.
-test fn w_the_floor_launch_is_priced_as_before() -> Bool {
+test fn w_the_floor_launch_is_priced_as_before() -> Bool  {
   match w_subject_seats(p: w_profile(ceiling: 6, cold: 6, admission: vllm_scheduler_admission_omitted)) {
     Present { value: n } => n == 6
     Absent => false
@@ -85,14 +85,14 @@ test fn w_the_floor_launch_is_priced_as_before() -> Bool {
 }
 
 // THE DISCRIMINATING RED: the same ceiling with the gate inherited is refused at the wall.
-test fn w_a_ceiling_above_the_floor_without_the_gate_is_refused_at_the_wall() -> Bool {
+test fn w_a_ceiling_above_the_floor_without_the_gate_is_refused_at_the_wall() -> Bool  {
   match w_subject_seats(p: w_profile(ceiling: 10, cold: 6, admission: vllm_scheduler_admission_omitted)) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn w_a_floor_above_the_ceiling_is_refused_at_the_wall() -> Bool {
+test fn w_a_floor_above_the_ceiling_is_refused_at_the_wall() -> Bool  {
   match w_subject_seats(p: w_profile(ceiling: 6, cold: 8, admission: w_gate())) {
     Present { value: _ } => false
     Absent => true
@@ -101,7 +101,7 @@ test fn w_a_floor_above_the_ceiling_is_refused_at_the_wall() -> Bool {
 
 // EACH CEILING OWES ITS OWN EVIDENCE: the same six cold seats under ceilings of six and ten share
 // configuration, and static residency carries across, but a per-sequence term does not.
-test fn w_a_receipt_at_one_ceiling_does_not_discharge_a_ceiling_sensitive_term_at_another() -> Bool {
+test fn w_a_receipt_at_one_ceiling_does_not_discharge_a_ceiling_sensitive_term_at_another() -> Bool  {
   match w_proof_subject(p: w_profile(ceiling: 6, cold: 6, admission: vllm_scheduler_admission_omitted)) {
     Absent => false
     Present { value: at_floor } =>
@@ -137,7 +137,7 @@ fn w_assign(v: String) -> DockerEnvAssignment {
   DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: v }
 }
 
-test fn w_the_ready_timeout_is_read_from_the_launch_environment() -> Bool {
+test fn w_the_ready_timeout_is_read_from_the_launch_environment() -> Bool  {
   w_ready_is(env: [], want: 600)
     && w_ready_is(env: [w_assign(v: "3600")], want: 3600)
     && w_ready_refuses(env: [w_assign(v: "3600"), w_assign(v: "600")])
@@ -157,7 +157,7 @@ fn w_window_fits(ready: Nat, seqs: Nat) -> Bool {
        == second_count(s: arm_experiment_churn_window_allowance(ready_timeout: r, max_num_seqs: seqs)) + second_count(s: arm_experiment_churn_request_timeout) + second_count(s: arm_experiment_sampler_cadence)
 }
 
-test fn w_the_runtime_bound_satisfies_its_own_derivation() -> Bool {
+test fn w_the_runtime_bound_satisfies_its_own_derivation() -> Bool  {
   w_window_fits(ready: 3600, seqs: 8)
     && w_window_fits(ready: 600, seqs: 6)
     && w_window_fits(ready: 3600, seqs: 16)

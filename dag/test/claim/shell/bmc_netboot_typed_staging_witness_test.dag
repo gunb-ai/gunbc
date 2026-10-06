@@ -128,7 +128,7 @@ fn prepared_launch_fields(ops: List<BmcNetbootPreparedOp>) -> LaunchFields {
 // must act -- and the serve launch carries every field FROM THE PLAN, so a serve from somewhere
 // else or on another port is not authorable, and the busybox it runs is the busybox the puts
 // stage (both derive from the same plan record, so they cannot diverge).
-test fn whole_provision_stages_ready_with_the_serve_launch_derived_from_the_plan() -> Bool {
+test fn whole_provision_stages_ready_with_the_serve_launch_derived_from_the_plan() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let staged = bmc_netboot_provision_staging(plan: plan)
   let ops = staging_ops(staging: staged)
@@ -146,7 +146,7 @@ test fn whole_provision_stages_ready_with_the_serve_launch_derived_from_the_plan
 // THE REMOTE PATH IS DERIVED, NOT AUTHORED: a staged name lands under the plan's serve root by
 // construction -- the op carries a relative name, staging joins it under the plan's netboot_dir,
 // and the subdirectory form (`nocloud/user-data`) stages exactly as a flat one.
-test fn staged_names_derive_the_remote_path_from_the_plan() -> Bool {
+test fn staged_names_derive_the_remote_path_from_the_plan() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let dir = bmc_netboot_op_prepared(plan: plan, op: BmcNetbootMakeDir { name: "nocloud" })
   let sub = bmc_netboot_op_prepared(plan: plan, op: BmcNetbootPutText {
@@ -165,7 +165,7 @@ test fn staged_names_derive_the_remote_path_from_the_plan() -> Bool {
 // dot segments all refuse, and the refusal is a STOP -- the good ops prepared before the bad one
 // never become observable, because a refused staging carries no operation list at all (the type
 // has no state in which a refused op sits beside prepared ones).
-test fn staged_names_that_are_not_relative_refuse_the_whole_staging() -> Bool {
+test fn staged_names_that_are_not_relative_refuse_the_whole_staging() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let good_put = BmcNetbootPutText { name: "grub.cfg", text: "set timeout=1" }
   let absolute = bmc_netboot_staging_of(plan: plan, ops: [good_put, BmcNetbootMakeDir { name: "/etc" }])
@@ -182,7 +182,7 @@ test fn staged_names_that_are_not_relative_refuse_the_whole_staging() -> Bool {
 
 // THE VERDICT IS THE ONE PLACE THE LAW LIVES: it answers for every path-carrying op, and the
 // positive side is the estate's own manifest names -- relative, well-formed, staging READY.
-test fn the_relative_path_verdict_answers_well_formed_for_the_estates_names() -> Bool {
+test fn the_relative_path_verdict_answers_well_formed_for_the_estates_names() -> Bool  {
   match bmc_netboot_staged_path_verdict(name: "busybox") {
     BmcNetbootStagedPathNotRelative { name: _ } => false
     BmcNetbootStagedPathWellFormed { name: n } => (n as String) == "busybox"
@@ -201,7 +201,7 @@ test fn the_relative_path_verdict_answers_well_formed_for_the_estates_names() ->
 // every earlier scp before discovering the put-from-uri had no realized transport; now the
 // refusal is a staging verdict and NOTHING runs -- and a good op prepared before it does not
 // rescue the staging.
-test fn put_from_uri_refuses_the_staging_before_anything_prepares() -> Bool {
+test fn put_from_uri_refuses_the_staging_before_anything_prepares() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let mixed = bmc_netboot_staging_of(plan: plan, ops: [
     BmcNetbootMakeDir { name: "nocloud" },
@@ -215,7 +215,7 @@ test fn put_from_uri_refuses_the_staging_before_anything_prepares() -> Bool {
 // THE STAGED TEXT PUTS CARRY THE RENDERED PAYLOADS, AND THEIR LOCAL STAGING NAMES ARE DERIVED
 // FROM THE REMOTE PATH each will land at -- so two staged texts cannot overwrite one another's
 // local file, and the write-then-transfer pair cannot disagree about which file they mean.
-test fn staged_text_puts_derive_distinct_local_staging_paths() -> Bool {
+test fn staged_text_puts_derive_distinct_local_staging_paths() -> Bool  {
   let grub_local = bmc_netboot_local_staging_path(remote_path: "/tmp/netboot/grub.cfg" as NonEmptyStr)
   let user_local = bmc_netboot_local_staging_path(remote_path: "/tmp/netboot/nocloud/user-data" as NonEmptyStr)
   let meta_local = bmc_netboot_local_staging_path(remote_path: "/tmp/netboot/nocloud/meta-data" as NonEmptyStr)
@@ -243,7 +243,7 @@ fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-test fn foreign_module_cannot_hand_author_a_prepared_op() -> Bool {
+test fn foreign_module_cannot_hand_author_a_prepared_op() -> Bool  {
   match census_blocking_count_for_class(
     census: bypass_probe_census(source: prepared_op_bypass_probe_source),
     wanted: "SoleConstructorViolation",

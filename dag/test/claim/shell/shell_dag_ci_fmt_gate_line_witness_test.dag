@@ -25,13 +25,13 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 // RED TODAY: the hand-spelled line reaches cargo through a shell variable the typed cargo.Build.Fmt
 // operation has no spelling for. Greens when the line is derived from the typed operation — an
 // argument the typed operation cannot express must refuse, never fall back to concat.
-test fn gate_line_is_not_a_hand_spelled_shell_indirection() -> Bool {
+test fn gate_line_is_not_a_hand_spelled_shell_indirection() -> Bool  {
   !string_contains(s: ci_fmt_gate_line(), pattern: "$CARGO_BIN")
 }
 
 // TYPED-FORM POSITIVE CONTROL, green today and after: the gate runs the same check it has always
 // run — fmt over the whole workspace in check mode — whoever constructs the line.
-test fn gate_line_runs_the_workspace_fmt_check() -> Bool {
+test fn gate_line_runs_the_workspace_fmt_check() -> Bool  {
   string_contains(s: ci_fmt_gate_line(), pattern: "fmt")
     && string_contains(s: ci_fmt_gate_line(), pattern: "--all")
     && string_contains(s: ci_fmt_gate_line(), pattern: "--check")
@@ -39,7 +39,7 @@ test fn gate_line_runs_the_workspace_fmt_check() -> Bool {
 
 // POSITIVE CONTROL, green today and after: the rendered gate line carries no shell control word
 // (`set -e`, `||`, `&&`, `;`, `2>/dev/null`).
-test fn gate_line_renders_no_shell_control_word() -> Bool {
+test fn gate_line_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(s: ci_fmt_gate_line(), pattern: w))
 }
 

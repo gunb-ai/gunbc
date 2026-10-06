@@ -142,7 +142,7 @@ fn w_uniform_supplies(blocks: Nat, arena: ByteSize) -> List<ArmRankCacheSupply> 
 // in the sliding-window group) holds against glm_5_3_flash_hybrid_shape, so no roster obligation
 // fires — and the thinned variant, one identity dropped from every mamba group, refuses naming
 // the recurrent population. A proof at one roster says nothing at another.
-test fn the_real_plan_roster_binds_the_exact_model() -> Bool {
+test fn the_real_plan_roster_binds_the_exact_model() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -179,7 +179,7 @@ test fn the_real_plan_roster_binds_the_exact_model() -> Bool {
 // A PLAN FROM ANOTHER REVISION IS A DIFFERENT ENGINE'S ROSTER: the retired 1967a5627 stamp
 // refuses at the fold's revision wall naming both revisions — the wall-law flip the advance
 // landed, here at the fold itself.
-test fn a_pre_patch_revision_plan_refuses_at_the_roster_wall() -> Bool {
+test fn a_pre_patch_revision_plan_refuses_at_the_roster_wall() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -197,7 +197,7 @@ test fn a_pre_patch_revision_plan_refuses_at_the_roster_wall() -> Bool {
 
 // ZERO SEATS NAMES NO ADMISSION: the malformed question is an obligation, not a vacuous proof
 // over a zero demand.
-test fn zero_seats_name_no_admission() -> Bool {
+test fn zero_seats_name_no_admission() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -220,7 +220,7 @@ test fn zero_seats_name_no_admission() -> Bool {
 // pinned here as srv11's 17.29 GiB floor (18,564,996,136 bytes), the arena the doctrine's
 // reconciliation reads. The v1 plan's block_equivalent_bytes rides Absent: blocks proven, no
 // byte conservation claimed.
-test fn the_completing_run_evidence_proves_six_seats_at_the_limiting_rank() -> Bool {
+test fn the_completing_run_evidence_proves_six_seats_at_the_limiting_rank() -> Bool  {
   (match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -258,7 +258,7 @@ test fn the_completing_run_evidence_proves_six_seats_at_the_limiting_rank() -> B
 // (the zero spelling of unobserved) and the fold falls back to CacheFitUnestablished naming
 // EXACTLY that rank — the three-unobserved-arenas verdict of 2026-09-25 held in all four
 // positions, so a future capture gap is named at the rank that produced it.
-test fn dropping_any_one_arena_falls_back_to_unestablished_naming_that_rank() -> Bool {
+test fn dropping_any_one_arena_falls_back_to_unestablished_naming_that_rank() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -290,7 +290,7 @@ fn w_drop_one_arena_names_that_rank(p: ResolvedKvAllocationPlan, dropped: Nat) -
 // the rank the bundle binds (TP3, the engine's min across ranks already applied to the uniform
 // inventory), and a limiting rank the topology does not contain is an obligation, not a proof at
 // no rank.
-test fn the_limiting_rank_is_carried_and_out_of_roster_evidence_refuses() -> Bool {
+test fn the_limiting_rank_is_carried_and_out_of_roster_evidence_refuses() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -321,7 +321,7 @@ test fn the_limiting_rank_is_carried_and_out_of_roster_evidence_refuses() -> Boo
 // THE BLOCK WALL DECIDES WITHOUT READING THE ARENAS: six seats at 738 of the plan's 1035-block
 // inventory prove on every rank at the block wall alone — the arenas in the supply rows bound
 // nothing here (bytes verify pool construction, never capacity), which is the correction.
-test fn six_seats_prove_at_the_block_wall_on_the_real_plan() -> Bool {
+test fn six_seats_prove_at_the_block_wall_on_the_real_plan() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -351,7 +351,7 @@ test fn six_seats_prove_at_the_block_wall_on_the_real_plan() -> Bool {
 // ninth seat refuses at 1107 > 1035. The block wall is the binding constraint at every seat
 // count, and the reserve column of the doctrine's frontier table (28.70%, 16.81%, 4.93% of the
 // inventory left) is blocks_left / 1035, priced by the frontier fold below.
-test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool {
+test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -391,7 +391,7 @@ test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool {
 // KvAdmissionDemand of one seat. The group's spec pages price the LOGICAL per-group charge
 // (blocks_at x group_spec_page_size_bytes = max_memory_usage_bytes, the figure that reproduces
 // the printed 8.41x); they never sum into a byte demand — that sum was the withdrawn figure.
-test fn the_request_block_cost_is_the_exact_roster() -> Bool {
+test fn the_request_block_cost_is_the_exact_roster() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -408,7 +408,7 @@ test fn the_request_block_cost_is_the_exact_roster() -> Bool {
 // is 912 blocks — six (738) and seven (861) admit, eight (984) refuses at the reserve, and nine
 // refuses at the bare wall. The reserve is a standing, not a capacity fact: NoOperationalReserve
 // admits eight (984 <= 1035).
-test fn cache_admission_respects_the_reserve_policy() -> Bool {
+test fn cache_admission_respects_the_reserve_policy() -> Bool  {
   (match cache_admission_verdict(population_blocks: allocator_block_count(count: 738), inventory: allocator_block_count(count: 1035), reserve_blocks: allocator_block_count(count: 123)) {
     CacheAdmissionProved { request_blocks: r, usable_allocator_blocks: u } =>
       allocator_block_count_value(c: r) == 738 && allocator_block_count_value(c: u) == 912
@@ -436,7 +436,7 @@ test fn cache_admission_respects_the_reserve_policy() -> Bool {
 // holds 2870bp of 1035 = 297 blocks (the six-seat standing reserve: 297 of 1035 blocks left at
 // six seats is 28.70% of the inventory, the conservative restoration point's reserve). No byte
 // figure rides a reserve: it is a block standing.
-test fn the_reserve_policy_is_carried_in_blocks_in_the_verdict() -> Bool {
+test fn the_reserve_policy_is_carried_in_blocks_in_the_verdict() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -481,7 +481,7 @@ test fn the_reserve_policy_is_carried_in_blocks_in_the_verdict() -> Bool {
 // The declared six seats hold 1,572,864 tokens, leaving 632,981 printed tokens (≈ 2.4 seats) and
 // 297 blocks (≈ 2 seats by the fold) of slack. The candidate stays what it is — a sizing hint no
 // verdict consumes — and the fold stays the only proof.
-test fn the_headroom_figures_are_pinned() -> Bool {
+test fn the_headroom_figures_are_pinned() -> Bool  {
   (match cache_capacity_candidate(printed_pool_tokens: token_count(count: 2205845), division_length: token_count(count: 262144)) {
     Present { value: c } => c.seats_by_division == 8
     Absent => false
@@ -571,7 +571,7 @@ fn w_capture_with_pool_fields(c: KvAllocationPlanCapture, pool_block: ByteSize?,
 // (1035 x 17,937,194 = 18,564,995,790 exactly) and its construction verdict is Proved carrying
 // the engine-side figures; a non-conserving v2 plan (allocated off by one block) refuses at the
 // mint, and a half-emitted pair (exactly one pool field) refuses as a partial vintage.
-test fn pool_construction_verdicts_discriminate_both_vintages() -> Bool {
+test fn pool_construction_verdicts_discriminate_both_vintages() -> Bool  {
   (match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -612,7 +612,7 @@ test fn pool_construction_verdicts_discriminate_both_vintages() -> Bool {
 // of physical blocks above the min-clamped allocation. That asymmetry is why the byte wall was
 // never a per-rank capacity check — and why the conservation control names its allowance. A zero
 // arena reading refuses as bounding nothing.
-test fn pool_construction_at_the_real_arenas_proves_only_at_the_limiting_rank() -> Bool {
+test fn pool_construction_at_the_real_arenas_proves_only_at_the_limiting_rank() -> Bool  {
   match w_carve() {
     Absent => false
     Present { value: carve } =>
@@ -662,7 +662,7 @@ test fn pool_construction_at_the_real_arenas_proves_only_at_the_limiting_rank() 
 // The exact block-equivalent spelling (738 x 17,937,194 = 13,237,649,172 bytes, 71.30% of the
 // pool, ~12.33 GiB) is Consistent; an underprice at or above 1% of the pool refuses without the
 // RED sentence; an overprice refuses; and the v1 plan refuses every byte claim as uncheckable.
-test fn the_conservation_red_pins_the_withdrawn_six_seat_figure() -> Bool {
+test fn the_conservation_red_pins_the_withdrawn_six_seat_figure() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -700,7 +700,7 @@ test fn the_conservation_red_pins_the_withdrawn_six_seat_figure() -> Bool {
 // prove at the block wall as before, and the verdict now carries block_equivalent_bytes =
 // 13,237,649,172 — the ONLY byte figure a capacity verdict may hold, named block_equivalent_bytes
 // so it is never read as ordinary memory demand or physical headroom.
-test fn the_proved_verdict_carries_the_block_equivalent_spelling_on_the_v2_plan() -> Bool {
+test fn the_proved_verdict_carries_the_block_equivalent_spelling_on_the_v2_plan() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -732,7 +732,7 @@ test fn the_proved_verdict_carries_the_block_equivalent_spelling_on_the_v2_plan(
 // guaranteed seat count is 7 of the hard ceiling 8; six remains the conservative restoration
 // point, leaving 297 blocks = 28.70% of the inventory. THE RUNGS RIDE IN ORDER (ceiling − 2
 // through ceiling + 1), so the ladder is read by position, each rung discriminated on its own.
-test fn the_cache_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool {
+test fn the_cache_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -804,7 +804,7 @@ fn w_frontier_reserved(p: ResolvedKvAllocationPlan, supplies: List<ArmRankCacheS
 // and six as the conservative restoration point with its 28.7% reserve — ReserveBasisPoints{2870}
 // holds 297 blocks back and selects exactly 6. The reserve SHARES, at two-decimal percent:
 // 297/1035 = 28.70%, 174/1035 = 16.81%, 51/1035 = 4.93% of the inventory left at 6/7/8 seats.
-test fn the_frontier_reserve_policies_select_their_guaranteed_seats() -> Bool {
+test fn the_frontier_reserve_policies_select_their_guaranteed_seats() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -825,7 +825,7 @@ test fn the_frontier_reserve_policies_select_their_guaranteed_seats() -> Bool {
 // THE FRONTIER NAMES THE BLOCK-EQUIVALENT PER SEAT ON THE v2 PLAN: 123 blocks per seat at
 // 17,937,194 bytes per block = 2,206,274,862 block-equivalent bytes per seat — the frontier's
 // only byte figure, named block_equivalent_bytes_per_seat, absent on the v1 vintage.
-test fn the_frontier_carries_the_block_equivalent_per_seat_on_the_v2_plan() -> Bool {
+test fn the_frontier_carries_the_block_equivalent_per_seat_on_the_v2_plan() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -849,7 +849,7 @@ test fn the_frontier_carries_the_block_equivalent_per_seat_on_the_v2_plan() -> B
 // prefill transient in the standing — a proved cache frontier is not a whole-arm fit, and no
 // eight-seat persistent service follows from cache capacity alone (the adoption gate the
 // doctrine pins: prefill derivation, profile-shape binding, falsification run, SLO evidence).
-test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool {
+test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool  {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -922,7 +922,7 @@ fn w_minted_v2_real_plan() -> ResolvedKvAllocationPlan? {
 // extension added pool figures, it did not move a layer — and a Proved at six seats now carries
 // block_equivalent_bytes = 738 x 13,602,816 = 10,038,878,208 bytes, the demand's only byte
 // spelling, named so it is never read as ordinary memory demand or physical headroom.
-test fn the_v2_plan_roster_binds_the_exact_model() -> Bool {
+test fn the_v2_plan_roster_binds_the_exact_model() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -961,7 +961,7 @@ test fn the_v2_plan_roster_binds_the_exact_model() -> Bool {
 // checked beside the verdict (envelope minus usage reproduces every bound arena) and its limiting
 // rank's floor is pinned (srv11, 16.37 GiB = 17,577,153,658 bytes) so the evidence and the verdict
 // cannot drift apart silently.
-test fn the_v2_verdict_proves_six_seats_at_the_limiting_rank_with_the_block_equivalent_spelling() -> Bool {
+test fn the_v2_verdict_proves_six_seats_at_the_limiting_rank_with_the_block_equivalent_spelling() -> Bool  {
   (match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1001,7 +1001,7 @@ test fn the_v2_verdict_proves_six_seats_at_the_limiting_rank_with_the_block_equi
 // through ceiling + 1), each discriminated on its own, and the frontier's only byte figure —
 // block_equivalent_bytes_per_seat, 123 x 13,602,816 = 1,673,146,368 — names the per-seat demand's
 // block-equivalent spelling on the v2 carve.
-test fn the_v2_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool {
+test fn the_v2_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1043,7 +1043,7 @@ test fn the_v2_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool
 // 1012 is 27.07% of this inventory (round-half: (274 x 10000 + 506) / 1012 = 2708, the band's
 // floor), where the old inventory's 28.70% share priced 2870 — which HERE holds 290 back and
 // selects only 5, the standing proof that a reserve share does not transfer across inventories.
-test fn the_v2_frontier_reserve_policies_are_recomputed_for_this_inventory() -> Bool {
+test fn the_v2_frontier_reserve_policies_are_recomputed_for_this_inventory() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1072,7 +1072,7 @@ test fn the_v2_frontier_reserve_policies_are_recomputed_for_this_inventory() -> 
 // the_conservation_red_pins_the_withdrawn_six_seat_figure's clause, not repeated here.) The RED is
 // a property of the claim against the pool it claims to sit in — it does not soften because the
 // pool changed size.
-test fn the_conservation_red_still_bites_on_the_withdrawn_figure_at_the_v2_pool() -> Bool {
+test fn the_conservation_red_still_bites_on_the_withdrawn_figure_at_the_v2_pool() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1108,7 +1108,7 @@ test fn the_conservation_red_still_bites_on_the_withdrawn_figure_at_the_v2_pool(
 // readings are read as the other's: one launch's plan prices one launch's arenas, and the
 // cross-launch drift is the fleet's allocator-stability question, carried by the observation
 // layer, not silently averaged into a bound.
-test fn the_v2_run_to_run_variance_is_named_never_folded() -> Bool {
+test fn the_v2_run_to_run_variance_is_named_never_folded() -> Bool  {
   (arm_experiment_2026_09_26_generation as String) != (arm_experiment_kvplan_v2_2026_09_26_generation as String)
     && arm_experiment_kvplan_v2_2026_09_26_arena_derivation_holds()
     && (match first(filter(arm_experiment_2026_09_26_arena_readings, r => r.rank == 3)) {
@@ -1178,7 +1178,7 @@ fn w_v2_slack_named_allowance_reason() -> NonEmptyStr {
 // physical block (13,602,816) plus the named allowance of 3,919,157,657 bytes (3.65 GiB, the
 // limiting rank's own printed peak-activation figure) -- and the Proved arm carries the slack
 // figure beside the construction facts, said rather than hidden.
-test fn the_v2_pool_fits_every_arena_and_the_tight_construction_proves_under_the_named_allowance() -> Bool {
+test fn the_v2_pool_fits_every_arena_and_the_tight_construction_proves_under_the_named_allowance() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1213,7 +1213,7 @@ test fn the_v2_pool_fits_every_arena_and_the_tight_construction_proves_under_the
 // standing because the WHOLE printed peak-activation rides, not because its 1.71 GiB graph
 // component does: this row pins that difference so a future edit cannot silently shrink the
 // allowance to the residue and claim the same proof.
-test fn the_estimate_over_actual_residue_alone_still_leaves_the_slack_open() -> Bool {
+test fn the_estimate_over_actual_residue_alone_still_leaves_the_slack_open() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1242,7 +1242,7 @@ test fn the_estimate_over_actual_residue_alone_still_leaves_the_slack_open() -> 
 // reading is not the admitted arena of THIS pool — the same loud refusal the control minted
 // against the pre-clamp projections. The slack standing adds the split report; it never loosens
 // the gate.
-test fn the_existing_per_rank_control_still_refuses_the_v2_slack() -> Bool {
+test fn the_existing_per_rank_control_still_refuses_the_v2_slack() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1269,7 +1269,7 @@ test fn the_existing_per_rank_control_still_refuses_the_v2_slack() -> Bool {
 // slack 346 bytes, under one physical block -- while the same carve at the v2 launch's smaller
 // arenas refuses at rank 3 (16.37 GiB cannot hold an 18.56 GiB pool): the fit half's gate is
 // unchanged in both directions.
-test fn the_slack_standing_proves_the_tight_case_and_refuses_the_fit_violation() -> Bool {
+test fn the_slack_standing_proves_the_tight_case_and_refuses_the_fit_violation() -> Bool  {
   match w_carve() {
     Absent => false
     Present { value: carve } =>
@@ -1305,7 +1305,7 @@ test fn the_slack_standing_proves_the_tight_case_and_refuses_the_fit_violation()
 // THE MALFORMED SUPPLIES REFUSE, NOT PROVE: a zero arena reading refuses as bounding nothing, and
 // an arena below the allocated pool refuses the fit half naming the rank -- the slack standing
 // never mints a standing over a supply side that says nothing.
-test fn the_slack_standing_refuses_zero_and_under_arena_readings() -> Bool {
+test fn the_slack_standing_refuses_zero_and_under_arena_readings() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1343,7 +1343,7 @@ test fn the_slack_standing_refuses_zero_and_under_arena_readings() -> Bool {
 // bytes } -- six seats proven at the block wall and the pool's tight construction proven under
 // the named peak-activation allowance, the two facts traveling together so neither can be cited
 // without the other.
-test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool {
+test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool  {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>

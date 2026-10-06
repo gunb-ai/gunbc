@@ -31,7 +31,7 @@ fn hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
 // three workers, and a key that is stable across two derivations -- not merely the shape. Deleting
 // the integration (say, declared_pair_realization returning Unavailable for a realized group) fails
 // it. Group B has no pair realization and must say so rather than key an empty pair.
-test fn the_production_declaration_keys_group_a_and_refuses_group_b() -> Bool {
+test fn the_production_declaration_keys_group_a_and_refuses_group_b() -> Bool  {
   match declared_pair_realization(group: FabricGroupA) {
     DeclaredPairRealizationUnavailable { group: _, obligation: _ } => false
     DeclaredPairRealizationKeyed { declared: d } =>

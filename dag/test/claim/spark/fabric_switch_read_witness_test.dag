@@ -71,13 +71,13 @@ fn outcome_is_ok_5050(o: Crs812LaneReadOutcome) -> Bool {
 // typed speed/FEC/enabled), not the fetch; describing it as executing over captured bytes would be
 // the rung inflation DESIGN §4b(1) forbids. The inhabitance pairing -- that the real producer emits
 // this shape -- lands with that fetch, not here.
-test fn reads_the_eight_fabric_legs_as_50g_fec91_enabled() -> Bool {
+test fn reads_the_eight_fabric_legs_as_50g_fec91_enabled() -> Bool  {
   let outcomes = crs812_fabric_lane_read_outcomes(wires: captured_fabric_legs)
   outcomes.length() == 8 && all(outcomes, o => outcome_is_ok_5050(o: o))
 }
 
 // The management port is not a fabric leg and must not appear in the readings.
-test fn a_non_fabric_interface_is_filtered_out() -> Bool {
+test fn a_non_fabric_interface_is_filtered_out() -> Bool  {
   let outcomes = crs812_fabric_lane_read_outcomes(wires: [ether1_wire, leg_wire(name: "qsfp56-dd-1-1", speed: "50G-baseCR2", fec: "fec91", disabled: "false")])
   outcomes.length() == 1
 }
@@ -85,7 +85,7 @@ test fn a_non_fabric_interface_is_filtered_out() -> Bool {
 // DISCRIMINATING RED 1: a speed the corpus does not model refuses at the speed field rather than
 // decoding to the nearest known value. This is the fail-closed boundary the reader exists to hold;
 // without it a schema change or an unexpected speed would be silently mis-read.
-test fn an_unmodelled_speed_refuses_at_the_speed_field() -> Bool {
+test fn an_unmodelled_speed_refuses_at_the_speed_field() -> Bool  {
   match crs812_lane_read_one(w: leg_wire(name: "qsfp56-dd-1-1", speed: "800G-baseCR8", fec: "fec91", disabled: "false")) {
     LaneReadWireRefused { interface: _, field: f, wire: w } =>
       (f as String) == "speed" && w == "800G-baseCR8"
@@ -94,7 +94,7 @@ test fn an_unmodelled_speed_refuses_at_the_speed_field() -> Bool {
 }
 
 // DISCRIMINATING RED 2: an unmodelled FEC refuses at the fec-mode field.
-test fn an_unmodelled_fec_refuses_at_the_fec_field() -> Bool {
+test fn an_unmodelled_fec_refuses_at_the_fec_field() -> Bool  {
   match crs812_lane_read_one(w: leg_wire(name: "qsfp56-dd-1-1", speed: "50G-baseCR2", fec: "fec134", disabled: "false")) {
     LaneReadWireRefused { interface: _, field: f, wire: _ } => (f as String) == "fec-mode"
     LaneReadOk { reading: _ } => false
@@ -103,7 +103,7 @@ test fn an_unmodelled_fec_refuses_at_the_fec_field() -> Bool {
 
 // A disabled lane reads as not-enabled, so the assessment can tell a leg that should carry traffic
 // but is administratively down from one that is up.
-test fn a_disabled_lane_reads_as_not_enabled() -> Bool {
+test fn a_disabled_lane_reads_as_not_enabled() -> Bool  {
   match crs812_lane_read_one(w: leg_wire(name: "qsfp56-dd-1-2", speed: "50G-baseCR2", fec: "fec91", disabled: "true")) {
     LaneReadOk { reading: r } => match r {
       LaneReadingTaken { interface: _, speed: _, fec: _, enabled: en } => !en
@@ -114,13 +114,13 @@ test fn a_disabled_lane_reads_as_not_enabled() -> Bool {
 }
 
 // The whole captured response has no refusals -- every fabric leg decoded.
-test fn the_captured_response_has_no_wire_refusals() -> Bool {
+test fn the_captured_response_has_no_wire_refusals() -> Bool  {
   !any(crs812_fabric_lane_read_outcomes(wires: captured_fabric_legs), o => crs812_lane_read_outcome_refused(o: o))
 }
 
 // THE JOIN PRODUCES THE READINGS THE ASSESSMENT CONSUMES. crs812_fabric_read over the captured legs
 // is a FabricReadTaken of eight readings -- the List<Crs812LaneReading> crs812_switch_subject takes.
-test fn the_join_produces_eight_readings_for_the_subject() -> Bool {
+test fn the_join_produces_eight_readings_for_the_subject() -> Bool  {
   match crs812_fabric_read(wires: captured_fabric_legs) {
     FabricReadTaken { readings: rd } => rd.length() == 8
     FabricReadWireRefused { refused: _ } => false
@@ -129,7 +129,7 @@ test fn the_join_produces_eight_readings_for_the_subject() -> Bool {
 
 // DISCRIMINATING RED: one unparseable lane makes the WHOLE read refuse rather than silently handing
 // the assessment seven readings where the switch reported eight. Fail-closed at the read grain.
-test fn one_bad_lane_refuses_the_whole_read() -> Bool {
+test fn one_bad_lane_refuses_the_whole_read() -> Bool  {
   let mixed = [
     leg_wire(name: "qsfp56-dd-1-1", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
     leg_wire(name: "qsfp56-dd-1-3", speed: "800G-baseCR8", fec: "fec91", disabled: "false"),
@@ -143,7 +143,7 @@ test fn one_bad_lane_refuses_the_whole_read() -> Bool {
 // THE FRONTIER BUILDS A REAL SUBJECT. fabric_switch_subject_from_wire over a clean read yields a
 // FabricSubjectBuilt -- the Crs812SwitchSubject inspect_fabric_switch consumes -- proving the pure
 // chain reaches the assessment's own input type, with only the live fetch left to land.
-test fn the_frontier_builds_a_switch_subject_from_a_clean_read() -> Bool {
+test fn the_frontier_builds_a_switch_subject_from_a_clean_read() -> Bool  {
   match fabric_switch_subject_from_wire(
     switch: "gunbc-fabric-switch" as NonEmptyStr,
     intent: fabric_switch_intent(),

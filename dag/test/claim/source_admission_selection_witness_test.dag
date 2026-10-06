@@ -198,14 +198,14 @@ fn file_gamma() -> SourcePoolFile {
   )
 }
 
-test fn source_admission_production_mechanism_identity_is_unobservable() -> Bool {
+test fn source_admission_production_mechanism_identity_is_unobservable() -> Bool  {
   match production_annotation_mechanism_identity() {
     MechanismIdentityComputed { computed: _ } => false
     MechanismIdentityUnobservable { cause: _ } => true
   }
 }
 
-test fn source_admission_induction_standing_awaits_computed_identity_on_8201_head() -> Bool {
+test fn source_admission_induction_standing_awaits_computed_identity_on_8201_head() -> Bool  {
   match annotation_corpus_induction_standing() {
     Absent => false
     Present { value: standing } =>
@@ -218,7 +218,7 @@ test fn source_admission_induction_standing_awaits_computed_identity_on_8201_hea
   }
 }
 
-test fn source_admission_cannot_mint_receipt_when_mechanism_unobservable() -> Bool {
+test fn source_admission_cannot_mint_receipt_when_mechanism_unobservable() -> Bool  {
   on_trees(body: fn(trees) {
     let rows = [identity_of(file: file_beta())]
     match mint_annotation_corpus_admitted(
@@ -236,7 +236,7 @@ test fn source_admission_cannot_mint_receipt_when_mechanism_unobservable() -> Bo
   })
 }
 
-test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_join() -> Bool {
+test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_join() -> Bool  {
   on_trees(body: fn(trees) {
     let observed = [identity_of(file: file_beta()), identity_of(file: file_gamma())]
     let admitted = [identity_of(file: file_beta()), identity_of(file: file_beta())]
@@ -255,7 +255,7 @@ test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_j
   })
 }
 
-test fn source_admission_same_count_different_keys_is_incomplete_walk_not_observed() -> Bool {
+test fn source_admission_same_count_different_keys_is_incomplete_walk_not_observed() -> Bool  {
   match admit_active_source_manifest(
     rows: [identity_of(file: file_beta())],
     expected_keys: ["mod.gamma"]
@@ -270,7 +270,7 @@ test fn source_admission_same_count_different_keys_is_incomplete_walk_not_observ
   }
 }
 
-test fn source_admission_empty_expected_keys_is_empty_universe() -> Bool {
+test fn source_admission_empty_expected_keys_is_empty_universe() -> Bool  {
   match admit_active_source_manifest(rows: [], expected_keys: []) {
     ManifestObserved { rows: _ } => false
     ManifestUnobservable { cause: cause } =>
@@ -282,7 +282,7 @@ test fn source_admission_empty_expected_keys_is_empty_universe() -> Bool {
   }
 }
 
-test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> Bool {
+test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -309,7 +309,7 @@ test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> 
   })
 }
 
-test fn source_admission_not_merge_tree_refuses() -> Bool {
+test fn source_admission_not_merge_tree_refuses() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -333,7 +333,7 @@ test fn source_admission_not_merge_tree_refuses() -> Bool {
   })
 }
 
-test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() -> Bool {
+test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() -> Bool  {
   on_trees(body: fn(trees) {
     let sel = select_source_admission(
       evaluating_merge_tree: true,
@@ -349,7 +349,7 @@ test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() ->
   })
 }
 
-test fn source_admission_production_unobservable_refuses_even_with_fixture_receipt() -> Bool {
+test fn source_admission_production_unobservable_refuses_even_with_fixture_receipt() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -371,7 +371,7 @@ test fn source_admission_production_unobservable_refuses_even_with_fixture_recei
   })
 }
 
-test fn source_admission_identical_manifest_is_unchanged_noop_not_empty_incremental() -> Bool {
+test fn source_admission_identical_manifest_is_unchanged_noop_not_empty_incremental() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -393,7 +393,7 @@ test fn source_admission_identical_manifest_is_unchanged_noop_not_empty_incremen
   })
 }
 
-test fn source_admission_content_change_selects_only_the_changed_head_row() -> Bool {
+test fn source_admission_content_change_selects_only_the_changed_head_row() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -414,7 +414,7 @@ test fn source_admission_content_change_selects_only_the_changed_head_row() -> B
   })
 }
 
-test fn source_admission_removal_only_is_unchanged_noop() -> Bool {
+test fn source_admission_removal_only_is_unchanged_noop() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -434,7 +434,7 @@ test fn source_admission_removal_only_is_unchanged_noop() -> Bool {
   })
 }
 
-test fn source_admission_known_mechanism_digest_change_is_entire_head_not_refused() -> Bool {
+test fn source_admission_known_mechanism_digest_change_is_entire_head_not_refused() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -455,7 +455,7 @@ test fn source_admission_known_mechanism_digest_change_is_entire_head_not_refuse
   })
 }
 
-test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_digest_label() -> Bool {
+test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_digest_label() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -476,14 +476,14 @@ test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_dige
   })
 }
 
-test fn source_admission_primary_precedence_independent_of_pool_file_list_order() -> Bool {
+test fn source_admission_primary_precedence_independent_of_pool_file_list_order() -> Bool  {
   let forward = project_active_source_rows(files: [file_high(), file_low()])
   let reversed = project_active_source_rows(files: [file_low(), file_high()])
   active_source_lists_identity_join(expected: forward, observed: reversed)
     && forward |> any(row => row.path == "root0/alpha.dag")
 }
 
-test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental() -> Bool {
+test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -511,7 +511,7 @@ test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental
   })
 }
 
-test fn source_admission_deleting_shadowed_loser_is_active_map_noop() -> Bool {
+test fn source_admission_deleting_shadowed_loser_is_active_map_noop() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.base,
@@ -532,7 +532,7 @@ test fn source_admission_deleting_shadowed_loser_is_active_map_noop() -> Bool {
   })
 }
 
-test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
+test fn source_admission_receipt_tree_mismatch_refuses() -> Bool  {
   on_trees(body: fn(trees) {
     match mint_from_files(
       tree: trees.other,
@@ -556,7 +556,7 @@ test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
   })
 }
 
-test fn source_admission_seed_roots_name_executing_path_not_dag_only() -> Bool {
+test fn source_admission_seed_roots_name_executing_path_not_dag_only() -> Bool  {
   admission_mechanism_seed_roots |> any(root =>
     (root.realization_file as String) == "src/v1/stage0/src/v1_compiler_tokenize.rs"
       && (root.function_name as String) == "tokenize_artifact"

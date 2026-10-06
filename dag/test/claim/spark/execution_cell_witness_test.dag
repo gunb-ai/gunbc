@@ -174,7 +174,7 @@ fn fx_actuation() -> ArmExperimentActuationAdmission {
 
 // ── THE PHASE ORDER IS LAW ───────────────────────────────────────────────────────────────────────
 
-test fn w_phase_order_prior_generation_before_preparation_before_activation() -> Bool {
+test fn w_phase_order_prior_generation_before_preparation_before_activation() -> Bool  {
   execution_cell_phase_precedes(a: CellPhaseInventory, b: CellPhaseSettlement)
     && execution_cell_phase_precedes(a: CellPhaseQuiescence, b: CellPhaseSettlement)
     && execution_cell_phase_precedes(a: CellPhaseDisposal, b: CellPhaseReadback)
@@ -190,7 +190,7 @@ test fn w_phase_order_prior_generation_before_preparation_before_activation() ->
 
 // ── THE COHORT MINT ──────────────────────────────────────────────────────────────────────────────
 
-test fn w_cohort_admission_refuses_empty_and_duplicate_rosters() -> Bool {
+test fn w_cohort_admission_refuses_empty_and_duplicate_rosters() -> Bool  {
   let g = fx_generation()
   let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
@@ -209,7 +209,7 @@ test fn w_cohort_admission_refuses_empty_and_duplicate_rosters() -> Bool {
 
 // ── PREPARATION IS ALL-OR-NOTHING ────────────────────────────────────────────────────────────────
 
-test fn w_preparation_failure_halts_and_starts_none() -> Bool {
+test fn w_preparation_failure_halts_and_starts_none() -> Bool  {
   let g = fx_generation()
   let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
@@ -234,7 +234,7 @@ test fn w_preparation_failure_halts_and_starts_none() -> Bool {
 
 // ── PARTIAL ACTIVATION ROLLS BACK THE STARTED MEMBERS ────────────────────────────────────────────
 
-test fn w_partial_activation_rolls_back_exactly_the_started_members() -> Bool {
+test fn w_partial_activation_rolls_back_exactly_the_started_members() -> Bool  {
   let g = fx_generation()
   let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
@@ -268,7 +268,7 @@ test fn w_partial_activation_rolls_back_exactly_the_started_members() -> Bool {
 
 // ── CONSERVATION: NOTHING LEAKS ──────────────────────────────────────────────────────────────────
 
-test fn w_conservation_counts_started_against_rolled_back() -> Bool {
+test fn w_conservation_counts_started_against_rolled_back() -> Bool  {
   (match execution_cell_conservation(started: 2, rolled_back: 2) { ExecutionConservationHeld { started: _, rolled_back: _ } => true  _ => false })
     && (match execution_cell_conservation(started: 0, rolled_back: 0) { ExecutionConservationHeld { started: _, rolled_back: _ } => true  _ => false })
     && (match execution_cell_conservation(started: 2, rolled_back: 1) { ExecutionConservationLeaked { started: s, rolled_back: r, cause: _ } => s == 2 && r == 1  _ => false })
@@ -276,7 +276,7 @@ test fn w_conservation_counts_started_against_rolled_back() -> Bool {
 
 // ── SUCCESS IS ONE EXACT GENERATION OBSERVED ON EVERY MEMBER ─────────────────────────────────────
 
-test fn w_convergence_splits_when_any_member_observes_another_generation() -> Bool {
+test fn w_convergence_splits_when_any_member_observes_another_generation() -> Bool  {
   let g = fx_generation()
   let other = execution_generation_of_intent(intent_key: "fx-other-intent" as NonEmptyStr)
   let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
@@ -316,7 +316,7 @@ test fn w_convergence_splits_when_any_member_observes_another_generation() -> Bo
 
 // ── THE PRIOR-GENERATION READBACK FOLDS INTO THE ADMISSION'S CAS ─────────────────────────────────
 
-test fn w_readback_standing_occupies_until_every_slot_reads_free() -> Bool {
+test fn w_readback_standing_occupies_until_every_slot_reads_free() -> Bool  {
   let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
   let free = execution_cell_readback_standing(readbacks: [
@@ -337,7 +337,7 @@ test fn w_readback_standing_occupies_until_every_slot_reads_free() -> Bool {
 
 // ── THE REALIZATION'S PHASE SCRIPTS ──────────────────────────────────────────────────────────────
 
-test fn w_settlement_disposal_and_prepare_carry_the_run2_repair() -> Bool {
+test fn w_settlement_disposal_and_prepare_carry_the_run2_repair() -> Bool  {
   let m = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let settlement = systemd_settlement_script(member: m)
   let disposal = systemd_disposal_script(member: m)
@@ -356,7 +356,7 @@ test fn w_settlement_disposal_and_prepare_carry_the_run2_repair() -> Bool {
 // rank leg greps its own rank log for the rank profile line; and every leg polls the same way —
 // anchored grep, unit-active assertion, five-second sleep — so the head leg and the rank legs are
 // one script inhabited per host, not two wait spellings that can drift.
-test fn w_activation_is_non_blocking_and_the_profile_wait_is_one_leg_per_host() -> Bool {
+test fn w_activation_is_non_blocking_and_the_profile_wait_is_one_leg_per_host() -> Bool  {
   let m = fx_member(host: "srv9", unit: glm_native_head_unit_name)
   let rank = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let activate = systemd_activate_script(member: m)
@@ -378,7 +378,7 @@ test fn w_activation_is_non_blocking_and_the_profile_wait_is_one_leg_per_host() 
 
 // ── THE PLANTED RESIDUE ROUTES TO THE PHASE THAT REPAIRS IT, AHEAD OF PREPARATION ────────────────
 
-test fn w_planted_residue_is_settled_or_disposed_before_any_prepare() -> Bool {
+test fn w_planted_residue_is_settled_or_disposed_before_any_prepare() -> Bool  {
   let failed = systemd_residue_repair_phase(r: SystemdResidueUnitFailed)
   let tripped = systemd_residue_repair_phase(r: SystemdResidueStartRateTripped)
   let orphan = systemd_residue_repair_phase(r: SystemdResidueOrphanContainer)
@@ -449,7 +449,7 @@ fn w_workload_shape(admission: ArmExperimentActuationAdmission, head_member: Sys
   }
 }
 
-test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bool {
+test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bool  {
   w_admitted_shape(
     admission: fx_actuation(),
     order_ok: fn(legs) { execution_cell_actuations_in_contract_order(legs: legs) })
@@ -460,7 +460,7 @@ test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bo
 // the cohort admits them under the restoration profile's generation (the launch-profile hash), and
 // every member's rendered unit embeds that profile's served alias -- the generation identity is on
 // each unit by construction, never "three ranks on G, one on G-1".
-test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
+test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool  {
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
@@ -486,7 +486,7 @@ test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
 // is Unestablished, the plan the default actuation admits targets exactly its open components
 // (fragmentation among them, so the workload phase plans), runs the restoration profile, and admits
 // the one runtime authority every rank unit's RuntimeMaxSec carries.
-test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitted_runtime() -> Bool {
+test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitted_runtime() -> Bool  {
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
@@ -570,7 +570,7 @@ fn fx_run_fail_head_readback(plan: SparkPairHostApplyPlan) -> SparkPairHostApply
 
 // A PREPARATION FAILURE STARTS NONE: 20 prior-generation legs + 4 halted preparations, no
 // activation, no readback, no stop — the all-or-nothing law, observed at the route boundary.
-test fn w_route_prepare_failure_starts_none() -> Bool {
+test fn w_route_prepare_failure_starts_none() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_prepare) {
     Present { value: result } => length(result.outcomes) == 24 && !spark_pair_apply_all_applied(outcomes: result.outcomes)
     Absent => false
@@ -580,7 +580,7 @@ test fn w_route_prepare_failure_starts_none() -> Bool {
 // A PARTIAL ACTIVATION ROLLS BACK BEFORE IT REFUSES: 20 prior + 4 prepared + 4 activation attempts
 // + exactly 1 rollback leg for the started head (the three rank starts were the planted failures)
 // = 29 outcomes, and the run refuses. No readback leg ran — the cohort never converged.
-test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool {
+test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_rank_activation) {
     Present { value: result } => length(result.outcomes) == 29 && !spark_pair_apply_all_applied(outcomes: result.outcomes)
     Absent => false
@@ -590,7 +590,7 @@ test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool {
 // THE POSITIVE CONTROL: every leg applies, 20 prior + 4 prepared + 4 activated + 1 head readback
 // + 3 rank readbacks + 4 workload legs (readiness gate, prefill seats, churn launch, sampler) +
 // 4 stopped = 40 outcomes, the run reports convergence, and neither halt is minted.
-test fn w_route_full_success_runs_prior_prepare_activate_readback_workload_stop() -> Bool {
+test fn w_route_full_success_runs_prior_prepare_activate_readback_workload_stop() -> Bool  {
   match fx_route_result(run_leg: fx_applied) {
     Present { value: result } =>
       length(result.outcomes) == 40
@@ -608,7 +608,7 @@ test fn w_route_full_success_runs_prior_prepare_activate_readback_workload_stop(
 // the pre-workload bracket minted — the run refuses, and the halt is located on a rank host by the
 // rank-profile variant. The count IS the gate's witness: four workload legs behind a halted
 // readback would make 40.
-test fn w_route_rank_readback_failure_refuses_located_on_the_rank() -> Bool {
+test fn w_route_rank_readback_failure_refuses_located_on_the_rank() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_rank_readback) {
     Present { value: result } =>
       length(result.outcomes) == 36
@@ -627,7 +627,7 @@ test fn w_route_rank_readback_failure_refuses_located_on_the_rank() -> Bool {
 // readback leg yields 20 + 4 + 4 + 1 + 0 + 4 = 33 outcomes — the count itself proves no rank leg
 // was issued, because the head's anchor never appeared — and the halt is located on the head by
 // the head-anchor variant. No workload leg ran behind the halted readback either: 33, not 36.
-test fn w_route_head_readback_failure_issues_no_rank_legs() -> Bool {
+test fn w_route_head_readback_failure_issues_no_rank_legs() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_head_readback) {
     Present { value: result } =>
       length(result.outcomes) == 33
@@ -649,7 +649,7 @@ test fn w_route_head_readback_failure_issues_no_rank_legs() -> Bool {
 // fragmentation-churn plan targets ArmFragmentationAllowance and the gate reads true. The bracket's
 // own default plan targets every open obligation of a subject whose allowance is open, so its
 // actuation plans the phase — but the gate, not the subject, is the spelling.
-test fn w_workload_phase_gate_follows_the_plans_targets() -> Bool {
+test fn w_workload_phase_gate_follows_the_plans_targets() -> Bool  {
   let loader_targets = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
     ArmMemoryExperimentAdmitted { plan: p } => !spark_plan_targets_fragmentation(plan: p)
     ArmMemoryExperimentRefused { cause: _ } => false
@@ -665,7 +665,7 @@ test fn w_workload_phase_gate_follows_the_plans_targets() -> Bool {
 // supplied cohort plans Absent — the bracket for a memory-profile experiment is the
 // bracket that has always run — and the fragmentation-churn plan plans four legs, every one on the
 // head host.
-test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
+test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool  {
   let cohort = fx_cohort()
   let loader_absent = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
     ArmMemoryExperimentAdmitted { plan: p } =>
@@ -707,7 +707,7 @@ test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
 // and carries every seat's realized prompt_tokens, the prompt material varies per seat and per
 // block so the prefix cache cannot fold two seats, and the sampler reads the named instruments at
 // the runbook cadence and folds the peak line the receipt mints from.
-test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool {
+test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool  {
   match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
@@ -790,7 +790,7 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
 // head outcome halts located on the head with no rank outcome beside it; and one failed rank leg
 // halts located on THAT leg's member — discriminated by changing exactly one outcome of the
 // converged control, the located-refusal wall the route's rollback consumes.
-test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool {
+test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool  {
   match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
@@ -818,7 +818,7 @@ test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool 
 // the head's, and every leg the admission planned present in the rendering. (The readiness gate
 // carries a bounded_seconds banner too now; this witness names the readback banners because the
 // readback phase is its subject — the gate's ordering is the workload witness's.)
-test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool {
+test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool  {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
@@ -844,7 +844,7 @@ test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool 
 // the admission's single admitted_seconds with the identical (seconds + 4) / 5 iteration
 // arithmetic, so the cohort is charged one duration in total, never one per leg: a bracket that
 // minted a fresh budget per leg would count a single run four times.
-test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
+test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool  {
   match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
@@ -871,7 +871,7 @@ fn spark_workload_variants_a() -> SparkWorkloadVariant {
 // the plan-level admission is ready with the margin'd figure for the minted churn plan while a
 // plan whose window equals the margin refuses with the arithmetic named — the actuation wall that
 // keeps an unbuildable seat construction from ever reaching a credential.
-test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool {
+test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool  {
   let at_this_window = match spark_seat_window_tokens(context_window: 262144) {
     Present { value: w } => w == 262144 - spark_seat_window_margin_tokens
     Absent => false
@@ -923,7 +923,7 @@ test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool 
 // the named safety), and safety sits three orders of magnitude inside the scheduler-block margin.
 // The bounds are pinned here as data: safety < margin, seat_window + margin == context window, and
 // the scripts carry the exact-marginal arithmetic and the safety-absorbing unit formula.
-test fn w_the_seat_construction_is_token_exact() -> Bool {
+test fn w_the_seat_construction_is_token_exact() -> Bool  {
   match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
@@ -966,7 +966,7 @@ fn fx_run_fail_readiness_gate(plan: SparkPairHostApplyPlan) -> SparkPairHostAppl
   }
 }
 
-test fn w_route_never_ready_endpoint_halts_the_workload_before_the_stops() -> Bool {
+test fn w_route_never_ready_endpoint_halts_the_workload_before_the_stops() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_readiness_gate) {
     Present { value: result } =>
       length(result.outcomes) == 37
@@ -985,7 +985,7 @@ test fn w_route_never_ready_endpoint_halts_the_workload_before_the_stops() -> Bo
 // admitted_seconds with the identical (seconds + 4) / 5 iteration arithmetic as the profile
 // readbacks, so the cohort is charged one experiment duration across every bounded wait in the
 // cell — the gate's bound is the budget shared, never a fresh duration minted at the phase edge.
-test fn w_the_readiness_gate_shares_the_plans_one_admitted_duration() -> Bool {
+test fn w_the_readiness_gate_shares_the_plans_one_admitted_duration() -> Bool  {
   match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: admitted } =>
@@ -1022,7 +1022,7 @@ fn fx_run_fail_sampling(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutco
   }
 }
 
-test fn w_route_prefill_failure_halts_the_workload_before_the_stops() -> Bool {
+test fn w_route_prefill_failure_halts_the_workload_before_the_stops() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_prefill) {
     Present { value: result } =>
       length(result.outcomes) == 38
@@ -1043,7 +1043,7 @@ test fn w_route_prefill_failure_halts_the_workload_before_the_stops() -> Bool {
 // 4 + 4 = 40 outcomes with one failure among them, the workload halt is located on the head by the
 // sampler variant — the endpoint-unreachable-mid-run arm lands here — and the readback halt stays
 // absent.
-test fn w_route_sampling_failure_refuses_located_on_the_head() -> Bool {
+test fn w_route_sampling_failure_refuses_located_on_the_head() -> Bool  {
   match fx_route_result(run_leg: fx_run_fail_sampling) {
     Present { value: result } =>
       length(result.outcomes) == 40
@@ -1063,7 +1063,7 @@ test fn w_route_sampling_failure_refuses_located_on_the_head() -> Bool {
 // the prefill banner, the churn banner, the sampler banner, then the stop banner — the gate after
 // the readback legs and ahead of every workload leg, the workload phase between the readbacks and
 // the deterministic stop, and the stops always last.
-test fn w_the_dry_workload_phase_is_ordered_between_the_readbacks_and_the_stops() -> Bool {
+test fn w_the_dry_workload_phase_is_ordered_between_the_readbacks_and_the_stops() -> Bool  {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
@@ -1115,7 +1115,7 @@ fn fx_phase_for_variant(name: NonEmptyStr) -> SparkExperimentWorkloadPhase? {
 // token — each leg recording driver timing and the response's ACTUAL accounting
 // (prompt_tokens + cached_tokens) into cache_reuse.timing.tsv, with the engine's /metrics
 // bracketing the phase and every refusal carrying the leg named.
-test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting() -> Bool {
+test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting() -> Bool  {
   match fx_phase_for_variant(name: "w2-cache-reuse-full-window" as NonEmptyStr) {
     Absent => false
     Present { value: phase } =>
@@ -1141,7 +1141,7 @@ test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting
 // expiries with the engine still progressing were timeout-as-hang, never an engine failure), the
 // stall watchdog's own bound derives at twice it, and the decode leg re-issues seat 1's resident
 // context with max_tokens=64 — real decode evidence with the actual completion accounting.
-test fn w_the_q_script_carries_the_whole_sequence_budget_and_the_decode_probe() -> Bool {
+test fn w_the_q_script_carries_the_whole_sequence_budget_and_the_decode_probe() -> Bool  {
   match fx_phase_for_variant(name: "q-eight-concurrent-full-window" as NonEmptyStr) {
     Absent => false
     Present { value: phase } =>
@@ -1167,7 +1167,7 @@ test fn w_the_q_script_carries_the_whole_sequence_budget_and_the_decode_probe() 
 // authority rather than by
 // amending the dated 2026-09-27 liveness matrix. The witness holds both halves: the matrix
 // join cannot drift, and the only non-matrix rows are w1 and w2 with their plan shapes.
-test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
+test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool  {
   let five_each = length(spark_workload_variants) == 8 && length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
   let names_join = all(arm_experiment_2026_09_27_liveness_repro_matrix, r => any(spark_workload_variants, v => v.name == r.variant))
   let a_ok = match spark_workload_variant_named(name: "a-repro-six-full-window" as NonEmptyStr) {
@@ -1236,7 +1236,7 @@ test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
 // five, the churn driver's client loop bounds at five, and the window_seconds/bounded_seconds
 // figures every variant shares still render — the variant discriminates occupancy alone, never
 // the budget.
-test fn w_variant_b_renders_five_seats_and_the_unchanged_budget() -> Bool {
+test fn w_variant_b_renders_five_seats_and_the_unchanged_budget() -> Bool  {
   match fx_phase_for_variant(name: "b-five-concurrent-full-window" as NonEmptyStr) {
     Absent => false
     Present { value: phase } =>
@@ -1250,7 +1250,7 @@ test fn w_variant_b_renders_five_seats_and_the_unchanged_budget() -> Bool {
 // VARIANT d RENDERS SEQUENTIAL ISSUE — ONE REQUEST IN FLIGHT BY CONSTRUCTION: the prefill script
 // carries the sequential marker and the concurrency markers are absent (no backgrounded seat
 // subshells, no pid join); the variant values render in the dry line.
-test fn w_variant_d_renders_sequential_issue_one_request_at_a_time() -> Bool {
+test fn w_variant_d_renders_sequential_issue_one_request_at_a_time() -> Bool  {
   match fx_phase_for_variant(name: "d-six-sequential-full-window" as NonEmptyStr) {
     Absent => false
     Present { value: phase } =>
@@ -1271,7 +1271,7 @@ test fn w_variant_d_renders_sequential_issue_one_request_at_a_time() -> Bool {
 // dumps every container process (the hung worker and the head among them) via py-spy with the
 // /proc fallback, names the instrument in the evidence, and stands down on the prefills-done flag
 // without extending the admitted budget.
-test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_teardown() -> Bool {
+test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_teardown() -> Bool  {
   let s1 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: 0)
   let s2 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s1)
   let s3 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s2)
@@ -1335,7 +1335,7 @@ test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_tear
 // the variant arms it, and the sampler's phase-end stand-down rides every variant (inert when no
 // watchdog was armed). The budget arithmetic is the plan's own, as every variant — this witness
 // holds for whichever variant the parent's per-run flip selects, a through e.
-test fn w_the_active_variant_renders_itself_and_the_watchdog_follows_the_variant() -> Bool {
+test fn w_the_active_variant_renders_itself_and_the_watchdog_follows_the_variant() -> Bool  {
   match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>

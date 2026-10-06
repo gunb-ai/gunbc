@@ -147,12 +147,12 @@ fn with_host_config(c: NarrowCapture, f: fn(HostConfig) -> Bool) -> Bool {
 // ~72,300 bound, and two measures 53,007. Splitting loses nothing -- the two halves are independent
 // claims about independent documents -- and it is the shape DESIGN section 3's standing rule names
 // when it says a conjunction of independent cases should not be forced through one budget.
-test fn w_the_fresh_socket_host_configs_decode() -> Bool {
+test fn w_the_fresh_socket_host_configs_decode() -> Bool  {
   captures_present()
     && decodes(c: socket_rank0_hostconfig) && decodes(c: socket_rank1_hostconfig)
 }
 
-test fn w_the_archived_roce_host_configs_decode() -> Bool {
+test fn w_the_archived_roce_host_configs_decode() -> Bool  {
   captures_present()
     && decodes(c: roce_rank0_hostconfig) && decodes(c: roce_rank1_hostconfig)
 }
@@ -161,7 +161,7 @@ fn decodes(c: NarrowCapture) -> Bool {
   match decoded(c: c) { Absent => false, Present { value: _ } => true }
 }
 
-test fn w_a_fresh_daemon_reading_is_not_a_selection() -> Bool {
+test fn w_a_fresh_daemon_reading_is_not_a_selection() -> Bool  {
   captures_present()
     && provenance_is_daemon(c: socket_rank0_hostconfig)
     && provenance_is_daemon(c: socket_rank1_hostconfig)
@@ -196,7 +196,7 @@ fn provenance_is_daemon(c: NarrowCapture) -> Bool {
 //
 // IT DOES NOT ESTABLISH THE HAPPY PATH. Whole-document decode inhabitance lives with the rows that
 // pay the whole-document parse, and this module does not claim otherwise.
-test fn w_the_whole_document_entry_refuses_a_subtree_and_the_subtree_decoder_accepts_it() -> Bool {
+test fn w_the_whole_document_entry_refuses_a_subtree_and_the_subtree_decoder_accepts_it() -> Bool  {
   captures_present()
     && match read_capture(c: socket_rank0_hostconfig) {
       CaptureUnread { path: _ } => false
@@ -214,13 +214,13 @@ test fn w_the_whole_document_entry_refuses_a_subtree_and_the_subtree_decoder_acc
 // readback of the socket incarnation could see only `cap_add` -- and would have found it agreeing
 // with a plan that asked for nothing, because a container with no capabilities and a plan wanting
 // none agree perfectly. The two fields that carried the whole difference had nowhere to land.
-test fn w_the_socket_host_config_maps_no_device_and_cannot_lock_memory() -> Bool {
+test fn w_the_socket_host_config_maps_no_device_and_cannot_lock_memory() -> Bool  {
   captures_present()
     && socket_shape_is(c: socket_rank0_hostconfig, verbs: false)
     && socket_shape_is(c: socket_rank1_hostconfig, verbs: false)
 }
 
-test fn w_the_roce_host_config_maps_the_device_and_can_lock_memory() -> Bool {
+test fn w_the_roce_host_config_maps_the_device_and_can_lock_memory() -> Bool  {
   captures_present()
     && socket_shape_is(c: roce_rank0_hostconfig, verbs: true)
     && socket_shape_is(c: roce_rank1_hostconfig, verbs: true)
@@ -264,7 +264,7 @@ fn memlock_is_unlimited(hc: HostConfig) -> Bool {
 // Null is the daemon's way of saying no capabilities were added on a member it always emits; `[]` is
 // it naming an empty list. The third state -- a member the document does not mention -- is unread,
 // and the row below is what keeps it from collapsing into these two.
-test fn w_a_null_member_and_an_empty_array_are_both_readings() -> Bool {
+test fn w_a_null_member_and_an_empty_array_are_both_readings() -> Bool  {
   captures_present()
     && with_host_config(c: socket_rank0_hostconfig, f: hc =>
       match hc.cap_add {
@@ -290,7 +290,7 @@ test fn w_a_null_member_and_an_empty_array_are_both_readings() -> Bool {
 // daemon on this fleet emits a HostConfig without CapAdd, so the discriminating document does not
 // exist in the wild and is constructed -- and it is constructed by DELETION from a real one rather
 // than written, so every other field it carries is still the daemon's.
-test fn w_a_host_config_that_does_not_mention_cap_add_is_unread() -> Bool {
+test fn w_a_host_config_that_does_not_mention_cap_add_is_unread() -> Bool  {
   captures_present()
     && match read_capture(c: socket_rank0_hostconfig) {
       CaptureUnread { path: _ } => false
@@ -313,12 +313,12 @@ test fn w_a_host_config_that_does_not_mention_cap_add_is_unread() -> Bool {
 // 10737418240 while every captured container carries 67108864. It is asserted on BOTH incarnations
 // because a field that agrees only on the one the spec was reconciled against is a field that was
 // fitted rather than read.
-test fn w_the_socket_incarnation_carries_the_captured_shm_size() -> Bool {
+test fn w_the_socket_incarnation_carries_the_captured_shm_size() -> Bool  {
   captures_present()
     && shm_size_is(c: socket_rank0_hostconfig) && shm_size_is(c: socket_rank1_hostconfig)
 }
 
-test fn w_the_roce_incarnation_carries_the_same_shm_size() -> Bool {
+test fn w_the_roce_incarnation_carries_the_same_shm_size() -> Bool  {
   captures_present()
     && shm_size_is(c: roce_rank0_hostconfig) && shm_size_is(c: roce_rank1_hostconfig)
 }

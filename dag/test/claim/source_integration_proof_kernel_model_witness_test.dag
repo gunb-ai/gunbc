@@ -149,7 +149,7 @@ fn p1_model_spec() -> KernelCandidateGenerationSpec {
   )
 }
 
-test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Bool {
+test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Bool  {
   let spec = p1_model_spec()
   let assessment = assess_bounded_candidate_generation(spec: spec)
   kernel_candidate_generation_admitted(assessment: assessment)
@@ -163,7 +163,7 @@ test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Boo
     && spec.bounds.candidate_classes == 16
 }
 
-test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() -> Bool {
+test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() -> Bool  {
   let assessment = assess_bounded_candidate_generation(
     spec: p1_spec_with(
       remaining: [p1_transformation()],
@@ -184,7 +184,7 @@ test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() ->
     )
 }
 
-test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
+test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool  {
   let ungrounded_claim = Claim {
     id: "not-an-authored-guarantee",
     subject: p0_proposal().transformation,
@@ -302,7 +302,7 @@ fn p1_candidate_class_refusal_spec() -> KernelCandidateGenerationSpec {
   )
 }
 
-test fn witness_closure_bounds_change_generation_disposition() -> Bool {
+test fn witness_closure_bounds_change_generation_disposition() -> Bool  {
   let round_refused = assess_bounded_candidate_generation(
     spec: p1_inference_round_refusal_spec(),
   )
@@ -332,7 +332,7 @@ fn p1_first_slice_acceptance_admissions() -> List<KernelAcceptanceAdmission> {
   )]
 }
 
-test fn witness_closing_frontier_is_derived_and_duplicate_safe() -> Bool {
+test fn witness_closing_frontier_is_derived_and_duplicate_safe() -> Bool  {
   let admissions = p1_first_slice_acceptance_admissions()
   let duplicated = append(admissions, items: admissions)
   count(kernel_required_acceptance_capabilities()) == 17
@@ -347,7 +347,7 @@ test fn witness_closing_frontier_is_derived_and_duplicate_safe() -> Bool {
     && !kernel_closing_contract_holds(admissions: admissions)
 }
 
-test fn witness_failed_scenario_cannot_mint_acceptance_receipt() -> Bool {
+test fn witness_failed_scenario_cannot_mint_acceptance_receipt() -> Bool  {
   let refused = assess_bounded_candidate_generation_acceptance(
     admitted_spec: p1_bound_refusal_spec(),
     proposal_bound_refusal_spec: p1_bound_refusal_spec(),

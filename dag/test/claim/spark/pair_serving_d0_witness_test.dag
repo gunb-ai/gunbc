@@ -179,7 +179,7 @@ fn d0w_silent() -> IncumbentReading {
 // occupant, which the incumbent question owns; reconciliation is asked only after the head was
 // corroborated quiet, so it refuses as OccupancyNotQuiet naming the ranks -- and handed to the
 // decision behind a silent front door it fences as unidentified, never suspends.
-test fn all_ranks_installed_running_with_declared_bytes_is_not_quiet_and_fences() -> Bool {
+test fn all_ranks_installed_running_with_declared_bytes_is_not_quiet_and_fences() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let ranks = d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })
     (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
@@ -195,7 +195,7 @@ test fn all_ranks_installed_running_with_declared_bytes_is_not_quiet_and_fences(
 
 // THE EXPECTED ANSWER: our units installed, none running. Drifted, naming every inactive rank --
 // and eligible, not refused (the redesign's correction of an earlier draft).
-test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
+test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })
     (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
@@ -214,7 +214,7 @@ test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
 // rank is drifted (declared bytes not running is drift, other bytes is drift) and the population
 // names all four, the head and the other-bytes rank among them. A rank ACTIVE with the declared
 // bytes is live and makes the occupancy not quiet -- the claim above -- never a drifted member.
-test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool {
+test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: false, unit_digest: b })) {
       DeclaredOccupantDrifted { drifted: ds } => length(ds) == 4 && any(ds, h => (h as String) == (operator_host_srv7 as String)) && any(ds, h => (h as String) == (operator_host_srv5 as String))
@@ -226,7 +226,7 @@ test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool {
 // RED -- a rank with no pair unit installed is UNREAD, not empty and not drifted: this
 // transaction cannot tell it from a foreign occupant, and says so. It fences. (The head is quiet
 // here so absence is corroborated and the worker's unread reading is what governs.)
-test fn an_uninstalled_rank_is_unread_and_fences() -> Bool {
+test fn an_uninstalled_rank_is_unread_and_fences() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitNotInstalled, w8: UnitInstalled { active: true, unit_digest: b })
     (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
@@ -241,7 +241,7 @@ test fn an_uninstalled_rank_is_unread_and_fences() -> Bool {
 }
 
 // RED -- a rank whose read refused is unread even when every other rank converged.
-test fn one_unread_rank_makes_the_occupancy_unread() -> Bool {
+test fn one_unread_rank_makes_the_occupancy_unread() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitOccupancyUnread { refusal: IncarnationUnitNotActive { unit: spark_pair_worker_unit_name } }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) {
       OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 1 && all(hs, h => (h as String) == (operator_host_srv6 as String))
@@ -251,7 +251,7 @@ test fn one_unread_rank_makes_the_occupancy_unread() -> Bool {
 }
 
 // RED -- a declared rank with no reading at all is unread: a missing reading is not a reading.
-test fn a_missing_rank_reading_is_unread() -> Bool {
+test fn a_missing_rank_reading_is_unread() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: [d0w_t_rank(host: operator_host_srv5, unit: spark_pair_head_unit_name, occupancy: UnitInstalled { active: false, unit_digest: a })]) {
       OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 3
@@ -287,7 +287,7 @@ fn d0w_t_answered(a: ContentHash, b: ContentHash, declared_worker: ContentHash, 
 // An incumbent answers and IS the declared realization on every rank: restoration is shown safe,
 // the authority returns to EXACTLY the Active state it held -- unchanged, not upgraded to a keyed
 // realization, because the running image is observed and uncompared -- and D0 is refused.
-test fn a_live_declared_incumbent_restores_the_active_state_unchanged_and_refuses() -> Bool {
+test fn a_live_declared_incumbent_restores_the_active_state_unchanged_and_refuses() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let d = d0w_t_declared(head: a, worker: b)
     let decision = d0w_t_decide(declared: d, incumbent: d0w_t_answered(a: a, b: b, declared_worker: b, img: c), ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c)
@@ -301,7 +301,7 @@ test fn a_live_declared_incumbent_restores_the_active_state_unchanged_and_refuse
 
 // RED -- an incumbent answers but is NOT the declared realization (a worker's bytes differ): not
 // restored, not suspended -- fenced for the operator, naming the standing.
-test fn a_live_drifted_incumbent_is_fenced() -> Bool {
+test fn a_live_drifted_incumbent_is_fenced() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match d0w_t_decide(declared: d0w_t_declared(head: a, worker: c), incumbent: d0w_t_answered(a: a, b: b, declared_worker: c, img: c), ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: c }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: c }), h: c) {
       D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentLive { standing: _ } } => true
@@ -312,7 +312,7 @@ test fn a_live_drifted_incumbent_is_fenced() -> Bool {
 
 // RED -- the route could not be read at all: the incumbent question is unanswered, and an
 // unanswered first question fences before the ranks are consulted.
-test fn an_unread_route_fences_before_reconciling() -> Bool {
+test fn an_unread_route_fences_before_reconciling() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: IncumbentRouteUnread { cause: "no fleet ssh context" as NonEmptyStr }, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c) {
       D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } } => true
@@ -324,7 +324,7 @@ test fn an_unread_route_fences_before_reconciling() -> Bool {
 // RED -- the route ANSWERED but the document named no launch: an incumbent may be live and could
 // not be identified. That is not silence, and it fences before the ranks are consulted --
 // whatever the ranks would have reconciled to.
-test fn an_answering_but_unidentified_incumbent_fences() -> Bool {
+test fn an_answering_but_unidentified_incumbent_fences() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: IncumbentAnsweredUnread { cause: "the served metrics carried no process start-time series" as NonEmptyStr }, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
       D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentUnidentified { cause: _ } } => true
@@ -372,7 +372,7 @@ fn d0w_t_subject_over(hs: List<HostIdentity>, successor: ContentHash, term: Nat)
 // THE SUBJECT NAMES THE EXACT HOSTS. A grant whose host list is the group's current population,
 // in any order, agrees; one with a host swapped, one dropped, or one duplicated differs -- by an
 // identity join in both directions, so a count could not have passed the swap.
-test fn the_grant_population_is_joined_to_the_current_group_by_identity() -> Bool {
+test fn the_grant_population_is_joined_to_the_current_group_by_identity() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       (match d0_population(subject: d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationAgrees => true  _ => false })
@@ -386,7 +386,7 @@ test fn the_grant_population_is_joined_to_the_current_group_by_identity() -> Boo
 // THE INTENT'S CANONICAL TEXT is one line per fact and the hosts are sorted: two subjects that
 // list the same hosts in different orders encode identically, and any other fact moving --
 // successor, term, transaction -- changes the text.
-test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
+test fn the_intent_text_is_canonical_over_the_operation() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
@@ -404,7 +404,7 @@ test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
 // one required scope through std.scoped_authorization parse_intent_scopes, with no D0 knowledge;
 // and the purpose the operator reads names that scope and the whole subject, so the approval is
 // over what the store will check.
-test fn the_intent_text_states_its_scope_in_the_shared_frame() -> Bool {
+test fn the_intent_text_states_its_scope_in_the_shared_frame() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
@@ -456,7 +456,7 @@ fn d0w_suspended(h: ContentHash) -> PairServingGroupAuthority {
 // pending state under this transaction resumes. A settling transition by this transaction means
 // only the claim's terminal is owed. A pending state written by this transaction that another
 // writer moved is refused for an operator.
-test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
+test fn the_recovery_join_dispatches_every_crash_point() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let active = d0w_t_active()
     (match d0_recovery(claim: D0ClaimAbsent, transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverStart => true  _ => false })
@@ -477,7 +477,7 @@ test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
 // EXECUTOR: another executor facing THIS lifecycle's pending state is refused by the lease owner
 // (no handoff), but that same executor completes a settled lifecycle -- suspended or restored to
 // Active -- rather than aborting it or starting a second first write.
-test fn a_reused_transaction_word_does_not_inherit_another_lifecycles_history() -> Bool {
+test fn a_reused_transaction_word_does_not_inherit_another_lifecycles_history() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let active = d0w_t_active()
     let history = [
@@ -498,7 +498,7 @@ test fn a_reused_transaction_word_does_not_inherit_another_lifecycles_history() 
 // RED: consent that is not this run's is refused whatever the authority says -- held by another
 // attempt, completed, aborted, or unreadable -- and an Active authority with a completed claim is
 // NOT a start.
-test fn a_claim_that_is_not_this_transactions_is_refused_before_any_write() -> Bool {
+test fn a_claim_that_is_not_this_transactions_is_refused_before_any_write() -> Bool  {
   let active = d0w_t_active()
   let none_yet = [] as List<AuthorityTransitionRecord>
   (match d0_recovery(claim: d0w_claimed(by: "tx-other"), transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
@@ -509,7 +509,7 @@ test fn a_claim_that_is_not_this_transactions_is_refused_before_any_write() -> B
 }
 
 // A declaration that could not be keyed fences: there is nothing to reconcile against.
-test fn an_unavailable_declaration_fences() -> Bool {
+test fn an_unavailable_declaration_fences() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match d0w_t_grant(successor: c) {
       Absent => false
@@ -528,7 +528,7 @@ test fn an_unavailable_declaration_fences() -> Bool {
 
 // The suspended authority D0 writes is what the successor's launch gate reads: with the lease
 // running it may launch, and the incumbent's apply is refused.
-test fn the_suspension_d0_writes_admits_launch_and_refuses_apply() -> Bool {
+test fn the_suspension_d0_writes_admits_launch_and_refuses_apply() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
       D0DecidedSuspend { next: n, reconciliation: _ } => pair_serving_successor_may_launch(a: n) && !pair_serving_apply_admits(a: n)
@@ -544,7 +544,7 @@ test fn the_suspension_d0_writes_admits_launch_and_refuses_apply() -> Bool {
 // inactive. A listener, an engine process, or an unread table fences as an unidentified incumbent
 // (or unread); an active declared unit fences; an unread head fences; only a quiet head with an
 // inactive unit proceeds to reconciliation.
-test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool {
+test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     let declared = d0w_t_declared(head: a, worker: b)
     let no_status = IncumbentDidNotAnswer { receipt: "the front door could not be connected (curl exit 7)" as NonEmptyStr, head: HeadEndpointQuiet }
@@ -589,7 +589,7 @@ fn d0w_same_order(hs: List<HostIdentity>, first: HostIdentity, last: HostIdentit
 // names [h4, h3, h2, h1] (the group's hosts, reordered); the suspension and the fence D0 decides
 // commit exactly those, in the subject's order, whatever the roster says now -- and a resting
 // Active commits the roster.
-test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Bool {
+test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Bool  {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       let subject = d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000)
@@ -617,7 +617,7 @@ test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Boo
 // row is retired the gate is absent. The gate is read from the row, so retiring the row is the
 // only thing that opens it. Asked for a lifecycle the single-lifecycle drop does not admit (group-b),
 // so the walls' own refusal is what answers.
-test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -> Bool {
+test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -> Bool  {
   let other = d0_store_write_wall_standing(group: FabricGroupB, escalation_id: d0_single_lifecycle_escalation_id)
   match fabric_storage_append_principal_unrefused.standing {
     Standing => (match other { Present { value: why } => why.contains("fabric_storage_append_principal_unrefused") && why.contains("does not run")  Absent => false })
@@ -633,14 +633,14 @@ test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -
 // 2026-09-30). POSITIVE CONTROL: with the drop standing, FabricGroupA under the named escalation id is
 // admitted by the walls' gate on the real row. REDS: a second consent id refuses; group-b refuses; and
 // with the drop retired even the named lifecycle refuses (the admission over a supplied standing).
-test fn the_declared_single_lifecycle_is_admitted_while_the_drop_stands() -> Bool {
+test fn the_declared_single_lifecycle_is_admitted_while_the_drop_stands() -> Bool  {
   match d0_store_walls_single_lifecycle.standing {
     Retired { trigger_fired: _ } => true
     Standing => (match d0_store_write_wall_standing(group: FabricGroupA, escalation_id: d0_single_lifecycle_escalation_id) { Absent => true  Present { value: _ } => false })
   }
 }
 
-test fn a_second_consent_id_or_group_b_or_a_retired_drop_refuses_the_single_lifecycle() -> Bool {
+test fn a_second_consent_id_or_group_b_or_a_retired_drop_refuses_the_single_lifecycle() -> Bool  {
   !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: "ds41-group-a-d0-20260927" as NonEmptyStr)
     && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupB, escalation_id: d0_single_lifecycle_escalation_id)
     && !d0_single_lifecycle_admits_under(standing: Retired { trigger_fired: "witness" as NonEmptyStr }, group: FabricGroupA, escalation_id: d0_single_lifecycle_escalation_id)

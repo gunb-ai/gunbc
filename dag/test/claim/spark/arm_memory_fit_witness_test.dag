@@ -296,7 +296,7 @@ fn fx_deductions() -> ArmSupplyDeductions {
 // FitUnestablished with the missing bounds named. The tp1/tp2 frontier below is REFUSED, but by
 // the aggregate argument, which never names a rank: the sentinel rank field carries the rank
 // count, which is not a valid rank index.
-test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool {
+test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool  {
   match arm_memory_fit_subject_for_launch(
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
@@ -317,7 +317,7 @@ test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool
   }
 }
 
-test fn w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank() -> Bool {
+test fn w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank() -> Bool  {
   let tp1 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: SingleSparkTp1, profile: glm_native_initial_profile))
@@ -357,7 +357,7 @@ fn verdict_for(subject_mint: ArmMemorySubjectMint) -> ArmMemoryFitVerdict? {
 // THE BLOCKER'S DISCRIMINATING CONTROL. The 4-seat x 64K intent beside the sixteen-sequence
 // 262K serving profile: the mint refuses, on BOTH mints, before any verdict exists. A FitProved
 // for a small service standing next to a large executable is unwritable, not merely detectable.
-test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint() -> Bool {
+test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint() -> Bool  {
   (match arm_memory_fit_subject(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -385,7 +385,7 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
 
 // THE FORWARD DIRECTION PROVES: the derived profile joins its intent, and the same subject mints
 // ready -- the Proved witness below stands on this join.
-test fn w_the_derived_profile_joins_and_the_subject_mints() -> Bool {
+test fn w_the_derived_profile_joins_and_the_subject_mints() -> Bool  {
   match arm_memory_fit_subject(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -400,7 +400,7 @@ test fn w_the_derived_profile_joins_and_the_subject_mints() -> Bool {
 }
 
 // ── WITNESS 3: PROVENANCE — A RECEIPT CARRIED ONTO A CHANGED CHECKPOINT OR RUNTIME IS REFUSED ────
-test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -> Bool {
+test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -> Bool  {
   (match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53Exl3_205,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -428,7 +428,7 @@ test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -
 }
 
 // ── WITNESS 4: ROSTER CONSERVATION — DUPLICATED OR ABSENT RANKS REFUSE; THE RECORD IS COMPLETE ────
-test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
+test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool  {
   (match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -468,7 +468,7 @@ test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
 // deduction have no spelling -- ArmRankDemand and ArmSupplyDeductions carry every field by
 // construction. What CAN be written wrong is a roster whose bounds are all open with the right
 // rank count, and that must never reach FitProved.
-test fn w_all_open_terms_with_the_right_rank_count_is_never_proved() -> Bool {
+test fn w_all_open_terms_with_the_right_rank_count_is_never_proved() -> Bool  {
   match arm_memory_fit_subject(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -496,7 +496,7 @@ test fn w_all_open_terms_with_the_right_rank_count_is_never_proved() -> Bool {
 // MEASURED PER-RANK UPPER BOUNDS MUST BE ABLE TO HOLD THE CHECKPOINT between them. Four one-GiB
 // ceilings cannot hold 306 GiB of checkpoint however honestly they were minted; the law refuses
 // the mismatch as an obligation.
-test fn w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove() -> Bool {
+test fn w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove() -> Bool  {
   let tiny = fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)
   match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53NativeFp8,
@@ -524,7 +524,7 @@ test fn w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove() ->
 }
 
 // ── WITNESS 6: THE SHRUNK INTENT, FULLY RECEIPTED, DISCRIMINATES TO A PROOF ─────────────────────
-test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
+test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool  {
   match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -544,7 +544,7 @@ test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
   }
 }
 
-test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
+test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool  {
   let loader_open = ArmRankDemand {
     rank: 0,
     checkpoint_residency: fx_even_checkpoint(),
@@ -578,7 +578,7 @@ test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
 }
 
 // ── WITNESS 7: THE WORST RANK DECIDES — A RANK-SPECIFIC MANDATORY DEMAND REFUSES AT THAT RANK ─────
-test fn w_the_worst_rank_decides_the_verdict() -> Bool {
+test fn w_the_worst_rank_decides_the_verdict() -> Bool  {
   let surcharge = fx_interval(
     lower: 132070244352,
     upper: 140996502528,
@@ -610,7 +610,7 @@ test fn w_the_worst_rank_decides_the_verdict() -> Bool {
 }
 
 // ── WITNESS 8: THE DECIDED ENVELOPE REFUSES AT THE FIRST ENGINE-ADMITTED PHASE ────────────────────
-test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
+test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool  {
   let between = fx_interval(
     lower: 123480309760,
     upper: 124527089664,
@@ -655,7 +655,7 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
 }
 
 // ── WITNESS 9: PHASES KEEP TRANSIENTS IN THEIR PHASE ────────────────────────────────────────────
-test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool {
+test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool  {
   let rd = fx_rank(rank: 0, checkpoint: fx_even_checkpoint())
   let model_upper = match demand_for_phase(rd: rd, phase: ArmPhaseModelLoad).upper {
     Absent => 0
@@ -679,7 +679,7 @@ test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool {
 }
 
 // ── WITNESS 10: AN UNMODELED POOL IS UNESTABLISHED, NOT REFUSED ───────────────────────────────────
-test fn w_an_unmodeled_pool_is_unestablished_not_refused() -> Bool {
+test fn w_an_unmodeled_pool_is_unestablished_not_refused() -> Bool  {
   match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
@@ -718,7 +718,7 @@ fn fx_measurement(protocol: ArmMeasurementProtocol, covers_lifetime: Bool, phase
   }
 }
 
-test fn w_a_single_sample_is_observation_only_and_discharges_nothing() -> Bool {
+test fn w_a_single_sample_is_observation_only_and_discharges_nothing() -> Bool  {
   let m = fx_measurement(protocol: ProtocolSingleSample, covers_lifetime: true, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
   (match arm_classify_measurement(m: m) {
     ObservationOnly { measurement: _, why: w } => string_contains(s: w as String, pattern: "bounds nothing above")
@@ -734,7 +734,7 @@ test fn w_a_single_sample_is_observation_only_and_discharges_nothing() -> Bool {
     })
 }
 
-test fn w_a_peak_over_runs_protocol_discharges_to_a_ceiling() -> Bool {
+test fn w_a_peak_over_runs_protocol_discharges_to_a_ceiling() -> Bool  {
   let m = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 3 }, covers_lifetime: true, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
   (match arm_classify_measurement(m: m) {
     MeasuredUpperBound { measurement: _ } => true
@@ -749,7 +749,7 @@ test fn w_a_peak_over_runs_protocol_discharges_to_a_ceiling() -> Bool {
     })
 }
 
-test fn w_a_measurement_that_does_not_cover_the_lifetime_observes_only() -> Bool {
+test fn w_a_measurement_that_does_not_cover_the_lifetime_observes_only() -> Bool  {
   let m = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 3 }, covers_lifetime: false, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
   match arm_classify_measurement(m: m) {
     ObservationOnly { measurement: _, why: w } => string_contains(s: w as String, pattern: "does not cover the lifetime")
@@ -757,7 +757,7 @@ test fn w_a_measurement_that_does_not_cover_the_lifetime_observes_only() -> Bool
   }
 }
 
-test fn w_a_measurement_for_an_absent_mechanism_or_zero_runs_refuses() -> Bool {
+test fn w_a_measurement_for_an_absent_mechanism_or_zero_runs_refuses() -> Bool  {
   let wrong_phase = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 3 }, covers_lifetime: true, phase_witness: ArmKvCache, phase: ArmPhaseModelLoad, observed_gib: 1)
   let zero_runs = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 0 }, covers_lifetime: true, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
   (match arm_classify_measurement(m: wrong_phase) {
@@ -771,7 +771,7 @@ test fn w_a_measurement_for_an_absent_mechanism_or_zero_runs_refuses() -> Bool {
 }
 
 // ── WITNESS 12: READBACK — INSIDE THE INTERVAL IS CONSISTENT, OUTSIDE FALSIFIES ─────────────────
-test fn w_readback_inside_the_predicted_interval_is_consistent_outside_falsifies() -> Bool {
+test fn w_readback_inside_the_predicted_interval_is_consistent_outside_falsifies() -> Bool  {
   let interval = fx_interval(lower: 1073741824, upper: 2147483648, how: fx_how(text: "fixture interval" as NonEmptyStr))
   (match arm_readback_observation(component: ArmActivationWorkspace, predicted: interval, observed: fx_gib(2), receipt: "fx-readback-1" as NonEmptyStr) {
     ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => true
@@ -825,7 +825,7 @@ fn fx_plan() -> ArmMemoryExperimentPlan {
   }
 }
 
-test fn w_refused_refuses_the_experiment_too() -> Bool {
+test fn w_refused_refuses_the_experiment_too() -> Bool  {
   match arm_memory_launch_gate(
     intent: ArmBoundedExperiment,
     verdict: ArmMemoryFitRefused {
@@ -837,7 +837,7 @@ test fn w_refused_refuses_the_experiment_too() -> Bool {
   }
 }
 
-test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool {
+test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool  {
   (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: fx_unestablished_verdict(), experiment: none) {
     Present { value: c } => string_contains(s: c as String, pattern: "only through a typed experiment plan")
     Absent => false
@@ -857,7 +857,7 @@ test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool {
 }
 
 // ── WITNESS 14: THE EXPERIMENT PLAN MINT — TARGETS, ENVELOPE, RUNTIME, RECEIPTS, STOP CONTRACT ────
-test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract() -> Bool {
+test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract() -> Bool  {
   let plan = fx_plan()
   length(plan.targets) == 2
     && plan.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: plan.profile.max_num_seqs))
@@ -869,7 +869,7 @@ test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract()
     && string_contains(s: plan.stop.cleanup as String, pattern: "docker rm -f")
 }
 
-test fn w_the_experiment_plan_refuses_empty_or_already_bounded_targets() -> Bool {
+test fn w_the_experiment_plan_refuses_empty_or_already_bounded_targets() -> Bool  {
   (match arm_memory_fit_experiment_plan(
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
     workload: fx_shrunk_intent(), policy_profile: fx_derived_profile(), targets: [], deployment_env: glm_group_b_deployment_env()) {
@@ -885,7 +885,7 @@ test fn w_the_experiment_plan_refuses_empty_or_already_bounded_targets() -> Bool
     })
 }
 
-test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_profile() -> Bool {
+test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_profile() -> Bool  {
   match arm_memory_fit_experiment_plan(
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
     workload: fx_shrunk_intent(), policy_profile: glm_native_concurrent_profile,
@@ -896,7 +896,7 @@ test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_p
 }
 
 // ── WITNESS 15: THE INTENT PROJECTIONS AND THE FLOOR'S FORWARD PROJECTION ───────────────────────
-test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool {
+test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool  {
   (match serving_capacity_intent(cold_sequence_budgets: [], max_batched_tokens: token_count(count: 2048)) {
     ServingCapacityIntentRefused { cause: _ } => true
     ServingCapacityIntentAdmitted { intent: _ } => false
@@ -923,7 +923,7 @@ test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool {
 }
 
 // ── WITNESS 16: THE KV BYTE DERIVATION ITSELF ───────────────────────────────────────────────────
-test fn w_the_kv_byte_cost_derives_from_the_layout() -> Bool {
+test fn w_the_kv_byte_cost_derives_from_the_layout() -> Bool  {
   (match cold_admission_bytes(layout: fx_layout, sequence_budget: token_count(count: 65536)) {
     AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 268435456
     AdmissionByteCostUnestablished { cause: _ } => false
@@ -996,7 +996,7 @@ fn obligations_of(mint: ArmMemorySubjectMint) -> List<NonEmptyStr> {
   }
 }
 
-test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool {
+test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool  {
   let mint = join_subject(receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)])
   match mint {
     ArmMemorySubjectRefused { cause: _ } => false
@@ -1027,7 +1027,7 @@ test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool {
   }
 }
 
-test fn w_an_observation_receipt_discharges_nothing() -> Bool {
+test fn w_an_observation_receipt_discharges_nothing() -> Bool  {
   let observed = join_subject(receipts: [fx_observation_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)])
   let bare = arm_memory_fit_subject(
     checkpoint: Glm53NativeFp8,
@@ -1041,7 +1041,7 @@ test fn w_an_observation_receipt_discharges_nothing() -> Bool {
     && length(obligations_of(mint: observed)) > 0
 }
 
-test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance() -> Bool {
+test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance() -> Bool  {
   (match join_subject(receipts: [
     fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1),
     fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 2),
@@ -1067,7 +1067,7 @@ test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenanc
     })
 }
 
-test fn w_the_joined_bound_participates_in_falsification() -> Bool {
+test fn w_the_joined_bound_participates_in_falsification() -> Bool  {
   match join_subject(receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
@@ -1377,7 +1377,7 @@ fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
     receipts: receipts)
 }
 
-test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool {
+test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool  {
   match fx_wet_join(receipts: fx_wet_bundle()) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } => {
@@ -1416,7 +1416,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
   }
 }
 
-test fn w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
+test fn w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool  {
   match fx_wet_join(receipts: fx_wet_bundle()) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
@@ -1444,7 +1444,7 @@ test fn w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bo
 // THE PREFILL OBLIGATION IS PRESENT AND NAMED: every rank's activation-workspace bound is still
 // open after the join, and every activation receipt is ObservationOnly whose receipt text names
 // the 262144-window lifetime, the sparse-indexer buffer and its 64 MiB configuration cap.
-test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool {
+test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool  {
   let acts = filter(fx_wet_bundle(), r => r.component == ArmActivationWorkspace)
   length(acts) == 4
     && all(acts, r =>
@@ -1469,7 +1469,7 @@ test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool {
 // THE SIX-SEAT DERIVATION IS PINNED: floor(1,805,689 / 262,144) = 6 by the engine's own inventory,
 // the subject prices exactly that population, and the total resident tokens (6 x 262,144 =
 // 1,572,864) stand inside the inventory with 232,825 tokens of slack.
-test fn w_the_six_seat_derivation_is_pinned_to_the_engine_inventory() -> Bool {
+test fn w_the_six_seat_derivation_is_pinned_to_the_engine_inventory() -> Bool  {
   fx_wet_kv_inventory_tokens / 262144 == 6
     && 6 * 262144 == 1572864
     && 1572864 <= fx_wet_kv_inventory_tokens
@@ -1491,7 +1491,7 @@ test fn w_the_six_seat_derivation_is_pinned_to_the_engine_inventory() -> Bool {
 // pinned here so the row goes RED the moment any spelling wires arena bytes into a seat count:
 // floor(1,805,689 x 2408 / 1703 / 262,144) = 9, not 6 -- the linear route fabricates three seats the
 // engine's own count does not admit.
-test fn w_the_linear_arena_route_fabricates_nine_seats_and_is_refused() -> Bool {
+test fn w_the_linear_arena_route_fabricates_nine_seats_and_is_refused() -> Bool  {
   let seats_via_tp0_arena_linear = (fx_wet_kv_inventory_tokens * 2408 / 1703) / 262144
   (match first(filter(fx_wet_ranks, r => r.rank == 3)) {
     Present { value: tp3 } => tp3.host == "srv11" as NonEmptyStr && tp3.pool_centi_gib == 11969 && tp3.kv_centi_gib == 1703
@@ -1517,7 +1517,7 @@ test fn w_the_linear_arena_route_fabricates_nine_seats_and_is_refused() -> Bool 
 // wall would read 104.2433 GiB -- ABOVE the limiting rank's actual envelope, a wall ~1.7 GiB more
 // generous than the engine's own decision on the rank that binds. Swapping TP0's numbers in
 // changes the wall; this row is the discriminator.
-test fn w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall() -> Bool {
+test fn w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall() -> Bool  {
   let tp3_band_low = byte_size(count: 110096117923)
   let tp3_band_high = byte_size(count: 110106855342)
   let tp0_only_low = byte_size(count: 130652905144)
@@ -1530,7 +1530,7 @@ test fn w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall() -> Bool {
 // THE JOIN'S WALLS EXTEND TO THE WET TERMS: a second receipt for an already-discharged term, a
 // receipt on a rank this topology does not carry, and a bundle whose provenance names another
 // checkpoint are each refused before any verdict exists.
-test fn w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms() -> Bool {
+test fn w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms() -> Bool  {
   (match fx_wet_join(receipts: concat(fx_wet_bundle(), [fx_wet_checkpoint_receipt(r: fx_wet_tp0)])) {
     ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "two receipts name rank 0 checkpoint-residency")
     ArmMemorySubjectReady { subject: _ } => false
@@ -1577,7 +1577,7 @@ fn fx_wet_rank4_receipt() -> ArmComponentReceipt {
 // invented. THE SUBJECT UNDER READ is the experiment's own: its workload axis is the run the
 // receipt records (one 65536-token seat at a 2048 batch ceiling), independent of whatever the
 // declared restoration intent currently says.
-test fn w_the_unified_subject_names_all_seven_axes() -> Bool {
+test fn w_the_unified_subject_names_all_seven_axes() -> Bool  {
   match arm_experiment_2026_09_25_subject() {
     Absent => false
     Present { value: s } =>
@@ -1599,7 +1599,7 @@ test fn w_the_unified_subject_names_all_seven_axes() -> Bool {
 // names the per-token growth law the exact roster fold prices. A component added to the census
 // appears here by construction (the record has no omit spelling), and a law assigned beside the
 // census (a receipt claiming its component scales some other way) is refused at the binding.
-test fn w_the_mechanism_census_names_every_component() -> Bool {
+test fn w_the_mechanism_census_names_every_component() -> Bool  {
   let terms = memory_terms_for_rank(rd: fx_rank(rank: 0, checkpoint: fx_even_checkpoint()))
   let checkpoint_term = first(filter(terms, t => t.component == ArmCheckpointResidency))
   let kv_term = first(filter(terms, t => t.component == ArmKvCache))
@@ -1732,7 +1732,7 @@ fn fx_cache_supplies(blocks: Nat, arena_bytes: Nat) -> List<ArmRankCacheSupply> 
 // eight-token blocks (same layers, same kinds, same pages — only the block arithmetic differs, so
 // the roster obligations pass for both). One 2,000,000-block inventory sits between the two
 // six-seat demands: A proves, D refuses, and the ONLY difference is the roster.
-test fn w_same_inventory_different_roster_different_capacity() -> Bool {
+test fn w_same_inventory_different_roster_different_capacity() -> Bool  {
   let roster_d = fx_moa_layout(groups: [
     fx_moa_group_mamba(layers: 34, page: 1048576),
     fx_moa_group_sparse_block(block: 8),
@@ -1771,7 +1771,7 @@ test fn w_same_inventory_different_roster_different_capacity() -> Bool {
 // SAME PRINTED TOKEN FIGURE, CHANGED KDA COUNT: the capacity candidate reads 6 either way (it is
 // blind to the roster by construction), the derived demand differs, and the model's own shape
 // REFUSES the foreign roster -- a proof at one roster has no spelling at another.
-test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
+test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool  {
   let demand_a = match cold_admission_bytes(layout: fx_roster_a(), sequence_budget: token_count(count: 262144)) {
     AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
     AdmissionByteCostUnestablished { cause: _ } => 0
@@ -1812,7 +1812,7 @@ test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
 
 // MISSING SPARSE-INDEXER TAIL GROUP: the fold refuses as UNESTABLISHED naming the tail -- it does
 // not charge the omission as a free cache and prove.
-test fn w_missing_tail_group_is_unestablished() -> Bool {
+test fn w_missing_tail_group_is_unestablished() -> Bool  {
   match cache_fit_verdict(
     layout: fx_roster_no_tail(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
@@ -1826,7 +1826,7 @@ test fn w_missing_tail_group_is_unestablished() -> Bool {
 // INDEX_KPOOL 4 -> 8 CHANGES THE DERIVED CAPACITY: the same roster with the pool interval
 // doubled halves the KPool entries, and the six-seat demand drops by exactly the six-seat KPool
 // difference -- derived capacity moves with the pool interval.
-test fn w_kpool_4_to_8_changes_derived_capacity() -> Bool {
+test fn w_kpool_4_to_8_changes_derived_capacity() -> Bool  {
   let roster_kpool8 = fx_moa_layout(groups: [
     fx_moa_group_mamba(layers: 34, page: 1048576),
     fx_moa_group_sparse(),
@@ -1860,7 +1860,7 @@ fn first_of(os: List<NonEmptyStr>) -> NonEmptyStr {
 // unit, weights+nontorch as composite observations, activation as subject-scoped observations,
 // TP1's negative graph figure preserved raw as the attribution refusal; and the head's printed
 // capacity reads as observed with the six-seat division carried as a candidate, not a proof.
-test fn w_the_wet_bundle_binds_with_the_doctrine_standings() -> Bool {
+test fn w_the_wet_bundle_binds_with_the_doctrine_standings() -> Bool  {
   let bindings = arm_experiment_2026_09_25_bindings()
   match arm_experiment_2026_09_25_subject() {
     Absent => false
@@ -1958,7 +1958,7 @@ fn w_bundle_reported_capacity_and_candidate_hold() -> Bool {
 // across a different degree is a different shape, and the law refuses naming the axis. AND THE
 // STATIC TERMS DO TRANSFER: the same experiment's weights and arena readings admit on a 262Kx6
 // target at the same configuration -- as evidence, discharging nothing.
-test fn w_tp4_receipt_on_tp2_refused_and_static_terms_transfer_to_262k() -> Bool {
+test fn w_tp4_receipt_on_tp2_refused_and_static_terms_transfer_to_262k() -> Bool  {
   (match memory_proof_subject_for_launch(
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: SparkPairTp2, profile: w_restoration_profile(),
@@ -2037,7 +2037,7 @@ fn fx_262k_subject() -> MemoryProofSubject? {
 // a reading at the reporter's precision bounds nothing until a bounding protocol promotes it.
 // What the bundle's ranks CAN contribute is named beside what they cannot: only the bounding
 // standings (DerivedExact, DerivedConservativeInterval, MeasuredUpperBound) ever carry credit.
-test fn w_negative_observation_cannot_improve_headroom() -> Bool {
+test fn w_negative_observation_cannot_improve_headroom() -> Bool  {
   (match fx_bundle_binding(component: ArmGraphCapture, rank: 1) {
     Absent => false
     Present { value: graph1 } =>
@@ -2068,7 +2068,7 @@ test fn w_negative_observation_cannot_improve_headroom() -> Bool {
 // supplied supplies the cache subproof is CacheFitProved -- and the whole-arm standing is STILL
 // ArmMemoryFitUnestablished, naming the prefill transient among its open obligations. A proved
 // cache never promotes a verdict whose other subproofs are open.
-test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Bool {
+test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Bool  {
   let cache = cache_fit_verdict(
     layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
@@ -2119,7 +2119,7 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
 // arm that consumes the candidate. AND THE PREFILL FORMULA rides as a candidate with its
 // citation owed: 40 entries x 132 bytes at 262144 computed, named, and explicitly NOT bounding
 // until read at the pinned source.
-test fn w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its_citation() -> Bool {
+test fn w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its_citation() -> Bool  {
   let empty_roster = resolved_kv_layout(
     allocator_blocks: allocator_block_count(count: 4096),
     scheduler_block_size: token_count(count: 16),
@@ -2172,7 +2172,7 @@ fn fx_prefill_shape() -> PrefillTransientShape {
 
 data fx_prefill_v2_pool_carve_bytes: ByteSize = byte_size(count: 13766049792)
 
-test fn w_the_prefill_terms_derive_exact_from_the_pinned_source() -> Bool {
+test fn w_the_prefill_terms_derive_exact_from_the_pinned_source() -> Bool  {
   let terms = prefill_transient_demand_terms(shape: fx_prefill_shape())
   byte_size_count(b: terms.indexer_k_gather_workspace) == 1384120320
     && byte_size_count(b: terms.indexer_prefill_logits_cap) == 67108864
@@ -2205,7 +2205,7 @@ fn fx_prefill_v2_ranks() -> List<PrefillTransientRankInput> {
   })
 }
 
-test fn w_the_prefill_subproof_proves_at_the_v2_bundle() -> Bool {
+test fn w_the_prefill_subproof_proves_at_the_v2_bundle() -> Bool  {
   match prefill_transient_fit_verdict(
     shape: fx_prefill_shape(),
     ranks: fx_prefill_v2_ranks(),
@@ -2231,7 +2231,7 @@ test fn w_the_prefill_subproof_proves_at_the_v2_bundle() -> Bool {
 // endpoint sits UNDER the derived workspace-plus-ceiling reservation breaks the coverage
 // validation -- the reading and the pinned derivation then describe different launches, and the
 // fold says so rather than pricing a lying receipt.
-test fn w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold() -> Bool {
+test fn w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold() -> Bool  {
   let ranks = fx_prefill_v2_ranks()
   let shrunk = map(ranks, r =>
     if r.rank == 3 {
@@ -2255,7 +2255,7 @@ test fn w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold() -> B
   }
 }
 
-test fn w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage() -> Bool {
+test fn w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage() -> Bool  {
   let zeroed = map(fx_prefill_v2_ranks(), r =>
     if r.rank == 1 {
       PrefillTransientRankInput {
@@ -2298,7 +2298,7 @@ test fn w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage() -> Bo
 // env-configured terms move with their configuration (logits ceiling 134,217,728 at a 128 MiB
 // setting against the fleet's 67,108,864 at 64; flashinfer workspace 134,217,728 at 128 MiB
 // against the pinned 394 MiB default's 413,138,944).
-test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool {
+test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool  {
   let longer = PrefillTransientShape {
     length: token_count(count: 524288),
     seats: 6,
@@ -2341,7 +2341,7 @@ test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool {
 // the arm verdict's own open terms, because a closed prefill transient promotes nothing it does
 // not own. THE WHOLE-ARM QUESTION the restoration sequence asks is answered by the standing's
 // full obligation list, never by one green subproof.
-test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() -> Bool {
+test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() -> Bool  {
   let prefill = prefill_transient_fit_verdict(
     shape: fx_prefill_shape(),
     ranks: fx_prefill_v2_ranks(),
@@ -2437,7 +2437,7 @@ fn fx_launch_wall_verdict() -> ArmMemoryFitVerdict {
 // [0, the conservation bound] (14,779,376,601 bytes at rank 0, 7,735,630,235 at rank 3); graph
 // the reporter's rounding unit; the KV carve exact at 13,766,049,792 bytes; loader and
 // fragmentation open on every rank.
-test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
+test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool  {
   match fx_launch_wall_subject_mint() {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
@@ -2526,7 +2526,7 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
 // measurement pricing NCCL alone inside the residue (runtime and collective uppers then
 // partition the residue once instead of double-charging it), and the conservation pinch on the
 // byte-exact pool producer with same-device deductions.
-test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
+test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool  {
   match fx_launch_wall_verdict() {
     ArmMemoryFitUnestablished { obligations: os } =>
       length(os) == 22
@@ -2562,7 +2562,7 @@ test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms
 // from the composite by an explicit derivation that names its composite-ness) is what closes the
 // term in the launch-wall record. The two facts travel apart so no reader can cite the carry as
 // a placement receipt.
-test fn w_the_composite_observation_still_discharges_no_placement_term() -> Bool {
+test fn w_the_composite_observation_still_discharges_no_placement_term() -> Bool  {
   let open_checkpoint = ComponentBoundOpen { obligation: "per-rank checkpoint placement is unread: an even tensor-parallel split is an assumption, not a measurement" as NonEmptyStr }
   let composite = ArmWetCompositeObservation {
     bytes: byte_size(count: 88497801134),
@@ -2582,7 +2582,7 @@ test fn w_the_composite_observation_still_discharges_no_placement_term() -> Bool
 // deduction carry prices, and the largest observed foreign occupancy rides at its hundredths
 // floor -- 15,558,519,029 bytes (14.49 GiB), the band the foreign deduction's upper endpoint
 // widens to the reporter's rounding unit.
-test fn w_the_boot_foreign_band_holds_at_the_reporters_unit() -> Bool {
+test fn w_the_boot_foreign_band_holds_at_the_reporters_unit() -> Bool  {
   arm_experiment_kvplan_v2_2026_09_26_boot_derivation_holds()
     && length(arm_experiment_kvplan_v2_2026_09_26_boot_readings) == 4
     && byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: 1449)) == 15558519029
@@ -2594,7 +2594,7 @@ test fn w_the_boot_foreign_band_holds_at_the_reporters_unit() -> Bool {
 // 81,872,814,081 bytes of this checkpoint (327,491,256,321 bytes total across four ranks, by
 // pigeonhole), which exceeds the toy pool's most favorable reading. Unestablished is not a
 // verdict a shrunken supply can hide behind.
-test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
+test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool  {
   let toy_pool = match closed_interval(low: byte_size(count: 1073741824), high: byte_size(count: 2147483647), le: measure_le) {
     IntervalReady { interval: i } =>
       ArmPoolBounded { span: i, how: "toy one-GiB span for the refusal wall" as NonEmptyStr }
@@ -2630,7 +2630,7 @@ test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
 // promote nothing they do not own, and the whole-arm verdict is exactly the launch wall's own
 // list, 22 obligations naming the fragmentation allowance, the loader-receipt pinches, and
 // the graph-capture/idle-serving indeterminacy the landed evidence leaves open.
-test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> Bool {
+test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> Bool  {
   let prefill = prefill_transient_fit_verdict(
     shape: fx_prefill_shape(),
     ranks: fx_prefill_v2_ranks(),
@@ -2680,20 +2680,20 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
 // keeps holding. The Absent-bytes claim below is the machinery's fail-closed property, kept as a
 // RED against reading an unpriced tensor as zero.
 
-test fn w_the_checkpoint_index_census_holds() -> Bool {
+test fn w_the_checkpoint_index_census_holds() -> Bool  {
   glm_checkpoint_index_census_holds()
     && byte_size_count(b: glm_checkpoint_index_file_bytes) == byte_size_count(b: glm_5_3_flash_native_manifest.safetensors_bytes)
     && glm_checkpoint_index_revision == glm_5_3_flash_native_manifest.revision
 }
 
-test fn w_the_index_confirms_the_hybrid_shape_and_names_the_mtp() -> Bool {
+test fn w_the_index_confirms_the_hybrid_shape_and_names_the_mtp() -> Bool  {
   length(glm_checkpoint_index_kda_layer_indices) == glm_5_3_flash_hybrid_shape.kda_linear_attention_layers
     && length(glm_checkpoint_index_sparse_base_layer_indices) == glm_5_3_flash_hybrid_shape.sparse_attention_layers
     && length(glm_checkpoint_index_mtp_layer_indices) == 1
     && glm_checkpoint_index_routed_experts_per_layer > 0
 }
 
-test fn w_the_placement_rules_classify_the_census_name_shapes() -> Bool {
+test fn w_the_placement_rules_classify_the_census_name_shapes() -> Bool  {
   arm_checkpoint_classify(name: "model.language_model.embed_tokens.weight") == ArmPlacementVocabSharded
     && arm_checkpoint_classify(name: "lm_head.weight") == ArmPlacementVocabSharded
     && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight") == ArmPlacementExpertSplit
@@ -2734,7 +2734,7 @@ test fn w_the_placement_rules_classify_the_census_name_shapes() -> Bool {
 // conservation law keeps holding in BOTH classifications, and the figures provably differ -- so
 // the projection cannot absorb a tensor's movement silently, and a misclassification is a
 // decidable violation of the conservation wall, not a rounding anecdote.
-test fn w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure() -> Bool {
+test fn w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure() -> Bool  {
   let before = [
     ArmCheckpointTensorRow { name: "probe.embed" as NonEmptyStr, kind: ArmPlacementVocabSharded, bytes: Present { value: fx_gib(8) } },
     ArmCheckpointTensorRow { name: "probe.expert" as NonEmptyStr, kind: ArmPlacementExpertSplit, bytes: Present { value: fx_gib(16) } },
@@ -2759,7 +2759,7 @@ test fn w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure() -> Bool {
 // tensor. The header fetch has completed and the byte census is landed; this claim is the
 // machinery's fail-closed property, kept as the RED against ever reading an unpriced tensor as
 // zero.
-test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool {
+test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool  {
   let row = ArmCheckpointTensorRow {
     name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight" as NonEmptyStr,
     kind: arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight"),
@@ -2782,14 +2782,14 @@ test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool
 // config.json's architectures field. THE TWO RUN DESIGNS are minted plans beside runbook rows --
 // the executable form the bracket consumes.
 
-test fn w_the_projection_census_and_conservation_hold_exact() -> Bool {
+test fn w_the_projection_census_and_conservation_hold_exact() -> Bool  {
   glm_checkpoint_projection_census_holds()
     && byte_size_count(b: glm_checkpoint_projection_per_rank_bytes()) == 83237158776
     && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) == 1127254016
     && byte_size_count(b: glm_checkpoint_index_tensor_bytes) == 328326771576
 }
 
-test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread() -> Bool {
+test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread() -> Bool  {
   let ranks = arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()
   length(ranks) == 4
     && all(ranks, rb => match rb.checkpoint_residency {
@@ -2822,7 +2822,7 @@ test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread
     })
 }
 
-test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
+test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool  {
   glm_5_3_flash_architecture_class == "Glm5NextForConditionalGeneration"
     && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) < byte_size_count(b: glm_checkpoint_projection_replicated_bytes())
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
@@ -2833,7 +2833,7 @@ test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
 // normal-serving decision, the runtime bound is the engine's own ready timeout, and the receipt
 // the run must mint is CheckpointRankResidencyBound. The runbook row pins the bracket, the
 // cadence, and the pass/fail bounds.
-test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool {
+test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool  {
   match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
     ArmMemoryExperimentAdmitted { plan: p } =>
       p.targets == [ArmLoaderTransform]
@@ -2853,7 +2853,7 @@ test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool {
 // THE FRAGMENTATION-CHURN PLAN ADMITS, NAMED EXACTLY: same walls, the
 // AllocatorFragmentationBound receipt, the warm-engine churn anchors, and the pass bound that
 // keeps the peak-serving demand within supply.
-test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool {
+test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool  {
   match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
     ArmMemoryExperimentAdmitted { plan: p } =>
       p.targets == [ArmFragmentationAllowance]
@@ -2877,7 +2877,7 @@ test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool {
 // refused at the typed gate, and the rank record would carry an OPEN term if a receipt ever
 // passed without the mechanism named.
 
-test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool {
+test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool  {
   arm_loader_trace_runs == 3
     && arm_loader_trace_converged == 3
     && arm_loader_trace_failed_legs == 0
@@ -2893,7 +2893,7 @@ test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool {
     })
 }
 
-test fn w_the_loader_receipt_names_the_page_cache_mechanism() -> Bool {
+test fn w_the_loader_receipt_names_the_page_cache_mechanism() -> Bool  {
   let receipt = arm_loader_trace_receipt(rank: 3, host: "srv11" as NonEmptyStr)
   arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: receipt)
     && string_contains(s: receipt as String, pattern: "page cache")
@@ -2905,7 +2905,7 @@ test fn w_the_loader_receipt_names_the_page_cache_mechanism() -> Bool {
 // wall: the same numbers, receipted as "engine-pinned device demand" with no page-cache naming,
 // fail admission -- the model has no spelling for a soft observation bounding a hard quantity
 // unnamed. And a receipt with the mechanism but no subject identity fails the provenance wall.
-test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool {
+test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool  {
   let pinned_claim = "loader peak 111.83 GiB engine-pinned device demand, measured on glm-5.3-flash-native-fp8 x gunbc-glm53-nope-derived-gb10 x tp4" as NonEmptyStr
   let no_identity = "loader peak 111.83 GiB, OUTER bound, page cache included, peak over 3 runs" as NonEmptyStr
   !arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: pinned_claim)
@@ -2921,7 +2921,7 @@ test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool {
 // outcomes named. THE INTERIM FIVE-SEAT PROTOCOL is pinned with its named limitation. THE INTENT
 // STAYS SIX throughout: no memory-grounds re-price rides a scheduler/liveness defect.
 
-test fn w_the_churn_run_finding_is_pinned() -> Bool {
+test fn w_the_churn_run_finding_is_pinned() -> Bool  {
   arm_experiment_2026_09_27_churn_run_readiness_gate_passed
     && arm_experiment_2026_09_27_churn_run_token_exact_no_400s
     && arm_experiment_2026_09_27_churn_run_completed_prefills == 5
@@ -2939,7 +2939,7 @@ test fn w_the_churn_run_finding_is_pinned() -> Bool {
     })
 }
 
-test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool {
+test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool  {
   let cache = cache_fit_verdict(
     layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
@@ -2960,7 +2960,7 @@ test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool {
     })
 }
 
-test fn w_the_repro_matrix_discriminates_each_axis() -> Bool {
+test fn w_the_repro_matrix_discriminates_each_axis() -> Bool  {
   length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
     && all(arm_experiment_2026_09_27_liveness_repro_matrix, r =>
       string_contains(s: r.workload as String, pattern: "prefill")
@@ -2982,7 +2982,7 @@ test fn w_the_repro_matrix_discriminates_each_axis() -> Bool {
     })
 }
 
-test fn w_the_five_seat_interim_protocol_is_named() -> Bool {
+test fn w_the_five_seat_interim_protocol_is_named() -> Bool  {
   arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.plan == "fragmentation-churn-five-seat-interim"
     && string_contains(s: arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.anchor_start as String, pattern: "FIVE concurrent cold 262144-token prefills")
     && string_contains(s: arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.fail_bound as String, pattern: "does not price six-seat full occupancy")
