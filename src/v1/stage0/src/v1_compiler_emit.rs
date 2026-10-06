@@ -21,6 +21,8 @@ pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
 use crate::std_coercion::TypeRealizationDecision::*;
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_eq;
@@ -63,9 +65,14 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 };
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
-pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
+};
+pub use crate::v1_compiler_infer_env::{
+    GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+};
 pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
@@ -5426,7 +5433,7 @@ pub fn file_operation_has_content_input(
     )
 }
 
-pub fn required_stderr_capture_policy_declaration() -> Rc<crate::std_decl_ref::DeclarationRef> {
+pub fn required_stderr_capture_policy_declaration() -> Rc<DeclarationRef> {
     crate::std_decl_ref::decl_ref(
         "std.shell_stream_capture".to_string(),
         "WitnessStderrCapturePolicy".to_string(),
@@ -5441,9 +5448,8 @@ pub fn param_type_is_stderr_capture_policy_declaration(p: Rc<Node>, env: Rc<Type
     ))
     .clone()
     {
-        crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-            declaration: d,
-            ..
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
         } => crate::std_decl_ref::declaration_ref_eq(
             d.clone(),
             required_stderr_capture_policy_declaration(),
