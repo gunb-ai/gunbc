@@ -243,7 +243,7 @@ fn import_list_edits(scan: ImportListScan, rbrace_end: Int, newline_after: Bool,
   }
 }
 
-fn import_scan_step(scan: ImportListScan, tok: Token, cs: List<String>, retirements: List<ImportMemberRetirement>) -> ImportListScan {
+fn import_scan_step(scan: ImportListScan, tok: Token, cs: List<Int>, retirements: List<ImportMemberRetirement>) -> ImportListScan {
   if tok.class == ^ShNewline { scan }
   else if scan.stage == 0 {
     if token_is_word(tok: tok, word: "import") {
@@ -257,7 +257,7 @@ fn import_scan_step(scan: ImportListScan, tok: Token, cs: List<String>, retireme
     } else { import_scan_reset(scan: scan, edits: scan.edits) }
   } else if tok.class == ^ShRBrace {
     let newline_after = match cs |> skip(tok.end) |> first {
-      Present { value: c } => c == "\n"
+      Present { value: c } => c == 10
       Absent => false
     }
     import_scan_reset(scan: scan, edits: concat(scan.edits, import_list_edits(scan: scan, rbrace_end: tok.end, newline_after: newline_after, retirements: retirements)))
