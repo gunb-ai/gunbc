@@ -201,6 +201,8 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
+  StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
+  PrivateTmpProperty, ReadWritePathsProperty, RemainAfterExitProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
 ]
