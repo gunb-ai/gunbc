@@ -425,4 +425,196 @@ mod tests {
             Err(BaseFactRefusal::BaseFactRefused { .. })
         ));
     }
+
+    // ─── THE THREE gunbc#13378 CASES, AS DISCRIMINATING CONTROLS ────────────────────────────────
+    //
+    // Each fixture is a scratch repository whose BASE revision calls `zz_deleted_builtin`, a name
+    // no compiler in this build has -- the shape of a head that deleted a builtin the base still
+    // calls. The base compiler is a stub that answers the contract with a value this process could
+    // never have evaluated from that base. So the route is asserted, not only the answer: the
+    // pre-capability code evaluated the base closure in-process and refused
+    // `function zz_deleted_builtin not found`; this code returns the base compiler's answer.
+    // The real-binary half of the route (the verb itself answering) is
+    // tests/parse_environment_decode_roundtrip.rs `the_kernel_guard_compares_names_not_bytes`.
+
+    const DELETED_BUILTIN_CALL: &str =
+        "module zz_probe\n\nfn zz_calls_deleted() -> Int { zz_deleted_builtin(1) }\n";
+
+    fn git(repo: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .expect("spawn git");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// A scratch repo whose base commit writes `base_text` at `path` and whose head writes
+    /// `head_text` there. Returns (repo, base, head).
+    fn fixture(
+        label: &str,
+        path: &str,
+        base_text: &str,
+        head_text: &str,
+    ) -> (PathBuf, String, String) {
+        let repo =
+            std::env::temp_dir().join(format!("gunbc-base-facts-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join(path).parent().unwrap()).unwrap();
+        git(&repo, &["init", "--quiet"]);
+        git(&repo, &["config", "user.email", "probe@example.invalid"]);
+        git(&repo, &["config", "user.name", "probe"]);
+        let mut commit = |text: &str, msg: &str| {
+            std::fs::write(repo.join(path), text).unwrap();
+            git(&repo, &["add", "-A"]);
+            git(&repo, &["commit", "--quiet", "-m", msg]);
+            git(&repo, &["rev-parse", "HEAD"])
+        };
+        let base = commit(base_text, "base calls a deleted builtin");
+        let head = commit(head_text, "head deleted it");
+        (repo, base, head)
+    }
+
+    /// A base compiler that answers `fact` at `revision` with `value`, whatever the tree holds.
+    fn stub_compiler(
+        repo: &Path,
+        fact: BaseFactKind,
+        revision: &str,
+        value: serde_json::Value,
+    ) -> BaseCompilerSupply {
+        let answer = repo.join("stub-answer.json");
+        std::fs::write(
+            &answer,
+            serde_json::json!({
+                "schema": BASE_FACTS_SCHEMA,
+                "fact": base_fact_kind_name(fact),
+                "revision": revision,
+                "value": value,
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let script = repo.join("stub-base-compiler.sh");
+        std::fs::write(&script, format!("#!/bin/sh\ncat '{}'\n", answer.display())).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        BaseCompilerSupply::Present {
+            revision: revision.to_string(),
+            executable: script,
+        }
+    }
+
+    #[test]
+    fn the_base_cost_debt_roster_is_the_base_compilers_answer() {
+        let roster = "src/v2/workflow/floor_cost_debt.dag";
+        let (repo, base, _) = fixture("roster", roster, DELETED_BUILTIN_CALL, "module zz_probe\n");
+        let supply = stub_compiler(
+            &repo,
+            BaseFactKind::CostDebtRoster,
+            &base,
+            serde_json::json!(["zz.base.row"]),
+        );
+        let got = crate::cli_run::base_cost_debt_roster_supplied(&supply, &repo, &base);
+        let _ = std::fs::remove_dir_all(&repo);
+        assert_eq!(
+            got.expect("the base roster is answered"),
+            vec!["zz.base.row".to_string()]
+        );
+    }
+
+    #[test]
+    fn the_base_parse_environment_is_the_base_compilers_answer() {
+        use crate::cli_run::namespace_baseline as nb;
+        let syntax = "dag/extdeps/languages/dag/syntax.dag";
+        let (repo, base, head) = fixture(
+            "parse-env",
+            syntax,
+            DELETED_BUILTIN_CALL,
+            "module zz_probe\n",
+        );
+        let compiled = crate::extdeps_languages_dag_syntax::dag_parse_environment();
+        let supply = stub_compiler(
+            &repo,
+            BaseFactKind::ParseEnvironment,
+            &base,
+            serde_json::to_value(&*compiled).unwrap(),
+        );
+        let got = nb::environment_agreement_supplied(
+            &repo,
+            &base,
+            &head,
+            &nb::LiveDagIndex::new(),
+            || Ok(supply),
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        match got {
+            Ok(nb::EnvironmentAgreement::Differs {
+                base_environment, ..
+            }) => {
+                assert_eq!(*base_environment, *compiled)
+            }
+            other => panic!(
+                "the base environment was not the base compiler's answer: {:?}",
+                other
+                    .map(|_| ())
+                    .map_err(|e| nb::environment_load_refusal_text(&e))
+            ),
+        }
+    }
+
+    #[test]
+    fn the_base_kernel_names_are_the_base_compilers_answer() {
+        use crate::cli_run::namespace_baseline as nb;
+        let types = "dag/std/types.dag";
+        let (repo, base, head) =
+            fixture("kernel", types, DELETED_BUILTIN_CALL, "module zz_probe\n");
+        let names: Vec<String> = crate::std_types::kernel_type_set()
+            .keys()
+            .cloned()
+            .collect();
+        let supply = stub_compiler(
+            &repo,
+            BaseFactKind::KernelNames,
+            &base,
+            serde_json::json!(names),
+        );
+        let got = nb::kernel_set_serves_both_supplied(&repo, &base, &head, &supply);
+        let _ = std::fs::remove_dir_all(&repo);
+        assert!(
+            matches!(got, Ok(true)),
+            "the base kernel set was not the base compiler's answer: {:?}",
+            got.map_err(|e| nb::environment_load_refusal_text(&e))
+        );
+    }
+
+    #[test]
+    fn with_no_base_compiler_every_site_refuses_and_none_evaluates_the_base() {
+        use crate::cli_run::namespace_baseline as nb;
+        let types = "dag/std/types.dag";
+        let (repo, base, head) =
+            fixture("absent", types, DELETED_BUILTIN_CALL, "module zz_probe\n");
+        let absent = BaseCompilerSupply::Absent {
+            revision: base.clone(),
+            why: "admin merge".into(),
+        };
+        let kernel = nb::kernel_set_serves_both_supplied(&repo, &base, &head, &absent);
+        let roster = crate::cli_run::base_cost_debt_roster_supplied(&absent, &repo, &base);
+        let _ = std::fs::remove_dir_all(&repo);
+        assert!(
+            matches!(
+                kernel,
+                Err(nb::EnvironmentLoadRefusal::BaseCompiler {
+                    refusal: BaseFactRefusal::BaseCompilerUnavailable { .. }
+                })
+            ),
+            "{kernel:?}"
+        );
+        let roster = roster.expect_err("no base compiler, no roster");
+        assert!(roster.contains("cause=BaseCompilerUnavailable"), "{roster}");
+    }
 }

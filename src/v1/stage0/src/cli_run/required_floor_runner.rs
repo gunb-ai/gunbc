@@ -2676,6 +2676,17 @@ fn cost_debt_admitted_identities() -> Result<Vec<String>, String> {
 
 /// `floor_cost_debt_roster` at `base_commit`, as the base revision's own compiler evaluates it.
 fn base_cost_debt_roster(workspace: &Path, base_commit: &str) -> Result<Vec<String>, String> {
+    let supply = crate::cli_run::base_facts::base_compiler_supply_from_env()
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause=BaseCompilerSupplyUnreadable -- {e}"))?;
+    base_cost_debt_roster_supplied(&supply, workspace, base_commit)
+}
+
+/// `base_cost_debt_roster` with the base compiler named by the caller (the controls' route).
+pub(crate) fn base_cost_debt_roster_supplied(
+    supply: &crate::cli_run::base_facts::BaseCompilerSupply,
+    workspace: &Path,
+    base_commit: &str,
+) -> Result<Vec<String>, String> {
     use crate::cli_run::base_facts as bf;
     let refuse = |r: bf::BaseFactRefusal| {
         format!(
@@ -2684,10 +2695,8 @@ fn base_cost_debt_roster(workspace: &Path, base_commit: &str) -> Result<Vec<Stri
             bf::base_fact_refusal_text(&r)
         )
     };
-    let supply = bf::base_compiler_supply_from_env()
-        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause=BaseCompilerSupplyUnreadable -- {e}"))?;
     let kind = bf::BaseFactKind::CostDebtRoster;
-    bf::base_fact_from_base_compiler(&supply, workspace, base_commit, kind)
+    bf::base_fact_from_base_compiler(supply, workspace, base_commit, kind)
         .and_then(|v| bf::base_fact_names(v, base_commit, kind))
         .map_err(refuse)
 }
