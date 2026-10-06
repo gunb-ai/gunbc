@@ -43,9 +43,9 @@ fn remote_leg_reported_began(stdout: String) -> Bool {
 // is normalized on its behalf.
 fn remote_leg_stdout_without_began(stdout: String) -> String {
   let lines = split(s: stdout, delimiter: "\n")
-  let marker_at = fold(enumerate(lines), init: 0 - 1, f: (acc, p) => if acc < 0 && p.second == remote_leg_began_word { p.first } else { acc })
-  if marker_at < 0 { stdout }
-  else { join(map(filter(enumerate(lines), p => p.first != marker_at), p => p.second), "\n") }
+  let marker_lines = map(filter(enumerate(lines), p => p.second == remote_leg_began_word), p => p.first)
+  if count(marker_lines) == 0 { stdout }
+  else { join(map(filter(enumerate(lines), p => !(p.second == remote_leg_began_word && count(filter(marker_lines, m => m < p.first)) == 0)), p => p.second), "\n") }
 }
 
 // STDOUT READ AS ONE WORD: a state word, a path, a count, a single line. Surrounding whitespace,
