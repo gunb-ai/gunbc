@@ -30,12 +30,12 @@ import gunbc.typed_module_cache_capacity {
 // at or under that per-entry estimate; a larger real object is a revision of the estimate, never
 // a second authored size in this file.
 
-fn typecheck_module_measured_largest_entry() -> ByteSize {
+fn typecheck_module_family_entry_budget_unit() -> ByteSize {
   typed_module_bytes_per_entry_estimate
 }
 
 data materialization_store_typed_module_budget_policy: ByteSize = byte_size(
-  count: measure_count(m: typecheck_module_measured_largest_entry()) * typed_module_cache_entries_ceiling
+  count: measure_count(m: typecheck_module_family_entry_budget_unit()) * typed_module_cache_entries_ceiling
 )
 
 data materialization_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [

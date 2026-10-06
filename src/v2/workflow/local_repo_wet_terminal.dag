@@ -2192,9 +2192,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.typecheck_module_store_wet_witness", function: "real_content_keyed_entries_fit_the_measured_largest_entry_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.typecheck_module_store_wet_witness", function: "content_keyed_probe_objects_fit_the_family_entry_budget_by_real_execution" },
       entry: "dag/test/claim/typecheck_module_store_wet_witness_test.dag",
-      function: "real_content_keyed_entries_fit_the_measured_largest_entry_by_real_execution",
+      function: "content_keyed_probe_objects_fit_the_family_entry_budget_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

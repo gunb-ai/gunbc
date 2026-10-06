@@ -30,7 +30,7 @@ import extdeps.realization.materialization_store_local {
   store_path,
 }
 import gunbc.materialization_store_budgets {
-  typecheck_module_measured_largest_entry,
+  typecheck_module_family_entry_budget_unit,
 }
 import gunbc.typecheck_module_store {
   typecheck_module_request,
@@ -200,12 +200,12 @@ test fn a_failed_prepare_is_absent_bytes_not_zero() -> Bool {
   }
 }
 
-test fn real_content_keyed_entries_fit_the_measured_largest_entry_by_real_execution() -> Bool {
+test fn content_keyed_probe_objects_fit_the_family_entry_budget_by_real_execution() -> Bool {
   let types = Filesystem.Read(path: "dag/std/types.dag")
   let provider = Filesystem.Read(path: "dag/std/materialization_provider.dag")
   let req_types = sample_req(source_bytes: types.content, import_bytes: [])
   let req_provider = sample_req(source_bytes: provider.content, import_bytes: [types.content])
-  let cap = measure_count(m: typecheck_module_measured_largest_entry())
+  let cap = measure_count(m: typecheck_module_family_entry_budget_unit())
   let iface_types = "interface std.types\n"
   let iface_provider = "interface std.materialization_provider\n"
   types.success && provider.success

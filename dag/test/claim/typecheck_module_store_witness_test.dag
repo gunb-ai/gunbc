@@ -8,7 +8,7 @@ import std.dissolution { dissolution_status, DissolutionFired, DissolutionPendin
 import std.materialization_provider { request_key }
 import gunbc.materialization_store_budgets {
   materialization_store_durable_budgets_consumer_frontier,
-  typecheck_module_measured_largest_entry,
+  typecheck_module_family_entry_budget_unit,
   materialization_store_typed_module_budget_policy,
 }
 import gunbc.typed_module_cache_capacity { typed_module_cache_entries_ceiling }
@@ -71,16 +71,16 @@ test fn typecheck_module_request_from_hex_refuses_a_non_digest() -> Bool {
   }
 }
 
-test fn the_typed_module_family_budget_is_the_measured_entry_times_the_residency_ceiling() -> Bool {
+test fn the_typed_module_family_budget_is_the_entry_unit_times_the_residency_ceiling() -> Bool {
   measure_count(m: materialization_store_typed_module_budget_policy)
-    == measure_count(m: typecheck_module_measured_largest_entry()) * typed_module_cache_entries_ceiling
+    == measure_count(m: typecheck_module_family_entry_budget_unit()) * typed_module_cache_entries_ceiling
 }
 
-test fn a_typecheck_entry_for_the_probe_interface_fits_the_measured_largest_entry() -> Bool {
+test fn a_typecheck_entry_for_the_probe_interface_fits_the_family_entry_budget_unit() -> Bool {
   let req = typecheck_module_request(source_digest: h(v: "mod-a"), direct_import_interfaces: [], compiler_digest: h(v: "compiler-x"))
   let payloads = typecheck_module_payloads(interface: "export fn f\n", diagnostics: "")
   match typecheck_module_entry_bytes(req: req, payloads: payloads) {
     Absent => false
-    Present { value: n } => measure_count(m: n) <= measure_count(m: typecheck_module_measured_largest_entry())
+    Present { value: n } => measure_count(m: n) <= measure_count(m: typecheck_module_family_entry_budget_unit())
   }
 }
