@@ -2,7 +2,7 @@ module gunbc.compiler_gate_workflow
 
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
-// lanes the `witnesses` aggregate reads -- `emit-build`, `floor` and `generated` -- run on the fleet,
+// lanes the `witnesses` aggregate reads -- `seed`, `emit-build`, `floor` and `generated` -- run on the fleet,
 // and so does the aggregate.
 //
 // THE HOSTED UNIT-TEST LANE WAS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
@@ -21,8 +21,8 @@ module gunbc.compiler_gate_workflow
 // jobs API's created_at and started_at rather than trusted here: merge-queue runs 36478070174 and
 // 36464765845, where every hosted job waited minutes for a slot -- the aggregate, whose one step
 // runs in seconds, waited 9 and 21 -- while the fleet lanes of the same runs started within
-// seconds. So `compiler` is deleted: its one step built `gunbc`, which the fleet prelude of both
-// `floor` and `generated` already builds from the same tree (DESIGN section 2). The lint became a
+// seconds. So `compiler` is deleted: its one step built `gunbc`, which the `seed` job now builds or restores once
+// for `floor` and `generated` (`emit-build` still builds its own, see the seed section) (DESIGN section 2). The lint became a
 // step on `generated` (compiler_gate_lint_step), and the aggregate moved to the fleet.
 // compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which a blocking
 // lane or the aggregate runs hosted.
@@ -891,15 +891,15 @@ fn compiler_gate_floor_scripts_are_renderable() -> Bool {
 
 // ── THE MERGE QUEUE PRODUCES THE COMPILER PAIR CANDIDATE ────────────────────────────────────────
 //
-// The floor already builds claim_executor and gunbc from the tree that will land. On a merge group
-// (the composed revision that becomes main), it also keys that build as gunbc.fleet_release_bins_key
-// compiler_pair_release_product BEFORE building -- so the build is stamped with the materialized tree,
-// as the preimage says -- then packs the two binaries with the build log the build step just wrote,
-// wraps the pack as one object and uploads it as a short-lived workflow artifact. The floor holds no
-// cache credential: it produces a CANDIDATE, and fleet-desired, after the revision lands, verifies it
-// and is the only canonical publisher. A pull-request run produces nothing (nothing would consume it).
-// A refusal here is the floor's: an environment the product's preimage cannot honestly describe
-// stops the line rather than yielding an unprovenanced candidate.
+// The `seed` job builds or restores claim_executor and gunbc for the tree that will land. On a
+// merge group (the composed revision that becomes main) it also packs the two binaries with the build
+// log into one object and uploads it as a short-lived workflow artifact; the key was derived by
+// gunbc.fleet_release_bins_key compiler_pair_release_product BEFORE any build, so the pack is stamped
+// with the materialized tree, as the preimage says. The seed holds no cache credential: it produces
+// a CANDIDATE, and fleet-desired, after the revision lands, verifies it and is the only canonical
+// publisher. A pull-request run produces no candidate (nothing would consume it). A refusal here is
+// the seed's: an environment the product's preimage cannot honestly describe stops the line rather
+// than yielding an unprovenanced candidate.
 fn compiler_gate_candidate_condition() -> String {
   "github.event_name == 'merge_group'"
 }
@@ -1163,7 +1163,7 @@ fn compiler_gate_emit_build_job() -> Job {
 // ═══════════════════════════════════════════════════════════════════════════
 // THE SEED LANE: THE COMPILER PAIR IS BUILT OR RESTORED ONCE PER RUN.
 //
-// OPERATOR DIRECTION 2026-10-06 (CI programme item 1, rows R1/R2 of docs/plans/ci-end-to-end-accounting.md):
+// OPERATOR DIRECTION 2026-10-06 (CI programme item 1, rows R1/R2; operator authorized changing the required job roster for this programme):
 // the three fleet lanes each built the same two binaries from the same tree, so a run paid the
 // release build three times on three runners. The pair is one product keyed by
 // gunbc.fleet_release_bins_key compiler_pair_release_product -- the same keyed materialization
