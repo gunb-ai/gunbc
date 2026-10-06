@@ -28,9 +28,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // layout, then lowered by normalize_node. The module header and the other declarations are not their
 // subject (DESIGN section 3, a witness discriminates at one interface). Three of them still exceed the
 // per-claim eval-step budget at that grain; they are the population of gunbc.rung_drop
-// coproduct_fragment_normalize_new_witness_eval_step_cost. The four claims that lower a whole fn
-// fragment also exceed the floor's CPU enrolment margin, which no drop lowers; they stay ungated in
-// v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse, a stated frontier
+// coproduct_fragment_normalize_new_witness_eval_step_cost. The four claims that lower a fn declaration
+// exceed the floor's CPU enrolment margin even at fragment grain, which no drop lowers; they stay ungated,
+// in their original form, in v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse, a stated frontier
 // (gunbc.recurring_failure_mode fn_fragment_lowering_exceeds_the_enrolment_margin).
 
 // The declaration fragment, parsed at its production and lowered.
