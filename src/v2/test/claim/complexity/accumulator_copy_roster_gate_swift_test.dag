@@ -5,9 +5,13 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// Not `test fn`: interpreted file_gate over swift.dag (~2323 lines) timed out a 300s census of
-// this entry by itself. Callable from the wet recipe and named by witness_deferral_freeze.
-// Do not raise the cap.
+// Floor discovery refuses a `*_test.dag` with zero `test fn`/`test data`. The 300s census timed
+// out on interpreted file_gate over swift.dag; that walk stays an ordinary fn. This claim only
+// asserts the entry's live-tree mark. Do not raise the cap.
+
+test fn roster_swift_entry_live_tree_disposition_holds() -> Bool {
+  live_tree_disposition == ReadsLiveTree
+}
 
 fn roster_swift_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/swift.dag", refusal_ceiling: 4)
