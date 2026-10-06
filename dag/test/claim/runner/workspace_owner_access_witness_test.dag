@@ -1,7 +1,7 @@
 module test.claim.runner.workspace_owner_access_witness_test
 
 import std.types { Bool, NonEmptyStr, List }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import extdeps.ssh { SshPublicKey, Ed25519, Rsa, ssh_public_key_line }
 import gunbc.fleet_ssh_access { operator_ssh_principal }
 import gunbc.principal_projection { PrincipalRef }

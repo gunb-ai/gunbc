@@ -14,7 +14,7 @@ import extdeps.boards.types { BaseboardModel, GigabyteMp72Hb0 }
 import std.types { EpochMs }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
 import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }

@@ -6,7 +6,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Empty }
 import extdeps.tools.jq {
   JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,

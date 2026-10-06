@@ -7,7 +7,7 @@ import std.types { Bool, List }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, node_locus }
 import v2.test.claim.compiler.compile_eval_thesis_proof { compile_eval_thesis_termination_proof }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme }
 import v2.std.node_query { node_positional_child_targets }

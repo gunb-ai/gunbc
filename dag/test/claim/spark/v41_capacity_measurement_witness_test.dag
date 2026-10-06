@@ -13,7 +13,7 @@ import std.measure {
   milli_tokens_per_second, concurrent_request_hundredths, basis_point, basis_point_count, token_count_value,
 }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_of_value }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.container.oci.digest { OciSha256Digest }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }

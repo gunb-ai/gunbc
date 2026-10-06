@@ -1,7 +1,7 @@
 module gunbc.instruments.fabric_capacity_standing
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }

@@ -3,7 +3,7 @@ module extdeps.ampere.smpro_internal_error
 import v2.std.algebra { filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.ampere.smpro_register { smpro_errmon_authority }

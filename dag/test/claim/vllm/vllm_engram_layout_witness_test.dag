@@ -2,7 +2,7 @@ module test.claim.vllm.vllm_engram_layout_witness
 
 import std.types { Bool, List, Int }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.engram_layout {
   vllm_engram_is_prime, vllm_engram_primes_above, vllm_engram_layers_of_primes, vllm_engram_heads_per_layer,
   vllm_engram_rank_rows, vllm_engram_sum, vllm_engram_every_rank_has_heads,
