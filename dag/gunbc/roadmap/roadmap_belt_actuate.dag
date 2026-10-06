@@ -471,6 +471,7 @@ import gunbc.scm.repository_save {
   RepositoryGuardedSaveUnobservable,
   RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
   RepositoryGenerationExpectation, GenerationExpected, GenerationExpectedAbsent,
+  repository_generation_expected_after_save,
 }
 import gunbc.scm.worktree_inventory {
   worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args,
@@ -6808,7 +6809,10 @@ fn belt_scm_envelope_seeded(
                     }
                     match save_repository_sharded_guarded(path: path, repo: seeded, expected: generation) {
                       RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: written }) =>
-                        SeedReady { envelope: seeded, generation: GenerationExpected(written) }
+                        SeedReady {
+                          envelope: seeded,
+                          generation: repository_generation_expected_after_save(generation: written),
+                        }
                       RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                         SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
                       RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>

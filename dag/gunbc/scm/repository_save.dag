@@ -233,6 +233,10 @@ fn repository_saved_from_write(path: String, content: String, bytes_written: Int
   }
 }
 
+fn repository_generation_expected_after_save(generation: Fnv1a64Structural) -> RepositoryGenerationExpectation {
+  GenerationExpected(generation)
+}
+
 fn create_repository_at_absence(
   absence: FilesystemEstablishedAbsence,
   repo: RepositoryEnvelope,
