@@ -5592,6 +5592,56 @@ mod compiler_tests {
         );
     }
 
+    // AN UNSTAMPED BARE `Optional` FOLLOWS THE TYPECHECKER'S lookup_binding ORDER: own file, then
+    // the file's named import (followed through re-exports), then the kernel
+    // (v1.compiler.infer_env bare_occurrence_binding). The member references of a coproduct body reach
+    // the emitter from the type environment's copy with no Node.declaration, so the census route is
+    // the emitter's own decision. THE RED is the importer: with the kernel ahead of the named import
+    // (the order direct_import_export_precedence_note states) its payload routes kernel_mint to
+    // v2.std.optional, measured on gunbc#13454 at 57551c4b. The control keeps a module that names
+    // Optional without importing it on the kernel arm.
+    #[test]
+    fn unstamped_bare_optional_follows_the_lookup_binding_order() {
+        use crate::v1_compiler_compile::SourceFile;
+        let sources = vec![
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/optional.dag".to_string(), content: "module v2.std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/collision.dag".to_string(), content: "module hom.collision\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/importer.dag".to_string(), content: "module hom.importer\n\nimport hom.collision { Optional }\n\ntype HeldChoice\n  = HeldOptional { held: Optional }\n  | HeldNothing\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/plain.dag".to_string(), content: "module hom.plain\n\ntype PlainChoice\n  = PlainHeld { held: Optional<Int> }\n  | PlainNothing\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/user.dag".to_string(), content: "module hom.user\n\nimport hom.importer { HeldChoice }\nimport hom.plain { PlainChoice }\n\nfn pick(h: HeldChoice, p: PlainChoice) -> Int {\n  1\n}\n".to_string() }),
+        ];
+        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
+            std::rc::Rc::new(sources.into()),
+        );
+        assert!(!receipt.starts_with("REFUSED"), "{receipt}");
+        let routes = |enclosing: &str| -> Vec<String> {
+            receipt
+                .lines()
+                .skip(1)
+                .map(|l| l.split('\t').collect::<Vec<_>>())
+                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == "Optional")
+                .map(|c| c[13].to_string())
+                .collect()
+        };
+        let held = routes("HeldChoice");
+        assert!(
+            !held.is_empty()
+                && held
+                    .iter()
+                    .all(|r| r == "referencing_module_import:Resolved:hom.collision.Optional"),
+            "the imported Optional must route to the import, never the kernel mint:\n{receipt}"
+        );
+        let plain = routes("PlainChoice");
+        assert!(
+            !plain.is_empty()
+                && plain
+                    .iter()
+                    .all(|r| r == "kernel_mint:Resolved:v2.std.optional.Optional"),
+            "an unimported Optional is the kernel's:\n{receipt}"
+        );
+        assert!(!receipt.contains("LeafAmbiguous:Optional"), "{receipt}");
+    }
+
     // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
     // predates this row. Its message once blamed a value parameter and called a type a fn, so the
     // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
