@@ -3307,33 +3307,14 @@ fn transport_emission_run(d: &Rc<ErrorNode>) -> Option<(String, String)> {
     }
 }
 
-/// `extdeps.gunbc` `gunbc.WitnessBin.Run` when that operation's unmodeled-transport refusals
-/// are solely the rust stderr-capture gap. Other operations on the same service are not members.
-fn run_operations_excluded_for_stderr_capture_gap(
-    typed: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+/// The selection fold: among supplied unmodeled-transport rows, keep `(module, service)`
+/// only when every Run row for that pair is a capture-gap fact. Production feeds it the
+/// three emit diagnostic streams; tests supply rows.
+fn select_run_operations_excluded_for_stderr_capture_gap(
+    unmodeled: &[Rc<ErrorNode>],
 ) -> BTreeSet<(String, String)> {
-    let target = crate::v1_compiler_artifact::RenderTarget::Rust;
-    let unmodeled = {
-        let mut rows = Vec::new();
-        rows.extend(
-            crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(typed.clone(), target)
-                .iter()
-                .cloned(),
-        );
-        rows.extend(
-            crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(typed.clone(), target)
-                .iter()
-                .cloned(),
-        );
-        rows.extend(
-            crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(typed.clone(), target)
-                .iter()
-                .cloned(),
-        );
-        rows
-    };
     let mut gap_runs: BTreeSet<(String, String)> = BTreeSet::new();
-    for d in &unmodeled {
+    for d in unmodeled {
         if let Some(key) = stderr_capture_policy_gap_service(d) {
             gap_runs.insert(key);
         }
@@ -3347,6 +3328,31 @@ fn run_operations_excluded_for_stderr_capture_gap(
                 .all(|d| stderr_capture_policy_gap_service(d).is_some())
         })
         .collect()
+}
+
+/// `extdeps.gunbc` `gunbc.WitnessBin.Run` when that operation's unmodeled-transport refusals
+/// are solely the rust stderr-capture gap. Other operations on the same service are not members.
+fn run_operations_excluded_for_stderr_capture_gap(
+    typed: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+) -> BTreeSet<(String, String)> {
+    let target = crate::v1_compiler_artifact::RenderTarget::Rust;
+    let mut unmodeled = Vec::new();
+    unmodeled.extend(
+        crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(typed.clone(), target)
+            .iter()
+            .cloned(),
+    );
+    unmodeled.extend(
+        crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(typed.clone(), target)
+            .iter()
+            .cloned(),
+    );
+    unmodeled.extend(
+        crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(typed.clone(), target)
+            .iter()
+            .cloned(),
+    );
+    select_run_operations_excluded_for_stderr_capture_gap(&unmodeled)
 }
 
 fn strip_excluded_run_operations(
@@ -3774,40 +3780,253 @@ mod fixture_closure_union_tests {
         assert!(stderr_capture_policy_gap_service(&other_module).is_none());
     }
 
-    #[test]
-    fn a_fixture_whose_closure_reaches_extdeps_gunbc_is_excluded_by_typed_cause() {
-        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_REACH_MEMBER)
-            .expect("gunbc-reaching fixture must resolve");
-        assert!(
-            union.members.keys().any(|p| p.contains("gunbc")),
-            "closure must contain extdeps.gunbc, got {:?}",
-            union.members.keys().collect::<Vec<_>>()
-        );
-        let observed = fixture_closure_union_emit_receipt(&union)
-            .expect("capture-policy gap must not refuse the union");
-        assert!(
-            observed.excluded.iter().any(|row| {
-                row.contains("module=extdeps.gunbc")
-                    && row.contains("operation=gunbc.WitnessBin.Run")
-                    && row.contains("cause=ShellChannelNotRealizedByTarget")
-                    && row.contains(STDERR_CAPTURE_POLICY_DROP)
-            }),
-            "{observed:?}"
-        );
+    fn gap_fact() -> String {
+        use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};
+        shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: "stderr_truncated".to_string(),
+                target_name: "rust".to_string(),
+            },
+        ))
+    }
+
+    fn transport_row(
+        module: &str,
+        service: &str,
+        operation: &str,
+        fact: String,
+    ) -> Rc<crate::v1_std_core::ErrorNode> {
+        crate::v1_std_core::make_error_node(
+            Rc::new(
+                crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                    transport_kind: "shell".to_string(),
+                    service: service.to_string(),
+                    operation: operation.to_string(),
+                    declaring_module: module.to_string(),
+                    target: "rust".to_string(),
+                    missing_realization_fact: fact,
+                    span: crate::v1_std_core::kernel_span("probe".to_string()),
+                },
+            ),
+            module.to_string(),
+        )
     }
 
     #[test]
-    fn a_real_emit_error_beside_the_excluded_service_still_refuses() {
-        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_AND_REAL_EMIT_ERROR)
-            .expect("mixed fixture must resolve");
-        let refusal = fixture_closure_union_emit_receipt(&union)
-            .expect_err("a real emit error must still refuse");
+    fn selection_fold_allows_only_run_capture_rows_and_vetoes_mixed_refusal() {
+        let gap = gap_fact();
+        let allowed = transport_row(
+            "extdeps.gunbc",
+            "gunbc.WitnessBin",
+            "gunbc.WitnessBin.Run",
+            gap.clone(),
+        );
+        let selected = select_run_operations_excluded_for_stderr_capture_gap(&[allowed]);
+        assert_eq!(
+            selected.iter().cloned().collect::<Vec<_>>(),
+            vec![("extdeps.gunbc".to_string(), "gunbc.WitnessBin".to_string())]
+        );
+
+        let mixed_key = crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
+            crate::v1_compiler_emit::ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                key: "not_a_channel".to_string(),
+            },
+        ));
+        let mixed = vec![
+            transport_row(
+                "extdeps.gunbc",
+                "gunbc.WitnessBin",
+                "gunbc.WitnessBin.Run",
+                gap.clone(),
+            ),
+            transport_row(
+                "extdeps.gunbc",
+                "gunbc.WitnessBin",
+                "gunbc.WitnessBin.Run",
+                mixed_key,
+            ),
+        ];
+        assert!(select_run_operations_excluded_for_stderr_capture_gap(&mixed).is_empty());
+
+        let wrong_module = transport_row(
+            "extdeps.other",
+            "gunbc.WitnessBin",
+            "gunbc.WitnessBin.Run",
+            gap.clone(),
+        );
+        assert!(select_run_operations_excluded_for_stderr_capture_gap(&[wrong_module]).is_empty());
+
+        let nonmember = transport_row("extdeps.gunbc", "gunbc.WitnessBin", "Sibling", gap);
+        assert!(select_run_operations_excluded_for_stderr_capture_gap(&[nonmember]).is_empty());
+    }
+
+    fn kernel_named(
+        name: &str,
+        kind: crate::v1_std_core::ParsedModuleItemKind,
+        children: im::Vector<Rc<crate::v1_std_core::Node>>,
+    ) -> Rc<crate::v1_std_core::Node> {
+        let mut node = (*crate::v1_std_core::leaf_node_with_span(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            crate::v1_std_core::kernel_span(name.to_string()),
+        ))
+        .clone();
+        node.module_item_kind = kind;
+        node.children = Rc::new(children);
+        Rc::new(node)
+    }
+
+    fn supplied_graph_with_run_and_sibling() -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
+        use crate::v1_compiler_infer_items::{
+            ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedModule,
+        };
+        use crate::v1_std_core::ParsedModuleItemKind;
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let cache = crate::v1_compiler_infer_env::empty_type_env_cache();
+        let run = kernel_named("Run", ParsedModuleItemKind::NotAModuleItem, im::vector![]);
+        let sibling = kernel_named(
+            "Sibling",
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let other_fn = kernel_named(
+            "unrelated_fn",
+            ParsedModuleItemKind::ModuleItemFunction,
+            im::vector![],
+        );
+        let service = kernel_named(
+            "gunbc.WitnessBin",
+            ParsedModuleItemKind::ModuleItemService,
+            im::vector![run, sibling],
+        );
+        let module = kernel_named(
+            "extdeps.gunbc",
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let other_module_node = kernel_named(
+            "other.mod",
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let other_item = kernel_named(
+            "KeepMe",
+            ParsedModuleItemKind::ModuleItemFunction,
+            im::vector![],
+        );
+        let interface = |e: Rc<crate::v1_compiler_infer_env::TypeEnv>,
+                         c: Rc<crate::v1_compiler_infer_env::TypeEnvCache>,
+                         path: &str| {
+            Rc::new(ModuleInterface {
+                summary: Rc::new(crate::std_interface_summary::InterfaceSummary {
+                    module_path: path.to_string(),
+                    exports: Rc::new(im::vector![]),
+                    interface_hash: crate::std_interface_summary::interface_summary_rollup(
+                        Rc::new(im::vector![]),
+                    ),
+                }),
+                env: e,
+                cache: c,
+            })
+        };
+        let tm = Rc::new(TypedModule {
+            module,
+            items: Rc::new(im::vector![service, other_fn]),
+            progress: ModuleTypecheckProgress::ItemsChecked,
+            type_env: env.clone(),
+            type_env_cache: cache.clone(),
+            interface: interface(env.clone(), cache.clone(), "extdeps.gunbc"),
+            func_env: Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
+                name: "extdeps.gunbc".to_string(),
+                local: crate::v1_rt::rc_empty_map(),
+                parents: Rc::new(im::vector![]),
+            }),
+            item_registry: crate::v1_rt::rc_empty_map(),
+            occurrence_transport: None,
+        });
+        let other = Rc::new(TypedModule {
+            module: other_module_node,
+            items: Rc::new(im::vector![other_item]),
+            progress: ModuleTypecheckProgress::ItemsChecked,
+            type_env: env.clone(),
+            type_env_cache: cache.clone(),
+            interface: interface(env, cache, "other.mod"),
+            func_env: Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
+                name: "other.mod".to_string(),
+                local: crate::v1_rt::rc_empty_map(),
+                parents: Rc::new(im::vector![]),
+            }),
+            item_registry: crate::v1_rt::rc_empty_map(),
+            occurrence_transport: None,
+        });
+        Rc::new(ResolvedGraph {
+            modules: Rc::new(im::vector![tm, other]),
+            item_registry: crate::v1_rt::rc_empty_map(),
+            item_leaf_owner_modules: crate::v1_rt::rc_empty_map(),
+            diagnostics: Rc::new(im::vector![]),
+        })
+    }
+
+    fn service_op_names(
+        graph: &crate::v1_compiler_infer_items::ResolvedGraph,
+        module: &str,
+        service: &str,
+    ) -> Vec<String> {
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        graph
+            .modules
+            .iter()
+            .find(|tm| {
+                crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                    == module
+            })
+            .into_iter()
+            .flat_map(|tm| tm.items.iter())
+            .filter(|item| {
+                item.module_item_kind == crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
+                    && crate::v1_compiler_infer_env::authored_name(env.clone(), (*item).clone())
+                        == service
+            })
+            .flat_map(|item| {
+                item.children
+                    .iter()
+                    .map(|op| crate::v1_compiler_infer_env::authored_name(env.clone(), op.clone()))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn strip_removes_only_run_and_keeps_sibling_and_unrelated_items() {
+        let graph = supplied_graph_with_run_and_sibling();
+        let mut excluded = BTreeSet::new();
+        excluded.insert(("extdeps.gunbc".to_string(), "gunbc.WitnessBin".to_string()));
+        let stripped = strip_excluded_run_operations(graph.clone(), &excluded);
+        assert_eq!(
+            service_op_names(&stripped, "extdeps.gunbc", "gunbc.WitnessBin"),
+            vec!["Sibling".to_string()]
+        );
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let gunbc_item_names: Vec<String> = stripped
+            .modules
+            .iter()
+            .find(|tm| {
+                crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                    == "extdeps.gunbc"
+            })
+            .unwrap()
+            .items
+            .iter()
+            .map(|item| crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()))
+            .collect();
         assert!(
-            refusal.contains("cause=FixtureClosureUnionEmitRefused")
-                && refusal.contains("module=efr_member"),
-            "{refusal}"
+            gunbc_item_names.contains(&"unrelated_fn".to_string()),
+            "{gunbc_item_names:?}"
+        );
+        assert_eq!(stripped.modules.len(), 2, "unrelated module must remain");
+        let empty = strip_excluded_run_operations(graph, &BTreeSet::new());
+        assert_eq!(
+            service_op_names(&empty, "extdeps.gunbc", "gunbc.WitnessBin"),
+            vec!["Run".to_string(), "Sibling".to_string()]
         );
     }
 }
