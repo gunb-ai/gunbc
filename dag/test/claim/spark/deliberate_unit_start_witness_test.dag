@@ -1,7 +1,7 @@
 module test.claim.spark.deliberate_unit_start_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
 import gunbc.spark.host_occupancy_admission { restore_spark_serving_units }
