@@ -17,7 +17,15 @@ import gunbc.harness.harness_hosted_route {
   HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HarnessHostedQuota, HostedRoundCharged,
   HostedRoundQuotaFull, HostedRoundUnleasable, harness_hosted_round_charge, harness_hosted_refusal_cause,
   HostedSendAdmitted, HostedSendAdmissionLapsed, HostedSendAdmissionUnread, harness_hosted_send_admission,
-  hosted_send_connect_allowance,
+  hosted_send_connect_allowance, HostedRoundLease,
+}
+import gunbc.harness.harness_seat {
+  HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
+  harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
+}
+import gunbc.fabric_quota { quota_window_start }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric_storage_client { FabricStorageBinding
 }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
@@ -1053,6 +1061,17 @@ fn harness_thinking_format_cause(unit: HarnessServingUnit, blocks: List<HarnessW
 type HarnessPostedRound {
   read: HarnessResponseRead
   wire_log_detail: String?
+  inflight_release_detail: String?
+}
+
+// AN IN-FLIGHT SEAT THAT DID NOT RELEASE IS NOT A REFUSAL OF THE ROUND -- the request went out and its
+// answer is real -- but it keeps charging every later window until someone releases it, so it is an event
+// with the seat's name, the same standing the wire log has.
+fn harness_event_inflight_release_unrecorded(detail: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.inflight_release_unrecorded")),
+    json_kv(key: "detail", value: json_string(s: detail)),
+  ]))
 }
 
 // A HOSTED ROUND THAT COULD NOT BE CHARGED IS NOT POSTED, and the loop is told which way it was refused.
@@ -1088,6 +1107,7 @@ fn harness_post_round(
           ], ""),
         },
         wire_log_detail: none,
+        inflight_release_detail: none,
       } }
     ReasoningKwargsAdmitted { kwargs } =>
       match harness_prepare_round(config: config, messages: messages, reasoning_kwargs: kwargs, round: round) {
@@ -1108,15 +1128,65 @@ fn harness_post_round(
 // the charge's own deadline at the transport boundary (gunbc.harness.harness_hosted_route
 // harness_hosted_send_admission). A stall that carries the send past the window the charge was made in
 // refuses the send rather than spending next window's quota on last window's charge.
+//
+// AND THE ADMISSION IS NOT THE LAST WORD, because nothing here bounds when the first byte actually leaves
+// (gunbc.harness.harness_seat, in-flight hosted sends). So the send also holds an in-flight seat from
+// before the admission until the transport returns; every later window counts the seats still held from
+// earlier ones and charges for them as well as for its own send.
 fn harness_hosted_round_post(config: HarnessTurnConfig, round: Int, header_file: NonEmptyStr, quota: HarnessHostedQuota, wire_request_detail: String?) -> HarnessRoundPost {
-  match harness_hosted_round_charge(quota: quota) {
+  match harness_hosted_inflight_read(quota: quota) {
+    HostedInflightUnread { detail: d } => RoundQuotaUnleasable { detail: join(["the in-flight sends could not be counted, so the charge cannot cover them: ", d], "") }
+    HostedInflightRead { pool: p, generation: _, store: store, release_hint: hint } =>
+      match now_epoch_seconds() {
+        Absent => RoundQuotaUnleasable { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          match quota_window_start(limit: quota.per_minute, at: now) {
+            Absent => RoundQuotaUnleasable { detail: "the minute window has no start at this instant" }
+            Present { value: minute_start } =>
+              match quota_window_start(limit: quota.per_day, at: now) {
+                Absent => RoundQuotaUnleasable { detail: "the day window has no start at this instant" }
+                Present { value: day_start } =>
+                  harness_hosted_round_charged_post(
+                    config: config, round: round, header_file: header_file, quota: quota, wire_request_detail: wire_request_detail, store: store,
+                    reference: join([quota.actor as String, "@", to_string(value: now), "#round", to_string(value: round)], "") as NonEmptyStr,
+                    charge: harness_hosted_round_charge(
+                      quota: quota,
+                      carried_minute: hosted_inflight_carried(pool: p, window_start: minute_start),
+                      carried_day: hosted_inflight_carried(pool: p, window_start: day_start),
+                      release_hint: hint,
+                    ),
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, header_file: NonEmptyStr, quota: HarnessHostedQuota, wire_request_detail: String?, store: FabricStorageBinding, reference: NonEmptyStr, charge: HostedRoundLease) -> HarnessRoundPost {
+  match charge {
     HostedRoundQuotaFull { wire: w } => RoundQuotaFull { wire: w }
     HostedRoundUnleasable { detail: d } => RoundQuotaUnleasable { detail: d }
     HostedRoundCharged { send_by: by } =>
-      match harness_hosted_send_admission(send_by: by) {
-        HostedSendAdmissionLapsed { send_by: b, now: n } => RoundSendAdmissionLapsed { send_by: b, now: n }
-        HostedSendAdmissionUnread { detail: d } => RoundQuotaUnleasable { detail: d }
-        HostedSendAdmitted => RoundPosted { posted: harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail) }
+      match harness_hosted_inflight_acquire(quota: quota, store: store, reference: reference, term: config.request_deadline) {
+        HostedInflightRefused { detail: d } => RoundQuotaUnleasable { detail: d }
+        HostedInflightHeld { reference: r, store: st } => {
+          let hold = HostedInflightHeld { reference: r, store: st }
+          match harness_hosted_send_admission(send_by: by) {
+            HostedSendAdmissionLapsed { send_by: b, now: n } => {
+              let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the send admission lapsed before the transport" as NonEmptyStr)
+              RoundSendAdmissionLapsed { send_by: b, now: n }
+            }
+            HostedSendAdmissionUnread { detail: d } => {
+              let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the send admission could not be read" as NonEmptyStr)
+              RoundQuotaUnleasable { detail: d }
+            }
+            HostedSendAdmitted => {
+              let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
+              let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
+              RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released } }
+            }
+          }
+        }
       }
   }
 }
@@ -1142,6 +1212,7 @@ fn harness_prepare_round(
         ], ""),
       },
       wire_log_detail: none,
+      inflight_release_detail: none,
     } }
   } else {
     let wire_request_path = harness_wire_log_path(config: config, round: round, kind: ".request.json")
@@ -1182,6 +1253,7 @@ fn harness_send_round(
           ], ""),
         },
         wire_log_detail: wire_log_detail,
+        inflight_release_detail: none,
       }
     } else if !kept.success {
       HarnessPostedRound {
@@ -1189,11 +1261,13 @@ fn harness_send_round(
           cause: join(["the response could not be kept beside the request: ", kept.error, "; refusing to decode a body no one can re-read"], ""),
         },
         wire_log_detail: wire_log_detail,
+        inflight_release_detail: none,
       }
     } else {
       HarnessPostedRound {
         read: harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body),
         wire_log_detail: wire_log_detail,
+        inflight_release_detail: none,
       }
     }
 }
@@ -1411,9 +1485,13 @@ fn harness_turn_after_post(
   repairs_used: Int,
   posted_round: HarnessPostedRound,
 ) -> HarnessTurnOutcome {
-    let events_after_wire = match posted_round.wire_log_detail {
-      Present { value: detail } => concat(events, [harness_event_wire_log_unwritable(detail: detail)])
+    let events_after_release = match posted_round.inflight_release_detail {
+      Present { value: detail } => concat(events, [harness_event_inflight_release_unrecorded(detail: detail)])
       Absent => events
+    }
+    let events_after_wire = match posted_round.wire_log_detail {
+      Present { value: detail } => concat(events_after_release, [harness_event_wire_log_unwritable(detail: detail)])
+      Absent => events_after_release
     }
     match posted_round.read {
       HarnessResponseUnreadable { cause: c } => {

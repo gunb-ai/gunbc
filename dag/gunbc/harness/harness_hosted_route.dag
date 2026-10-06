@@ -609,10 +609,10 @@ fn hosted_round_send_by(minute: QuotaLease, day: QuotaLease) -> EpochSecs? {
   }
 }
 
-fn hosted_round_charge_both(minute: QuotaLease, day: QuotaLease) -> HostedRoundLease {
+fn hosted_round_charge_both(minute: QuotaLease, day: QuotaLease, minute_amount: Nat, day_amount: Nat) -> HostedRoundLease {
   let refused = concat(
-    hosted_settle_refusal(s: fabric_quota_settle(lease: minute, actual: 1), pool: "minute"),
-    hosted_settle_refusal(s: fabric_quota_settle(lease: day, actual: 1), pool: "day"),
+    hosted_settle_refusal(s: fabric_quota_settle(lease: minute, actual: minute_amount), pool: "minute"),
+    hosted_settle_refusal(s: fabric_quota_settle(lease: day, actual: day_amount), pool: "day"),
   )
   if count(refused) == 0 {
     match hosted_round_send_by(minute: minute, day: day) {
@@ -658,17 +658,23 @@ fn harness_hosted_send_admission(send_by: EpochSecs) -> HostedSendAdmission {
   }
 }
 
-fn harness_hosted_round_charge(quota: HarnessHostedQuota) -> HostedRoundLease {
-  let minute = fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: 1, actor: quota.actor, term: QuotaTermToWindowEnd)
+// THE CHARGE COVERS THIS SEND AND EVERY SEND STILL IN FLIGHT FROM AN EARLIER WINDOW
+// (gunbc.harness.harness_seat hosted_inflight_carried): each may arrive in this window, and none was
+// charged to it. A refusal carries the held seats' release hint, so a pool starved by seats whose holders
+// died says which seats and how to release them.
+fn harness_hosted_round_charge(quota: HarnessHostedQuota, carried_minute: Nat, carried_day: Nat, release_hint: String) -> HostedRoundLease {
+  let minute_amount = carried_minute + 1
+  let day_amount = carried_day + 1
+  let minute = fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: minute_amount, actor: quota.actor, term: QuotaTermToWindowEnd)
   let day = match minute {
     QuotaLeased { grant: _, partition: _, store: _, limit: _ } =>
-      Present { value: fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_day, amount: 1, actor: quota.actor, term: QuotaTermToWindowEnd) }
+      Present { value: fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_day, amount: day_amount, actor: quota.actor, term: QuotaTermToWindowEnd) }
     QuotaFull { wire: _ } => none
     QuotaLeaseRefused { detail: _ } => none
   }
   match hosted_round_decision(minute: minute, day: day) {
-    RoundBothLeased { minute: m, day: d } => hosted_round_charge_both(minute: m, day: d)
-    RoundRefusedFull { wire: w, minute_to_return: r } => HostedRoundQuotaFull { wire: join([w, hosted_return_minute(minute: r)], "") }
+    RoundBothLeased { minute: m, day: d } => hosted_round_charge_both(minute: m, day: d, minute_amount: minute_amount, day_amount: day_amount)
+    RoundRefusedFull { wire: w, minute_to_return: r } => HostedRoundQuotaFull { wire: join([w, hosted_return_minute(minute: r), release_hint], "") }
     RoundRefusedUnleasable { detail: d, minute_to_return: r } => HostedRoundUnleasable { detail: join([d, hosted_return_minute(minute: r)], "") }
   }
 }

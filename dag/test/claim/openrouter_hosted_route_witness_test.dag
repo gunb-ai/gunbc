@@ -25,9 +25,13 @@ import gunbc.harness.harness_hosted_route {
   hosted_key_refusal, hosted_day_remaining,
   hosted_send_admission, HostedSendAdmitted, HostedSendAdmissionLapsed, HostedSendAdmissionUnread, hosted_send_connect_allowance,
 }
-import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
 import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId }
-import gunbc.fabric_quota { quota_term_to_window_end }
+import gunbc.fabric_quota { quota_term_to_window_end, quota_window_start }
+import gunbc.harness.harness_seat { harness_seat_pool_root, hosted_inflight_carried, hosted_inflight_release_hint, hosted_inflight_partition }
+import gunbc.harness.harness_hosted_route { HarnessHostedQuota }
+import product.capacity.event_chain { ChainWalked }
+import std.nat { nat_range_inclusive }
 import product.capacity.quota { quota_root_pool }
 import product.capacity.pool {
   Pool, pool_acquire, pool_settle, observe_upstream_remaining, PoolOutcome, PoolAdvanced, PoolRefused,
@@ -441,4 +445,103 @@ test fn a_send_inside_its_window_is_admitted_whatever_the_response_deadline() ->
       HostedSendAdmissionLapsed { send_by: _, now: _ } => false
       HostedSendAdmissionUnread { detail: _ } => false
     })
+}
+
+// ── A SEND IN FLIGHT ACROSS THE ROLLOVER IS CHARGED IN THE WINDOW IT MAY ARRIVE IN ───────────────
+//
+// The in-flight partition is the production seat-pool shape (gunbc.harness.harness_seat
+// harness_seat_pool_root) under the production partition name; the carried count is the production
+// hosted_inflight_carried; the charge is the real minute pool's pool_acquire at the amount the round asks
+// for (its own send plus the carried ones). Only the clock and the events are supplied.
+fn w_quota() -> HarnessHostedQuota {
+  HarnessHostedQuota { short_hostname: "witness", actor: "hosted-witness" as NonEmptyStr, per_minute: openrouter_free_models_per_minute, per_day: openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen) }
+}
+
+fn w_inflight(events: List<ChainEnvelope<PoolEvent>>) -> Pool<Count, One>? {
+  match pool_fold(root: harness_seat_pool_root(partition: hosted_inflight_partition(quota: w_quota()), ceiling: 20), oldest_first: events) {
+    PoolFolded { pool: p, generation: _ } => Present { value: p }
+    PoolFoldRefused { at_event: _, wire: _ } => none
+  }
+}
+
+// The minute after the rollover, with `n` sends already charged and settled in it.
+fn w_minute_with(n: Nat, at: Int) -> Pool<Count, One>? {
+  fold(nat_range_inclusive(lo: 1, hi: n), init: Present { value: quota_root_pool(limit: openrouter_free_models_per_minute) }, f: (acc, i) =>
+    match acc {
+      Absent => none
+      Present { value: p } => {
+        let r = join(["charged-", to_string(i)], "") as NonEmptyStr
+        match pool_acquire(pool: p, reference: r, amount: Measure { count: 1 }, at: at, term_seconds: 1) {
+          PoolRefused { refusal: _ } => none
+          PoolAdvanced { pool: q } =>
+            match pool_settle(pool: q, reference: r, actual: Measure { count: 1 }, at: at) {
+              PoolRefused { refusal: _ } => none
+              PoolAdvanced { pool: settled } => Present { value: settled }
+            }
+        }
+      }
+    })
+}
+
+fn w_round_admitted(minute: Pool<Count, One>, carried: Nat, at: Int) -> Bool {
+  match quota_term_to_window_end(limit: openrouter_free_models_per_minute, at: at) {
+    Absent => false
+    Present { value: term } =>
+      match pool_acquire(pool: minute, reference: "this-round" as NonEmptyStr, amount: Measure { count: carried + 1 }, at: at, term_seconds: term) {
+        PoolAdvanced { pool: _ } => true
+        PoolRefused { refusal: _ } => false
+      }
+  }
+}
+
+// RED: a send admitted at T+58 pauses across the rollover and is still in flight at T+61. With 19 sends
+// already charged in the new minute, the next round must cover 2 -- its own and the carried one -- so it
+// refuses: no request goes out in a window whose quota the paused send may already have spent. The same
+// round with nothing carried is admitted, so the refusal is the carried send's.
+test fn a_send_paused_across_the_rollover_is_charged_in_the_next_window() -> Bool {
+  match w_inflight(events: [w_env(id: "s1", at: w_day_start + 58, payload: PoolAcquired { reference: "paused" as NonEmptyStr, amount: 1, term_seconds: 2348 })]) {
+    Absent => false
+    Present { value: inflight } =>
+      match quota_window_start(limit: openrouter_free_models_per_minute, at: w_day_start + 61) {
+        Absent => false
+        Present { value: start } =>
+          match w_minute_with(n: 19, at: w_day_start + 60) {
+            Absent => false
+            Present { value: minute } => {
+              let carried = hosted_inflight_carried(pool: inflight, window_start: start)
+              carried == 1
+                && !w_round_admitted(minute: minute, carried: carried, at: w_day_start + 61)
+                && w_round_admitted(minute: minute, carried: 0, at: w_day_start + 61)
+            }
+          }
+      }
+  }
+}
+
+// CONTROL: a send made inside its window whose answer arrives much later carries nothing into later
+// windows once its transport returns and its seat is released -- and the send is counted in its own window
+// only once, by its own charge, not by the in-flight count.
+test fn a_send_released_after_a_late_response_carries_nothing_forward() -> Bool {
+  match w_inflight(events: [
+    w_env(id: "s1", at: w_day_start + 10, payload: PoolAcquired { reference: "slow-answer" as NonEmptyStr, amount: 1, term_seconds: 2348 }),
+    w_env(id: "s2", at: w_day_start + 300, payload: PoolReleased { reference: "slow-answer" as NonEmptyStr, reason: "the transport returned" as NonEmptyStr }),
+  ]) {
+    Absent => false
+    Present { value: inflight } =>
+      hosted_inflight_carried(pool: inflight, window_start: w_day_start + 300) == 0
+        && hosted_inflight_carried(pool: inflight, window_start: w_day_start) == 0
+  }
+}
+
+// A SEAT HELD BY A HOLDER THAT DIED IS NAMED WITH ITS RELEASE, so a starved route says what to free.
+test fn a_held_inflight_seat_is_named_with_its_release_in_the_refusal_hint() -> Bool {
+  let events = [w_env(id: "s1", at: w_day_start + 58, payload: PoolAcquired { reference: "worker-7@1780531258#round3" as NonEmptyStr, amount: 1, term_seconds: 2348 })]
+  match w_inflight(events: events) {
+    Absent => false
+    Present { value: inflight } => {
+      let hint = hosted_inflight_release_hint(quota: w_quota(), pool: inflight, generation: 1, walk: ChainWalked { oldest_first: events })
+      hint.contains("worker-7@1780531258#round3") && hint.contains("grant=s1") && hint.contains("harness_release_cli")
+        && hint.contains(hosted_inflight_partition(quota: w_quota()) as String)
+    }
+  }
 }
