@@ -8632,10 +8632,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
         let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
-        if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
+        let bound_pass = if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
           infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
         } else {
           first_pass
+        }
+        ArgGenericFoldState {
+          results: bound_pass.results,
+          subst: bind_uninformative_generic_leftovers(
+            results: bound_pass.results,
+            call_args: call_args,
+            value_params: value_params,
+            formals: resolved_formals,
+            generic_names: generic_names,
+            subst: bound_pass.subst,
+            scope: scope
+          )
         }
       }
       let arg_infer_results = variant_tag_reference_argument_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
@@ -13719,7 +13731,8 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     && (generic_names |> any(g => g == bind_name)) {
 
     match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, actual)
+      Absent =>
+        if unify_binding_is_uninformative(n: actual) { acc } else { map_insert(acc, bind_name, actual) }
       Present { value: prev } =>
         if unify_binding_is_uninformative(n: prev) && !unify_binding_is_uninformative(n: actual) {
           map_insert(acc, bind_name, actual)
@@ -13732,6 +13745,74 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
       Present { value: fc } =>
         match actual.children |> first {
           Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
+          Absent => acc
+        }
+      Absent => acc
+    }
+  } else { acc }
+}
+
+// AN UNINFORMATIVE ACTUAL MUST NOT BIND IN THE INFORMATIVE PASS: fold(init: [], f: concat)
+// would type the lambda against List<empty_list_element> and never override A to List<String>
+// (generated-artifact: stage0_crate_layout, gitignore_emit). After that pass, a generic still
+// Absent is a leftover: identity-cons fold_list leaves A unbound so the return is still A.
+// Binding the skipped [] here makes the produced type List<empty_list_element>, which the
+// ground-declared-return wall TypeMismatches against String, without poisoning informing cons.
+fn bind_uninformative_generic_leftovers(
+  results: List<ArgInferResult>,
+  call_args: List<Node>,
+  value_params: List<Node>,
+  formals: List<ResolvedFormal>,
+  generic_names: List<String>,
+  subst: Map<String, Node>,
+  scope: InferScope
+) -> Map<String, Node> {
+  if (generic_names |> count) == 0 {
+    subst
+  } else {
+    fold(results |> enumerate, init: subst, f: (st, pair) =>
+      let formal_selection = select_formal_for_call_argument(
+        argument: match call_args |> skip(pair.first) |> first {
+          Present { value: a } => a
+          Absent => pair.second.typed_arg
+        },
+        argument_index: pair.first,
+        arguments: call_args,
+        value_params: value_params,
+        source_indices: scope.type_env.source_indices
+      )
+      let formal_raw = match formal_selection {
+        CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+          Present { value: carried } => carried.substitution_basis
+          Absent => error_type
+        }
+        CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+      }
+      leftover_unify_generics(
+        formal: formal_raw,
+        actual: resolved_type(n: arg_value(n: pair.second.typed_arg)),
+        generic_names: generic_names,
+        source_indices: scope.type_env.source_indices,
+        acc: st
+      )
+    )
+  }
+}
+
+fn leftover_unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+  let bind_name = type_node_label(n: formal, source_indices: source_indices)
+  let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
+  if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
+    && (generic_names |> any(g => g == bind_name)) {
+    match map_get(acc, bind_name) {
+      Absent => map_insert(acc, bind_name, actual)
+      Present { value: _ } => acc
+    }
+  } else if formal.children |> count == 1 && actual.children |> count == 1 {
+    match formal.children |> first {
+      Present { value: fc } =>
+        match actual.children |> first {
+          Present { value: ac } => leftover_unify_generics(formal: child_type_node(ch: fc), actual: child_type_node(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
       Absent => acc

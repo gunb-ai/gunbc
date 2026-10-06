@@ -13219,7 +13219,7 @@ Rc::new(InferResult {
                                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                         scope.clone(),
                                     );
-                                    if call_needs_generic_rebinding_pass(
+                                    let bound_pass = if call_needs_generic_rebinding_pass(
                                         call_args.clone(),
                                         generic_names.clone(),
                                         first_pass.subst.clone(),
@@ -13234,7 +13234,19 @@ Rc::new(InferResult {
                                         )
                                     } else {
                                         first_pass.clone()
-                                    }
+                                    };
+                                    Rc::new(ArgGenericFoldState {
+                                        results: bound_pass.results.clone(),
+                                        subst: bind_uninformative_generic_leftovers(
+                                            bound_pass.results.clone(),
+                                            call_args.clone(),
+                                            value_params.clone(),
+                                            resolved_formals.clone(),
+                                            generic_names.clone(),
+                                            bound_pass.subst.clone(),
+                                            scope.clone(),
+                                        ),
+                                    })
                                 }
                             }
                         };
@@ -23698,7 +23710,15 @@ pub fn unify_generics(
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                    if unify_binding_is_uninformative(actual.clone()) {
+                        break acc.clone();
+                    } else {
+                        break v1_rt::rc_map_insert(
+                            acc.clone(),
+                            bind_name.clone(),
+                            actual.clone(),
+                        );
+                    }
                 }
                 Some(prev) => {
                     if (unify_binding_is_uninformative(prev.clone())
@@ -23907,6 +23927,147 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
                 } else {
                     break false;
                 }
+            }
+        }
+    }
+}
+
+pub fn bind_uninformative_generic_leftovers(
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    call_args: Rc<Vec<Rc<Node>>>,
+    value_params: Rc<Vec<Rc<Node>>>,
+    formals: Rc<Vec<Rc<ResolvedFormal>>>,
+    generic_names: Rc<Vec<String>>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    if ((generic_names.clone().len() as i64) == 0) {
+        subst.clone()
+    } else {
+        results
+            .clone()
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, v)| (i as i64, v))
+            .collect::<Vec<_>>()
+            .iter()
+            .cloned()
+            .fold(subst.clone(), |st, pair: (i64, Rc<ArgInferResult>)| {
+                let argument = match call_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next()
+                {
+                    Some(a) => a.clone(),
+                    std::option::Option::None => pair.1.typed_arg.clone(),
+                };
+                let formal_selection = select_formal_for_call_argument(
+                    argument.clone(),
+                    pair.0.clone(),
+                    call_args.clone(),
+                    value_params.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                let formal_raw = match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal_index,
+                        ..
+                    } => match formals
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(formal_index.clone() as usize)
+                        .next()
+                    {
+                        Some(carried) => carried.substitution_basis.clone(),
+                        std::option::Option::None => error_type(),
+                    },
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        type_variable_node("callable_param".to_string())
+                    }
+                };
+                leftover_unify_generics(
+                    formal_raw.clone(),
+                    crate::v1_compiler_infer_types::resolved_type(
+                        crate::v1_std_core::arg_value(pair.1.typed_arg.clone()),
+                    ),
+                    generic_names.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    st.clone(),
+                )
+            })
+    }
+}
+
+pub fn leftover_unify_generics(
+    mut __tco_loop_formal: Rc<Node>,
+    mut __tco_loop_actual: Rc<Node>,
+    mut __tco_loop_generic_names: Rc<Vec<String>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    loop {
+        let formal = __tco_loop_formal;
+        let actual = __tco_loop_actual;
+        let generic_names = __tco_loop_generic_names;
+        let source_indices = __tco_loop_source_indices;
+        let acc = __tco_loop_acc;
+        let bind_name = type_node_label(formal.clone(), source_indices.clone());
+        let f_bare = (((formal.children.clone().len() as i64) == 0)
+            && (formal.connective.clone() == Connective::NoConnective));
+        if ((f_bare.clone()
+            || match formal.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            })
+            && {
+                let mut __found = false;
+                for g in generic_names.iter().cloned() {
+                    if (g.clone() == bind_name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+        {
+            match v1_rt::map_get(&acc, bind_name.clone()) {
+                std::option::Option::None => {
+                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                }
+                Some(_) => {
+                    break acc.clone();
+                }
+            }
+        } else {
+            if (((formal.children.clone().len() as i64) == 1)
+                && ((actual.children.clone().len() as i64) == 1))
+            {
+                match formal.children.clone().first().cloned() {
+                    Some(fc) => match actual.children.clone().first().cloned() {
+                        Some(ac) => {
+                            __tco_loop_formal =
+                                crate::v1_compiler_infer_types::child_type_node(fc.clone());
+                            __tco_loop_actual =
+                                crate::v1_compiler_infer_types::child_type_node(ac.clone());
+                            __tco_loop_generic_names = generic_names.clone();
+                            __tco_loop_source_indices = source_indices.clone();
+                            __tco_loop_acc = acc.clone();
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            break acc.clone();
+                        }
+                    },
+                    std::option::Option::None => {
+                        break acc.clone();
+                    }
+                }
+            } else {
+                break acc.clone();
             }
         }
     }
