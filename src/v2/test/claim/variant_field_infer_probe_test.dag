@@ -276,14 +276,14 @@ fn vfp_fourth_of(xs: List<Node>) -> Optional<Node> {
 fn vfp_arm_body_first(m: Optional<Node>) -> Optional<Node> {
   match m {
     Absent => Absent
-    Present { value: n } => vfp_first_of(xs: vfp_arm_bodies_of(n: n))
+    Present { value: n } => vfp_first_of(xs: vfp_arm_bodies_of(m: n))
   }
 }
 
 fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
   match m {
     Absent => Absent
-    Present { value: n } => vfp_second_of(xs: vfp_arm_bodies_of(n: n))
+    Present { value: n } => vfp_second_of(xs: vfp_arm_bodies_of(m: n))
   }
 }
 
