@@ -1,5 +1,7 @@
 module v2.test.claim.source_root_tagging
 
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority { DagSourceReadWitness, source_root_set_from_ingest }
