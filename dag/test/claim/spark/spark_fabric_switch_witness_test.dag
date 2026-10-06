@@ -45,7 +45,7 @@ fn fabric_delivered_leg_coding_probe() -> CableLegObservation {
 }
 
 // EIGHT LANES, EIGHT DISTINCT HOSTS, ONE LEG EACH, all on odd lanes of the two 400G cages.
-test fn every_unit_has_exactly_one_leg_on_an_odd_lane() -> Bool {
+test fn every_unit_has_exactly_one_leg_on_an_odd_lane() -> Bool  {
   length(fabric_lane_observations) == 8
     && all(fabric_lane_observations, o => o.lane == 1 || o.lane == 3 || o.lane == 5 || o.lane == 7)
     && all(fabric_lane_observations, o => length(filter(fabric_lane_observations, p => host_identity_eq(a: p.host, b: o.host))) == 1)
@@ -54,7 +54,7 @@ test fn every_unit_has_exactly_one_leg_on_an_odd_lane() -> Bool {
 
 // THE GROUPS ARE THE CAGES. srv5..srv8 share cage 1, srv9..srv12 share cage 2, and a host off the
 // fabric belongs to neither.
-test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool {
+test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool  {
   let a = fabric_group_hosts(g: FabricGroupA)
   let b = fabric_group_hosts(g: FabricGroupB)
   length(a) == 4 && length(b) == 4
@@ -70,7 +70,7 @@ test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool
 // 100GBASE-CR2 -- by every_legs_coding_attests_100gbase_cr2_after_the_reflash below. The NIC's
 // admitted-mode set used to be asserted here as a substring of a free-text row; that row was deleted
 // on main as an anemic leaf, and the set returns as a typed List<LinkMode> with gap G12.
-test fn the_link_runs_at_50g_while_the_coding_now_attests_more() -> Bool {
+test fn the_link_runs_at_50g_while_the_coding_now_attests_more() -> Bool  {
   fabric_leg_cable_observed.linked_speed_gbps == 50
     && (crs812_lane_speed_wire(s: Lane50GCr2) as String) == "50G-baseCR2"
     && crs812_passive_dac_requires_forced_mode
@@ -81,7 +81,7 @@ test fn the_link_runs_at_50g_while_the_coding_now_attests_more() -> Bool {
 // fabric runs at 100G; and the roster is non-empty, so the claim rests on attempts rather than on
 // nobody having looked. If a later attempt DOES train, this reds -- which is the correct outcome:
 // the 50G rows above become stale in the same change.
-test fn forcing_100gbase_cr2_has_never_trained_on_this_plant() -> Bool {
+test fn forcing_100gbase_cr2_has_never_trained_on_this_plant() -> Bool  {
   length(fabric_forced_100g_attempts) == 4
     && fabric_forced_100g_ever_trained() == false
     && any(fabric_forced_100g_attempts, a => (a.nic_forced_modes as String) == "100G_2X" && a.nic_status_opcode == 2)
@@ -99,7 +99,7 @@ test fn forcing_100gbase_cr2_has_never_trained_on_this_plant() -> Bool {
 // IT IS NOT A CLAIM THAT THE LEG RUNS AT 26.5 GBd, and it is not the mode's rate: ieee_100gbase_cr2
 // carries 26.5625 GBd, and byte 222's 250 MBd resolution cannot express that. 106 is a quantized
 // nominal consistent with the 50G PAM4 family, which is a weaker and true statement.
-test fn the_escape_resolves_to_the_declared_rate_byte_222_holds() -> Bool {
+test fn the_escape_resolves_to_the_declared_rate_byte_222_holds() -> Bool  {
   match cable_leg_declared_nominal_rate(obs: fabric_delivered_leg_coding_probe()) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 26500000000
     NominalRateEscaped => false
@@ -112,7 +112,7 @@ test fn the_escape_resolves_to_the_declared_rate_byte_222_holds() -> Bool {
 // byte can establish -- and it does not turn byte 140 into a direct rate. A later reader must still
 // see that this observation stands on an escape that was followed rather than on a byte that spoke
 // for itself. Kept beside the resolved witness because the two are different facts.
-test fn the_escaped_nominal_rate_is_not_a_measurement() -> Bool {
+test fn the_escaped_nominal_rate_is_not_a_measurement() -> Bool  {
   match fabric_delivered_leg_coding_probe().nominal_rate {
     NominalRateEscaped => true
     NominalRateDirect { rate: r } => false
@@ -143,7 +143,7 @@ fn plant_readings_never() -> Nat {
     }))
 }
 
-test fn all_eight_legs_carry_a_reading() -> Bool {
+test fn all_eight_legs_carry_a_reading() -> Bool  {
   plant_readings_taken() == 8 && plant_readings_never() == 0
 }
 
@@ -156,7 +156,7 @@ test fn all_eight_legs_carry_a_reading() -> Bool {
 // This is the discriminating red for the acquisition-standing projection (DESIGN §4b(4): the red
 // stays enrolled after the population it was written against moves); it reds if
 // fabric_leg_reading_of_row ever promotes an AcquisitionInvalidatedByReflash row to a live reading.
-test fn a_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bool {
+test fn a_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bool  {
   match fabric_leg_eeprom_observations.first() {
     Absent => false
     Present { value: r } =>
@@ -197,7 +197,7 @@ fn switch_current_receipts() -> List<FabricLegEepromObservation> {
   })
 }
 
-test fn every_receipt_has_a_distinct_module_identity() -> Bool {
+test fn every_receipt_has_a_distinct_module_identity() -> Bool  {
   length(switch_current_receipts()) == 8
     && all(switch_current_receipts(), a =>
          length(filter(switch_current_receipts(), r => r.vendor_serial == a.vendor_serial)) == 1)
@@ -212,7 +212,7 @@ test fn every_receipt_has_a_distinct_module_identity() -> Bool {
 // which is the same route product.cable_plant_assessment takes. Byte 116 stays 00h, so the
 // attestation rests on the extended byte alone, exactly as it did when that byte said 0x0B and the
 // answer was no.
-test fn every_legs_coding_attests_100gbase_cr2_after_the_reflash() -> Bool {
+test fn every_legs_coding_attests_100gbase_cr2_after_the_reflash() -> Bool  {
   all(switch_current_receipts(), r =>
     match sff8636_interpret_extended_compliance(code: 64) {
       ComplianceUnderstood { code: c, modes: ms } =>

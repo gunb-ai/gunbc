@@ -38,7 +38,7 @@ fn srv3_bmc_target() -> NodeControlPlane {
   BmcController { node: srv1_host }
 }
 
-test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
+test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool  {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3ReceiptEmit { lines: ["line-one", "line-two"] },
@@ -59,7 +59,7 @@ test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   }
 }
 
-test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
+test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool  {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
@@ -78,7 +78,7 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
 // never-falsifiable "surface does not mention serialize_bash" arm, vacuous over a word list)
 // retired with the raw flag lists. No secret reaches argv in either form: the body path does,
 // the password bytes stay in the file.
-test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool {
+test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool  {
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
@@ -93,7 +93,7 @@ test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool {
     && fold(login.arguments, init: false, f: (acc, w) => acc || w == (srv3_bmcweb_login_response_path as String))
 }
 
-test fn witness_srv3_apply_unsupported_transport_refuses_typed() -> Bool {
+test fn witness_srv3_apply_unsupported_transport_refuses_typed() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
@@ -103,7 +103,7 @@ test fn witness_srv3_apply_unsupported_transport_refuses_typed() -> Bool {
 }
 
 // The process observation is a controlled RED at the reconciliation boundary.
-test fn witness_srv3_apply_failure_preserves_observed_stdout() -> Bool {
+test fn witness_srv3_apply_failure_preserves_observed_stdout() -> Bool  {
   match reconcile_shell_exec_observed(
     observed: ShellExecObserved {
       exit_code: 1, success: false, stdout: "srv3-apply-red-marker", stderr: "",
@@ -123,7 +123,7 @@ test fn witness_srv3_apply_failure_preserves_observed_stdout() -> Bool {
   }
 }
 
-test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
+test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool  {
   let r = host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
@@ -133,7 +133,7 @@ test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
   !reconciliation_converged(r: r) && srv3_shell_stdout_from_reconciliation(r: r) == none
 }
 
-test fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
+test fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool  {
   match host_effect_apply(
     target: srv3_bmc_target(),
     effect: Srv3InstallMediaFetch,
@@ -146,7 +146,7 @@ test fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
+test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool  {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3InstallMediaFetch,
@@ -159,7 +159,7 @@ test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
+test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool  {
   let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
@@ -180,7 +180,7 @@ test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Boo
   }
 }
 
-test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool {
+test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool  {
   let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } => {
@@ -206,7 +206,7 @@ test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() ->
   }
 }
 
-test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool {
+test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool  {
   let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: _ } =>
@@ -226,7 +226,7 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
 // UnknownRefused), never rendered as PortInaccessible -- "could not observe" and "observed and
 // genuinely wrong" are different facts, and the apply refusal reason names the transport, not a
 // fabricated "port inaccessible" string.
-test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed() -> Bool {
+test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed() -> Bool  {
   let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
@@ -241,7 +241,7 @@ test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fai
   }
 }
 
-test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
+test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool  {
   let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
@@ -256,7 +256,7 @@ test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
   }
 }
 
-test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
+test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool  {
   match host_effect_apply(
     target: srv3_bmc_target(),
     effect: srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso"),
@@ -269,12 +269,12 @@ test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   }
 }
 
-test fn srv3_typed_receipt_carrier_holds_lines() -> Bool {
+test fn srv3_typed_receipt_carrier_holds_lines() -> Bool  {
   let receipt = srv3_typed_receipt_from_lines(lines: ["a", "b"])
   srv3_typed_receipt(receipt: receipt).lines.length() == 2
 }
 
-test fn shell_bash_runner_still_present_for_p5b() -> Bool {
+test fn shell_bash_runner_still_present_for_p5b() -> Bool  {
   string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "shell_exec_via_bash")
 }
 
@@ -283,7 +283,7 @@ test fn shell_bash_runner_still_present_for_p5b() -> Bool {
 // dispatch retiring the WitnessBin systemd-run scaffolding) are met, so the module now carries a
 // std.disposition.Terminal disposition instead of a Scaffold. This asserts the Terminal disposition
 // names what replaced the scaffold, rather than asserting a dissolved carrier still exists.
-test fn srv3_nbd_proxy_serve_realize_layer_is_terminal_via_host_effect_nbd_proxy_serve() -> Bool {
+test fn srv3_nbd_proxy_serve_realize_layer_is_terminal_via_host_effect_nbd_proxy_serve() -> Bool  {
   match host_effect_nbd_proxy_serve_disposition {
     Terminal { reason: why } =>
       string_contains(s: why as String, pattern: "systemd")
@@ -312,7 +312,7 @@ test fn srv3_nbd_proxy_serve_realize_layer_is_terminal_via_host_effect_nbd_proxy
 // below, which refuses blank stdout on its own — that is what makes `-e` optional rather
 // than load-bearing here, and it is also why `-e` alone would be insufficient: jq exits zero
 // on an empty-STRING token, which the blank arm catches and the flag does not.
-test fn witness_bmcweb_token_extract_argv_demands_a_value() -> Bool {
+test fn witness_bmcweb_token_extract_argv_demands_a_value() -> Bool  {
   let argv = bmcweb_token_extract_jq_args(response_path: srv3_bmcweb_login_response_path)
   let surface = fold(
     argv,
@@ -324,7 +324,7 @@ test fn witness_bmcweb_token_extract_argv_demands_a_value() -> Bool {
     && string_contains(s: surface, pattern: srv3_bmcweb_login_response_path)
 }
 
-test fn witness_bmcweb_token_extract_absent_token_refuses_typed() -> Bool {
+test fn witness_bmcweb_token_extract_absent_token_refuses_typed() -> Bool  {
   match bmcweb_token_extraction_verdict(jq_success: true, jq_stdout: "") {
     BmcwebTokenExtractRefused { reason: why } =>
       string_contains(s: why, pattern: "Srv3BmcwebTokenExtract")
@@ -333,21 +333,21 @@ test fn witness_bmcweb_token_extract_absent_token_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_bmcweb_token_extract_blank_token_refuses_typed() -> Bool {
+test fn witness_bmcweb_token_extract_blank_token_refuses_typed() -> Bool  {
   match bmcweb_token_extraction_verdict(jq_success: true, jq_stdout: "\n") {
     BmcwebTokenExtractRefused { reason: _ } => true
     BmcwebTokenExtracted { token: _ } => false
   }
 }
 
-test fn witness_bmcweb_token_extract_jq_nonzero_refuses_typed() -> Bool {
+test fn witness_bmcweb_token_extract_jq_nonzero_refuses_typed() -> Bool  {
   match bmcweb_token_extraction_verdict(jq_success: false, jq_stdout: "") {
     BmcwebTokenExtractRefused { reason: _ } => true
     BmcwebTokenExtracted { token: _ } => false
   }
 }
 
-test fn witness_bmcweb_token_extract_present_token_extracts_trimmed() -> Bool {
+test fn witness_bmcweb_token_extract_present_token_extracts_trimmed() -> Bool  {
   match bmcweb_token_extraction_verdict(jq_success: true, jq_stdout: "3wMhV2QcT0k\n") {
     BmcwebTokenExtracted { token: token } => (token as String) == "3wMhV2QcT0k"
     BmcwebTokenExtractRefused { reason: _ } => false

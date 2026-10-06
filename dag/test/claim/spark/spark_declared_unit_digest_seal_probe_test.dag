@@ -93,7 +93,7 @@ fn seal_violations(expr: String) -> Int {
 }
 
 // RED ARM: foreign code forging the sealed record is refused at the literal's own position.
-test fn foreign_code_cannot_construct_declared_unit_digest_evidence() -> Bool {
+test fn foreign_code_cannot_construct_declared_unit_digest_evidence() -> Bool  {
   seal_violations(expr: forge_expr) >= 1
 }
 
@@ -101,12 +101,12 @@ test fn foreign_code_cannot_construct_declared_unit_digest_evidence() -> Bool {
 // spark_pair_declared_head_digest for a MODELED GROUP -- trips no seal violation. Without this arm
 // the row above would pass for a type that is simply unusable cross-module, rather than for
 // construction being confined while legitimate consumption stays open.
-test fn the_sanctioned_group_route_trips_no_seal_violation() -> Bool {
+test fn the_sanctioned_group_route_trips_no_seal_violation() -> Bool  {
   seal_violations(expr: sanctioned_expr) == 0
 }
 
 // BOTH CENSUSES MUST HAVE ACTUALLY RUN. keyed_count answers the -1 sentinel on CensusNotRunnable, so
 // a passing pair above could otherwise mean the probe never reached the compiler at all.
-test fn both_arms_reached_the_compiler() -> Bool {
+test fn both_arms_reached_the_compiler() -> Bool  {
   seal_violations(expr: forge_expr) >= 0 && seal_violations(expr: sanctioned_expr) >= 0
 }

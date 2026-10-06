@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is a real value that HONESTLY refuses realization today, so the dissolution trigger is not just
 // prose — a model that let the intended fabric reach fall through as realizable would red this.
 
-test fn srv3_reach_is_single_hop_proxy_jump() -> Bool {
+test fn srv3_reach_is_single_hop_proxy_jump() -> Bool  {
   match srv3_reach {
     ProxyJump { jumps: js, target: _ } => list_length(items: js) == 1
     DirectLan { host: _ } => false
@@ -30,17 +30,17 @@ test fn srv3_reach_is_single_hop_proxy_jump() -> Bool {
   }
 }
 
-test fn srv3_reach_network_is_realizable() -> Bool {
+test fn srv3_reach_network_is_realizable() -> Bool  {
   srv3_reach_is_realizable()
 }
 
-test fn srv3_reach_target_is_srv3_address() -> Bool {
+test fn srv3_reach_target_is_srv3_address() -> Bool  {
   let got = render_network_host(host: srv3_reach_target())
   let want = render_network_host(host: srv3_lan_reach_host)
   got == want
 }
 
-test fn srv3_reach_jump_is_srv2() -> Bool {
+test fn srv3_reach_jump_is_srv2() -> Bool  {
   match srv3_reach {
     ProxyJump { jumps: js, target: _ } =>
       fold(
@@ -54,7 +54,7 @@ test fn srv3_reach_jump_is_srv2() -> Bool {
   }
 }
 
-test fn srv3_fabric_intended_refuses_realization() -> Bool {
+test fn srv3_fabric_intended_refuses_realization() -> Bool  {
   match reach_realizability(reach: srv3_reach_fabric_intended) {
     ReachRealizable => false
     ReachRefused { cause: FabricTunnelNotOperational } => true
@@ -81,7 +81,7 @@ fn srv4_plan() -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
   host_authorized_keys_reconcile(observed: srv4_observed_authorized_keys)
 }
 
-test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
+test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool  {
   let plan = srv3_plan()
   let upsert_materials = flat_map(plan.actions, a =>
     match a {
@@ -104,7 +104,7 @@ test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
 // silently absorbing a surprise is the conjunct below it: a roster-duplicate refusal would
 // still be counted, so refusals would read 3 and this witness would fail rather than pass with
 // a shorter list.
-test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
+test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool  {
   let plan = srv3_plan()
   let tally = membership_tally(plan: plan)
   let refused_materials = flat_map(plan.actions, a =>
@@ -125,12 +125,12 @@ test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
     && any(refused_materials, m => m == srv3_observed_briansrls_srv1_key.material as String)
 }
 
-test fn srv4_reconcile_is_converged_empty_plan() -> Bool {
+test fn srv4_reconcile_is_converged_empty_plan() -> Bool  {
   let tally = membership_tally(plan: srv4_plan())
   tally.adds == 0 && tally.removals == 0 && tally.refusals == 0
 }
 
-test fn srv3_and_srv4_disagree_on_convergence() -> Bool {
+test fn srv3_and_srv4_disagree_on_convergence() -> Bool  {
   let srv3 = membership_tally(plan: srv3_plan())
   let srv4 = membership_tally(plan: srv4_plan())
   (srv3.adds + srv3.refusals) > 0
@@ -141,7 +141,7 @@ fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
   authorized_key_ownership(k: operator_macbook_ssh_key)
 }
 
-test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
+test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool  {
   let honest = membership_tally(plan: srv3_plan())
   let lying = membership_tally(plan: host_authorized_keys_reconcile_with_ownership(
     observed: srv3_observed_authorized_keys,
@@ -153,7 +153,7 @@ test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
     && lying.removals == 2
 }
 
-test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
+test fn comment_only_drift_is_one_change_not_remove_add() -> Bool  {
   let renamed_macbook = SshPublicKey {
     algorithm: operator_macbook_ssh_key.algorithm,
     material: operator_macbook_ssh_key.material,
@@ -190,7 +190,7 @@ fn reach_pair_agrees(kind: HostToolchainKind, host: HostIdentity) -> Bool {
   }
 }
 
-test fn reach_access_host_is_the_target_host() -> Bool {
+test fn reach_access_host_is_the_target_host() -> Bool  {
   reach_pair_agrees(kind: BuildCache, host: operator_host_srv1)
     && reach_pair_agrees(kind: BuildCache, host: operator_host_srv2)
     && reach_pair_agrees(kind: BuildCache, host: operator_host_srv3)
@@ -198,7 +198,7 @@ test fn reach_access_host_is_the_target_host() -> Bool {
     && reach_pair_agrees(kind: OsInstallActuator, host: operator_host_srv3)
 }
 
-test fn reach_build_cache_on_srv3_targets_srv3_not_the_actuator() -> Bool {
+test fn reach_build_cache_on_srv3_targets_srv3_not_the_actuator() -> Bool  {
   match reach_or_absent(kind: BuildCache, host: operator_host_srv3) {
     Present { value: reach } =>
       reach.target.identity == operator_host_srv3
@@ -207,7 +207,7 @@ test fn reach_build_cache_on_srv3_targets_srv3_not_the_actuator() -> Bool {
   }
 }
 
-test fn reach_os_install_actuator_on_srv3_runs_from_the_actuator_host() -> Bool {
+test fn reach_os_install_actuator_on_srv3_runs_from_the_actuator_host() -> Bool  {
   match reach_or_absent(kind: OsInstallActuator, host: operator_host_srv3) {
     Present { value: reach } =>
       match srv3_os_install_actuator_selection {
@@ -224,7 +224,7 @@ fn reach_pair_agrees_for(reach: HostToolchainReach) -> Bool {
   reach.access.host.identity == reach.target.identity
 }
 
-test fn reach_wrong_machine_pairing_is_unwritable() -> Bool {
+test fn reach_wrong_machine_pairing_is_unwritable() -> Bool  {
   let old_shape = ResolvedHostToolchainReach {
     target: srv3_host,
     access: host_identity_srv1_access,
@@ -237,7 +237,7 @@ test fn reach_wrong_machine_pairing_is_unwritable() -> Bool {
   old_disagrees && honest_agrees
 }
 
-test fn host_toolchain_srv1_access_rows_are_one_concept() -> Bool {
+test fn host_toolchain_srv1_access_rows_are_one_concept() -> Bool  {
   let a = host_identity_srv1_access
   let b = ci_deploy_srv1_operator_access
   a.host.identity == b.host.identity
@@ -246,7 +246,7 @@ test fn host_toolchain_srv1_access_rows_are_one_concept() -> Bool {
     && a.privileged_commands == b.privileged_commands
 }
 
-test fn direct_access_covers_every_modeled_fleet_host() -> Bool {
+test fn direct_access_covers_every_modeled_fleet_host() -> Bool  {
   match host_toolchain_direct_access(host: operator_host_srv3) {
     Present { value: a } => a.host.identity == operator_host_srv3
     Absent => false

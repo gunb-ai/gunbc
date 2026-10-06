@@ -41,7 +41,7 @@ fn w_stopped(step: String, cause: String) -> V41ProducedRuntime {
 // A STOPPED PRODUCTION NEVER REPORTS SUCCESS, AND ITS RECEIPT CARRIES WHY. The entry writes this
 // receipt and then reads `v41_production_succeeded` for its exit, so a stopped run that rendered a
 // receipt and returned true would be the fabricated-plausible-output failure at the exit code.
-test fn a_stopped_production_never_reports_success() -> Bool {
+test fn a_stopped_production_never_reports_success() -> Bool  {
   let p = w_stopped(step: "image-readback", cause: "the daemon answered sha256:zz for the produced image")
   !v41_production_succeeded(p: p)
     && v41_production_receipt(p: p).contains("production STOPPED step=image-readback")
@@ -50,7 +50,7 @@ test fn a_stopped_production_never_reports_success() -> Bool {
 }
 
 // THE WHEEL VERIFICATION LINE DISCRIMINATES, rather than rendering the same sentence either way.
-test fn the_wheel_verification_line_says_which_way_it_went() -> Bool {
+test fn the_wheel_verification_line_says_which_way_it_went() -> Bool  {
   v41_wheel_verification_line(v: V41KernelWheelsVerified { verified: 3 }).contains("kernel wheels verified=3")
     && !v41_wheel_verification_line(v: V41KernelWheelsVerified { verified: 3 }).contains("REFUSED")
     && v41_wheel_verification_line(v: V41KernelWheelVerificationRefused { step: "fetch" as NonEmptyStr, cause: "curl exit 22" }).contains("kernel wheels REFUSED step=fetch cause=curl exit 22")
@@ -58,7 +58,7 @@ test fn the_wheel_verification_line_says_which_way_it_went() -> Bool {
 
 // THE VERIFY SCRIPT COMPARES EVERY WHEEL TO THE DIGEST THE CANDIDATE KEYS, and fetching without
 // comparing would establish nothing -- so the digest and the `sha256sum -c -` are asserted together.
-test fn every_fetched_wheel_is_compared_to_its_keyed_digest() -> Bool {
+test fn every_fetched_wheel_is_compared_to_its_keyed_digest() -> Bool  {
   let s = v41_wheel_verify_script(wheels: flashinfer_0_7_1rc1_wheels)
   s.contains("set -e\n")
     && s.contains("17b7a2d47a153456f056f9f4d309ac13a0a7bfccbec852f562f120f36146edd9")
@@ -105,7 +105,7 @@ fn w_join(observed: String) -> V41ProbeIdentityJoin {
 // THE DISCRIMINATING RED: THE TAG MOVED BETWEEN BUILD AND PROBE. The probe read an image whose
 // configuration digest is not the one this build produced, so the join REFUSES and names both
 // digests. Before this change the same run reported success.
-test fn a_probe_that_read_another_image_breaks_the_identity_and_is_named() -> Bool {
+test fn a_probe_that_read_another_image_breaks_the_identity_and_is_named() -> Bool  {
   let j = w_join(observed: w_other_wire)
   !v41_probe_identity_holds(j: j)
     && (match j {
@@ -122,7 +122,7 @@ test fn a_probe_that_read_another_image_breaks_the_identity_and_is_named() -> Bo
 
 // THE POSITIVE CONTROL, without which the row above would be satisfied by a join that refuses
 // everything: the same fold on the produced digest joins, and says so.
-test fn a_probe_of_the_produced_image_joins() -> Bool {
+test fn a_probe_of_the_produced_image_joins() -> Bool  {
   let j = w_join(observed: w_produced_wire)
   v41_probe_identity_holds(j: j)
     && v41_probe_identity_line(j: j).contains("probe identity JOINED to the produced image")
@@ -130,7 +130,7 @@ test fn a_probe_of_the_produced_image_joins() -> Bool {
 
 // AN UNPARSEABLE ANSWER IS ITS OWN REFUSAL, never silently unequal and never assumed equal: the
 // daemon said something, and what it said is not a digest.
-test fn an_unparseable_daemon_answer_refuses_as_unreadable() -> Bool {
+test fn an_unparseable_daemon_answer_refuses_as_unreadable() -> Bool  {
   let j = w_join(observed: "not-a-digest")
   !v41_probe_identity_holds(j: j)
     && (match j {
@@ -144,7 +144,7 @@ test fn an_unparseable_daemon_answer_refuses_as_unreadable() -> Bool {
 
 // A PROBE THAT NEVER READ JOINS NOTHING, and is reported as that rather than as a mismatch: there
 // is no observed identity to disagree with, which is a different fact from disagreeing.
-test fn a_refused_probe_joins_nothing_and_says_which_step() -> Bool {
+test fn a_refused_probe_joins_nothing_and_says_which_step() -> Bool  {
   let j = match parse_oci_content_digest_wire(raw: w_produced_wire) {
     Absent => V41ProbeIdentityUnreadable { observed: "unreachable" as NonEmptyStr }
     Present { value: produced } =>

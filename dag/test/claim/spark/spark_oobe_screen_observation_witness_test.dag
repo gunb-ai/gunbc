@@ -118,7 +118,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ---- the advance gate: the measured finding, and its control ----------------------------
 
-test fn w_eula_gate_requires_scroll_to_a_named_container() -> Bool {
+test fn w_eula_gate_requires_scroll_to_a_named_container() -> Bool  {
   match oobe_screen_eula.advance_gate {
     ForwardControlEnabledOnArrival => false
     ForwardControlEnabledAfterScrollToEnd { scroll_container: c } => c == "nv-modal-main"
@@ -126,7 +126,7 @@ test fn w_eula_gate_requires_scroll_to_a_named_container() -> Bool {
   }
 }
 
-test fn w_only_the_welcome_and_settings_screens_advance_on_arrival() -> Bool {
+test fn w_only_the_welcome_and_settings_screens_advance_on_arrival() -> Bool  {
   match oobe_screen_welcome.advance_gate {
     ForwardControlEnabledOnArrival => true
     ForwardControlEnabledAfterScrollToEnd { scroll_container: _ } => false
@@ -178,7 +178,7 @@ fn rule_kind_count(rs: List<ObservedFieldValidationRule>, kind: String) -> Int {
 // required(username), required(username), minimum(password, 6) satisfies both while the
 // confirm-password equality rule has been deleted. The summed-minimum witness is fooled the same
 // way, so counting each rule by identity is what closes it.
-test fn w_account_gate_carries_the_three_measured_validation_rules() -> Bool {
+test fn w_account_gate_carries_the_three_measured_validation_rules() -> Bool  {
   match oobe_screen_account.advance_gate {
     ForwardControlEnabledOnArrival => false
     ForwardControlEnabledAfterScrollToEnd { scroll_container: _ } => false
@@ -203,7 +203,7 @@ fn declared_minimum_length(r: ObservedFieldValidationRule) -> Int {
   }
 }
 
-test fn w_the_only_password_length_rule_is_six_characters() -> Bool {
+test fn w_the_only_password_length_rule_is_six_characters() -> Bool  {
   match oobe_screen_account.advance_gate {
     ForwardControlEnabledOnArrival => false
     ForwardControlEnabledAfterScrollToEnd { scroll_container: _ } => false
@@ -219,7 +219,7 @@ test fn w_the_only_password_length_rule_is_six_characters() -> Bool {
 // AcceptsLegalAgreement left a witness with "only" in its name green. It now folds the WHOLE
 // observed prefix and counts, so any additional legal-effect screen anywhere in the population
 // turns it red.
-test fn w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement() -> Bool {
+test fn w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement() -> Bool  {
   fold(
     observed_screens_across_runs(),
     init: 0,
@@ -232,7 +232,7 @@ test fn w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement() -> Bool {
 // OobeWirelessNetwork] satisfies it, and so does a duplicated pair. The named fields are now
 // asserted, and their ABSENT siblings with them -- a submitted-set that silently grew would
 // otherwise stay green.
-test fn w_settings_screen_submits_exactly_language_and_timezone() -> Bool {
+test fn w_settings_screen_submits_exactly_language_and_timezone() -> Bool  {
   match oobe_screen_settings.effect {
     SubmitsSelections { fields: f } =>
       length(f) == 2
@@ -259,7 +259,7 @@ fn prefix_route_spelling(screens: List<ObservedOobeScreen>) -> String {
 // four-screen order over the UNION of two runs, which read as a route: welcome, settings, eula,
 // account. The last edge was never crossed -- run 2 navigated directly to /welcome/account -- so
 // the assertion is split into the order run 1 observed and the transitions anyone observed.
-test fn w_the_prefix_run_walked_welcome_settings_eula_in_order() -> Bool {
+test fn w_the_prefix_run_walked_welcome_settings_eula_in_order() -> Bool  {
   prefix_route_spelling(screens: dgx_spark_0c75_oobe_prefix_run.screens)
     == "/welcome|/welcome/settings|/welcome/eula"
 }
@@ -267,14 +267,14 @@ test fn w_the_prefix_run_walked_welcome_settings_eula_in_order() -> Bool {
 // AND NOTHING WAS OBSERVED TO LEAD TO THE ACCOUNT SCREEN. This is a claim about our evidence, not
 // about the wizard: the edge may well exist. It goes red the moment a run crosses it, which is
 // exactly when the actuator may start assuming it.
-test fn w_no_observed_transition_enters_the_account_screen() -> Bool {
+test fn w_no_observed_transition_enters_the_account_screen() -> Bool  {
   !fold(observed_transitions_across_runs(), init: false,
     f: (acc, t) => acc || (t.to_route as String) == "/welcome/account")
 }
 
 // THE EDGES RUN 1 DID CROSS, asserted so the witness above cannot pass by the transition list being
 // empty for an unrelated reason -- the positive control for a negative claim.
-test fn w_the_prefix_run_crossed_two_observed_transitions() -> Bool {
+test fn w_the_prefix_run_crossed_two_observed_transitions() -> Bool  {
   join(map(observed_transitions_across_runs(),
     t => (t.from_route as String) + ">" + (t.to_route as String)), "|")
     == "/welcome>/welcome/settings|/welcome/settings>/welcome/eula"
@@ -288,7 +288,7 @@ test fn w_the_prefix_run_crossed_two_observed_transitions() -> Bool {
 // and becomes false the moment a second one does. What must hold now is the derivation: run 1
 // watched three screens, run 2 watched one, and the prefix is exactly those four in that order.
 // Asserting each run's own spelling is what stops a run from claiming a screen it never watched.
-test fn w_each_run_carries_its_own_screens_and_they_compose_the_population() -> Bool {
+test fn w_each_run_carries_its_own_screens_and_they_compose_the_population() -> Bool  {
   prefix_route_spelling(screens: dgx_spark_0c75_oobe_prefix_run.screens)
     == "/welcome|/welcome/settings|/welcome/eula"
     && prefix_route_spelling(screens: dgx_spark_0c75_oobe_account_run.screens)
@@ -300,7 +300,7 @@ test fn w_each_run_carries_its_own_screens_and_they_compose_the_population() -> 
 // BOTH RUNS HALTED, AND NEITHER COMPLETED THE FLOW. The refusal is the same shape in both and
 // the routes differ, so a run that silently became WalkReachedFlowCompletion -- the shape that
 // would let a consumer read the prefix as the whole wizard -- turns this red.
-test fn w_both_runs_halted_awaiting_operator_authority_at_distinct_routes() -> Bool {
+test fn w_both_runs_halted_awaiting_operator_authority_at_distinct_routes() -> Bool  {
   match dgx_spark_0c75_oobe_prefix_run.termination {
     WalkReachedFlowCompletion => false
     WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/eula"
@@ -317,7 +317,7 @@ test fn w_both_runs_halted_awaiting_operator_authority_at_distinct_routes() -> B
 // renderer reached it; run 2's browser loaded a loopback listener forwarded through a named
 // proxy to the unit. The two origins must DIFFER on run 2 -- if they were equal the forwarding
 // would not be what the receipt says it is.
-test fn w_only_the_forwarded_run_names_a_proxy_locus() -> Bool {
+test fn w_only_the_forwarded_run_names_a_proxy_locus() -> Bool  {
   match dgx_spark_0c75_oobe_prefix_run.portal_reach {
     PortalReachUnrecorded => true
     RendererThroughForwardedEndpoint { proxy_locus: _, renderer_origin: _, unit_origin: _ } => false
@@ -331,7 +331,7 @@ test fn w_only_the_forwarded_run_names_a_proxy_locus() -> Bool {
 
 // The root landing was prose-only in the first revision. It is load-bearing for an actuator:
 // a client-side route is NOT an HTTP redirect, and code that waits for a 3xx waits forever.
-test fn w_root_resolves_to_welcome_by_client_side_route_not_http_redirect() -> Bool {
+test fn w_root_resolves_to_welcome_by_client_side_route_not_http_redirect() -> Bool  {
   initial_navigation_observation.requested_path == "/"
     && initial_navigation_observation.resulting_route == "/welcome"
     && initial_navigation_observation.http_status == 200
@@ -343,7 +343,7 @@ test fn w_root_resolves_to_welcome_by_client_side_route_not_http_redirect() -> B
 
 // ---- the population claim: this is a prefix, and it says so ------------------------------
 
-test fn w_walk_is_not_complete_and_names_where_it_halted() -> Bool {
+test fn w_walk_is_not_complete_and_names_where_it_halted() -> Bool  {
   match observed_walk_termination {
     WalkReachedFlowCompletion => false
     WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/eula"
@@ -352,7 +352,7 @@ test fn w_walk_is_not_complete_and_names_where_it_halted() -> Bool {
 
 // ---- the documented-versus-observed join, in both directions -----------------------------
 
-test fn w_reached_fields_are_covered() -> Bool {
+test fn w_reached_fields_are_covered() -> Bool  {
   observed_screen_covers_field(field: OobeLanguage)
     && observed_screen_covers_field(field: OobeTimeZone)
     && observed_screen_covers_field(field: OobeTermsAndConditions)
@@ -364,18 +364,18 @@ test fn w_reached_fields_are_covered() -> Bool {
 // so the row that used to assert it was pending now asserts it is NOT -- which is a stronger
 // check than deletion, because deleting the row would leave nothing red if a later edit dropped
 // the account screen from the prefix and silently re-opened the obligation.
-test fn w_unreached_documented_fields_are_pending() -> Bool {
+test fn w_unreached_documented_fields_are_pending() -> Bool  {
   field_is_pending_observation(field: OobeKeyboardLayout)
     && field_is_pending_observation(field: OobeAnalytics)
     && field_is_pending_observation(field: OobeWirelessNetwork)
     && !field_is_pending_observation(field: OobeUserAccount)
 }
 
-test fn w_hostname_is_not_pending_because_it_is_not_documented_as_prompted() -> Bool {
+test fn w_hostname_is_not_pending_because_it_is_not_documented_as_prompted() -> Bool  {
   !field_is_pending_observation(field: OobeHostnameAssignment)
 }
 
-test fn w_covered_fields_are_not_also_pending() -> Bool {
+test fn w_covered_fields_are_not_also_pending() -> Bool  {
   !field_is_pending_observation(field: OobeLanguage)
     && !field_is_pending_observation(field: OobeTimeZone)
     && !field_is_pending_observation(field: OobeTermsAndConditions)
@@ -383,7 +383,7 @@ test fn w_covered_fields_are_not_also_pending() -> Bool {
 
 // ---- the receipt: the observation is attributed, and holds no secret ----------------------
 
-test fn w_run_records_the_relay_and_rendering_hosts_separately() -> Bool {
+test fn w_run_records_the_relay_and_rendering_hosts_separately() -> Bool  {
   dgx_spark_0c75_oobe_prefix_run.environment.radio_relay_host
     != dgx_spark_0c75_oobe_prefix_run.environment.rendering_host
     && dgx_spark_0c75_oobe_prefix_run.environment.unit_access_point == "spark-0c75"
@@ -435,14 +435,14 @@ fn screen_has_control(
   )
 }
 
-test fn w_screen_headings_are_the_observed_text() -> Bool {
+test fn w_screen_headings_are_the_observed_text() -> Bool  {
   oobe_screen_welcome.heading == "Welcome To DGX Spark"
     && oobe_screen_settings.heading == "Set Up Your NVIDIA DGX Spark"
     && oobe_screen_eula.heading == "Terms Of Use"
     && oobe_screen_account.heading == "Set Up Your NVIDIA DGX Spark"
 }
 
-test fn w_each_screen_carries_its_observed_forward_control() -> Bool {
+test fn w_each_screen_carries_its_observed_forward_control() -> Bool  {
   screen_has_control(screen: oobe_screen_welcome, identity: WelcomeGetStartedAction, address: "nv-button", label: "Get Started")
     && screen_has_control(screen: oobe_screen_settings, identity: SettingsContinueAction, address: "nv-button", label: "Continue")
     && screen_has_control(screen: oobe_screen_eula, identity: EulaAcceptAction, address: "nv-button", label: "Accept")
@@ -451,7 +451,7 @@ test fn w_each_screen_carries_its_observed_forward_control() -> Bool {
 
 // THE MUTATION THE WILDCARD ADMITTED. Each screen must carry ITS OWN identity and no other, so
 // swapping any two identities turns this red even though every address and label is unchanged.
-test fn w_screens_do_not_share_control_identities() -> Bool {
+test fn w_screens_do_not_share_control_identities() -> Bool  {
   !screen_has_control(screen: oobe_screen_welcome, identity: EulaAcceptAction, address: "nv-button", label: "Get Started")
     && !screen_has_control(screen: oobe_screen_eula, identity: WelcomeGetStartedAction, address: "nv-button", label: "Accept")
     && !screen_has_control(screen: oobe_screen_settings, identity: EulaAcceptAction, address: "nv-button", label: "Continue")
@@ -472,7 +472,7 @@ fn forward_control_address(c: OobeControl) -> Bool {
   }
 }
 
-test fn w_all_forward_controls_share_one_address_so_identity_must_be_separate() -> Bool {
+test fn w_all_forward_controls_share_one_address_so_identity_must_be_separate() -> Bool  {
   fold(observed_screens_across_runs(), init: true,
     f: (acc, s) => acc && fold(s.controls, init: true, f: (a, c) => a && forward_control_address(c: c)))
 }
@@ -498,7 +498,7 @@ fn settings_binds_field(field: FormFieldName, rep: SubmittedValueRepresentation)
     f: (acc, c) => acc || control_binds_field(c: c, field: field, rep: rep))
 }
 
-test fn w_settings_screen_carries_all_three_backing_fields() -> Bool {
+test fn w_settings_screen_carries_all_three_backing_fields() -> Bool  {
   settings_binds_field(field: "language" as FormFieldName, rep: VendorOpaqueOrdinal)
     && settings_binds_field(field: "timezone" as FormFieldName, rep: VendorOpaqueOrdinal)
     && settings_binds_field(field: "locale" as FormFieldName, rep: Bcp47LanguageTagValue)
@@ -506,7 +506,7 @@ test fn w_settings_screen_carries_all_three_backing_fields() -> Bool {
 
 // The arity stays defended SEPARATELY, so a fourth undeclared field cannot slip in behind the
 // three named ones. Naming and counting are two different questions and neither implies the other.
-test fn w_settings_screen_carries_no_field_beyond_the_three_named() -> Bool {
+test fn w_settings_screen_carries_no_field_beyond_the_three_named() -> Bool  {
   fold(
     oobe_screen_settings.controls,
     init: 0,
@@ -524,7 +524,7 @@ test fn w_settings_screen_carries_no_field_beyond_the_three_named() -> Bool {
 // "593"); locale submits a BCP 47 tag. A model that let a zone identifier be written into the
 // timezone field would have to change one of these arms, and this goes red when it does.
 
-test fn w_language_and_timezone_submit_vendor_ordinals_not_identifiers() -> Bool {
+test fn w_language_and_timezone_submit_vendor_ordinals_not_identifiers() -> Bool  {
   settings_binds_field(field: "language" as FormFieldName, rep: VendorOpaqueOrdinal)
     && settings_binds_field(field: "timezone" as FormFieldName, rep: VendorOpaqueOrdinal)
     && !settings_binds_field(field: "language" as FormFieldName, rep: Bcp47LanguageTagValue)
@@ -532,7 +532,7 @@ test fn w_language_and_timezone_submit_vendor_ordinals_not_identifiers() -> Bool
     && settings_binds_field(field: "locale" as FormFieldName, rep: Bcp47LanguageTagValue)
 }
 
-test fn w_receipt_names_the_observed_browser_and_origin() -> Bool {
+test fn w_receipt_names_the_observed_browser_and_origin() -> Bool  {
   dgx_spark_0c75_oobe_prefix_run.environment.portal_origin.locator == "10.92.7.127"
     && dgx_spark_0c75_oobe_prefix_run.environment.rendering_host == "srv4"
     && dgx_spark_0c75_oobe_prefix_run.environment.radio_relay_host == "pi1"
@@ -546,7 +546,7 @@ test fn w_receipt_names_the_observed_browser_and_origin() -> Bool {
 // assertion would be asserting we had NOT seen what we had just modeled. The negative is
 // re-aimed at a subject still genuinely unobserved, which keeps the check discriminating: a
 // coverage function that returned true for everything would still be caught.
-test fn w_coverage_follows_the_screens_presented_subjects() -> Bool {
+test fn w_coverage_follows_the_screens_presented_subjects() -> Bool  {
   screen_presents_field(screen: oobe_screen_settings, field: OobeLanguage)
     && screen_presents_field(screen: oobe_screen_eula, field: OobeTermsAndConditions)
     && screen_presents_field(screen: oobe_screen_account, field: OobeUserAccount)
@@ -599,7 +599,7 @@ fn account_binds_entry_field(field: FormFieldName, placeholder: PlaceholderText,
 // green if username were masked too; checking only that username is plain would stay green if
 // password became plain. The negative half is what makes this a wall against a secret being
 // routed into a cleartext control.
-test fn w_account_screen_binds_three_named_fields_with_measured_secrecy() -> Bool {
+test fn w_account_screen_binds_three_named_fields_with_measured_secrecy() -> Bool  {
   account_binds_entry_field(field: "username" as FormFieldName, placeholder: "Username" as PlaceholderText, secret: false)
     && account_binds_entry_field(field: "password" as FormFieldName, placeholder: "Password" as PlaceholderText, secret: true)
     && account_binds_entry_field(field: "confirmPassword" as FormFieldName, placeholder: "Confirm Password" as PlaceholderText, secret: true)
@@ -610,7 +610,7 @@ test fn w_account_screen_binds_three_named_fields_with_measured_secrecy() -> Boo
 // The arity is defended separately from the naming, for the same reason it is on the settings
 // screen: a fourth entry field appearing behind the three named ones is a change to what the
 // form submits, and naming three cannot see it.
-test fn w_account_screen_carries_no_entry_field_beyond_the_three_named() -> Bool {
+test fn w_account_screen_carries_no_entry_field_beyond_the_three_named() -> Bool  {
   fold(
     oobe_screen_account.controls,
     init: 0,
@@ -639,7 +639,7 @@ fn screen_creates_account(s: ObservedOobeScreen) -> Bool {
   }
 }
 
-test fn w_exactly_one_screen_in_the_prefix_creates_a_device_account() -> Bool {
+test fn w_exactly_one_screen_in_the_prefix_creates_a_device_account() -> Bool  {
   fold(observed_screens_across_runs(), init: 0, f: (n, s) => if (screen_creates_account(s: s)) { n + 1 } else { n }) == 1
     && screen_creates_account(s: oobe_screen_account)
     && !screen_creates_account(s: oobe_screen_eula)
@@ -666,7 +666,7 @@ fn username_recorded_as_admitted(name: NonEmptyStr) -> Bool {
   )
 }
 
-test fn w_the_client_was_measured_to_admit_the_username_root() -> Bool {
+test fn w_the_client_was_measured_to_admit_the_username_root() -> Bool  {
   username_recorded_as_admitted(name: "root" as NonEmptyStr)
     && username_recorded_as_admitted(name: "fleetadmin" as NonEmptyStr)
     && !username_recorded_as_admitted(name: "neveradmin" as NonEmptyStr)
@@ -678,7 +678,7 @@ test fn w_the_client_was_measured_to_admit_the_username_root() -> Bool {
 // /welcome. This witness defends both halves: that the route rendered without its predecessors,
 // and that the root was still the first screen when it did. Losing the second half would leave
 // a claim about route gating with no evidence that the wizard had not simply advanced.
-test fn w_account_route_rendered_without_its_predecessors_completing() -> Bool {
+test fn w_account_route_rendered_without_its_predecessors_completing() -> Bool  {
   account_route_direct_navigation.requested_route == "/welcome/account"
     && account_route_direct_navigation.resulting_route == "/welcome/account"
     && account_route_direct_navigation.root_still_resolves_to == "/welcome"
@@ -695,7 +695,7 @@ test fn w_account_route_rendered_without_its_predecessors_completing() -> Bool {
 
 // AND THE JOIN BETWEEN THE TWO SITTINGS IS EXPLICITLY UNOBSERVED. A model that simply omitted the
 // relation would read the same as one that had checked it, so the refusal is carried and asserted.
-test fn w_interface_continuity_between_the_two_sittings_is_unobserved() -> Bool {
+test fn w_interface_continuity_between_the_two_sittings_is_unobserved() -> Bool  {
   match spark_0c75_sitting_continuity {
     SittingsProvenSameInterface { earlier: _, later: _, firmware_identity: _ } => false
     SittingContinuityUnobserved { earlier: e, later: l, missing: _ } =>
@@ -707,7 +707,7 @@ test fn w_interface_continuity_between_the_two_sittings_is_unobserved() -> Bool 
 // consumes is a decoration; this is the consumer, and it refuses today. It flips to
 // VerifiedInterfaceAcross only when a firmware identity joins the sittings, which is the act that
 // retires the debt -- not a re-reading of the same evidence.
-test fn w_a_verified_interface_across_sittings_is_refused_not_assembled() -> Bool {
+test fn w_a_verified_interface_across_sittings_is_refused_not_assembled() -> Bool  {
   match verified_interface_across_sittings() {
     VerifiedInterfaceAcross { screens: _ } => false
     VerifiedInterfaceRefused { cause: c } => match c {
@@ -720,6 +720,6 @@ test fn w_a_verified_interface_across_sittings_is_refused_not_assembled() -> Boo
 // THE HISTORICAL UNION STILL ANSWERS ITS OWN QUESTION. Refusing the verified-interface request must
 // not have cost us the fact that four screens have been observed at some time; if it had, the
 // refusal would be a regression wearing honesty's clothes.
-test fn w_the_union_still_reports_every_screen_ever_observed() -> Bool {
+test fn w_the_union_still_reports_every_screen_ever_observed() -> Bool  {
   length(observed_screens_across_runs()) == 4
 }

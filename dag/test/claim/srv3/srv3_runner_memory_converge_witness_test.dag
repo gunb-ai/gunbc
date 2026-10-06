@@ -26,7 +26,7 @@ fn last_runner_slice_knob_name(knobs: List<ConvergeKnob>) -> String {
   })
 }
 
-test fn witness_srv3_committed_allocation_matches_authority() -> Bool {
+test fn witness_srv3_committed_allocation_matches_authority() -> Bool  {
   let desired = gunbc_runner_slot_desired()
   match gunbc_committed_host_runner_slot_allocation(host: operator_host_srv3) {
     HostSlotAllocationWidthUnresolved { host: _, cause: _ } => false
@@ -37,14 +37,14 @@ test fn witness_srv3_committed_allocation_matches_authority() -> Bool {
   }
 }
 
-test fn witness_srv3_standup_converge_policy_includes_host() -> Bool {
+test fn witness_srv3_standup_converge_policy_includes_host() -> Bool  {
   match srv3_host_converge_from_standup_policy() {
     Present { value: host } => host.identity == operator_host_srv3
     Absent => false
   }
 }
 
-test fn witness_srv3_memory_max_knob_grounds_authority() -> Bool {
+test fn witness_srv3_memory_max_knob_grounds_authority() -> Bool  {
   match srv3_host_converge_from_standup_policy() {
     Present { value: host } =>
       match srv3_memory_knob(host: host, name: srv3_memory_max_knob_name()) {
@@ -63,7 +63,7 @@ test fn witness_srv3_memory_max_knob_grounds_authority() -> Bool {
   }
 }
 
-test fn witness_srv3_memory_high_knob_grounds_authority() -> Bool {
+test fn witness_srv3_memory_high_knob_grounds_authority() -> Bool  {
   match srv3_host_converge_from_standup_policy() {
     Present { value: host } =>
       match srv3_memory_knob(host: host, name: srv3_memory_high_knob_name()) {
@@ -88,17 +88,17 @@ test fn witness_srv3_memory_high_knob_grounds_authority() -> Bool {
   }
 }
 
-test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
+test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool  {
   let desired = gunbc_runner_slot_desired()
   byte_size_count(b: desired.memory_high) < byte_size_count(b: desired.memory_max)
     && byte_size_count(b: desired.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
-test fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
+test fn witness_srv3_apply_mode_is_fresh_standup() -> Bool  {
   converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
 }
 
-test fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {
+test fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool  {
   match srv3_host_converge_from_standup_policy() {
     Present { value: host } =>
       last_runner_slice_knob_name(knobs: host.knobs) == "runner_count"
@@ -108,7 +108,7 @@ test fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {
   }
 }
 
-test fn witness_provision_routes_through_host_effect_apply() -> Bool {
+test fn witness_provision_routes_through_host_effect_apply() -> Bool  {
   provision_runner_memory_caps_routes_through_host_effect_apply()
 }
 
@@ -122,7 +122,7 @@ test fn witness_provision_routes_through_host_effect_apply() -> Bool {
 // memory knobs are present (from the standup policy, not the caps-only selection) and does not
 // touch apply at all.
 
-test fn witness_readback_verdict_drifts_RED_when_live_mismatch() -> Bool {
+test fn witness_readback_verdict_drifts_RED_when_live_mismatch() -> Bool  {
   match runner_memory_cap_readback_verdict(
     read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
     knob: legacy_converge_knob(

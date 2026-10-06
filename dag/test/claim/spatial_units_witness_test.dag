@@ -69,7 +69,7 @@ fn witness_srgb_hue_wrap_unchanged_after_consolidation() -> Bool {
                  b: hsl_to_rgb_scaled(hue: 120, sat_pct: 100, light_pct: 50))
 }
 
-test fn spatial_units_witnesses() -> Bool {
+test fn spatial_units_witnesses() -> Bool  {
   witness_area_and_volume_scale_nonlinearly()
     && witness_turn_subdivision_is_exact()
     && witness_quarter_turn_is_exact()

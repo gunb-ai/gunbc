@@ -9,7 +9,7 @@ data real_execution_split_doc: String = "install_media_remaster_ensure_grub_cmdl
 // for srv3's autoinstall, and a refusal from the YAML writer is a red here, never an empty document.
 // The srv3 image is the same derivation as every other seeded image: its build key reaches the stock
 // medium's pinned digest and the rendered autoinstall, and its identity is the measured output.
-test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
+test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool  {
   match srv3_seeded_install_media {
     Srv3SeededInstallMediaRefused { reason: _ } => false
     Srv3SeededInstallMediaDerived { input: i } => {
@@ -25,7 +25,7 @@ test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
   }
 }
 
-test fn srv3_seeded_install_media_input_is_the_shared_derivation() -> Bool {
+test fn srv3_seeded_install_media_input_is_the_shared_derivation() -> Bool  {
   match srv3_seeded_install_media {
     Srv3SeededInstallMediaRefused { reason: _ } => false
     Srv3SeededInstallMediaDerived { input: i } =>
@@ -35,18 +35,18 @@ test fn srv3_seeded_install_media_input_is_the_shared_derivation() -> Bool {
   }
 }
 
-test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
+test fn srv3_seeded_install_media_path_and_delivery() -> Bool  {
   srv3_seeded_install_media_install_path_is_versioned()
     && srv3_seeded_autoinstall_delivery_is_on_iso()
     && srv3_seeded_grub_cmdline_names_nocloud()
     && srv3_seeded_install_media_actuator_host_is_srv1()
 }
 
-test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {
+test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool  {
   srv3_seeded_install_media_unattended_not_proven_yet()
 }
 
-test fn srv3_seeded_remaster_toolchain_ensure_is_privileged_gated() -> Bool {
+test fn srv3_seeded_remaster_toolchain_ensure_is_privileged_gated() -> Bool  {
   srv3_seeded_install_media_remaster_toolchain_is_modeled()
     && srv3_seeded_install_media_toolchain_ensure_is_privileged_gated()
     && srv3_seeded_install_media_toolchain_unprivileged_fixture_denied()

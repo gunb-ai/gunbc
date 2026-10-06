@@ -47,7 +47,7 @@ fn w_first() -> VllmServingLaunch {
 // same head, same container name, same image digest, same unit digest -- and they are NOT the same
 // incarnation. A join on group, host or unit text answers "same" here and authorizes a grant taken
 // against a dead engine.
-test fn two_launches_of_one_unit_are_not_one_incarnation() -> Bool {
+test fn two_launches_of_one_unit_are_not_one_incarnation() -> Bool  {
   let second = w_launch(invocation: "inv-20-43", container: "gunbc-spark-pair", exe: w_exe_a, started: 1788000000)
   (match same_launch(a: w_first(), b: second) {
      DifferentLaunch { left: l, right: r } => (l as String) == "inv-16-36" && (r as String) == "inv-20-43"
@@ -60,7 +60,7 @@ test fn two_launches_of_one_unit_are_not_one_incarnation() -> Bool {
 
 // Same invocation, disagreeing field: that is not turnover, it is two observers contradicting each
 // other about one launch, and it gets its own arm so it cannot be actioned as a restart.
-test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover() -> Bool {
+test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover() -> Bool  {
   let rebuilt = w_launch(invocation: "inv-16-36", container: "gunbc-spark-pair", exe: w_exe_b, started: 1788000000)
   let moved = vllm_serving_launch(
     group: FabricGroupB,
@@ -102,7 +102,7 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
 // std.content_hash refuses to collapse that into a silent false, and this module must not
 // reintroduce the collapse. The refusal names the incomparability so the observer defect is
 // legible rather than reading as a rebuild.
-test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_rebuild() -> Bool {
+test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_rebuild() -> Bool  {
   let other_family = vllm_serving_launch(
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
@@ -120,7 +120,7 @@ test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_reb
   }
 }
 
-test fn the_join_wire_names_both_invocations() -> Bool {
+test fn the_join_wire_names_both_invocations() -> Bool  {
   let second = w_launch(invocation: "inv-20-43", container: "gunbc-spark-pair", exe: w_exe_a, started: 1788000000)
   string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "inv-16-36")
     && string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "inv-20-43")

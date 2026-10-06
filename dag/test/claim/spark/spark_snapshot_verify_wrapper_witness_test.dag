@@ -43,11 +43,11 @@ import gunbc.spark.model_snapshot_materialize {
 // file's call sites were updated when the classifier began requiring the exit status; this file's were
 // not, and it went unnoticed because nothing had resolved this entry since. A signature change is a
 // census obligation over every caller, not over the callers one happens to be editing.
-test fn verify_ok_sentinel_reads_as_verified() -> Bool {
+test fn verify_ok_sentinel_reads_as_verified() -> Bool  {
   read_instrument(exit_code: 0, stdout: concat("Verified 24 file(s). All checksums match.\n", verify_ok_sentinel as String)) == InstrumentVerified
 }
 
-test fn verify_failed_sentinel_reads_as_rejected() -> Bool {
+test fn verify_failed_sentinel_reads_as_rejected() -> Bool  {
   read_instrument(exit_code: 1, stdout: concat("Some files are missing.\n", verify_failed_sentinel as String)) == InstrumentRejectedTheSubject
 }
 
@@ -57,17 +57,17 @@ test fn verify_failed_sentinel_reads_as_rejected() -> Bool {
 // correctly given the pair, with no process involved. Both are wanted: a hermetic-only assertion could
 // be satisfied by a classifier nobody ever fed real output, and a wet-only one runs on a lane whose
 // execution this branch is still establishing.
-test fn an_ok_marker_with_a_nonzero_status_is_a_contradiction() -> Bool {
+test fn an_ok_marker_with_a_nonzero_status_is_a_contradiction() -> Bool  {
   w_is_contradiction(r: read_instrument(exit_code: 4, stdout: verify_ok_sentinel as String))
 }
 
-test fn a_failed_marker_with_a_zero_status_is_a_contradiction() -> Bool {
+test fn a_failed_marker_with_a_zero_status_is_a_contradiction() -> Bool  {
   w_is_contradiction(r: read_instrument(exit_code: 0, stdout: verify_failed_sentinel as String))
 }
 
 // BOTH SENTINELS AT ONCE IS ALSO UNESTABLISHED, and it is reachable: a verify command whose own output
 // contains the failure marker, wrapped by a run that then succeeds, prints both.
-test fn both_sentinels_together_are_a_contradiction() -> Bool {
+test fn both_sentinels_together_are_a_contradiction() -> Bool  {
   w_is_contradiction(r: read_instrument(
     exit_code: 0,
     stdout: concat(concat(verify_failed_sentinel as String, "\n"), verify_ok_sentinel as String),
@@ -89,11 +89,11 @@ fn w_is_contradiction(r: InstrumentReading) -> Bool {
 // examined. A
 // nonzero exit here is a failure of the WRAPPER or the container, not a verdict about the bytes, so it
 // must not read as a rejection.
-test fn absent_sentinel_reads_as_did_not_run() -> Bool {
+test fn absent_sentinel_reads_as_did_not_run() -> Bool  {
   read_instrument(exit_code: 126, stdout: "docker: Error response from daemon: permission denied\n") == InstrumentDidNotRun
 }
 
-test fn empty_output_reads_as_did_not_run() -> Bool {
+test fn empty_output_reads_as_did_not_run() -> Bool  {
   read_instrument(exit_code: 0, stdout: "") == InstrumentDidNotRun
 }
 
@@ -103,25 +103,25 @@ test fn empty_output_reads_as_did_not_run() -> Bool {
 // because that text is what the far-side shell executes. It goes red the moment anyone restores the
 // `&&`/`||` form, which is the only way this defect can come back.
 
-test fn wrapper_exits_with_the_command_status() -> Bool {
+test fn wrapper_exits_with_the_command_status() -> Bool  {
   sentinel_command_line(argv: ["true"]).contains("exit $rc")
 }
 
-test fn wrapper_captures_the_status_before_anything_overwrites_it() -> Bool {
+test fn wrapper_captures_the_status_before_anything_overwrites_it() -> Bool  {
   sentinel_command_line(argv: ["true"]).contains("rc=$?")
 }
 
 // THE OLD SHAPE IS NAMED AND REFUSED. `&& echo` is the exact spelling that made every exit zero, so its
 // ABSENCE is the property under test -- not a stylistic preference but the difference between a caller
 // that can detect failure and one that cannot.
-test fn wrapper_does_not_use_the_status_destroying_form() -> Bool {
+test fn wrapper_does_not_use_the_status_destroying_form() -> Bool  {
   sentinel_command_line(argv: ["true"]).contains("&& echo") == false
 }
 
 // BOTH SENTINELS ARE STILL EMITTED, so the exit status and the sentinel agree by construction rather
 // than by a caller remembering to prefer one. A wrapper that preserved the status but stopped printing
 // would leave read_instrument permanently answering DidNotRun.
-test fn wrapper_still_emits_both_sentinels() -> Bool {
+test fn wrapper_still_emits_both_sentinels() -> Bool  {
   let line = sentinel_command_line(argv: ["true"])
   line.contains(verify_ok_sentinel as String) && line.contains(verify_failed_sentinel as String)
 }
@@ -131,14 +131,14 @@ test fn wrapper_still_emits_both_sentinels() -> Bool {
 // An element containing a space must reach the far side as ONE word. This module has been bitten twice
 // by the opposite -- `--description=gunbc model snapshot materialize` became four shell words -- so the
 // quoting is evidence, not decoration.
-test fn wrapper_quotes_an_argument_containing_a_space() -> Bool {
+test fn wrapper_quotes_an_argument_containing_a_space() -> Bool  {
   sentinel_command_line(argv: ["hf", "--local-dir", "/home/briansrls/models/a b"]).contains("'/home/briansrls/models/a b'")
 }
 
 // THE TRANSFER RESTARTS ON FAILURE, BOUNDED (valiant-crab-775's radio diagnosis, 2026-10-03): the unit is
 // started with Restart=on-failure and a finite StartLimitBurst over a finite interval, so a DNS or transport
 // drop costs one retry and a run of drops ends failed rather than looping.
-test fn the_transfer_unit_restarts_on_failure_within_a_bound() -> Bool {
+test fn the_transfer_unit_restarts_on_failure_within_a_bound() -> Bool  {
   any(spark_transfer_restart_properties, p => p == "--property=Restart=on-failure")
     && any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "--property=StartLimitBurst="))
     && any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "--property=StartLimitIntervalSec="))
@@ -152,7 +152,7 @@ test fn the_transfer_unit_restarts_on_failure_within_a_bound() -> Bool {
 //  - the placement's own environment (HF_HUB_CACHE = the mount's container side) builds, and the rendered
 //    docker command passes that variable;
 //  - the host CLI, as the briansrls user, resolves to exactly the placement's cache root on the host.
-test fn the_containerised_hub_cli_writes_where_its_placement_says_or_is_not_built() -> Bool {
+test fn the_containerised_hub_cli_writes_where_its_placement_says_or_is_not_built() -> Bool  {
   let placement = HubCachePlacement { cache_root: spark_hub_cache_root }
   let refused = match containerized_hub_cli(image: "img" as NonEmptyStr, cli_path: "/usr/local/bin/hf" as NonEmptyStr, placement: placement, container_path: "/out" as NonEmptyStr, cache_env: hub_cache_environment_unset) {
     ContainerizedHubCliRefused { cause: c } => string_contains(s: c as String, pattern: "/root/.cache/huggingface/hub")
@@ -168,7 +168,7 @@ test fn the_containerised_hub_cli_writes_where_its_placement_says_or_is_not_buil
 }
 
 // THE RESOLVER FOLLOWS UPSTREAM'S PRECEDENCE: HF_HUB_CACHE, then HF_HOME/hub, then XDG_CACHE_HOME/huggingface/hub.
-test fn the_hub_cache_resolver_follows_upstream_precedence() -> Bool {
+test fn the_hub_cache_resolver_follows_upstream_precedence() -> Bool  {
   (hub_cache_root_for(env: HubCacheEnvironment { hf_hub_cache: Present { value: "/a" as NonEmptyStr }, hf_home: Present { value: "/b" as NonEmptyStr }, xdg_cache_home: none }, executing_home: "/h" as NonEmptyStr) as String) == "/a"
     && (hub_cache_root_for(env: HubCacheEnvironment { hf_hub_cache: none, hf_home: Present { value: "/b" as NonEmptyStr }, xdg_cache_home: Present { value: "/x" as NonEmptyStr } }, executing_home: "/h" as NonEmptyStr) as String) == "/b/hub"
     && (hub_cache_root_for(env: HubCacheEnvironment { hf_hub_cache: none, hf_home: none, xdg_cache_home: Present { value: "/x" as NonEmptyStr } }, executing_home: "/h" as NonEmptyStr) as String) == "/x/huggingface/hub"

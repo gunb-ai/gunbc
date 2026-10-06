@@ -23,7 +23,7 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
 // that derivation directly: the solve refuses, so the plan refuses with it. A
 // plan still offering three nbd-proxy steps for a host whose firmware does not
 // implement nbd-proxy is the failure this replaces.
-test fn srv3_actuator_plan_follows_the_solve_and_refuses() -> Bool {
+test fn srv3_actuator_plan_follows_the_solve_and_refuses() -> Bool  {
   srv3_os_install_actuator_plan_refuses_on_unestablished_path(image: srv3_resolved_image_fixture)
     && match srv3_os_install_actuator_plan_standing(image: srv3_resolved_image_fixture) {
       ActuatorPlanRefused { cause: _ } => true
@@ -31,7 +31,7 @@ test fn srv3_actuator_plan_follows_the_solve_and_refuses() -> Bool {
     }
 }
 
-test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
+test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool  {
   let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(
     iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
   )
@@ -41,12 +41,12 @@ test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
     && intent.iso_path == "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso"
 }
 
-test fn srv3_bmcweb_login_body_snapshot_uses_factory_when_unresolved() -> Bool {
+test fn srv3_bmcweb_login_body_snapshot_uses_factory_when_unresolved() -> Bool  {
   string_contains(s: srv3_bmcweb_login_body_content(), pattern: "\"username\":\"root\"")
     && string_contains(s: srv3_bmcweb_login_body_content(), pattern: "\"password\":\"0penBmc\"")
 }
 
-test fn srv3_actuate_prep_paths_are_declared() -> Bool {
+test fn srv3_actuate_prep_paths_are_declared() -> Bool  {
   string_contains(s: srv3_bmcweb_token_path, pattern: "/tmp/srv3_bmcweb_token")
     && srv3_os_install_actuate_runbook_is_declared()
 }
@@ -55,7 +55,7 @@ test fn srv3_actuate_prep_paths_are_declared() -> Bool {
 // two words the intent's facts must reach (the file export and the wss URL) by membership. The
 // joined-string supervision-grammar arm this witness used to assert retired with the raw word
 // lists -- the law it enforced is structural on the transient-unit realization surface.
-test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
+test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool  {
   let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat = websocat_nbd_proxy_bridge_command(
     bmc_host: intent.bmc_host,
@@ -80,7 +80,7 @@ test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
 // extdeps.tools.websocat websocat_header_argv_word_dissolution_trigger records. The word must
 // equal its derivation from the intent's own token, so a dropped header or a dead token
 // reference fails here.
-test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
+test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool  {
   let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat = websocat_nbd_proxy_bridge_command(
     bmc_host: intent.bmc_host,
@@ -92,7 +92,7 @@ test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
     acc || w == concat("--header=\"", concat(concat("Authorization: Token ", intent.session_token as String), "\"")))
 }
 
-test fn srv3_os_install_actuate_shell_runner_carries_dissolution_trigger() -> Bool {
+test fn srv3_os_install_actuate_shell_runner_carries_dissolution_trigger() -> Bool  {
   match srv3_os_install_actuate_shell_runner_scaffold {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false

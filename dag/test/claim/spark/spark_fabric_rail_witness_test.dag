@@ -8,7 +8,7 @@ import gunbc.spark.fabric_rail_desired { fabric_rail_desired, fabric_rail_desire
 import gunbc.spark.fabric_rail_apply { fabric_rail_apply_plans }
 
 // ONE ADDRESS PER FABRIC HOST, ALL DISTINCT, ALL IN THE RAIL /24, NONE FOR A HOST OFF THE FABRIC.
-test fn every_fabric_host_has_one_distinct_rail_address_and_others_have_none() -> Bool {
+test fn every_fabric_host_has_one_distinct_rail_address_and_others_have_none() -> Bool  {
   length(fabric_rail_desired) == 8
     && all(fabric_rail_desired, d => length(filter(fabric_rail_desired, e => ipv4_address_eq(a: e.address, b: d.address))) == 1)
     && all(fabric_rail_desired, d => starts_with(s: render_ipv4_address(addr: d.address) as String, prefix: "192.168.110."))
@@ -19,7 +19,7 @@ test fn every_fabric_host_has_one_distinct_rail_address_and_others_have_none() -
 
 // THE NETPLAN DOCUMENT NAMES THE LEG NETDEV WITH ITS ADDRESS AND JUMBO MTU, AND THE TWIN AS
 // UNADDRESSED AND OPTIONAL, so NetworkManager configures exactly one of the two netdevs a leg raises.
-test fn the_netplan_document_addresses_the_leg_and_quiets_its_twin() -> Bool {
+test fn the_netplan_document_addresses_the_leg_and_quiets_its_twin() -> Bool  {
   match fabric_rail_desired_for(host: operator_host_srv6) {
     Absent => false
     Present { value: d } =>
@@ -32,7 +32,7 @@ test fn the_netplan_document_addresses_the_leg_and_quiets_its_twin() -> Bool {
 
 // THE APPLY IS ONE SCRIPT PER FABRIC HOST, WRITING THE WHOLE DOCUMENT THEN APPLYING IT, and the rail
 // speed a sizer reads is the observed 50G, not a nameplate.
-test fn the_apply_writes_the_document_whole_and_reads_the_rail_speed_from_the_cable() -> Bool {
+test fn the_apply_writes_the_document_whole_and_reads_the_rail_speed_from_the_cable() -> Bool  {
   let plans = fabric_rail_apply_plans()
   length(plans) == 8
     && all(plans, p => starts_with(s: p.script, prefix: "set -e\n") && string_contains(s: p.script, pattern: "> /etc/netplan/90-gunbc-fabric.yaml\n") && string_contains(s: p.script, pattern: "netplan generate\nnetplan apply\n"))

@@ -122,11 +122,11 @@ fn w_four_ranks() -> List<V41RankStartupReading> {
    w_rank(rank: 2, tokens: 2000000, rev: w_rev()), w_rank(rank: 3, tokens: 2000000, rev: w_rev())]
 }
 
-test fn the_startup_receipt_is_judged_by_the_min_rank() -> Bool {
+test fn the_startup_receipt_is_judged_by_the_min_rank() -> Bool  {
   v41_capacity_wire(c: v41_kv_admission_capacity(s: v41_admit_startup(readings: w_four_ranks()))) == "x4"
 }
 
-test fn effective_bytes_per_token_confirms_the_bet_in_range() -> Bool {
+test fn effective_bytes_per_token_confirms_the_bet_in_range() -> Bool  {
   match v41_judge_byte_range_bet(bet: v41_kv_bytes_per_token_bet, observed: v41_min_rank_bytes_per_token(s: v41_admit_startup(readings: w_four_ranks()))) {
     BetConfirmed { key: _, observed: o } => byte_size_count(b: o) == 1850
     BetFalsified { key: _, observed: _ } => false
@@ -134,7 +134,7 @@ test fn effective_bytes_per_token_confirms_the_bet_in_range() -> Bool {
   }
 }
 
-test fn a_reading_outside_the_bet_falsifies_it_and_a_missing_one_is_unreadable() -> Bool {
+test fn a_reading_outside_the_bet_falsifies_it_and_a_missing_one_is_unreadable() -> Bool  {
   let falsified = match v41_judge_byte_range_bet(bet: v41_kv_bytes_per_token_bet, observed: Present { value: byte_size(count: 2400) }) {
     BetFalsified { key: _, observed: _ } => true
     BetConfirmed { key: _, observed: _ } => false
@@ -157,20 +157,20 @@ fn w_refused(s: V41StartupAdmission, needle: String) -> Bool {
   }
 }
 
-test fn a_missing_rank_refuses_the_startup_receipt() -> Bool {
+test fn a_missing_rank_refuses_the_startup_receipt() -> Bool  {
   let three = filter(w_four_ranks(), r => r.rank != 3)
   w_refused(s: v41_admit_startup(readings: three), needle: "rank 3 has no reading")
     && contains(v41_capacity_wire(c: v41_kv_admission_capacity(s: v41_admit_startup(readings: three))), "refused")
 }
 
-test fn a_missing_field_is_named_in_the_refusal() -> Bool {
+test fn a_missing_field_is_named_in_the_refusal() -> Bool  {
   let broken = w_rank_broken(rank: 2)
   let readings = [w_rank(rank: 0, tokens: 2000000, rev: w_rev()), w_rank(rank: 1, tokens: 2000000, rev: w_rev()), broken, w_rank(rank: 3, tokens: 2000000, rev: w_rev())]
   w_refused(s: v41_admit_startup(readings: readings), needle: "memory breakdown")
     && w_refused(s: v41_admit_startup(readings: readings), needle: "resolved kv dtype")
 }
 
-test fn a_rank_on_another_vllm_commit_refuses() -> Bool {
+test fn a_rank_on_another_vllm_commit_refuses() -> Bool  {
   let readings = [w_rank(rank: 0, tokens: 2000000, rev: w_rev()), w_rank(rank: 1, tokens: 2000000, rev: w_rev_other()), w_rank(rank: 2, tokens: 2000000, rev: w_rev()), w_rank(rank: 3, tokens: 2000000, rev: w_rev())]
   w_refused(s: v41_admit_startup(readings: readings), needle: "another vLLM commit")
 }
@@ -180,14 +180,14 @@ test fn a_rank_on_another_vllm_commit_refuses() -> Bool {
 data w_psi_before: String = "some avg10=0.00 avg60=0.00 avg300=0.00 total=1000\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=500\n"
 data w_psi_after: String = "some avg10=9.00 avg60=3.00 avg300=1.00 total=9000000\nfull avg10=8.00 avg60=2.00 avg300=1.00 total=7000500\n"
 
-test fn a_psi_full_stall_is_the_delta_of_two_totals() -> Bool {
+test fn a_psi_full_stall_is_the_delta_of_two_totals() -> Bool  {
   match psi_full_stall_interval(before: parse_psi(body: w_psi_before), after: parse_psi(body: w_psi_after), window: microsecond(count: 60000000)) {
     PsiStallMeasured { stalled: s, window: _ } => microsecond_count(m: s) == 7000000
     PsiStallUnmeasurable { cause: _ } => false
   }
 }
 
-test fn a_psi_total_that_went_backwards_is_unmeasurable() -> Bool {
+test fn a_psi_total_that_went_backwards_is_unmeasurable() -> Bool  {
   match psi_full_stall_interval(before: parse_psi(body: w_psi_after), after: parse_psi(body: w_psi_before), window: microsecond(count: 60000000)) {
     PsiStallUnmeasurable { cause: _ } => true
     PsiStallMeasured { stalled: _, window: _ } => false
@@ -197,7 +197,7 @@ test fn a_psi_total_that_went_backwards_is_unmeasurable() -> Bool {
 data w_disk_before: String = "   8       0 sda 1 0 8 1 0 0 0 0 0 0 0\n 259       0 nvme0n1 1000 0 80000 500 10 0 80 5 0 400 505 0 0 0 0\n"
 data w_disk_after: String = " 259       0 nvme0n1 3000 0 4080000 2500 10 0 80 5 4 1400 2505 0 0 0 0\n"
 
-test fn a_disk_read_interval_counts_512_byte_sectors_and_mean_await() -> Bool {
+test fn a_disk_read_interval_counts_512_byte_sectors_and_mean_await() -> Bool  {
   match disk_read_interval(before: parse_diskstats(body: w_disk_before, device: "nvme0n1" as NonEmptyStr), after: parse_diskstats(body: w_disk_after, device: "nvme0n1" as NonEmptyStr)) {
     DiskReadMeasured { read_bytes: b, reads: n, mean_read_await: aw } =>
       byte_size_count(b: b) == 4000000 * 512 && n == 2000
@@ -206,14 +206,14 @@ test fn a_disk_read_interval_counts_512_byte_sectors_and_mean_await() -> Bool {
   }
 }
 
-test fn an_absent_device_is_not_a_zero_read() -> Bool {
+test fn an_absent_device_is_not_a_zero_read() -> Bool  {
   match disk_read_interval(before: parse_diskstats(body: w_disk_before, device: "nvme1n1" as NonEmptyStr), after: parse_diskstats(body: w_disk_after, device: "nvme1n1" as NonEmptyStr)) {
     DiskReadUnmeasurable { cause: _ } => true
     DiskReadMeasured { read_bytes: _, reads: _, mean_read_await: _ } => false
   }
 }
 
-test fn mincore_refuses_more_resident_pages_than_the_file_has() -> Bool {
+test fn mincore_refuses_more_resident_pages_than_the_file_has() -> Bool  {
   let ok = match mincore_file_residency(file: "rank0.engram" as NonEmptyStr, file_bytes: byte_size(count: 8193), page_bytes: byte_size(count: 4096), resident_pages: 3) {
     MincoreResidencyAdmitted { residency: _ } => true
     MincoreResidencyRefused { file: _, cause: _ } => false
@@ -225,7 +225,7 @@ test fn mincore_refuses_more_resident_pages_than_the_file_has() -> Bool {
   ok && red
 }
 
-test fn memory_stat_reads_the_five_keys_and_names_a_missing_one() -> Bool {
+test fn memory_stat_reads_the_five_keys_and_names_a_missing_one() -> Bool  {
   let full = "anon 100\nfile 200\nkernel 5\nfile_mapped 50\nworkingset_refault_file 7\npgmajfault 9\n"
   let read = match parse_cgroup_memory_stat(body: full) {
     CgroupMemoryStatRead { stat: s } => byte_size_count(b: s.file) == 200 && s.pgmajfault == 9 && s.workingset_refault_file == 7
@@ -265,7 +265,7 @@ fn w_all_cells() -> List<V41ResidencyCell> {
   flat_map([BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests], p => map(v41_measurement_ranks, k => w_cell(phase: p, rank: k)))
 }
 
-test fn a_complete_residency_timeline_is_admitted_and_a_missing_cell_is_named() -> Bool {
+test fn a_complete_residency_timeline_is_admitted_and_a_missing_cell_is_named() -> Bool  {
   let ok = match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramUpstreamPinned, cells: w_all_cells()) {
     ResidencyTimelineAdmitted { run_id: _, arm: _, cells: _ } => true
     ResidencyTimelineRefused { causes: _ } => false
@@ -278,7 +278,7 @@ test fn a_complete_residency_timeline_is_admitted_and_a_missing_cell_is_named() 
   ok && red
 }
 
-test fn a_cell_from_the_other_image_arm_refuses_the_timeline() -> Bool {
+test fn a_cell_from_the_other_image_arm_refuses_the_timeline() -> Bool  {
   match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramFileBackedReleased, cells: w_all_cells()) {
     ResidencyTimelineRefused { causes: cs } => length(cs) == 16
     ResidencyTimelineAdmitted { run_id: _, arm: _, cells: _ } => false
@@ -318,7 +318,7 @@ fn w_probe(context: Nat, concurrency: Nat, observed: Bool, majfault_after: Nat) 
 
 // TODAY'S STATE: no touch counter, so every probe refuses and the Engram-resident capacity refuses,
 // even though mincore residency and fault counters are present.
-test fn engram_resident_refuses_while_the_touch_counter_is_unavailable() -> Bool {
+test fn engram_resident_refuses_while_the_touch_counter_is_unavailable() -> Bool  {
   let probes = [w_probe(context: 32768, concurrency: 1, observed: false, majfault_after: 5), w_probe(context: 262144, concurrency: 1, observed: false, majfault_after: 5),
                 w_probe(context: 262144, concurrency: 2, observed: false, majfault_after: 5), w_probe(context: 262144, concurrency: 4, observed: false, majfault_after: 5),
                 w_probe(context: 262144, concurrency: 6, observed: false, majfault_after: 5)]
@@ -328,7 +328,7 @@ test fn engram_resident_refuses_while_the_touch_counter_is_unavailable() -> Bool
 
 // ONCE THE COUNTER EXISTS: the largest 262k concurrency whose warm pass faulted nothing, stopping at
 // the first faulting cell.
-test fn engram_resident_is_the_last_warm_cell_without_major_faults() -> Bool {
+test fn engram_resident_is_the_last_warm_cell_without_major_faults() -> Bool  {
   let probes = [w_probe(context: 32768, concurrency: 1, observed: true, majfault_after: 5), w_probe(context: 262144, concurrency: 1, observed: true, majfault_after: 5),
                 w_probe(context: 262144, concurrency: 2, observed: true, majfault_after: 5), w_probe(context: 262144, concurrency: 4, observed: true, majfault_after: 90),
                 w_probe(context: 262144, concurrency: 6, observed: true, majfault_after: 5)]
@@ -384,7 +384,7 @@ fn w_step_ttft(c: Nat, ttft: Nat) -> V41StaircaseStepReading {
   }
 }
 
-test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool {
+test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool  {
   match v41_run_staircase(policy: PolicyProposed { proposal: w_policy(gate_context: 32768), reasons: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: map([1, 2, 4, 6, 8, 12, 16], c => w_step(c: c, preemptions: 0))) {
     V41StaircasePolicyUnsigned { cause: _ } => true
     V41StaircaseRan { outcome: _ } => false
@@ -395,7 +395,7 @@ test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool
 // completes the staircase at x16. The discriminating control is the same readings under a gate that
 // covers 262k, which stops at x1 on TTFT -- so the completion is the gate's scope, not a TTFT the
 // fold ignores.
-test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool {
+test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool  {
   let steps = map([1, 2, 4, 6, 8, 12, 16], c => w_step_ttft(c: c, ttft: 120000))
   let signed = match v41_run_staircase(policy: v41_capacity_policy, run_id: "run-1" as NonEmptyStr, steps: steps) {
     V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: l } } => l == 16
@@ -412,7 +412,7 @@ test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool 
   signed && covering
 }
 
-test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool {
+test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool  {
   let steps = [w_step(c: 1, preemptions: 0), w_step(c: 2, preemptions: 0), w_step(c: 4, preemptions: 0), w_step(c: 6, preemptions: 0), w_step(c: 8, preemptions: 3), w_step(c: 12, preemptions: 9)]
   let o = v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps)
   let stopped_at_8 = match o {
@@ -424,14 +424,14 @@ test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool {
   stopped_at_8 && v41_capacity_wire(c: v41_sla_capacity(o: o)) == "x6"
 }
 
-test fn a_hole_in_the_staircase_refuses_the_sla_capacity_above_it() -> Bool {
+test fn a_hole_in_the_staircase_refuses_the_sla_capacity_above_it() -> Bool  {
   let steps = [w_step(c: 1, preemptions: 0), w_step(c: 4, preemptions: 0)]
   contains(v41_capacity_wire(c: v41_sla_capacity(o: v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps))), "a reading is missing at x2")
 }
 
 // ── the report as V4.1's workload calibration (production admission is gunbc.spark.serving_promotion) ──
 
-test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserved_counts_absent() -> Bool {
+test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserved_counts_absent() -> Bool  {
   let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
   match v41_calibration_receipt(report: all, subject_key: w_v41_key(), trace_digest: content_hash_of_value(value: "fixture-trace" as NonEmptyStr)) {
     V41CalibrationRefused { cause: _ } => false
@@ -442,7 +442,7 @@ test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserve
   }
 }
 
-test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool {
+test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool  {
   let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr }, indexer_kernel: ExtensionLoaded }
   match v41_calibration_receipt(report: today, subject_key: w_v41_key(), trace_digest: content_hash_of_value(value: "fixture-trace" as NonEmptyStr)) {
     V41CalibrationRefused { cause: c } => contains(c as String, "Engram resident")
@@ -450,7 +450,7 @@ test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool {
   }
 }
 
-test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditions() -> Bool {
+test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditions() -> Bool  {
   let t = v41_capacity_measurement_plan_text()
   contains(t, "x6 needs 1572864 tokens, x16 needs 4194304")
     && contains(t, "engram arms: A-upstream-pinned")
@@ -460,7 +460,7 @@ test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditio
 
 // THE ENGRAM POINT BETS ARE JUDGED IN BYTES AGAINST THE AFTER-REQUESTS RESIDENCY, and a refused
 // timeline leaves them unreadable rather than zero.
-test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> Bool {
+test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> Bool  {
   let timeline = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramUpstreamPinned, cells: w_all_cells())
   match list_at_optional(xs: v41_engram_resident_bets, index: 0) {
     Absent => false
@@ -480,7 +480,7 @@ test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> 
 }
 
 // A FAILED DeepSelect IMPORT IS RECORDED AND ADMITTED; A RANK WHOSE LOG WAS NOT READ FOR IT REFUSES.
-test fn a_deepselect_import_failure_is_recorded_and_an_unobserved_one_refuses() -> Bool {
+test fn a_deepselect_import_failure_is_recorded_and_an_unobserved_one_refuses() -> Bool  {
   let r = w_rank(rank: 0, tokens: 2000000, rev: w_rev())
   let recorded = match v41_admit_rank_startup(r: r) {
     RankStartupAdmitted { receipt: x } => match x.deepselect { ExtensionImportFailed { logged: _ } => true  ExtensionLoaded => false  ExtensionUnobserved => false }
@@ -501,7 +501,7 @@ test fn a_deepselect_import_failure_is_recorded_and_an_unobserved_one_refuses() 
 }
 
 // ARM A RESOLVES FROM ITS IMAGE CONFIG DIGEST; THE FIXTURE IMAGE, WHICH NO BINDING NAMES, HAS NO ARM.
-test fn the_engram_arm_is_read_off_the_image_config_digest() -> Bool {
+test fn the_engram_arm_is_read_off_the_image_config_digest() -> Bool  {
   let arm_a_image = v41_oci_image_digest(
     manifest: OciSha256Digest(Sha256Digest { hex: "3333333333333333333333333333333333333333333333333333333333333333" as Sha256DigestHex }),
     config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
@@ -519,7 +519,7 @@ test fn the_engram_arm_is_read_off_the_image_config_digest() -> Bool {
 
 // THE REPORT NAMES THE INDEXER KERNEL ITS NUMBERS RAN ON: a failed DeepSelect import on the ranks
 // reaches the report with its logged line, and a refused startup receipt leaves it unobserved.
-test fn the_capacity_report_carries_the_indexer_kernel_standing() -> Bool {
+test fn the_capacity_report_carries_the_indexer_kernel_standing() -> Bool  {
   let signed_empty = v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: [] as List<V41StaircaseStepReading>)
   let failed = match v41_capacity_report(run_id: "run-1" as NonEmptyStr, startup: v41_admit_startup(readings: w_four_ranks()), probes: [] as List<V41ProbeReading>, staircase: signed_empty).indexer_kernel {
     ExtensionImportFailed { logged: l } => contains(l as String, "_deepselect_C")
@@ -537,7 +537,7 @@ test fn the_capacity_report_carries_the_indexer_kernel_standing() -> Bool {
 
 // THE LAUNCH SHAPE IS THE PLAN'S: max_num_seqs is the largest staircase concurrency, max_model_len the
 // plan's context, and the two measurement axes are the declared values.
-test fn the_launch_shape_derives_from_the_plan() -> Bool {
+test fn the_launch_shape_derives_from_the_plan() -> Bool  {
   let l = v41_measurement_launch_shape()
   l.max_num_seqs == 16 && token_count_value(t: l.max_model_len) == 262144
     && token_count_value(t: l.max_num_batched_tokens) == 8192 && basis_point_count(bp: l.gpu_memory_utilization) == 8000
@@ -545,7 +545,7 @@ test fn the_launch_shape_derives_from_the_plan() -> Bool {
 }
 
 // ARM B RESOLVES FROM THE PRODUCTION IMAGE'S CONFIG DIGEST.
-test fn arm_b_is_the_production_image() -> Bool {
+test fn arm_b_is_the_production_image() -> Bool  {
   let prod = v41_oci_image_digest(
     manifest: OciSha256Digest(Sha256Digest { hex: "3333333333333333333333333333333333333333333333333333333333333333" as Sha256DigestHex }),
     config: OciSha256Digest(Sha256Digest { hex: "5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" as Sha256DigestHex }),

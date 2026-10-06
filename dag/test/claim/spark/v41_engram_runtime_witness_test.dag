@@ -194,7 +194,7 @@ fn w_keys() -> List<ContentHash> {
   ]
 }
 
-test fn control_patch_digest_or_order_changes_runtime_and_candidate_keys() -> Bool {
+test fn control_patch_digest_or_order_changes_runtime_and_candidate_keys() -> Bool  {
   let a = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
   let b = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "9" }, WPatchSpec { path: "engram_prefetch.patch", c: "2" }], partition: PartitionByLaunchConfiguration)))
   let ba = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_prefetch.patch", c: "2" }, WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionByLaunchConfiguration)))
@@ -203,7 +203,7 @@ test fn control_patch_digest_or_order_changes_runtime_and_candidate_keys() -> Bo
     && w_key(s: a, which: "runtime") != w_key(s: ba, which: "runtime")
 }
 
-test fn control_weight_or_tokenizer_change_moves_source_and_candidate_keys() -> Bool {
+test fn control_weight_or_tokenizer_change_moves_source_and_candidate_keys() -> Bool  {
   let a = w_default(patches: w_two_patches())
   let b = V41CandidateInputs {
     runtime: a.runtime,
@@ -219,14 +219,14 @@ test fn control_weight_or_tokenizer_change_moves_source_and_candidate_keys() -> 
   w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: a), which: "candidate") != w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: b), which: "candidate")
 }
 
-test fn control_route_b_versus_d_moves_engram_not_runtime() -> Bool {
+test fn control_route_b_versus_d_moves_engram_not_runtime() -> Bool  {
   let b = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
   let d = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_d_identity))
   w_key(s: b, which: "runtime") == w_key(s: d, which: "runtime")
     && w_key(s: b, which: "engram") != w_key(s: d, which: "engram")
 }
 
-test fn control_partition_set_reordering_does_not_change_identity() -> Bool {
+test fn control_partition_set_reordering_does_not_change_identity() -> Bool  {
   let a = v41_candidate_partition
   let swapped = V41EngramResidencyPartition {
     storage_backed: a.storage_backed.sort_by(n => n as String),
@@ -236,7 +236,7 @@ test fn control_partition_set_reordering_does_not_change_identity() -> Bool {
     == w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: w_inputs(patches: w_two_patches(), partition: swapped, route: engram_route_b_identity)), which: "engram")
 }
 
-test fn control_incomplete_manifests_stay_unestablished() -> Bool {
+test fn control_incomplete_manifests_stay_unestablished() -> Bool  {
   let a = w_default(patches: w_two_patches())
   let incomplete = V41CandidateInputs {
     runtime: a.runtime,
@@ -256,7 +256,7 @@ test fn control_incomplete_manifests_stay_unestablished() -> Bool {
   }
 }
 
-test fn control_mismatched_rank_store_refuses_distributed_launch() -> Bool {
+test fn control_mismatched_rank_store_refuses_distributed_launch() -> Bool  {
   match w_identified() {
     Absent => false
     Present { value: enc } => match v41_rank_digest_of(e: enc, layer: 1, rank: 0) {
@@ -275,7 +275,7 @@ test fn control_mismatched_rank_store_refuses_distributed_launch() -> Bool {
   }
 }
 
-test fn control_full_engram_pinned_allocation_refuses_the_candidate() -> Bool {
+test fn control_full_engram_pinned_allocation_refuses_the_candidate() -> Bool  {
   match v41_candidate_refuses_full_pin(obs: v41_observe_pinned(pinned_bytes: byte_size(count: 100), table_bytes: byte_size(count: 100))) {
     Present { value: V41CandidateRealizationRefused { defects: d } } => any(d, x => (x as String).contains("full Engram pinned"))
     Present { value: V41CandidateRealized { realized_runtime: _, row_store: _, execution_profile: _, candidate: _, authorization_obligation: _ } } => false
@@ -284,14 +284,14 @@ test fn control_full_engram_pinned_allocation_refuses_the_candidate() -> Bool {
   }
 }
 
-test fn a_bounded_staging_pin_is_not_a_full_table_pin() -> Bool {
+test fn a_bounded_staging_pin_is_not_a_full_table_pin() -> Bool  {
   match v41_candidate_refuses_full_pin(obs: v41_observe_pinned(pinned_bytes: byte_size(count: 8), table_bytes: byte_size(count: 100))) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn control_missing_local_store_cannot_use_nfs() -> Bool {
+test fn control_missing_local_store_cannot_use_nfs() -> Bool  {
   match v41_token_time(placement: RemoteNetwork, local_present: false) {
     V41TokenTimeRefused { defects: d } => any(d, x => (x as String).contains("NFS"))
     V41TokenTimeLocal { placement: _ } => false
@@ -302,16 +302,16 @@ test fn control_missing_local_store_cannot_use_nfs() -> Bool {
     }
 }
 
-test fn control_published_infeasibility_is_not_weakened_by_a_keyed_specification() -> Bool {
+test fn control_published_infeasibility_is_not_weakened_by_a_keyed_specification() -> Bool  {
   v41_specification_is_not_selectable(spec: v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: V41PatchesAbsentByObservation)))
     && v41_specification_is_not_selectable(spec: v41_candidate())
 }
 
-test fn a_keyed_specification_is_not_selectable_even_when_every_axis_keys() -> Bool {
+test fn a_keyed_specification_is_not_selectable_even_when_every_axis_keys() -> Bool  {
   v41_specification_is_not_selectable(spec: v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches())))
 }
 
-test fn realized_identity_requires_produced_image_digest_and_consumed_patches() -> Bool {
+test fn realized_identity_requires_produced_image_digest_and_consumed_patches() -> Bool  {
   let spec = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
   match spec.standing {
     V41CandidateKeyed { runtime_artifact: rk, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
@@ -342,7 +342,7 @@ fn w_realized_under(readback: V41StoreReadback) -> V41SelectableRuntime? {
   }
 }
 
-test fn only_the_realized_candidate_is_selectable() -> Bool {
+test fn only_the_realized_candidate_is_selectable() -> Bool  {
   match w_realized_under(readback: V41StoreReadbackVerified { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, samples: 40 }) {
     Present { value: V41Selectable { candidate: _ } } => true
     _ => false
@@ -352,14 +352,14 @@ test fn only_the_realized_candidate_is_selectable() -> Bool {
 // A REALIZED CANDIDATE IS SELECTABLE, SO THE SPECIFICATION'S DERIVATION EVIDENCE GATES IT: the same keyed
 // specification, image and stores that are selectable once the stores are read back are not while the
 // readback is unread, and the reason is the readback's obligation.
-test fn an_unread_readback_keeps_a_realized_candidate_unselectable() -> Bool {
+test fn an_unread_readback_keeps_a_realized_candidate_unselectable() -> Bool  {
   match w_realized_under(readback: w_readback_unread()) {
     Present { value: V41NotSelectable { reason: r } } => (r as String).contains("the stores were not read back")
     _ => false
   }
 }
 
-test fn adversarial_trace_larger_than_cache_evicts_and_stays_in_bound() -> Bool {
+test fn adversarial_trace_larger_than_cache_evicts_and_stays_in_bound() -> Bool  {
   let limits = v41_residency_limits(
     configured_cache: byte_size(count: 40),
     effective_cache: byte_size(count: 40),
@@ -374,7 +374,7 @@ test fn adversarial_trace_larger_than_cache_evicts_and_stays_in_bound() -> Bool 
   }
 }
 
-test fn exceeding_configured_cache_refuses() -> Bool {
+test fn exceeding_configured_cache_refuses() -> Bool  {
   let over = v41_residency_limits(
     configured_cache: byte_size(count: 10),
     effective_cache: byte_size(count: 40),
@@ -389,7 +389,7 @@ test fn exceeding_configured_cache_refuses() -> Bool {
   }
 }
 
-test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
+test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool  {
   match w_identified() {
     Absent => false
     Present { value: enc } => match v41_staging_request(image: w_image(), encoding: enc) {
@@ -438,7 +438,7 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
   }
 }
 
-test fn the_live_storage_backed_patches_are_digestfile_of_committed_bytes() -> Bool {
+test fn the_live_storage_backed_patches_are_digestfile_of_committed_bytes() -> Bool  {
   match v41_storage_backed_patch_population() {
     V41PatchesObserved { patches: ps, partition: _ } =>
       length(ps) == 7
@@ -451,7 +451,7 @@ test fn the_live_storage_backed_patches_are_digestfile_of_committed_bytes() -> B
   }
 }
 
-test fn overlay_magic_cites_the_row_store_authority() -> Bool {
+test fn overlay_magic_cites_the_row_store_authority() -> Bool  {
   let local = Filesystem.Read(path: v41_engram_file_backed_overlay_path as String)
   local.success
     && (local.content as String).contains("v41_row_store_magic")

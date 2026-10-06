@@ -22,7 +22,7 @@ fn w_receipt(verified: Nat, after_release: Nat) -> V41StoreOpenReceipt {
   v41_store_open_receipt(store_bytes: byte_size(count: 1000), verified_bytes: byte_size(count: verified), resident_after_verify: byte_size(count: 1000), resident_after_release: byte_size(count: after_release))
 }
 
-test fn a_verified_store_whose_cache_was_released_opens() -> Bool {
+test fn a_verified_store_whose_cache_was_released_opens() -> Bool  {
   match v41_open_residency_verdict(r: w_receipt(verified: 1000, after_release: 0)) {
     V41OpenReleased { receipt: r } => byte_size_count(b: r.resident_after_verify) == 1000
     V41OpenResidueRefused { defect: _ } => false
@@ -31,7 +31,7 @@ test fn a_verified_store_whose_cache_was_released_opens() -> Bool {
 
 // RED (a): verification that leaves its page cache resident fails the residency claim, by any
 // residue, including a single page; and a partial verification is no verification.
-test fn verification_that_leaves_the_cache_resident_refuses() -> Bool {
+test fn verification_that_leaves_the_cache_resident_refuses() -> Bool  {
   let resident = match v41_open_residency_verdict(r: w_receipt(verified: 1000, after_release: 1000)) {
     V41OpenReleased { receipt: _ } => false
     V41OpenResidueRefused { defect: d } => (d as String).contains("remain page-cache resident")
@@ -75,7 +75,7 @@ fn w_offset(i: Nat) -> ByteSize {
 // RED (b), agreement arm: rank 1 owns global rows 2 and 3, its first and last local rows. A batch
 // over both boundaries, out of order and with a repeat, returns exactly the per-row records in
 // request order.
-test fn the_batched_gather_is_the_per_row_records_in_request_order_over_boundary_rows() -> Bool {
+test fn the_batched_gather_is_the_per_row_records_in_request_order_over_boundary_rows() -> Bool  {
   match w_rank1_store() {
     Absent => false
     Present { value: s } => match v41_gather_rows(store: s, spec: w_tiny_spec(), offsets: [w_offset(i: 3), w_offset(i: 2), w_offset(i: 3)]) {
@@ -94,7 +94,7 @@ fn w_refused(s: V41CompleteStore, offsets: List<ByteSize>) -> Bool {
 
 // RED (b), refusal arm: an offset shifted by one byte, one inside the magic, and one whose record
 // would run past the file each refuse the WHOLE batch, even beside a valid offset.
-test fn a_shifted_offset_batch_refuses() -> Bool {
+test fn a_shifted_offset_batch_refuses() -> Bool  {
   match w_rank1_store() {
     Absent => false
     Present { value: s } => {
@@ -113,21 +113,21 @@ fn w_offsets(xs: List<Nat>) -> List<ByteSize> {
 }
 
 // RED (c): a duplicate offset within a batch counts once. 3-byte records on 8-byte pages.
-test fn a_duplicate_offset_in_a_batch_counts_once() -> Bool {
+test fn a_duplicate_offset_in_a_batch_counts_once() -> Bool  {
   length(v41_touched_pages(offsets: w_offsets(xs: [8, 8, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
     && length(v41_touched_pages(offsets: w_offsets(xs: [8, 11, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
 }
 
 // RED (d): a row spanning a page boundary counts both pages; the row just before the boundary
 // counts one, and a record longer than a page counts every page it covers.
-test fn a_row_spanning_a_page_boundary_counts_both_pages() -> Bool {
+test fn a_row_spanning_a_page_boundary_counts_both_pages() -> Bool  {
   v41_touched_pages(offsets: w_offsets(xs: [6]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0, 1]
     && v41_touched_pages(offsets: w_offsets(xs: [5]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0]
     && v41_touched_pages(offsets: w_offsets(xs: [7]), record: byte_size(count: 18), page: byte_size(count: 8)) == [0, 1, 2, 3]
 }
 
 // A rank's (file, page) pairs across files are the per-file counts summed, with calls, rows and time.
-test fn a_rank_sums_its_files_touch_receipts() -> Bool {
+test fn a_rank_sums_its_files_touch_receipts() -> Bool  {
   let a = v41_fetch_touch_receipt(page_bytes: byte_size(count: 4096), page_count: 100, distinct_pages_touched: 7, fetch_rows_calls: 2, rows_fetched: 9, fetch_rows_time: microsecond(count: 30))
   let b = v41_fetch_touch_receipt(page_bytes: byte_size(count: 4096), page_count: 100, distinct_pages_touched: 3, fetch_rows_calls: 1, rows_fetched: 4, fetch_rows_time: microsecond(count: 12))
   let r = v41_rank_touches(files: [a, b])

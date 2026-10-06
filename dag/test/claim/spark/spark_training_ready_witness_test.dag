@@ -147,7 +147,7 @@ fn w_readiness(
   }
 }
 
-test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
+test fn w_a_fully_retired_training_cell_is_ready() -> Bool  {
   w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "97656250")
 }
 
@@ -156,7 +156,7 @@ test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
 // srv5's retirement observation is deliberately WELL-FORMED and fully absent here. If role were not
 // consulted, this input would be indistinguishable from srv6's and would pass. It refuses on role
 // alone, which is what "srv5 is statically reserved" has to mean to be worth anything.
-test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool {
+test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool  {
   !w_readiness(
     retirement: w_retired(host: operator_host_srv5),
     meminfo_stdout: "97656250",
@@ -164,14 +164,14 @@ test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() ->
 }
 
 // AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
-test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
+test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool  {
   !w_readiness(retirement: w_retired_endpoint_silent(), meminfo_stdout: "97656250")
     && !w_readiness(retirement: w_retired_process_silent(), meminfo_stdout: "97656250")
     && !w_readiness(retirement: w_retired_unit_silent(), meminfo_stdout: "97656250")
 }
 
 // A SERVER THAT ANSWERED IS THE LOUD ARM: the retirement did not happen.
-test fn w_a_still_serving_endpoint_refuses() -> Bool {
+test fn w_a_still_serving_endpoint_refuses() -> Bool  {
   !w_readiness(
     retirement: spark_serving_retirement_observation_from_probes(
       host: operator_host_srv6,
@@ -191,7 +191,7 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
 // proving the ordering did not exist until the retirement was observed. Per the dissolution rule the
 // production check went away and its discriminating RED did not: the same input is now refused one
 // stage earlier, by the producer, and this is that refusal.
-test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
+test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool  {
   match spark_unified_pool_observation_from_capture(
     capture: ProbeAnswered { stdout: "97656250" },
     after: w_retired_endpoint_silent(),
@@ -206,7 +206,7 @@ test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
 // The claim this joins is the one the previous shape could not author at all: the quantity used to
 // arrive as a ByteSize parameter, so ANY answered capture -- including this one -- certified whatever
 // number the caller passed. Now the text is the measurement, and text that does not parse refuses.
-test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool {
+test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool  {
   match spark_unified_pool_observation_from_capture(
     capture: ProbeAnswered { stdout: "MemAvailable:   97656250 kB" },
     after: w_retired_srv6(),
@@ -216,13 +216,13 @@ test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool {
   }
 }
 
-test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
+test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool  {
   !w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "0")
 }
 
 // A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A COUNT AT ALL, which is now true by construction
 // rather than by a check: there is no quantity parameter left to pass beside a probe that never ran.
-test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
+test fn w_a_pool_number_without_a_read_is_refused() -> Bool  {
   match spark_unified_pool_observation_from_capture(
     capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
     after: w_retired_srv6(),
@@ -255,7 +255,7 @@ fn w_endpoint_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence 
   )
 }
 
-test fn w_only_a_completed_empty_enumeration_establishes_endpoint_absence() -> Bool {
+test fn w_only_a_completed_empty_enumeration_establishes_endpoint_absence() -> Bool  {
   w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "" }))
     && w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "  \n " }))
     && !w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:*" }))
@@ -265,14 +265,14 @@ test fn w_only_a_completed_empty_enumeration_establishes_endpoint_absence() -> B
 //
 // 7 is listed first deliberately: under the superseded evidence it was the single code that PROVED
 // retirement, and it now proves no more than 6 or 28 do.
-test fn w_a_connect_failure_never_establishes_endpoint_absence() -> Bool {
+test fn w_a_connect_failure_never_establishes_endpoint_absence() -> Bool  {
   !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "failed to connect to host" }))
     && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 6, stderr: "could not resolve host" }))
     && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 28, stderr: "operation timed out" }))
     && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 1, stderr: "enumeration failed" }))
 }
 
-test fn w_an_enumeration_that_never_ran_establishes_no_endpoint_absence() -> Bool {
+test fn w_an_enumeration_that_never_ran_establishes_no_endpoint_absence() -> Bool  {
   !w_absence_established(a: w_endpoint_absence(capture: ProbeNeverRan { cause: "host unreachable" as NonEmptyStr }))
 }
 
@@ -289,7 +289,7 @@ fn w_unit_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence {
   )
 }
 
-test fn w_the_unit_axis_establishes_absence_by_answering_not_by_failing() -> Bool {
+test fn w_the_unit_axis_establishes_absence_by_answering_not_by_failing() -> Bool  {
   w_absence_established(a: w_unit_absence(capture: ProbeAnswered { stdout: "not-found" }))
     && !w_absence_established(a: w_unit_absence(capture: ProbeAnswered { stdout: "loaded" }))
     && !w_absence_established(a: w_unit_absence(capture: ProbeFailed { exit_code: 1, stderr: "failed to connect to bus" }))
@@ -297,7 +297,7 @@ test fn w_the_unit_axis_establishes_absence_by_answering_not_by_failing() -> Boo
 
 // THE REFUSAL NAMES EVERY UNSATISFIED AXIS, NOT THE FIRST. An operator deciding whether to re-probe
 // or re-run the retirement needs all of them.
-test fn w_the_refusal_carries_a_cause_rather_than_a_bare_negative() -> Bool {
+test fn w_the_refusal_carries_a_cause_rather_than_a_bare_negative() -> Bool  {
   match spark_serving_absence_refusal(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "failed to connect to host" })) {
     Present { value: c } => length(c as String) > 0
     Absent => false

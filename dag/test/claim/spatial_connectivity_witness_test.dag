@@ -128,7 +128,7 @@ fn connected(openings: List<Opening>, from: String, to: String) -> Bool {
 }
 
 // A door in the wall the two rooms genuinely share is admitted, and the plan carries it.
-test fn a_door_in_a_shared_wall_is_admitted() -> Bool {
+test fn a_door_in_a_shared_wall_is_admitted() -> Bool  {
   match plan_of(openings: [door(name: "d1", a: "kitchen", b: "hall", along_low: 1000, along_high: 1900)]) {
     Absent => false
     Present { value: p } => length(plan_openings(p: p)) == 1
@@ -137,7 +137,7 @@ test fn a_door_in_a_shared_wall_is_admitted() -> Bool {
 
 // REACHABILITY IS TRANSITIVE, AND THIS IS THE CLAIM THAT NEEDS MORE THAN ONE ROUND: kitchen reaches
 // study only through hall, so a single relaxation would answer false.
-test fn two_doors_make_the_far_rooms_reachable() -> Bool {
+test fn two_doors_make_the_far_rooms_reachable() -> Bool  {
   let doors = [
     door(name: "d1", a: "kitchen", b: "hall", along_low: 1000, along_high: 1900),
     door(name: "d2", a: "hall", b: "study", along_low: 1000, along_high: 1900),
@@ -148,7 +148,7 @@ test fn two_doors_make_the_far_rooms_reachable() -> Bool {
 
 // An opening is symmetric but reachability still needs the edge: with only the first door, the study
 // is not reachable, and the world is not connected.
-test fn one_door_leaves_the_third_room_unreachable() -> Bool {
+test fn one_door_leaves_the_third_room_unreachable() -> Bool  {
   let doors = [door(name: "d1", a: "kitchen", b: "hall", along_low: 1000, along_high: 1900)]
   match terrace() {
     Absent => false
@@ -167,7 +167,7 @@ test fn one_door_leaves_the_third_room_unreachable() -> Bool {
   }
 }
 
-test fn both_doors_make_the_world_connected() -> Bool {
+test fn both_doors_make_the_world_connected() -> Bool  {
   match terrace() {
     Absent => false
     Present { value: w } =>
@@ -184,7 +184,7 @@ test fn both_doors_make_the_world_connected() -> Bool {
 // THE FAILURE THIS BAND EXISTS FOR. kitchen and study are both real rooms and both have a
 // north-south wall, but not the same one - they are two metres apart. A door between them looks
 // entirely reasonable in a room list and is a hole into open air.
-test fn a_door_between_rooms_that_do_not_touch_refuses() -> Bool {
+test fn a_door_between_rooms_that_do_not_touch_refuses() -> Bool  {
   match plan_refusal(openings: [door(name: "d1", a: "kitchen", b: "study", along_low: 1000, along_high: 1900)]) {
     Absent => false
     Present { value: c } =>
@@ -197,7 +197,7 @@ test fn a_door_between_rooms_that_do_not_touch_refuses() -> Bool {
 
 // The rooms DO share a wall, and the door runs off its end: the shared wall spans y 0..4000, and a
 // door from 3500 to 4500 leaves the building. The refusal reports both rectangles.
-test fn a_door_running_past_the_shared_wall_refuses_with_both_extents() -> Bool {
+test fn a_door_running_past_the_shared_wall_refuses_with_both_extents() -> Bool  {
   match plan_refusal(openings: [door(name: "d1", a: "kitchen", b: "hall", along_low: 3500, along_high: 4500)]) {
     Absent => false
     Present { value: c } =>
@@ -213,7 +213,7 @@ test fn a_door_running_past_the_shared_wall_refuses_with_both_extents() -> Bool 
 
 // The wall is 2400 high, so a door reaching 2600 does not fit in it. The vertical direction is
 // checked against the same shared region as the horizontal one.
-test fn a_door_taller_than_the_shared_wall_refuses() -> Bool {
+test fn a_door_taller_than_the_shared_wall_refuses() -> Bool  {
   match plan_refusal(openings: [Opening {
     identity: ("d1" as OpeningIdentity),
     first: ("kitchen" as RoomIdentity),
@@ -233,7 +233,7 @@ test fn a_door_taller_than_the_shared_wall_refuses() -> Bool {
   }
 }
 
-test fn a_door_with_no_area_refuses() -> Bool {
+test fn a_door_with_no_area_refuses() -> Bool  {
   match plan_refusal(openings: [door(name: "d1", a: "kitchen", b: "hall", along_low: 1000, along_high: 1000)]) {
     Absent => false
     Present { value: c } =>
@@ -244,7 +244,7 @@ test fn a_door_with_no_area_refuses() -> Bool {
   }
 }
 
-test fn a_door_joining_a_room_to_itself_refuses() -> Bool {
+test fn a_door_joining_a_room_to_itself_refuses() -> Bool  {
   match plan_refusal(openings: [door(name: "d1", a: "kitchen", b: "kitchen", along_low: 1000, along_high: 1900)]) {
     Absent => false
     Present { value: c } =>
@@ -255,7 +255,7 @@ test fn a_door_joining_a_room_to_itself_refuses() -> Bool {
   }
 }
 
-test fn a_door_naming_a_room_the_world_does_not_have_refuses() -> Bool {
+test fn a_door_naming_a_room_the_world_does_not_have_refuses() -> Bool  {
   match plan_refusal(openings: [door(name: "d1", a: "kitchen", b: "cellar", along_low: 1000, along_high: 1900)]) {
     Absent => false
     Present { value: c } =>
@@ -268,7 +268,7 @@ test fn a_door_naming_a_room_the_world_does_not_have_refuses() -> Bool {
 
 // Two openings with one identity are two facts claiming one name, and the plan refuses rather than
 // keeping whichever came last.
-test fn two_openings_with_one_identity_refuse() -> Bool {
+test fn two_openings_with_one_identity_refuse() -> Bool  {
   match plan_refusal(openings: [
     door(name: "d1", a: "kitchen", b: "hall", along_low: 1000, along_high: 1900),
     door(name: "d1", a: "hall", b: "study", along_low: 1000, along_high: 1900),
@@ -294,7 +294,7 @@ fn endpoint_role_is(c: ConnectivityRefusal, name: String, start_expected: Bool) 
   }
 }
 
-test fn reachability_from_a_room_the_world_does_not_have_refuses() -> Bool {
+test fn reachability_from_a_room_the_world_does_not_have_refuses() -> Bool  {
   match terrace() {
     Absent => false
     Present { value: w } =>
@@ -313,7 +313,7 @@ test fn reachability_from_a_room_the_world_does_not_have_refuses() -> Bool {
 // DESTINATION with the variant named for a missing start: fail-closed, and pointing at the wrong
 // argument. This pair is what discriminates them - the same absent room, asked from two positions,
 // must come back with two different roles.
-test fn a_missing_destination_is_named_as_a_destination_not_a_start() -> Bool {
+test fn a_missing_destination_is_named_as_a_destination_not_a_start() -> Bool  {
   match terrace() {
     Absent => false
     Present { value: w } =>
@@ -328,7 +328,7 @@ test fn a_missing_destination_is_named_as_a_destination_not_a_start() -> Bool {
   }
 }
 
-test fn a_missing_source_is_named_as_a_start_not_a_destination() -> Bool {
+test fn a_missing_source_is_named_as_a_start_not_a_destination() -> Bool  {
   match terrace() {
     Absent => false
     Present { value: w } =>

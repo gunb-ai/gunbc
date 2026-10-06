@@ -127,7 +127,7 @@ fn join_names_axis(j: ServingSubjectJoin, a: ServingSubjectAxis) -> Bool {
 // This is the failure the two measurement modules describe in prose and could not refuse. If the
 // join ever answers SameSubject here, a rate measured on a retiring checkpoint is licensed for a
 // decision about the live one.
-test fn w_a_deepseek_measurement_does_not_read_for_a_glm_decision() -> Bool {
+test fn w_a_deepseek_measurement_does_not_read_for_a_glm_decision() -> Bool  {
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: fx_glm_group_b)
   join_is_different(j: j)
     && join_names_axis(j: j, a: AxisCheckpoint)
@@ -138,7 +138,7 @@ test fn w_a_deepseek_measurement_does_not_read_for_a_glm_decision() -> Bool {
 // THE REFUSAL NAMES ONLY THE AXES THAT MOVED. A refusal that listed every axis would be true and
 // useless -- it would send the reader back to diffing the records by eye, which is the work this
 // type exists to do.
-test fn w_the_refusal_does_not_name_axes_that_agree() -> Bool {
+test fn w_the_refusal_does_not_name_axes_that_agree() -> Bool  {
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: fx_glm_group_b)
   !join_names_axis(j: j, a: AxisTopology) && !join_names_axis(j: j, a: AxisBatchBudget)
 }
@@ -147,7 +147,7 @@ test fn w_the_refusal_does_not_name_axes_that_agree() -> Bool {
 //
 // Without this the refusal above is satisfied by a join that refuses everything, which would be a
 // wall that admits nothing and therefore carries no information.
-test fn w_a_subject_reads_for_itself() -> Bool {
+test fn w_a_subject_reads_for_itself() -> Bool  {
   join_is_same(j: serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: fx_deepseek_tp4))
     && length(serving_subject_differing_axes(left: fx_deepseek_tp4, right: fx_deepseek_tp4)) == 0
 }
@@ -157,7 +157,7 @@ test fn w_a_subject_reads_for_itself() -> Bool {
 // The roster is folded by the join, so an axis added to the subject without an arm in the roster
 // would be invisible. This walks each axis and asserts that moving it alone is detected and named,
 // which is what makes the exhaustive match a wall rather than a checklist.
-test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool {
+test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool  {
   let moved = serving_performance_subject(
     checkpoint: fx_deepseek_tp4.checkpoint,
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
@@ -177,7 +177,7 @@ test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool {
   join_is_different(j: j) && join_names_axis(j: j, a: AxisTopology) && !join_names_axis(j: j, a: AxisCheckpoint)
 }
 
-test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool {
+test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool  {
   let moved = serving_performance_subject(
     checkpoint: fx_deepseek_tp4.checkpoint,
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
@@ -197,7 +197,7 @@ test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool {
   join_is_different(j: j) && join_names_axis(j: j, a: AxisBatchBudget)
 }
 
-test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool {
+test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool  {
   let moved = serving_performance_subject(
     checkpoint: fx_deepseek_tp4.checkpoint,
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
@@ -221,7 +221,7 @@ test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool {
 //
 // This is the brief's live question in miniature. A socket measurement and an RDMA decision are
 // DIFFERENT subjects, which is what makes the RDMA comparison a comparison rather than a re-read.
-test fn w_socket_and_rdma_are_different_subjects() -> Bool {
+test fn w_socket_and_rdma_are_different_subjects() -> Bool  {
   let on_ib = serving_performance_subject(
     checkpoint: fx_deepseek_tp4.checkpoint,
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
@@ -246,7 +246,7 @@ test fn w_socket_and_rdma_are_different_subjects() -> Bool {
 // and collapsing them would license quoting a socket number for an RDMA arm. Note the subject below
 // is built directly rather than through `serving_subject_standing`, because the point of this row is
 // the axis comparison itself; the standing constructor's refusal has its own row.
-test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
+test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool  {
   let unread = serving_performance_subject(
     checkpoint: fx_deepseek_tp4.checkpoint,
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
@@ -268,7 +268,7 @@ test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
 }
 
 // ── AN UNESTABLISHED STANDING REFUSES RATHER THAN GUESSING ─────────────────────────────────────
-test fn w_a_partial_standing_names_its_gap_and_the_remedy() -> Bool {
+test fn w_a_partial_standing_names_its_gap_and_the_remedy() -> Bool  {
   match serving_subject_standing(
     subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4),
     believed: "fixture belief" as NonEmptyStr,
@@ -298,7 +298,7 @@ fn is_delta_on(c: SubjectAxisDelta, a: ServingSubjectAxis) -> Bool {
   }
 }
 
-test fn w_a_one_axis_difference_over_fully_read_subjects_names_that_axis() -> Bool {
+test fn w_a_one_axis_difference_over_fully_read_subjects_names_that_axis() -> Bool  {
   let on_ib = serving_performance_subject(
     checkpoint: fx_deepseek_tp4.checkpoint,
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
@@ -321,7 +321,7 @@ test fn w_a_one_axis_difference_over_fully_read_subjects_names_that_axis() -> Bo
 
 // TWO AXES IS NOT A CUT. fx_glm_group_b differs from the DeepSeek profile on checkpoint, runtime and
 // ceiling at once, so no attribution to any one of them is available from that pair.
-test fn w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed() -> Bool {
+test fn w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed() -> Bool  {
   match serving_subject_axis_delta(
     left: SubjectEstablished { subject: fx_deepseek_tp4 },
     right: SubjectEstablished { subject: fx_glm_group_b }) {
@@ -335,7 +335,7 @@ test fn w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed() -> Bool {
   }
 }
 
-test fn w_two_identical_subjects_are_a_repeat_and_not_a_cut() -> Bool {
+test fn w_two_identical_subjects_are_a_repeat_and_not_a_cut() -> Bool  {
   match serving_subject_axis_delta(
     left: SubjectEstablished { subject: fx_deepseek_tp4 },
     right: SubjectEstablished { subject: fx_deepseek_tp4 }) {
@@ -360,7 +360,7 @@ test fn w_two_identical_subjects_are_a_repeat_and_not_a_cut() -> Bool {
 // record's fields as a value, at which point the roster is derived and this claim dissolves rather
 // than being maintained. Until then the roster is asserted non-degenerate so the fold cannot quietly
 // become an empty list that reads every pair of subjects as the same subject.
-test fn w_the_axis_roster_is_not_degenerate() -> Bool {
+test fn w_the_axis_roster_is_not_degenerate() -> Bool  {
   length(serving_subject_axes) == 16
 }
 
@@ -369,7 +369,7 @@ test fn w_the_axis_roster_is_not_degenerate() -> Bool {
 // These are the rows that make this type CONSUMED rather than declared, and unlike the fixtures
 // above they are SUPPOSED to move when a measurement is re-taken. Each asserts the standing its own
 // module states in prose, so the prose and the value cannot drift apart.
-test fn w_every_batch_arm_carries_its_own_partial_subject() -> Bool {
+test fn w_every_batch_arm_carries_its_own_partial_subject() -> Bool  {
   length(spark_group_a_measured_arms) > 0
     && fold(spark_group_a_measured_arms, init: true, f: (acc, arm) => acc && arm_subject_is_partial_on_topology(arm: arm))
 }
@@ -413,7 +413,7 @@ fn arm_subject_is_partial_on_topology(arm: MeasuredBatchArm) -> Bool {
 // DifferentSubject on topology; while it is a bet, the join says it cannot tell. That is the
 // difference between the two answers, and it is the whole reason the belief stays outside the
 // subject.
-test fn w_the_depth_law_does_not_read_for_the_batch_arms() -> Bool {
+test fn w_the_depth_law_does_not_read_for_the_batch_arms() -> Bool  {
   match serving_subject_standing_reads(
     measurement: spark_group_a_depth_rate.subject,
     decision: first_batch_arm_subject()) {
@@ -427,7 +427,7 @@ test fn w_the_depth_law_does_not_read_for_the_batch_arms() -> Bool {
 // AND THE KNOWN AXES DO FENCE, which is the half the subject-less standing could not do at all. A
 // batch arm read against the GLM profile reports the CHECKPOINT difference rather than "I cannot
 // tell" -- on the live carrier, not a fixture. This is the row the PR's headline claim rests on.
-test fn w_a_live_batch_arm_refuses_a_glm_decision_by_naming_the_checkpoint() -> Bool {
+test fn w_a_live_batch_arm_refuses_a_glm_decision_by_naming_the_checkpoint() -> Bool  {
   let j = serving_subject_reads(
     measurement_subject: standing_subject(st: first_batch_arm_subject()),
     decision_subject: fx_glm_group_b)
@@ -439,7 +439,7 @@ test fn w_a_live_batch_arm_refuses_a_glm_decision_by_naming_the_checkpoint() -> 
 // THE TRANSPORT GUARD IS THE OTHER MECHANISM, PINNED SEPARATELY so each is answerable for its own
 // row. The depth rate read against ITSELF has nothing unestablished about it and still refuses,
 // because nobody read its NCCL verdict line -- so this row can only be green by way of the transport.
-test fn w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unread() -> Bool {
+test fn w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unread() -> Bool  {
   match serving_subject_standing_reads(
     measurement: spark_group_a_depth_rate.subject,
     decision: spark_group_a_depth_rate.subject) {
@@ -468,7 +468,7 @@ test fn w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unr
 // either arm". Wrong twice: reading ONE arm leaves the other unread, and a transport reading from a
 // FUTURE relaunch cannot be attached backwards to performance measured on an earlier launch. A
 // relaunch is a new subject and a new experiment, never a repair of this one.
-test fn w_the_topology_cut_moves_two_axes_rather_than_isolating_the_degree() -> Bool {
+test fn w_the_topology_cut_moves_two_axes_rather_than_isolating_the_degree() -> Bool  {
   match spark_group_a_topology_axis_delta {
     AxisDeltaOnManyAxes { axes: axes } =>
       serving_subject_axis_list_contains(axes: axes, a: AxisTopology)
@@ -486,7 +486,7 @@ test fn w_the_topology_cut_moves_two_axes_rather_than_isolating_the_degree() -> 
 // count no topology carries answers Absent rather than the nearest plausible degree. That second
 // half is the one that matters: the arm it replaced turned every unmapped count into TP=4 on the
 // axis this module fences, and an admission arm whose refusal cannot be reached is not a wall.
-test fn w_every_modelled_topology_round_trips_through_its_rank_count() -> Bool {
+test fn w_every_modelled_topology_round_trips_through_its_rank_count() -> Bool  {
   topology_round_trips(t: SingleSparkTp1)
     && topology_round_trips(t: SparkPairTp2)
     && topology_round_trips(t: FourSparkTp4)
@@ -502,14 +502,14 @@ fn topology_round_trips(t: ServingTopology) -> Bool {
 
 // SIXTEEN IS THE UNMODELLED COUNT NOW THAT EIGHT IS A TOPOLOGY: the refusal input moves to a degree the
 // roster still does not carry, so this RED keeps discriminating.
-test fn w_an_unmodelled_rank_count_refuses_rather_than_choosing_the_nearest() -> Bool {
+test fn w_an_unmodelled_rank_count_refuses_rather_than_choosing_the_nearest() -> Bool  {
   match serving_topology_of_rank_count(ranks: 16) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn w_a_zero_rank_count_refuses_too() -> Bool {
+test fn w_a_zero_rank_count_refuses_too() -> Bool  {
   match serving_topology_of_rank_count(ranks: 0) {
     Absent => true
     Present { value: _ } => false
@@ -568,48 +568,48 @@ fn moving_one_axis_prevents_transfer(a: ServingSubjectAxis) -> Bool {
   join_is_different(j: j) && join_names_axis(j: j, a: a)
 }
 
-test fn w_a_repinned_runtime_image_is_a_different_subject() -> Bool {
+test fn w_a_repinned_runtime_image_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisRuntimeImageReference)
 }
 
-test fn w_a_different_checkpoint_revision_is_a_different_subject() -> Bool {
+test fn w_a_different_checkpoint_revision_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisCheckpointRevision)
 }
 
-test fn w_a_different_max_num_seqs_is_a_different_subject() -> Bool {
+test fn w_a_different_max_num_seqs_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisMaxNumSeqs)
 }
 
-test fn w_turning_speculation_on_is_a_different_subject() -> Bool {
+test fn w_turning_speculation_on_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisSpeculativePolicy)
 }
 
-test fn w_a_different_rank_population_is_a_different_subject() -> Bool {
+test fn w_a_different_rank_population_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisRankPopulation)
 }
 
 // THE AXES THE DEFORKING ADDED: the indexer's K-cache dtype and the scheduler's admission controls
 // each move the subject on their own, and the weight quantization is read off the checkpoint row so a
 // checkpoint change names it beside the checkpoint itself.
-test fn w_a_different_indexer_kv_dtype_is_a_different_subject() -> Bool {
+test fn w_a_different_indexer_kv_dtype_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisIndexerKvDtype)
 }
 
 // THE WHOLE LAUNCH PROFILE IS PART OF THE IDENTITY (review on #12976): two launches differing only in a
 // profile field no named axis carries -- memory fraction, prefix caching, Engram, modality, cold floor --
 // differ on the launch-profile axis.
-test fn w_a_different_launch_profile_is_a_different_subject() -> Bool {
+test fn w_a_different_launch_profile_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisLaunchProfile)
 }
 
-test fn w_a_different_scheduler_admission_is_a_different_subject() -> Bool {
+test fn w_a_different_scheduler_admission_is_a_different_subject() -> Bool  {
   moving_one_axis_prevents_transfer(a: AxisSchedulerAdmission)
 }
 
 // THE AXIS READS THE ROW'S quant_method, so the same model on its FP8 and its NVFP4 checkpoint names the
 // move as a quantization change, and a checkpoint with no row reads as unread rather than a default.
 // (It is the method name only: V4.1's fp4 experts under an fp8 quant_method stay on the checkpoint row.)
-test fn w_the_weight_quantization_is_read_off_the_checkpoint_row() -> Bool {
+test fn w_the_weight_quantization_is_read_off_the_checkpoint_row() -> Bool  {
   let nvfp4 = serving_performance_subject(
     checkpoint: Glm53RadixArkNvfp4Modelopt,
     checkpoint_revision: fx_glm_group_b.checkpoint_revision,
@@ -638,7 +638,7 @@ test fn w_the_weight_quantization_is_read_off_the_checkpoint_row() -> Bool {
 // when the checkpoint alone already settles that the measurement does not transfer. Destroying an
 // established counterexample because a DIFFERENT axis is unknown is the absorbing fallback aimed at
 // the answer rather than at the ignorance.
-test fn w_a_known_checkpoint_difference_survives_an_unread_transport() -> Bool {
+test fn w_a_known_checkpoint_difference_survives_an_unread_transport() -> Bool  {
   let ds_unread = ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4)
   let glm_unread = ServingPerformanceSubject_with_unread(base: fx_glm_group_b)
   let j = serving_subject_reads(measurement_subject: ds_unread, decision_subject: glm_unread)
@@ -666,7 +666,7 @@ fn ServingPerformanceSubject_with_unread(base: ServingPerformanceSubject) -> Ser
 
 // AND WHEN NOTHING KNOWN DIFFERS, THE UNKNOWN AXIS IS THE ANSWER. This is the other half: the same
 // subject against itself with an unread transport is Incomparable, not Same.
-test fn w_an_unread_axis_decides_only_when_nothing_known_differs() -> Bool {
+test fn w_an_unread_axis_decides_only_when_nothing_known_differs() -> Bool  {
   let a = ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4)
   join_is_incomparable(j: serving_subject_reads(measurement_subject: a, decision_subject: a))
 }
@@ -676,7 +676,7 @@ test fn w_an_unread_axis_decides_only_when_nothing_known_differs() -> Bool {
 // The read arms used to carry `network_name: NonEmptyStr` and project the caller's string, so
 // `NcclTransportSocket { network_name: "IB" }` was writable and every comparator trusted it. The
 // name is now derived from the arm, so that state has no spelling; this asserts the derivation.
-test fn w_the_transport_wire_is_derived_from_the_variant() -> Bool {
+test fn w_the_transport_wire_is_derived_from_the_variant() -> Bool  {
   (nccl_realized_transport_wire(t: fx_socket) as String) == (nccl_network_name_socket as String)
     && (nccl_realized_transport_wire(t: fx_ib) as String) == (nccl_network_name_ib as String)
 }
@@ -698,7 +698,7 @@ test fn w_the_transport_wire_is_derived_from_the_variant() -> Bool {
 // Established arm is private to this module so the arm itself cannot be spelled elsewhere. TRIGGER:
 // module-private constructors for coproduct arms, the same capability `sole_constructor` already
 // provides for records.
-test fn w_a_subject_with_an_absent_axis_cannot_become_established() -> Bool {
+test fn w_a_subject_with_an_absent_axis_cannot_become_established() -> Bool  {
   match serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4), believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr) {
     SubjectPartial { subject: _, unknown_axes: axes } => serving_subject_axis_list_contains(axes: axes, a: AxisCollectiveTransport)
     SubjectEstablished { subject: _ } => false
@@ -707,7 +707,7 @@ test fn w_a_subject_with_an_absent_axis_cannot_become_established() -> Bool {
 
 // THE POSITIVE CONTROL: a subject with every axis read DOES become established, so the constructor
 // is not a wall that refuses everything.
-test fn w_a_fully_read_subject_becomes_established() -> Bool {
+test fn w_a_fully_read_subject_becomes_established() -> Bool  {
   match serving_subject_standing(subject: fx_deepseek_tp4, believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr) {
     SubjectEstablished { subject: _ } => true
     SubjectPartial { subject: _, unknown_axes: _ } => false
@@ -716,7 +716,7 @@ test fn w_a_fully_read_subject_becomes_established() -> Bool {
 
 // AND A PARTIAL STANDING STILL CARRIES ITS SUBJECT, which is what lets a known difference survive an
 // unknown axis rather than collapsing to "I cannot tell".
-test fn w_a_partial_standing_still_carries_its_subject() -> Bool {
+test fn w_a_partial_standing_still_carries_its_subject() -> Bool  {
   let st = serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4), believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr)
   (serving_subject_axis_value(s: standing_subject(st: st), a: AxisCheckpoint) as String)
     == (serving_subject_axis_value(s: fx_deepseek_tp4, a: AxisCheckpoint) as String)
@@ -729,7 +729,7 @@ test fn w_a_partial_standing_still_carries_its_subject() -> Bool {
 // pair separated by one axis with five axes nobody looked at reported as a clean controlled cut.
 // These two rows pin both halves: fully read stays OnOneAxis, and the same pair with one axis
 // unread reports the axis AND what was not looked at.
-test fn w_a_one_axis_difference_over_unread_axes_is_not_a_clean_cut() -> Bool {
+test fn w_a_one_axis_difference_over_unread_axes_is_not_a_clean_cut() -> Bool  {
   let a = ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4)
   let b = ServingPerformanceSubject_with_unread(base: moved(base: fx_deepseek_tp4, which: AxisMaxNumSeqs))
   match serving_subject_axis_delta(

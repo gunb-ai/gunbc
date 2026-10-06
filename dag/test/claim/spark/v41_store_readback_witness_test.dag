@@ -108,7 +108,7 @@ fn w_refused_naming(v: V41StoreReadback, fragment: String) -> Bool {
 
 // THE SAMPLE IS THE SEAMS: per store its magic, its first and its last record, and the source rows at the
 // same global rows -- which, over a layer, are row 0, the last row and both sides of every rank boundary.
-test fn the_sample_is_every_store_edge_and_both_sides_of_every_seam() -> Bool {
+test fn the_sample_is_every_store_edge_and_both_sides_of_every_seam() -> Bool  {
   let keys = map(v41_readback_samples(spec: w_spec()), s => match s {
     V41SampleSourceWeight { layer: l, global_row: g } => join([to_string(l), ":", to_string(g)], "")
     _ => ""
@@ -118,7 +118,7 @@ test fn the_sample_is_every_store_edge_and_both_sides_of_every_seam() -> Bool {
     && rows == ["1:0", "1:2", "1:3", "1:4", "14:0", "14:1", "14:2", "14:4"]
 }
 
-test fn honestly_produced_stores_verify() -> Bool {
+test fn honestly_produced_stores_verify() -> Bool  {
   match w_readback(p: WHonest) {
     V41StoreReadbackVerified { host: _, observed_at: _, samples: n } => n == 28
     _ => false
@@ -127,31 +127,31 @@ test fn honestly_produced_stores_verify() -> Bool {
 
 // THE RED THE PARENT NAMED: two ranks' plans swapped. Rank 0's store holds rank 1's rows and vice versa;
 // every digest and size would still be self-consistent, and the readback refuses at the seam.
-test fn two_ranks_swapped_plans_refuse() -> Bool {
+test fn two_ranks_swapped_plans_refuse() -> Bool  {
   w_refused_naming(v: w_readback(p: WRanksSwapped), fragment: "store layer.1.rank.0 row 0 (global row 0): the stored record is not v41_place_row")
     && w_refused_naming(v: w_readback(p: WRanksSwapped), fragment: "store layer.1.rank.1 row 0 (global row 3)")
 }
 
-test fn layer_14_encoded_from_layer_1_offsets_refuses() -> Bool {
+test fn layer_14_encoded_from_layer_1_offsets_refuses() -> Bool  {
   w_refused_naming(v: w_readback(p: WLayer14FromLayer1), fragment: "store layer.14.rank.0 row 0")
 }
 
-test fn an_off_by_one_rank_boundary_refuses() -> Bool {
+test fn an_off_by_one_rank_boundary_refuses() -> Bool  {
   w_refused_naming(v: w_readback(p: WRank1ShiftedByOne), fragment: "store layer.1.rank.1 row 0 (global row 3)")
     && !w_refused_naming(v: w_readback(p: WRank1ShiftedByOne), fragment: "store layer.1.rank.0")
 }
 
-test fn a_wrong_header_refuses() -> Bool {
+test fn a_wrong_header_refuses() -> Bool  {
   w_refused_naming(v: w_readback(p: WBadMagic), fragment: "store layer.1.rank.0: the header is not the row-store magic")
 }
 
 // A SHIFT THAT CANNOT BE SEEN MUST REFUSE, NOT PASS: the stores are honest, but rows 2 and 3 of layer 1
 // are the same bytes, so the seam between its ranks is undiscriminating and the readback refuses there.
-test fn identical_rows_across_a_seam_refuse_as_undiscriminating() -> Bool {
+test fn identical_rows_across_a_seam_refuse_as_undiscriminating() -> Bool  {
   w_refused_naming(v: w_readback(p: WSeamRowsIdentical), fragment: "layer 1 rows 2 and 3 (the rank 1 boundary) are byte-identical")
 }
 
-test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool {
+test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool  {
   let all = map(v41_readback_samples(spec: w_spec()), s => w_read(p: WHonest, s: s))
   let missing = v41_store_readback(spec: w_spec(), readings: V41StoreReadbackRead { host: "f" as NonEmptyStr, observed_at: "f" as NonEmptyStr, readings: filter(all, r => match r.sample { V41SampleMagic { layer: l, rank: k } => !(l == 14 && k == 1)  _ => true }) })
   let foreign = v41_store_readback(spec: w_spec(), readings: V41StoreReadbackRead { host: "f" as NonEmptyStr, observed_at: "f" as NonEmptyStr, readings: concat(all, [w_read(p: WHonest, s: V41SampleStoreRecord { layer: 1, rank: 0, local_row: 1 })]) })

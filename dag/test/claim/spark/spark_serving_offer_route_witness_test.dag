@@ -232,7 +232,7 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
 // the service is the exact field this whole change is about. So the accepting branch of the binder
 // was controlled by a test that was silent on the thing under review, and the row's own name
 // promised "the offer carries the route" while establishing something narrower.
-test fn an_observed_route_binds_and_the_offer_carries_it() -> Bool {
+test fn an_observed_route_binds_and_the_offer_carries_it() -> Bool  {
   match t_bind(route: ServingRouteObserved { route: t_observed_route() }) {
     SparkOfferBound { bound: p } =>
       (p.offer.route.region as String) == (t_observed_route().region as String)
@@ -245,7 +245,7 @@ test fn an_observed_route_binds_and_the_offer_carries_it() -> Bool {
 // RED - AN UNOBSERVED REGION REFUSES, AND THE REFUSAL SAYS WHY. Asserting only that it refused
 // would be satisfied by a refusal for the readiness reason, which this fixture deliberately does
 // not exercise: readiness is observed above, so the only thing left to refuse for is the route.
-test fn an_unobserved_region_refuses_naming_its_obligation() -> Bool {
+test fn an_unobserved_region_refuses_naming_its_obligation() -> Bool  {
   match t_bind(route: ServingRouteRegionUnobserved { obligation: spark_serving_route_region_obligation }) {
     SparkOfferBound { bound: _ } => false
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
@@ -276,7 +276,7 @@ test fn an_unobserved_region_refuses_naming_its_obligation() -> Bool {
 // is that the region no longer arrives bundled with a service claim, so the row asserts the
 // allocation where it now lives -- on the refusing arm -- rather than demanding an answer that would
 // have to be unsupported to exist.
-test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
+test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool  {
   match t_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
     ServingRouteRegionUnobserved { obligation: _ } => false
     ServingRouteObserved { route: _ } => false
@@ -373,7 +373,7 @@ fn t_cause_is_reported_path_differs(cause: SparkServiceIdentityCause) -> Bool {
   }
 }
 
-test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bool {
+test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bool  {
   match t_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
@@ -410,7 +410,7 @@ fn t_service_refusal_cause_matches_the_standing(realization: SparkServingRealiza
   }
 }
 
-test fn a_matching_configuration_does_not_bind_an_offer() -> Bool {
+test fn a_matching_configuration_does_not_bind_an_offer() -> Bool  {
   t_service_refusal_cause_matches_the_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }
 
@@ -419,7 +419,7 @@ test fn a_matching_configuration_does_not_bind_an_offer() -> Bool {
 // operator placed at his home, so a group containing it has no assertion behind its region and the
 // standing refuses. Without this row the eight-unit roster in the allocation would be decorative:
 // nothing else in the corpus compares a host to it (review 63995).
-test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool {
+test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool  {
   match t_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv1])) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
@@ -434,7 +434,7 @@ test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool {
 // whether the membership check is a wall or a decoration: written as all(hosts, covered) it would
 // be TRUE for the empty list, so a group whose membership could not be read would have been
 // admitted by the check that exists to constrain it -- cleanest exactly where it knows least.
-test fn an_unreadable_group_membership_refuses() -> Bool {
+test fn an_unreadable_group_membership_refuses() -> Bool  {
   match t_standing(realization: t_realization(hosts: [] as List<HostIdentity>)) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
@@ -457,7 +457,7 @@ test fn an_unreadable_group_membership_refuses() -> Bool {
 // units, and that is true whatever answered on them. So the arm carries the allocation, and this row
 // asserts both halves -- the allocation is present with its date, and the service is refused for the
 // readback's own reason rather than for a host-coverage reason that would belong to another row.
-test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region() -> Bool {
+test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region() -> Bool  {
   match t_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
@@ -477,7 +477,7 @@ test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_th
 // RED -- AND THE SERVICE REFUSAL REACHES THE BINDER RATHER THAN STOPPING AT THE STANDING. An offer
 // whose service cannot be identified must not bind, for the same reason an uncovered region must
 // not: the refusal is only worth its type if something downstream acts on it.
-test fn an_unidentified_service_does_not_bind_an_offer() -> Bool {
+test fn an_unidentified_service_does_not_bind_an_offer() -> Bool  {
   t_service_refusal_cause_matches_the_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }
 
@@ -494,7 +494,7 @@ test fn an_unidentified_service_does_not_bind_an_offer() -> Bool {
 // that IS the intended launch running with drifted configuration reports exactly this way. So this
 // row asserts the refusal reports non-establishment, and asserts it does NOT claim the stronger
 // thing, which is the same wall this module applies to every other inference.
-test fn a_different_reported_path_refuses_the_service_without_claiming_a_different_launch() -> Bool {
+test fn a_different_reported_path_refuses_the_service_without_claiming_a_different_launch() -> Bool  {
   match t_standing(realization: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
@@ -509,7 +509,7 @@ test fn a_different_reported_path_refuses_the_service_without_claiming_a_differe
 
 // RED -- AND THAT REFUSAL REACHES THE BINDER, joined to the standing's own obligation rather than to
 // a literal, so the binder cannot forward a different refusal and still pass.
-test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
+test fn a_different_reported_path_does_not_bind_an_offer() -> Bool  {
   t_service_refusal_cause_matches_the_standing(realization: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }
 
@@ -528,7 +528,7 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 // harness_bind_candidate calls, with the incarnation standing production passes when the observer
 // refuses, and asserts the constructor that yields. If the harness could not reach the refusal arms
 // this change adds, the join would be dangling.
-test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool {
+test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool  {
   match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved(), declared_unit: t_declared(), participation: none) {
     ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
       match c {
@@ -672,7 +672,7 @@ fn t_covered_matching() -> SparkServingRealization {
 // POSITIVE CONTROL, FIXTURE EVIDENCE. All three facts hold: the observation binds this endpoint to an
 // incarnation on these hosts, that incarnation's unit digest equals the declared one, and the
 // readback agrees. The route names the first-party service and carries the observation it rests on.
-test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation() -> Bool {
+test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation() -> Bool  {
   match spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
     declared_unit: t_declared(), participation: none,
@@ -688,7 +688,7 @@ test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_ob
 }
 
 // AND IT BINDS, so the positive arm reaches the binder rather than stopping at the standing.
-test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
+test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool  {
   match t_bind(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
     declared_unit: t_declared(), participation: none,
@@ -702,7 +702,7 @@ test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
 // configuration matches, and with no incarnation observation the service is still refused, for the
 // observation's reason. This is the row that keeps a declaration-side fact from satisfying the
 // answering-side one.
-test fn an_agreeing_unit_digest_without_an_observation_refuses() -> Bool {
+test fn an_agreeing_unit_digest_without_an_observation_refuses() -> Bool  {
   match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_declared(), participation: none)) {
     Present { value: ServiceIncarnationUnobserved { configuration: _, obligation: _ } } => true
     _ => false
@@ -711,7 +711,7 @@ test fn an_agreeing_unit_digest_without_an_observation_refuses() -> Bool {
 
 // RED -- AN OBSERVATION ABOUT ANOTHER ENDPOINT PROCESS. Same group and endpoint, a different exporter
 // start: the process was replaced, and the observation is about its predecessor.
-test fn an_observation_about_a_replaced_endpoint_process_refuses() -> Bool {
+test fn an_observation_about_a_replaced_endpoint_process_refuses() -> Bool  {
   let replaced = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "2" as NonEmptyStr)
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: replaced, launch: t_incarnation())),
@@ -723,7 +723,7 @@ test fn an_observation_about_a_replaced_endpoint_process_refuses() -> Bool {
 }
 
 // RED -- AN INCARNATION ON A HOST OUTSIDE THE REALIZATION.
-test fn an_incarnation_on_another_host_refuses() -> Bool {
+test fn an_incarnation_on_another_host_refuses() -> Bool  {
   let elsewhere = vllm_serving_launch(
     group: FabricGroupA, head: operator_host_srv1,
     systemd_invocation: "fixture-invocation-1" as NonEmptyStr, container_id: "fixture-container-1" as NonEmptyStr,
@@ -743,7 +743,7 @@ test fn an_incarnation_on_another_host_refuses() -> Bool {
 // what lets a harness wire that drops the digest between mint and fold go red today rather than
 // after an incarnation observer lands. The same realization with a fixture digest reports the
 // incarnation instead (an_agreeing_unit_digest_without_an_observation_refuses).
-test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
+test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool  {
   match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_unit_unavailable(), participation: none)) {
     Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
     _ => false
@@ -751,7 +751,7 @@ test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
 }
 
 // RED -- THE DECLARED UNIT DIGEST IS UNAVAILABLE, with the incarnation observed.
-test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool {
+test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool  {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
     declared_unit: t_unit_unavailable(), participation: none,
@@ -762,7 +762,7 @@ test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool
 }
 
 // RED -- THE INCARNATION WAS LAUNCHED FROM A DIFFERENT UNIT.
-test fn an_incarnation_from_a_different_unit_refuses() -> Bool {
+test fn an_incarnation_from_a_different_unit_refuses() -> Bool  {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(unit: t_sha256(hex: t_other_unit_hex)))),
     declared_unit: t_declared(), participation: none,
@@ -782,7 +782,7 @@ test fn an_incarnation_from_a_different_unit_refuses() -> Bool {
 // authorable anywhere it could run is a decoration, so that row is deleted rather than kept green by
 // construction. The observed digest is a HOST READING and remains free to be any family, so the
 // incomparable arm of the comparison is still reachable and is still walled here.
-test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bool {
+test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bool  {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(
       base: t_covered_matching(),
@@ -798,7 +798,7 @@ test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bo
 }
 
 // RED -- EVERYTHING ELSE HOLDS AND THE READBACK DISAGREES.
-test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -> Bool {
+test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -> Bool  {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
     declared_unit: t_declared(), participation: none,
@@ -813,7 +813,7 @@ test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -
 // refusal to the same asserted-route arm the standing's own fixture evidence row already holds.
 // RED: a harness that ignored its incarnation argument would return ServiceIncarnationUnobserved
 // here, because the digest is supplied and that arm is reachable.
-test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
+test fn the_production_route_consumes_an_observed_incarnation() -> Bool  {
   match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: none) {
     ServingRouteOperatorAsserted { route: r, allocation: _, answered_by: _ } =>
       (r.service as String) == (spark_first_party_route().service as String)
@@ -832,7 +832,7 @@ test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
 // THE GREEN CONTROL IS THE `none` ARM the rows above all use: with no roster supplied, the same
 // realization reaches ServiceConfigurationDisagrees or a match, so this assertion is discriminating
 // on the roster alone and not on any other fixture change.
-test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
+test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool  {
   let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
   let adrift = GroupHostsNotAllConnected {
     epoch: epoch,
@@ -854,7 +854,7 @@ test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
 // rendezvous we could not read as a rendezvous we found whole, which fails open on precisely the
 // hosts that are unreachable. `none` (no roster modeled for this arm) and GroupRendezvousReachUnobserved
 // (a roster we failed to read) are different facts and only the second stops the line.
-test fn a_roster_that_could_not_be_read_refuses() -> Bool {
+test fn a_roster_that_could_not_be_read_refuses() -> Bool  {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
     declared_unit: t_declared(),
@@ -867,7 +867,7 @@ test fn a_roster_that_could_not_be_read_refuses() -> Bool {
 
 // GREEN -- A FULLY ATTACHED ROSTER DOES NOT BLOCK ANYTHING. Without this the gate could be a wall that
 // refuses every arm, which would pass the two reds above and break production.
-test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check() -> Bool {
+test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check() -> Bool  {
   let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
   let attached = GroupHostsAllConnected {
     epoch: epoch,
@@ -909,7 +909,7 @@ fn t_is_epoch_mismatch(route: SparkServingRoute) -> Bool {
 
 // (a) RED -- E1 ALL-CONNECTED DOES NOT CLEAR AN E2 CANDIDATE. With a matching readback, the same-epoch
 // reading would reach ServingRouteOperatorAsserted (the_production_route_consumes_an_observed_incarnation).
-test fn an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation() -> Bool {
+test fn an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation() -> Bool  {
   let attached = GroupHostsAllConnected {
     epoch: t_epoch_one(),
     ranks: [
@@ -922,7 +922,7 @@ test fn an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation() 
 
 // (b) RED -- E1 DETACHED DOES NOT DIAGNOSE E2'S RANKS. The refusal is the epoch mismatch, never
 // ServiceRanksAdriftFromTheRendezvous naming hosts from a store the candidate is not attached to.
-test fn an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation() -> Bool {
+test fn an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation() -> Bool  {
   let adrift = GroupHostsNotAllConnected {
     epoch: t_epoch_one(),
     adrift: [DeclaredRankHostNotConnected { host: operator_host_srv6, declared_rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
@@ -934,7 +934,7 @@ test fn an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarna
 
 // (c) GREEN CONTROL ON THE PRODUCTION ROUTE -- the same attached reading at the candidate's own epoch
 // admits, so (a) is discriminating on the epoch and not on the roster shape.
-test fn a_same_epoch_attached_reading_admits_on_the_production_route() -> Bool {
+test fn a_same_epoch_attached_reading_admits_on_the_production_route() -> Bool  {
   let attached = GroupHostsAllConnected {
     epoch: rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr),
     ranks: [
@@ -951,7 +951,7 @@ test fn a_same_epoch_attached_reading_admits_on_the_production_route() -> Bool {
 }
 
 // RED -- SAME INVOCATION STRING, DIFFERENT HEAD. The epoch is (head, invocation), not the string alone.
-test fn a_reading_from_another_head_is_another_epoch() -> Bool {
+test fn a_reading_from_another_head_is_another_epoch() -> Bool  {
   let attached = GroupHostsAllConnected {
     epoch: rendezvous_epoch(head: operator_host_srv6, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr),
     ranks: [DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 0, connections: 1 }],

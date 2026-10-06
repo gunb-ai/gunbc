@@ -182,7 +182,7 @@ fn is_ruling_reservation_for(c: SparkHostCommitment, subject: ServingSubject) ->
 // an undischarged internal-participant reservation, the set is srv8 alone -- srv7 because it is held,
 // srv9 because it is committed to a role -- and membership is asserted BY IDENTITY in both directions
 // rather than by a length, because a count of one would be satisfied by any one host.
-test fn a_host_holding_an_undischarged_reservation_is_never_unplaced() -> Bool {
+test fn a_host_holding_an_undischarged_reservation_is_never_unplaced() -> Bool  {
   let unplaced = fixture_unplaced(held: [operator_host_srv7])
   !contains_host(hosts: unplaced, host: operator_host_srv7)
     && contains_host(hosts: unplaced, host: operator_host_srv8)
@@ -193,7 +193,7 @@ test fn a_host_holding_an_undischarged_reservation_is_never_unplaced() -> Bool {
 // A COMMITTED HOST CARRIES EVERY CAUSE THAT COMMITS IT. srv9 is committed to a role, claimed by a
 // serving group and held by a reservation at once; dropping any of them would make a later release
 // receipt look like it freed a host it did not free.
-test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
+test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool  {
   match fixture_standing(assignments: fixture_assignments, claimed: [member(group: FabricGroupB, host: operator_host_srv9)], arms: [], held: [operator_host_srv9], host: operator_host_srv9) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
@@ -220,7 +220,7 @@ test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
 // test.claim.spark.spark_llama_cpp_rpc_witness. What is asserted here is the PROPAGATION: the same
 // units and the same assignments, with the hold discharged, admit srv7 and admit strictly more --
 // for the placement question here, and for a serving subject's admissible set below.
-test fn discharging_a_reservation_widens_the_unplaced_set() -> Bool {
+test fn discharging_a_reservation_widens_the_unplaced_set() -> Bool  {
   let held = fixture_unplaced(held: [operator_host_srv7])
   let released = fixture_unplaced(held: [])
   !contains_host(hosts: held, host: operator_host_srv7)
@@ -234,7 +234,7 @@ test fn discharging_a_reservation_widens_the_unplaced_set() -> Bool {
 // Two roster rows naming one host make the commitment unreadable. A lookup that cannot say what a
 // host is committed to has not said the host is uncommitted, and the committed arm names that cause
 // rather than folding it into either role.
-test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
+test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool  {
   match fixture_standing(assignments: fixture_duplicate_assignments, claimed: [], arms: [], held: [], host: operator_host_srv9) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
@@ -257,7 +257,7 @@ test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
 // ── THE POSITIVE CONTROL: THE WALLS ADMIT SOMETHING ───────────────────────────────────────────
 //
 // Without this every refusal above would be satisfied by a fold that refuses everything.
-test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool {
+test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool  {
   match fixture_standing(assignments: fixture_assignments, claimed: [], arms: [], held: [], host: operator_host_srv8) {
     Absent => false
     Present { value: SparkHostUncommitted { host: h } } => host_identity_eq(a: h, b: operator_host_srv8)
@@ -268,7 +268,7 @@ test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool {
 // EVERY CAUSE RENDERS TO ITS OWN SENTENCE, so a refusal quoting one cannot be read as another -- and
 // the ruling-derived cause renders its decider and date, so a policy can never be quoted as a
 // standing something holds on the host.
-test fn each_commitment_cause_renders_distinctly() -> Bool {
+test fn each_commitment_cause_renders_distinctly() -> Bool  {
   let role = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: CommittedToCellRole { role: SparkServingCell } }) as String
   let group = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: MemberOfClaimedServingGroup { group: FabricGroupA } }) as String
   let held = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: HoldsUndischargedRpcReservation }) as String
@@ -302,7 +302,7 @@ test fn each_commitment_cause_renders_distinctly() -> Bool {
 // from the subject is not an oracle for the subject.
 data expected_three_cause_rendering: String = "committed to a Spark cell role; a member of a serving group this repository claims (group-b); holding an undischarged llama.cpp RPC peer reservation"
 
-test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool {
+test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool  {
   match spark_host_standing_in(
     units: fixture_units,
     assignments: fixture_assignments,
@@ -330,7 +330,7 @@ test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool {
 // Absent is now the answer for anything outside the named universe, and a member still resolves,
 // which is the positive half without which this red is satisfied by a function that refuses
 // everything.
-test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population() -> Bool {
+test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population() -> Bool  {
   (match fixture_standing(assignments: [], claimed: [], arms: [], held: [], host: operator_host_srv2) {
      Absent => true
      Present { value: _ } => false
@@ -396,7 +396,7 @@ fn placed_by_the_group_b_arm(host: HostIdentity) -> Bool {
   }
 }
 
-test fn the_production_group_b_hosts_are_placed_by_the_converged_arm_by_identity() -> Bool {
+test fn the_production_group_b_hosts_are_placed_by_the_converged_arm_by_identity() -> Bool  {
   placed_by_the_group_b_arm(host: operator_host_srv9)
     && placed_by_the_group_b_arm(host: operator_host_srv10)
     && placed_by_the_group_b_arm(host: operator_host_srv11)
@@ -424,7 +424,7 @@ fn production_standing_is_committed(host: HostIdentity) -> Bool {
 // cause, so no unit is `SparkHostUncommitted`. This is the consequence the reservation row was
 // expected to have and it is asserted rather than assumed, because an empty set would satisfy every
 // "not in the set" claim above without saying anything.
-test fn every_production_unit_is_committed_so_the_uncommitted_set_is_empty_by_identity() -> Bool {
+test fn every_production_unit_is_committed_so_the_uncommitted_set_is_empty_by_identity() -> Bool  {
   all(dgx_spark_reserved_identities(), h => production_standing_is_committed(host: h))
     && production_standing_is_committed(host: operator_host_srv10)
     && production_standing_is_committed(host: operator_host_srv12)
@@ -438,7 +438,7 @@ test fn every_production_unit_is_committed_so_the_uncommitted_set_is_empty_by_id
 // 9.6 GB image onto whatever host they were handed. The claim is now a cause, and this asserts it BY
 // IDENTITY against the production placement roster rather than by a count. Its cause names group B's
 // assignment row, not an engine's declaration, so a change of engine does not move it.
-test fn the_group_b_head_host_is_committed_and_its_cause_names_the_assignment() -> Bool {
+test fn the_group_b_head_host_is_committed_and_its_cause_names_the_assignment() -> Bool  {
   !spark_host_is_unplaced(host: operator_host_srv9)
     && (match spark_host_standing(host: operator_host_srv9) {
          Absent => false
@@ -462,7 +462,7 @@ test fn the_group_b_head_host_is_committed_and_its_cause_names_the_assignment() 
 
 // A FIXTURE ARM CLAIM COMMITS ITS HOST AND NOTHING ELSE, so the cause is the claim rather than the
 // identity srv9, and it would still hold if the canary moved.
-test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
+test fn an_arm_claim_commits_only_the_host_it_names() -> Bool  {
   let claims = [ServingArmHostClaim {
     arm: decl_ref(module_path: "test.claim.spark.spark_host_commitment_witness", decl_name: "an_arm_claim_commits_only_the_host_it_names"),
     host: operator_host_srv8,
@@ -495,7 +495,7 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // the real path refuses. The admitting arm is kept as a positive control over a SUPPLIED unplaced set
 // (admit_unplaced_host_among), because no production unit is unplaced any more: dropping it would let
 // a seam that refuses everything read as tested.
-test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
+test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool  {
   (match admit_unplaced_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
      SparkHostRefused { cause: why } =>
        string_contains(s: why as String, pattern: "srv9 is not admissible for a fixture effect, because ")
@@ -528,7 +528,7 @@ test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
 
 // AN UNROSTERED HOST IS NOT ADMITTED EITHER, and its refusal says it is not a Spark unit rather than
 // inventing a commitment for it.
-test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool {
+test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool  {
   match admit_unplaced_host(raw: "srv2", purpose: "a fixture effect" as NonEmptyStr) {
     SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not a DGX Spark unit")
     SparkHostAdmitted { host: _ } => false
@@ -541,7 +541,7 @@ test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool {
 // repository claims for serving. (An earlier wording called that cage "the deployed four-rank-by-two
 // shape", which is a candidate label meaning two four-rank replicas across eight hosts; cage 1 is
 // four hosts, and what exactly runs on it is not established by this module.)
-test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_else() -> Bool {
+test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_else() -> Bool  {
   contains_host(hosts: spark_claimed_serving_group_hosts(), host: operator_host_srv7)
     && contains_host(hosts: spark_claimed_serving_group_hosts(), host: operator_host_srv8)
     && production_commitment_is_group_membership_alone(host: operator_host_srv7)
@@ -573,7 +573,7 @@ fn production_host_has_authority_held_cause(host: HostIdentity) -> Bool {
   }
 }
 
-test fn the_derivation_partitions_the_unit_population() -> Bool {
+test fn the_derivation_partitions_the_unit_population() -> Bool  {
   let units = dgx_spark_reserved_identities()
   all(spark_unplaced_hosts, h => contains_host(hosts: units, host: h))
     && all(units, h => spark_host_is_unplaced(host: h) != production_host_has_authority_held_cause(host: h))
@@ -596,7 +596,7 @@ test fn the_derivation_partitions_the_unit_population() -> Bool {
 // placement claim. Group B's assigned arm now claims every member, so srv10 carries one cause of each
 // kind like srv9. The fold still discriminates: a fold that failed to separate the kinds would count
 // two of each, not one.
-test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bool {
+test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bool  {
   (match spark_host_standing(host: operator_host_srv10) {
      Absent => false
      Present { value: SparkHostUncommitted { host: _ } } => false
@@ -626,7 +626,7 @@ test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bo
 // scalar could never say.
 data pair_unit_a: ServingSubject = PairServingUnitOn { group: FabricGroupA }
 
-test fn the_pair_unit_on_group_a_is_admitted_exactly_its_own_four_hosts() -> Bool {
+test fn the_pair_unit_on_group_a_is_admitted_exactly_its_own_four_hosts() -> Bool  {
   let admissible = spark_serving_admissible_hosts(subject: pair_unit_a)
   contains_host(hosts: admissible, host: operator_host_srv5)
     && contains_host(hosts: admissible, host: operator_host_srv6)
@@ -639,7 +639,7 @@ test fn the_pair_unit_on_group_a_is_admitted_exactly_its_own_four_hosts() -> Boo
     && !contains_host(hosts: admissible, host: operator_host_srv2)
 }
 
-test fn group_b_s_assigned_subject_is_admitted_group_b_and_none_of_group_a() -> Bool {
+test fn group_b_s_assigned_subject_is_admitted_group_b_and_none_of_group_a() -> Bool  {
   let admissible = spark_serving_admissible_hosts(subject: glm_group_b_serving_subject)
   contains_host(hosts: admissible, host: operator_host_srv9)
     && contains_host(hosts: admissible, host: operator_host_srv10)
@@ -666,7 +666,7 @@ test fn group_b_s_assigned_subject_is_admitted_group_b_and_none_of_group_a() -> 
 // EVERY GROUP B HOST REFUSES AGAINST THE GROUP A SUBJECT, AND THE REFUSAL RENDERS THE HELD LIST. Group
 // B is precisely the population a "just pick a Spark" reading would have admitted, so it is the
 // discriminating red; naming the held hosts is what makes the refusal actionable rather than a no.
-test fn no_group_b_host_is_held_by_the_group_a_pair_subject() -> Bool {
+test fn no_group_b_host_is_held_by_the_group_a_pair_subject() -> Bool  {
   let held = spark_serving_admissible_hosts(subject: pair_unit_a)
   all([operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv1, operator_host_srv2], h =>
     match admit_host_held_by_subject_among(subject: pair_unit_a, raw: h, held: held) {
@@ -683,7 +683,7 @@ test fn no_group_b_host_is_held_by_the_group_a_pair_subject() -> Bool {
 // AN EMPTY HELD POPULATION ADMITS NOTHING. The fold's answer IS its population, so the degenerate
 // population must refuse every host rather than fall through -- the absorbing arm DESIGN section 5
 // forbids, and the one a `if any(...) { .. } else { .. }` inverted by one edit would produce.
-test fn an_empty_held_population_admits_no_host() -> Bool {
+test fn an_empty_held_population_admits_no_host() -> Bool  {
   all([operator_host_srv5, operator_host_srv8, operator_host_srv1], h =>
     match admit_host_held_by_subject_among(subject: pair_unit_a, raw: h, held: [] as List<HostIdentity>) {
       Absent => false
@@ -703,7 +703,7 @@ fn unheld_causes_against(host: HostIdentity, subject: ServingSubject) -> List<Sp
   })
 }
 
-test fn a_host_held_against_a_subject_names_the_unheld_causes() -> Bool {
+test fn a_host_held_against_a_subject_names_the_unheld_causes() -> Bool  {
   let srv9_vs_a = unheld_causes_against(host: operator_host_srv9, subject: pair_unit_a)
   let srv5_vs_group_b = unheld_causes_against(host: operator_host_srv5, subject: glm_group_b_serving_subject)
   length(srv9_vs_a) == 2
@@ -752,7 +752,7 @@ fn fixture_admissible_to_a(held: List<HostIdentity>) -> List<HostIdentity> {
   )
 }
 
-test fn a_reserved_host_is_never_admissible_and_a_release_receipt_widens_the_set() -> Bool {
+test fn a_reserved_host_is_never_admissible_and_a_release_receipt_widens_the_set() -> Bool  {
   let held = fixture_admissible_to_a(held: [operator_host_srv7])
   let released = fixture_admissible_to_a(held: [])
   !contains_host(hosts: held, host: operator_host_srv7)
@@ -768,7 +768,7 @@ test fn a_reserved_host_is_never_admissible_and_a_release_receipt_widens_the_set
 // by ruling for the fixture arm's subject is admissible to that arm and held against the pair unit,
 // while a serving cell role on the same host is held by the reserving subject through the
 // sibling-relative arm of the holder rule -- a role on a host nobody claims would be held by nobody.
-test fn a_declared_reservation_is_held_by_its_subject_and_against_every_other() -> Bool {
+test fn a_declared_reservation_is_held_by_its_subject_and_against_every_other() -> Bool  {
   let arm_subject = PlacedServingArm { arm: fixture_arm }
   let standings = spark_host_standings_in(
     units: fixture_units,
@@ -797,7 +797,7 @@ test fn a_declared_reservation_is_held_by_its_subject_and_against_every_other() 
 // A SERVING ROLE ON A HOST NO SUBJECT CLAIMS IS HELD BY NOBODY, and a training role is held by nobody
 // even where a subject does claim the host: the arm of the holder rule that keeps "committed to a
 // role" from silently reading as "available to whoever asks".
-test fn an_unclaimed_serving_role_and_any_training_role_are_held_by_nobody() -> Bool {
+test fn an_unclaimed_serving_role_and_any_training_role_are_held_by_nobody() -> Bool  {
   let standings = spark_host_standings_in(
     units: fixture_units,
     assignments: [
@@ -819,7 +819,7 @@ test fn an_unclaimed_serving_role_and_any_training_role_are_held_by_nobody() -> 
 // THE PRODUCTION RESERVATION ROW IS THE RULING'S FIRST HALF, DERIVED THROUGH THE CAGE: its hosts are
 // group B's observed members, its subject is whatever arm is assigned to group B -- the same reference
 // the group's placement claims carry -- and it is the row the census reads.
-test fn the_group_b_reservation_is_group_b_s_assigned_subject_over_the_observed_cage() -> Bool {
+test fn the_group_b_reservation_is_group_b_s_assigned_subject_over_the_observed_cage() -> Bool  {
   serving_subject_eq(a: glm_group_b_serving_reservation.subject, b: glm_group_b_serving_subject)
     && serving_subject_eq(a: glm_group_b_serving_subject, b: PlacedServingArm { arm: glm_group_b_serving_arm })
     && contains_host(hosts: glm_group_b_serving_reservation.hosts, host: operator_host_srv9)

@@ -122,26 +122,26 @@ fn fx_good_calibration() -> WorkloadCalibrationReceipt? { Present { value: fx_ca
 
 // THE POSITIVE CONTROL: within the 2-point margin (79 vs 80), no more parse failures, at least the
 // incumbent's goodput, zero preemptions/OOMs/restarts/stalls, the ceiling sustained, realized transport read.
-test fn w_a_subject_with_all_five_receipts_is_promoted() -> Bool {
+test fn w_a_subject_with_all_five_receipts_is_promoted() -> Bool  {
   w_admits(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(), calibration: fx_good_calibration()))
 }
 
-test fn w_quality_more_than_the_margin_below_the_incumbent_is_not_promoted() -> Bool {
+test fn w_quality_more_than_the_margin_below_the_incumbent_is_not_promoted() -> Bool  {
   w_missing_count(e: fx_evidence(memory: fx_proved,
     quality: Present { value: fx_quality(key: fx_key(), accepted: 77, parse_failures: 2) }, calibration: fx_good_calibration())) == 1
 }
 
-test fn w_more_tool_parse_failures_is_not_promoted() -> Bool {
+test fn w_more_tool_parse_failures_is_not_promoted() -> Bool  {
   w_missing_count(e: fx_evidence(memory: fx_proved,
     quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 3) }, calibration: fx_good_calibration())) == 1
 }
 
-test fn w_goodput_below_the_incumbent_is_not_promoted() -> Bool {
+test fn w_goodput_below_the_incumbent_is_not_promoted() -> Bool  {
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(),
     calibration: Present { value: fx_calibration(key: fx_key(), turns: 99, preemptions: Present { value: 0 }) })) == 1
 }
 
-test fn w_a_preemption_or_an_unobserved_preemption_count_is_not_promoted() -> Bool {
+test fn w_a_preemption_or_an_unobserved_preemption_count_is_not_promoted() -> Bool  {
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(),
     calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 1 }) })) == 1
   && w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(),
@@ -150,27 +150,27 @@ test fn w_a_preemption_or_an_unobserved_preemption_count_is_not_promoted() -> Bo
 
 // THE CALIBRATION MUST HAVE EXERCISED THE CEILING BEING PROMOTED: a ceiling of 12 is not promoted from a
 // run that sustained 8.
-test fn w_a_run_below_the_promoted_ceiling_is_not_promoted() -> Bool {
+test fn w_a_run_below_the_promoted_ceiling_is_not_promoted() -> Bool  {
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(),
     calibration: Present { value: fx_calibration_at(key: fx_key(), turns: 120, preemptions: Present { value: 0 }, sustained: 8) })) == 1
 }
 
 // A CACHE FIT FOR ANOTHER SUBJECT IS NOT THIS SUBJECT'S: the same proved verdict under another key.
-test fn w_a_cache_fit_from_another_subject_does_not_promote() -> Bool {
+test fn w_a_cache_fit_from_another_subject_does_not_promote() -> Bool  {
   w_missing_count(e: fx_evidence_with(memory: fx_proved, cache: Present { value: fx_cache(key: fx_other_key()) },
     quality: fx_good_quality(), calibration: fx_good_calibration())) == 1
 }
 
 // QUALITY IS COMPARED ONLY ON THE SAME ACCEPTANCE MANIFEST: an incumbent graded on another manifest is no
 // baseline.
-test fn w_quality_on_a_different_acceptance_manifest_is_not_compared() -> Bool {
+test fn w_quality_on_a_different_acceptance_manifest_is_not_compared() -> Bool  {
   let other = QualityReceipt { subject_key: fx_key(), acceptance_manifest: AcceptanceManifest { digest: content_hash_of_value(value: "agentic-acceptance-manifest-v2" as NonEmptyStr), cases: 100 },
     attempts: 100, accepted: 90, tool_parse_failures: 0, evidence: "fixture" as NonEmptyStr }
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: Present { value: other }, calibration: fx_good_calibration())) == 1
 }
 
 // THE REALIZED TRANSPORT MUST HAVE BEEN READ: a run that never read its collective transport cannot promote.
-test fn w_an_unread_realized_transport_is_not_promoted() -> Bool {
+test fn w_an_unread_realized_transport_is_not_promoted() -> Bool  {
   let c = fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 })
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(),
     calibration: Present { value: WorkloadCalibrationReceipt {
@@ -181,13 +181,13 @@ test fn w_an_unread_realized_transport_is_not_promoted() -> Bool {
     } })) == 1
 }
 
-test fn w_receipts_for_another_subject_do_not_promote_this_one() -> Bool {
+test fn w_receipts_for_another_subject_do_not_promote_this_one() -> Bool  {
   w_missing_count(e: fx_evidence(memory: fx_proved,
     quality: Present { value: fx_quality(key: fx_other_key(), accepted: 80, parse_failures: 2) },
     calibration: Present { value: fx_calibration(key: fx_other_key(), turns: 120, preemptions: Present { value: 0 }) })) == 2
 }
 
-test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refused() -> Bool {
+test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refused() -> Bool  {
   w_missing_count(e: fx_evidence(memory: ArmMemoryFitUnestablished { obligations: ["kv-cache has no defensible bound" as NonEmptyStr] },
     quality: fx_good_quality(), calibration: fx_good_calibration())) == 1
   && (match w_standing(e: fx_evidence(memory: ArmMemoryFitRefused { rank: 3, phase: ArmPhaseModelLoad, demand_lower: byte_size(count: 2), supply_upper: byte_size(count: 1), cause: "fixture: demand exceeds supply" as NonEmptyStr },
@@ -198,7 +198,7 @@ test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refus
     })
 }
 
-test fn w_a_subject_with_nothing_produced_names_every_missing_receipt() -> Bool {
+test fn w_a_subject_with_nothing_produced_names_every_missing_receipt() -> Bool  {
   match serving_promotion_standing(subject: fx_subject(), policy: serving_promotion_policy, evidence: ServingPromotionEvidence {
     compatibility: AdmitsBoundedExperimentOnly, memory: none, cache: none, quality: none, calibration: none,
     incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none, resolved_allocation_plan: none,
@@ -211,7 +211,7 @@ test fn w_a_subject_with_nothing_produced_names_every_missing_receipt() -> Bool 
 
 // THE INCUMBENT MUST BE ANOTHER, NAMED SUBJECT: the candidate's own receipts passed as the baseline cannot
 // promote.
-test fn w_the_candidate_cannot_be_its_own_incumbent() -> Bool {
+test fn w_the_candidate_cannot_be_its_own_incumbent() -> Bool  {
   let q = fx_quality(key: fx_key(), accepted: 80, parse_failures: 2)
   let c = fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 })
   w_missing_count(e: ServingPromotionEvidence {
@@ -224,7 +224,7 @@ test fn w_the_candidate_cannot_be_its_own_incumbent() -> Bool {
 }
 
 // A RATE IS A COUNT OVER ITS OWN WINDOW: 60 turns in half an hour beats 100 in an hour.
-test fn w_goodput_compares_rates_over_each_receipts_own_window() -> Bool {
+test fn w_goodput_compares_rates_over_each_receipts_own_window() -> Bool  {
   let c = fx_calibration(key: fx_key(), turns: 60, preemptions: Present { value: 0 })
   let mine = WorkloadCalibrationReceipt {
     subject_key: c.subject_key, trace_digest: c.trace_digest, run_id: c.run_id, accepted_turns: c.accepted_turns,
@@ -236,7 +236,7 @@ test fn w_goodput_compares_rates_over_each_receipts_own_window() -> Bool {
 }
 
 // GOODPUT IS COMPARED ONLY ON THE SAME TRACE, BY CONTENT DIGEST: a run on another trace is no comparison.
-test fn w_calibration_on_a_different_trace_is_not_compared() -> Bool {
+test fn w_calibration_on_a_different_trace_is_not_compared() -> Bool  {
   let c = fx_calibration(key: fx_key(), turns: 200, preemptions: Present { value: 0 })
   let other = WorkloadCalibrationReceipt {
     subject_key: c.subject_key, trace_digest: content_hash_of_value(value: "another-trace" as NonEmptyStr), run_id: c.run_id, accepted_turns: c.accepted_turns,
@@ -249,7 +249,7 @@ test fn w_calibration_on_a_different_trace_is_not_compared() -> Bool {
 
 // A RECEIPT CANNOT PROVE MORE THAN IT ATTEMPTED (side-chat review): accepted above attempts, parse failures
 // above attempts, and attempts short of the manifest's population each leave quality missing.
-test fn w_impossible_or_incomplete_quality_counts_do_not_promote() -> Bool {
+test fn w_impossible_or_incomplete_quality_counts_do_not_promote() -> Bool  {
   let over = QualityReceipt { subject_key: fx_key(), acceptance_manifest: fx_manifest(), attempts: 100, accepted: 101, tool_parse_failures: 0, evidence: "fixture" as NonEmptyStr }
   let fails = QualityReceipt { subject_key: fx_key(), acceptance_manifest: fx_manifest(), attempts: 100, accepted: 90, tool_parse_failures: 101, evidence: "fixture" as NonEmptyStr }
   let short = QualityReceipt { subject_key: fx_key(), acceptance_manifest: fx_manifest(), attempts: 50, accepted: 50, tool_parse_failures: 0, evidence: "fixture" as NonEmptyStr }
@@ -260,7 +260,7 @@ test fn w_impossible_or_incomplete_quality_counts_do_not_promote() -> Bool {
 
 // THE CACHE VERDICT MUST BE ABOUT THE PLAN THIS SUBJECT RESOLVED (side-chat review): the same proved verdict
 // read from another plan, or with no resolved plan observed, does not promote.
-test fn w_a_cache_fit_from_another_plan_or_with_no_resolved_plan_does_not_promote() -> Bool {
+test fn w_a_cache_fit_from_another_plan_or_with_no_resolved_plan_does_not_promote() -> Bool  {
   let e = fx_evidence(memory: fx_proved, quality: fx_good_quality(), calibration: fx_good_calibration())
   let other_plan = ServingPromotionEvidence {
     compatibility: e.compatibility, memory: e.memory, cache: e.cache, quality: e.quality, calibration: e.calibration,

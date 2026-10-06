@@ -164,7 +164,7 @@ fn t_foreign_realization() -> SparkServingRealization {
 // its own witnesses: the posture is current, the site allocation covers these hosts, and every use
 // program is NotEngaged. The one thing missing is a reading of the environment of the process that
 // answered.
-test fn the_first_party_scope_refuses_while_its_environment_is_declared_not_read() -> Bool {
+test fn the_first_party_scope_refuses_while_its_environment_is_declared_not_read() -> Bool  {
   match spark_first_party_admission(
     realization: t_pair_realization(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
@@ -209,7 +209,7 @@ fn t_not_engaged_naming(d: DispositionStanding, basis_decl: NonEmptyStr) -> Bool
 // spark_sanctions_disposition, spark_export_disposition and spark_prohibited_use_disposition, and
 // that is where the NOT-ENGAGED claim lives. Reading them there tests the same obligation without
 // routing it through a refusal that belongs to a different question.
-test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
+test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool  {
   t_not_engaged_naming(d: spark_sanctions_disposition(), basis_decl: "spark_sanctions_not_engaged" as NonEmptyStr)
     && t_not_engaged_naming(d: spark_export_disposition(), basis_decl: "spark_export_not_engaged" as NonEmptyStr)
     && t_not_engaged_naming(d: spark_prohibited_use_disposition(), basis_decl: "spark_prohibited_use_not_engaged" as NonEmptyStr)
@@ -273,7 +273,7 @@ fn t_facts_reaching_the_scope_checks() -> ProviderRouteFacts {
   }
 }
 
-test fn a_non_first_party_use_refuses_as_unsupported() -> Bool {
+test fn a_non_first_party_use_refuses_as_unsupported() -> Bool  {
   match admit_provider_use(
     roster: spark_first_party_sanction_roster(),
     facts: t_facts_reaching_the_scope_checks(),
@@ -301,7 +301,7 @@ fn t_later_posture() -> CompliancePostureRevision {
   }
 }
 
-test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
+test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool  {
   match admit_provider_use(
     roster: spark_first_party_sanction_roster(),
     facts: t_facts_reaching_the_scope_checks(),
@@ -349,7 +349,7 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
 // Nonempty hosts, every one lane-covered, readback matching the declared launch -- and the standing
 // still returns Unread, for the missing-launch-bound-evidence reason rather than for either of the
 // two earlier causes. Before this repair this exact input produced an established standing.
-test fn a_matching_readback_is_classified_as_configuration_matched_not_as_a_read() -> Bool {
+test fn a_matching_readback_is_classified_as_configuration_matched_not_as_a_read() -> Bool  {
   match spark_serving_usage_stats_unread_cause(realization: t_pair_realization()) {
     TelemetryConfigurationMatchedButUnread { configured_model_path: p } =>
       (p as String) == t_declared_path()
@@ -365,7 +365,7 @@ test fn a_matching_readback_is_classified_as_configuration_matched_not_as_a_read
 // Both are established answers, and the earlier defect was that the metadata-only branch produced
 // Located -- which product.fabric.provider_route first_unresolved_obligation counts as RESOLVED, so
 // the route admitted.
-test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool {
+test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool  {
   match spark_usage_stats_telemetry_path(realization: t_pair_realization()) {
     ProviderPathUnread { obligation: _ } => true
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
@@ -381,7 +381,7 @@ test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool
 // gunbc.spark.pair_serving_realization's container environment over the global lane roster and would
 // have handed this launch the pair route's answer, so a native GLM engine would have been admitted
 // on route facts describing a different container. It is unread now, which refuses.
-test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool {
+test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool  {
   match spark_serving_usage_stats_unread_cause(realization: t_foreign_realization()) {
     TelemetryReportedPathDiffers { reported: rep, declared: dec } =>
       (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
@@ -396,7 +396,7 @@ test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool
 // RED -- AND THE REFUSAL REACHES ADMISSION RATHER THAN STOPPING AT THE STANDING. An unread telemetry
 // path is an unresolved data path, so provider-use admission refuses for that route: the engine can
 // be healthy, the site covered and the posture current, and the route still does not admit.
-test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
+test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool  {
   match spark_first_party_admission(
     realization: t_foreign_realization(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
@@ -414,7 +414,7 @@ test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
 // attributable" -- it does not, and no host roster would make it so. The obligation must name THAT
 // -- reading more of the lane roster answers nothing while the realization names no hosts (review
 // 64438).
-test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
+test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool  {
   match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [] as List<HostIdentity>,
     readback: t_readback(path: t_declared_path()),
@@ -437,7 +437,7 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
 // unobserved host resolved from the observed one and silently dropped the other (review 64424).
 // Partial evidence is missing evidence: srv5 has an observed lane and srv1 does not, and the answer
 // is the obligation rather than srv5's environment.
-test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_observed_half() -> Bool {
+test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_observed_half() -> Bool  {
   match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [operator_host_srv5, operator_host_srv1],
     readback: t_readback(path: t_declared_path()),
@@ -459,7 +459,7 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
 // document DOES decode, since agreement is not identity. This arm is the case upstream of that
 // limit: with nothing reported by the process, there is nothing to compare to the declared path at
 // all, which is a different refusal reason from a comparison that succeeds and still settles nothing.
-test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
+test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool  {
   match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [operator_host_srv5, operator_host_srv6],
     readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
@@ -518,7 +518,7 @@ fn t_observed_realization(env: List<String>) -> SparkServingRealization {
 // DISABLED BY THE READING MEANS NO PATH: the assignment is spelled by upstream's own row, and the
 // projection is ProviderPathAbsent -- there is no telemetry path to locate, which is the one
 // standing that needs no ruling.
-test fn an_observed_launch_whose_env_disables_the_reporter_has_no_telemetry_path() -> Bool {
+test fn an_observed_launch_whose_env_disables_the_reporter_has_no_telemetry_path() -> Bool  {
   let r = t_observed_realization(env: ["NCCL_DEBUG=INFO", vllm_usage_stats_disable_assignment_wire()])
   match spark_serving_usage_stats_standing(realization: r) {
     UsageStatsDisabledByLaunch { mechanism: m } =>
@@ -535,7 +535,7 @@ test fn an_observed_launch_whose_env_disables_the_reporter_has_no_telemetry_path
 // A SPELLING UPSTREAM DOES NOT HONOR IS NOT A DISABLE: =true reads as ENABLED, because envs.py
 // asks equality with "1" and nothing else (review 64043). This row is what stops a future edit
 // from widening the predicate.
-test fn a_non_exact_disable_spelling_reads_as_enabled() -> Bool {
+test fn a_non_exact_disable_spelling_reads_as_enabled() -> Bool  {
   match spark_serving_usage_stats_standing(realization: t_observed_realization(env: ["VLLM_NO_USAGE_STATS=true"])) {
     UsageStatsEnabledByDefault { basis: _ } => true
     UsageStatsDisabledByLaunch { mechanism: _ } => false
@@ -546,7 +546,7 @@ test fn a_non_exact_disable_spelling_reads_as_enabled() -> Bool {
 // ENABLED WITH THE DOCUMENTED PAYLOAD TO THE DEFAULT RECIPIENT IS LOCATED UNDER THE RULING: the
 // cited content class is metadata-only, so the path projects Located and the 2026-09-11 ruling
 // governs it.
-test fn an_observed_launch_reporting_by_default_is_located() -> Bool {
+test fn an_observed_launch_reporting_by_default_is_located() -> Bool  {
   match spark_usage_stats_telemetry_path(realization: t_observed_realization(env: ["NCCL_DEBUG=INFO"])) {
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => true
     ProviderPathAbsent { evidence: _ } => false
@@ -556,7 +556,7 @@ test fn an_observed_launch_reporting_by_default_is_located() -> Bool {
 
 // A DESTINATION OVERRIDE NAMING ANOTHER RECIPIENT IS UNREAD: the documented payload statement is
 // about the default path, and who receives this launch's report has been assessed by no one.
-test fn an_observed_launch_reporting_elsewhere_is_unread() -> Bool {
+test fn an_observed_launch_reporting_elsewhere_is_unread() -> Bool  {
   match spark_usage_stats_telemetry_path(realization: t_observed_realization(env: ["VLLM_USAGE_STATS_SERVER=https://telemetry.example.invalid"])) {
     ProviderPathUnread { obligation: _, consulted: _ } => true
     ProviderPathAbsent { evidence: _ } => false
@@ -565,7 +565,7 @@ test fn an_observed_launch_reporting_elsewhere_is_unread() -> Bool {
 }
 
 // THE OVERRIDE NAMING THE DEFAULT VERBATIM IS THE DEFAULT PATH, not an override.
-test fn an_override_naming_the_default_recipient_is_the_default_path() -> Bool {
+test fn an_override_naming_the_default_recipient_is_the_default_path() -> Bool  {
   match spark_usage_stats_telemetry_path(realization: t_observed_realization(env: [join(["VLLM_USAGE_STATS_SERVER=", vllm_usage_stats_reporting.default_server as String], "")])) {
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => true
     ProviderPathAbsent { evidence: _ } => false

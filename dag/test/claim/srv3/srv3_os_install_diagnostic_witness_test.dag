@@ -75,7 +75,7 @@ data srv3_diagnostic_intent_fixture: OsInstallAttemptIntent = srv3_os_install_at
   iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
 )
 
-test fn serve_absent_is_not_ready_to_boot() -> Bool {
+test fn serve_absent_is_not_ready_to_boot() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: base_observations(
@@ -101,7 +101,7 @@ test fn serve_absent_is_not_ready_to_boot() -> Bool {
     && !install_diagnostic_verdict_is_ready_to_boot(verdict: verdict)
 }
 
-test fn wrong_iso_hash_refuses_serve_ready() -> Bool {
+test fn wrong_iso_hash_refuses_serve_ready() -> Bool  {
   match classify_nbd_serve_readiness(
     process: ServeProcessesPresent,
     port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
@@ -114,7 +114,7 @@ test fn wrong_iso_hash_refuses_serve_ready() -> Bool {
   }
 }
 
-test fn boot_override_consumed_without_install_evidence() -> Bool {
+test fn boot_override_consumed_without_install_evidence() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: base_observations(
@@ -140,7 +140,7 @@ test fn boot_override_consumed_without_install_evidence() -> Bool {
     && verdict == BootOverrideConsumedNoInstall
 }
 
-test fn only_bmc_static_lease_is_not_os_installed() -> Bool {
+test fn only_bmc_static_lease_is_not_os_installed() -> Bool  {
   match classify_router_lease_table(
     table: srv3_pre_install_lease_table,
     fleet_slot: operator_host_srv3,
@@ -156,7 +156,7 @@ test fn only_bmc_static_lease_is_not_os_installed() -> Bool {
   }
 }
 
-test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
+test fn router_srv3_dynamic_lease_is_os_installed() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: OsInstallActuationObservations {
@@ -198,7 +198,7 @@ test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
     && verdict == OsInstalledVerdict
 }
 
-test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
+test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: OsInstallActuationObservations {
@@ -239,7 +239,7 @@ test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
   verdict == OsInstalledVerdict
 }
 
-test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
+test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool  {
   let hung = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: base_observations(
@@ -265,7 +265,7 @@ test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
     && !install_diagnostic_verdict_is_os_installed(verdict: hung)
 }
 
-test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool {
+test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: serve_ready_sol_silent_pre_boot_observations(),
@@ -274,7 +274,7 @@ test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool {
     && verdict == ReadyToBootVerdict
 }
 
-test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
+test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: OsInstallActuationObservations {
@@ -315,7 +315,7 @@ test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
   verdict == BootAttemptInProgress
 }
 
-test fn autoinstall_running_fixture() -> Bool {
+test fn autoinstall_running_fixture() -> Bool  {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_diagnostic_intent_fixture,
     observations: base_observations(
@@ -340,7 +340,7 @@ test fn autoinstall_running_fixture() -> Bool {
   verdict == AutoinstallRunning
 }
 
-test fn checklist_surfaces_and_runbook_are_declared() -> Bool {
+test fn checklist_surfaces_and_runbook_are_declared() -> Bool  {
   bmc_install_debug_checklist_surface_count_is_seven()
     && srv3_os_install_diagnostic_runbook_is_declared()
 }
@@ -349,7 +349,7 @@ test fn checklist_surfaces_and_runbook_are_declared() -> Bool {
 // answers when nothing has observed the actuator host: serve unknown, no SOL, no lease table. The fold
 // must ask for that observation rather than reading the absence as a verdict about the install. This
 // claim replaces a same-named production fn that no caller reached, so the reading now executes.
-test fn a_remote_bmc_probe_alone_needs_the_serve_observation() -> Bool {
+test fn a_remote_bmc_probe_alone_needs_the_serve_observation() -> Bool  {
   match diagnose_srv3_install(
     intent: srv3_diagnostic_intent_fixture,
     observation: srv3_remote_bmc_probe_observation,

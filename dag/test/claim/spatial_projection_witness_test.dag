@@ -170,7 +170,7 @@ fn first_room(s: ProjectedScene) -> ProjectedRoom? {
 
 // IDENTITY SURVIVES. A drawing whose shapes cannot be traced back to rooms is a picture; this claim
 // is the difference between the two.
-test fn every_projected_room_keeps_the_identity_the_world_gave_it() -> Bool {
+test fn every_projected_room_keeps_the_identity_the_world_gave_it() -> Bool  {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
     Absent => false
     Present { value: s } =>
@@ -180,7 +180,7 @@ test fn every_projected_room_keeps_the_identity_the_world_gave_it() -> Bool {
 
 // A rectangular prism has four footprint vertices at each of two heights. Asserting the count keeps
 // a later edit from projecting only the floor and calling the result a room.
-test fn a_room_contributes_every_corner_of_its_prism() -> Bool {
+test fn a_room_contributes_every_corner_of_its_prism() -> Bool  {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
     Absent => false
     Present { value: s } =>
@@ -194,7 +194,7 @@ test fn a_room_contributes_every_corner_of_its_prism() -> Bool {
 // Under a plan the two heights of one room collapse onto the same page point, and the room's depth
 // range spans the two elevations. Depth grows away from an overhead camera, so the floor is the
 // farthest point of the room.
-test fn a_plan_collapses_a_rooms_height_into_a_depth_range() -> Bool {
+test fn a_plan_collapses_a_rooms_height_into_a_depth_range() -> Bool  {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
     Absent => false
     Present { value: s } =>
@@ -208,7 +208,7 @@ test fn a_plan_collapses_a_rooms_height_into_a_depth_range() -> Bool {
 // Rooms that share no page area never contend, whatever their depths, so an ordinary plan of a floor
 // orders rather than refusing. This is the claim that keeps the conservative page test from being
 // useless in the common case.
-test fn a_plan_of_adjacent_rooms_orders_without_refusing() -> Bool {
+test fn a_plan_of_adjacent_rooms_orders_without_refusing() -> Bool  {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
     Absent => false
     Present { value: s } => names_are(actual: ordered_names(s: s), first: "kitchen", second: "hall")
@@ -217,7 +217,7 @@ test fn a_plan_of_adjacent_rooms_orders_without_refusing() -> Bool {
 
 // Stacked rooms DO share page area, and their depth ranges are disjoint, so exactly one order is
 // correct: the lower storey is farther from an overhead camera and is drawn first.
-test fn a_plan_of_stacked_rooms_draws_the_lower_storey_first() -> Bool {
+test fn a_plan_of_stacked_rooms_draws_the_lower_storey_first() -> Bool  {
   match scene_of(w: stacked(), kind: PlanFromAbove) {
     Absent => false
     Present { value: s } => names_are(actual: ordered_names(s: s), first: "ground", second: "upper")
@@ -230,7 +230,7 @@ test fn a_plan_of_stacked_rooms_draws_the_lower_storey_first() -> Bool {
 // its own notch. Their depth ranges are identical, so no ordering of whole rooms is decided, and the
 // pair is returned rather than an order being picked. An exact page-region test would order this
 // pair; until one exists, refusing is the only answer that cannot be wrong.
-test fn overlapping_page_boxes_at_one_depth_refuse_to_be_ordered() -> Bool {
+test fn overlapping_page_boxes_at_one_depth_refuse_to_be_ordered() -> Bool  {
   match scene_of(w: notched(), kind: PlanFromAbove) {
     Absent => false
     Present { value: s } =>
@@ -248,7 +248,7 @@ test fn overlapping_page_boxes_at_one_depth_refuse_to_be_ordered() -> Bool {
 // The horizontal half of the page test, which the plan claims above do not reach: seen from the
 // south, two rooms side by side in the east-west direction occupy disjoint page columns at the same
 // depth, so they order rather than refusing.
-test fn an_elevation_of_adjacent_rooms_orders_without_refusing() -> Bool {
+test fn an_elevation_of_adjacent_rooms_orders_without_refusing() -> Bool  {
   match scene_of(w: side_by_side(), kind: ElevationFromSouth) {
     Absent => false
     Present { value: s } => names_are(actual: ordered_names(s: s), first: "kitchen", second: "hall")
@@ -257,7 +257,7 @@ test fn an_elevation_of_adjacent_rooms_orders_without_refusing() -> Bool {
 
 // A world whose geometry lives in a frame the camera does not read has no projection, and the
 // refusal names the projection layer's cause rather than being re-spelled here.
-test fn a_world_in_another_frame_has_no_projection() -> Bool {
+test fn a_world_in_another_frame_has_no_projection() -> Bool  {
   match world_of(
     a: placed(name: "kitchen", frame: other_site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
     b: placed(name: "hall", frame: other_site(), x0: 4000, y0: 0, x1: 6000, y1: 4000, low: 0, high: 2400),

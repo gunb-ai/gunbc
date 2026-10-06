@@ -27,13 +27,13 @@ import std.types { Bool }
 // generated artifact byte-for-byte against the registration rows it derives
 // from, which is a live drift wall independent of self-host progress.
 
-test fn w_generated_stage0_filenames_match_frontier() -> Bool {
+test fn w_generated_stage0_filenames_match_frontier() -> Bool  {
   generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
     && generated_stage0_filenames
       |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
 }
 
-test fn w_generated_stage0_dirs_match_frontier() -> Bool {
+test fn w_generated_stage0_dirs_match_frontier() -> Bool  {
   generated_stage0_dirs.length() == hand_maintained_stage0_dirs().length()
     && generated_stage0_dirs
       |> all(d => hand_maintained_stage0_dirs() |> any(g => g == d))

@@ -73,7 +73,7 @@ fn w_set_b() -> List<V41EnginePatch> {
   concat(w_patch(path: "b1.patch", c: "1"), w_patch(path: "b2.patch", c: "2"))
 }
 
-test fn red1_patch_set_b_onto_a_tree_this_converge_recorded_under_a_resets_then_applies_and_reads_back_b() -> Bool {
+test fn red1_patch_set_b_onto_a_tree_this_converge_recorded_under_a_resets_then_applies_and_reads_back_b() -> Bool  {
   let on_a = w_read_recorded(
     porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py\nM  vllm/models/deepseek_v4_1/nvidia/engram.py",
     diff: "a",
@@ -110,7 +110,7 @@ test fn red1_patch_set_b_onto_a_tree_this_converge_recorded_under_a_resets_then_
     }
 }
 
-test fn red2_a_tree_with_an_edit_this_converge_did_not_record_refuses_rather_than_resetting() -> Bool {
+test fn red2_a_tree_with_an_edit_this_converge_did_not_record_refuses_rather_than_resetting() -> Bool  {
   let members = [w_member(path: "b1.patch", c: "1", reverse_applicable: false, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: false, forward_applicable: false)]
   let foreign = w_read_recorded(porcelain: " M vllm/engine/llm_engine.py", diff: "f", recorded: "a", members: members)
   let unrecorded = w_read(head: vllm_d2d649e6_revision.full_revision as String, porcelain: " M vllm/engine/llm_engine.py", members: members)
@@ -132,7 +132,7 @@ test fn red2_a_tree_with_an_edit_this_converge_did_not_record_refuses_rather_tha
     }
 }
 
-test fn red3_the_same_set_twice_is_a_noop_even_though_the_record_matches() -> Bool {
+test fn red3_the_same_set_twice_is_a_noop_even_though_the_record_matches() -> Bool  {
   let on_b = w_read_recorded(
     porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py",
     diff: "b",
@@ -150,7 +150,7 @@ test fn red3_the_same_set_twice_is_a_noop_even_though_the_record_matches() -> Bo
 // digest ("a") equals the derived digest of pin + a declared historical set, so it is ours: reset,
 // then apply the current set. The same tree without that derivation still refuses, and a foreign
 // diff ("f") matches no known set and refuses.
-test fn red4_bootstrap_a_tree_carrying_an_older_declared_set_with_no_record_converges_by_content() -> Bool {
+test fn red4_bootstrap_a_tree_carrying_an_older_declared_set_with_no_record_converges_by_content() -> Bool  {
   let members = [w_member(path: "b1.patch", c: "1", reverse_applicable: false, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: false, forward_applicable: false)]
   let on_a = w_read_known(porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py", diff: "a", known: ["0", "a", "b"], members: members)
   let underived = w_read_known(porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py", diff: "a", known: [] as List<String>, members: members)
@@ -170,12 +170,12 @@ test fn red4_bootstrap_a_tree_carrying_an_older_declared_set_with_no_record_conv
     }
 }
 
-test fn git_reset_hard_names_the_pin_not_head() -> Bool {
+test fn git_reset_hard_names_the_pin_not_head() -> Bool  {
   git_reset_hard_args(repository_dir: "/tmp/vllm", revision: vllm_d2d649e6_revision.full_revision as String)
     == ["-C", "/tmp/vllm", "reset", "--hard", vllm_d2d649e6_revision.full_revision as String]
 }
 
-test fn a_clean_tree_at_r_with_forward_checks_is_apply() -> Bool {
+test fn a_clean_tree_at_r_with_forward_checks_is_apply() -> Bool  {
   let ps = concat(w_patch(path: "a.patch", c: "1"), w_patch(path: "b.patch", c: "2"))
   match v41_source_patch_decision(
     desired_revision: vllm_d2d649e6_revision,
@@ -192,7 +192,7 @@ test fn a_clean_tree_at_r_with_forward_checks_is_apply() -> Bool {
   }
 }
 
-test fn reverse_checks_without_forward_are_noop_by_observation() -> Bool {
+test fn reverse_checks_without_forward_are_noop_by_observation() -> Bool  {
   let ps = concat(w_patch(path: "a.patch", c: "1"), w_patch(path: "b.patch", c: "2"))
   match v41_source_patch_decision(
     desired_revision: vllm_d2d649e6_revision,
@@ -209,7 +209,7 @@ test fn reverse_checks_without_forward_are_noop_by_observation() -> Bool {
   }
 }
 
-test fn a_digest_mismatch_refuses() -> Bool {
+test fn a_digest_mismatch_refuses() -> Bool  {
   let ps = w_patch(path: "a.patch", c: "1")
   match v41_source_patch_decision(
     desired_revision: vllm_d2d649e6_revision,
@@ -226,7 +226,7 @@ test fn a_digest_mismatch_refuses() -> Bool {
   }
 }
 
-test fn a_wrong_revision_refuses() -> Bool {
+test fn a_wrong_revision_refuses() -> Bool  {
   match v41_source_patch_decision(
     desired_revision: vllm_d2d649e6_revision,
     desired_patches: [] as List<V41EnginePatch>,
@@ -238,7 +238,7 @@ test fn a_wrong_revision_refuses() -> Bool {
   }
 }
 
-test fn partial_application_refuses() -> Bool {
+test fn partial_application_refuses() -> Bool  {
   let ps = concat(w_patch(path: "a.patch", c: "1"), w_patch(path: "b.patch", c: "2"))
   match v41_source_patch_decision(
     desired_revision: vllm_d2d649e6_revision,
@@ -255,7 +255,7 @@ test fn partial_application_refuses() -> Bool {
   }
 }
 
-test fn noop_readback_grounds_and_apply_without_after_read_does_not() -> Bool {
+test fn noop_readback_grounds_and_apply_without_after_read_does_not() -> Bool  {
   let ps = w_patch(path: "a.patch", c: "1")
   let already = w_read(
     head: vllm_d2d649e6_revision.full_revision as String,
@@ -281,7 +281,7 @@ test fn noop_readback_grounds_and_apply_without_after_read_does_not() -> Bool {
     }
 }
 
-test fn digestfile_inhabits_the_committed_patch_population() -> Bool {
+test fn digestfile_inhabits_the_committed_patch_population() -> Bool  {
   match v41_storage_backed_patch_population() {
     V41PatchesObserved { patches: ps, partition: _ } =>
       length(ps) == 7
@@ -294,23 +294,23 @@ test fn digestfile_inhabits_the_committed_patch_population() -> Bool {
   }
 }
 
-test fn empty_diff_has_a_real_digest() -> Bool {
+test fn empty_diff_has_a_real_digest() -> Bool  {
   match v41_sha256_of_bytes(content: "") {
     Absent => false
     Present { value: d } => (d.hex as String).length() == 64
   }
 }
 
-test fn git_apply_updates_the_index_so_diff_head_covers_new_modules() -> Bool {
+test fn git_apply_updates_the_index_so_diff_head_covers_new_modules() -> Bool  {
   any(git_apply_args(repository_dir: "/tmp/vllm", patch_path: "engram_file_backed.py.patch"), a => a == "--index")
 }
 
-test fn the_placed_patch_digest_is_sha256sum_over_the_remote_path() -> Bool {
+test fn the_placed_patch_digest_is_sha256sum_over_the_remote_path() -> Bool  {
   let path = "/tmp/declared-patches/engram_file_backed.py.patch"
   argv_words(command: sha256sum_file_command(path: path)) == sha256sum_argv(path: path)
 }
 
-test fn a_sha256sum_line_mismatch_is_authorable_without_the_desired_hex() -> Bool {
+test fn a_sha256sum_line_mismatch_is_authorable_without_the_desired_hex() -> Bool  {
   match sha256sum_line_digest(line: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.patch") {
     Absent => false
     Present { value: a } =>
@@ -321,7 +321,7 @@ test fn a_sha256sum_line_mismatch_is_authorable_without_the_desired_hex() -> Boo
   }
 }
 
-test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity() -> Bool {
+test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity() -> Bool  {
   let ps = w_patch(path: "engram_file_backed.py.patch", c: "1")
   match v41_source_patch_decision(
     desired_revision: vllm_d2d649e6_revision,
@@ -338,7 +338,7 @@ test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity
   }
 }
 
-test fn patched_source_receipt_names_the_observed_tree_not_a_clean_vanilla_checkout() -> Bool {
+test fn patched_source_receipt_names_the_observed_tree_not_a_clean_vanilla_checkout() -> Bool  {
   let obs = v41_observed_source_identity_of(revision_head: "deadbeef" as NonEmptyStr, worktree_diff_sha256: w_sha(c: "d"))
   let applied = v41_patched_source_receipt_line(c: V41PatchedSourceConverged { patches_already_on_tree: false, observed: obs })
   let refused = v41_patched_source_receipt_line(c: V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: "git apply refused" })
@@ -369,7 +369,7 @@ fn w_member_digest_is(m: V41KnownPatchMember, hex: String) -> Bool {
   }
 }
 
-test fn red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history() -> Bool {
+test fn red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history() -> Bool  {
   let ps = concat(
     w_patch(path: "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch", c: "a"),
     w_patch(path: "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch", c: "b"),

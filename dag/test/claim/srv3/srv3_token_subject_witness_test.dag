@@ -34,12 +34,12 @@ fn expected_gid_argv() -> List<String> {
   ["/usr/bin/id", "-g"]
 }
 
-test fn effective_owner_subjects_derive_the_cited_id_argv() -> Bool {
+test fn effective_owner_subjects_derive_the_cited_id_argv() -> Bool  {
   srv3_token_argv(subject: Srv3EffectiveUserId) == expected_uid_argv()
     && srv3_token_argv(subject: Srv3EffectiveGroupId) == expected_gid_argv()
 }
 
-test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool {
+test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool  {
   srv3_token_argv(subject: Srv3PathOwnerUser { path: "/opt/gunbc/bin" })
       == ["/usr/bin/stat", "-c", "%u", "/opt/gunbc/bin"]
     && srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/opt/gunbc/bin" })
@@ -52,7 +52,7 @@ test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool {
 // exactly the confusion a hand-written argv makes invisible: a probe that asked for %u and was
 // serialized as %g would report the wrong half of the owner and every downstream comparison would
 // still typecheck. These two assertions go red under that swap; the equality tests above would not.
-test fn owner_halves_do_not_derive_the_same_command() -> Bool {
+test fn owner_halves_do_not_derive_the_same_command() -> Bool  {
   srv3_token_argv(subject: Srv3EffectiveUserId) != srv3_token_argv(subject: Srv3EffectiveGroupId)
     && srv3_token_argv(subject: Srv3PathOwnerUser { path: "/p" })
       != srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/p" })
@@ -60,7 +60,7 @@ test fn owner_halves_do_not_derive_the_same_command() -> Bool {
 
 // The path is carried through rather than fixed: a subject naming one path must not serialize a
 // command about another.
-test fn the_path_subject_carries_its_own_path() -> Bool {
+test fn the_path_subject_carries_its_own_path() -> Bool  {
   srv3_token_argv(subject: Srv3PathOwnerUser { path: "/a" })
     != srv3_token_argv(subject: Srv3PathOwnerUser { path: "/b" })
     && srv3_token_argv(subject: Srv3PathMode { path: "/a" })

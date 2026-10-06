@@ -31,12 +31,12 @@ data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 // made the stdin transport load-bearing, and that belt B (PR 6940) dissolved that premise and
 // flipped the clause into a regression wall — is carried in full on the surviving row.
 
-test fn witness_exec_script_mock_enrolled() -> Bool {
+test fn witness_exec_script_mock_enrolled() -> Bool  {
   ssh_session_mock_case_exec_script.operation == "ExecScript"
     && ssh_session_mock_case_exec_script.operation_key == "ssh.Session.ExecScript"
 }
 
-test fn witness_exec_script_receiver_is_bash_dash_s() -> Bool {
+test fn witness_exec_script_receiver_is_bash_dash_s() -> Bool  {
   ssh_exec_script_remote_receiver == "bash -s"
 }
 

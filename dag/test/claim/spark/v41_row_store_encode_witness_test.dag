@@ -86,20 +86,20 @@ fn w_dag_store() -> List<UInt8> {
   }
 }
 
-test fn the_host_program_writes_exactly_the_folds_store_over_real_published_rows() -> Bool {
+test fn the_host_program_writes_exactly_the_folds_store_over_real_published_rows() -> Bool  {
   let dag = w_dag_store()
   length(dag) == 6 + 2 * 264 && dag == w_octets(hex: w_host_store)
 }
 
 // RED: the same program with its scale table one row off writes a store the fold does not.
-test fn a_perturbed_placement_by_the_host_program_is_not_the_folds_store() -> Bool {
+test fn a_perturbed_placement_by_the_host_program_is_not_the_folds_store() -> Bool  {
   let dag = w_dag_store()
   length(dag) == 6 + 2 * 264 && dag != w_octets(hex: w_host_store_perturbed)
 }
 
 // THE RECEIPT DESCRIBES THE RENDERED PROGRAM THE MODE SHIPS: the text that produced it is the text
 // v41_store_encode_argv carries. An edit to the program invalidates the receipt until it is re-run.
-test fn the_receipt_was_produced_by_the_rendered_program_the_mode_ships() -> Bool {
+test fn the_receipt_was_produced_by_the_rendered_program_the_mode_ships() -> Bool  {
   match sha256sum_stdin_digest_via_shell(content: v41_row_store_encoder_program) {
     Sha256FileDigest { digest: d } => (d.hex as String) == w_program_sha256
     Sha256FileDigestUnavailable { path: _, reason: _ } => false
@@ -107,7 +107,7 @@ test fn the_receipt_was_produced_by_the_rendered_program_the_mode_ships() -> Boo
 }
 
 // THE ARGV CARRIES THAT TEXT, and the declaration says what it realizes.
-test fn the_argv_ships_the_rendered_program_as_a_realization_of_v41_place_row() -> Bool {
+test fn the_argv_ships_the_rendered_program_as_a_realization_of_v41_place_row() -> Bool  {
   let a = v41_store_encode_argv(shard_directory: "/s" as NonEmptyStr, a: w_sample_args())
   match get(xs: a, index: 2) {
     Present { value: prog } => prog == v41_row_store_encoder_program
@@ -118,7 +118,7 @@ test fn the_argv_ships_the_rendered_program_as_a_realization_of_v41_place_row() 
 
 // THE LIVE PLAN HANDS THE ENCODER WHAT THE SAMPLE RUN USED for layer 1: the weight and scale tables at
 // their header-derived offsets, the 256 + 8 byte widths and the magic -- and eight stores in all.
-test fn the_live_plan_hands_the_encoder_what_the_sample_run_used() -> Bool {
+test fn the_live_plan_hands_the_encoder_what_the_sample_run_used() -> Bool  {
   match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: w_published_head_sizes()) {
     V41RowStoreSpecRefused { defects: _ } => false
     V41RowStoreSpecAdmitted { spec: spec } => match v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files) {

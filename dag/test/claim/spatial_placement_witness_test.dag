@@ -128,27 +128,27 @@ data seed_to_next_association: WirelessReachStanding = TargetAssociationObserved
   management_path_preserved: true,
 }
 
-test fn site_contains_declared_racks_holds() -> Bool {
+test fn site_contains_declared_racks_holds() -> Bool  {
   site_contains_rack(site: synthetic_site, rack: rack_a)
     && site_contains_rack(site: synthetic_site, rack: rack_b)
     && site_contains_rack(site: operator_physical_site, rack: rack_01)
 }
 
-test fn same_rack_exact_identity_holds_for_co_residents() -> Bool {
+test fn same_rack_exact_identity_holds_for_co_residents() -> Bool  {
   match same_rack(a: seed_rack_a_residence, b: next_rack_a_residence) {
     Present { value: same } => same
     Absent => false
   }
 }
 
-test fn same_rack_different_racks_is_false_not_unknown() -> Bool {
+test fn same_rack_different_racks_is_false_not_unknown() -> Bool  {
   match same_rack(a: seed_rack_a_residence, b: far_rack_b_residence) {
     Present { value: same } => !same
     Absent => false
   }
 }
 
-test fn same_rack_unobserved_is_absent_not_false() -> Bool {
+test fn same_rack_unobserved_is_absent_not_false() -> Bool  {
   match same_rack(a: RackResidenceUnobserved, b: seed_rack_a_residence) {
     Absent => true
     Present { value: _ } => false
@@ -159,7 +159,7 @@ test fn same_rack_unobserved_is_absent_not_false() -> Bool {
 // Absent. The RED this pins is the collapse review 50391 found — mapping BootstrapNeedUnobserved to
 // false made an unlooked-at target report "does not need bootstrap", so a witness asserting
 // Present{value:false} on the third arm must fail.
-test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool {
+test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool  {
   match wifi_target_needs_bootstrap(need: BootstrapNeeded) {
     Absent => false
     Present { value: needed } =>
@@ -174,7 +174,7 @@ test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool {
   }
 }
 
-test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
+test fn wireless_standing_discriminates_present_vs_absent() -> Bool  {
   match wireless_adapter_can_associate(
     standing: WirelessAdapterPresent {
       interface: "wlan0" as NonEmptyStr,
@@ -205,7 +205,7 @@ test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
   }
 }
 
-test fn srv1_measured_adapter_absent_specimen() -> Bool {
+test fn srv1_measured_adapter_absent_specimen() -> Bool  {
   match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: operator_host_srv1) {
     Present { value: srv1 } =>
       match srv1.wireless {
@@ -222,7 +222,7 @@ test fn srv1_measured_adapter_absent_specimen() -> Bool {
     && srv1_measured_wireless_note != ""
 }
 
-test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool {
+test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool  {
   match wifi_probe_is_candidate(
     bootstrapper_residence: seed_rack_a_residence,
     target_residence: next_rack_a_residence,
@@ -241,7 +241,7 @@ test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool {
     )
 }
 
-test fn same_rack_without_receipt_refuses_bootstrap() -> Bool {
+test fn same_rack_without_receipt_refuses_bootstrap() -> Bool  {
   match wifi_bootstrap_step_admissible(
     step: WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
     facts: spatial_fixture_facts,
@@ -252,7 +252,7 @@ test fn same_rack_without_receipt_refuses_bootstrap() -> Bool {
   }
 }
 
-test fn association_receipt_establishes_reach_and_admits_bootstrap() -> Bool {
+test fn association_receipt_establishes_reach_and_admits_bootstrap() -> Bool  {
   wireless_reach_established(
     bootstrapper: host_seed,
     target: host_next,
@@ -268,7 +268,7 @@ test fn association_receipt_establishes_reach_and_admits_bootstrap() -> Bool {
     }
 }
 
-test fn synthetic_second_rack_refuses_probe_and_bootstrap() -> Bool {
+test fn synthetic_second_rack_refuses_probe_and_bootstrap() -> Bool  {
   match wifi_probe_is_candidate(
     bootstrapper_residence: seed_rack_a_residence,
     target_residence: far_rack_b_residence,
@@ -290,7 +290,7 @@ test fn synthetic_second_rack_refuses_probe_and_bootstrap() -> Bool {
     }
 }
 
-test fn wifi_bootstrap_chain_one_hop_with_receipt_holds() -> Bool {
+test fn wifi_bootstrap_chain_one_hop_with_receipt_holds() -> Bool  {
   let chain = WifiBootstrapChain {
     steps: [
       WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
@@ -306,6 +306,6 @@ test fn wifi_bootstrap_chain_one_hop_with_receipt_holds() -> Bool {
   }
 }
 
-test fn fleet_nominal_rackmount_arithmetic_witness_holds() -> Bool {
+test fn fleet_nominal_rackmount_arithmetic_witness_holds() -> Bool  {
   fleet_nominal_rackmount_arithmetic_holds()
 }

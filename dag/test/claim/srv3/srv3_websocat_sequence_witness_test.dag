@@ -51,7 +51,7 @@ fn trace_of(outcomes: List<Srv3HostPredicate>) -> List<String> {
 }
 
 // Already present: observe only. No mutation stage is reachable.
-test fn already_installed_runs_observe_only() -> Bool {
+test fn already_installed_runs_observe_only() -> Bool  {
   labels_equal(
     actual: trace_of(outcomes: [Srv3PredicateHolds]),
     expected: ["observe-installed"],
@@ -59,7 +59,7 @@ test fn already_installed_runs_observe_only() -> Bool {
 }
 
 // An unobservable first probe must not lead to an install on a host that was never reached.
-test fn unobservable_observation_runs_observe_only() -> Bool {
+test fn unobservable_observation_runs_observe_only() -> Bool  {
   labels_equal(
     actual: trace_of(outcomes: [unobserved(reason: "transport refused")]),
     expected: ["observe-installed"],
@@ -68,7 +68,7 @@ test fn unobservable_observation_runs_observe_only() -> Bool {
 
 // THE CENTRAL RED. A failed mkdir stops the walk: no download, no chmod, no readback.
 // Before this cut all three ran anyway.
-test fn a_failed_directory_ensure_stops_before_download() -> Bool {
+test fn a_failed_directory_ensure_stops_before_download() -> Bool  {
   labels_equal(
     actual: trace_of(
       outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds],
@@ -79,7 +79,7 @@ test fn a_failed_directory_ensure_stops_before_download() -> Bool {
 
 // An unobservable chown must not be followed by a download either -- Unobserved is not a weaker
 // Fails, it is "the host was never asked", and proceeding would mutate a host in unknown state.
-test fn an_unobservable_ownership_ensure_stops_before_download() -> Bool {
+test fn an_unobservable_ownership_ensure_stops_before_download() -> Bool  {
   labels_equal(
     actual: trace_of(
       outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, unobserved(reason: "ssh refused"), Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds],
@@ -90,7 +90,7 @@ test fn an_unobservable_ownership_ensure_stops_before_download() -> Bool {
 
 // A failed download must not be chmod'd or read back -- the previous body chmod'd a file the
 // download had not produced, then re-observed it.
-test fn a_failed_download_stops_before_chmod() -> Bool {
+test fn a_failed_download_stops_before_chmod() -> Bool  {
   labels_equal(
     actual: trace_of(
       outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds],
@@ -108,7 +108,7 @@ test fn a_failed_download_stops_before_chmod() -> Bool {
 // exactly the defect it names. Measured -- it was the one witness the never-stop mutation did
 // not redden. The seventh outcome removes the exhaustion crutch, so the only thing that can
 // keep readback out of the trace is the sequencing.
-test fn the_readback_never_runs_after_a_failed_step() -> Bool {
+test fn the_readback_never_runs_after_a_failed_step() -> Bool  {
   fold_list(
     xs: [
       trace_of(outcomes: [Srv3PredicateFails, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds]),
@@ -127,7 +127,7 @@ test fn the_readback_never_runs_after_a_failed_step() -> Bool {
 // THE POSITIVE CONTROL, without which every test above passes on a walk that never runs anything.
 // It passes SEVEN outcomes for seven stages. An earlier draft passed six and could not have
 // reached readback -- the test would have "passed" by asserting a chain it never walked.
-test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> Bool {
+test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> Bool  {
   labels_equal(
     actual: trace_of(
       outcomes: [
@@ -172,24 +172,24 @@ fn edge_admits(from: WebsocatStage, expected: WebsocatStage) -> Bool {
   }
 }
 
-test fn the_directory_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+test fn the_directory_stage_continues_to_the_stage_its_driver_site_implements() -> Bool  {
   edge_admits(from: EnsureDirectory, expected: EnsureOwnership)
 }
 
-test fn the_ownership_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+test fn the_ownership_stage_continues_to_the_stage_its_driver_site_implements() -> Bool  {
   edge_admits(from: EnsureOwnership, expected: Download)
 }
 
-test fn the_download_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+test fn the_download_stage_continues_to_the_stage_its_driver_site_implements() -> Bool  {
   edge_admits(from: Download, expected: EnsureExecutableMode)
 }
 
-test fn the_mode_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+test fn the_mode_stage_continues_to_the_stage_its_driver_site_implements() -> Bool  {
   edge_admits(from: EnsureExecutableMode, expected: Readback)
 }
 
 // The control for the four above: the guard must be capable of answering false, or all four are
 // asserting that a function returns true rather than that the edges agree.
-test fn the_edge_guard_refuses_a_stage_the_site_does_not_implement() -> Bool {
+test fn the_edge_guard_refuses_a_stage_the_site_does_not_implement() -> Bool  {
   edge_admits(from: EnsureDirectory, expected: Readback) == false
 }

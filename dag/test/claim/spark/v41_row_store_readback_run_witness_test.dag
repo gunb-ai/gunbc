@@ -54,7 +54,7 @@ fn w_at(s: V41ReadbackSample) -> String {
   }
 }
 
-test fn each_sample_is_read_where_the_encoder_put_or_took_it() -> Bool {
+test fn each_sample_is_read_where_the_encoder_put_or_took_it() -> Bool  {
   let shard = join([v41_checkpoint_directory as String, "/model-00048-of-00048.safetensors"], "")
   w_at(s: V41SampleMagic { layer: 14, rank: 1 }) == "/s/layer.14.rank.1.engram@0+6"
     && w_at(s: V41SampleStoreRecord { layer: 14, rank: 1, local_row: 5 }) == join(["/s/layer.14.rank.1.engram@", to_string(6 + 5 * 264), "+264"], "")
@@ -63,7 +63,7 @@ test fn each_sample_is_read_where_the_encoder_put_or_took_it() -> Bool {
     && w_at(s: V41SampleMagic { layer: 1, rank: 0 }) == "absent"
 }
 
-test fn od_reads_one_span_as_hex_and_its_lines_are_joined() -> Bool {
+test fn od_reads_one_span_as_hex_and_its_lines_are_joined() -> Bool  {
   argv_words(command: od_hex_span_command(path: "/s/x", offset: 1590, length: 264)) == ["od", "-An", "-v", "-tx1", "-j", "1590", "-N", "264", "--", "/s/x"]
     && v41_od_hex(stdout: " 45 4e 47\n 52 31 0a\n") == "454e4752310a"
 }

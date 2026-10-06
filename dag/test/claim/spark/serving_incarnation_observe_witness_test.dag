@@ -46,7 +46,7 @@ data fixture_image_hex: String = "f869281d869b2a1d418cade7dcbabe65216cb8f54891d5
 
 // ── THE EXPORTED FIELD IS READ AS AN EXACT DECIMAL, NOT A FLOAT ──────────────────────────────────
 
-test fn the_exported_start_reads_as_an_exact_decimal() -> Bool {
+test fn the_exported_start_reads_as_an_exact_decimal() -> Bool  {
   match prometheus_sample_value_reading(field: fixture_exported) {
     SampleValueExact { value: d } => d.units == 178934488391 && d.fraction_digits == 2
     SampleValueNotFinite { lexeme: _ } => false
@@ -54,7 +54,7 @@ test fn the_exported_start_reads_as_an_exact_decimal() -> Bool {
   }
 }
 
-test fn a_plain_decimal_sample_reads_exactly() -> Bool {
+test fn a_plain_decimal_sample_reads_exactly() -> Bool  {
   match prometheus_sample_value_reading(field: "1789344883.91") {
     SampleValueExact { value: d } => d.units == 178934488391 && d.fraction_digits == 2
     SampleValueNotFinite { lexeme: _ } => false
@@ -62,7 +62,7 @@ test fn a_plain_decimal_sample_reads_exactly() -> Bool {
   }
 }
 
-test fn an_infinite_sample_refuses_rather_than_reading_zero() -> Bool {
+test fn an_infinite_sample_refuses_rather_than_reading_zero() -> Bool  {
   match prometheus_sample_value_reading(field: "+Inf") {
     SampleValueNotFinite { lexeme: l } => l == "+Inf"
     SampleValueExact { value: _ } => false
@@ -70,7 +70,7 @@ test fn an_infinite_sample_refuses_rather_than_reading_zero() -> Bool {
   }
 }
 
-test fn a_non_numeric_sample_refuses() -> Bool {
+test fn a_non_numeric_sample_refuses() -> Bool  {
   match prometheus_sample_value_reading(field: "abc") {
     SampleValueUnreadable { lexeme: _ } => true
     SampleValueExact { value: _ } => false
@@ -94,7 +94,7 @@ fn a_prometheus_sample_refuses(field: String) -> Bool {
 // e+999 (10^999 wraps to a fabricated finite reading) and e-999 (fraction_digits 1000, overflow in
 // the identity equality) both refuse now that the bound is on i64 magnitude, not digit count
 // (review 66357).
-test fn a_huge_exponent_sample_refuses_rather_than_fabricating() -> Bool {
+test fn a_huge_exponent_sample_refuses_rather_than_fabricating() -> Bool  {
   a_prometheus_sample_refuses(field: "1e-99999999999999999999")
     && a_prometheus_sample_refuses(field: "1e999999")
     && a_prometheus_sample_refuses(field: "1e+999")
@@ -104,7 +104,7 @@ test fn a_huge_exponent_sample_refuses_rather_than_fabricating() -> Bool {
 
 // ── THE HOST FACTS DECODE ────────────────────────────────────────────────────────────────────────
 
-test fn boot_time_reads_from_proc_stat() -> Bool {
+test fn boot_time_reads_from_proc_stat() -> Bool  {
   match proc_stat_boot_time(content: fixture_btime) {
     BootTimeObserved { epoch_seconds: s } => s == 1788630958
     BootTimeLineAbsent => false
@@ -113,7 +113,7 @@ test fn boot_time_reads_from_proc_stat() -> Bool {
   }
 }
 
-test fn a_proc_stat_without_btime_refuses() -> Bool {
+test fn a_proc_stat_without_btime_refuses() -> Bool  {
   match proc_stat_boot_time(content: "cpu 1 2 3\nprocesses 9\n") {
     BootTimeLineAbsent => true
     BootTimeObserved { epoch_seconds: _ } => false
@@ -124,7 +124,7 @@ test fn a_proc_stat_without_btime_refuses() -> Bool {
 
 // parse_int admits a leading minus; EpochSecs does not. A negative btime is a broken clock,
 // not an instant, matching extdeps.clock's refusal before minting ClockTimestampObserved.
-test fn a_negative_btime_refuses_rather_than_minting_epoch_secs() -> Bool {
+test fn a_negative_btime_refuses_rather_than_minting_epoch_secs() -> Bool  {
   match proc_stat_boot_time(content: "btime -1\n") {
     BootTimeBeforeEpoch { field: f } => f == "-1"
     BootTimeObserved { epoch_seconds: _ } => false
@@ -133,7 +133,7 @@ test fn a_negative_btime_refuses_rather_than_minting_epoch_secs() -> Bool {
   }
 }
 
-test fn the_clock_tick_rate_reads() -> Bool {
+test fn the_clock_tick_rate_reads() -> Bool  {
   match clock_ticks_reading(stdout: fixture_clk_tck) {
     ClockTicksObserved { per_second: n } => n == 100
     ClockTicksUnparseable { field: _ } => false
@@ -141,7 +141,7 @@ test fn the_clock_tick_rate_reads() -> Bool {
   }
 }
 
-test fn a_zero_tick_rate_refuses_rather_than_dividing_by_it() -> Bool {
+test fn a_zero_tick_rate_refuses_rather_than_dividing_by_it() -> Bool  {
   match clock_ticks_reading(stdout: "0\n") {
     ClockTicksNotPositive { value: v } => v == 0
     ClockTicksObserved { per_second: _ } => false
@@ -150,7 +150,7 @@ test fn a_zero_tick_rate_refuses_rather_than_dividing_by_it() -> Bool {
 }
 
 // THE PARENTHESISED COMM IS HANDLED, and starttime is field 22.
-test fn the_process_start_ticks_read_past_a_parenthesised_comm() -> Bool {
+test fn the_process_start_ticks_read_past_a_parenthesised_comm() -> Bool  {
   match proc_pid_stat_start_time(content: fixture_pid_stat) {
     StartTimeObserved { ticks_since_boot: t } => t == 71392591
     StartTimeCommUnterminated => false
@@ -161,7 +161,7 @@ test fn the_process_start_ticks_read_past_a_parenthesised_comm() -> Bool {
 
 // A COMM WITH A SPACE AND A CLOSE PAREN INSIDE IT still reads the right field: only the LAST ')'
 // terminates comm, so a process named "(vllm) worker)" does not shift the field index.
-test fn a_comm_containing_spaces_and_parens_does_not_shift_the_field() -> Bool {
+test fn a_comm_containing_spaces_and_parens_does_not_shift_the_field() -> Bool  {
   match proc_pid_stat_start_time(content: "42 (v l l m) )) S 1 42 42 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 555 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0") {
     StartTimeObserved { ticks_since_boot: t } => t == 555
     StartTimeCommUnterminated => false
@@ -174,7 +174,7 @@ test fn a_comm_containing_spaces_and_parens_does_not_shift_the_field() -> Bool {
 //
 // units/10^scale == (btime*ticks + starttime)/ticks, checked with no division: this is the equality
 // that binds the exported field to the process. With the real values it HOLDS.
-test fn the_exported_instant_equals_the_process_start_tick_for_tick() -> Bool {
+test fn the_exported_instant_equals_the_process_start_tick_for_tick() -> Bool  {
   match prometheus_sample_value_reading(field: fixture_exported) {
     SampleValueExact { value: exported } =>
       exported_start_equals_process_start(exported: exported, boot_epoch_seconds: 1788630958, ticks_per_second: hertz(count: 100), start_ticks: 71392591)
@@ -185,7 +185,7 @@ test fn the_exported_instant_equals_the_process_start_tick_for_tick() -> Bool {
 
 // THE RED: a process that started one tick later does NOT satisfy the join. Without this, an
 // equality that always held would pass just as well.
-test fn a_process_one_tick_off_does_not_match_the_exported_instant() -> Bool {
+test fn a_process_one_tick_off_does_not_match_the_exported_instant() -> Bool  {
   match prometheus_sample_value_reading(field: fixture_exported) {
     SampleValueExact { value: exported } =>
       !exported_start_equals_process_start(exported: exported, boot_epoch_seconds: 1788630958, ticks_per_second: hertz(count: 100), start_ticks: 71392592)
@@ -197,17 +197,17 @@ test fn a_process_one_tick_off_does_not_match_the_exported_instant() -> Bool {
 // A HUGE POSITIVE CLK_TCK WOULD WRAP boot*ticks in the RHS intermediate; the checked chain returns
 // false (not a match) rather than comparing against a wrapped value, so a wrapped equality cannot
 // fabricate a match (review 66389).
-test fn a_wrapping_tick_rate_is_not_a_match() -> Bool {
+test fn a_wrapping_tick_rate_is_not_a_match() -> Bool  {
   !exported_start_equals_process_start(exported: ExactDecimal { units: 1, fraction_digits: 0 }, boot_epoch_seconds: 9000000000000000000, ticks_per_second: hertz(count: 9000000000000000000), start_ticks: 0)
 }
 
-test fn the_process_start_epoch_floors_to_whole_seconds() -> Bool {
+test fn the_process_start_epoch_floors_to_whole_seconds() -> Bool  {
   process_start_epoch_seconds(boot_epoch_seconds: 1788630958, ticks_per_second: hertz(count: 100), start_ticks: 71392591) == 1789344883
 }
 
 // ── THE CONTAINER COMES OFF THE CGROUP, NO DOCKER ACCESS ──────────────────────────────────────────
 
-test fn the_container_id_reads_from_the_process_cgroup() -> Bool {
+test fn the_container_id_reads_from_the_process_cgroup() -> Bool  {
   match docker_cgroup_membership(relative_path: "/system.slice/docker-8acd9426169bcc3f61d812497b5711c9702d9fcb19201501bfe6e4a0dac3eb88.scope" as NonEmptyStr) {
     DockerContainerScope { container_id: id } => id as String == fixture_container_id
     NotADockerContainerCgroup { relative_path: _ } => false
@@ -215,7 +215,7 @@ test fn the_container_id_reads_from_the_process_cgroup() -> Bool {
 }
 
 // THE DAEMON'S OWN SERVICE CGROUP IS NOT A CONTAINER, though it contains the word docker.
-test fn the_docker_service_cgroup_is_not_a_container() -> Bool {
+test fn the_docker_service_cgroup_is_not_a_container() -> Bool  {
   match docker_cgroup_membership(relative_path: "/system.slice/docker.service" as NonEmptyStr) {
     NotADockerContainerCgroup { relative_path: _ } => true
     DockerContainerScope { container_id: _ } => false
@@ -230,7 +230,7 @@ data fixture_inspect_json: String = "[{\"Id\":\"8acd9426169bcc3f61d812497b5711c9
 // inspect object carries Config.Env with a secret-shaped value; the reading is two ids and the
 // env value's bytes are absent from every field of it. This is disclosure condition 1 at the read
 // boundary: a value never leaves the decoder.
-test fn the_inspect_decoder_takes_two_ids_and_no_env() -> Bool {
+test fn the_inspect_decoder_takes_two_ids_and_no_env() -> Bool  {
   match docker_container_inspect_identity_from_stdout(stdout: fixture_inspect_json) {
     DockerContainerInspectIdentity { id: id, image: image } =>
       id as String == fixture_container_id
@@ -242,7 +242,7 @@ test fn the_inspect_decoder_takes_two_ids_and_no_env() -> Bool {
 }
 
 // THE IMAGE ID YIELDS ITS SHA256 HEX, WHICH IS THE EXECUTABLE DIGEST.
-test fn the_image_id_projects_to_a_sha256_executable_digest() -> Bool {
+test fn the_image_id_projects_to_a_sha256_executable_digest() -> Bool  {
   match docker_image_id_sha256_hex(image_id: "sha256:f869281d869b2a1d418cade7dcbabe65216cb8f54891d5e2e50718c3dc8b630f" as NonEmptyStr) {
     Present { value: hex } =>
       hex == fixture_image_hex
@@ -254,7 +254,7 @@ test fn the_image_id_projects_to_a_sha256_executable_digest() -> Bool {
   }
 }
 
-test fn a_non_sha256_image_id_refuses() -> Bool {
+test fn a_non_sha256_image_id_refuses() -> Bool  {
   match docker_image_id_sha256_hex(image_id: "md5:abc" as NonEmptyStr) {
     Absent => true
     Present { value: _ } => false
@@ -263,7 +263,7 @@ test fn a_non_sha256_image_id_refuses() -> Bool {
 
 // ── THE PGREP LISTING DECODES TO PIDS, NO COMMAND LINE ────────────────────────────────────────────
 
-test fn the_pgrep_listing_reads_pids() -> Bool {
+test fn the_pgrep_listing_reads_pids() -> Bool  {
   match pgrep_pid_listing(stdout: "1809052\n1809081\n") {
     PgrepPidsRead { pids: ps } => count(ps) == 2 && ps.first() == 1809052
     PgrepPidLineUnparseable { line: _ } => false
@@ -272,7 +272,7 @@ test fn the_pgrep_listing_reads_pids() -> Bool {
 
 // A HOLE IN THE LISTING REFUSES THE WHOLE THING rather than dropping the bad line and understating
 // the candidate population.
-test fn a_non_pid_line_refuses_the_whole_listing() -> Bool {
+test fn a_non_pid_line_refuses_the_whole_listing() -> Bool  {
   match pgrep_pid_listing(stdout: "1809052\nnot-a-pid\n") {
     PgrepPidLineUnparseable { line: l } => l == "not-a-pid"
     PgrepPidsRead { pids: _ } => false
@@ -283,7 +283,7 @@ test fn a_non_pid_line_refuses_the_whole_listing() -> Bool {
 
 // A refused reading projects to EndpointIncarnationUnobserved carrying the cause, so the consumer
 // (harness_serving_route) sees a typed obligation and not a fabricated observation.
-test fn a_refused_reading_projects_to_unobserved() -> Bool {
+test fn a_refused_reading_projects_to_unobserved() -> Bool  {
   let reading = IncarnationRefused { refusal: gunbc_spark_serving_incarnation_no_engine() }
   match endpoint_incarnation_standing(reading: reading) {
     EndpointIncarnationUnobserved { obligation: _ } => true

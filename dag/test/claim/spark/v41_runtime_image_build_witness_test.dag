@@ -77,7 +77,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // than trusting it: a future edit that quietly changed the CUDA version or the builder base would go
 // red here, which is the whole reason the recipe is derived through vllm_recipe_targeting instead of
 // spelled out a second time.
-test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parallelism() -> Bool {
+test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parallelism() -> Bool  {
   let fleet = v41_gb10_recipe()
   let upstream = vllm_07b75534_aarch64_release_recipe
   (fleet.source.full_revision as String) == (upstream.source.full_revision as String)
@@ -114,7 +114,7 @@ test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parall
 // THE VENDOR ARM REFUSES RATHER THAN DEFAULTING. A capability from a vendor whose toolchain has no
 // TORCH_CUDA_ARCH_LIST fails this witness instead of rendering a number the compiler would not
 // understand.
-test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> Bool {
+test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> Bool  {
   match vllm_torch_cuda_arch_entry(cap: gb10_observed_compute_capability) {
     GpuCapabilityLabelRejected { reason: _ } => false
     GpuCapabilityLabelOk { label: observed } =>
@@ -141,7 +141,7 @@ test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> 
 // invocation does not is the defect this module already carries once -- a flashinfer version keyed and
 // never handed to the build: the tag would say connectors-on while docker fell back to the Dockerfile's
 // `false`, so one identity would stand for two different sets of bytes. Both directions are asserted.
-test fn the_key_moves_with_the_connector_build_argument() -> Bool {
+test fn the_key_moves_with_the_connector_build_argument() -> Bool  {
   let with_conn = vllm_07b75534_aarch64_release_recipe
   let without = vllm_recipe_targeting(
     base: with_conn,
@@ -158,7 +158,7 @@ test fn the_key_moves_with_the_connector_build_argument() -> Bool {
     && string_contains(s: join(argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: without))), " "), pattern: "--build-arg INSTALL_KV_CONNECTORS=false")
 }
 
-test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bool {
+test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bool  {
   let fleet = v41_gb10_recipe()
   let other_arch = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
@@ -185,7 +185,7 @@ test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bo
 // THE RENDERED INVOCATION CARRIES THE THREE FACTS THAT DECIDE WHAT IS BUILT, and ends with the
 // context. A --build-arg whose name and value were separate argv words would be a different command
 // line that the engine reads differently, so the joined spelling is asserted.
-test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_last() -> Bool {
+test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_last() -> Bool  {
   let words = argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: v41_gb10_recipe())))
   let line = join(words, " ")
   string_contains(s: line, pattern: "--build-arg torch_cuda_arch_list=12.1")
@@ -205,7 +205,7 @@ fn script_names_all(symbols: List<NonEmptyStr>) -> Bool {
   fold(symbols, init: true, f: (acc, s) => acc && string_contains(s: v41_probe_script(), pattern: s as String))
 }
 
-test fn the_generated_probe_script_names_every_symbol_the_roster_declares() -> Bool {
+test fn the_generated_probe_script_names_every_symbol_the_roster_declares() -> Bool  {
   script_names_all(symbols: v41_fp4_weight_surface.torch_operators)
     && script_names_all(symbols: v41_csa2_surface.python_modules)
     && script_names_all(symbols: v41_dspark_surface.python_modules)
@@ -216,7 +216,7 @@ test fn the_generated_probe_script_names_every_symbol_the_roster_declares() -> B
 // THE LAYOUT QUESTION IS ASKED BY CALLING THE ADMISSION RULE AND IT ASKS ABOUT THE LAYOUT THAT IS
 // REJECTED, which is what makes the answer informative: a probe that only asked about admitted
 // dtypes could not distinguish a backend that admits everything from one that admits the right set.
-test fn the_layout_block_calls_the_backend_and_asks_about_the_rejected_layout() -> Bool {
+test fn the_layout_block_calls_the_backend_and_asks_about_the_rejected_layout() -> Bool  {
   let script = v41_probe_script()
   string_contains(s: script, pattern: "DeepseekV4FlashInferMLASparseBackend")
     && string_contains(s: script, pattern: "supports_combination")
@@ -230,7 +230,7 @@ test fn the_layout_block_calls_the_backend_and_asks_about_the_rejected_layout() 
 // stdout carrying no VERDICT line for a capability reads UNREAD; one carrying the absent line reads
 // absent. Collapsing the two would turn an import error inside the container into evidence against
 // the built image.
-test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Bool {
+test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Bool  {
   let silent = "DETAIL mla-kv-cache-layout-admitted error ImportError\n"
   let measured = "VERDICT mla-kv-cache-layout-admitted=absent\n"
   let present = "VERDICT fp4-weight-kernels=present\n"
@@ -262,7 +262,7 @@ test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Boo
 // reported an unregistered architecture as registered. The generated script no longer emits the
 // vacuous line, and this asserts the reader refuses it either way -- the wall stays after the
 // producer is fixed, because it is the producer that can regress.
-test fn contradictory_verdict_lines_read_unread_rather_than_present() -> Bool {
+test fn contradictory_verdict_lines_read_unread_rather_than_present() -> Bool  {
   let both = "VERDICT architecture-registered=present\nVERDICT architecture-registered=absent\n"
   (match v41_capability_reading(stdout: both, capability: v41_probe_label(c: ArchitectureRegistered)) {
     V41CapabilityUnread { capability: _, cause: _ } => true
@@ -279,7 +279,7 @@ fn block_lists_source(sources: List<NonEmptyStr>, needle: String) -> Bool {
   fold(sources, init: false, f: (acc, s) => acc || string_contains(s: s as String, pattern: needle))
 }
 
-test fn the_ds_mla_nvfp4_kernels_are_listed_only_in_the_sm100_block() -> Bool {
+test fn the_ds_mla_nvfp4_kernels_are_listed_only_in_the_sm100_block() -> Bool  {
   block_lists_source(sources: v41_fp4_sm100_block.sources, needle: "nvfp4_ds_mla_cache_kernels.cu")
     && !block_lists_source(sources: v41_fp4_sm120_block.sources, needle: "nvfp4_ds_mla_cache_kernels.cu")
     && block_lists_source(sources: v41_fp4_sm120_block.sources, needle: "nvfp4_scaled_mm_sm120_kernels.cu")
@@ -296,7 +296,7 @@ fn roster_contains(symbols: List<NonEmptyStr>, needle: String) -> Bool {
   fold(symbols, init: false, f: (acc, s) => acc || (s as String) == needle)
 }
 
-test fn the_fp4_kv_roster_carries_the_registered_operators_and_not_the_names_that_do_not_exist() -> Bool {
+test fn the_fp4_kv_roster_carries_the_registered_operators_and_not_the_names_that_do_not_exist() -> Bool  {
   let ops = v41_fp4_kv_cache_surface.torch_operators
   roster_contains(symbols: ops, needle: "_C_cache_ops.concat_and_cache_mla")
     && roster_contains(symbols: ops, needle: "_C_cache_ops.indexer_k_quant_and_cache")
@@ -321,7 +321,7 @@ fn layout_sets_agree() -> Bool {
     && length(v41_probed_admitted_kv_layouts) == length(v41_sm12_admitted_kv_cache_dtypes)
 }
 
-test fn the_in_image_layout_admission_agrees_with_the_source_at_the_pinned_revision() -> Bool {
+test fn the_in_image_layout_admission_agrees_with_the_source_at_the_pinned_revision() -> Bool  {
   layout_sets_agree()
     && fold(v41_probed_rejected_kv_layouts, init: true, f: (acc, d) => acc && !v41_sm12_kv_cache_dtype_admitted(dtype: d))
     && fold(v41_probed_rejected_kv_layouts, init: false, f: (acc, d) => acc || (d as String) == "nvfp4_ds_mla")
@@ -332,7 +332,7 @@ test fn the_in_image_layout_admission_agrees_with_the_source_at_the_pinned_revis
 // name, and upstream's registry.py at that revision maps no name to vllm.models.deepseek_v4_1. The
 // sibling is the discriminator -- the registry is not missing DeepSeek entries, it is missing this
 // one -- and both sources are asserted to agree about it too.
-test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped() -> Bool {
+test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped() -> Bool  {
   (match capability_outcome(
      rows: v41_sm121_capability_probe_rows(),
      image_reference: v41_gb10_source_build_probe.image_reference,
@@ -366,7 +366,7 @@ test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped
 // so it could only go red by editing the declaration it read, which is DESIGN section 4b's decoration
 // rather than a wall. The premise it was standing in for refuses where it is load-bearing instead: the
 // live candidate's patch population names this revision in an obligation and keys nothing without a patch.
-test fn the_pinned_revision_answers_for_the_checkpoints_architecture() -> Bool {
+test fn the_pinned_revision_answers_for_the_checkpoints_architecture() -> Bool  {
   vllm_d2d649e6_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
     && !vllm_d2d649e6_registry_answers_for(architecture: v41_probed_sibling_architecture)
     && !vllm_07b75534_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
@@ -379,7 +379,7 @@ test fn the_pinned_revision_answers_for_the_checkpoints_architecture() -> Bool {
 // setuptools-scm stamp and a failed lookup cannot establish, and which is the inference the readings
 // themselves were narrowed to stop making. The gap between the two images is not explained here; it
 // is observed, at the grain observed.
-test fn the_published_image_registers_the_architecture_and_its_stamp_is_not_a_public_commit() -> Bool {
+test fn the_published_image_registers_the_architecture_and_its_stamp_is_not_a_public_commit() -> Bool  {
   v41_published_registers_architecture(architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
     && !v41_published_registers_architecture(architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
     && (match v41_published_stamped_identifier_lookup {
@@ -401,7 +401,7 @@ test fn the_published_image_registers_the_architecture_and_its_stamp_is_not_a_pu
 // EVERY OBSERVATION NAMES AN INSTRUMENT AND A DATE, which is the property that separates a reading
 // this repository took from a fact the publisher asserted. An unattributed row is how the second kind
 // quietly becomes the first.
-test fn every_published_image_observation_carries_its_instrument_and_date() -> Bool {
+test fn every_published_image_observation_carries_its_instrument_and_date() -> Bool  {
   let rows = v41_published_observations()
   fold(rows, init: true, f: (acc, o) =>
       acc && (o.instrument as String) != "" && (o.observed_at as String) == "2026-09-11")
@@ -423,7 +423,7 @@ test fn every_published_image_observation_carries_its_instrument_and_date() -> B
 // every member, so no production Spark unit is admissible for a build until one is freed. The positive
 // half therefore runs over a SUPPLIED unplaced set: asserting admission against the live census would
 // need a host the fleet does not have.
-test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
+test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool  {
   !spark_host_is_unplaced(host: "srv5" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv6" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv7" as HostIdentity)
@@ -451,7 +451,7 @@ test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
 // spark-a3ee and never with srv5, so a join written against the identity would call every host in the
 // fleet a defect. This is the same label-versus-identity confusion that refused this lane's first
 // modelled leg, asserted here so it cannot come back as a green check.
-test fn the_reachability_join_reads_the_vendor_label_and_refuses_the_identity() -> Bool {
+test fn the_reachability_join_reads_the_vendor_label_and_refuses_the_identity() -> Bool  {
   (match classify_reported_hostname(host: "srv5" as HostIdentity, endpoint: "192.168.1.226" as NonEmptyStr, reported: "spark-a3ee" as NonEmptyStr) {
     SparkHostAnswered { host: _, endpoint: _, reported_hostname: n } => (n as String) == "spark-a3ee"
     SparkHostIdentityMismatch { host: _, endpoint: _, expected: _, reported: _ } => false
@@ -479,7 +479,7 @@ test fn the_reachability_join_reads_the_vendor_label_and_refuses_the_identity() 
 // ONLY AN ANSWER THAT JOINED COUNTS AS AN ANSWER, which is what the entry's exit path now gates on.
 // An earlier revision returned success whenever the receipt file wrote, so the run in which every
 // admissible host refused the key exited zero with its diagnostics intact and discarded.
-test fn only_a_joined_answer_counts_as_reachable() -> Bool {
+test fn only_a_joined_answer_counts_as_reachable() -> Bool  {
   spark_host_answered(r: SparkHostAnswered { host: "srv5" as HostIdentity, endpoint: "e" as NonEmptyStr, reported_hostname: "spark-a3ee" as NonEmptyStr })
     && !spark_host_answered(r: SparkHostIdentityMismatch { host: "srv5" as HostIdentity, endpoint: "e" as NonEmptyStr, expected: "spark-a3ee" as NonEmptyStr, reported: "other" as NonEmptyStr })
     && !spark_host_answered(r: SparkHostIdentityUnjoinable { host: "srv1" as HostIdentity, endpoint: "e" as NonEmptyStr, reported: "srv1" as NonEmptyStr })
@@ -492,7 +492,7 @@ test fn only_a_joined_answer_counts_as_reachable() -> Bool {
 // whose name merely CONTAINS the asked-for one must not answer for it; the same text appearing inside
 // a DETAIL diagnostic is not a verdict; and a value the reader does not admit is UNREAD rather than
 // silently non-present.
-test fn the_reader_parses_verdict_lines_rather_than_searching_the_output() -> Bool {
+test fn the_reader_parses_verdict_lines_rather_than_searching_the_output() -> Bool  {
   let prefix_collision = "VERDICT fp4-weight-kernels-extended=present\n"
   let inside_a_detail = "DETAIL something NOT_VERDICT fp4-weight-kernels=present in prose\n"
   let unknown_value = "VERDICT fp4-weight-kernels=present_garbage\n"
@@ -533,7 +533,7 @@ fn fixture_names(xs: List<NonEmptyStr>) -> String {
   join(map(xs, x => x as String), ",")
 }
 
-test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
+test fn an_unasked_question_is_not_a_measured_absence() -> Bool  {
   fixture_names(xs: v41_absent_capabilities_of(readings: probe_partition_fixture)) == "beta"
     && fixture_names(xs: v41_unread_capabilities_of(readings: probe_partition_fixture)) == "gamma"
 }
@@ -542,7 +542,7 @@ test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
 // per difference and nothing when the context matches its revision, so the check is a readback rather
 // than a parse -- and a dirty context must refuse, because an image built from it would be stamped
 // with a revision it was not built from.
-test fn a_dirty_source_tree_is_not_clean() -> Bool {
+test fn a_dirty_source_tree_is_not_clean() -> Bool  {
   vllm_source_is_clean(stdout: "")
     && vllm_source_is_clean(stdout: "\n")
     && !vllm_source_is_clean(stdout: " M docker/Dockerfile\n")
@@ -553,7 +553,7 @@ test fn a_dirty_source_tree_is_not_clean() -> Bool {
 // `github.com/vllm-project/vllm`, which `git clone` reads as a RELATIVE PATH -- reproduced in an empty
 // directory it answers `fatal: repository 'github.com/vllm-project/vllm' does not exist`. Cold
 // acquisition had never run in this lane, so nothing caught it until it was read.
-test fn the_clone_locator_is_a_url_and_the_repository_identity_is_not() -> Bool {
+test fn the_clone_locator_is_a_url_and_the_repository_identity_is_not() -> Bool  {
   let url = vllm_clone_url(source: vllm_07b75534_aarch64_release_recipe.source)
   starts_with(s: url, prefix: "https://")
     && string_contains(s: url, pattern: vllm_07b75534_aarch64_release_recipe.source.repository as String)
@@ -566,7 +566,7 @@ test fn the_clone_locator_is_a_url_and_the_repository_identity_is_not() -> Bool 
 
 // AN IMAGE FOUND UNDER THE EXPECTED TAG IS NOT AN IMAGE THIS RUN BUILT. The tag is a name; provenance
 // is what produced the bytes, and an earlier revision filled the recipe in for both cases.
-test fn an_adopted_image_does_not_claim_this_run_built_it() -> Bool {
+test fn an_adopted_image_does_not_claim_this_run_built_it() -> Bool  {
   vllm_image_provenance_wire(p: BuiltByThisRun) as String == "built-by-this-run"
     && string_contains(s: vllm_image_provenance_wire(p: AdoptedUnderExpectedTag) as String, pattern: "UNESTABLISHED")
 }
@@ -584,7 +584,7 @@ fn verdict_word(v: SparkReachabilityVerdict) -> String {
   }
 }
 
-test fn the_reachability_verdict_refuses_an_empty_population_rather_than_passing() -> Bool {
+test fn the_reachability_verdict_refuses_an_empty_population_rather_than_passing() -> Bool  {
   let ok = SparkHostAnswered { host: "srv10" as HostIdentity, endpoint: "192.168.1.237" as NonEmptyStr, reported_hostname: "spark-fixture" as NonEmptyStr }
   let down = SparkHostUnreachable { host: "srv11" as HostIdentity, endpoint: "192.168.1.238" as NonEmptyStr, cause: "fixture" }
   verdict_word(v: spark_reachability_verdict(readings: [])) == "none"
