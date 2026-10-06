@@ -46,7 +46,6 @@ import gunbc.instruments.argv_word_construction_census {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { fold_list, length }
-import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
@@ -57,6 +56,7 @@ import std.process { ExitSuccess, ProcessExit, ExitFailure }
 // declared module name (fixture.argv_word_construction.host_words) is unique in the tree, so
 // loading it does not fork the namespace. It sits OUTSIDE the modeled census roots, which the
 // boundary claim below pins as a typed refusal.
+data fixture_path: String = "src/v2/test/fixture_roots/argv_word_construction/host_words.dag"
 
 // The modeled-roots specimen, used only through the pure class router (no parse in CI).
 data specimen_path: String = "dag/extdeps/systemd/systemd_run.dag"
@@ -69,14 +69,31 @@ data established_route_path: String = "dag/extdeps/cpu/ampere_altra_package_cont
 data gate_file: String = "dag/gunbc/instruments/argv_word_construction_census.dag"
 
 // ---------------------------------------------------------------- fixture facts
-// The reading lives in fixture_facts_io (a non-test module) because the wet lane's entry loader
-// refuses entries bearing test functions; the dump there is the observation the expectations
-// below are aligned against.
-import v2.test.claim.argv_word_construction.fixture_facts_io { fixture_path, fixture_facts }
+
+fn fixture_facts() -> Optional<List<ArgvWordsFact>> {
+  let read = Filesystem.Read(path: fixture_path)
+  match read.success {
+    false => Absent
+    true =>
+      match raw_tree_of_text(text: read.content) {
+        RawTreeNotEstablished { cause: _ } => Absent
+        RawTreeEstablished { root: root } => Present { value: facts_of(root: root) }
+      }
+  }
+}
 
 fn fact_named(xs: List<ArgvWordsFact>, want: String) -> Optional<ArgvWordsFact> {
-
-
+  fold_list(xs: xs, empty: Absent, cons: fn(acc, f) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match f.decl == want {
+          true => Present { value: f }
+          false => Absent
+        }
+    }
+  })
+}
 
 test fn census_fixture_route_counts_its_members() -> Bool {
   match fixture_facts() {

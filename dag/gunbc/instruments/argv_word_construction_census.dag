@@ -16,6 +16,7 @@ module gunbc.instruments.argv_word_construction_census
 
 import v2.lens.argv_word_construction {
   ArgvWordsDeclKind,
+  ArgvWordsFact,
   ArgvWordsRosterRow,
   ArgvWordsSite,
   ArgvWordsSiteClass,
@@ -25,6 +26,10 @@ import v2.lens.argv_word_construction {
   WorkflowCallSite,
   ArgvWordsModuleEstablished,
   ArgvWordsModuleRefused,
+  RawTreeEstablished,
+  RawTreeNotEstablished,
+  facts_of,
+  raw_tree_of_text,
   argv_word_construction_gates,
   argv_word_construction_module_sites,
   argv_word_construction_for_paths
@@ -33,6 +38,9 @@ import v2.std.algebra { fold_list, list_reverse }
 import v2.std.collection { List }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.logic { Bool }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 
 // The modeled roots. Anything else is refused by the lens, never silently zero.
@@ -117,12 +125,44 @@ fn argv_word_construction_census_recount_emit_gunbc() -> ProcessExit {
 }
 
 // The fixture root is OUTSIDE the modeled roots by design (the boundary-refusal claim pins that),
-// so the walk above never sees it. This emitter runs the same lens over the fixture's directory
-// alone, so the fixture claims' pinned expectations are checked against the lens's own rendering
-// of the fixture -- one recount path for every population the census route talks about, not a
-// hand-maintained parallel list.
-fn argv_word_construction_census_recount_emit_fixture() -> ProcessExit {
-  argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths_for_roots(roots: ["src/v2/test/fixture_roots/argv_word_construction"]), out: "target/argv_word_construction_census_recount_fixture.tsv")
+// so the walk above never sees it and for_paths refuses any module outside the roots. The
+// fixture's facts are therefore read at the FACT level -- the same read/parse/facts_of route the
+// fixture claims use -- and rendered where a human reads them: one TSV row per fact with every
+// field the fixture claims pin. This is the observation those claims' expectations are aligned
+// against, not a hand-maintained parallel list of what the lens is supposed to say.
+fn argv_word_construction_census_fixture_facts_dump() -> ProcessExit {
+  let read = Filesystem.Read(path: "src/v2/test/fixture_roots/argv_word_construction/host_words.dag")
+  match read.success {
+    false => exit_failure(reason: "fixture facts absent: fixture unreadable")
+    true =>
+      match raw_tree_of_text(text: read.content) {
+        RawTreeNotEstablished { cause: cause } => exit_failure(reason: concat("fixture unparseable: ", cause))
+        RawTreeEstablished { root: root } =>
+          let rows = fold_list(xs: facts_of(root: root), empty: "decl\tkind\tcounted\tcandidates_n\tcandidates\tflag_words_n\treturns_argv_words\tlist_string_params\tlist_string_data", cons: fn(acc, f) {
+            concat(acc, concat("\n", fixture_fact_row(f: f)))
+          })
+          let written = Filesystem.Write(path: "target/argv_word_construction_fixture_facts.tsv", content: rows)
+          if written.success { ExitSuccess } else { exit_failure(reason: concat("fixture facts write refused: ", written.error)) }
+      }
+  }
+}
+
+fn fixture_fact_row(f: ArgvWordsFact) -> String {
+  concat(f.decl, concat("\t", concat(fact_kind_word(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.candidates)), concat("\t", concat(join(f.candidates, ";"), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.flag_words)), concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(integer_int_to_decimal_string(value: f.list_string_params), concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
+}
+
+fn fact_kind_word(k: ArgvWordsDeclKind) -> String {
+  match k {
+    FnDecl => "FnDecl"
+    DataDecl => "DataDecl"
+  }
+}
+
+fn bool_word(b: Bool) -> String {
+  match b {
+    true => "true"
+    false => "false"
+  }
 }
 
 fn declared_module_path(d: ModuleDeclarationFact) -> String {
