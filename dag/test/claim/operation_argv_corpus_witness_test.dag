@@ -147,15 +147,15 @@ fn operation_argv_corpus_tally() -> ArgvCorpusTally {
   )
 }
 
-test fn operation_argv_corpus_is_non_vacuous() -> Bool {
+test fn operation_argv_corpus_is_non_vacuous() -> Bool  {
   operation_argv_corpus_tally().rows >= 139
 }
 
-test fn operation_argv_corpus_every_row_is_materialized_or_counted() -> Bool {
+test fn operation_argv_corpus_every_row_is_materialized_or_counted() -> Bool  {
   operation_argv_corpus_tally().unexplained == 0
 }
 
-test fn operation_argv_corpus_tally_is_total() -> Bool {
+test fn operation_argv_corpus_tally_is_total() -> Bool  {
   let t = operation_argv_corpus_tally()
   (t.materialized + t.expression_residue + t.executable_position) == t.rows
 }
@@ -170,25 +170,25 @@ test fn operation_argv_corpus_tally_is_total() -> Bool {
 // the interpreter's dispatch_shell, which evaluates argv expressions, and that is the path the
 // wall's transport witness exercises. Returns to 7 on the same trigger the residue note already
 // names: argv element evaluation in materialization, a separate lane.
-test fn operation_argv_corpus_expression_residue_is_pinned() -> Bool {
+test fn operation_argv_corpus_expression_residue_is_pinned() -> Bool  {
   operation_argv_corpus_tally().expression_residue == 8
 }
 
-test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only() -> Bool {
+test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only() -> Bool  {
   let t = operation_argv_corpus_tally()
   t.executable_position == 1 && t.executable_position_outside_fixture == 0
 }
 
-test fn operation_argv_corpus_outside_legacy_vocabulary_now_materializes() -> Bool {
+test fn operation_argv_corpus_outside_legacy_vocabulary_now_materializes() -> Bool  {
   operation_argv_corpus_tally().outside_legacy_materialized >= 92
 }
 
-test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Bool {
+test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Bool  {
   let t = operation_argv_corpus_tally()
   t.outside_legacy >= 96 && (t.outside_legacy + t.outside_legacy) > t.rows
 }
 
-test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {
+test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool  {
   let label = operation_argv_refusal_label(
     m: shell_materialize_operation_argv(
       operation_argv_fixture_path,
@@ -200,7 +200,7 @@ test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -
   string_contains(label, "ExecutablePositionNotLiteral") && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
 }
 
-test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool {
+test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool  {
   match shell_materialize_operation_argv(
     operation_argv_fixture_path,
     "ArgvExecutablePositionProbe",

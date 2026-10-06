@@ -186,23 +186,23 @@ fn adjacent(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstructio
 
 // 4000x2000 + 2000x1000 = 10,000,000 mm^2. The bounding box is 4000x3000 = 12,000,000, so a
 // bounding-box area would be 20% high - that gap is what makes this discriminating.
-test fn area_is_derived_from_the_boundary_not_the_extents() -> Bool {
+test fn area_is_derived_from_the_boundary_not_the_extents() -> Bool  {
   area_of(c: l_space()) == 10000000 && area_of(c: l_space()) != 4000 * 3000
 }
 
-test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool {
+test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool  {
   height_of(c: l_space()) == 2400 && volume_of(c: l_space()) == 10000000 * 2400
 }
 
 // Two spaces with the SAME bounding box and the same height whose volumes differ. Nothing authored
 // as width x depth x height can tell these apart; the derived volume does, which is the band's
 // claim stated as an executable difference rather than as a property of a type name.
-test fn same_extents_different_boundaries_have_different_volumes() -> Bool {
+test fn same_extents_different_boundaries_have_different_volumes() -> Bool  {
   let rect = rect_ctor(x0: 0, y0: 0, x1: 4000, y1: 3000, low: 0, high: 2400)
   volume_of(c: rect) == 12000000 * 2400 && volume_of(c: l_space()) < volume_of(c: rect)
 }
 
-test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
+test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool  {
   wall_count(c: l_space()) == 6
     && face_count(c: l_space()) == 8
     && face_count(c: rect_ctor(x0: 0, y0: 0, x1: 1, y1: 1, low: 0, high: 1)) == 6
@@ -215,7 +215,7 @@ test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
 // is the only case the half-open span rule exists for: under a closed rule the edges meeting there
 // are counted twice and the parity flips. An earlier revision of this witness omitted them and a
 // mutation to the rule stayed green, so the rule was untested while looking tested.
-test fn containment_distinguishes_inside_boundary_and_the_notch() -> Bool {
+test fn containment_distinguishes_inside_boundary_and_the_notch() -> Bool  {
   located(c: l_space(), p: p3(x: 1000, y: 1000, z: 1200)) == 1
     && located(c: l_space(), p: p3(x: 3000, y: 2500, z: 1200)) == 3
     && located(c: l_space(), p: p3(x: 0, y: 1000, z: 1200)) == 2
@@ -225,7 +225,7 @@ test fn containment_distinguishes_inside_boundary_and_the_notch() -> Bool {
     && located(c: l_space(), p: p3(x: 3000, y: 2000, z: 1200)) == 2
 }
 
-test fn containment_refuses_across_frames() -> Bool {
+test fn containment_refuses_across_frames() -> Bool  {
   match l_space() {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: s } =>
@@ -241,17 +241,17 @@ test fn containment_refuses_across_frames() -> Bool {
 // occupies exactly the notch the L-shape excludes. A bounding-box test would report an overlap and
 // refuse a legal pair of rooms - the widen DESIGN section 5 rules fail-open even though it never
 // misses a real overlap.
-test fn interlocking_shapes_do_not_interpenetrate() -> Bool {
+test fn interlocking_shapes_do_not_interpenetrate() -> Bool  {
   overlaps(ca: l_space(), cb: rect_ctor(x0: 2000, y0: 2000, x1: 4000, y1: 3000, low: 0, high: 2400)) == 0
 }
 
-test fn genuinely_overlapping_spaces_interpenetrate() -> Bool {
+test fn genuinely_overlapping_spaces_interpenetrate() -> Bool  {
   overlaps(ca: l_space(), cb: rect_ctor(x0: 1000, y0: 1000, x1: 3000, y1: 1500, low: 1000, high: 2000)) == 1
 }
 
 // Stacked floors share a slab plane and must not count as interpenetrating: the vertical ranges
 // touch at one coordinate, and touching is adjacency, not overlap.
-test fn stacked_floors_touch_without_interpenetrating() -> Bool {
+test fn stacked_floors_touch_without_interpenetrating() -> Bool  {
   overlaps(ca: l_space(), cb: space_ctor(vertices: l_shape(), low: 2400, high: 4800)) == 0
 }
 
@@ -260,7 +260,7 @@ test fn stacked_floors_touch_without_interpenetrating() -> Bool {
 // transversally, so a vertex-and-crossing test answers "disjoint" for two rooms occupying one
 // volume. It reached review-quality green because nothing exercised it; the mutation that should
 // have flipped stacked_floors did not, which exposed it.
-test fn identical_spaces_interpenetrate() -> Bool {
+test fn identical_spaces_interpenetrate() -> Bool  {
   overlaps(ca: l_space(), cb: l_space()) == 1
     && match sequence_spaces(cs: [l_space(), l_space()]) {
          OrthogonalRefused { cause: _ } => false
@@ -275,14 +275,14 @@ test fn identical_spaces_interpenetrate() -> Bool {
 // One space wholly inside another, again with no crossing edges. The inner one's vertices ARE
 // strictly inside here, so the refuted predicate happened to get this right - it is kept because
 // containment and coincidence are different geometric situations and only one of them was broken.
-test fn a_space_contained_in_another_interpenetrates() -> Bool {
+test fn a_space_contained_in_another_interpenetrates() -> Bool  {
   overlaps(
     ca: rect_ctor(x0: 0, y0: 0, x1: 6000, y1: 6000, low: 0, high: 3000),
     cb: rect_ctor(x0: 1000, y0: 1000, x1: 2000, y1: 2000, low: 1000, high: 2000),
   ) == 1
 }
 
-test fn adjacency_is_a_shared_wall_not_a_shared_corner() -> Bool {
+test fn adjacency_is_a_shared_wall_not_a_shared_corner() -> Bool  {
   let a = rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400)
   adjacent(ca: a, cb: rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 0, high: 2400)) == 1
     && adjacent(ca: a, cb: rect_ctor(x0: 3000, y0: 3000, x1: 6000, y1: 6000, low: 0, high: 2400)) == 0
@@ -291,14 +291,14 @@ test fn adjacency_is_a_shared_wall_not_a_shared_corner() -> Bool {
 
 // A wall shared in plan but at disjoint heights is not adjacency: you cannot put a door between a
 // ground-floor room and a first-floor room that merely sit beside one another vertically.
-test fn adjacency_requires_a_shared_vertical_span() -> Bool {
+test fn adjacency_requires_a_shared_vertical_span() -> Bool  {
   adjacent(
     ca: rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400),
     cb: rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 2400, high: 4800),
   ) == 0
 }
 
-test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
+test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool  {
   match sequence_spaces(cs: [
     rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400),
     rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 0, high: 2400),
@@ -317,7 +317,7 @@ test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
   }
 }
 
-test fn complex_refuses_interpenetrating_members() -> Bool {
+test fn complex_refuses_interpenetrating_members() -> Bool  {
   match sequence_spaces(cs: [l_space(), rect_ctor(x0: 1000, y0: 1000, x1: 3000, y1: 1500, low: 1000, high: 2000)]) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: spaces } =>
@@ -328,7 +328,7 @@ test fn complex_refuses_interpenetrating_members() -> Bool {
   }
 }
 
-test fn complex_refuses_members_in_different_frames() -> Bool {
+test fn complex_refuses_members_in_different_frames() -> Bool  {
   let elsewhere = space_ctor(
     vertices: [
       point2(frame: building(), x: 0, y: 0),
@@ -370,7 +370,7 @@ fn micro_registry() -> SpatialFrameRegistry {
 // this establishes that a volume over an unlabelable frame refuses rather than returning zero. It
 // does NOT establish that the height projection refuses; the module records those arms as
 // defensive.
-test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
+test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool  {
   match l_space() {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: s } => {

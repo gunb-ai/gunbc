@@ -253,7 +253,7 @@ data sentinel_field_not_found_identity: String = field_not_found_identity(field:
 // diagnostic appeared" into "the diagnostic that appeared is the one about this initializer".
 data undefined_initializer_identity: String = "InternalError|function:totally_undefined_fn_zz|true"
 
-test fn the_census_can_see_fieldnotfound_on_a_plain_product_literal() -> Bool {
+test fn the_census_can_see_fieldnotfound_on_a_plain_product_literal() -> Bool  {
   census_ran(c: census_plain_product_sentinel)
     && blocking_total(c: census_plain_product_sentinel) == 1
     && count_of_identity(
@@ -265,7 +265,7 @@ test fn the_census_can_see_fieldnotfound_on_a_plain_product_literal() -> Bool {
 
 // AND THE PAIRED CLEAN PRODUCT, so the row above is the FIELD and not the probe module refusing for
 // a reason of its own.
-test fn the_same_plain_product_without_the_field_carries_nothing_blocking() -> Bool {
+test fn the_same_plain_product_without_the_field_carries_nothing_blocking() -> Bool  {
   census_ran(c: census_plain_product_clean)
     && blocking_total(c: census_plain_product_clean) == 0
     && count_of_identity(
@@ -291,7 +291,7 @@ test fn the_same_plain_product_without_the_field_carries_nothing_blocking() -> B
 // ---------------------------------------------------------------------------
 data missing_member_identity: String = "MissingField|probe_carrier_members|true"
 
-test fn omitting_a_required_field_adds_exactly_one_missing_field_and_nothing_else() -> Bool {
+test fn omitting_a_required_field_adds_exactly_one_missing_field_and_nothing_else() -> Bool  {
   census_ran(c: census_missing_required)
     && total_count(c: census_missing_required) == total_count(c: census_valid) + 1
     && blocking_total(c: census_missing_required) == blocking_total(c: census_valid) + 1
@@ -311,36 +311,36 @@ test fn omitting_a_required_field_adds_exactly_one_missing_field_and_nothing_els
 // them RED and forces the wording in this file to be rewritten, rather than letting a new wall pass
 // unnoticed.
 // ---------------------------------------------------------------------------
-test fn the_admissible_payload_arm_constructor_is_accepted() -> Bool {
+test fn the_admissible_payload_arm_constructor_is_accepted() -> Bool  {
   census_ran(c: census_valid)
     && class_count(c: census_valid, wanted: "FieldNotFound") == 0
     && class_count(c: census_valid, wanted: "MissingField") == 0
 }
 
-test fn a_payload_arm_literal_carrying_one_excess_field_is_admitted_with_no_diagnostic_change() -> Bool {
+test fn a_payload_arm_literal_carrying_one_excess_field_is_admitted_with_no_diagnostic_change() -> Bool  {
   admitted_with_no_diagnostic_change(c: census_one_excess, inserted_field: "excess_alpha")
 }
 
-test fn a_second_distinct_excess_field_name_is_admitted_the_same_way() -> Bool {
+test fn a_second_distinct_excess_field_name_is_admitted_the_same_way() -> Bool  {
   admitted_with_no_diagnostic_change(c: census_second_excess, inserted_field: "excess_beta")
 }
 
-test fn a_third_distinct_excess_field_name_is_admitted_the_same_way() -> Bool {
+test fn a_third_distinct_excess_field_name_is_admitted_the_same_way() -> Bool  {
   admitted_with_no_diagnostic_change(c: census_third_excess, inserted_field: "excess_gamma")
 }
 
-test fn a_fourth_distinct_excess_field_name_is_admitted_the_same_way() -> Bool {
+test fn a_fourth_distinct_excess_field_name_is_admitted_the_same_way() -> Bool  {
   admitted_with_no_diagnostic_change(c: census_fourth_excess, inserted_field: "excess_delta")
 }
 
-test fn four_excess_fields_at_once_are_admitted_with_no_diagnostic_change() -> Bool {
+test fn four_excess_fields_at_once_are_admitted_with_no_diagnostic_change() -> Bool  {
   admitted_with_no_diagnostic_change(c: census_four_at_once, inserted_field: "excess_alpha")
     && count_of_identity(rows: census_rows_or_empty(c: census_four_at_once), id: field_not_found_identity(field: "excess_beta")) == 0
     && count_of_identity(rows: census_rows_or_empty(c: census_four_at_once), id: field_not_found_identity(field: "excess_gamma")) == 0
     && count_of_identity(rows: census_rows_or_empty(c: census_four_at_once), id: field_not_found_identity(field: "excess_delta")) == 0
 }
 
-test fn an_arbitrary_nowhere_declared_field_on_the_payload_arm_is_also_admitted() -> Bool {
+test fn an_arbitrary_nowhere_declared_field_on_the_payload_arm_is_also_admitted() -> Bool  {
   admitted_with_no_diagnostic_change(c: census_sentinel, inserted_field: "__payload_arm_excess_field_probe")
 }
 
@@ -355,7 +355,7 @@ test fn an_arbitrary_nowhere_declared_field_on_the_payload_arm_is_also_admitted(
 // analysed initializer is additionally EVALUATED at runtime is a separate question, discriminated
 // in test.claim.fleet_converge_launch_scope_non_interference.
 // ---------------------------------------------------------------------------
-test fn an_excess_field_initializer_is_analysed_even_though_the_field_is_discarded() -> Bool {
+test fn an_excess_field_initializer_is_analysed_even_though_the_field_is_discarded() -> Bool  {
   census_ran(c: census_undefined_initializer)
     && count_of_identity(
          rows: census_rows_or_empty(c: census_undefined_initializer),

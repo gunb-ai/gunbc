@@ -79,7 +79,7 @@ fn termination_name(t: InvocationTermination) -> String {
 
 // EXECUTED ARM. A population every member of which refused is SubjectUnreached, which is what the
 // 3992-row run reported. This is the arm the real producer has actually inhabited.
-test fn a_wholly_refused_population_is_subject_unreached() -> Bool {
+test fn a_wholly_refused_population_is_subject_unreached() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: refused_at_prepare()),
     row_with(module: "v2.test.parse", declaration: "b", verdict: refused_at_eval()),
@@ -89,12 +89,12 @@ test fn a_wholly_refused_population_is_subject_unreached() -> Bool {
 // THE EMPTY SELECTION IS ITS OWN ARM AND IT IS NOT THE ALL-PASSED ARM. "every row passed" is
 // vacuously true of no rows, so collapsing these two would report a pattern that selected nothing
 // as a passing test. This is the arm a reviewer will suggest simplifying.
-test fn an_empty_selection_is_unreached_not_held() -> Bool {
+test fn an_empty_selection_is_unreached_not_held() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [], universe: 0, file_refusals: 0)) == "subject_unreached"
 }
 
 // SUPPLIED ARM (no executed backing yet). All members passed and the population is non-empty.
-test fn a_wholly_passing_population_is_held() -> Bool {
+test fn a_wholly_passing_population_is_held() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestPassed {}),
@@ -102,7 +102,7 @@ test fn a_wholly_passing_population_is_held() -> Bool {
 }
 
 // SUPPLIED ARM (no executed backing yet). One member evaluated and returned false.
-test fn one_returned_false_makes_the_selection_not_hold() -> Bool {
+test fn one_returned_false_makes_the_selection_not_hold() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestReturnedFalse {}),
@@ -113,7 +113,7 @@ test fn one_returned_false_makes_the_selection_not_hold() -> Bool {
 // definite failure beside an unobserved sibling reports the FAILURE: ranking refusal higher would
 // hide a located defect behind a test nobody managed to run. Without this arm, an implementation
 // that checked `unobserved` first would pass every other claim in this file.
-test fn a_definite_failure_outranks_an_unobserved_sibling() -> Bool {
+test fn a_definite_failure_outranks_an_unobserved_sibling() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: refused_at_prepare()),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestReturnedFalse {}),
@@ -122,7 +122,7 @@ test fn a_definite_failure_outranks_an_unobserved_sibling() -> Bool {
 
 // AND AN UNOBSERVED MEMBER OUTRANKS THE PASSES AROUND IT. Without this arm, an implementation that
 // answered `held` whenever nothing failed would pass every other claim in this file.
-test fn one_unobserved_member_stops_a_passing_population_holding() -> Bool {
+test fn one_unobserved_member_stops_a_passing_population_holding() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: refused_at_prepare()),
@@ -131,7 +131,7 @@ test fn one_unobserved_member_stops_a_passing_population_holding() -> Bool {
 
 // RETURNED-OTHER IS A FAILURE, NOT AN UNOBSERVED STATE. A test that evaluated to a non-Bool WAS
 // observed; classifying it as unreached would report a real defect as an absence of evidence.
-test fn returned_other_is_a_failure_rather_than_an_absence() -> Bool {
+test fn returned_other_is_a_failure_rather_than_an_absence() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedOther {}),
   ], universe: 1, file_refusals: 0)) == "did_not_hold"
@@ -142,7 +142,7 @@ test fn returned_other_is_a_failure_rather_than_an_absence() -> Bool {
 // its file refused to parse. Folding only the printed rows sees two passes and answers "held",
 // exit 0, while the lane concurrently refuses with population_omissions_present. A non-empty row
 // list hides exactly what the empty-selection arm exists to catch.
-test fn an_omitted_identity_stops_a_passing_population_holding() -> Bool {
+test fn an_omitted_identity_stops_a_passing_population_holding() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestPassed {}),
@@ -153,7 +153,7 @@ test fn an_omitted_identity_stops_a_passing_population_holding() -> Bool {
 // hold identities discovery never saw, so the universe itself can be short with no row missing.
 // This is the arm the real run exercises: it reported universe=3992 population=3992 and
 // file_refusals=259, so the counts AGREED and the selection was still not wholly observed.
-test fn a_file_refusal_stops_a_matching_population_holding() -> Bool {
+test fn a_file_refusal_stops_a_matching_population_holding() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
   ], universe: 1, file_refusals: 259)) == "subject_unreached"
@@ -162,7 +162,7 @@ test fn a_file_refusal_stops_a_matching_population_holding() -> Bool {
 // AND A DEFINITE FAILURE STILL OUTRANKS INCOMPLETENESS. A test that evaluated and returned false
 // makes "the selection held" false whether or not its siblings were all observed; demoting that to
 // "unreached" because a file refused would bury a located defect behind a completeness problem.
-test fn a_definite_failure_outranks_an_incomplete_population() -> Bool {
+test fn a_definite_failure_outranks_an_incomplete_population() -> Bool  {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedFalse {}),
   ], universe: 9, file_refusals: 7)) == "did_not_hold"
@@ -172,7 +172,7 @@ test fn a_definite_failure_outranks_an_incomplete_population() -> Bool {
 // all-passing population used to answer "held", exit 0, with the refusal demoted to a sentence --
 // and several qualification clauses are exactly the ones establishing the verdict surface is
 // trustworthy at all, so those rows had no established provenance.
-test fn a_refused_qualification_cannot_yield_a_pass() -> Bool {
+test fn a_refused_qualification_cannot_yield_a_pass() -> Bool  {
   termination_name(t: native_route_termination_under_qualification(
     members: InvocationObservationHeld {},
     lane_qualified: false
@@ -182,7 +182,7 @@ test fn a_refused_qualification_cannot_yield_a_pass() -> Bool {
 // AND A QUALIFIED ROUTE CHANGES NOTHING, which is what makes the clamp a gate rather than a
 // constant. Without this arm an implementation that always answered SubjectUnreached would pass
 // the one above.
-test fn a_qualified_route_passes_the_member_standing_through() -> Bool {
+test fn a_qualified_route_passes_the_member_standing_through() -> Bool  {
   termination_name(t: native_route_termination_under_qualification(
     members: InvocationObservationHeld {},
     lane_qualified: true
@@ -192,7 +192,7 @@ test fn a_qualified_route_passes_the_member_standing_through() -> Bool {
 // A DEFINITE FAILURE PASSES THROUGH A REFUSED QUALIFICATION UNCHANGED. Its provenance does not
 // depend on the route's integrity clauses, and demoting it would bury a located defect behind an
 // infrastructure problem. This is the arm that makes the gate one-directional.
-test fn a_refused_qualification_does_not_demote_a_definite_failure() -> Bool {
+test fn a_refused_qualification_does_not_demote_a_definite_failure() -> Bool  {
   termination_name(t: native_route_termination_under_qualification(
     members: InvocationObservationDidNotHold {},
     lane_qualified: false
@@ -201,7 +201,7 @@ test fn a_refused_qualification_does_not_demote_a_definite_failure() -> Bool {
 
 // THE GATE CANNOT MANUFACTURE A FAILURE NOBODY REPORTED. A refused route over an unreached
 // population stays unreached rather than becoming a failing test.
-test fn a_refused_qualification_does_not_invent_a_failure() -> Bool {
+test fn a_refused_qualification_does_not_invent_a_failure() -> Bool  {
   termination_name(t: native_route_termination_under_qualification(
     members: InvocationSubjectUnreached {},
     lane_qualified: false

@@ -60,7 +60,7 @@ fn ob_two_level_path_is(
   }
 }
 
-test fn occurrence_binding_root_only_path_is_nonempty_holds() -> Bool {
+test fn occurrence_binding_root_only_path_is_nonempty_holds() -> Bool  {
   let path = ob_root_path(terminal: ^root_only)
   match path.ancestors {
     Empty => path.terminal == ^root_only
@@ -68,7 +68,7 @@ test fn occurrence_binding_root_only_path_is_nonempty_holds() -> Bool {
   }
 }
 
-test fn occurrence_binding_two_level_path_separates_terminal_holds() -> Bool {
+test fn occurrence_binding_two_level_path_separates_terminal_holds() -> Bool  {
   ob_two_level_path_is(
     path: ob_two_level_path(root: ^root, terminal: ^node),
     root: ^root,
@@ -76,7 +76,7 @@ test fn occurrence_binding_two_level_path_separates_terminal_holds() -> Bool {
   )
 }
 
-test fn occurrence_binding_zero_candidates_is_unbound_holds() -> Bool {
+test fn occurrence_binding_zero_candidates_is_unbound_holds() -> Bool  {
   match occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: Empty,
@@ -92,7 +92,7 @@ test fn occurrence_binding_zero_candidates_is_unbound_holds() -> Bool {
   }
 }
 
-test fn occurrence_binding_one_candidate_is_bound_holds() -> Bool {
+test fn occurrence_binding_one_candidate_is_bound_holds() -> Bool  {
   let candidate = ob_candidate(
     containment: ob_two_level_path(
       root: ^provider,
@@ -120,7 +120,7 @@ test fn occurrence_binding_one_candidate_is_bound_holds() -> Bool {
   }
 }
 
-test fn occurrence_binding_two_candidates_are_structurally_ambiguous_holds() -> Bool {
+test fn occurrence_binding_two_candidates_are_structurally_ambiguous_holds() -> Bool  {
   let first = ob_candidate(
     containment: ob_root_path(terminal: ^first_declaration),
   )
@@ -148,7 +148,7 @@ test fn occurrence_binding_two_candidates_are_structurally_ambiguous_holds() -> 
   }
 }
 
-test fn occurrence_binding_many_candidates_preserve_input_order_holds() -> Bool {
+test fn occurrence_binding_many_candidates_preserve_input_order_holds() -> Bool  {
   let first = ob_candidate(
     containment: ob_root_path(terminal: ^first_declaration),
   )
@@ -193,7 +193,7 @@ test fn occurrence_binding_many_candidates_preserve_input_order_holds() -> Bool 
   }
 }
 
-test fn occurrence_binding_duplicate_candidates_remain_ambiguous_holds() -> Bool {
+test fn occurrence_binding_duplicate_candidates_remain_ambiguous_holds() -> Bool  {
   let duplicate = ob_candidate(
     containment: ob_two_level_path(
       root: ^provider,
@@ -231,7 +231,7 @@ test fn occurrence_binding_duplicate_candidates_remain_ambiguous_holds() -> Bool
   }
 }
 
-test fn occurrence_binding_same_name_different_containment_is_ambiguous_holds() -> Bool {
+test fn occurrence_binding_same_name_different_containment_is_ambiguous_holds() -> Bool  {
   let left = ob_candidate(
     containment: ob_two_level_path(
       root: ^left_scope,

@@ -33,11 +33,11 @@ fn words_contain(words: List<String>, word: String) -> Bool {
   fold(words, init: false, f: (acc, w) => acc || w == word)
 }
 
-test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool {
+test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool  {
   bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0) == "/vm/0/0"
 }
 
-test fn nbd_proxy_serve_serve_legs_are_described_commands() -> Bool {
+test fn nbd_proxy_serve_serve_legs_are_described_commands() -> Bool  {
   let intent = nbd_proxy_serve_transport_intent(
     bmc_host: asrock_srv3_live_bmc_host,
     session_token: bmcweb_session_token_env_ref,
@@ -100,7 +100,7 @@ fn nbd_proxy_serve_cited_tool_names_includes_socat() -> Bool {
 // THE RETIRED SCAFFOLD'S STANDING. The row was a Scaffold bound to the raw websocat word list; the
 // dispatch it dissolved into landed and the legs are described commands, so it is Terminal with a
 // reason that names both facts and the one obligation that moved with the header word.
-test fn nbd_proxy_serve_systemd_realization_standing_is_terminal() -> Bool {
+test fn nbd_proxy_serve_systemd_realization_standing_is_terminal() -> Bool  {
   match nbd_proxy_serve_systemd_realization_disposition {
     Terminal { reason: why } =>
       string_contains(s: why, pattern: "transient-unit realization dispatch")
@@ -109,7 +109,7 @@ test fn nbd_proxy_serve_systemd_realization_standing_is_terminal() -> Bool {
   }
 }
 
-test fn bmcweb_session_login_command_uses_curl_authority() -> Bool {
+test fn bmcweb_session_login_command_uses_curl_authority() -> Bool  {
   witness_bmcweb_session_login_command_fields_hold()
 }
 
@@ -131,7 +131,7 @@ fn witness_bmcweb_session_login_command_fields_hold() -> Bool {
     && words_contain(words: login.arguments, word: concat("https://", concat(asrock_srv3_live_bmc_host as String, "/login")))
 }
 
-test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool {
+test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool  {
   nbd_proxy_serve_requires_host_as_nbd_server()
 }
 
@@ -149,7 +149,7 @@ fn nbd_proxy_observe_port_test_scope() -> ProcessPortScope {
   }
 }
 
-test fn nbd_proxy_observe_port_active_capture_yields_port_observed() -> Bool {
+test fn nbd_proxy_observe_port_active_capture_yields_port_observed() -> Bool  {
   let scope = nbd_proxy_observe_port_test_scope()
   let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
@@ -166,7 +166,7 @@ test fn nbd_proxy_observe_port_active_capture_yields_port_observed() -> Bool {
   }
 }
 
-test fn nbd_proxy_observe_port_inactive_capture_yields_port_absent() -> Bool {
+test fn nbd_proxy_observe_port_inactive_capture_yields_port_absent() -> Bool  {
   let scope = nbd_proxy_observe_port_test_scope()
   let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
@@ -183,7 +183,7 @@ test fn nbd_proxy_observe_port_inactive_capture_yields_port_absent() -> Bool {
 // observation ("I could not observe") must never render as PortInaccessible ("the port was
 // observed and is genuinely wrong") -- those are different facts with different remedies, and
 // collapsing them hides a systematically-broken read-back behind a plausible-looking answer.
-test fn nbd_proxy_observe_port_capture_refusal_yields_port_observation_refused_not_answer() -> Bool {
+test fn nbd_proxy_observe_port_capture_refusal_yields_port_observation_refused_not_answer() -> Bool  {
   let scope = nbd_proxy_observe_port_test_scope()
   let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
@@ -205,7 +205,7 @@ test fn nbd_proxy_observe_port_capture_refusal_yields_port_observation_refused_n
   }
 }
 
-test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> Bool {
+test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> Bool  {
   let scope = nbd_proxy_observe_port_test_scope()
   let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
   match host_effect_nbd_proxy_serve_observe_port(scope: scope, transport: LocalShell, websocat_unit: unit) {
@@ -215,7 +215,7 @@ test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> B
   }
 }
 
-test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool {
+test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool  {
   systemd_run_transient_operation_argv_matches_authority(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [],
@@ -228,7 +228,7 @@ test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool
 // transport template ignores it, and every empty-population caller stays green while a bounded unit
 // is launched unbounded. This control carries a real population so the materialized argv and the
 // extdeps authority must agree on the property word itself.
-test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bool {
+test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bool  {
   systemd_run_transient_operation_argv_matches_authority(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
@@ -241,7 +241,7 @@ test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bo
 // with a space passed the predicate whether or not the transport tokenised it correctly. Carrying
 // such a value here means the control fails if argv agreement is ever weakened back to a text
 // comparison: the words still join to the same text, and only cardinality separates them.
-test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> Bool {
+test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> Bool  {
   systemd_run_transient_operation_argv_matches_authority(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
@@ -251,7 +251,7 @@ test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> 
 
 // THE ENCODING'S OWN PRECONDITION IS ASSERTED, not assumed. argv_exact_token_equal is injective
 // only while no word contains the separator; a word that does must refuse rather than compare.
-test fn witness_argv_exact_token_equal_separates_split_words() -> Bool {
+test fn witness_argv_exact_token_equal_separates_split_words() -> Bool  {
   !argv_exact_token_equal(left: ["a b"], right: ["a", "b"])
     && argv_exact_token_equal(left: ["a b"], right: ["a b"])
     && !argv_exact_token_equal(left: ["a\nb"], right: ["a\nb"])
@@ -261,7 +261,7 @@ test fn witness_argv_exact_token_equal_separates_split_words() -> Bool {
 // authority against one materialization; if the transport template silently dropped the property
 // words, BOTH sides would drop them together only if the authority also stopped rendering them --
 // which this asserts it does not. The property word must be present in the authority's own output.
-test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
+test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool  {
   join(
     systemd_run_property_argv(
       properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
@@ -270,11 +270,11 @@ test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
   ) == "--property=MemoryMax=17179869184"
 }
 
-test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {
+test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool  {
   systemctl_stop_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr)
 }
 
-test fn witness_systemctl_is_active_operation_argv_matches_authority() -> Bool {
+test fn witness_systemctl_is_active_operation_argv_matches_authority() -> Bool  {
   systemctl_is_active_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr)
 }
 
@@ -318,7 +318,7 @@ fn token_decision_reason(o: BmcwebSessionTokenObservation) -> String {
   }
 }
 
-test fn an_unreadable_but_listed_token_refuses_instead_of_absent() -> Bool {
+test fn an_unreadable_but_listed_token_refuses_instead_of_absent() -> Bool  {
   string_contains(
     s: token_decision_reason(o: token_observation(
       listing_success: true,
@@ -332,7 +332,7 @@ test fn an_unreadable_but_listed_token_refuses_instead_of_absent() -> Bool {
   )
 }
 
-test fn an_unlistable_token_directory_refuses_instead_of_absent() -> Bool {
+test fn an_unlistable_token_directory_refuses_instead_of_absent() -> Bool  {
   string_contains(
     s: token_decision_reason(o: token_observation(
       listing_success: false,
@@ -348,7 +348,7 @@ test fn an_unlistable_token_directory_refuses_instead_of_absent() -> Bool {
 
 // POSITIVE CONTROL, absence arm: the same refused read, over a listing that does not name the
 // file, is the only route to "absent" -- the arms are decided by the LISTING, not the read.
-test fn a_token_absent_from_the_listing_still_refuses_as_absent() -> Bool {
+test fn a_token_absent_from_the_listing_still_refuses_as_absent() -> Bool  {
   token_decision_reason(o: token_observation(
     listing_success: true,
     entries: "other\n",
@@ -359,7 +359,7 @@ test fn a_token_absent_from_the_listing_still_refuses_as_absent() -> Bool {
   )) == "BMCWEB session token absent"
 }
 
-test fn a_listed_and_read_token_starts_the_units() -> Bool {
+test fn a_listed_and_read_token_starts_the_units() -> Bool  {
   match bmcweb_session_token_start_decision(o: token_observation(
     listing_success: true,
     entries: "srv3_bmcweb_token\n",
@@ -375,7 +375,7 @@ test fn a_listed_and_read_token_starts_the_units() -> Bool {
 
 // The empty content is a third fact and is carried as one: the file exists, was read, and holds
 // no token -- a broken materialization, not an absent one.
-test fn an_empty_token_file_refuses_as_present_not_absent() -> Bool {
+test fn an_empty_token_file_refuses_as_present_not_absent() -> Bool  {
   string_contains(
     s: token_decision_reason(o: token_observation(
       listing_success: true,

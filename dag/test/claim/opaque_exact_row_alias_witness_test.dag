@@ -27,7 +27,7 @@ fn w_rowless_opaque_keeps_its_phantom_struct() -> Bool {
   )
 }
 
-test fn an_opaque_declaration_with_no_row_keeps_its_phantom_struct() -> Bool {
+test fn an_opaque_declaration_with_no_row_keeps_its_phantom_struct() -> Bool  {
   w_rowless_opaque_keeps_its_phantom_struct()
 }
 
@@ -40,7 +40,7 @@ fn w_symbol_keeps_its_row_alias() -> Bool {
   )
 }
 
-test fn an_opaque_declaration_with_an_exact_row_emits_its_alias() -> Bool {
+test fn an_opaque_declaration_with_an_exact_row_emits_its_alias() -> Bool  {
   w_symbol_keeps_its_row_alias()
 }
 
@@ -53,6 +53,6 @@ fn w_unit_emits_its_row_alias() -> Bool {
   )
 }
 
-test fn an_opaque_declaration_reached_only_by_its_row_emits_the_row_alias() -> Bool {
+test fn an_opaque_declaration_reached_only_by_its_row_emits_the_row_alias() -> Bool  {
   w_unit_emits_its_row_alias()
 }

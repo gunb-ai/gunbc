@@ -76,24 +76,24 @@ fn unreadable_line() -> String {
   )
 }
 
-test fn w_seed_heartbeat_oracle_renders_the_measured_sample_exactly() -> Bool {
+test fn w_seed_heartbeat_oracle_renders_the_measured_sample_exactly() -> Bool  {
   measured_line() == measured_expected
 }
 
 // The treadmill specimen from gunbc.host.memory_stall_refusal renders at the refusal's own
 // figures: 178795 faults/min and 80 basis points, printed as 0.8%. A renderer that reached for
 // utime+stime, or divided by anything but the window's wall, would print a different share here.
-test fn w_seed_heartbeat_stall_clause_is_the_refusal_authority_arithmetic() -> Bool {
+test fn w_seed_heartbeat_stall_clause_is_the_refusal_authority_arithmetic() -> Bool  {
   string_contains(s: measured_line(), pattern: "stall 178795 faults/min at 0.8% user cpu")
 }
 
-test fn w_seed_heartbeat_oracle_renders_every_unreadable_arm_with_its_cause() -> Bool {
+test fn w_seed_heartbeat_oracle_renders_every_unreadable_arm_with_its_cause() -> Bool  {
   unreadable_line() == unreadable_expected
 }
 
 // NO FABRICATED ZERO ON ANY ARM: the unreadable sample passes 0 for every counter and none of
 // those zeros may reach the line. The only digits permitted are the elapsed wall's.
-test fn w_seed_heartbeat_unreadable_sample_prints_no_counter_value() -> Bool {
+test fn w_seed_heartbeat_unreadable_sample_prints_no_counter_value() -> Bool  {
   let line = unreadable_line()
   !string_contains(s: line, pattern: "cpu 0") &&
   !string_contains(s: line, pattern: "memory 0") &&
@@ -106,7 +106,7 @@ test fn w_seed_heartbeat_unreadable_sample_prints_no_counter_value() -> Bool {
 // A STALL WINDOW WITH NO WALL IS UNREADABLE, NOT A DIVISION: the seed marks the window available
 // only once both counters read, and the oracle additionally refuses a zero-wall window rather
 // than computing a rate over it. Both flags true with a zero wall must still print the cause.
-test fn w_seed_heartbeat_zero_wall_stall_window_is_unreadable() -> Bool {
+test fn w_seed_heartbeat_zero_wall_stall_window_is_unreadable() -> Bool  {
   let line = seed_heartbeat_line(
     elapsed: millisecond(count: 60000),
     seam: "typecheck",

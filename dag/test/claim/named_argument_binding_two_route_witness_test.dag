@@ -59,10 +59,10 @@ data nab_inorder_source: String = "module nab_inorder\n\nfn nab_pick(a: Int, b: 
 
 data nab_reordered_source: String = "module nab_reordered\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(b: true, a: 1)\n}\n"
 
-test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> Bool {
+test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> Bool  {
   total_blocking_count_for(source: nab_inorder_source) == 0
 }
 
-test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
+test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool  {
   total_blocking_count_for(source: nab_reordered_source) == 0
 }

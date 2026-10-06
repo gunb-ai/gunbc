@@ -125,7 +125,7 @@ fn xl2_control_runs() -> Xl2ControlRuns {
 }
 
 // RED CONTROL: the residual module yields exactly one failure chain, and it is that module's.
-test fn xl2_residual_control_is_reported_holds() -> Bool {
+test fn xl2_residual_control_is_reported_holds() -> Bool  {
   match xl2_control_runs().cut {
     Xl2RehearsalObserved { residual: residual } =>
       count(residual) == 1 && all(residual, r => r.module == "v2.xl2_control_residual")
@@ -134,7 +134,7 @@ test fn xl2_residual_control_is_reported_holds() -> Bool {
 }
 
 // GREEN CONTROL: the provider and the clean module both resolved, and neither contributed a row.
-test fn xl2_clean_control_resolves_holds() -> Bool {
+test fn xl2_clean_control_resolves_holds() -> Bool  {
   match xl2_control_runs().cut {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
       n == 2 && !any(residual, r => r.module == "v2.xl2_control_clean" || r.module == "v2.xl2_control_provider")
@@ -144,7 +144,7 @@ test fn xl2_clean_control_resolves_holds() -> Bool {
 
 // THE CUT IS WHAT MADE THE RED: the residual module unstripped, beside its provider, resolves on the
 // same route, so the row above is the strip's residual and not a defect in the specimen.
-test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
+test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool  {
   match xl2_control_runs().pre_cut {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 2
     _ => false
@@ -155,7 +155,7 @@ test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
 // and P4 observed the residual module completely, so NO incomplete-observation scope is raised for
 // it. The previous cut raised an abandonment scope for every refused module, which would have kept
 // the rehearsal incomplete for a reason P4 has since discharged.
-test fn xl2_control_completeness_is_refused_holds() -> Bool {
+test fn xl2_control_completeness_is_refused_holds() -> Bool  {
   match xl2_control_runs().cut {
     Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2PrerequisiteOutstanding { prerequisite: _ }, rest: rest } } =>
       count(rest) + 1 == count(xl2_prerequisites_outstanding())
@@ -183,7 +183,7 @@ fn xl2_first_and_last_chains_differ(residual: List<Xl2ResidualChain>) -> Bool {
 
 // TWO INDEPENDENT FAILURES IN ONE MODULE: exactly two rows, both that module's, carrying DIFFERENT
 // chains, and the module's complete observation raises no scope.
-test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
+test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool  {
   match xl2_control_runs().two {
     Xl2RehearsalObserved { residual: residual, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
       count(residual) == 2
@@ -200,7 +200,7 @@ test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
 // THE WALLS AND THE EXCLUDED KERNEL POPULATION RIDE ON THEIR OWN AXES: an observed run names both
 // native requalification walls and the uncounted kernel-canonical class, and neither is among its
 // completeness refusals (the refusal type cannot carry them).
-test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
+test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool  {
   match xl2_control_runs().cut {
     Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } =>
       count(walls) == 2 && count(excluded) == 2
@@ -213,7 +213,7 @@ test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
 // DUPLICATED PATH, REFUSED RATHER THAN CHOSEN: the residual and clean specimens supplied at ONE path,
 // beside the clean specimen at its own path. Neither shared member enters the ingest, so no row is
 // emitted, only the uniquely-pathed module resolves, and the path is reported once as unobserved.
-test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
+test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool  {
   match xl2_control_runs().duplicated {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
       count(residual) == 0 && n == 1
@@ -229,7 +229,7 @@ test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
 // no scope, so once the import is removed the nested module refuses and is the one residual row,
 // and only the provider resolves. Before the 2026-10-04 ruling this specimen resolved and was
 // carried as an uncounted excluded population; that arm dissolved by its own stated condition.
-test fn xl2_nested_reference_is_residual_after_the_strip_holds() -> Bool {
+test fn xl2_nested_reference_is_residual_after_the_strip_holds() -> Bool  {
   match xl2_control_runs().nesting {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
       count(residual) == 1 && n == 1 && all(residual, r => r.module == "v2.xl2_control_provider.nested")

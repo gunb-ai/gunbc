@@ -168,7 +168,7 @@ fn identity_with_attempt_and_nonce(attempt_id: IntakeAttemptId, nonce: String) -
 // The pair collides under a separator join (attempt_id ++ US ++ nonce is
 // the same text for both), so it is red for any preimage that does not
 // bind field boundaries independently of field content.
-test fn claims_that_collide_under_a_separator_join_have_distinct_signing_inputs() -> Bool {
+test fn claims_that_collide_under_a_separator_join_have_distinct_signing_inputs() -> Bool  {
   let us = from_code_point(cp: 31)
   let a = identity_with_attempt_and_nonce(attempt_id: concat("intake", concat(us, "x")) as IntakeAttemptId, nonce: "n")
   let b = identity_with_attempt_and_nonce(attempt_id: "intake" as IntakeAttemptId, nonce: concat("x", concat(us, "n")))
@@ -188,7 +188,7 @@ fn good_identity() -> SignedBootManifestIdentity {
   identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)
 }
 
-test fn issued_ticket_round_trips_through_the_real_mac() -> Bool {
+test fn issued_ticket_round_trips_through_the_real_mac() -> Bool  {
   match redeem_signed_boot_manifest(
     ticket: issued_ticket(id: good_identity()),
     key: broker_key,
@@ -199,7 +199,7 @@ test fn issued_ticket_round_trips_through_the_real_mac() -> Bool {
   }
 }
 
-test fn replayed_attempt_nonce_is_refused() -> Bool {
+test fn replayed_attempt_nonce_is_refused() -> Bool  {
   let spent: List<SpentAttemptNonce> = [SpentAttemptNonce { attempt_id: attempt, nonce: "nonce-0d" }]
   match redeem_signed_boot_manifest(
     ticket: issued_ticket(id: good_identity()),
@@ -211,7 +211,7 @@ test fn replayed_attempt_nonce_is_refused() -> Bool {
   }
 }
 
-test fn redemption_at_expiry_is_refused() -> Bool {
+test fn redemption_at_expiry_is_refused() -> Bool  {
   match redeem_signed_boot_manifest(
     ticket: issued_ticket(id: good_identity()),
     key: broker_key,
@@ -222,7 +222,7 @@ test fn redemption_at_expiry_is_refused() -> Bool {
   }
 }
 
-test fn redemption_before_not_before_is_refused() -> Bool {
+test fn redemption_before_not_before_is_refused() -> Bool  {
   match redeem_signed_boot_manifest(
     ticket: issued_ticket(id: good_identity()),
     key: broker_key,
@@ -233,7 +233,7 @@ test fn redemption_before_not_before_is_refused() -> Bool {
   }
 }
 
-test fn bad_signature_is_refused() -> Bool {
+test fn bad_signature_is_refused() -> Bool  {
   let good = issued_ticket(id: good_identity())
   let forged = SignedBootManifestTicket { identity: good.identity, tag_hex: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
   match redeem_signed_boot_manifest(
@@ -246,7 +246,7 @@ test fn bad_signature_is_refused() -> Bool {
   }
 }
 
-test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool {
+test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool  {
   match issue_signed_boot_manifest(
     identity: identity_for(target: unit, arch: Wasm32, root_digest: root(), nbf: 1788000000000, exp: 1788003600000),
     key: broker_key,
@@ -261,7 +261,7 @@ test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool {
   }
 }
 
-test fn inverted_window_refuses_issuance() -> Bool {
+test fn inverted_window_refuses_issuance() -> Bool  {
   match issue_signed_boot_manifest(
     identity: identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788003600000, exp: 1788000000000),
     key: broker_key,
@@ -276,7 +276,7 @@ test fn inverted_window_refuses_issuance() -> Bool {
   }
 }
 
-test fn unestablished_trust_refuses_issuance() -> Bool {
+test fn unestablished_trust_refuses_issuance() -> Bool  {
   match issue_signed_boot_manifest(
     identity: good_identity(),
     key: broker_key,
@@ -291,7 +291,7 @@ test fn unestablished_trust_refuses_issuance() -> Bool {
   }
 }
 
-test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -> Bool {
+test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -> Bool  {
   let identity = good_identity()
   let other_key_id: MacKeyId = "boot-manifest-impostor" as MacKeyId
   let ticket = SignedBootManifestTicket { identity: identity, tag_hex: "00" }
@@ -318,7 +318,7 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
 // message is not the ticket's signing input must refuse, whatever key and
 // suite it carries. redeem never reaches this arm (it MACs the same input it
 // presents), so this supplied-input claim is the arm's only discriminating red.
-test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
+test fn a_mac_verified_over_a_different_message_is_refused() -> Bool  {
   let identity = good_identity()
   let ticket = SignedBootManifestTicket { identity: identity, tag_hex: "00" }
   match present_boot_manifest(ticket: ticket) {
@@ -342,7 +342,7 @@ test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
 
 // Claims B presented beside a MAC verified over claims A's signing input: the
 // carrier binds B to B's own input, so the A-message does not authenticate B.
-test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> Bool {
+test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> Bool  {
   let a = identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-a")
   let b = identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-b")
   match signed_boot_manifest_signing_input(id: a) {
@@ -370,7 +370,7 @@ test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> 
 
 // A valid MAC under the pinned key does not authenticate claims that name a
 // different signing key: claimed, verified and pinned must all agree.
-test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bool {
+test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bool  {
   let other_key_id: MacKeyId = "boot-manifest-other" as MacKeyId
   let id = good_identity()
   let identity = SignedBootManifestIdentity {
@@ -408,7 +408,7 @@ test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bo
   }
 }
 
-test fn issued_ticket_standing_is_verified() -> Bool {
+test fn issued_ticket_standing_is_verified() -> Bool  {
   match signed_boot_manifest_standing(
     verification: redeem_signed_boot_manifest(
       ticket: issued_ticket(id: good_identity()),
@@ -426,7 +426,7 @@ test fn issued_ticket_standing_is_verified() -> Bool {
   }
 }
 
-test fn controlled_network_bootstrap_is_not_production_trust() -> Bool {
+test fn controlled_network_bootstrap_is_not_production_trust() -> Bool  {
   match bootstrap_trust_standing(
     firmware_https: none,
     secure_boot_chainloader: none,
@@ -451,7 +451,7 @@ test fn controlled_network_bootstrap_is_not_production_trust() -> Bool {
 // gunbc.network_boot_delivery adjudicates the ticket against. A legacy-BIOS x86 ticket names a
 // published class (RFC 4578 code 0), so it issues and redeems; projecting through the UEFI-only
 // branch refused it as ManifestIssuanceDhcpArchUnpublished (review 67932).
-test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
+test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool  {
   let id = SignedBootManifestIdentity {
     target_unit: unit,
     attempt_id: attempt,
@@ -502,7 +502,7 @@ fn legacy_bios_identity(arch: Architecture) -> SignedBootManifestIdentity {
 // BIOS, so a preimage that signed only the DHCP code would let a ticket issued
 // for X86 verify after architecture is flipped to X86_64 — the field the join
 // admits on. The authored architecture must be signed itself (review 68037).
-test fn legacy_bios_x86_and_x86_64_tickets_have_distinct_signing_inputs() -> Bool {
+test fn legacy_bios_x86_and_x86_64_tickets_have_distinct_signing_inputs() -> Bool  {
   match signed_boot_manifest_signing_input(id: legacy_bios_identity(arch: X86)) {
     Absent => false
     Present { value: p32 } =>
@@ -513,7 +513,7 @@ test fn legacy_bios_x86_and_x86_64_tickets_have_distinct_signing_inputs() -> Boo
   }
 }
 
-test fn x86_ticket_does_not_redeem_as_x86_64() -> Bool {
+test fn x86_ticket_does_not_redeem_as_x86_64() -> Bool  {
   match issue_signed_boot_manifest(identity: legacy_bios_identity(arch: X86), key: broker_key, trust: production_trust()) {
     BootManifestIssued { ticket: t } =>
       match redeem_signed_boot_manifest(
@@ -532,7 +532,7 @@ data every_architecture: List<Architecture> = [X86_64, X86, Aarch64, Arm, Armv7,
 
 // The signing token must be one-to-one over the variant, or two identities
 // differing only in architecture share a preimage.
-test fn architecture_signing_token_is_injective() -> Bool {
+test fn architecture_signing_token_is_injective() -> Bool  {
   let tokens = every_architecture |> map(a => boot_manifest_architecture_token(arch: a) as String)
   list_length(tokens) == 11
     && all(tokens, t => list_length(tokens |> filter(u => u == t)) == 1)
@@ -542,21 +542,21 @@ fn broker_census_has_frontier_subject(row: FrontierRow) -> Bool {
   any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
 }
 
-test fn broker_frontier_rows_well_formed() -> Bool {
+test fn broker_frontier_rows_well_formed() -> Bool  {
   frontier_rows_well_formed(rows: network_boot_manifest_broker_frontier_rows)
 }
 
-test fn broker_frontier_rows_are_in_the_census() -> Bool {
+test fn broker_frontier_rows_are_in_the_census() -> Bool  {
   all(network_boot_manifest_broker_frontier_rows, row => broker_census_has_frontier_subject(row: row))
 }
 
 // 0A's join frontier rows are asserted here rather than in the join witness:
 // that file is 0A's, and the census membership check is 0D's obligation for
 // the rows its broker rows sit beside.
-test fn join_frontier_rows_well_formed() -> Bool {
+test fn join_frontier_rows_well_formed() -> Bool  {
   frontier_rows_well_formed(rows: network_boot_delivery_frontier_rows)
 }
 
-test fn join_frontier_rows_are_in_the_census() -> Bool {
+test fn join_frontier_rows_are_in_the_census() -> Bool  {
   all(network_boot_delivery_frontier_rows, row => broker_census_has_frontier_subject(row: row))
 }

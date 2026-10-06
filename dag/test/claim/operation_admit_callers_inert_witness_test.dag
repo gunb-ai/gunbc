@@ -69,7 +69,7 @@ fn admit_census_of(source: String) -> CompileDiagnosticCensus {
 // expected-red below a finding rather than a broken harness: without it, a red could mean the
 // mechanism is inert OR that this file cannot compile a probe at all, and those are different
 // states with different remedies.
-test fn fn_form_admission_refuses_unadmitted_caller() -> Bool {
+test fn fn_form_admission_refuses_unadmitted_caller() -> Bool  {
   match census_blocking_count_for_class(
     census: admit_census_of(source: admit_fn_form_source),
     wanted: "ConstructorCallAdmissionRefused"
@@ -85,7 +85,7 @@ test fn fn_form_admission_refuses_unadmitted_caller() -> Bool {
 // breakage. Per DESIGN 4b it does NOT get deleted when the resolver gains operation-grain
 // enforcement -- it flips to a permanent regression control, because deleting the evidence on the
 // climb recreates specification-without-execution one rung up.
-test fn operation_form_admission_refuses_unadmitted_caller() -> Bool {
+test fn operation_form_admission_refuses_unadmitted_caller() -> Bool  {
   match census_blocking_count_for_class(
     census: admit_census_of(source: admit_op_form_source),
     wanted: "ConstructorCallAdmissionRefused"

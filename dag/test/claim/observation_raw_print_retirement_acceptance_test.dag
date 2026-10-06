@@ -67,6 +67,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data acceptance_dissolution_note: String = "DISSOLVES BY GREENING, not by deletion. When the frontier reaches zero this witness passes and its QuarantineProbeExpectRed row in gunbc.ci_layer_roots.witness_exclusion_frontier becomes wrong — a still-red expectation against a green witness — so the un-quarantine is forced rather than optional: the roster row must be removed in the same change that lands the last migration, and the witness then joins ordinary DiscoverySelection as a standing ratchet against regression. That is the counted un-quarantine event the admission authority describes."
 
-test fn observation_emit_frontier_is_zero() -> Bool {
+test fn observation_emit_frontier_is_zero() -> Bool  {
   observation_emit_frontier_count() == 0
 }

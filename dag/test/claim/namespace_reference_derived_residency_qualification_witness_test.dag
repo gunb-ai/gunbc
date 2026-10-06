@@ -84,7 +84,7 @@ fn rdrq_reading(
 // POSITIVE CONTROL. A name table keyed by the pool population plus the one subject tree under
 // production qualifies. Without this arm every red below would be satisfied by a qualifier that
 // refuses everything.
-test fn a_name_table_pool_with_one_subject_tree_qualifies() -> Bool {
+test fn a_name_table_pool_with_one_subject_tree_qualifies() -> Bool  {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_bounded_index_carrier(), rdrq_subject_tree_carrier()],
@@ -99,7 +99,7 @@ test fn a_name_table_pool_with_one_subject_tree_qualifies() -> Bool {
 // RED CONTROL 1 -- the whole-pool-build-then-release specimen. Nothing survives the call, so an
 // after-the-fact reading is indistinguishable from the bounded one above; the construction boundary is
 // what separates them.
-test fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Bool {
+test fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Bool  {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_syntax_carrier(decl_name: "ReferenceDerivedPool")],
@@ -120,7 +120,7 @@ test fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Boo
 
 // RED CONTROL 2 -- retention moved out of `trees` and into the index. A check written against the
 // tree map alone would go green here while the same population stays resident.
-test fn retention_moved_into_the_symbol_index_still_refuses() -> Bool {
+test fn retention_moved_into_the_symbol_index_still_refuses() -> Bool  {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_subject_tree_carrier(), rdrq_index_syntax_carrier()],
@@ -141,7 +141,7 @@ test fn retention_moved_into_the_symbol_index_still_refuses() -> Bool {
 
 // The retained-at-return arm is reachable on its own: a producer whose construction is bounded but
 // which hands back a whole-corpus index refuses at the second boundary rather than the first.
-test fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() -> Bool {
+test fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() -> Bool  {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_bounded_index_carrier()],
@@ -162,7 +162,7 @@ test fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() ->
 
 // RED CONTROL 3 -- an empty reading is not a bound. A qualifier that defaulted to qualified would
 // hand every unmeasured producer a pass.
-test fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool {
+test fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool  {
   match qualify_bounded_realization(reading: rdrq_reading(constructed: [], retained_at_return: [])) {
     BoundedRealizationQualified { subject: _ } => false
     BoundedRealizationRefused { subject: _, failure: failure } =>
@@ -179,7 +179,7 @@ test fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool {
 // THE CONSUMPTION ARM, which is where the filed class actually bites: semantic delivery of the
 // instrument is true and the bounded-realization claim is still not admitted, because the resource
 // qualification is a separate argument with no arm that semantic delivery can satisfy.
-test fn semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() -> Bool {
+test fn semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() -> Bool  {
   match admit_bounded_realization(
     semantic_delivered: true,
     resource: qualify_bounded_realization(
@@ -197,7 +197,7 @@ test fn semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() -> 
 
 // And the converse arm, so the admission is not simply unreachable: a qualified resource reading with
 // semantic delivery outstanding is also not an admission.
-test fn resource_qualification_alone_does_not_admit_either() -> Bool {
+test fn resource_qualification_alone_does_not_admit_either() -> Bool  {
   match admit_bounded_realization(
     semantic_delivered: false,
     resource: qualify_bounded_realization(
@@ -214,7 +214,7 @@ test fn resource_qualification_alone_does_not_admit_either() -> Bool {
 }
 
 // The positive control for the admission itself.
-test fn both_evidences_together_admit_the_claim() -> Bool {
+test fn both_evidences_together_admit_the_claim() -> Bool  {
   match admit_bounded_realization(
     semantic_delivered: true,
     resource: qualify_bounded_realization(

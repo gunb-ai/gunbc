@@ -39,7 +39,7 @@ data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoi
   storage_policy: StoragePolicyAbsent,
 }
 
-test fn srv3_on_iso_direct_layout_complete_for_unattended_on_foreign_disk() -> Bool {
+test fn srv3_on_iso_direct_layout_complete_for_unattended_on_foreign_disk() -> Bool  {
   fold_nbd_proxy_os_install_preflight_verdict(
     payload: srv3_ubuntu_autoinstall_on_iso,
     disk: ForeignOsPresent,
@@ -50,7 +50,7 @@ test fn srv3_on_iso_direct_layout_complete_for_unattended_on_foreign_disk() -> B
     }
 }
 
-test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
+test fn foreign_disk_without_storage_is_not_bootable() -> Bool  {
   match fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
     disk: ForeignOsPresent,
@@ -61,21 +61,21 @@ test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
   }
 }
 
-test fn unknown_disk_without_storage_needs_observation() -> Bool {
+test fn unknown_disk_without_storage_needs_observation() -> Bool  {
   fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
     disk: UnknownDiskState,
   ) == RequiresDiskObservation
 }
 
-test fn empty_disk_without_storage_requires_policy() -> Bool {
+test fn empty_disk_without_storage_requires_policy() -> Bool  {
   fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
     disk: EmptyDisk,
   ) == RequiresStoragePolicy
 }
 
-test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
+test fn direct_layout_storage_is_complete_for_unattended() -> Bool  {
   fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_with_storage,
     disk: ForeignOsPresent,
@@ -86,7 +86,7 @@ test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
     }
 }
 
-test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
+test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool  {
   match fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
     disk: ForeignOsPresent,
@@ -103,7 +103,7 @@ test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
     }
 }
 
-test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
+test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool  {
   let net_payload = UbuntuAutoinstallPayload {
     autoinstall_version: 1,
     delivery: NoCloudNet {
@@ -128,7 +128,7 @@ test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
   }
 }
 
-test fn requires_storage_policy_plans_remaster() -> Bool {
+test fn requires_storage_policy_plans_remaster() -> Bool  {
   match plan_for_os_install_preflight_verdict(
     verdict: RequiresStoragePolicy,
   ) {
@@ -137,7 +137,7 @@ test fn requires_storage_policy_plans_remaster() -> Bool {
   }
 }
 
-test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
+test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool  {
   match plan_for_os_install_preflight_verdict(
     verdict: AutoinstallIncompleteNotBootable,
   ) {
@@ -146,14 +146,14 @@ test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
   }
 }
 
-test fn direct_layout_emits_storage_yaml() -> Bool {
+test fn direct_layout_emits_storage_yaml() -> Bool  {
   match autoinstall_user_data(payload: witness_autoinstall_with_storage) {
     AutoinstallUserDataRefused { reason: _ } => false
     AutoinstallUserDataRendered { content: ud } => ud.contains("layout:") && ud.contains("direct")
   }
 }
 
-test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
+test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool  {
   match runtime_verdict_from_kvm_attestation(
     attestation: KvmOperatorAttestation {
       target: operator_host_srv3,
@@ -168,7 +168,7 @@ test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
   }
 }
 
-test fn non_automated_is_not_unattended_ready() -> Bool {
+test fn non_automated_is_not_unattended_ready() -> Bool  {
   let manual_payload = UbuntuAutoinstallPayload {
     autoinstall_version: 1,
     delivery: NoCloudLocal,
@@ -189,7 +189,7 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
   }
 }
 
-test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
+test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool  {
   match runtime_verdict_from_kvm_attestation(
     attestation: KvmOperatorAttestation {
       target: operator_host_srv3,
@@ -204,7 +204,7 @@ test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
   }
 }
 
-test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
+test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool  {
   match runtime_verdict_from_kvm_attestation(
     attestation: KvmOperatorAttestation {
       target: operator_host_srv3,

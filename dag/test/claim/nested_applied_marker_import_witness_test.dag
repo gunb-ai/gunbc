@@ -20,7 +20,7 @@ fn w_nested_applied_variant_imports_the_marker() -> Bool {
   )
 }
 
-test fn nested_applied_unit_variant_imports_its_marker_type() -> Bool {
+test fn nested_applied_unit_variant_imports_its_marker_type() -> Bool  {
   w_nested_applied_variant_imports_the_marker()
 }
 
@@ -35,6 +35,6 @@ fn w_direct_applied_variant_imports_the_marker() -> Bool {
   )
 }
 
-test fn direct_applied_unit_variant_imports_its_marker_type() -> Bool {
+test fn direct_applied_unit_variant_imports_its_marker_type() -> Bool  {
   w_direct_applied_variant_imports_the_marker()
 }

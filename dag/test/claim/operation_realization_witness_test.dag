@@ -117,7 +117,7 @@ fn refused_with(reason_part: String, result_reason: String) -> Bool {
 // THE ENCODER ROUND-TRIPS THROUGH THE PRODUCTION DECODER. The line the dry adapter renders for each
 // power state, fed to chassis_observation, reads back as that state -- so the dry route decodes by the
 // same decoder a physical read reaches, and a rendering the decoder cannot read would red here first.
-test fn the_status_rendering_round_trips_through_the_production_decoder() -> Bool {
+test fn the_status_rendering_round_trips_through_the_production_decoder() -> Bool  {
   observed_on(o: chassis_observation(success: true, stdout: ipmitool_chassis_status_power_line(power_on: true)))
     && observed_off(o: chassis_observation(success: true, stdout: ipmitool_chassis_status_power_line(power_on: false)))
 }
@@ -125,7 +125,7 @@ test fn the_status_rendering_round_trips_through_the_production_decoder() -> Boo
 // A READ IS ANSWERED FROM THE WORLD AND DECODED BY THE PRODUCTION HELPER. Both power states are run so
 // a realization that ignored its state could not pass, and the route shows exactly one ChassisStatus
 // dispatched to this realization.
-test fn a_dry_status_read_is_decoded_by_the_production_helper() -> Bool {
+test fn a_dry_status_read_is_decoded_by_the_production_helper() -> Bool  {
   let off = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: false), epoch: virtual_clock_origin())),
     subject: fn(_scope) { read_power() }
@@ -156,7 +156,7 @@ fn unknown_status_handler(state: BmcWorld, call: OperationCall) -> OperationStep
   }
 }
 
-test fn an_unrecognised_rendering_reaches_the_decoders_own_refusal() -> Bool {
+test fn an_unrecognised_rendering_reaches_the_decoders_own_refusal() -> Bool  {
   let realization = OperationRealization {
     identity: realization_identity,
     initial: world(power_on: true),
@@ -175,7 +175,7 @@ test fn an_unrecognised_rendering_reaches_the_decoders_own_refusal() -> Bool {
 
 // A WRITE CHANGES THE WORLD AND A LATER READ OBSERVES IT, in the order the subject issued them, and the
 // frame returns the world the model ended in.
-test fn a_write_transitions_the_world_and_a_later_read_observes_it() -> Bool {
+test fn a_write_transitions_the_world_and_a_later_read_observes_it() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: false), epoch: virtual_clock_origin())),
     subject: fn(_scope) {
@@ -202,7 +202,7 @@ fn loss_fired_and_none_pending(w: BmcWorld) -> Bool {
 // AN EVENT HAPPENS DURING A QUIET WAIT. The world is on with AC loss scheduled at t=3; the subject reads
 // (t 0 -> 1), sleeps five seconds through the production sleep helper (t 1 -> 6), and reads again. The
 // loss fired during the sleep with no operation issued at t=3, and the second read observes it.
-test fn a_scheduled_event_fires_during_a_quiet_wait() -> Bool {
+test fn a_scheduled_event_fires_during_a_quiet_wait() -> Bool  {
   let initial = bmc_with_pending(world: bmc_world(power: BmcPowerOn), pending: [BmcScheduledEvent { at: second(count: 3), event: BmcAcPowerLost {} }], fired: [])
   let result = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: initial, epoch: virtual_clock_origin())),
@@ -227,7 +227,7 @@ test fn a_scheduled_event_fires_during_a_quiet_wait() -> Bool {
 // covered by the grant and PUBLISHES a hermetic mock case (extdeps.bmc.mock_corpus), so a fallback to
 // the mock layer would answer it; the frame refuses instead, and the route records the unbound
 // dispatch after the read that preceded it.
-test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
+test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
     subject: fn(_scope) {
@@ -248,7 +248,7 @@ test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
 // THE CHECKOUT-INPUT CARVE-OUT DOES NOT ESCAPE THE FRAME. Under plain hermetic execution a readonly
 // Filesystem.Read of a committed checkout path is a REAL read; under a modeled realization no grant
 // covers Filesystem, so the same read refuses as uncovered.
-test fn a_checkout_read_is_not_an_escape_from_the_frame() -> Bool {
+test fn a_checkout_read_is_not_an_escape_from_the_frame() -> Bool  {
   match evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
     subject: fn(_scope) { count(filesystem_read_checkout_probe()) > 0 }
@@ -266,7 +266,7 @@ fn filesystem_read_checkout_probe() -> String {
 // A MALFORMED REALIZATION REFUSES BEFORE THE SUBJECT RUNS: one identity bound twice, and one binding
 // whose identity names a file that does not declare the operation. The subject would return true, so a
 // green here can only come from admission refusing it, and the route is empty.
-test fn a_duplicate_binding_refuses_before_the_subject_runs() -> Bool {
+test fn a_duplicate_binding_refuses_before_the_subject_runs() -> Bool  {
   let realization = OperationRealization {
     identity: realization_identity,
     initial: world(power_on: true),
@@ -285,7 +285,7 @@ test fn a_duplicate_binding_refuses_before_the_subject_runs() -> Bool {
   }
 }
 
-test fn a_binding_to_an_undeclared_identity_refuses_before_the_subject_runs() -> Bool {
+test fn a_binding_to_an_undeclared_identity_refuses_before_the_subject_runs() -> Bool  {
   let misplaced = OperationRef { path: "dag/extdeps/bmc/ipmi_chassis_control.dag", service: "diagnostic.ipmi.Tool", operation: "ChassisStatus" }
   let realization = OperationRealization {
     identity: realization_identity,
@@ -311,7 +311,7 @@ fn killed_after_power_on(state: BmcWorld, call: OperationCall) -> OperationStep<
   OperationWorkerKilled { committed: true, state: bmc_with_power(world: state, power: BmcPowerOn) }
 }
 
-test fn a_killed_worker_is_interrupted_and_a_resumed_attempt_reconciles() -> Bool {
+test fn a_killed_worker_is_interrupted_and_a_resumed_attempt_reconciles() -> Bool  {
   let realization = OperationRealization {
     identity: realization_identity,
     initial: world(power_on: false),
@@ -361,7 +361,7 @@ fn effectful_status_handler(state: BmcWorld, call: OperationCall) -> OperationSt
   }
 }
 
-test fn a_handler_that_issues_an_operation_refuses() -> Bool {
+test fn a_handler_that_issues_an_operation_refuses() -> Bool  {
   let realization = OperationRealization {
     identity: realization_identity,
     initial: world(power_on: true),
@@ -378,7 +378,7 @@ test fn a_handler_that_issues_an_operation_refuses() -> Bool {
 }
 
 // THE REALIZATION DOES NOT OUTLIVE ITS FRAME.
-test fn the_realization_does_not_escape_its_frame() -> Bool {
+test fn the_realization_does_not_escape_its_frame() -> Bool  {
   let inside = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
     subject: fn(_scope) { witness_evaluation_frame_active() }
@@ -406,7 +406,7 @@ fn throwing_status_handler(state: BmcWorld, call: OperationCall) -> OperationSte
   }
 }
 
-test fn a_throwing_handler_keeps_its_dispatch_record() -> Bool {
+test fn a_throwing_handler_keeps_its_dispatch_record() -> Bool  {
   let realization = OperationRealization {
     identity: realization_identity,
     initial: world(power_on: true),
@@ -429,7 +429,7 @@ fn advance_failing_after_origin(state: BmcWorld, now: Second) -> BmcWorld {
   if moved == 0 { state } else if 100 / (moved - moved) > 0 { state } else { state }
 }
 
-test fn a_failing_advance_keeps_its_dispatch_record() -> Bool {
+test fn a_failing_advance_keeps_its_dispatch_record() -> Bool  {
   let realization = OperationRealization {
     identity: realization_identity,
     initial: world(power_on: true),
@@ -448,7 +448,7 @@ test fn a_failing_advance_keeps_its_dispatch_record() -> Bool {
 // published SensorList mock, the checkout read carve-out, a second model). Each is refused before its
 // subject runs, the escaping operation never dispatches, and the outer route holds only the outer
 // operations. The spellings differ on purpose: no realization, another realization, the same one.
-test fn a_nested_frame_cannot_open_inside_a_modeled_realization() -> Bool {
+test fn a_nested_frame_cannot_open_inside_a_modeled_realization() -> Bool  {
   let other = OperationRealization {
     identity: "another-realization" as NonEmptyStr,
     initial: world(power_on: false),
@@ -496,7 +496,7 @@ fn nested_frame_refused_before_its_subject<A, S>(r: v2.std.witness_evaluation.Wi
 
 // AFTER THE OUTER SCOPE ENDS, frames compose again: a frame without a realization evaluates, and a fresh
 // modeled frame starts at the origin rather than at any earlier scenario's clock.
-test fn frames_are_independent_after_the_outer_scope_ends() -> Bool {
+test fn frames_are_independent_after_the_outer_scope_ends() -> Bool  {
   let outer = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
     subject: fn(_scope) { observed_on(o: read_power()) && observed_on(o: read_power()) }
@@ -531,7 +531,7 @@ fn killed_without_commit(state: BmcWorld, call: OperationCall) -> OperationStep<
   OperationWorkerKilled { committed: false, state: state }
 }
 
-test fn a_resumed_attempt_keeps_the_interrupted_clock() -> Bool {
+test fn a_resumed_attempt_keeps_the_interrupted_clock() -> Bool  {
   let uninterrupted = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: loss_at_five(), epoch: virtual_clock_origin())),
     subject: fn(_scope) {
@@ -581,7 +581,7 @@ fn without_power_control(bindings: List<OperationBinding<BmcWorld>>, extra: fn(B
 // modeled realization; Wet and Record, which dispatch real effects, refuse. The dispatcher reaches this
 // function (admit_modeled_realization); the refusal it produces under a real Wet run was executed
 // locally with claim_batch --wet and is recorded on gunbc#12486.
-test fn only_a_hermetic_run_admits_a_modeled_realization() -> Bool {
+test fn only_a_hermetic_run_admits_a_modeled_realization() -> Bool  {
   modeled_realization_admitted_in(mode: Hermetic)
     && !modeled_realization_admitted_in(mode: Wet)
     && !modeled_realization_admitted_in(mode: Record)

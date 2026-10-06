@@ -193,7 +193,7 @@ data well_formed_import_ingest: SourceRootIngest = [well_formed_import_read]
 data bare_import_ingest: SourceRootIngest = [bare_import_read]
 
 // RED: the derivation refuses rather than returning a universe over a silently narrowed closure.
-test fn a_malformed_import_refuses_the_universe_derivation() -> Bool {
+test fn a_malformed_import_refuses_the_universe_derivation() -> Bool  {
   match native_lane_universe(ingest: malformed_import_ingest) {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_import_line_names_no_module
     Accepted { value: _, diagnostics: _ } => false
@@ -201,7 +201,7 @@ test fn a_malformed_import_refuses_the_universe_derivation() -> Bool {
 }
 
 // RED, second spelling: the form the prefix test cannot see.
-test fn a_bare_import_refuses_the_universe_derivation() -> Bool {
+test fn a_bare_import_refuses_the_universe_derivation() -> Bool  {
   match native_lane_universe(ingest: bare_import_ingest) {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_import_line_names_no_module
     Accepted { value: _, diagnostics: _ } => false
@@ -211,7 +211,7 @@ test fn a_bare_import_refuses_the_universe_derivation() -> Bool {
 // POSITIVE CONTROL: an ordinary import is admitted, so the refusal above discriminates on the
 // malformed line rather than on anything these fixtures share. Without this row the two RED tests
 // are satisfied by a derivation that refuses everything.
-test fn a_well_formed_import_is_admitted_by_the_derivation() -> Bool {
+test fn a_well_formed_import_is_admitted_by_the_derivation() -> Bool  {
   match native_lane_universe(ingest: well_formed_import_ingest) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -256,21 +256,21 @@ fn universe_accepted(ingest: SourceRootIngest) -> Bool {
 // the code now does while staying green -- the stale-name defect, one rename ahead of a reader
 // citing it as coverage for a walk that no longer happens. Acceptance is what this arm establishes
 // and all it establishes.
-test fn the_out_of_selection_source_is_accepted_not_refused() -> Bool {
+test fn the_out_of_selection_source_is_accepted_not_refused() -> Bool  {
   universe_accepted(ingest: selection_outside_ingest)
   && (length(xs: universe_qualified_names(ingest: selection_outside_ingest)) == 0)
 }
 
 // Both declarations of the selected module reach the universe -- the arm a module-grain filter
 // would also pass, kept so the identity-grain one can be told apart from it.
-test fn every_declaration_of_a_selected_module_reaches_the_universe() -> Bool {
+test fn every_declaration_of_a_selected_module_reaches_the_universe() -> Bool  {
   universe_admits(ingest: selection_inside_ingest, qualified: "v2.test.selection_probe.probe_one")
   && universe_admits(ingest: selection_inside_ingest, qualified: "v2.test.selection_probe.probe_two")
 }
 
 // The pair that pins selection in both directions over ONE ingest carrying both sources: a
 // selection admitting everything reds the second conjunct, one admitting nothing reds the first.
-test fn the_combined_ingest_selects_by_namespace_not_by_character_prefix() -> Bool {
+test fn the_combined_ingest_selects_by_namespace_not_by_character_prefix() -> Bool  {
   universe_admits(ingest: selection_combined_ingest, qualified: "v2.test.selection_probe.probe_one")
   && !universe_admits(
     ingest: selection_combined_ingest,
@@ -308,7 +308,7 @@ fn selected_admits(ingest: SourceRootIngest, text: String, qualified: String) ->
 
 // A SINGLE TARGET SELECTS ONE DECLARATION of a module that holds two: the identity grain, driven
 // end to end. An admit-everything selection reds the second conjunct, admit-nothing the first.
-test fn a_single_target_pattern_selects_one_declaration_of_the_universe() -> Bool {
+test fn a_single_target_pattern_selects_one_declaration_of_the_universe() -> Bool  {
   let text = "//v2/test/selection_probe:probe_one"
   selected_admits(ingest: selection_combined_ingest, text: text, qualified: "v2.test.selection_probe.probe_one")
   && !selected_admits(ingest: selection_combined_ingest, text: text, qualified: "v2.test.selection_probe.probe_two")
@@ -319,7 +319,7 @@ test fn a_single_target_pattern_selects_one_declaration_of_the_universe() -> Boo
 // but lies outside the floor's `v2.test.` population: the answer is an ACCEPTED EMPTY universe,
 // never that module. Admit-everything reds this arm; so would a selection that replaced the
 // universe instead of narrowing it.
-test fn a_pattern_outside_the_universe_selects_nothing() -> Bool {
+test fn a_pattern_outside_the_universe_selects_nothing() -> Bool  {
   let text = "//v2/testing/..."
   selected_accepted(ingest: selection_combined_ingest, text: text)
   && (length(xs: selected_qualified_names(ingest: selection_combined_ingest, text: text)) == 0)
@@ -339,23 +339,23 @@ fn selected_accepted(ingest: SourceRootIngest, text: String) -> Bool {
   }
 }
 
-test fn a_pattern_selecting_nothing_is_accepted_empty_not_refused() -> Bool {
+test fn a_pattern_selecting_nothing_is_accepted_empty_not_refused() -> Bool  {
   selected_accepted(ingest: selection_combined_ingest, text: "//elsewhere/...")
   && (length(xs: selected_qualified_names(ingest: selection_combined_ingest, text: "//elsewhere/...")) == 0)
 }
 
-test fn a_corpus_refusal_outside_the_pattern_still_refuses() -> Bool {
+test fn a_corpus_refusal_outside_the_pattern_still_refuses() -> Bool  {
   !selected_accepted(ingest: malformed_import_ingest, text: "//elsewhere/...")
 }
 
 // THE LABEL REFUSAL IS SCOPED TO THE UNIVERSE (review 69555). Outside it, an unlabelable
 // declaration is not the lane's population and the derivation is accepted with the in-universe
 // member intact; inside it, the same declaration refuses the derivation with its typed cause.
-test fn an_unlabelable_declaration_outside_the_universe_does_not_refuse() -> Bool {
+test fn an_unlabelable_declaration_outside_the_universe_does_not_refuse() -> Bool  {
   universe_admits(ingest: unlabelable_outside_ingest, qualified: "v2.test.selection_probe.probe_one")
 }
 
-test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
+test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool  {
   match native_lane_universe(ingest: unlabelable_inside_ingest) {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_identity_label_refused
     Accepted { value: _, diagnostics: _ } => false
@@ -367,7 +367,7 @@ test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
 // `selection_probe` in module `v2.test`; none exists, but module `v2.test.selection_probe` does, so
 // the route refuses rather than answering with an empty universe, and the detail carries the
 // module spelling. A route that returned universe 0 here reds the first conjunct.
-test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bool {
+test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bool  {
   match parse_target_pattern(text: "//v2/test:selection_probe") {
     TargetPatternRefused { cause: _ } => false
     TargetPatternParsed { pattern: pattern } =>
@@ -383,7 +383,7 @@ test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bo
 }
 
 // The positive side: the spelling the refusal suggests selects the module's declarations.
-test fn the_suggested_module_spelling_selects_the_module() -> Bool {
+test fn the_suggested_module_spelling_selects_the_module() -> Bool  {
   selected_admits(ingest: selection_combined_ingest, text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_one")
   && selected_admits(ingest: selection_combined_ingest, text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_two")
 }
@@ -426,7 +426,7 @@ fn carried_at_default(ingest: SourceRootIngest) -> Bool {
   }
 }
 
-test fn the_facts_taking_entry_admits_the_well_formed_source() -> Bool {
+test fn the_facts_taking_entry_admits_the_well_formed_source() -> Bool  {
   match native_lane_universe_of_facts(
     facts: native_lane_source_facts(ingest: well_formed_import_ingest),
     pattern: native_route_default_pattern()
@@ -436,11 +436,11 @@ test fn the_facts_taking_entry_admits_the_well_formed_source() -> Bool {
   }
 }
 
-test fn the_facts_taking_entry_keeps_the_malformed_import_refusal() -> Bool {
+test fn the_facts_taking_entry_keeps_the_malformed_import_refusal() -> Bool  {
   carried_at_default(ingest: malformed_import_ingest)
 }
 
-test fn the_facts_taking_entry_keeps_the_bare_import_refusal() -> Bool {
+test fn the_facts_taking_entry_keeps_the_bare_import_refusal() -> Bool  {
   carried_at_default(ingest: bare_import_ingest)
 }
 
@@ -487,14 +487,14 @@ fn discovery_row_count(ingest: SourceRootIngest) -> Int {
   )
 }
 
-test fn a_universe_member_is_walked_and_an_outsider_is_not() -> Bool {
+test fn a_universe_member_is_walked_and_an_outsider_is_not() -> Bool  {
   (discovery_row_count(ingest: selection_inside_ingest) == 2)
     && (discovery_row_count(ingest: selection_outside_ingest) == 0)
 }
 
 // A module-less file keeps its walk, because the unowned-row refusal reads exactly those rows --
 // scoping on membership must not reach the arm that has no membership to test.
-test fn a_source_declaring_no_module_is_still_walked() -> Bool {
+test fn a_source_declaring_no_module_is_still_walked() -> Bool  {
   discovery_row_count(ingest: unowned_row_ingest) > 0
 }
 
@@ -579,7 +579,7 @@ data module_less_violation_ingest: SourceRootIngest = [module_less_violation_rea
 
 // A WALKED MEMBER STILL REFUSES: the scoping narrowed which sources are walked, not what a walked
 // source's violation does. This is the positive control the two narrowing arms are read against.
-test fn a_universe_member_sidecar_violation_still_refuses_the_lane() -> Bool {
+test fn a_universe_member_sidecar_violation_still_refuses_the_lane() -> Bool  {
   match native_lane_universe(ingest: member_violation_ingest) {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_universe_derivation_refused
     Accepted { value: _, diagnostics: _ } => false
@@ -590,7 +590,7 @@ test fn a_universe_member_sidecar_violation_still_refuses_the_lane() -> Bool {
 // one namespace segment away from the arm above. Restore the walk for non-members and this goes
 // red -- which is what makes it the discriminating arm for the scoping and not a restatement of
 // the row counts.
-test fn a_non_member_sidecar_violation_no_longer_refuses_the_lane() -> Bool {
+test fn a_non_member_sidecar_violation_no_longer_refuses_the_lane() -> Bool  {
   match native_lane_universe(ingest: non_member_violation_ingest) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -601,7 +601,7 @@ test fn a_non_member_sidecar_violation_no_longer_refuses_the_lane() -> Bool {
 // finalize independently of the lane, so the corpus refusal the arm above gave up still exists at
 // its home. The content is READ OFF THE FIXTURE rather than restated, so the two arms cannot drift
 // apart into agreeing about different sources.
-test fn the_required_floor_producer_still_refuses_that_non_member_violation() -> Bool {
+test fn the_required_floor_producer_still_refuses_that_non_member_violation() -> Bool  {
   match floor_discovery_finalize_source_outcomes(
     outcomes: [
       discover_floor_rows_for_source(
@@ -619,7 +619,7 @@ test fn the_required_floor_producer_still_refuses_that_non_member_violation() ->
 // arm above establishes that such a file is still walked; this one establishes that its walk still
 // REFUSES, which is the property the finalize consumer actually needs and the one a zero state
 // would silently remove.
-test fn a_module_less_sidecar_violation_still_refuses_the_lane() -> Bool {
+test fn a_module_less_sidecar_violation_still_refuses_the_lane() -> Bool  {
   match native_lane_universe(ingest: module_less_violation_ingest) {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_universe_derivation_refused
     Accepted { value: _, diagnostics: _ } => false

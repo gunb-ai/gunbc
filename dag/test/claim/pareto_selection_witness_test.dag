@@ -317,7 +317,7 @@ fn witness_not_dominated(s: ParetoStanding) -> Bool {
 // axes, dear-strong beats it on power alone, and the fold reports both rather than
 // latching whichever the field order presented first. The label derivation renders the
 // identities, never the display labels.
-test fn witness_dominated_entry_names_its_dominator() -> Bool {
+test fn witness_dominated_entry_names_its_dominator() -> Bool  {
   let standing = entry_standing(subject: entry_dear_weak, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   count(dominators_of(s: standing)) == 2
     && has_dominator(s: standing, expected: id_cheap_strong)
@@ -330,7 +330,7 @@ test fn witness_dominated_entry_names_its_dominator() -> Bool {
 
 // CONTROL 2. A genuine trade-off keeps both entries on the frontier with the sensitivities
 // attached - the spine refuses to rank what the axes do not decide.
-test fn witness_tradeoff_pair_both_survive() -> Bool {
+test fn witness_tradeoff_pair_both_survive() -> Bool  {
   let cheap = entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let strong = entry_standing(subject: entry_dear_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let cheap_carries_sensitivities = match cheap {
@@ -347,7 +347,7 @@ test fn witness_tradeoff_pair_both_survive() -> Bool {
 // CONTROL 3. Declared-missing inputs land incomparable, never dominated and never dominating:
 // the quote-pending entry's too-good-to-be-true planted readings must not knock anything off
 // the frontier, and its own standing must name the outstanding quote.
-test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
+test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool  {
   let pending = entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let cheap_unmoved = witness_not_dominated(s: entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities))
   standing_is_incomparable(s: pending) && cheap_unmoved && pareto_label(s: pending) == "not computable"
@@ -370,7 +370,7 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
 // structural contradictions. entry_quote_pending, two controls above, declares what it lacks and
 // still lands in NotComputable -- so this pair of claims is what makes the two states observably
 // different rather than two spellings of one.
-test fn witness_absent_reading_refuses_the_pair() -> Bool {
+test fn witness_absent_reading_refuses_the_pair() -> Bool  {
   let pair = compare_pair(a: entry_cheap_strong, b: entry_reading_hole, axes: both_axes)
   let pair_refuses = match pair {
     PairRefused { cause } => true,
@@ -394,7 +394,7 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
 
 // CONTROL 5. Orientation: the same pair flips winner when the axis flips direction, so
 // the axis goal orientation is provably consulted rather than decorative.
-test fn witness_axis_orientation_is_consulted() -> Bool {
+test fn witness_axis_orientation_is_consulted() -> Bool  {
   standing_dominates(a: entry_cheap_strong, b: entry_dear_strong, axes: cost_only)
     && standing_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: power_only)
     && !standing_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: cost_only)
@@ -418,7 +418,7 @@ fn standing_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>)
 // distinct identities; the worse one is still challenged and lands dominated by the better
 // one. Under the retired label-keyed exclusion this comparison was skipped as
 // self-comparison and the twin wrongly survived.
-test fn witness_shared_label_still_compares() -> Bool {
+test fn witness_shared_label_still_compares() -> Bool  {
   let twin = entry_standing(subject: entry_twin_dominated, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   has_dominator(s: twin, expected: id_cheap_strong) && count(dominators_of(s: twin)) == 3
 }
@@ -426,7 +426,7 @@ test fn witness_shared_label_still_compares() -> Bool {
 // CONTROL 7 - ORDER INVARIANCE. Reversing the field changes neither the standing class nor
 // the identified dominator: the fold accumulates every challenge instead of latching the
 // first.
-test fn witness_field_order_is_irrelevant() -> Bool {
+test fn witness_field_order_is_irrelevant() -> Bool  {
   let forward = entry_standing(subject: entry_dear_weak, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let reversed = entry_standing(subject: entry_dear_weak, field: clean_field_reversed, axes: both_axes, sensitivities: spine_sensitivities)
   count(dominators_of(s: forward)) == 2 && count(dominators_of(s: reversed)) == 2
@@ -437,21 +437,21 @@ test fn witness_field_order_is_irrelevant() -> Bool {
 
 // CONTROL 8 - DUPLICATE AXIS IDENTITY REFUSES. One axis identity appearing twice (here
 // under opposite goals) must refuse the selection outright, never resolve first-one-wins.
-test fn witness_duplicate_axis_identity_refuses() -> Bool {
+test fn witness_duplicate_axis_identity_refuses() -> Bool  {
   standing_is_refused(s: entry_standing(subject: entry_dear_weak, field: clean_field, axes: duplicated_axes, sensitivities: spine_sensitivities))
     && pareto_label(s: entry_standing(subject: entry_dear_weak, field: clean_field, axes: duplicated_axes, sensitivities: spine_sensitivities)) == "selection refused"
 }
 
 // CONTROL 9 - DUPLICATE CANDIDATE IDENTITY REFUSES. A field carrying one identity twice
 // refuses: the duplicate would otherwise be silently skipped as self-comparison.
-test fn witness_duplicate_candidate_identity_refuses() -> Bool {
+test fn witness_duplicate_candidate_identity_refuses() -> Bool  {
   standing_is_refused(s: entry_standing(subject: entry_dear_weak, field: duplicated_field, axes: both_axes, sensitivities: spine_sensitivities))
 }
 
 // CONTROL 10 - DUPLICATE READING REFUSES THE PAIR. Two readings on one axis identity
 // refuse rather than take the first: 10 would dominate on cost, 999 would not, and the
 // spine must not pick.
-test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
+test fn witness_duplicate_reading_refuses_the_pair() -> Bool  {
   match compare_pair(a: entry_double_reading, b: entry_dear_weak, axes: both_axes) {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
@@ -479,7 +479,7 @@ test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
 //
 // The control runs the OTHER direction too: an entry that cannot be evaluated cannot be shown
 // DOMINATED either, so both operands are gated rather than just the challenger.
-test fn a_declared_gap_is_ineligible_to_dominate() -> Bool {
+test fn a_declared_gap_is_ineligible_to_dominate() -> Bool  {
   let would_win_on_readings = match compare_pair(a: entry_gap_but_best, b: entry_dear_weak, axes: both_axes) {
     PairEvidenceIncomplete { missing } => count(missing) > 0
     PairDominates { winning_axes } => false
@@ -505,7 +505,7 @@ test fn a_declared_gap_is_ineligible_to_dominate() -> Bool {
 // Its second half is what the eligibility read now DERIVES from the pair arm rather than restating
 // beside it: challenger_applies is down to the self-comparison guard, so this control is the only
 // thing standing between that deletion and a silent behaviour change.
-test fn the_pair_api_and_the_standing_path_agree_about_a_gap() -> Bool {
+test fn the_pair_api_and_the_standing_path_agree_about_a_gap() -> Bool  {
   let gapped_row_is_not_computable = match entry_standing(subject: entry_gap_but_best, field: gap_best_field, axes: both_axes, sensitivities: spine_sensitivities) {
     NotComputable { missing } => count(missing) > 0
     ProvisionallyNonDominated { sensitivities } => false
@@ -538,7 +538,7 @@ test fn the_pair_api_and_the_standing_path_agree_about_a_gap() -> Bool {
 // THE KILLING MUTATION, named so a later reader can re-run it: restore the duplicate-only pre-scan
 // (match ReadingAbsent => acc in the function compare_pair consults) and this control goes red while
 // every duplicate-based control stays green -- which is precisely why those controls did not catch it.
-test fn an_honest_gap_does_not_mask_a_contradiction_on_the_other_side() -> Bool {
+test fn an_honest_gap_does_not_mask_a_contradiction_on_the_other_side() -> Bool  {
   let hole_as_challenger = match compare_pair(a: entry_reading_hole, b: entry_gap_but_best, axes: both_axes) {
     PairRefused { cause } => count(cause) > 0
     PairEvidenceIncomplete { missing } => false
@@ -566,7 +566,7 @@ test fn an_honest_gap_does_not_mask_a_contradiction_on_the_other_side() -> Bool 
 // KILLING MUTATION: delete the axis_roster_contradiction gate from compare_pair. This control goes
 // red while witness_duplicate_axis_identity_refuses stays green -- which is the whole point, and the
 // reason the pre-existing control could not have caught it.
-test fn a_duplicated_axis_roster_refuses_the_pair_too() -> Bool {
+test fn a_duplicated_axis_roster_refuses_the_pair_too() -> Bool  {
   let refused = match compare_pair(a: entry_cheap_strong, b: entry_dear_weak, axes: duplicated_axes) {
     PairRefused { cause } => count(cause) > 0
     PairNoDominance => false
@@ -601,7 +601,7 @@ fn names_identity(causes: List<NonEmptyStr>, id: DeclarationRef) -> Int {
   count(filter(causes, c => string_contains(s: c as String, pattern: declaration_ref_display_key(ref: id))))
 }
 
-test fn a_cause_population_is_sized_by_distinct_defects() -> Bool {
+test fn a_cause_population_is_sized_by_distinct_defects() -> Bool  {
   let two_copies = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate])
   let three_copies = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate, axis_cost])
   let two_defects = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate, axis_power, axis_power_duplicate])
@@ -665,7 +665,7 @@ fn pair_is_refused(p: PairStanding) -> Bool {
   }
 }
 
-test fn a_subject_does_not_dominate_itself() -> Bool {
+test fn a_subject_does_not_dominate_itself() -> Bool  {
   let wide_vs_self = pair_is_no_dominance(p: compare_pair(a: entry_wide_twin, b: entry_wide_twin, axes: both_axes))
   let same_id_differing_readings = pair_is_no_dominance(p: compare_pair(a: entry_same_id_other_readings, b: entry_cheap_strong, axes: both_axes))
   let field_still_refuses = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: [entry_cheap_strong, entry_same_id_other_readings], axes: both_axes, sensitivities: spine_sensitivities))
@@ -687,7 +687,7 @@ test fn a_subject_does_not_dominate_itself() -> Bool {
 // The second mutation did NOT go red on the first version of the honest fixture, which carried both
 // readings and so never reached the absent-reading branch at all - the conjunct read as a guard and
 // discriminated nothing. The fixture now omits exactly the reading its gap is about.
-test fn a_gap_on_one_axis_does_not_excuse_a_hole_on_another() -> Bool {
+test fn a_gap_on_one_axis_does_not_excuse_a_hole_on_another() -> Bool  {
   let defect_is_named = count(entry_contradicts_its_declaration(e: entry_gap_hides_a_hole, axes: both_axes)) > 0
   let honest_row_is_not_named = count(entry_contradicts_its_declaration(e: entry_gap_declared_and_complete, axes: both_axes)) == 0
   defect_is_named && honest_row_is_not_named
@@ -706,7 +706,7 @@ test fn a_gap_on_one_axis_does_not_excuse_a_hole_on_another() -> Bool {
 // KILLING MUTATION EXECUTED: drop the unfunded_gaps fold -> the typo row is named by nobody and the
 // first half goes red. The second half pairs it against a row whose gap names a FUNDED axis on an
 // otherwise-complete entry, so an over-scoping that refused every gap-bearing row cannot pass either.
-test fn a_gap_must_name_an_axis_this_selection_funds() -> Bool {
+test fn a_gap_must_name_an_axis_this_selection_funds() -> Bool  {
   let typo_gap_refuses = count(entry_contradicts_its_declaration(e: entry_gap_names_an_unfunded_axis, axes: both_axes)) > 0
   let funded_gap_is_not_named = count(entry_contradicts_its_declaration(e: entry_quote_pending, axes: both_axes)) == 0
   typo_gap_refuses && funded_gap_is_not_named
@@ -777,7 +777,7 @@ fn is_better(c: AxisComparison) -> Bool {
 // SEPARATION DECIDES; TOUCHING DOES NOT. [10,20] vs [30,40] is decided because every value one
 // could take beats every value the other could. [10,20] vs [20,30] is NOT: both true values could
 // be exactly 20.
-test fn separated_intervals_decide_and_touching_ones_do_not() -> Bool {
+test fn separated_intervals_decide_and_touching_ones_do_not() -> Bool  {
   is_better(c: cmp_lower_better(a: span(low: 10, high: 20), b: span(low: 30, high: 40)))
     && is_undecided(c: cmp_lower_better(a: span(low: 10, high: 20), b: span(low: 20, high: 30)))
     && is_undecided(c: cmp_lower_better(a: span(low: 10, high: 30), b: span(low: 20, high: 40)))
@@ -787,7 +787,7 @@ test fn separated_intervals_decide_and_touching_ones_do_not() -> Bool {
 // of [10,20] say both true values lie in one region; they do NOT say the true values are equal.
 // Answering Same here would manufacture an equality the measurement never established -- and it is
 // exactly what a point-valued reading did to every coarse measurement before this cut.
-test fn identical_wide_intervals_are_undecided_not_same() -> Bool {
+test fn identical_wide_intervals_are_undecided_not_same() -> Bool  {
   is_undecided(c: cmp_lower_better(a: span(low: 10, high: 20), b: span(low: 10, high: 20)))
     && is_same(c: cmp_lower_better(a: degenerate_interval(point: 15), b: degenerate_interval(point: 15)))
 }
@@ -827,7 +827,7 @@ data entry_wide_c: ParetoEntry = ParetoEntry {
 // NO KNOWN WORSE AXIS + AN UNDECIDED ONE IS PENDING, because sharpening the undecided axis really
 // can decide it either way. Before the cut this compared as a confident dominance on the point
 // estimates alone.
-test fn overlap_with_no_worse_axis_is_pending_not_dominance() -> Bool {
+test fn overlap_with_no_worse_axis_is_pending_not_dominance() -> Bool  {
   match compare_pair(a: entry_wide_a, b: entry_wide_b, axes: both_axes) {
     PairPendingEvidence { undecided_axes } => count(undecided_axes) == 1
     PairDominates { winning_axes } => false
@@ -841,7 +841,7 @@ test fn overlap_with_no_worse_axis_is_pending_not_dominance() -> Bool {
 // from over-reporting. wide_c is worse on power; no sharpening of its overlapping cost can make it
 // dominate, because dominance requires NO worse axis at all. So this is ordinary no-dominance, and
 // reporting it as pending would send someone to measure a question whose answer cannot matter.
-test fn a_known_worse_axis_is_no_dominance_not_pending() -> Bool {
+test fn a_known_worse_axis_is_no_dominance_not_pending() -> Bool  {
   match compare_pair(a: entry_wide_c, b: entry_wide_a, axes: both_axes) {
     PairNoDominance => true
     PairPendingEvidence { undecided_axes } => false
@@ -868,7 +868,7 @@ data entry_wide_d: ParetoEntry = ParetoEntry {
 // instead of being resolved inside the pair fold. Before the cut, a challenger that could not be
 // separated read as ordinary non-dominance and the subject came back ProvisionallyNonDominated --
 // on the frontier, asserted from evidence that had not established it.
-test fn pending_evidence_reaches_the_standing_rather_than_the_frontier() -> Bool {
+test fn pending_evidence_reaches_the_standing_rather_than_the_frontier() -> Bool  {
   match entry_standing(subject: entry_wide_a, field: [entry_wide_a, entry_wide_d], axes: both_axes, sensitivities: spine_sensitivities) {
     PendingEvidence { undecided } => true
     NotComputable { missing } => false
@@ -882,7 +882,7 @@ test fn pending_evidence_reaches_the_standing_rather_than_the_frontier() -> Bool
 // with cost overlapping, so its standing is DominatedBy -- not pending. Being dominated is
 // established by that one comparison, and uncertainty elsewhere cannot un-establish it. Without
 // this control the precedence could invert and every dominated candidate would read as pending.
-test fn a_proven_domination_outranks_pending_evidence_at_field_grain() -> Bool {
+test fn a_proven_domination_outranks_pending_evidence_at_field_grain() -> Bool  {
   match entry_standing(subject: entry_wide_c, field: [entry_wide_a, entry_wide_c], axes: [axis_power], sensitivities: spine_sensitivities) {
     DominatedBy { dominators } => count(dominators) == 1
     NotComputable { missing } => false
@@ -897,7 +897,7 @@ test fn a_proven_domination_outranks_pending_evidence_at_field_grain() -> Bool {
 // three refuse to name a winner, which is why one arm could carry all of them unnoticed; they are
 // separated because their remedies are not the same. Supply the input; fix the projector; measure
 // more sharply. If any two of these ever collapse, this goes red.
-test fn the_three_non_standings_are_distinct() -> Bool {
+test fn the_three_non_standings_are_distinct() -> Bool  {
   let honest_gap = entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let contradiction = entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities)
   let too_coarse = entry_standing(subject: entry_wide_a, field: [entry_wide_a, entry_wide_d], axes: both_axes, sensitivities: spine_sensitivities)
@@ -920,7 +920,7 @@ test fn the_three_non_standings_are_distinct() -> Bool {
 // unconditional append scanned it twice and named its defect twice in a single cause. The two
 // spellings of the same question must produce the same cause; before the repair the in-field form
 // carried the sentence twice while the out-of-field form carried it once.
-test fn a_contradiction_is_named_once_not_once_per_spelling() -> Bool {
+test fn a_contradiction_is_named_once_not_once_per_spelling() -> Bool  {
   let subject_in_field = entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities)
   let subject_outside_field = entry_standing(subject: entry_reading_hole, field: [entry_cheap_strong], axes: both_axes, sensitivities: spine_sensitivities)
   match subject_in_field {
@@ -959,7 +959,7 @@ data entry_gap_and_duplicate: ParetoEntry = ParetoEntry {
 //
 // The control is directional: the SAME entry with its duplicate removed must land NotComputable, or
 // this would pass by refusing everything that declares a gap.
-test fn a_declared_gap_does_not_excuse_a_duplicate_reading() -> Bool {
+test fn a_declared_gap_does_not_excuse_a_duplicate_reading() -> Bool  {
   let with_duplicate = entry_standing(subject: entry_gap_and_duplicate, field: [entry_gap_and_duplicate, entry_cheap_strong], axes: both_axes, sensitivities: spine_sensitivities)
   let honest_gap = entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   standing_is_refused(s: with_duplicate)
@@ -977,7 +977,7 @@ test fn a_declared_gap_does_not_excuse_a_duplicate_reading() -> Bool {
 //
 // It reuses the fixture directly above rather than minting a second one: the two controls are the
 // same claim asked at the two layers, so they must be asked of the same entry or they can drift.
-test fn a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api() -> Bool {
+test fn a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api() -> Bool  {
   let as_challenger = match compare_pair(a: entry_gap_and_duplicate, b: entry_dear_weak, axes: both_axes) {
     PairRefused { cause } => count(cause) > 0
     PairEvidenceIncomplete { missing } => false

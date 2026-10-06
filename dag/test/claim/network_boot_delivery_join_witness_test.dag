@@ -334,7 +334,7 @@ fn complete_inputs() -> NetworkBootJoinInputs {
   }
 }
 
-test fn four_receipts_join_to_established() -> Bool {
+test fn four_receipts_join_to_established() -> Bool  {
   match join_network_boot_delivery(inputs: complete_inputs()) {
     NetworkBootDeliveryEstablished { evidence: e } =>
       content_hash_equal(left: e.manifest.identity.root_digest, right: artifact)
@@ -369,7 +369,7 @@ test fn four_receipts_join_to_established() -> Bool {
   }
 }
 
-test fn missing_fleet_unestablishes_serving() -> Bool {
+test fn missing_fleet_unestablishes_serving() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -399,7 +399,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
   }
 }
 
-test fn missing_site_is_not_missing_fleet_serving() -> Bool {
+test fn missing_site_is_not_missing_fleet_serving() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -429,7 +429,7 @@ test fn missing_site_is_not_missing_fleet_serving() -> Bool {
   }
 }
 
-test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
+test fn mismatched_chainloader_architecture_does_not_establish() -> Bool  {
   match site_pxe_edge_standing(
     edge: SitePxeEdge {
       site: "onboarding-segment" as SiteIdentity,
@@ -454,7 +454,7 @@ test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
   }
 }
 
-test fn unknown_architecture_does_not_establish() -> Bool {
+test fn unknown_architecture_does_not_establish() -> Bool  {
   match site_pxe_edge_standing(
     edge: reachable_edge(discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions }),
     client_architecture: X86_64,
@@ -468,7 +468,7 @@ test fn unknown_architecture_does_not_establish() -> Bool {
   }
 }
 
-test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
+test fn site_architecture_refusal_is_located_on_the_join() -> Bool  {
   let site = site_pxe_edge_standing(
     edge: reachable_edge(discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions }),
     client_architecture: X86_64,
@@ -505,7 +505,7 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
   }
 }
 
-test fn unreachable_origin_does_not_establish_site() -> Bool {
+test fn unreachable_origin_does_not_establish_site() -> Bool  {
   match site_pxe_edge_standing(
     edge: SitePxeEdge {
       site: "onboarding-segment" as SiteIdentity,
@@ -530,7 +530,7 @@ test fn unreachable_origin_does_not_establish_site() -> Bool {
   }
 }
 
-test fn unobserved_discovery_does_not_establish_site() -> Bool {
+test fn unobserved_discovery_does_not_establish_site() -> Bool  {
   match site_pxe_edge_standing(
     edge: reachable_edge(discovery: SiteDiscoveryUnobserved),
     client_architecture: Aarch64,
@@ -544,7 +544,7 @@ test fn unobserved_discovery_does_not_establish_site() -> Bool {
   }
 }
 
-test fn wrong_target_boot_control_unestablishes_override() -> Bool {
+test fn wrong_target_boot_control_unestablishes_override() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -580,7 +580,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
   }
 }
 
-test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
+test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -658,7 +658,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
   wrong_unit && absent
 }
 
-test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
+test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -708,7 +708,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
   }
 }
 
-test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
+test fn verification_refused_manifest_is_located_on_artifacts() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -744,7 +744,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
   }
 }
 
-test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
+test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -794,7 +794,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
   }
 }
 
-test fn unobserved_client_unestablishes_client_mode() -> Bool {
+test fn unobserved_client_unestablishes_client_mode() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -824,7 +824,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
   }
 }
 
-test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
+test fn http_boot_arm64_client_is_client_mode_refused() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -866,7 +866,7 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
   }
 }
 
-test fn controlled_network_is_not_production_trust() -> Bool {
+test fn controlled_network_is_not_production_trust() -> Bool  {
   match controlled_trust() {
     ControlledNetworkBootstrap { evidence: e } =>
       (e.observation.decl_name as String) == (obs.decl_name as String)
@@ -885,7 +885,7 @@ test fn controlled_network_is_not_production_trust() -> Bool {
   }
 }
 
-test fn neither_trust_input_is_unestablished() -> Bool {
+test fn neither_trust_input_is_unestablished() -> Bool  {
   match bootstrap_trust_standing(
     firmware_https: Absent,
     secure_boot_chainloader: Absent,
@@ -897,7 +897,7 @@ test fn neither_trust_input_is_unestablished() -> Bool {
   }
 }
 
-test fn firmware_https_is_production_even_on_isolated_network() -> Bool {
+test fn firmware_https_is_production_even_on_isolated_network() -> Bool  {
   match bootstrap_trust_standing(
     firmware_https: Present { value: https_trust_obs() },
     secure_boot_chainloader: Absent,
@@ -909,7 +909,7 @@ test fn firmware_https_is_production_even_on_isolated_network() -> Bool {
   }
 }
 
-test fn both_grounds_present_names_both() -> Bool {
+test fn both_grounds_present_names_both() -> Bool  {
   match bootstrap_trust_standing(
     firmware_https: Present { value: https_trust_obs() },
     secure_boot_chainloader: Present { value: secure_boot_trust_obs() },
@@ -928,7 +928,7 @@ test fn both_grounds_present_names_both() -> Bool {
   }
 }
 
-test fn secure_boot_ground_is_not_https_ground() -> Bool {
+test fn secure_boot_ground_is_not_https_ground() -> Bool  {
   match bootstrap_trust_standing(
     firmware_https: Absent,
     secure_boot_chainloader: Present { value: secure_boot_trust_obs() },
@@ -945,7 +945,7 @@ test fn secure_boot_ground_is_not_https_ground() -> Bool {
   }
 }
 
-test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
+test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -993,7 +993,7 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
   }
 }
 
-test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
+test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1041,7 +1041,7 @@ test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
   }
 }
 
-test fn ticket_architecture_not_on_slice_is_located() -> Bool {
+test fn ticket_architecture_not_on_slice_is_located() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1108,7 +1108,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
   }
 }
 
-test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
+test fn established_edge_chainloader_digest_must_match_ticket() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1164,7 +1164,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
   }
 }
 
-test fn fleet_signing_key_must_match_ticket() -> Bool {
+test fn fleet_signing_key_must_match_ticket() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1214,7 +1214,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
   }
 }
 
-test fn unestablished_trust_does_not_join() -> Bool {
+test fn unestablished_trust_does_not_join() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1244,7 +1244,7 @@ test fn unestablished_trust_does_not_join() -> Bool {
   }
 }
 
-test fn controlled_network_trust_can_establish() -> Bool {
+test fn controlled_network_trust_can_establish() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1280,7 +1280,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
   }
 }
 
-test fn foreign_site_edge_does_not_join() -> Bool {
+test fn foreign_site_edge_does_not_join() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: foreign_site,
@@ -1312,7 +1312,7 @@ test fn foreign_site_edge_does_not_join() -> Bool {
   }
 }
 
-test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
+test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool  {
   let frozen = DeclarationRef {
     module_path: "gunbc.bmc_netboot_serve",
     decl_name: "srv4_bmc_netboot_serve_plan",
@@ -1349,7 +1349,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
   }
 }
 
-test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
+test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool  {
   let frozen = DeclarationRef {
     module_path: "gunbc.bmc_netboot_serve",
     decl_name: "srv4_bmc_netboot_serve_plan",
@@ -1386,7 +1386,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
   }
 }
 
-test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
+test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1438,7 +1438,7 @@ test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
 
 // The edge agrees with the expected site and the client observation does not: the mismatch names the
 // client axis, not the edge one (review 67939: one variant, two disagreements, now told apart).
-test fn foreign_client_observation_site_names_the_client_axis() -> Bool {
+test fn foreign_client_observation_site_names_the_client_axis() -> Bool  {
   let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
@@ -1526,7 +1526,7 @@ fn site_reaching(broker: Uri, origin: Uri, tftp: Uri) -> SitePxeEdgeStanding {
 
 // Firmware HTTPS trust authenticates the HTTPS route; a UefiPxe ticket's chainloader arrives over
 // TFTP, so HTTPS trust alone does not ground it, however valid its own subject is.
-test fn uefi_pxe_with_firmware_https_only_is_not_production_trusted() -> Bool {
+test fn uefi_pxe_with_firmware_https_only_is_not_production_trusted() -> Bool  {
   let https_only = bootstrap_trust_standing(
     firmware_https: Present { value: https_trust_obs() },
     secure_boot_chainloader: Absent,
@@ -1552,7 +1552,7 @@ test fn uefi_pxe_with_firmware_https_only_is_not_production_trusted() -> Bool {
 
 // The site reached AN HTTPS endpoint, not the fleet's broker: reachability of some other endpoint
 // is not reachability of this service.
-test fn reaching_a_different_https_endpoint_does_not_establish() -> Bool {
+test fn reaching_a_different_https_endpoint_does_not_establish() -> Bool  {
   let elsewhere = Uri { scheme: Https, locator: "other-broker.example.test/manifest" }
   match join_network_boot_delivery(inputs: inputs_varying(
     trust: production_trust(),
@@ -1578,7 +1578,7 @@ test fn reaching_a_different_https_endpoint_does_not_establish() -> Bool {
 }
 
 // The signed ticket directs firmware to one TFTP root and the edge was observed serving another.
-test fn manifest_tftp_root_other_than_the_site_edge_refuses() -> Bool {
+test fn manifest_tftp_root_other_than_the_site_edge_refuses() -> Bool  {
   let other_tftp = Uri { scheme: Tftp, locator: "198.51.100.7/snponly.efi" }
   match join_network_boot_delivery(inputs: inputs_varying(
     trust: production_trust(),
@@ -1604,7 +1604,7 @@ test fn manifest_tftp_root_other_than_the_site_edge_refuses() -> Bool {
 }
 
 // Every other axis holds and the manifest verified, but nothing was published and read back.
-test fn verified_manifest_without_published_bundle_does_not_establish() -> Bool {
+test fn verified_manifest_without_published_bundle_does_not_establish() -> Bool  {
   match join_network_boot_delivery(inputs: inputs_varying(trust: production_trust(), site: site_ok(), bundle: BootBundleUnobserved)) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -1624,7 +1624,7 @@ test fn verified_manifest_without_published_bundle_does_not_establish() -> Bool 
 
 // Kernel and root match; the read-back initrd is a different object. The refusal names the
 // initrd, not the kernel or root that did match.
-test fn single_bundle_digest_mismatch_names_the_member() -> Bool {
+test fn single_bundle_digest_mismatch_names_the_member() -> Bool  {
   let wrong_initrd = BootBundleAvailable {
     receipt: bundle_receipt(
       kernel: content_hash_of_value(value: "kernel-fixture"),
@@ -1695,7 +1695,7 @@ fn manifest_verified(attempt_id: IntakeAttemptId, verified_at: EpochMs) -> Signe
 
 // A combined standing whose HTTPS ground authenticated another endpoint: the Secure Boot ground
 // is valid, and the HTTPS ground is still checked against its subject.
-test fn firmware_https_ground_for_another_endpoint_is_refused() -> Bool {
+test fn firmware_https_ground_for_another_endpoint_is_refused() -> Bool  {
   let elsewhere = Uri { scheme: Https, locator: "other-broker.example.test/manifest" }
   let trust = bootstrap_trust_standing(
     firmware_https: Present { value: FirmwareHttpsTrustObservation { endpoint: elsewhere, observation: obs, observed_at: 1788000000000 } },
@@ -1722,7 +1722,7 @@ test fn firmware_https_ground_for_another_endpoint_is_refused() -> Bool {
 }
 
 // Secure Boot verified this chainloader on ANOTHER target.
-test fn secure_boot_ground_for_another_target_is_refused() -> Bool {
+test fn secure_boot_ground_for_another_target_is_refused() -> Bool  {
   let trust = bootstrap_trust_standing(
     firmware_https: Absent,
     secure_boot_chainloader: Present {
@@ -1754,7 +1754,7 @@ test fn secure_boot_ground_for_another_target_is_refused() -> Bool {
 }
 
 // Secure Boot verified a DIFFERENT chainloader on this target than the ticket names.
-test fn secure_boot_ground_for_another_chainloader_is_refused() -> Bool {
+test fn secure_boot_ground_for_another_chainloader_is_refused() -> Bool  {
   let trust = bootstrap_trust_standing(
     firmware_https: Absent,
     secure_boot_chainloader: Present {
@@ -1786,7 +1786,7 @@ test fn secure_boot_ground_for_another_chainloader_is_refused() -> Bool {
 }
 
 // The controlled onboarding network observed is another site's.
-test fn controlled_network_ground_for_another_site_is_refused() -> Bool {
+test fn controlled_network_ground_for_another_site_is_refused() -> Bool  {
   let trust = bootstrap_trust_standing(
     firmware_https: Absent,
     secure_boot_chainloader: Absent,
@@ -1814,7 +1814,7 @@ test fn controlled_network_ground_for_another_site_is_refused() -> Bool {
 }
 
 // The site reached the fleet broker but another artifact origin.
-test fn reaching_a_different_artifact_origin_does_not_establish() -> Bool {
+test fn reaching_a_different_artifact_origin_does_not_establish() -> Bool  {
   let elsewhere = Uri { scheme: Https, locator: "other-origin.example.test" }
   match join_network_boot_delivery(inputs: inputs_varying(
     trust: production_trust(),
@@ -1840,7 +1840,7 @@ test fn reaching_a_different_artifact_origin_does_not_establish() -> Bool {
 }
 
 // Every digest matches, but the bundle was read back from somewhere other than the fleet origin.
-test fn bundle_read_back_from_another_origin_does_not_establish() -> Bool {
+test fn bundle_read_back_from_another_origin_does_not_establish() -> Bool  {
   let elsewhere = Uri { scheme: Https, locator: "mirror.example.test" }
   let bundle = BootBundleAvailable {
     receipt: BootBundleAvailabilityReceipt {
@@ -1872,7 +1872,7 @@ test fn bundle_read_back_from_another_origin_does_not_establish() -> Bool {
 }
 
 // Verified one millisecond before the ticket's not_before.
-test fn manifest_verified_before_not_before_is_refused() -> Bool {
+test fn manifest_verified_before_not_before_is_refused() -> Bool  {
   match join_network_boot_delivery(inputs: inputs_with_manifest(manifest: manifest_verified(attempt_id: attempt, verified_at: 1787999999999))) {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinNotYetValid { not_before: nb, observed_at: at } } =>
       nb == 1788000000000 && at == 1787999999999
@@ -1893,7 +1893,7 @@ test fn manifest_verified_before_not_before_is_refused() -> Bool {
 }
 
 // The ticket names this unit but another intake attempt.
-test fn manifest_for_another_attempt_is_refused() -> Bool {
+test fn manifest_for_another_attempt_is_refused() -> Bool  {
   match join_network_boot_delivery(inputs: inputs_with_manifest(manifest: manifest_verified(attempt_id: "intake-pxe-fabric-0a-other" as IntakeAttemptId, verified_at: 1788000000000))) {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -1915,7 +1915,7 @@ test fn manifest_for_another_attempt_is_refused() -> Bool {
 // A read-back WAS observed and the origin served other bytes for the root: that is a refusal
 // naming the member and cause, not the missing-artifacts axis an unrun publisher leaves (review
 // 68011). Discriminates against folding every shortfall into BootBundleUnobserved.
-test fn bundle_read_back_serving_other_bytes_is_refused_not_missing() -> Bool {
+test fn bundle_read_back_serving_other_bytes_is_refused_not_missing() -> Bool  {
   let stale = BootBundleRefused { member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation: obs }
   match join_network_boot_delivery(inputs: inputs_varying(trust: production_trust(), site: site_ok(), bundle: stale)) {
     NetworkBootDeliveryBundleRefused { member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation: _ } => true

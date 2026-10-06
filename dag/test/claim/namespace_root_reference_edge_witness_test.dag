@@ -31,14 +31,14 @@ fn nsroot_consumer_targets() -> List<String> {
 }
 
 // RED: the homonym is not a dependency of the consumer.
-test fn a_qualified_path_head_never_resolves_to_a_same_named_declaration() -> Bool {
+test fn a_qualified_path_head_never_resolves_to_a_same_named_declaration() -> Bool  {
   !(nsroot_consumer_targets() |> any(t => t == "nsroot_decl.homonym"))
 }
 
 // CONTROL, same run: the qualified path still yields its own edge, and a dotted read of a real
 // value (ns_row.tag, whose head names no module) still yields the edge to the row's module, so the
 // repair removes the homonym edge and nothing else.
-test fn the_qualified_target_and_a_value_chain_keep_their_edges() -> Bool {
+test fn the_qualified_target_and_a_value_chain_keep_their_edges() -> Bool  {
   let targets = nsroot_consumer_targets()
   (targets |> any(t => t == "nsroot.pkg.target")) && (targets |> any(t => t == "nsroot_decl.rows"))
 }
@@ -65,11 +65,11 @@ fn svk_consumer_targets() -> List<String> {
 }
 
 // RED: the kernel spelling does not become an edge to the module that re-declares it.
-test fn a_kernel_type_spelling_never_resolves_to_a_declaring_module() -> Bool {
+test fn a_kernel_type_spelling_never_resolves_to_a_declaring_module() -> Bool  {
   !(svk_consumer_targets() |> any(t => t == "svk.decl"))
 }
 
 // CONTROL, same run: an ordinary type reference keeps its edge.
-test fn an_ordinary_type_reference_keeps_its_edge() -> Bool {
+test fn an_ordinary_type_reference_keeps_its_edge() -> Bool  {
   svk_consumer_targets() |> any(t => t == "svk.rows")
 }

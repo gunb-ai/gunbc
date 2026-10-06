@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // obligations -- every row names a producer, the restored heartbeat row is migrated through the
 // renderer it claims, and the consumption fold counts what it says it counts.
 
-test fn w_every_roster_row_names_a_located_producer() -> Bool {
+test fn w_every_roster_row_names_a_located_producer() -> Bool  {
   observation_emit_located_producer_count() == count(observation_emit_roster)
     && all(observation_emit_roster, site => match emit_site_producer_symbol(site: site) {
       Present { value: name } => name != ""
@@ -47,7 +47,7 @@ test fn w_every_roster_row_names_a_located_producer() -> Bool {
 // The restoration receipt: the heartbeat row is MigratedToObservation and its projection names the
 // renderer and the mirror that the seed now calls; the claim-memory half is still counted, and its
 // dissolution names the projection it waits on rather than the heartbeat's.
-test fn w_the_floor_heartbeat_row_is_migrated_through_the_ci_renderer() -> Bool {
+test fn w_the_floor_heartbeat_row_is_migrated_through_the_ci_renderer() -> Bool  {
   !emit_site_is_frontier(site: floor_heartbeat_site)
     && string_contains(s: emit_site_dissolve_on(site: floor_heartbeat_site), pattern: "gunbc.observation_ci_render.ci_heartbeat_line")
     && string_contains(s: emit_site_dissolve_on(site: floor_heartbeat_site), pattern: "render_heartbeat_line_mirror")
@@ -75,7 +75,7 @@ fn planted_ref(name: String) -> DeclarationRef {
 // an unresolved one does; a located producer yields its symbol, an unlocated one yields nothing.
 // Planted here rather than drawn from the roster so the check stays red-authorable after every
 // live row resolves its reader.
-test fn w_consumption_and_producer_folds_discriminate_on_planted_rows() -> Bool {
+test fn w_consumption_and_producer_folds_discriminate_on_planted_rows() -> Bool  {
   let machine = planted(
     consumption: MachineConsumed { reader: planted_ref(name: "a_reader"), fields_read: ["wall_ms" as NonEmptyStr] },
     producer: ProducerDeclared { declaration: planted_ref(name: "a_producer") }
@@ -99,7 +99,7 @@ test fn w_consumption_and_producer_folds_discriminate_on_planted_rows() -> Bool 
 // is in-repo only. This is stated as an inequality against the roster rather than a literal, so a
 // row that resolves its reader moves the count down without editing this witness, and a count
 // above the roster is impossible by construction of the fold.
-test fn w_unresolved_consumers_are_bounded_by_the_roster() -> Bool {
+test fn w_unresolved_consumers_are_bounded_by_the_roster() -> Bool  {
   observation_emit_unresolved_consumer_count() <= count(observation_emit_roster)
     && observation_emit_unresolved_consumer_count() > 0
 }

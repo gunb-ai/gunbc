@@ -29,11 +29,11 @@ import std.occurrence_identity {
 }
 import v2.std.node { Atom, Node, TypeNode }
 
-test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
+test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool  {
   occurrence_id_allocator_initial().next_id == 0
 }
 
-test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
+test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool  {
   let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
   let second = alloc_occurrence_id(alloc: first.alloc)
   first.id.value == 0
@@ -41,7 +41,7 @@ test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
     && !occurrence_id_eq(left: first.id, right: second.id)
 }
 
-test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
+test fn occurrence_identity_advance_is_monotonic_holds() -> Bool  {
   let initial = occurrence_id_allocator_initial()
   let advanced = occurrence_id_allocator_advance_to(
     alloc: initial,
@@ -76,12 +76,12 @@ fn occurrence_identity_raw_scalar_advance_compiles() -> Bool {
   )
 }
 
-test fn occurrence_identity_typed_ordinal_boundary_refuses_raw_scalar_holds() -> Bool {
+test fn occurrence_identity_typed_ordinal_boundary_refuses_raw_scalar_holds() -> Bool  {
   occurrence_identity_typed_ordinal_advance_compiles()
     && !occurrence_identity_raw_scalar_advance_compiles()
 }
 
-test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
+test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool  {
   let minted = std.occurrence_identity.node_occurrence_identity_minted(
     id: std.occurrence_identity.OccurrenceId { value: 4 }
   )
@@ -98,7 +98,7 @@ test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
   minted_holds && synthetic_holds
 }
 
-test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool {
+test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool  {
   occurrence_identity_acceptance_laws == [
     occurrence_identity_acceptance_law_rebuilt_reference,
     occurrence_identity_acceptance_law_collector_dedupe,
@@ -119,7 +119,7 @@ fn oi_scope_b() -> Fnv1a64Structural {
 // THE THIRD ARM CARRIES A CAUSE THAT SURVIVES CONSTRUCTION, which is the whole content of the
 // change: before it, a projector-created occurrence could only be spelled OccurrenceSynthetic and
 // the causing reference was gone the moment the node was built.
-test fn occurrence_identity_projected_arm_carries_its_scoped_cause_holds() -> Bool {
+test fn occurrence_identity_projected_arm_carries_its_scoped_cause_holds() -> Bool  {
   let cause = ScopedOccurrenceRef {
     scope: oi_scope_a(),
     occurrence: OccurrenceId { value: 7 },
@@ -139,7 +139,7 @@ test fn occurrence_identity_projected_arm_carries_its_scoped_cause_holds() -> Bo
 // AND THE CAUSE IS SCOPED RATHER THAN A BARE ORDINAL, so a cause minted in another allocator domain
 // is distinguishable from one minted in this graph's. Without this the accidental equality of two
 // independently allocated ordinals would read as a real cause.
-test fn occurrence_identity_projected_cause_is_not_in_a_foreign_scope_holds() -> Bool {
+test fn occurrence_identity_projected_cause_is_not_in_a_foreign_scope_holds() -> Bool  {
   let cause = ScopedOccurrenceRef {
     scope: oi_scope_a(),
     occurrence: OccurrenceId { value: 7 },
@@ -159,7 +159,7 @@ test fn occurrence_identity_projected_cause_is_not_in_a_foreign_scope_holds() ->
 // conversion, and every caller that ignored the narrowing's refusal arm silently lost the cause.
 // This witness is the discriminating one -- it does not typecheck against the deleted facade, so
 // it goes RED against any reintroduction of a Node carrier that cannot represent a projection.
-test fn occurrence_identity_v2_node_carrier_holds_projected_occurrence_holds() -> Bool {
+test fn occurrence_identity_v2_node_carrier_holds_projected_occurrence_holds() -> Bool  {
   let cause = ScopedOccurrenceRef {
     scope: oi_scope_a(),
     occurrence: OccurrenceId { value: 7 },

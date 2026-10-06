@@ -81,7 +81,7 @@ fn unmeasured_event_at(subject: ObservationSubject, transition: ObservationTrans
   }
 }
 
-test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool {
+test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool  {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: batch_subject()),
     events: [
@@ -97,7 +97,7 @@ test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool {
   summed && folded.measurement_absent == 1 && folded.counts.done == 3
 }
 
-test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_zero() -> Bool {
+test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_zero() -> Bool  {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: batch_subject()),
     events: [
@@ -111,7 +111,7 @@ test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_ze
   }
 }
 
-test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
+test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool  {
   let big = ObservationEvent {
     subject: leaf_subject(entry: "dag/big.dag"),
     transition: Concluded { outcome: Done },
@@ -140,7 +140,7 @@ fn fold_events(rollup: ObservationRollup, events: List<ObservationEvent>) -> Obs
     })
 }
 
-test fn routine_leaf_events_fold_into_their_batch_without_surviving_individually() -> Bool {
+test fn routine_leaf_events_fold_into_their_batch_without_surviving_individually() -> Bool  {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: batch_subject()),
     events: [
@@ -156,7 +156,7 @@ test fn routine_leaf_events_fold_into_their_batch_without_surviving_individually
     && observation_counts_anomalies(counts: folded.counts) == 0
 }
 
-test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool {
+test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool  {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: batch_subject()),
     events: [
@@ -171,7 +171,7 @@ test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool
     && observation_counts_anomalies(counts: folded.counts) == 2
 }
 
-test fn RED_event_outside_the_rollup_subject_is_refused_not_folded() -> Bool {
+test fn RED_event_outside_the_rollup_subject_is_refused_not_folded() -> Bool  {
   match observation_rollup_accept(
     rollup: observation_rollup_open(subject: batch_subject()),
     event: event_at(subject: foreign_leaf_subject(), transition: Concluded { outcome: Done }),
@@ -181,7 +181,7 @@ test fn RED_event_outside_the_rollup_subject_is_refused_not_folded() -> Bool {
   }
 }
 
-test fn RED_a_refused_event_leaves_the_counts_untouched() -> Bool {
+test fn RED_a_refused_event_leaves_the_counts_untouched() -> Bool  {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: batch_subject()),
     events: [
@@ -194,7 +194,7 @@ test fn RED_a_refused_event_leaves_the_counts_untouched() -> Bool {
     && observation_counts_anomalies(counts: folded.counts) == 0
 }
 
-test fn prefix_at_grain_locates_the_batch_ancestor_of_a_leaf() -> Bool {
+test fn prefix_at_grain_locates_the_batch_ancestor_of_a_leaf() -> Bool  {
   match observation_subject_prefix_at_grain(subject: leaf_subject(entry: "dag/a.dag"), grain: BatchGrain) {
     Absent => false
     Present { value: v } =>
@@ -202,7 +202,7 @@ test fn prefix_at_grain_locates_the_batch_ancestor_of_a_leaf() -> Bool {
   }
 }
 
-test fn RED_prefix_at_grain_below_the_subject_depth_is_absent_not_the_root() -> Bool {
+test fn RED_prefix_at_grain_below_the_subject_depth_is_absent_not_the_root() -> Bool  {
   match observation_subject_prefix_at_grain(subject: batch_subject(), grain: ModuleGrain) {
     Absent => true
     Present { value: _ } => false

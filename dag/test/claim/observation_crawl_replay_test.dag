@@ -116,21 +116,21 @@ fn observation_crawl_after_block() -> String {
   join(lines, "\n")
 }
 
-test fn w_replay_names_the_module_where_the_capture_was_silent() -> Bool {
+test fn w_replay_names_the_module_where_the_capture_was_silent() -> Bool  {
   let block = observation_crawl_after_block()
   string_contains(s: block, pattern: "still in witness discovery, now typecheck v2.compiler.normalized_tree") &&
   string_contains(s: block, pattern: "quiet for 2 minutes — still working") &&
   string_contains(s: block, pattern: "quiet for 4 minutes — blocked on memory reclaim (pressure 9.0%)")
 }
 
-test fn w_replay_uses_human_units_not_raw_bytes() -> Bool {
+test fn w_replay_uses_human_units_not_raw_bytes() -> Bool  {
   let block = observation_crawl_after_block()
   string_contains(s: block, pattern: "cgroup charge 15.0 GiB") &&
   !string_contains(s: block, pattern: "16107200512") &&
   !string_contains(s: block, pattern: "current=")
 }
 
-test fn w_replay_ends_in_a_refusal_summary_not_a_silent_timeout() -> Bool {
+test fn w_replay_ends_in_a_refusal_summary_not_a_silent_timeout() -> Bool  {
   let block = observation_crawl_after_block()
   string_contains(s: block, pattern: "213 of 602 entries finished") &&
   string_contains(s: block, pattern: "1 refused and 0 failed") &&

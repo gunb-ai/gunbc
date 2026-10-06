@@ -19,7 +19,7 @@ import extdeps.transports.rest {
 // type, so it is where the fix becomes consumable -- and an unexercised fold would leave the
 // repaired path asserted rather than run.
 
-test fn witness_ok_becomes_published() -> Bool {
+test fn witness_ok_becomes_published() -> Bool  {
   match ntfy_publish_outcome_of(rest: RestOk, message_id: "abc123") {
     NtfyPublished { message_id } => message_id as String == "abc123"
     NtfyPublishRefused { status: _, detail: _ } => false
@@ -30,7 +30,7 @@ test fn witness_ok_becomes_published() -> Bool {
 
 // THE DISCRIMINATING ONE: the exact shape the live server returns for a credential that is not
 // authorized. 401 must become a REFUSAL carrying the status, not a success and not a throw.
-test fn witness_unauthorized_becomes_refusal_carrying_its_status() -> Bool {
+test fn witness_unauthorized_becomes_refusal_carrying_its_status() -> Bool  {
   match ntfy_publish_outcome_of(
     rest: RestStatusRefused { status: 401, body: "{\"code\":40101}" },
     message_id: "",
@@ -45,7 +45,7 @@ test fn witness_unauthorized_becomes_refusal_carrying_its_status() -> Bool {
 // 403 IS THE OTHER LIVE SHAPE and it is not the same mistake as 401: the deny-by-default topic
 // policy answers 403 to a token that authenticates but is not permitted on the topic. Both were
 // observed against the real server, so both are pinned.
-test fn witness_forbidden_becomes_refusal_carrying_its_status() -> Bool {
+test fn witness_forbidden_becomes_refusal_carrying_its_status() -> Bool  {
   match ntfy_publish_outcome_of(
     rest: RestStatusRefused { status: 403, body: "{\"code\":40301}" },
     message_id: "",
@@ -63,7 +63,7 @@ test fn witness_forbidden_becomes_refusal_carrying_its_status() -> Bool {
 // reintroduced that fabrication one layer up and collapsed two states with different remedies
 // ("the server refused this publish" vs "no server was reached") into one a consumer cannot
 // separate. This witness pins that they stay separate.
-test fn witness_transport_refusal_is_a_distinct_unreached_outcome() -> Bool {
+test fn witness_transport_refusal_is_a_distinct_unreached_outcome() -> Bool  {
   match ntfy_publish_outcome_of(
     rest: RestTransportRefused { cause: "connection refused" },
     message_id: "",
@@ -77,7 +77,7 @@ test fn witness_transport_refusal_is_a_distinct_unreached_outcome() -> Bool {
 
 // POSITIVE CONTROL ON THAT SEPARATION: a real HTTP refusal must NOT become Unreached, or the two
 // states would still be conflated, just in the other direction.
-test fn witness_status_refusal_is_not_reported_as_unreached() -> Bool {
+test fn witness_status_refusal_is_not_reported_as_unreached() -> Bool  {
   match ntfy_publish_outcome_of(
     rest: RestStatusRefused { status: 403, body: "{}" },
     message_id: "",
@@ -89,7 +89,7 @@ test fn witness_status_refusal_is_not_reported_as_unreached() -> Bool {
   }
 }
 
-test fn witness_undecodable_body_is_its_own_outcome_not_a_refusal() -> Bool {
+test fn witness_undecodable_body_is_its_own_outcome_not_a_refusal() -> Bool  {
   match ntfy_publish_outcome_of(
     rest: RestBodyUndecodable { status: 200, cause: "not json" },
     message_id: "",
@@ -104,7 +104,7 @@ test fn witness_undecodable_body_is_its_own_outcome_not_a_refusal() -> Bool {
 // A 200 WITH AN UNDECODABLE BODY IS THE SUBTLE ONE and this is its control: the arm above must
 // NOT be reachable by status alone, or a successful publish and a garbled one would be one state.
 // ntfy_publish_succeeded must answer false for it and true only for the RestOk fold.
-test fn witness_succeeded_separates_ok_from_a_200_that_did_not_decode() -> Bool {
+test fn witness_succeeded_separates_ok_from_a_200_that_did_not_decode() -> Bool  {
   ntfy_publish_succeeded(o: ntfy_publish_outcome_of(rest: RestOk, message_id: "id"))
     && !ntfy_publish_succeeded(
       o: ntfy_publish_outcome_of(rest: RestBodyUndecodable { status: 200, cause: "not json" }, message_id: "id"),
@@ -113,7 +113,7 @@ test fn witness_succeeded_separates_ok_from_a_200_that_did_not_decode() -> Bool 
 
 // THE THREE FAILURE OUTCOMES ARE MUTUALLY DISTINCT, which is the property both splits were for:
 // refused / unreached / undecodable answer three different questions and must never collapse.
-test fn witness_the_three_failure_outcomes_are_distinct() -> Bool {
+test fn witness_the_three_failure_outcomes_are_distinct() -> Bool  {
   let refused = ntfy_publish_outcome_of(rest: RestStatusRefused { status: 401, body: "{}" }, message_id: "")
   let unreached = ntfy_publish_outcome_of(rest: RestTransportRefused { cause: "no route" }, message_id: "")
   let undecodable = ntfy_publish_outcome_of(rest: RestBodyUndecodable { status: 200, cause: "bad" }, message_id: "")

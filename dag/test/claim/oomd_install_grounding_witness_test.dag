@@ -270,7 +270,7 @@ fn grounds_auto(read: OomdEffectiveRead) -> Bool {
   grounding_is_enforced(g: ground_oomd_from_read(read: read, req: auto_thresholds()))
 }
 
-test fn witness_full_conjunction_grounds_enforced() -> Bool {
+test fn witness_full_conjunction_grounds_enforced() -> Bool  {
   grounds(read: good_read())
 }
 
@@ -298,7 +298,7 @@ test fn witness_kill_under_auto_intent_fails_closed() -> Bool { !grounds_auto(re
 // nothing about the host and must not fail the grounding.
 test fn witness_pressure_limit_inert_under_auto() -> Bool { grounds_auto(read: auto_pressure_limit_90_read()) }
 
-test fn witness_unmeasured_aggregate_fails_closed() -> Bool {
+test fn witness_unmeasured_aggregate_fails_closed() -> Bool  {
   !grounding_is_enforced(g: ground_oomd_from_read(read: good_read(), req: unestablished_aggregate_thresholds()))
 }
 
@@ -313,23 +313,23 @@ fn is_enforced(e: OomdEnforcementEvidence) -> Bool {
   }
 }
 
-test fn witness_reconcile_good_read_enforces() -> Bool {
+test fn witness_reconcile_good_read_enforces() -> Bool  {
   is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds())))
 }
 
-test fn witness_reconcile_good_read_converges() -> Bool {
+test fn witness_reconcile_good_read_converges() -> Bool  {
   reconciliation_converged(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds()))
 }
 
-test fn witness_oomd_install_absent_read_is_fail_closed() -> Bool {
+test fn witness_oomd_install_absent_read_is_fail_closed() -> Bool  {
   !is_enforced(e: gunbc_oomd_install_evidence())
 }
 
-test fn witness_fleet_evidence_seam_fail_closed() -> Bool {
+test fn witness_fleet_evidence_seam_fail_closed() -> Bool  {
   !is_enforced(e: gunbc_oomd_fleet_evidence(req: test_thresholds()))
 }
 
-test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Bool {
+test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Bool  {
   membership_check_passes(m: good_membership())
 }
 
@@ -343,7 +343,7 @@ test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Boo
 // distinction that decides the outcome. That it had a PASSING witness is why it survived: the
 // degradation was not merely unnoticed, it was written down as the contract, which is the shape
 // DESIGN section 5 names when a fallback's own tests assert the fallback.
-test fn witness_membership_check_contract_refuses_partial_migration() -> Bool {
+test fn witness_membership_check_contract_refuses_partial_migration() -> Bool  {
   !membership_check_passes(m: partial_migration_membership())
 }
 
@@ -352,7 +352,7 @@ test fn witness_membership_check_contract_refuses_partial_migration() -> Bool {
 // slice, and NoSessionsObserved is an absence of evidence rather than a defect at all. A witness
 // that only checked "refuses" would pass if all three collapsed into one arm, which is the same
 // class of blindness this PR removes -- so the standing itself is asserted, not just the verdict.
-test fn witness_membership_standings_are_distinct() -> Bool {
+test fn witness_membership_standings_are_distinct() -> Bool  {
   let mixed = match session_membership_standing(m: partial_migration_membership()) {
     MixedSessionMembership { managed_count: mc, legacy_count: lc } => mc == 3 && lc == 2
     AllSessionsManaged { managed_count: _ } => false
@@ -380,11 +380,11 @@ test fn witness_membership_standings_are_distinct() -> Bool {
   mixed && legacy && empty && managed
 }
 
-test fn witness_membership_check_contract_fails_all_legacy() -> Bool {
+test fn witness_membership_check_contract_fails_all_legacy() -> Bool  {
   !membership_check_passes(m: all_legacy_membership())
 }
 
-test fn witness_membership_check_contract_fails_empty_host() -> Bool {
+test fn witness_membership_check_contract_fails_empty_host() -> Bool  {
   !membership_check_passes(m: empty_host_membership())
 }
 

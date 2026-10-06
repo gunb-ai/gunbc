@@ -51,7 +51,7 @@ fn nkt_field_bool_source() -> String {
   "module nkt.field_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Flag {\n  Flag { on: 1 }\n}\n"
 }
 
-test fn an_int_literal_at_a_bool_record_field_must_refuse() -> Bool {
+test fn an_int_literal_at_a_bool_record_field_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_field_bool_source()) >= 1
 }
 
@@ -59,7 +59,7 @@ fn nkt_arg_bool_source() -> String {
   "module nkt.arg_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  take_b(b: 1)\n}\n"
 }
 
-test fn an_int_literal_at_a_bool_call_argument_must_refuse() -> Bool {
+test fn an_int_literal_at_a_bool_call_argument_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_arg_bool_source()) >= 1
 }
 
@@ -67,7 +67,7 @@ fn nkt_ret_bool_source() -> String {
   "module nkt.ret_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  1\n}\n"
 }
 
-test fn an_int_literal_at_a_bool_declared_return_must_refuse() -> Bool {
+test fn an_int_literal_at_a_bool_declared_return_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_ret_bool_source()) >= 1
 }
 
@@ -75,7 +75,7 @@ fn nkt_field_string_source() -> String {
   "module nkt.field_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Label {\n  Label { text: 1 }\n}\n"
 }
 
-test fn an_int_literal_at_a_string_record_field_must_refuse() -> Bool {
+test fn an_int_literal_at_a_string_record_field_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_field_string_source()) >= 1
 }
 
@@ -83,7 +83,7 @@ fn nkt_arg_string_source() -> String {
   "module nkt.arg_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> String {\n  take_s(s: 1)\n}\n"
 }
 
-test fn an_int_literal_at_a_string_call_argument_must_refuse() -> Bool {
+test fn an_int_literal_at_a_string_call_argument_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_arg_string_source()) >= 1
 }
 
@@ -91,7 +91,7 @@ fn nkt_ret_string_source() -> String {
   "module nkt.ret_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> String {\n  1\n}\n"
 }
 
-test fn an_int_literal_at_a_string_declared_return_must_refuse() -> Bool {
+test fn an_int_literal_at_a_string_declared_return_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_ret_string_source()) >= 1
 }
 
@@ -99,7 +99,7 @@ fn nkt_float_ret_bool_source() -> String {
   "module nkt.float_ret_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  1.5\n}\n"
 }
 
-test fn a_float_literal_at_a_bool_declared_return_must_refuse() -> Bool {
+test fn a_float_literal_at_a_bool_declared_return_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_float_ret_bool_source()) >= 1
 }
 
@@ -111,7 +111,7 @@ fn nkt_guard_int_source() -> String {
   "module nkt.guard_int\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  match n {\n    x if 5 => 1\n    _ => 2\n  }\n}\n"
 }
 
-test fn an_int_literal_as_a_match_arm_guard_must_refuse() -> Bool {
+test fn an_int_literal_as_a_match_arm_guard_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_guard_int_source()) >= 1
 }
 
@@ -119,7 +119,7 @@ fn nkt_if_int_source() -> String {
   "module nkt.if_int\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  if 1 { n } else { 0 }\n}\n"
 }
 
-test fn an_int_literal_as_an_if_condition_must_refuse() -> Bool {
+test fn an_int_literal_as_an_if_condition_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: nkt_if_int_source()) >= 1
 }
 
@@ -147,11 +147,11 @@ fn relation_refusal_count(source: String) -> Int {
   }
 }
 
-test fn the_relation_itself_refuses_an_int_at_a_bool_call_argument() -> Bool {
+test fn the_relation_itself_refuses_an_int_at_a_bool_call_argument() -> Bool  {
   relation_refusal_count(source: nkt_arg_bool_source()) >= 1
 }
 
-test fn the_relation_itself_refuses_an_int_at_a_string_call_argument() -> Bool {
+test fn the_relation_itself_refuses_an_int_at_a_string_call_argument() -> Bool  {
   relation_refusal_count(source: nkt_arg_string_source()) >= 1
 }
 
@@ -159,23 +159,23 @@ fn nkt_list_bool_source() -> String {
   "module nkt.list_bool\n\nimport std.types { Int, Bool, List }\n\nfn take_l(xs: List<Bool>) -> Int {\n  xs |> count\n}\n\nfn probe() -> Int {\n  take_l(xs: [1])\n}\n"
 }
 
-test fn the_relation_itself_refuses_an_int_list_element_at_a_bool_list() -> Bool {
+test fn the_relation_itself_refuses_an_int_list_element_at_a_bool_list() -> Bool  {
   relation_refusal_count(source: nkt_list_bool_source()) >= 1
 }
 
-test fn numeral_admitting_kernel_carriers_are_int_and_float() -> Bool {
+test fn numeral_admitting_kernel_carriers_are_int_and_float() -> Bool  {
   kernel_carrier_admits_numeral(name: "Int")
     && kernel_carrier_admits_numeral(name: "Float")
 }
 
-test fn bool_string_and_unknown_names_admit_no_numeral() -> Bool {
+test fn bool_string_and_unknown_names_admit_no_numeral() -> Bool  {
   !kernel_carrier_admits_numeral(name: "Bool")
     && !kernel_carrier_admits_numeral(name: "String")
     && !kernel_carrier_admits_numeral(name: "Json")
     && !kernel_carrier_admits_numeral(name: "")
 }
 
-test fn only_ring_and_field_profiles_admit_a_numeral() -> Bool {
+test fn only_ring_and_field_profiles_admit_a_numeral() -> Bool  {
   algebra_profile_admits_numeral(profile: OrderedRingProfile)
     && algebra_profile_admits_numeral(profile: ApproximateFieldProfile)
     && !algebra_profile_admits_numeral(profile: BooleanAlgebraProfile)
@@ -193,7 +193,7 @@ fn nkt_guard_string_source() -> String {
   "module nkt.guard_string\n\nimport std.types { Int, String }\n\nfn probe(n: Int, s: String) -> Int {\n  match n {\n    x if (s) => 1\n    _ => 2\n  }\n}\n"
 }
 
-test fn a_string_match_arm_guard_must_refuse() -> Bool {
+test fn a_string_match_arm_guard_must_refuse() -> Bool  {
   relation_refusal_count(source: nkt_guard_string_source()) == 1
 }
 
@@ -201,7 +201,7 @@ fn nkt_guard_int_value_source() -> String {
   "module nkt.guard_int_value\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  match n {\n    x if x + 1 => 1\n    _ => 2\n  }\n}\n"
 }
 
-test fn a_non_literal_int_match_arm_guard_must_refuse() -> Bool {
+test fn a_non_literal_int_match_arm_guard_must_refuse() -> Bool  {
   relation_refusal_count(source: nkt_guard_int_value_source()) >= 1
 }
 
@@ -217,7 +217,7 @@ fn nkt_admitted_source() -> String {
   "module nkt.admitted\n\nimport std.types { Int, Float, Bool }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn field_int() -> Count {\n  Count { n: 1 }\n}\n\nfn arg_int() -> Int {\n  take_i(i: 1)\n}\n\nfn ret_int() -> Int {\n  1\n}\n\nfn field_float() -> Ratio {\n  Ratio { r: 1.5 }\n}\n\nfn arg_float() -> Float {\n  take_f(f: 1.5)\n}\n\nfn ret_float() -> Float {\n  1.5\n}\n\nfn ret_bool() -> Bool {\n  true\n}\n\nfn guard_bool(n: Int) -> Int {\n  match n {\n    x if x > 10 => 1\n    _ => 2\n  }\n}\n\nfn if_bool(n: Int) -> Int {\n  if n > 1 { n } else { 0 }\n}\n"
 }
 
-test fn every_admitted_numeral_and_bool_condition_still_compiles() -> Bool {
+test fn every_admitted_numeral_and_bool_condition_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: nkt_admitted_source()) == 0
     && compile_dag_rust_emit_check(
       nkt_admitted_source(),

@@ -166,14 +166,14 @@ fn crawl_basis() -> AttentionBasis {
   AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
 }
 
-test fn w_human_units_replace_raw_byte_dumps() -> Bool {
+test fn w_human_units_replace_raw_byte_dumps() -> Bool  {
   ci_human_bytes(b: byte_size(crawl_heartbeat_rss_bytes)) == "15.0 GiB" &&
   ci_human_bytes(b: byte_size(crawl_heartbeat_swap_bytes)) == "32.0 GiB" &&
   ci_human_percent(bp: basis_point(count: crawl_heartbeat_pressure_bp)) == "9.0%" &&
   ci_human_duration(d: millisecond(count: crawl_module_wall_ms)) == "10 minutes"
 }
 
-test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
+test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool  {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   string_contains(s: line.text, pattern: crawl_quiet_module) &&
   string_contains(s: line.text, pattern: "still in witness discovery, now typecheck v2.compiler.normalized_tree") &&
@@ -182,18 +182,18 @@ test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
   !string_contains(s: line.text, pattern: to_string(crawl_heartbeat_rss_bytes))
 }
 
-test fn w_heartbeat_puts_identity_before_vitals() -> Bool {
+test fn w_heartbeat_puts_identity_before_vitals() -> Bool  {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   starts_with(s: line.text, prefix: "33 minutes in — still in witness discovery") &&
   string_contains(s: line.text, pattern: "cgroup charge 15.0 GiB")
 }
 
-test fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool {
+test fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool  {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   ci_render_line(line: line, tier: Emoji) == concat("🕐 ", line.text)
 }
 
-test fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
+test fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool  {
   let line = ci_escalation_line(
     quiet_subject: crawl_entry_subject(),
     active_leaf: crawl_leaf_subject(),
@@ -205,7 +205,7 @@ test fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
   line.attention == Notable
 }
 
-test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
+test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool  {
   let line = ci_escalation_blocked_line(
     quiet_subject: crawl_entry_subject(),
     active_leaf: crawl_leaf_subject(),
@@ -218,12 +218,12 @@ test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
   line.attention == Anomaly
 }
 
-test fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
+test fn w_escalation_is_recursive_over_the_captured_window() -> Bool  {
   observation_escalation_depth(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 10 &&
   observation_escalation_depth(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2
 }
 
-test fn w_outcome_lines_carry_durations() -> Bool {
+test fn w_outcome_lines_carry_durations() -> Bool  {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -233,7 +233,7 @@ test fn w_outcome_lines_carry_durations() -> Bool {
   string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
 }
 
-test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
+test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool  {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -245,7 +245,7 @@ test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
   !string_contains(s: text, pattern: "in 0ms")
 }
 
-test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
+test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool  {
   let refusal = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
@@ -257,7 +257,7 @@ test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
   ci_line_placement(attention: line.attention) == OutsideGroup
 }
 
-test fn w_routine_green_collapses_inside_a_group() -> Bool {
+test fn w_routine_green_collapses_inside_a_group() -> Bool  {
   let green = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -270,7 +270,7 @@ test fn w_routine_green_collapses_inside_a_group() -> Bool {
   ci_collapsed_summary(green_count: 213) == "… 213 more finished cleanly"
 }
 
-test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
+test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool  {
   let summary = ci_run_summary_line(summary: FloorRunSummary {
     entries_complete: 213,
     entries_total: 602,
@@ -285,7 +285,7 @@ test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
   string_contains(s: restate.text, pattern: "FLOOR-BATCH-OVER-BUDGET")
 }
 
-test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
+test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool  {
   let restate = ci_refusal_restate_line(
     subject: crawl_entry_subject(),
     diagnostic: "budget exceeded\n::error::a child process said this" as NonEmptyStr
@@ -294,27 +294,27 @@ test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
   !string_contains(s: restate.text, pattern: "\n::error::")
 }
 
-test fn w_group_markers_come_from_the_github_authority() -> Bool {
+test fn w_group_markers_come_from_the_github_authority() -> Bool  {
   ci_group_open(title: "witness discovery") == "::group::witness discovery" &&
   ci_group_close() == "::endgroup::"
 }
 
-test fn w_captured_window_would_have_spoken_four_times() -> Bool {
+test fn w_captured_window_would_have_spoken_four_times() -> Bool  {
   ci_escalation_emission_count(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 4 &&
   ci_escalation_emission_count(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2 &&
   ci_escalation_emission_count(quiet: millisecond(count: 30000), t: observation_dwell_threshold) == 0
 }
 
-test fn w_a_silent_phase_past_the_threshold_is_not_responsive() -> Bool {
+test fn w_a_silent_phase_past_the_threshold_is_not_responsive() -> Bool  {
   ci_window_is_responsive(quiet: millisecond(count: 30000), t: observation_dwell_threshold) &&
   ci_window_is_responsive(quiet: millisecond(count: 600000), t: observation_dwell_threshold)
 }
 
-test fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool {
+test fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool  {
   ci_escalation_emission_count(quiet: millisecond(count: 999999999), t: observation_dwell_threshold) <= 13
 }
 
-test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
+test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool  {
   let refused_only = FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: millisecond(count: 2472000) }
   let failed_only = FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: millisecond(count: 600000) }
   let both = FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: millisecond(count: 600000) }
@@ -326,7 +326,7 @@ test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
   string_contains(s: ci_run_summary_line(summary: both).text, pattern: "2 refused and 3 failed")
 }
 
-test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
+test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool  {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -370,7 +370,7 @@ fn proj_event(subject: ObservationSubject, transition: ObservationTransition) ->
   }
 }
 
-test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
+test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool  {
   match ci_routine_projection(
     event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
     grain: Present { value: BatchGrain },
@@ -380,7 +380,7 @@ test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
   }
 }
 
-test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
+test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool  {
   match ci_routine_projection(
     event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "witness red", output: "" } }),
     grain: Present { value: BatchGrain },
@@ -393,7 +393,7 @@ test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
   }
 }
 
-test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
+test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool  {
   match ci_routine_projection(
     event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Refused { diagnostic: "admission refused" } }),
     grain: Present { value: BatchGrain },
@@ -403,7 +403,7 @@ test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
   }
 }
 
-test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
+test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool  {
   match ci_routine_projection(
     event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: Concluded { outcome: Done }),
     grain: none,
@@ -413,7 +413,7 @@ test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
   }
 }
 
-test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() -> Bool {
+test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() -> Bool  {
   match ci_routine_projection(
     event: proj_event(subject: proj_batch_subject(), transition: Concluded { outcome: Done }),
     grain: Present { value: ModuleGrain },
@@ -423,7 +423,7 @@ test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() ->
   }
 }
 
-test fn w_batch_summary_reports_the_folded_counts() -> Bool {
+test fn w_batch_summary_reports_the_folded_counts() -> Bool  {
   let folded = fold(
     [
       proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
@@ -443,7 +443,7 @@ test fn w_batch_summary_reports_the_folded_counts() -> Bool {
     && match line.attention { Ambient => true, _ => false }
 }
 
-test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
+test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool  {
   let folded = fold(
     [
       proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
@@ -463,7 +463,7 @@ test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
 // The seed seam, exercised the way the seed uses it: scalars in, one finished ASCII line out. The
 // two REDs below are the pair that keeps it honest — an all-green batch must not carry an anomaly
 // glyph, and an absent memory reading must not print as a measurement of zero.
-test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
+test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool  {
   let line = ci_batch_summary_text(
     batch_index: 2, batch_label: "witness discovery" as NonEmptyStr,
     declared_population: 9015, passed: 5319, unaffected: 3731, deferred: 1078,
@@ -479,7 +479,7 @@ test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
 // The review that produced this asserted only that the green and red lines DIFFER and that the red
 // one says `1 failed` — which stays green if the green line renders the failure glyph, because the
 // texts differ anyway. Assert the exact leading token in both directions instead.
-test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_token() -> Bool {
+test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_token() -> Bool  {
   let green = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     declared_population: 3, passed: 3, unaffected: 0, deferred: 0,
@@ -497,7 +497,7 @@ test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_toke
 
 // A partition that does not add up to the population is DISCLOSED, never absorbed into an arm. The
 // shipped version reported `0 refused` while 1,078 rows sat deferred in a category it did not carry.
-test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
+test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool  {
   let short = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     declared_population: 10, passed: 4, unaffected: 0, deferred: 0,
@@ -512,7 +512,7 @@ test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
     && !string_contains(s: exact, pattern: "unclassified")
 }
 
-test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool {
+test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool  {
   let line = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
@@ -522,7 +522,7 @@ test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one
 }
 
 // The seed supplies no refusal count, so a displayed `0 refused` would be a claim the fold looked.
-test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool {
+test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool  {
   let line = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
@@ -531,7 +531,7 @@ test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool
   !string_contains(s: line, pattern: "refused")
 }
 
-test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
+test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool  {
   let line = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     declared_population: 2, passed: 2, unaffected: 0, deferred: 0,
@@ -553,13 +553,13 @@ fn proj_grain_says_fold(verbose: Bool, quiet: Bool) -> Bool {
   }
 }
 
-test fn w_the_bool_seam_agrees_with_the_grain_at_every_verbosity() -> Bool {
+test fn w_the_bool_seam_agrees_with_the_grain_at_every_verbosity() -> Bool  {
   (routine_rollup_folds(verbose: false, quiet: false) == proj_grain_says_fold(verbose: false, quiet: false))
     && (routine_rollup_folds(verbose: true, quiet: false) == proj_grain_says_fold(verbose: true, quiet: false))
     && (routine_rollup_folds(verbose: false, quiet: true) == proj_grain_says_fold(verbose: false, quiet: true))
 }
 
-test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
+test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool  {
   routine_rollup_folds(verbose: false, quiet: false)
     && routine_rollup_folds(verbose: false, quiet: true)
     && !routine_rollup_folds(verbose: true, quiet: false)
@@ -575,7 +575,7 @@ fn proj_folds_at_batch(e: ObservationEvent) -> Bool {
 // The seed transports this verdict instead of restating the rule, so it has to AGREE with the
 // projection it stands in for — that agreement is the whole reason the Rust arm stopped being a
 // second representation. Asserted in both directions against ci_routine_projection itself.
-test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool {
+test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool  {
   let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done })
   let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "x", output: "" } })
   let pass_agrees = concluded_outcome_folds(passed: true) == proj_folds_at_batch(e: pass_event)
@@ -583,14 +583,14 @@ test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool {
   pass_agrees && fail_agrees
 }
 
-test fn w_RED_a_pass_folds_and_a_failure_does_not() -> Bool {
+test fn w_RED_a_pass_folds_and_a_failure_does_not() -> Bool  {
   concluded_outcome_folds(passed: true) && !concluded_outcome_folds(passed: false)
 }
 
 // The deferred population sits BESIDE the declared one, so a run that defers rows and disposes of
 // every declared row reconciles clean. Summing deferred in reported a false over-count on a healthy
 // floor run — 9478 declared, 9478 passed, 1084 deferred — and this pins that reading.
-test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() -> Bool {
+test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() -> Bool  {
   let text = ci_batch_summary_text(
     batch_index: 0,
     batch_label: "witness discovery" as NonEmptyStr,
@@ -607,7 +607,7 @@ test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() 
 }
 
 // And a genuine gap still reports: 10 declared, 6 disposed of, deferred irrelevant to that fact.
-test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() -> Bool {
+test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() -> Bool  {
   let text = ci_batch_summary_text(
     batch_index: 0,
     batch_label: "witness discovery" as NonEmptyStr,
@@ -621,7 +621,7 @@ test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() ->
   string_contains(s: text, pattern: "unclassified")
 }
 
-test fn w_witness_claim_line_from_module_path_holds() -> Bool {
+test fn w_witness_claim_line_from_module_path_holds() -> Bool  {
   let text = ci_witness_claim_result_text(
     subject: "test.claim.observation_ci_render_witness_test",
     function: "w_witness_claim_line_from_module_path_holds",
@@ -632,7 +632,7 @@ test fn w_witness_claim_line_from_module_path_holds() -> Bool {
     && string_contains(s: text, pattern: "PASSED in 230ms")
 }
 
-test fn w_witness_claim_line_from_entry_path_holds() -> Bool {
+test fn w_witness_claim_line_from_entry_path_holds() -> Bool  {
   let text = ci_witness_claim_result_text(
     subject: "dag/test/claim/foo_test.dag",
     function: "witness_holds",
@@ -644,7 +644,7 @@ test fn w_witness_claim_line_from_entry_path_holds() -> Bool {
 }
 
 // Pins the 90s minute-switch boundary shared by ci_human_elapsed and the Rust mirror.
-test fn w_witness_claim_duration_minute_switch_boundary_holds() -> Bool {
+test fn w_witness_claim_duration_minute_switch_boundary_holds() -> Bool  {
   let just_under = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -663,7 +663,7 @@ test fn w_witness_claim_duration_minute_switch_boundary_holds() -> Bool {
     && !string_contains(s: at_switch, pattern: "seconds")
 }
 
-test fn w_RED_human_elapsed_minute_switch_boundary_holds() -> Bool {
+test fn w_RED_human_elapsed_minute_switch_boundary_holds() -> Bool  {
   ci_human_elapsed(d: nanosecond(count: 89000000000)) == "89 seconds"
     && ci_human_elapsed(d: nanosecond(count: 90000000000)) == "1 minutes"
 }
@@ -673,7 +673,7 @@ test fn w_RED_human_elapsed_minute_switch_boundary_holds() -> Bool {
 // dropped. The pair is asserted by KEY, not by offset: `cause=` is addressable without counting
 // columns, which is the property that failed when a reader's padding-sensitive pattern silently
 // selected only long identities out of a 142-row population.
-test fn w_witness_claim_line_carries_the_runtime_cause() -> Bool {
+test fn w_witness_claim_line_carries_the_runtime_cause() -> Bool  {
   let text = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -688,7 +688,7 @@ test fn w_witness_claim_line_carries_the_runtime_cause() -> Bool {
 // THE DISCRIMINATING HALF, and the reason the witness above is not enough on its own: a renderer
 // that appended a CONSTANT cause field would satisfy it. Two rows identical in every argument but
 // the cause must differ, so the field has to be a function of the cause and not decoration.
-test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool {
+test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool  {
   let missing_name = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -710,7 +710,7 @@ test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool {
 // tautological -- no other arm has a field to hold one -- but the RENDERER could still have
 // appended something, and a PASSED row that grew a trailing field would break every consumer
 // reading the existing format. This pins that the addition is confined to the arm that needed it.
-test fn w_RED_non_error_rows_carry_no_cause_field() -> Bool {
+test fn w_RED_non_error_rows_carry_no_cause_field() -> Bool  {
   let passed = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -733,7 +733,7 @@ test fn w_RED_non_error_rows_carry_no_cause_field() -> Bool {
 // a real cause uses rather than presenting the throw as an ordinary one. Asserted here because
 // the arm is unreachable TODAY, and an unreachable arm with no evidence is the one that quietly
 // stops meaning anything.
-test fn w_mapped_outcome_escape_renders_its_own_cause() -> Bool {
+test fn w_mapped_outcome_escape_renders_its_own_cause() -> Bool  {
   ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped) == "mapped-outcome-escaped"
     && ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped)
       != ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
@@ -744,7 +744,7 @@ test fn w_mapped_outcome_escape_renders_its_own_cause() -> Bool {
 // the key was the first twelve words of the message and the message embeds the missing NAME --
 // so `no declaration named X` and `no declaration named Y` counted separately. These four are
 // what that population reduces to once the cause is read from the type instead of the prose.
-test fn w_measured_population_causes_are_four_distinct_tokens() -> Bool {
+test fn w_measured_population_causes_are_four_distinct_tokens() -> Bool  {
   let a = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchVariable)
   let b = ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
   let c = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchFunction)
@@ -752,7 +752,7 @@ test fn w_measured_population_causes_are_four_distinct_tokens() -> Bool {
   a != b && a != c && a != d && b != c && b != d && c != d
 }
 
-test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
+test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool  {
   ci_witness_bazel_target_label(
     subject: "gunbc.output_policy",
     function: "resolve_channel_policy"
@@ -765,7 +765,7 @@ test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
 
 // Mirror drift control for S1: a legacy formatter used "PASS"/"FAIL" without the trailing
 // ED and bracket-prefixed families. Either drift reds this witness.
-test fn w_RED_witness_claim_result_rejects_legacy_pass_token() -> Bool {
+test fn w_RED_witness_claim_result_rejects_legacy_pass_token() -> Bool  {
   let text = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -776,7 +776,7 @@ test fn w_RED_witness_claim_result_rejects_legacy_pass_token() -> Bool {
     && !string_contains(s: text, pattern: "PASS in")
 }
 
-test fn w_RED_witness_claim_result_rejects_bracket_prefix() -> Bool {
+test fn w_RED_witness_claim_result_rejects_bracket_prefix() -> Bool  {
   let text = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -790,7 +790,7 @@ test fn w_RED_witness_claim_result_rejects_bracket_prefix() -> Bool {
 // THE ORACLE FOR THE SEED'S SHARED-FILL LINE. The literal is the agreement point: cli_run's
 // render_shared_fill_row_text_mirror asserts the same bytes on the Rust side, so a drift on
 // either side reds one of the two rather than silently forking the format.
-test fn w_shared_fill_row_line_holds() -> Bool {
+test fn w_shared_fill_row_line_holds() -> Bool  {
   ci_shared_fill_row_text(
     cache: "reference_edges",
     key: "dag+src/v2",
@@ -803,7 +803,7 @@ test fn w_shared_fill_row_line_holds() -> Bool {
   ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared modules=test.claim.foo,test.claim.other"
 }
 
-test fn w_shared_fill_total_line_holds() -> Bool {
+test fn w_shared_fill_total_line_holds() -> Bool  {
   ci_shared_fill_total_text(
     fills: 9,
     fill: millisecond(count: 60000),
@@ -816,7 +816,7 @@ test fn w_shared_fill_total_line_holds() -> Bool {
 // its payer's, so the verdict has to be exercised where it changes: one module reading a fill is
 // a removable cost, two is not, and a fill paid before any claim ran is neither. A single Bool
 // over "is it shared" could not separate the third state from the first.
-test fn w_shared_fill_disposition_separates_three_states() -> Bool {
+test fn w_shared_fill_disposition_separates_three_states() -> Bool  {
   shared_fill_disposition(
     payer: SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
     consumer_modules: 1
@@ -835,7 +835,7 @@ test fn w_shared_fill_disposition_separates_three_states() -> Bool {
 // payer arm were ever dropped and the count consulted alone, an outside-fold fill with several
 // consumers would classify shared and a lone one exclusive — both of which would license a
 // paring conversation about a cost no witness owns.
-test fn w_RED_outside_fold_fill_is_not_classified_as_a_module_cost() -> Bool {
+test fn w_RED_outside_fold_fill_is_not_classified_as_a_module_cost() -> Bool  {
   shared_fill_disposition(payer: SharedFillPaidOutsideFold, consumer_modules: 1)
     != SharedFillExclusiveToOneModule
 }
@@ -843,7 +843,7 @@ test fn w_RED_outside_fold_fill_is_not_classified_as_a_module_cost() -> Bool {
 // THE POINT OF THE SPLIT, ASSERTED RATHER THAN DESCRIBED. An enrolled row failing as enrolled
 // must NOT render the token a genuine regression renders, and a console scan for FAILED must
 // stop matching it -- that second half is the one that was missing, so it gets its own conjunct.
-test fn w_known_red_is_not_spelled_as_failed() -> Bool {
+test fn w_known_red_is_not_spelled_as_failed() -> Bool  {
   let held = ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
@@ -864,7 +864,7 @@ test fn w_known_red_is_not_spelled_as_failed() -> Bool {
 
 // Every non-passing outcome used to render one token. Each arm now renders its own, so a
 // NotBool and a RuntimeError are distinguishable on the console without reading the summary.
-test fn w_every_verdict_arm_renders_a_distinct_token() -> Bool {
+test fn w_every_verdict_arm_renders_a_distinct_token() -> Bool  {
   let t0 = ci_witness_outcome_token(verdict: WitnessPassed)
   let t1 = ci_witness_outcome_token(verdict: WitnessFailed)
   let t2 = ci_witness_outcome_token(verdict: WitnessNotBool)
