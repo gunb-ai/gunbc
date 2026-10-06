@@ -11,6 +11,7 @@ import product.printed_chassis.cassette { tray_w,tray_d,board_w,board_d,bay_pitc
 // Hardware bodies are catalog envelopes or explicit space reservations, not manufacturing CAD.
 // Positions are design proposals; drives, GPUs and real connector pinouts remain unresolved.
 fn hardware() -> List<AssemblyPart> {
+  let space=micrometer_count(m: fan_spacing) as Int
   concat([
     part(id:"BOARD",name:"ALTRAD8UD-1L2T reference",kind:Clearance,scope:Cassette,adds:[block(w:board_w,h:1000,d:board_d,x:0,y:0,z:0)],cuts:[],x:0,y:27000,z:0,ex:0,ey:90000,ez:0,plane:LayOnXZ,notes:"Nominal board outline from vendor authority. 1 mm display slab is not measured PCB thickness. Elevation and socket/component placement provisional; board support hardware is unresolved."),
     part(id:"CPU",name:"Dynatron W1 active envelope",kind:Purchased,scope:Cassette,adds:[block(w:micrometer_count(m:dynatron_w1_active_width),h:micrometer_count(m:dynatron_w1_active_height),d:micrometer_count(m:dynatron_w1_active_length),x:0,y:micrometer_count(m:dynatron_w1_active_height)/2,z:0)],cuts:[],x:0,y:30000,z:0,ex:0,ey:140000,ez:0,plane:LayOnXZ,notes:"Manufacturer active envelope 141.1 x 84 x 72 mm (dynatron.co/product-page/w1); simplified envelope. Location, orientation and installed offset provisional."),
@@ -22,22 +23,23 @@ fn hardware() -> List<AssemblyPart> {
   ],flat_map([-1,0,1],fn(i){[
     part(id:concat("F",to_string(i+2)),name:"ARCTIC P8 rear exhaust",kind:Purchased,scope:Cassette,
       adds:[block(w:micrometer_count(m:arctic_p8_mounting_pattern.frame_edge),h:micrometer_count(m:arctic_p8_mounting_pattern.frame_edge),d:micrometer_count(m:arctic_p8_frame_depth),x:0,y:0,z:0)],cuts:concat([round(diameter:73000,length:30000,axis:Axis3Z,x:0,y:0,z:0)],flat_map([-1,1],x=>flat_map([-1,1],y=>[round(diameter:fan_hole_d,length:30000,axis:Axis3Z,x:x*fan_hole_offset,y:y*fan_hole_offset,z:0)]))),
-      x:i*fan_spacing,y:55000,z:rear_plate_z+2000+micrometer_count(m:arctic_p8_frame_depth)/2,ex:i*40000,ey:0,ez: -25000,plane:LayOnXY,
+      x:i*space,y:55000,z:rear_plate_z+2000+micrometer_count(m:arctic_p8_frame_depth)/2,ex:i*40000,ey:0,ez: -25000,plane:LayOnXY,
       notes:"80 x 80 x 25 mm catalog frame; rotor omitted. Rear exhaust, three-fan layout proposal; thermal adequacy and PST header loading unqualified.")
   ]}))
 }
 fn fixed_parts() -> List<AssemblyPart> {
   let rack_d=tray_d+150000
   let cz= -30000
-  let posts=flat_map([-1,0,1],x=>flat_map([-1,1],z=>[block(w:14000,h:bay_pitch*2+45000,d:14000,x:x*bay_w,y:bay_pitch-12000,z:cz+z*(rack_d/2+18000))]))
-  let beams=flat_map([-28000,bay_pitch-28000,bay_pitch*2+10000],y=>concat(
+  let pitch=micrometer_count(m: bay_pitch) as Int
+  let posts=flat_map([-1,0,1],x=>flat_map([-1,1],z=>[block(w:14000,h:pitch*2+45000,d:14000,x:x*bay_w,y:pitch-12000,z:cz+z*(rack_d/2+18000))]))
+  let beams=flat_map([-28000,pitch-28000,pitch*2+10000],y=>concat(
     map([-1,1],z=>block(w:bay_w*2+14000,h:12000,d:14000,x:0,y:y,z:cz+z*(rack_d/2+18000))),
     map([-1,0,1],x=>block(w:14000,h:12000,d:rack_d+36000,x:x*bay_w,y:y,z:cz))))
-  let runners=flat_map([-1,1],col=>flat_map([0,1],row=>map([-1,1],side=>block(w:8000,h:6000,d:rack_d+36000,x:col*bay_w/2+side*(tray_w/2+6000),y:row*bay_pitch-7000,z:cz))))
-  let feeds=flat_map([-1,1],x=>map([0,1],row=>block(w:5000,h:bay_pitch*2+20000-row*bay_pitch,d:5000,x:x*bay_w/2+tray_w/2-10000,y:(row*bay_pitch+bay_pitch*2+64000)/2,z:0-tray_d/2-35000)))
+  let runners=flat_map([-1,1],col=>flat_map([0,1],row=>map([-1,1],side=>block(w:8000,h:6000,d:rack_d+36000,x:col*bay_w/2+side*(tray_w/2+6000),y:row*pitch-7000,z:cz))))
+  let feeds=flat_map([-1,1],x=>map([0,1],row=>block(w:5000,h:pitch*2+20000-row*pitch,d:5000,x:x*bay_w/2+tray_w/2-10000,y:(row*pitch+pitch*2+64000)/2,z:0-tray_d/2-35000)))
   [part(id:"FRAME",name:"Fixed metal 2 x 2 frame",kind:Metal,scope:FixedFrame,adds:concat(posts,concat(beams,runners)),cuts:[],x:0,y:0,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Metal stock proposal: posts 14 mm square and beams 14 x 12 mm. Cut lengths derived; 8 x 6 mm fixed runner proposals contact the outer printed rail strip. Actual stock, runner brackets, joining and stiffness to be selected. Not printable."),
-   part(id:"SHELF",name:"Shared power shelf",kind:Metal,scope:FixedFrame,adds:[block(w:bay_w*2,h:8000,d:rack_d,x:0,y:0,z:0)],cuts:[],x:0,y:bay_pitch*2+28000,z:cz,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Top shelf proposal; metal gauge and fastening unqualified. Fixed protective earth must survive cassette removal."),
-   part(id:"PSU",name:"Shared 12 V supply reservation",kind:Clearance,scope:FixedFrame,adds:[block(w:150000,h:85000,d:150000,x:0,y:42500,z:0)],cuts:[],x:0,y:bay_pitch*2+32000,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"One supply system per four nodes. 150 x 85 x 150 mm is a space reservation, not a selected model. Wattage and redundancy unresolved; 400-600 W per-node example is superseded."),
-   part(id:"PDB",name:"Four-branch distribution reservation",kind:Clearance,scope:FixedFrame,adds:[block(w:150000,h:30000,d:35000,x:0,y:0,z:0)],cuts:[],x:0,y:bay_pitch*2+55000,z:0-rack_d/2-15000,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Four protected, isolatable branches. No circuit, ratings, wire gauge or connector pinouts invented."),
+   part(id:"SHELF",name:"Shared power shelf",kind:Metal,scope:FixedFrame,adds:[block(w:bay_w*2,h:8000,d:rack_d,x:0,y:0,z:0)],cuts:[],x:0,y:pitch*2+28000,z:cz,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Top shelf proposal; metal gauge and fastening unqualified. Fixed protective earth must survive cassette removal."),
+   part(id:"PSU",name:"Shared 12 V supply reservation",kind:Clearance,scope:FixedFrame,adds:[block(w:150000,h:85000,d:150000,x:0,y:42500,z:0)],cuts:[],x:0,y:pitch*2+32000,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"One supply system per four nodes. 150 x 85 x 150 mm is a space reservation, not a selected model. Wattage and redundancy unresolved; 400-600 W per-node example is superseded."),
+   part(id:"PDB",name:"Four-branch distribution reservation",kind:Clearance,scope:FixedFrame,adds:[block(w:150000,h:30000,d:35000,x:0,y:0,z:0)],cuts:[],x:0,y:pitch*2+55000,z:0-rack_d/2-15000,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Four protected, isolatable branches. No circuit, ratings, wire gauge or connector pinouts invented."),
    part(id:"FEEDS",name:"Fixed branch route reservations",kind:Clearance,scope:FixedFrame,adds:feeds,cuts:[],x:0,y:0,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Four schematic branch corridors remain on the frame when a node is removed. Actual distribution routing and disconnect positioning require review.")]
 }

@@ -62,6 +62,34 @@ fn queues_valid(queues:List<PrinterQueue>) -> Bool {
 }
 fn lane_with(lane:PrinterLane,phase:LanePhase) -> PrinterLane {PrinterLane {queue:lane.queue,session:lane.session,phase:phase}}
 
+fn reconcile_observed_report(lane:PrinterLane,token_source:AccessTokenSource,request:AuthorizationRequest<String>,remaining:Int,plate:BatchPlate,report:String) -> PrinterLane {
+ let prefix=start_claim_path(escalation_id:request.escalation_id)
+ if !Filesystem.Write(path:join([prefix,".after-start-",to_string(9-remaining),".json"],""),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain start observation"})}
+ let remote=join(["gunbc-",plate.digest,".3mf"],"")
+ match observe_start(text:report,remote:remote) {
+  ExpectedProjectRunning=>match write_receipt_at(path:concat(prefix,".receipt.json"),printer:lane.queue.printer,standing:"running-confirmed by fleet observation",version:lane.queue.version as String,remote:remote,digest:plate.digest,token_source:token_source) {
+   ExitSuccess=>lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:0})
+   ExitFailure {code:_,reason:_}=>lane_with(lane:lane,phase:QueueAttention {reason:"Running observed but receipt could not be retained"})
+  }
+  ExpectedProjectBlocked=>lane_with(lane:lane,phase:QueueAttention {reason:"Expected project blocked after publication; no replay"})
+  StartUnresolved=>if remaining<=1 {lane_with(lane:lane,phase:QueueAttention {reason:"Start observation budget exhausted; no replay"})} else {lane_with(lane:lane,phase:QueueReconciling {request:request,remaining:remaining-1})}
+ }
+}
+
+fn monitor_observed_report(lane:PrinterLane,request:AuthorizationRequest<String>,misses:Int,plate:BatchPlate,report:String) -> PrinterLane {
+ if !Filesystem.Write(path:concat(start_claim_path(escalation_id:request.escalation_id),".batch-report.json"),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain fleet monitoring evidence"})}
+ match observe_job(text:report,remote:join(["gunbc-",plate.digest,".3mf"],"")) {
+  JobRunning=>lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:0})
+  JobUnresolved=>if misses>=7 {lane_with(lane:lane,phase:QueueAttention {reason:"Eight unresolved telemetry reads; claim retained; no restart"})} else {lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:misses+1})}
+  JobPaused=>lane_with(lane:lane,phase:QueueAttention {reason:"Printer paused; inspection required"})
+  JobFailed=>lane_with(lane:lane,phase:QueueAttention {reason:"Printer failed; inspection required"})
+  JobCompletedAwaitingInspection=>{
+   if !Filesystem.WriteCreateNew(path:concat(start_claim_path(escalation_id:request.escalation_id),".completed-awaiting-inspection.json"),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain completion evidence"})}
+   PrinterLane {queue:PrinterQueue {printer:lane.queue.printer,version:lane.queue.version,plates:lane.queue.plates.skip(n:1)},session:lane.session,phase:QueueReady}
+  }
+ }
+}
+
 // Filing and polling are separate fleet-wide passes. Both ready printers receive
 // requests before either is polled; no per-printer approval sleep blocks a sibling.
 fn file_ready(lane:PrinterLane) -> PrinterLane {
@@ -108,36 +136,18 @@ fn advance_lane(hold:PrinterExecutionHold,lane:PrinterLane,token_source:AccessTo
   }
   QueueReconciling {request:request,remaining:n}=>match lane.queue.plates.first() {
    Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Published queue lost its plate"})
-   Present {value:plate}=>{
-    let report=match report_once_using_session(session:lane.session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:_}=>""}
-    let prefix=start_claim_path(escalation_id:request.escalation_id)
-    if !Filesystem.Write(path:join([prefix,".after-start-",to_string(9-n),".json"],""),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain start observation"})}
-    let remote=join(["gunbc-",plate.digest,".3mf"],"")
-    match observe_start(text:report,remote:remote) {
-     ExpectedProjectRunning=>match write_receipt_at(path:concat(prefix,".receipt.json"),printer:lane.queue.printer,standing:"running-confirmed by fleet observation",version:lane.queue.version as String,remote:remote,digest:plate.digest,token_source:token_source) {
-      ExitSuccess=>lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:0})
-      ExitFailure {code:_,reason:_}=>lane_with(lane:lane,phase:QueueAttention {reason:"Running observed but receipt could not be retained"})
-     }
-     ExpectedProjectBlocked=>lane_with(lane:lane,phase:QueueAttention {reason:"Expected project blocked after publication; no replay"})
-     StartUnresolved=>if n<=1 {lane_with(lane:lane,phase:QueueAttention {reason:"Start observation budget exhausted; no replay"})} else {lane_with(lane:lane,phase:QueueReconciling {request:request,remaining:n-1})}
-    }
+   Present {value:plate}=>match report_once_using_session(session:lane.session) {
+    ProcessRefused {exit_code:_,stderr:e}=>lane_with(lane:lane,phase:QueueAttention {reason:join(["Start observation refused: ",e],"")})
+    ProcessOutputAbsent=>reconcile_observed_report(lane:lane,token_source:token_source,request:request,remaining:n,plate:plate,report:"")
+    ProcessOutputPresent {text:t}=>reconcile_observed_report(lane:lane,token_source:token_source,request:request,remaining:n,plate:plate,report:t)
    }
   }
   QueuePrinting {request:request,unresolved:misses}=>match lane.queue.plates.first() {
    Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Active queue lost its plate"})
-   Present {value:plate}=>{
-    let report=match report_once_using_session(session:lane.session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:_}=>""}
-    if !Filesystem.Write(path:concat(start_claim_path(escalation_id:request.escalation_id),".batch-report.json"),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain fleet monitoring evidence"})}
-    match observe_job(text:report,remote:join(["gunbc-",plate.digest,".3mf"],"")) {
-     JobRunning=>lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:0})
-     JobUnresolved=>if misses>=7 {lane_with(lane:lane,phase:QueueAttention {reason:"Eight unresolved telemetry reads; claim retained; no restart"})} else {lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:misses+1})}
-     JobPaused=>lane_with(lane:lane,phase:QueueAttention {reason:"Printer paused; inspection required"})
-     JobFailed=>lane_with(lane:lane,phase:QueueAttention {reason:"Printer failed; inspection required"})
-     JobCompletedAwaitingInspection=>{
-      if !Filesystem.WriteCreateNew(path:concat(start_claim_path(escalation_id:request.escalation_id),".completed-awaiting-inspection.json"),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain completion evidence"})}
-      PrinterLane {queue:PrinterQueue {printer:lane.queue.printer,version:lane.queue.version,plates:lane.queue.plates.skip(n:1)},session:lane.session,phase:QueueReady}
-     }
-    }
+   Present {value:plate}=>match report_once_using_session(session:lane.session) {
+    ProcessRefused {exit_code:_,stderr:e}=>lane_with(lane:lane,phase:QueueAttention {reason:join(["Fleet monitoring read refused: ",e],"")})
+    ProcessOutputAbsent=>monitor_observed_report(lane:lane,request:request,misses:misses,plate:plate,report:"")
+    ProcessOutputPresent {text:t}=>monitor_observed_report(lane:lane,request:request,misses:misses,plate:plate,report:t)
    }
   }
   QueueReady=>lane QueueAttention {reason:_}=>lane QueueDone=>lane

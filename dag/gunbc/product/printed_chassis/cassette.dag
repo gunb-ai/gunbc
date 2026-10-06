@@ -1,7 +1,7 @@
 module product.printed_chassis.cassette
 
 import std.types { Bool, Int, String, List }
-import std.measure { micrometer, micrometer_count }
+import std.measure { Micrometer, micrometer, micrometer_count }
 import std.affine_space {signed_frame_component_count}
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.assembly_geometry {
@@ -25,19 +25,19 @@ data board_d: Int = micrometer_count(m: printed_configuration_layout.board_depth
 data margin: Int = micrometer_count(m: printed_configuration_layout.edge_margin) as Int
 data tray_w: Int = micrometer_count(m: printed_configuration_layout.tray_width) as Int
 data tray_d: Int = micrometer_count(m: printed_configuration_layout.tray_depth) as Int
-data panel_t: Int = 8000
+data panel_t: Micrometer = micrometer(count: 8000)
 data seam: Int = micrometer_count(m: panel_seam_um) as Int
 data panel_w: Int = (tray_w-seam)/2
 data panel_d: Int = (tray_d-seam)/2
-data bay_pitch: Int = 140000
+data bay_pitch: Micrometer = micrometer(count: 140000)
 data bay_w: Int = tray_w+48000
 data rear_plate_z: Int = 0-tray_d/2-76000
 data rear_beam_z: Int = rear_plate_z+20000
-data fan_spacing: Int = 94000
+data fan_spacing: Micrometer = micrometer(count: 94000)
 data fan_hole_offset: Int = micrometer_count(m:arctic_p8_mounting_pattern.hole_pitch)/2
 data fan_hole_d: Int = micrometer_count(m:arctic_p8_mounting_pattern.hole_clearance_diameter)
-data m3_clearance: Int = 3400
-data joint_clearance: Int = 250
+data m3_clearance: Micrometer = micrometer(count: 3400)
+data joint_clearance: Micrometer = micrometer(count: 250)
 
 type LapJoint {id:String,donor:String,receiver:String,x:Int,z:Int,along_x:Bool,span:Int,clamp_x:Int,clamp_z:Int}
 fn lap_joints() -> List<LapJoint> {
@@ -51,7 +51,7 @@ fn lap_joints() -> List<LapJoint> {
   LapJoint {id:"right-column",donor:"P2",receiver:"P4",x:cx,z:micrometer_count(m: lap_center_offset_um) as Int-seam/2,along_x:false,span:dx,clamp_x:cx+dx,clamp_z:10000}]
 }
 fn lap_features(j:LapJoint,receiver:Bool,cx:Int,cz:Int) -> List<Primitive> {
- let clearance=if receiver {joint_clearance} else {0}
+ let clearance=if receiver {micrometer_count(m: joint_clearance) as Int} else {0}
  flat_map([-1,1],fn(sign){[block(w:(if j.along_x {micrometer_count(m: lap_along_joint_um) as Int} else {28000})+2*clearance,h:4000+2*clearance,d:(if j.along_x {28000} else {micrometer_count(m: lap_along_joint_um) as Int})+2*clearance,x:j.x-cx+(if j.along_x {0} else {sign*j.span}),y:2000,z:j.z-cz+(if j.along_x {sign*j.span} else {0}))]})
 }
 fn hole_y(d:Int,x:Int,z:Int) -> Primitive {round(diameter:d,length:50000,axis:Axis3Y,x:x,y:0,z:z)}
@@ -62,7 +62,7 @@ fn panel(sx:Int,sz:Int,id:String) -> AssemblyPart {
  let receiving=filter(lap_joints(),j=>j.receiver==id)
  let laps=flat_map(own,j=>lap_features(j:j,receiver:false,cx:cx,cz:cz))
  let pockets=flat_map(receiving,j=>lap_features(j:j,receiver:true,cx:cx,cz:cz))
- let clamps=map(filter(lap_joints(),j=>j.donor==id||j.receiver==id),j=>hole_y(d:m3_clearance,x:j.clamp_x-cx,z:j.clamp_z-cz))
+ let clamps=map(filter(lap_joints(),j=>j.donor==id||j.receiver==id),j=>hole_y(d:micrometer_count(m: m3_clearance) as Int,x:j.clamp_x-cx,z:j.clamp_z-cz))
  let slot_w=(panel_w-56000)/4
  let vents=flat_map([0,1,2,3],fn(i){
   let x=0-panel_w/2+28000+slot_w/2+i*slot_w
@@ -74,7 +74,7 @@ fn panel(sx:Int,sz:Int,id:String) -> AssemblyPart {
  let handle=if sz==1 {[block(w:54800,h:8000,d:micrometer_count(m: handle_depth_um) as Int,x:sx*27600-cx,y:4000,z:tray_d/2+micrometer_count(m: handle_center_from_edge_um) as Int-cz),block(w:10000,h:8000,d:micrometer_count(m: handle_support_depth_um) as Int,x:sx*50000-cx,y:4000,z:tray_d/2+micrometer_count(m: handle_support_center_from_edge_um) as Int-cz)]} else {[]}
  let dock_x=sx*(tray_w/2-micrometer_count(m: rear_socket_inset_um) as Int)-cx
  let pin=if sz== -1 {[hole_y(d:4400,x:dock_x,z:0-tray_d/2+22000-cz)]} else {[]}
- part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:panel_w,h:panel_t,d:panel_d,x:0,y:4000,z:0)],concat(laps,concat(rails,handle))),cuts:concat(pockets,concat(vents,concat(clamps,pin))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Two keyed laps per seam register and carry shear; one M3 clamp per seam, four total. Rail and front handle features are integral. Separate S1/S2 sockets accept the slide-in support arms; one M4 through-bolt retains each socket/arm/tray stack. Joint clearance is a proposal; first assembly is unpowered.")
+ part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:panel_w,h:micrometer_count(m: panel_t) as Int,d:panel_d,x:0,y:4000,z:0)],concat(laps,concat(rails,handle))),cuts:concat(pockets,concat(vents,concat(clamps,pin))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Two keyed laps per seam register and carry shear; one M3 clamp per seam, four total. Rail and front handle features are integral. Separate S1/S2 sockets accept the slide-in support arms; one M4 through-bolt retains each socket/arm/tray stack. Joint clearance is a proposal; first assembly is unpowered.")
 }
 // The socket is printed floor-down with its channel open, never under the tray.
 // Its floor and side walls preserve the existing arm envelope and hole datum.
@@ -106,9 +106,10 @@ fn fan_frame(i:Int,id:String) -> AssemblyPart {
  let tab=if outer {[block(w:16000,h:4000,d:24000,x:0-i*53000,y: -2000,z:20000)]} else {[block(w:92000,h:2000,d:36000,x:0,y: -5000,z:20000)]}
  let tracks=if outer {[]} else {flat_map([-1,1],side=>[block(w:16500,h:4500,d:33000,x:side*41000,y: -2000,z:24200)])}
  let guide=if outer {[block(w:3000,h:80000,d:120000,x:i*49000,y:53000,z:60000),block(w:10000,h:8000,d:12000,x:i*46000,y:17000,z:4000)]} else {[]}
- let arm=if outer {[hole_y(d:4400,x:i*(tray_w/2-7000-fan_spacing),z:20000)]} else {[]}
+ let space=micrometer_count(m: fan_spacing) as Int
+ let arm=if outer {[hole_y(d:4400,x:i*(tray_w/2-7000-space),z:20000)]} else {[]}
  let lock=if i== -1 {[hole_y(d:4400,x:55000,z:26000)]} else {if i==0 {[hole_y(d:4400,x: -39000,z:26000)]} else {[]}}
- part(id:id,name:"Interlocking rear fan frame",kind:Printed,scope:Cassette,adds:concat(fan_plate_adds(),concat(base,concat(tab,guide))),cuts:concat(fan_plate_cuts(),concat(tracks,concat(arm,lock))),x:i*fan_spacing,y:0,z:rear_plate_z,ex:i*50000,ey:0,ez: -65000,plane:LayOnXZ,notes:"Fitted fan pattern retained; plate and foot are one piece. Center slides over keyed outer feet and one pin retains the bank. Outer frames include airflow guides. Two diagonal M4 bolts secure each fan and guard; the other holes take locating pins.")
+ part(id:id,name:"Interlocking rear fan frame",kind:Printed,scope:Cassette,adds:concat(fan_plate_adds(),concat(base,concat(tab,guide))),cuts:concat(fan_plate_cuts(),concat(tracks,concat(arm,lock))),x:i*space,y:0,z:rear_plate_z,ex:i*50000,ey:0,ez: -65000,plane:LayOnXZ,notes:"Fitted fan pattern retained; plate and foot are one piece. Center slides over keyed outer feet and one pin retains the bank. Outer frames include airflow guides. Two diagonal M4 bolts secure each fan and guard; the other holes take locating pins.")
 }
 fn guard(i:Int,id:String) -> AssemblyPart {
  let rim=[block(w:92000,h:8000,d:3000,x:0,y:42000,z:0),block(w:92000,h:8000,d:3000,x:0,y: -42000,z:0),block(w:8000,h:92000,d:3000,x:42000,y:0,z:0),block(w:8000,h:92000,d:3000,x: -42000,y:0,z:0)]
@@ -116,7 +117,7 @@ fn guard(i:Int,id:String) -> AssemblyPart {
  let bars=flat_map([-3,-2,-1,0,1,2,3],j=>[block(w:84000,h:4000,d:3000,x:0,y:j*11000,z:0)])
  let pins=flat_map([-1,1],x=>[round(diameter:3800,length:9000,axis:Axis3Z,x:x*fan_hole_offset,y:0-x*fan_hole_offset,z:13000)])
  let holes=flat_map([-1,1],x=>[round(diameter:fan_hole_d,length:24000,axis:Axis3Z,x:x*fan_hole_offset,y:x*fan_hole_offset,z:5000)])
- part(id:id,name:"Guard with integral spacers and locating pins",kind:Printed,scope:Cassette,adds:concat(rim,concat(pads,concat(bars,pins))),cuts:holes,x:i*fan_spacing,y:55000,z:rear_plate_z-10500,ex:i*40000,ey:0,ez: -100000,plane:LayOnXY,notes:"Two diagonal bolts secure the guard/plate/fan stack; integral posts replace all loose spacers and opposite locating pins register the fan. Guard gap and blade clearance are proposals, not a certified finger-protection rating.")
+ part(id:id,name:"Guard with integral spacers and locating pins",kind:Printed,scope:Cassette,adds:concat(rim,concat(pads,concat(bars,pins))),cuts:holes,x:i*micrometer_count(m: fan_spacing) as Int,y:55000,z:rear_plate_z-10500,ex:i*40000,ey:0,ez: -100000,plane:LayOnXY,notes:"Two diagonal bolts secure the guard/plate/fan stack; integral posts replace all loose spacers and opposite locating pins register the fan. Guard gap and blade clearance are proposals, not a certified finger-protection rating.")
 }
 fn retaining_pin(x:Int,z:Int,bottom:Int,top:Int,id:String) -> AssemblyPart {
  part(id:id,name:"Large removable retaining pin",kind:Printed,scope:Cassette,adds:[round(diameter:4100,length:top-bottom,axis:Axis3Y,x:0,y:(top+bottom)/2,z:0),block(w:14000,h:4000,d:10000,x:0,y:top+2000,z:0)],cuts:[],x:x,y:0,z:z,ex:0,ey:45000,ez:0,plane:LayOnXZ,notes:"Unthreaded prototype retainer with a broad grip. Positive retention under vibration/load still needs assembly review; do not treat a friction fit as qualified service retention.")
