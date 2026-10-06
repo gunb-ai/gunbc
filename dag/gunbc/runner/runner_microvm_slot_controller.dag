@@ -531,7 +531,7 @@ fn minted_registration(mint: JitMintPerformance) -> Int? {
   match mint {
     JitMintReceived { delivery: d } =>
       match d {
-        JitCredentialBoundToAttempt { slot: _, credential: _, runner_id: id } => Present { value: id }
+        JitCredentialBoundToAttempt { bound: b } => Present { value: b.runner_id }
         JitCredentialNotDispatched { refusal: _ } => none
         JitCredentialMintNotCreated { outcome: _ } => none
       }

@@ -747,8 +747,8 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
     ))
 }
 
-// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the boot and dispatch legs are still
-// declared frontiers. This flips to the regression control that the bindings stay when they land.
+// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the boot leg has no authority and the
+// registration, dispatch and deregistration authorities are implemented but not wired. This flips to the regression control that the bindings stay when they land.
 test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
   !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
 }
@@ -763,9 +763,9 @@ test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_
     && match mtcollins1_route_legs.boot { LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => true _ => false }
 }
 
-// REGISTRATION AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by declaration
-// identity, so pointing either leg at some other declaration, or promoting either to LegWired while
-// nothing on the route calls it, turns this red -- and the route stays unexecutable.
+// REGISTRATION, DISPATCH AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by
+// declaration identity, so pointing any leg at some other declaration, or promoting one to LegWired
+// while nothing on the route calls it, turns this red -- and the route stays unexecutable.
 fn leg_names(leg: RouteLegStanding, module_path: String, decl_name: String) -> Bool {
   match leg {
     LegAuthorityImplemented { authority: a, wiring_owed: _ } => (a.module_path as String) == module_path && (a.decl_name as String) == decl_name
@@ -773,8 +773,9 @@ fn leg_names(leg: RouteLegStanding, module_path: String, decl_name: String) -> B
   }
 }
 
-test fn the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() -> Bool {
+test fn the_registration_dispatch_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() -> Bool {
   leg_names(leg: mtcollins1_route_legs.registration, module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint")
+    && leg_names(leg: mtcollins1_route_legs.dispatch, module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor")
     && leg_names(leg: mtcollins1_route_legs.deregistration, module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered")
     && !leg_is_wired(leg: mtcollins1_route_legs.registration)
     && !leg_is_wired(leg: mtcollins1_route_legs.deregistration)

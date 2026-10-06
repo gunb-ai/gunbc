@@ -194,6 +194,12 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
+// runner_id AND runner_name ARE WHICH RUNNER TOOK THE JOB, a third fact beside the declared runs-on
+// and the observed labels: two runners can carry identical labels. runner_id is the exact identity
+// GitHub returned when the JIT registration was minted (gunbc.runner.runner_qualification_dispatch
+// job_ran_on joins on it); runner_name is corroboration, since one name can resolve to several ids.
+// Upstream publishes both as nullable -- null until a runner takes the job -- and every record in
+// this tree written before the fields existed carries none rather than a guessed value.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -202,6 +208,8 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
+  runner_id: Int?
+  runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
@@ -293,10 +301,17 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
 // drops are execution that really happened and really occupied a runner. A caller measuring
 // occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
 // this operation, so the choice moves to the input with "latest" as the compatible default.
+// THE BEARER IS THE CALLER'S auth_token WHEN ONE IS GIVEN. Every operation already took auth_token,
+// and the service read only GITHUB_TOKEN, so a caller holding an installation token
+// (gunbc.github_effect_perform read_run_with / read_attempt_jobs_with) was silently read under the
+// ambient Actions credential. Declaring auth_input beside auth_source makes a non-empty auth_token the
+// bearer; a caller passing "" (gunbc.pr_base_freshness, gunbc.fleet_desired_admission,
+// gunbc.roadmap_launch_deployment_cli) falls through to GITHUB_TOKEN exactly as before.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
