@@ -3669,9 +3669,10 @@ fn resolve_type_application_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // it must name a coproduct, and an argument inhabits it exactly when the argument resolves to one of
 // that coproduct's variants -- by the DECLARATION the index holds, never by leaf spelling. A unique
 // variant referenced bare resolves to its module-level path (p.Pointer), which
-// v2.compiler.symbol_index_fill symbol_index_fill_unique_variant_aliases files as a second ENTRY over
-// the same arm node rather than as a binding to p.Resolution.Pointer, so
-// symbol_index_declaring_path_of cannot relate the two paths; the arm node they share can. A Nat literal and a type
+// v2.compiler.symbol_index_fill symbol_index_fill_containment_node files as a BINDING to the
+// variant's declaring path (p.Resolution.Pointer) -- the pre-fusion alias writer filed a second
+// ENTRY over the same arm node instead, which was the bug the receipt records; the fused writer
+// files the binding, so symbol_index_declaring_path_of relates the two paths. A Nat literal and a type
 // parameter of an enclosing declaration are not judged (v2.std.type_binder KindInhabitance).
 fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, argument: Node, kind: Node) -> KindInhabitance {
   if dag_node_is_int_literal_atom(node: argument) {

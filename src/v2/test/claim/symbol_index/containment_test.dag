@@ -239,22 +239,21 @@ test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
   }
 }
 
-// THE DISCRIMINATOR IS THE PAIR, NOT EITHER ARM. The alias minting lives IN the containment walk
-// now (symbol_index_fill_containment_node with counts + module_qn), so there is no
-// "containment without the alias pass" to red on: the WITHOUT side is the module-root fill, whose
-// alias bindings are imports only and mint no variant alias (^Yes unbound), and the WITH side is
-// the same fixture run through the fused containment walk (^Yes hits). A fill that minted the
-// variant alias without the containment walk reds the first arm; a containment walk that stopped
-// minting it reds the second.
-test fn symbol_index_unique_variant_alias_requires_the_containment_walk_holds() -> Bool {
+// THE COUNT RULE IS THE WITHOUT SIDE. The module-level variant alias exists only where the tag is
+// declared by ONE coproduct in the module (disj_variant_counts_in_module): this module declares
+// ^Yes twice (^Mood and ^Classical), so the fused containment walk mints nothing for it — the
+// WITHOUT side — while the unique module mints for ^Yes — the WITH side. A fill that minted a
+// module alias for a twice-declared tag reds the first arm; a containment walk that stopped
+// minting reds the second. THE PAIR IS THE EVIDENCE, NOT EITHER ARM.
+test fn symbol_index_module_variant_alias_requires_a_unique_count_holds() -> Bool {
   match symbol_index_lexical_lookup(
-    index: si_unique_index,
-    position: si_unique_module_qn,
+    index: si_index,
+    position: si_module_qn,
     name: ^Yes
   ) {
     LexicalUnbound =>
       match symbol_index_lexical_lookup(
-        index: si_unique_index_containment_only,
+        index: si_unique_index,
         position: si_unique_module_qn,
         name: ^Yes
       ) {
@@ -266,6 +265,7 @@ test fn symbol_index_unique_variant_alias_requires_the_containment_walk_holds() 
     LexicalAmbiguous { candidates: _ } => false
   }
 }
+
 
 test fn symbol_index_variant_visibility_equivalence_holds() -> Bool {
   match symbol_index_lexical_lookup(
