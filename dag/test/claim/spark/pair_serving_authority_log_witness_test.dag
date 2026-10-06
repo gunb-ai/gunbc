@@ -841,8 +841,9 @@ test fn an_ephemeral_run_carries_its_labels_and_memory_cap() -> Bool {
 
 // THE CLEANUP EXIT IS A HERMETIC DECISION: placement_cleanup_step_exit answers each cleanup state
 // by name, so the wet step's verdict is pinned here without an executor, a host store or a clock.
-// AN UNREADABLE OUTCOME IS NOT EVIDENCE THE FENCE IS DOWN: it fails loudly with its cause -- the
-// answer the old wildcard answered success, which is the behavior change this cut repairs.
+// AN UNREADABLE OUTCOME IS NOT EVIDENCE THE FENCE IS DOWN: it fails loudly with its cause. The
+// decision is extracted and pinned by name here; the named arms (and this loud answer) were
+// already on base, so this test guards the extraction, it does not mark a behavior change.
 test fn an_unread_placement_cleanup_fails_loudly_with_its_cause() -> Bool {
   match placement_cleanup_step_exit(c: PlacementCleanupUnread { cause: "the log store could not be read" }) {
     ExitFailure { code: _, reason: r } => r == "the log store could not be read"
