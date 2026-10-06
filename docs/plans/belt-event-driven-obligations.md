@@ -1,108 +1,120 @@
 # Belt demotion: event-driven attempt obligations
 
-Status: plan. This is the design for items #6 and #4 of [dogfood-route-manual-interventions](dogfood-route-manual-interventions.md), written before the implementation. The model's homes are the factory controller, which owns wake-ups and event delivery, and the factory attempt lifecycle. Any roadmap rows land under those homes. `factory-dogfood-route` (gunbc#13077) only consumes their receipts and carries a gating edge on them.
+Status: implemented on gunbc#13125. This is the design for items #6 and #4 of [dogfood-route-manual-interventions](dogfood-route-manual-interventions.md), and it executes the owner ruling "The belt demoted: wake-up and anti-entropy only" (2026-09-22, [harness-work-lifecycle](harness-work-lifecycle.md)).
+
+The model's homes are the factory controller, which owns wake-ups and event delivery, and the factory attempt lifecycle. `factory-dogfood-route` (gunbc#13077) only consumes their receipts and carries a gating edge on them.
 
 ## The defect, re-derived (DESIGN §6b)
 
-`gunbc.roadmap_belt_actuate` `belt_tick_for_instance` is a single process that runs, in order: launch admission, spawn, teardown, commit (`belt_commit_attempts_for_instance`), verify (`belt_verify_attempts_after_commit`), review and audit (`belt_review_attempts_after_verify`, `belt_audit_attempts_after_verify`), and publish (`belt_publish_attempts_for_instance`). After that, `gunbc.roadmap_belt_tick_cli` `belt_run_once_cli_in` writes the served observation.
+`gunbc.roadmap_belt_actuate` `belt_tick_for_instance` was one process that ran, in order:
+- launch admission, spawn and teardown;
+- commit, then verify, then review and audit, then publish, then metering, over every attempt;
+- then, in `gunbc.roadmap_belt_tick_cli`, the result return, the served observation, the dogfood start record and the snapshot census.
 
-The earliest unjustified boundary is not a slow stage. It is the claim, implicit in that one function, that these are one fact. They are separate facts:
-- each attempt's commit, verify, review and publish is an obligation of that attempt alone;
-- launch admission is an obligation of the frontier;
-- the served observation is an obligation of the instance.
+The earliest unjustified boundary was not a slow stage. It was the claim, implicit in that one function, that these are one fact. They are separate facts:
+- each attempt's capture, verify, review, audit and publish is an obligation of that attempt alone;
+- launch is an obligation of the frontier;
+- each instance fold is an obligation of the instance.
 
-Fusing them into one sequence makes each one's latency every other one's latency. The srv2 timeout, where one SCM capture starved everything after it from 06:50 to 16:30 on 2026-10-03, is a consequence of that fusion. Making the tick resumable with checkpoints would keep the fusion, which the operator has ruled against.
+Fusing them made every stage's latency every other stage's latency. On srv2, from 06:50 to 16:30 on 2026-10-03, one SCM capture held every tick at its 90-minute bound, and nothing behind it ran for any attempt.
 
-## The model
+## What was built
 
-### Obligation identity (keys, DESIGN §3b)
+### Obligations (`gunbc.roadmap.roadmap_belt_obligation`)
 
-An obligation is `(kind, subject)`:
-- `kind` is one of `Capture`, `Verify`, `Review`, `Publish`, `ResultReturn` (#13075), `PlacementSettle` (#13074), `DogfoodStartRecord` (#13077), `LaunchAdmission`, and `ServedObservation`.
-- `subject` is the attempt identity (`gunbc.roadmap.roadmap_attempt_occurrence`) for per-attempt kinds, the frontier revision for `LaunchAdmission`, and the instance for `ServedObservation`.
+- **Per-attempt kinds:** capture, verify, review, audit, publish.
+- **Instance kinds:** launch, served observation, result return, metering, dogfood start record, snapshot census.
+- **Outstanding is derived, never stored.** `belt_attempt_outstanding` reads the attempt's projected segments, so no second record repeats what the receipts say (ruling Q1).
+- **A failed or refused stage is not outstanding.** The line stops for that attempt only, and the operator resumes it, per the 2026-10-03 manual-resume ruling.
 
-The effect identity is derived from that pair and is never minted fresh. Re-running an obligation therefore re-observes its subject and decides Noop. Publish is the one obligation whose effect subject is not the attempt. There is one PR per logical work item (the roadmap node W). A later attempt updates that PR and does not open a second one.
+### One unit per attempt, one per instance obligation
 
-- The attempt identity keys the publication operation and its receipt. It never keys the PR.
-- So the ensure is "work item W has exactly one PR, at attempt A's head", idempotent per (W, A).
-- After an uncertain remote success, the obligation observes W's PR before it creates one.
+- **Why per attempt.** Every `gunbc run` loads the corpus, measured at about 60 s and about 8 GB peak RSS for a typecheck. A unit per (kind, attempt) would pay that once per kind.
+- **What the attempt's unit does.** It is `gunbc-obligation-attempt-<node>-<attempt>`, running `belt_attempt_obligations_cli`. It runs the attempt's outstanding kinds in eligibility order (`belt_attempt_obligations_run`), re-observing after each one, and stops at the first that waits on something outside the process.
+- **Each kind is still its own ensure** over the core the tick used to call per attempt. Each core is idempotent over unchanged evidence.
+- **The unit name is the exclusive hold.** `belt_obligation_hold_decision` reads the manager for that one name: a loaded unit is held, an unreadable answer refuses, anything else starts. Another attempt's unit never reaches the decision. That is the #6 isolation.
+- **Deadline.** `RuntimeMaxSec` is the obligation's deadline, and `CollectMode=inactive-or-failed` lets the name be reused after a failure.
+- **Grain ruling.** bold-bee-114 agreed to the per-attempt grain on 2026-10-06.
 
-### Each obligation is one ensure (convergence, DESIGN §3d)
+### Exit records (`gunbc.roadmap.roadmap_attempt_exit_spool`)
 
-Each kind is a `gunbc.ensure` `ensure_decide` over:
-- the attempt's evidence authority (its verification receipt, review receipt or publication receipt);
-- policy `EnsureMayApply`;
-- a plan that is the existing per-attempt body.
+- **Who writes them.** Worker, reviewer and auditor units end with a create-only exit record. Their `ExecStopPost` is a typed argv: `+mkdir -- <inbox>/<node>+<attempt>+<role>+${INVOCATION_ID}+${SERVICE_RESULT}+${EXIT_CODE}+${EXIT_STATUS}`.
+  - No shell is involved. This follows bold-bee-114's ruling against shell control text in minted commands.
+  - The `+` prefix runs only the hook outside the unit's sandbox, so a confined reviewer cannot forge records.
+  - The stop-time variables and the command-line rendering are modeled in `extdeps.systemd.service_exec`.
+- **RemainAfterExit is removed from worker, reviewer and auditor units.** This reverses the 2026-09-05 choice. That choice kept a successful exit readable as `active (exited)`, which is manager memory: it is lost on reboot, and while it stands the unit never stops, so no stop hook can fire at exit. The record replaces it.
+- **The supervisor keeps RemainAfterExit.** Moving its convene gate onto the record is a follow-up.
+- **Observer conditions (bold-bee-114):**
+  - A collected unit is read from its record.
+  - A collected unit with no record is unobserved, never "never ran". The start receipt (the G5 placement record for workers, the metering roster entry for reviewers and auditors) separates "never started" from "exited without a record".
+  - A failed hook surfaces as that located unobserved arm.
+  - One wet control reads the exit verdict from the spool alone.
+- **Signals.** A signaled worker reads as the signal number, which is exactly what `ExecMainStatus` reported, so no consumer's decision moves. A distinct signaled arm on `WorkerProcessEvidence` is a follow-up.
 
-The per-attempt bodies already exist as their own entry points in `gunbc.roadmap_belt_tick_cli`: `belt_verify_one_cli`, `belt_review_head_cli`, `belt_integrate_one_cli` and `belt_escalate_one_cli`. The demotion reuses them. It does not write a second copy (§3). The batch functions `belt_*_attempts_*` reduce to "for each attempt, decide whether its obligation is outstanding". They stop doing the work themselves.
+### Events, not a timer (`gunbc.live_deploy`)
 
-A failed obligation records a typed refusal under its identity and stops. It does not retry itself, and it does not block any other obligation. This follows the operator's 2026-10-03 manual-resume ruling: the line stops for that attempt only.
+- **No belt timer.** The deployment member is `BeltEventPathUnit`, which installs:
+  - the exit path unit, a `DirectoryNotEmpty=` level on the exit inbox, which starts the drain service (`belt_exit_drain_cli`);
+  - the publication-answer path unit, a `PathChanged=` edge on the answer directory, which starts the discovery service (`belt_discover_once_cli`);
+  - the spool stages: inbox, queued, done and refused.
+- **The drain** hands each recorded exit to its attempt's unit. It moves the entry to `queued/` once handed off and to `refused/` when it cannot be handed off, so the path goes quiet. A worker exit also queues the launch obligation.
+- **The attempt's run** moves its queued entries to `done/` only after its receipt is written.
+- **Launch** is the demoted tick: admission, spawn, teardown and bounded discovery. It has one unit name per instance. The deployment's belt service only queues it (`belt_launch_enqueue_cli`).
+- **Deadlines need no wake-up timer.** Every awaited unit (worker, reviewer, auditor) has its own run bound, and ending at that bound writes an exit record like any other ending. The deadline is therefore an event too.
 
-### Trigger edges (event-driven, item #4)
+### Discovery, bounded
 
-| event | obligation invoked |
-|---|---|
-| worker transient unit exits (systemd `ExecStopPost=` on the unit `gunbc.roadmap_dispatch_actuator` already mints) | `Capture` then `Verify` for that attempt |
-| verification receipt written | `Review` and audit for that attempt |
-| passing review receipt | `Publish`, then `ResultReturn` |
-| lease grant or release (#13074) | `PlacementSettle` |
-| acceptance or merge event on the roadmap event log | `LaunchAdmission` |
-| any receipt written for the instance | `ServedObservation` (cheap, run on its own) |
+`belt_discover_for_instance` reads every current attempt's evidence and hands at most `belt_discovery_attempt_bound` owed attempts to their units, plus the instance obligations a moved record makes owed. It never does the work, and nothing requires it to run on a cadence.
 
-Each edge runs as its own process, keyed by obligation identity. If the edge's command crashes, its unit records the failure, and the obligation is still outstanding the next time anything observes it.
+### Receipts and the page
 
-### Deadlines
+- **Tick receipt v7:** spawn, teardown and discovery passes.
+- **Per-attempt obligation receipt:** `receipts/obligations-<node>-<attempt>.json`, consumed by `/workflow.json`. A pending verification now shows that attempt's own verify step.
 
-Obligations with a deadline, such as a lease expiry (`std.temporal_effect` `HeldLease`) or a seat grant boundary, schedule a one-shot wake-up (a transient `systemd-run --on-active=` timer) keyed to the obligation. No recurring timer is a product requirement, and none becomes a desired-state row.
+### The RLM launch receipt
 
-### Anti-entropy, bounded and discovery-only
+bold-bee-114 ruled on 2026-10-06:
+- **Timer row replaced.** The two event path units must be loaded, enabled, armed and aimed at the emitted target.
+- **Tick freshness replaced by an event backlog row.** An exit-spool entry unconsumed past its stage's bound refuses with `StaleBacklog`, naming the oldest entry. An armed path unit proves the watcher is armed; the backlog row proves events are consumed.
+- **Declared rung drop.** The publication-answer half has no consumption record yet, so it is declared as `gunbc.rung_drop` `belt_liveness_publication_answers_unconsumed`.
 
-An event can be missed: a host reboots, a hook is lost, or a unit is collected. To cover that, `belt_discover_once` lists up to N outstanding obligations:
-- it compares each attempt's evidence against the receipts each kind requires;
-- it hands each outstanding obligation to its edge command as a separate unit, which returns at once;
-- it never runs capture, verify, review or publish inline.
+## REDs, and where they run
 
-Its cost is the observation cost of the attempts it reads, not the cost of the work. Whether anything invokes it periodically is a deployment choice outside the model. The model does not require it.
+- **#6:** `test.claim.roadmap.roadmap_belt_obligation_witness_test` `a_long_verify_does_not_delay_another_attempts_publish_or_the_observation`.
+- **#4, deployment half:** `the_deployment_wakes_the_drain_on_an_exit_and_installs_no_belt_timer` in the same file.
+- **#4, hand-off half:** `test.claim.roadmap.roadmap_belt_exit_drain_wet_witness` `a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox`. This runs a real spool on the local-repo wet lane.
+- **Worker hook:** `test.claim.roadmap.dispatch_worker_confinement_witness_test` `the_worker_unit_stops_with_its_process_and_writes_its_exit_record`.
 
-### Exclusivity (leasing/locking, DESIGN §3b)
+## Conformance (DESIGN §3b)
 
-Two edge invocations for one obligation identity must not both apply. Each obligation holds a `std.durable_exclusive_hold` keyed by its identity for the length of its apply. If a second invocation finds the hold taken, it decides Noop with the reason "held by <holder>". Obligations on different identities never contend, and that independence is what makes the item #6 RED pass.
+- **Leasing / locking:** the hold is the manager's unit-name uniqueness. It diverges from `std.durable_exclusive_hold`, for a stated reason: the subject is the manager's own unit population, and a second store would be a second authority for which unit is running.
+- **Materialization / realization:** obligations reuse the existing per-attempt cores, with no second copy.
+- **Process observability:** each obligation writes its own receipt, the page reads the attempt's own receipt, and the launch receipt carries liveness against events.
 
-### Observability (process reporting, DESIGN §3b)
+## Follow-ups, stated
 
-Each obligation writes its own receipt, a `std.temporal_effect` `EffectStepReceipt` keyed by obligation identity. `ServedObservation` folds the latest receipts, so the page never waits on a running obligation. A running obligation is reported as running. Its absence from the page is not the signal.
+- **One PR per work item.** Publication still keys the PR by the attempt branch. The publish obligation is idempotent per attempt (it observes before creating), not per work item. Raised with bold-bee-114 on 2026-10-06.
+- **Publication helper.** It still runs on its own timer (`PublicationHelperTimerUnit`), under a separate principal.
+- **Supervisor units** keep RemainAfterExit.
+- **`WorkerProcessSignaled`.** The process model has no signaled arm yet.
+- **Publication-answer consumption record.** This is the rung drop's restoration trigger.
 
-## REDs (written first)
+## Rulings (bold-bee-114)
 
-1. **Item #6.** Fixture: two attempts, A and B. A's verify is held, its hold is taken and it is running. B has a passing review. Invoking `Publish(B)` and `ServedObservation` completes both, and neither one observes or awaits A. Today that is impossible, because publish runs inside the same function after every verify.
-2. **Item #4.** With no belt timer in deployment membership, a worker unit's exit hook invokes `Capture` and `Verify` for exactly that attempt. The control fails if `ExecStopPost=` is removed from the minted unit.
-3. **Idempotence and PR identity.**
-   - Invoking `Publish(W, A)` twice yields Noop the second time. The Noop is decided from the observed PR, not a local flag.
-   - `Publish(W, A2)` after `Publish(W, A1)` updates W's one PR to A2's head. It does not create a second PR.
-   - When a create succeeded remotely but left no receipt, the next invocation observes the existing PR and does not create another.
-
-## Sequencing with the open PRs
-
-- #13074 (G5), #13077 (dogfood route), #13075 (G4) and #13111 (SCM) all edit `belt_actuate`. This work rebases onto each as it lands.
-- Each of their new passes becomes an obligation kind in the table above. None of them stays an inline step.
-- Landing order:
-  1. the obligation identity type, the per-kind outstanding predicate, and the REDs;
-  2. edge entry points and unit hooks;
-  3. `belt_tick_for_instance` reduced to launch admission plus discovery, with the inline passes deleted in the same change (a replacement migration, §3; delete first);
-  4. the belt timer removed from deployment membership.
-
-## Rulings (bold-bee-114, 2026-10-03)
-
-- **Q1: no `std.obligation` carrier.** An obligation is outstanding when the attempt's own durable evidence says so. The discover pass computes that, and a queue entry is just `(kind, attempt identity)`.
-- **Q2: the exit hook appends an event and does not invoke work directly.** The event is durable before any work starts. It does not go to `gunbc.roadmap_event_log`, which is the issue event authority: it pushes a git commit with a compare-and-set per event, and it is the history the requester reads. `gunbc.fabric_event_log` does not fit either. Appending there needs a head read and a compare-and-set put through the fabric storage client, and the log is ordered as a chain rather than create-only per key. The hook may not run the gunbc interpreter, because that would cost a typecheck on every exit.
-
-### The attempt-event spool (proposed minimal store)
-
-- **Home.** An instance-local spool directory, homed in `gunbc.host_layout` beside the publication spool. It follows the same precedent: two consumers, and `gunbc.live_deploy.emit` creates the directory with the ownership it needs.
-- **Hook.** The hook is a typed argv command with no shell: `ExecStopPost=/usr/bin/mkdir <spool>/%n.${INVOCATION_ID}.${SERVICE_RESULT}.${EXIT_CODE}.${EXIT_STATUS}`. It is minted in `.dag` as an `ArgvCommand` beside the `systemd_run_property` rows.
-  - systemd expands `%n` and `${VAR}` in Exec argv, and it sets `INVOCATION_ID`, `SERVICE_RESULT`, `EXIT_CODE` and `EXIT_STATUS` for `ExecStopPost`. The extdeps model cites systemd.exec(5) and systemd.service(5) for these.
-  - `mkdir` is atomic and create-only, so a repeated hook fails harmlessly.
-  - The entry's name carries the exit facts. Anything that does not fit in a name, the edge reads from systemd or the journal by unit and invocation id. The hook never writes it.
-  - Shell control text in a minted command is ruled out, because that is the class the shell-typed-invocation project is deleting.
-- **Trigger.** A systemd `.path` unit (`DirectoryNotEmpty=<spool>`) in deployment membership starts the edge service. This trigger is an event, not a timer. The edge decodes each entry and runs `Capture` and `Verify` for that attempt while holding that attempt's exclusive hold.
-- **Consumption.** An entry is moved to `done/` only after its obligation's receipt exists. If the edge crashes, the entry stays and is picked up by the next activation or by discovery.
+- **2026-10-03, Q1:** no `std.obligation` carrier.
+- **2026-10-03, Q2:**
+  - Exits are recorded in an instance-local spool, not `gunbc.roadmap_event_log` (the issue history) or `gunbc.fabric_event_log`, which needs a head compare-and-set per append.
+  - The hook never runs the interpreter.
+  - The hook is a typed `mkdir` argv, with no shell.
+- **2026-10-03, homes and PR identity:**
+  - Homes are the factory controller and the factory attempt lifecycle.
+  - There is one PR per work item. Not yet built; see follow-ups.
+- **2026-10-06, process grain:** per attempt.
+- **2026-10-06, exit records:**
+  - Reviewers and auditors get exit records in this PR.
+  - The deadline is only a typed timeout, never the completion route.
+- **2026-10-06, RemainAfterExit:** removed, with three conditions:
+  - A unit gone with no record reads as unobserved.
+  - A failed hook write is a located refusal.
+  - One control produces the exit verdict from the spool alone.
+- **2026-10-06, RLM receipt:** event path rows, plus the backlog row or a declared drop.
