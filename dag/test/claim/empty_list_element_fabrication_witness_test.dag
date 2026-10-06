@@ -36,6 +36,11 @@ data fold_list_empty_accumulator_source: String = "module probe_nl_fold\ntype UM
 // enrolled red is the declared-return TypeMismatch, not a field-access refuse and not Unit.
 data fold_list_uninformed_accumulator_source: String = "module probe_nl_fold_uninformed\ntype UMod { module: String }\nfn nl_ms() -> List<UMod> { [UMod { module: \"a\" }] }\nfn nl_fold_list<T, A>(xs: List<T>, empty: A, cons: fn(A, T) -> A) -> A {\n  match xs |> first {\n    Present { value: h } => nl_fold_list(xs: xs |> skip(1), empty: cons(empty, h), cons: cons)\n    Absent => empty\n  }\n}\nfn uninformed() -> String {\n  nl_fold_list(xs: nl_ms(), empty: [], cons: fn(acc, m) { acc })\n}\n"
 
+// THE SCALAR RED DOES NOT COVER A GROUND LIST DECLARATION. On main, identity-cons bound A to
+// List<Unit> and `-> List<String>` TypeMismatched both-ground. A scalar-only wall left
+// List<empty_list_element> unjudged (review 77291).
+data fold_list_uninformed_list_return_source: String = "module probe_nl_fold_uninformed_list\ntype UMod { module: String }\nfn nl_ms() -> List<UMod> { [UMod { module: \"a\" }] }\nfn nl_fold_list<T, A>(xs: List<T>, empty: A, cons: fn(A, T) -> A) -> A {\n  match xs |> first {\n    Present { value: h } => nl_fold_list(xs: xs |> skip(1), empty: cons(empty, h), cons: cons)\n    Absent => empty\n  }\n}\nfn uninformed_list() -> List<String> {\n  nl_fold_list(xs: nl_ms(), empty: [], cons: fn(acc, m) { acc })\n}\n"
+
 // A NAMED PRODUCT IS A DEFINITE NON-COLLECTION. The empty-list skip is only for an unsolved
 // expected (placeholder or unbound generic formal). `data d: UMod = []` refused on main and
 // must still refuse here (review 77133).
@@ -64,6 +69,11 @@ test fn uninformed_fold_list_accumulator_does_not_silently_typecheck() -> Bool {
   (blocking_class_count_for(source: fold_list_uninformed_accumulator_source, wanted_class: "TypeMismatch") >= 1)
     && (blocking_class_count_for(source: fold_list_uninformed_accumulator_source, wanted_class: "InternalError") == 0)
     && (blocking_class_count_for(source: fold_list_uninformed_accumulator_source, wanted_class: "FieldNotFound") == 0)
+}
+
+test fn uninformed_fold_list_list_return_does_not_silently_typecheck() -> Bool {
+  (blocking_class_count_for(source: fold_list_uninformed_list_return_source, wanted_class: "TypeMismatch") >= 1)
+    && (blocking_class_count_for(source: fold_list_uninformed_list_return_source, wanted_class: "InternalError") == 0)
 }
 
 test fn empty_list_against_a_named_product_still_refuses() -> Bool {

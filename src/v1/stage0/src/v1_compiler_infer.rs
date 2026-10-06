@@ -2427,7 +2427,7 @@ pub fn declared_type_conformance_diags_core(
                                             scope.module_name.clone(),
                                         )])
                                     } else {
-                                        if (conformance_ground_kernel_scalar(
+                                        if (conformance_ground_type(
                                             declared.clone(),
                                             si.clone(),
                                         ) && produced_is_unsolved_generic_at_conformance(

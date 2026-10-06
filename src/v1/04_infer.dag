@@ -1700,7 +1700,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if conformance_ground_kernel_scalar(n: declared, source_indices: si)
+  else if conformance_ground_type(n: declared, source_indices: si)
       && produced_is_unsolved_generic_at_conformance(n: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
