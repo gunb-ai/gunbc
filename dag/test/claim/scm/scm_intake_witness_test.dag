@@ -1,0 +1,363 @@
+module test.claim.scm.scm_intake_witness_test
+
+// THE TYPED INTAKE RECORD AND THE BASE ADVANCE (the BaseAdvance follow-up to gunbc#13111).
+//
+// A commit's intake -- which external revision it froze (IntakeBase) or moved its line to
+// (IntakeAdvance) -- is a member of the commit since format v9, and the question "which base did this
+// candidate's delta assume" is answered by the nearest intake commit on its line
+// (gunbc.scm.repository_envelope line_intake), never by a message. These claims are about that
+// interface: the two intake mints' admissions (a line advances only from where it stands, once per
+// revision, and a revision is placed once), the line reading, and the wire (v9 carries the member,
+// v8 reads back unrecorded, the whole format refuses a recorded intake it cannot carry). Every
+// repository is built through the production verbs (test.fixture.scm_repository_builder), a few
+// files each: the claims are about admissions and the commit table, so no mass is needed.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonString, json_string, json_object, json_kv, json_int }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.object_store { CorpusManifestTarget }
+import gunbc.scm.intake {
+  IntakeRevision, GitIntakeRevision, CommitIntake, IntakeNone, IntakeBase, IntakeAdvance, IntakeUnrecordedByFormat,
+  intake_revision_eq, encode_commit_intake, decode_commit_intake, CommitIntakeDecoded, CommitIntakeRefused,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope, RepositoryCommit, commit_at_reference,
+  LineIntake, LineIntakeAt, LineIntakeAbsent, LineIntakeUnrecorded, LineIntakeUnreadable, line_intake,
+  intake_commit_at_revision, IntakeAtRevisionFound, IntakeAtRevisionAbsent, IntakeAtRevisionAmbiguous,
+  intake_tip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
+  encode_repository_v8, encode_repository_v9, decode_repository_v8_index, decode_repository_v9_index, decode_repository_v7_finish,
+  ShardedIndexDecoded, ShardedIndexRefused, RepositoryDecoded, RepositoryDecodeRefused,
+  encode_repository_checked, encode_repository_sharded_checked, RepositoryEncoded, RepositoryEncodeRefused,
+  RepositoryEncodeIntakeNotInWholeFormat,
+}
+import test.fixture.scm_repository_builder {
+  MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_at, mb_head, mb_intake_base, mb_intake_advance,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data intake_r0_hex: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
+data intake_r1_hex: String = "b7f9070ca82026ba63fbf55960a9e3a0266b3285"
+data intake_r2_hex: String = "d7005ab1c2d3e4f5061728394a5b6c7d8e9f0a1b"
+
+fn rev(hex: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+type IntakeRevisions { r0: IntakeRevision, r1: IntakeRevision, r2: IntakeRevision }
+
+fn revisions() -> IntakeRevisions? {
+  match rev(hex: intake_r0_hex) {
+    Absent => none
+    Present { value: r0 } =>
+      match rev(hex: intake_r1_hex) {
+        Absent => none
+        Present { value: r1 } =>
+          match rev(hex: intake_r2_hex) {
+            Absent => none
+            Present { value: r2 } => Present { value: IntakeRevisions { r0: r0, r1: r1, r2: r2 } }
+          }
+      }
+  }
+}
+
+fn based_at(r0: IntakeRevision) -> MbBuild {
+  mb_intake_base(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at r0"), message: "base r0", revision: r0)
+}
+
+fn line_at(repository: RepositoryEnvelope, head: RepositoryCommitRef, revision: IntakeRevision, intake_commit: RepositoryCommitRef) -> Bool {
+  match line_intake(commits: repository.commits, head: head) {
+    LineIntakeAt { commit, revision: r } => intake_revision_eq(left: r, right: revision) && repository_commit_ref_eq(left: commit, right: intake_commit)
+    LineIntakeAbsent => false
+    LineIntakeUnrecorded { commit: _ } => false
+    LineIntakeUnreadable { at: _ } => false
+  }
+}
+
+// A CANDIDATE'S BASE IS ITS LINE'S INTAKE COMMIT: an ordinary child of the base reads the base's
+// revision through its parent, with no message read.
+test fn a_commit_on_a_base_reads_its_line_at_that_base() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } => {
+      let base = based_at(r0: rs.r0)
+      match mb_head(build: base) {
+        Absent => false
+        Present { value: base_ref } =>
+          match mb_commit(build: mb_stage(build: base, path: "src/a.dag", text: "A as the worker left it"), message: "dispatch candidate: n a1") {
+            MbSetupFailed => false
+            MbBuilt { repository, at } =>
+              match at {
+                Absent => false
+                Present { value: candidate } => line_at(repository: repository, head: candidate, revision: rs.r0, intake_commit: base_ref)
+              }
+          }
+      }
+    }
+  }
+}
+
+// AN ADVANCE CONTINUES THE LINE AND BECOMES ITS TIP; the base still answers for its own revision.
+test fn an_advance_continues_the_line_and_becomes_the_intake_tip() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } => {
+      let base = based_at(r0: rs.r0)
+      match mb_head(build: base) {
+        Absent => false
+        Present { value: base_ref } =>
+          match mb_intake_advance(build: mb_stage(build: base, path: "src/b.dag", text: "B arrived at r1"), message: "advance r0..r1", from: rs.r0, to: rs.r1) {
+            MbSetupFailed => false
+            MbBuilt { repository, at } =>
+              match at {
+                Absent => false
+                Present { value: advance_ref } =>
+                  line_at(repository: repository, head: advance_ref, revision: rs.r1, intake_commit: advance_ref)
+                    && match intake_tip(commits: repository.commits) {
+                      IntakeTipFound(tip) => repository_commit_ref_eq(left: tip.commit.reference, right: advance_ref) && intake_revision_eq(left: tip.revision, right: rs.r1)
+                      IntakeTipNoLine => false
+                      IntakeTipAmbiguous { tips: _ } => false
+                    }
+                    && match intake_commit_at_revision(commits: repository.commits, revision: rs.r0) {
+                      IntakeAtRevisionFound { commit: c } => repository_commit_ref_eq(left: c.reference, right: base_ref)
+                      IntakeAtRevisionAbsent => false
+                      IntakeAtRevisionAmbiguous { commits: _ } => false
+                    }
+              }
+          }
+      }
+    }
+  }
+}
+
+// AN ADVANCE WHOSE external change touched nothing the manifest holds still mints: it freezes its
+// parent's root unchanged, and it is the record a candidate on that revision descends from.
+test fn an_advance_that_changes_no_path_is_still_recorded() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } =>
+      match mb_intake_advance(build: based_at(r0: rs.r0), message: "advance r0..r1, tree unchanged", from: rs.r0, to: rs.r1) {
+        MbSetupFailed => false
+        MbBuilt { repository, at } =>
+          match at {
+            Absent => false
+            Present { value: advance_ref } => line_at(repository: repository, head: advance_ref, revision: rs.r1, intake_commit: advance_ref)
+          }
+      }
+  }
+}
+
+fn advance_from(repository: RepositoryEnvelope, parent: RepositoryCommitRef, from: IntakeRevision, to: IntakeRevision) -> String {
+  match repository.staged {
+    Absent => "no stage"
+    Present { value: staged } =>
+      match mint_intake_advance(repository: repository, root: CorpusManifestTarget { locator: staged.locator }, message: "advance", parent: parent, from: from, to: to) {
+        IntakeAdvanceMinted { repository: _, reference: _ } => "minted"
+        IntakeAdvanceAllocatorInvalid { next_ordinal: _ } => "allocator"
+        IntakeAdvanceParentMissing { parent: _ } => "parent_missing"
+        IntakeAdvanceRootRefused { cause: _ } => "root"
+        IntakeAdvanceDoesNotMove { revision: _ } => "does_not_move"
+        IntakeAdvanceDiscontinuous { parent: _, line } =>
+          match line {
+            LineIntakeAt { commit: _, revision: _ } => "discontinuous_at"
+            LineIntakeAbsent => "discontinuous_absent"
+            LineIntakeUnrecorded { commit: _ } => "discontinuous_unrecorded"
+            LineIntakeUnreadable { at: _ } => "discontinuous_unreadable"
+          }
+        IntakeAdvanceRevisionAlreadyPlaced { commits: _ } => "already_placed"
+        IntakeAdvanceLineAlreadyAdvanced { commit: _ } => "already_advanced"
+      }
+  }
+}
+
+// THE ADVANCE'S ADMISSION, ONE ARM PER WAY TO MIS-PLACE A LINE: applying S_k..S_k+1 onto a line not
+// at S_k (the stale-base defect), advancing a revision twice (a forked intake line), placing a
+// revision twice, and an "advance" to where the line already stands. The control mints.
+test fn an_advance_refuses_every_way_to_misplace_a_line() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } => {
+      let base = based_at(r0: rs.r0)
+      match base {
+        MbSetupFailed => false
+        MbBuilt { repository: based, at } =>
+          match at {
+            Absent => false
+            Present { value: base_ref } => {
+              let discontinuous = advance_from(repository: based, parent: base_ref, from: rs.r1, to: rs.r2) == "discontinuous_at"
+              let does_not_move = advance_from(repository: based, parent: base_ref, from: rs.r0, to: rs.r0) == "does_not_move"
+              let control = advance_from(repository: based, parent: base_ref, from: rs.r0, to: rs.r1) == "minted"
+              match mb_intake_advance(build: base, message: "advance r0..r1", from: rs.r0, to: rs.r1) {
+                MbSetupFailed => false
+                MbBuilt { repository: advanced, at: tip } =>
+                  match tip {
+                    Absent => false
+                    Present { value: tip_ref } =>
+                      discontinuous && does_not_move && control
+                        && advance_from(repository: advanced, parent: base_ref, from: rs.r0, to: rs.r2) == "already_advanced"
+                        && advance_from(repository: advanced, parent: tip_ref, from: rs.r1, to: rs.r0) == "already_placed"
+                        && advance_from(repository: advanced, parent: tip_ref, from: rs.r1, to: rs.r2) == "minted"
+                  }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+// ONE INTAKE LINE PER REPOSITORY (the NO-LAND ruling on gunbc#13402, blocker 3): a second base
+// refuses whatever revision it names -- the same revision, and a different one -- naming the base the
+// repository already holds. Two bases would be two tips, and every "the tip" reader would choose.
+test fn a_repository_holds_one_intake_line() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } =>
+      match based_at(r0: rs.r0) {
+        MbSetupFailed => false
+        MbBuilt { repository, at } =>
+          match at {
+            Absent => false
+            Present { value: base_ref } =>
+              match repository.staged {
+                Absent => false
+                Present { value: staged } =>
+                  match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: staged.locator }, message: "again", revision: rs.r0) {
+                    IntakeBaseLineExists { base } => repository_commit_ref_eq(left: base, right: base_ref)
+                    IntakeBaseMinted { repository: _, reference: _ } => false
+                    IntakeBaseAllocatorInvalid { next_ordinal: _ } => false
+                    IntakeBaseRootRefused { cause: _ } => false
+                  }
+                  && match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: staged.locator }, message: "r1", revision: rs.r1) {
+                    IntakeBaseLineExists { base } => repository_commit_ref_eq(left: base, right: base_ref)
+                    IntakeBaseMinted { repository: _, reference: _ } => false
+                    IntakeBaseAllocatorInvalid { next_ordinal: _ } => false
+                    IntakeBaseRootRefused { cause: _ } => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn intakes_of(commits: List<RepositoryCommit>) -> List<String> {
+  map(commits, c => match c.intake {
+    IntakeNone => "none"
+    IntakeUnrecordedByFormat => "unrecorded"
+    IntakeStaleCapture { captured_against: _ } => "stale_capture"
+    IntakeBase { revision: _ } => "base"
+    IntakeAdvance { from: _, to: _ } => "advance"
+  })
+}
+
+fn base_advance_child(rs: IntakeRevisions) -> MbBuild {
+  mb_commit(
+    build: mb_stage(build: mb_intake_advance(build: based_at(r0: rs.r0), message: "advance r0..r1", from: rs.r0, to: rs.r1), path: "src/c.dag", text: "C"),
+    message: "dispatch candidate: n a2",
+  )
+}
+
+// THE WIRE: v9 carries every arm and reads it back; a v8 document of the same repository reads back
+// every commit UNRECORDED (that format's silence, never IntakeNone); the whole save route refuses a
+// recorded intake it has no member for, while the sharded writer carries it.
+test fn the_intake_member_round_trips_through_v9_and_reads_unrecorded_from_v8() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } =>
+      match base_advance_child(rs: rs) {
+        MbSetupFailed => false
+        MbBuilt { repository, at: _ } => {
+          let v9 = match decode_repository_v9_index(v: encode_repository_v9(repo: repository)) {
+            ShardedIndexRefused { cause: _ } => false
+            ShardedIndexDecoded { index } =>
+              match decode_repository_v7_finish(v: index.document, store: repository.store, commit_policy: index.commit_policy) {
+                RepositoryDecodeRefused { cause: _ } => false
+                RepositoryDecoded { envelope } =>
+                  intakes_of(commits: envelope.commits) == ["base", "advance", "none"]
+                    && match envelope.checked_out {
+                      Absent => false
+                      Present { value: head } =>
+                        match line_intake(commits: envelope.commits, head: head) {
+                          LineIntakeAt { commit: _, revision } => intake_revision_eq(left: revision, right: rs.r1)
+                          LineIntakeAbsent => false
+                          LineIntakeUnrecorded { commit: _ } => false
+                          LineIntakeUnreadable { at: _ } => false
+                        }
+                    }
+              }
+          }
+          let v8 = match decode_repository_v8_index(v: encode_repository_v8(repo: repository)) {
+            ShardedIndexRefused { cause: _ } => false
+            ShardedIndexDecoded { index } =>
+              match decode_repository_v7_finish(v: index.document, store: repository.store, commit_policy: index.commit_policy) {
+                RepositoryDecodeRefused { cause: _ } => false
+                RepositoryDecoded { envelope } => intakes_of(commits: envelope.commits) == ["unrecorded", "unrecorded", "unrecorded"]
+              }
+          }
+          v9 && v8
+        }
+      }
+  }
+}
+
+test fn the_whole_format_refuses_a_recorded_intake_that_the_sharded_writer_carries() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } =>
+      match based_at(r0: rs.r0) {
+        MbSetupFailed => false
+        MbBuilt { repository, at: _ } =>
+          match encode_repository_checked(repo: repository) {
+            RepositoryEncodeRefused { cause: RepositoryEncodeIntakeNotInWholeFormat { commit: _ } } => true
+            RepositoryEncodeRefused { cause: _ } => false
+            RepositoryEncoded { value: _ } => false
+          }
+          && match encode_repository_sharded_checked(repo: repository) {
+            RepositoryEncoded { value: _ } => true
+            RepositoryEncodeRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+// A DAMAGED INTAKE MEMBER REFUSES rather than decoding as "no intake": a recorded arm missing its
+// revision, carrying an extra member, naming an unknown kind, or spelled as a bare string.
+fn intake_refused(value: JsonValue) -> Bool {
+  match decode_commit_intake(value: value) {
+    CommitIntakeRefused { cause: _ } => true
+    CommitIntakeDecoded { intake: _ } => false
+  }
+}
+
+test fn a_damaged_intake_member_refuses() -> Bool {
+  match revisions() {
+    Absent => false
+    Present { value: rs } => {
+      let round_trip = match decode_commit_intake(value: encode_commit_intake(intake: IntakeAdvance { from: rs.r0, to: rs.r1 })) {
+        CommitIntakeDecoded { intake } =>
+          match intake {
+            IntakeAdvance { from, to } => intake_revision_eq(left: from, right: rs.r0) && intake_revision_eq(left: to, right: rs.r1)
+            IntakeNone => false
+            IntakeBase { revision: _ } => false
+            IntakeUnrecordedByFormat => false
+            IntakeStaleCapture { captured_against: _ } => false
+          }
+        CommitIntakeRefused { cause: _ } => false
+      }
+      round_trip
+        && intake_refused(value: json_object(members: [json_kv(key: "kind", value: json_string(s: "base"))]))
+        && intake_refused(value: json_object(members: [json_kv(key: "kind", value: json_string(s: "none")), json_kv(key: "revision", value: json_string(s: "sha1:d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"))]))
+        && intake_refused(value: json_object(members: [json_kv(key: "kind", value: json_string(s: "rebase"))]))
+        && intake_refused(value: json_object(members: [json_kv(key: "kind", value: json_string(s: "base")), json_kv(key: "revision", value: json_string(s: "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"))]))
+        && intake_refused(value: JsonString { value: "base" })
+    }
+  }
+}

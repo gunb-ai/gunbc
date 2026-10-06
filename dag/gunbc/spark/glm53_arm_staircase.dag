@@ -17,6 +17,8 @@ import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_siz
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmFlashinferAutotuneSkipOps }
+import extdeps.docker.cli { DockerEnvAssignment }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization, group_b_restoration_window_tokens, group_b_restoration_max_batched_tokens, group_b_experiment_subject_seats }
 import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchAdmission, GroupArmLaunchAdmittedForAdoptionOnly, group_arm_adopt_dangling, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, group_arm_plan_hosts, ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit, group_arm_launch_plan, group_arm_row_successor, arm_successor_wire, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, ArmDryPlan, ArmWetSession, ArmPreApplyPassed, group_arm_read_occupancy, group_arm_memory_need, group_arm_apply_admitted }
 
@@ -217,6 +219,26 @@ fn glm53_step_assignment(s: Glm53StaircaseStep) -> FabricServingAssignment {
   fabric_serving_assignment_for_launch(group: FabricGroupA, checkpoint: glm53_step_checkpoint(s: s), runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4)
 }
 
+// THE NVFP4 STEPS DECLARE ONE MORE VARIABLE THAN THE FP8 STEPS, and it is a fact of that arm, not a
+// tuning preference: VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS for the two trtllm fused_moe gemms. Without it the
+// pinned runtime's leader-only sparse-MLA pre-tune seeds rank 0 with rank-keyed fused_moe tactics and the
+// synchronized autotune deadlocks the other ranks (nvfp4-8, fleet-converge 37190290418: workers blocked
+// 30 minutes, tuned alone 26, the head's barrier closed; extdeps.vllm.environment cites the source). COST,
+// carried into every NVFP4 receipt: rank 0 runs its sparse-MLA-tuned fused_moe tactics while ranks 1-3 run
+// the heuristic tactic -- the ranks are not kernel-identical and NVFP4 throughput is a LOWER BOUND.
+// Operator-approved via valiant-crab-775, 2026-10-04, as the diagnostic configuration; not yet the standing one.
+data glm53_nvfp4_autotune_skip_ops: List<String> = ["trtllm::fused_moe::gemm1", "trtllm::fused_moe::gemm2"]
+
+fn glm53_step_deployment_env(s: Glm53StaircaseStep) -> List<DockerEnvAssignment> {
+  match s {
+    Glm53Fp8Step { step: _ } => glm_group_b_deployment_env()
+    Glm53Nvfp4Step { step: _ } => concat(glm_group_b_deployment_env(), [DockerEnvAssignment {
+      name: vllm_environment_variable_name(v: VllmFlashinferAutotuneSkipOps),
+      value: join(glm53_nvfp4_autotune_skip_ops, ","),
+    }])
+  }
+}
+
 fn glm53_step_inputs(s: Glm53StaircaseStep) -> GroupArmLaunchInputs? {
   match glm53_step_profile(s: s) {
     Absent => none
@@ -224,7 +246,7 @@ fn glm53_step_inputs(s: Glm53StaircaseStep) -> GroupArmLaunchInputs? {
       assignment: glm53_step_assignment(s: s),
       profile: p,
       intent: glm53_staircase_intent,
-      deployment_env: glm_group_b_deployment_env(),
+      deployment_env: glm53_step_deployment_env(s: s),
       container: glm53_staircase_container,
       units: glm53_staircase_units,
       purpose: join(["the GLM-5.3-Flash Group A staircase step ", glm53_step_wire(s: s) as String], "") as NonEmptyStr,

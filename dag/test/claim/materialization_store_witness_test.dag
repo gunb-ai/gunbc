@@ -156,7 +156,7 @@ fn eval_preimage(req: ArtifactRequest) -> NonEmptyStr {
 }
 
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
     StoreCommitNotPrepared { commit: _ } => ""
   }
@@ -207,7 +207,7 @@ test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool {
   }
   let receipt_ok = store_lookup_fold(
     l: l,
-    hit: (a, ps, r) => r.request_key == request_key(req: bundle_req())
+    hit: (a, ps, bs, r) => r.request_key == request_key(req: bundle_req())
       && r.provider == materialization_store_local_id
       && match r.disposition { RealizationServed => true, RealizationCommitted => false, RealizationConvergedOnPriorCommit => false },
     miss: k => false,
@@ -289,6 +289,7 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
       parts: [payload_part(payload: verdicts)]
     },
     payloads: [verdicts],
+    blobs: [],
     evaluation_preimage: eval_preimage(req: bundle_req()),
     result_preimage: result_content_canonical(parts: [payload_part(payload: verdicts)], payloads: [verdicts])
   )
@@ -298,12 +299,12 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
 // ---- commit: the door, and each settle arm
 
 test fn the_write_door_refuses_before_publishing() -> Bool {
-  let missing = store_commit_prepare(req: bundle_req(), payloads: [ArtifactPayload { id: output_module_test_verdicts, content: "x" }])
-  let undeclared = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_native_compiler_executable, content: "x" }]))
-  let repeated = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_module_test_verdicts, content: "y" }]))
+  let missing = store_commit_prepare(req: bundle_req(), payloads: [ArtifactPayload { id: output_module_test_verdicts, content: "x" }], blobs: [])
+  let undeclared = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_native_compiler_executable, content: "x" }]), blobs: [])
+  let repeated = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_module_test_verdicts, content: "y" }]), blobs: [])
   preparation_tag(p: missing) == "contract_refused" && preparation_tag(p: undeclared) == "manifest_uninterpretable"
     && preparation_tag(p: repeated) == "manifest_uninterpretable"
-    && preparation_tag(p: store_commit_prepare(req: bundle_req(), payloads: bundle_payloads())) == "prepared"
+    && preparation_tag(p: store_commit_prepare(req: bundle_req(), payloads: bundle_payloads(), blobs: [])) == "prepared"
 }
 
 fn preparation_tag(p: StoreCommitPreparation) -> String {
@@ -314,7 +315,7 @@ fn preparation_tag(p: StoreCommitPreparation) -> String {
 }
 
 fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ContentHash {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d, offered_result: _ } => d
     StoreCommitNotPrepared { commit: _ } => request_key(req: req)
   }
@@ -338,7 +339,7 @@ test fn commit_settles_only_on_a_verified_read_back() -> Bool {
 }
 
 fn offered_result_of(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ResultContentIdentity {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: r } => r
     StoreCommitNotPrepared { commit: _ } => result_content_identity(
       bucket: request_key(req: req),
@@ -358,9 +359,9 @@ test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: bundle_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
+    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
+        StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && (ra.provider == rb.provider) == false && (ra.store_instance == rb.store_instance) == false
         StoreLookupMiss { key: _ } => false
@@ -606,9 +607,9 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: compiler_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
+    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
+        StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && ra.request_key == request_key(req: compiler_req())
             && (ra.provider == rb.provider) == false
@@ -638,7 +639,7 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
   let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
   match decode_store_object(content: tampered) {
     StoreObjectMalformed { cause: _ } => false
-    StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p, result_preimage: _ } =>
+    StoreObjectDecoded { manifest: m, payloads: ps, blobs: _, evaluation_preimage: p, result_preimage: _ } =>
       match artifact_from_manifest(m: m) {
         ManifestDecoded { artifact: a } =>
           lookup_is_refused_evaluation_preimage_mismatch(l: provider_serve(
@@ -671,7 +672,7 @@ test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bo
           (name == v1_name) == false
             && (name |> split(delimiter: ".") |> filter(p => p == store_object_format_version) |> count()) == 1
             && (c |> split(delimiter: store_object_format_version) |> count()) > 1
-        StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
+        StoreObjectDecoded { manifest: _, payloads: _, blobs: _, evaluation_preimage: _, result_preimage: _ } => false
       }
     }
   }
@@ -694,21 +695,23 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
           let o256 = encode_store_object(
             manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k256, parts: [part] },
             payloads: payloads,
+            blobs: [],
             evaluation_preimage: pre,
             result_preimage: result
           )
           let o512 = encode_store_object(
             manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k512, parts: [part] },
             payloads: payloads,
+            blobs: [],
             evaluation_preimage: pre,
             result_preimage: result
           )
           match decode_store_object(content: o256) {
             StoreObjectMalformed { cause: _ } => false
-            StoreObjectDecoded { manifest: m256, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+            StoreObjectDecoded { manifest: m256, payloads: _, blobs: _, evaluation_preimage: _, result_preimage: _ } =>
               match decode_store_object(content: o512) {
                 StoreObjectMalformed { cause: _ } => false
-                StoreObjectDecoded { manifest: m512, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+                StoreObjectDecoded { manifest: m512, payloads: _, blobs: _, evaluation_preimage: _, result_preimage: _ } =>
                   m256.request_key == k256
                     && m512.request_key == k512
                     && match content_hash_family(hash: m256.request_key) {
