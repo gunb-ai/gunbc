@@ -31,9 +31,11 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStat
 //   maxAge: "Condition for lifecycle transitions to apply after an object reaches an age in seconds."
 //
 // THE PUT REPLACES THE BUCKET'S WHOLE RULE SET: the body is the complete list, so a caller converges
-// the set, never one rule. Only the delete-by-age transition is modeled (it is the one this fleet
-// declares); a rule carrying any other transition is read back as a rule this model does not
-// describe, and a converge comparing against it refuses rather than overwriting it unread.
+// the set, never one rule. Two Age transitions are modeled, deleteObjectsTransition and
+// abortMultipartUploadsTransition (the second is how Cloudflare's default rule on a new bucket is
+// written), with a prefix or bucket-wide conditions. A rule carrying both or neither, a Date
+// condition or storageClassTransitions is read back as a rule this model does not describe, and a
+// converge comparing against it refuses rather than overwriting it unread.
 // The cf-r2-jurisdiction header is not carried, so both operations address the default
 // jurisdiction, as extdeps.cloudflare.r2_buckets states for its own.
 
