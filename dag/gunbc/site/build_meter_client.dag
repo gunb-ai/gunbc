@@ -54,9 +54,9 @@ fn build_meter_bind_statements() -> List<TsStmt> {
         ts_return(expr: Present { value: ts_ident(name: "slept") }),
       ]))),
       meter_listen(event: "pointermove", params: ["event"], body: [
-        ts_if(cond: build_meter_reduced_motion_expr(), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_if(cond: build_meter_reduced_motion_expr(), then_stmt: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
         ts_const(name: "worker", value: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "querySelector"), args: [ts_lit_str(value: join([".", build_meter_worker_class], ""))])),
-        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "worker")), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "worker")), then_stmt: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
         ts_const(name: "box", value: ts_call(callee: ts_member(object: ts_ident(name: "worker"), property: "getBoundingClientRect"), args: [])),
         ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "setAttribute"), args: [
           ts_lit_str(value: build_meter_look_attribute),
@@ -78,7 +78,7 @@ fn build_meter_bind_statements() -> List<TsStmt> {
       ]),
       meter_listen(event: "pointerleave", params: [], body: [
         ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "removeAttribute"), args: [ts_lit_str(value: build_meter_look_attribute)])),
-        ts_if(cond: ts_call(callee: ts_ident(name: "rouse"), args: []), then: ts_block(stmts: [
+        ts_if(cond: ts_call(callee: ts_ident(name: "rouse"), args: []), then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_waking_class)),
           ts_expr_stmt(expr: meter_later(body: [
             ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_waking_class)),

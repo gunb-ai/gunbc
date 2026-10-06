@@ -2723,7 +2723,7 @@ fn workflow_meter_swap_stmts() -> List<TsStmt> {
           left: workflow_meter_body_attribute_expr(element: "fresh", attribute: build_meter_revision_attribute),
           op: "===",
           right: workflow_meter_bm_attribute(name: workflow_meter_wanted_attribute))),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_const(name: "bmRoundsBefore", value: ts_prefix(op: "+", expr: workflow_meter_body_attribute_expr(element: "bm", attribute: build_meter_rounds_attribute))),
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "bm"), property: "innerHTML"),
@@ -2741,7 +2741,7 @@ fn workflow_meter_swap_stmts() -> List<TsStmt> {
               right: ts_ident(name: "bmRoundsBefore")),
             op: "&&",
             right: ts_prefix(op: "!", expr: build_meter_reduced_motion_expr())),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_call(
               callee: ts_member(object: ts_member(object: ts_ident(name: "bm"), property: "classList"), property: "add"),
               args: [ts_lit_str(value: build_meter_beat_class)])),
@@ -2783,11 +2783,11 @@ fn workflow_meter_refresh_stmts() -> List<TsStmt> {
           left: workflow_meter_body_attribute_expr(element: "bm", attribute: build_meter_revision_attribute),
           op: "!==",
           right: ts_ident(name: "mk"))),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         workflow_meter_bm_call(method: "setAttribute", args: [ts_lit_str(value: workflow_meter_wanted_attribute), ts_ident(name: "mk")]),
         ts_if(
           cond: ts_binop(left: workflow_meter_bm_attribute(name: workflow_meter_asked_attribute), op: "!==", right: ts_ident(name: "mk")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             workflow_meter_bm_call(method: "setAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute), ts_ident(name: "mk")]),
             ts_expr_stmt(expr: ts_call(
               callee: ts_member(
@@ -2808,7 +2808,7 @@ fn workflow_meter_refresh_stmts() -> List<TsStmt> {
               args: [ts_arrow(params: [], body: ts_block(stmts: [
                 ts_if(
                   cond: ts_binop(left: workflow_meter_bm_attribute(name: workflow_meter_asked_attribute), op: "===", right: ts_ident(name: "mk")),
-                  then: ts_block(stmts: [workflow_meter_bm_call(method: "removeAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute)])]),
+                  then_stmt: ts_block(stmts: [workflow_meter_bm_call(method: "removeAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute)])]),
                   else_stmt: none),
               ]))])),
           ]),
