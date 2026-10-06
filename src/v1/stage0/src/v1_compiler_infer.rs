@@ -25622,12 +25622,28 @@ pub fn build_symbol_index_census_raw_nodes(
                 module_nodes.clone(),
                 source_indices.clone(),
             ),
-            file_named_imports: module_nodes.iter().cloned().fold(
+            file_modules: module_nodes.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, String>(),
+                |acc: Rc<HashMap<String, String>>, module_node: Rc<Node>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        module_node.span.clone().file.clone(),
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            module_node.clone(),
+                        ),
+                    )
+                },
+            ),
+            module_named_imports: module_nodes.iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
                 |acc: Rc<HashMap<String, Rc<HashMap<String, String>>>>, module_node: Rc<Node>| {
                     v1_rt::rc_map_insert(
                         acc,
-                        module_node.span.clone().file.clone(),
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            module_node.clone(),
+                        ),
                         file_named_imports_of(module_node.clone(), source_indices.clone()),
                     )
                 },
@@ -26196,7 +26212,8 @@ pub fn census_bare_fill_with_resolved_fn_sigs(
             services: services2.clone(),
             transparent_alias_rep: index.transparent_alias_rep.clone(),
             type_head_exposures: index.type_head_exposures.clone(),
-            file_named_imports: index.file_named_imports.clone(),
+            file_modules: index.file_modules.clone(),
+            module_named_imports: index.module_named_imports.clone(),
         })
     }
 }
@@ -26241,7 +26258,8 @@ pub fn census_with_resolved_fn_sigs(
             services: fill.services.clone(),
             transparent_alias_rep: fill.transparent_alias_rep.clone(),
             type_head_exposures: fill.type_head_exposures.clone(),
-            file_named_imports: fill.file_named_imports.clone(),
+            file_modules: fill.file_modules.clone(),
+            module_named_imports: fill.module_named_imports.clone(),
         })
     }
 }
@@ -26285,9 +26303,13 @@ pub fn symbol_index_with_bare_fill(
                 tree.type_head_exposures.clone(),
                 closure.type_head_exposures.clone(),
             ),
-            file_named_imports: v1_rt::rc_map_merge(
-                tree.file_named_imports.clone(),
-                closure.file_named_imports.clone(),
+            file_modules: v1_rt::rc_map_merge(
+                tree.file_modules.clone(),
+                closure.file_modules.clone(),
+            ),
+            module_named_imports: v1_rt::rc_map_merge(
+                tree.module_named_imports.clone(),
+                closure.module_named_imports.clone(),
             ),
         })
     }
@@ -26374,9 +26396,13 @@ pub fn symbol_index_with_qualified_fill(
                 fill.type_head_exposures.clone(),
                 closure.type_head_exposures.clone(),
             ),
-            file_named_imports: v1_rt::rc_map_merge(
-                fill.file_named_imports.clone(),
-                closure.file_named_imports.clone(),
+            file_modules: v1_rt::rc_map_merge(
+                fill.file_modules.clone(),
+                closure.file_modules.clone(),
+            ),
+            module_named_imports: v1_rt::rc_map_merge(
+                fill.module_named_imports.clone(),
+                closure.module_named_imports.clone(),
             ),
         })
     }

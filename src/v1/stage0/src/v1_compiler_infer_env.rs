@@ -352,7 +352,8 @@ pub struct SymbolIndex {
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
-    pub file_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
+    pub file_modules: Rc<HashMap<String, String>>,
+    pub module_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -367,7 +368,8 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
-        file_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
+        file_modules: v1_rt::rc_empty_map::<String, String>(),
+        module_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
     })
 }
 
@@ -466,30 +468,89 @@ pub fn bare_occurrence_import(
     reference: Rc<Node>,
 ) -> Option<Rc<BareOccurrenceBinding>> {
     match v1_rt::map_get(
-        &index.file_named_imports.clone(),
+        &index.file_modules.clone(),
         reference.span.clone().file.clone(),
     ) {
         std::option::Option::None => std::option::Option::None,
-        Some(named) => match v1_rt::map_get(&named, name.clone()) {
+        Some(referencing_module) => match symbol_index_named_import_source(
+            index.clone(),
+            referencing_module.clone(),
+            name.clone(),
+        ) {
             std::option::Option::None => std::option::Option::None,
-            Some(from_module) => match symbol_index_lookup(
+            Some(from_module) => Some(bare_occurrence_import_terminal(
                 index.clone(),
-                v1_rt::concat(
-                    v1_rt::concat(from_module.clone(), ".".to_string()),
-                    name.clone(),
-                ),
-            ) {
-                Some(decl) => Some(Rc::new(
-                    BareOccurrenceBinding::BareOccurrenceImportedByName {
-                        module_path: from_module.clone(),
-                        declaration: decl.clone(),
-                    },
-                )),
-                std::option::Option::None => {
-                    Some(Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided))
-                }
-            },
+                from_module.clone(),
+                name.clone(),
+                16,
+            )),
         },
+    }
+}
+
+pub fn symbol_index_named_import_source(
+    index: Rc<SymbolIndex>,
+    module_path: String,
+    name: String,
+) -> Option<String> {
+    match v1_rt::map_get(&index.module_named_imports.clone(), module_path.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(named) => v1_rt::map_get(&named, name.clone()),
+    }
+}
+
+pub fn bare_occurrence_import_terminal(
+    mut __tco_loop_index: Rc<SymbolIndex>,
+    mut __tco_loop_module_path: String,
+    mut __tco_loop_name: String,
+    mut __tco_loop_fuel: i64,
+) -> Rc<BareOccurrenceBinding> {
+    loop {
+        #[allow(unused_mut)]
+        let mut index = __tco_loop_index;
+        #[allow(unused_mut)]
+        let mut module_path = __tco_loop_module_path;
+        #[allow(unused_mut)]
+        let mut name = __tco_loop_name;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (fuel.clone() == 0) {
+            break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+        } else {
+            match symbol_index_named_import_source(index.clone(), module_path.clone(), name.clone())
+            {
+                Some(next) => {
+                    let __tco_0 = index;
+                    let __tco_1 = next.clone();
+                    let __tco_2 = name;
+                    let __tco_3 = v1_rt::int_sub(fuel, 1);
+                    __tco_loop_index = __tco_0;
+                    __tco_loop_module_path = __tco_1;
+                    __tco_loop_name = __tco_2;
+                    __tco_loop_fuel = __tco_3;
+                    continue;
+                }
+                std::option::Option::None => {
+                    match symbol_index_lookup(
+                        index.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                            name.clone(),
+                        ),
+                    ) {
+                        Some(decl) => {
+                            break Rc::new(BareOccurrenceBinding::BareOccurrenceImportedByName {
+                                module_path: module_path.clone(),
+                                declaration: decl.clone(),
+                            });
+                        }
+                        std::option::Option::None => {
+                            break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -641,7 +702,8 @@ pub fn symbol_index_insert(
         services: index.services.clone(),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
-        file_named_imports: index.file_named_imports.clone(),
+        file_modules: index.file_modules.clone(),
+        module_named_imports: index.module_named_imports.clone(),
     })
 }
 
@@ -667,7 +729,8 @@ pub fn symbol_index_insert_decl(
         services: index.services.clone(),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
-        file_named_imports: index.file_named_imports.clone(),
+        file_modules: index.file_modules.clone(),
+        module_named_imports: index.module_named_imports.clone(),
     })
 }
 
@@ -690,7 +753,8 @@ pub fn symbol_index_insert_service(
         ),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
-        file_named_imports: index.file_named_imports.clone(),
+        file_modules: index.file_modules.clone(),
+        module_named_imports: index.module_named_imports.clone(),
     })
 }
 
