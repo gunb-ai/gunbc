@@ -57,7 +57,9 @@ import gunbc.site.element.build_meter {
 import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view, BuildMeterToolCount, BuildMeterRoundOperations }
 import gunbc.harness.harness_tool { RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused, ProviderFailed }
+import gunbc.site.build_meter_client { build_meter_dwell_ms }
+import gunbc.site.specimen_meter_client { specimen_hand_attribute, specimen_flap_attribute, specimen_target_attribute, specimen_flap_ms }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
@@ -700,10 +702,9 @@ fn specimen_field_list_section() -> Fragment {
 }
 
 // THE WORKER AT ITS REAL SIZE. One meter per pose, drawn at the strip's own 22px with no
-// enlargement, so the robot's antenna, square eyes, lids and props are judged where they are
-// shown: working, stopped, paused on a stale revision (outlined), and the two naps side by side,
-// waiting for a seat (asleep on a chair in the waiting room, under the clock) and published (asleep
-// on the floor beside the finish rule). Each is the production meter over a supplied view; the
+// enlargement, so the robot's antenna, eyes, lids and mouth are judged where they are shown:
+// working (deadpan), verification failed (sad), paused on a stale revision (outlined), waiting for a
+// seat (asleep on the floor) and published (content, beside the finish rule). Each is the production meter over a supplied view; the
 // page's theme switch shows the same strip in the other scheme.
 data specimen_pose_strip_class: String = "specimen-pose-strip"
 
@@ -711,6 +712,73 @@ fn specimen_pose_section() -> Fragment {
   specimen_section(label: "Worker poses, actual size", body: [
     el_attrs("div", [attr(name: "class", value: specimen_pose_strip_class)], map(specimen_pose_fixtures, f => specimen_meter_node(row: specimen_meter(fixture: f)))),
   ])
+}
+
+// THE METER'S CHANGES OF SCENE. One attempt in each scene, each drawn by the server: the production
+// meter over a view from the production derivation. A control hands one drawing to the live meter
+// the way the page's workflow observation hands it a newer rendering
+// (gunbc.site.specimen_meter_client), so what plays here is what a live attempt plays: the facts
+// change at once, a new scene is drawn once it has held for the meter's dwell, a stopped or
+// published one at once, and a flap faster than the dwell is never drawn.
+data specimen_scene_subject: String = "specimen-scenes"
+data specimen_scene_attempt: String = "3b9e0d6c41a7f528"
+
+type SpecimenScene {
+  key: String
+  label: String
+  view: BuildMeterView
+}
+
+fn specimen_scene_template_id(key: String) -> String {
+  join(["specimen-scene-", key], "")
+}
+
+fn specimen_scene_view(segments: List<WorkflowSegment>, provider: ProviderExecutionState, handoff: CandidateHandoffState, stale: Bool) -> BuildMeterView {
+  specimen_meter_derived(attempt_key: specimen_scene_attempt, segments: segments, rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 2) }, provider: provider, handoff: handoff, stale: stale)
+}
+
+fn specimen_scenes() -> List<SpecimenScene> {
+  let agent_active = specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
+  [
+    SpecimenScene { key: "working", label: "Working", view: specimen_scene_view(segments: agent_active, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "waiting", label: "Waiting for a seat", view: specimen_scene_view(segments: agent_active, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "idle", label: "Between turns", view: specimen_scene_view(segments: agent_active, provider: ProviderCompleted { activity: "Agent turn complete" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "stopped", label: "Stopped", view: specimen_scene_view(
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: ["", "", "the agent's turn ended in an error"]),
+      provider: ProviderFailed { activity: "Agent failed", detail: "the provider ended the turn with an error" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "published", label: "Published", view: specimen_scene_view(
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete], details: []),
+      provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }, stale: false) },
+    SpecimenScene { key: "paused", label: "Stale", view: specimen_scene_view(segments: agent_active, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: true) },
+  ]
+}
+
+fn specimen_scene_meter(view: BuildMeterView) -> Fragment {
+  build_meter(summary: compact_work_summary_of_view(subject: specimen_scene_subject, view: view), link_attributes: [])
+}
+
+fn specimen_scene_control(attribute: String, value: String, label: String) -> Fragment {
+  el_attrs("span", [attr(name: attribute, value: value), attr(name: specimen_target_attribute, value: specimen_scene_subject)], [
+    button(input: Button { label: label, idiom: IssueButtonOutlined, size: ButtonSmall, availability: IssueActionEnabled }),
+  ])
+}
+
+fn specimen_scene_section() -> Fragment {
+  let scenes = specimen_scenes()
+  specimen_section(label: "BuildMeter: changes of scene", body: concat([
+    specimen_note(text: join([
+      "Each control hands the meter the server's drawing of this attempt in that scene, as the page's observation would. The facts change at once; a new scene is drawn once it has held for ",
+      to_string(build_meter_dwell_ms / 1000), " s, and stopped or published at once. Flap alternates working and waiting every ",
+      to_string(specimen_flap_ms), " ms, faster than the dwell, so the drawing does not change.",
+    ], "")),
+    el_attrs("div", [attr(name: "class", value: specimen_meter_class)], match scenes.first() {
+      Present { value: first } => [specimen_scene_meter(view: first.view)]
+      Absent => []
+    }),
+    specimen_row(children: concat(
+      map(scenes, sc => specimen_scene_control(attribute: specimen_hand_attribute, value: specimen_scene_template_id(key: sc.key), label: sc.label)),
+      [specimen_scene_control(attribute: specimen_flap_attribute, value: join([specimen_scene_template_id(key: "working"), " ", specimen_scene_template_id(key: "waiting")], ""), label: "Flap working and waiting")])),
+  ], map(scenes, sc => el_attrs("template", [attr(name: "id", value: specimen_scene_template_id(key: sc.key))], [specimen_scene_meter(view: sc.view)]))))
 }
 
 fn specimen_meter_section() -> Fragment {
@@ -736,6 +804,7 @@ type SpecimenSection
   | SpecimenRelationSection
   | SpecimenChainSection
   | SpecimenPoseSection
+  | SpecimenSceneSection
   | SpecimenMeterSection
   | SpecimenFieldListSection
 
@@ -750,7 +819,7 @@ fn specimen_element_sections(element: SiteElement) -> List<SpecimenSection> {
     SiteNodeRow => [SpecimenNodeRowSection]
     SiteRelationTable => [SpecimenRelationSection]
     SiteNodeChain => [SpecimenChainSection]
-    SiteBuildMeter => [SpecimenPoseSection, SpecimenMeterSection]
+    SiteBuildMeter => [SpecimenPoseSection, SpecimenSceneSection, SpecimenMeterSection]
     SiteFieldList => [SpecimenFieldListSection]
   }
 }
@@ -767,6 +836,7 @@ fn specimen_section_node(section: SpecimenSection) -> Fragment {
     SpecimenRelationSection => specimen_relation_section()
     SpecimenChainSection => specimen_chain_section()
     SpecimenPoseSection => specimen_pose_section()
+    SpecimenSceneSection => specimen_scene_section()
     SpecimenMeterSection => specimen_meter_section()
     SpecimenFieldListSection => specimen_field_list_section()
   }
