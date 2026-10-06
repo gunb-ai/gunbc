@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.authored_text_fixtures_ground_nothing_at_infer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data authored_text_fixtures_ground_nothing_at_infer: RecurringFailureMode = RecurringFailureMode {
+  identity: "authored_text_fixtures_ground_nothing_at_infer" as NonEmptyStr,
+
+  receipts: [
+    "a one-module program assembled from authored text through v2.compiler.program_assembly assemble_program_from_ingest resolves cleanly but grounds nothing at infer. INVALID STATE: the fixture module declares ordinary types and fns (records, coproducts, generic coproducts, param-fed constructions, variant-scrutinee matches -- exactly the shapes v2.test.claim.match_binder.match_binder_typing's mbt_decls uses), resolve accepts and the construct reads decode correctly (Boxed/Seal/Mk), and infer then reports a ~18-28-diagnostic cascade of infer_grounding_not_derived with inhabitance_undecidable_formal_unresolved and inhabitance_undecidable_argument_type_not_derived mid-chain, ending in a downstream refusal such as arrow_body_does_not_inhabit_declared_return -- so every fact-level reading in the module is underived. HARM: any claim that needs a grounded infer fact from an assembled-text fixture cannot obtain one, and the cascade's shape is identical across fixtures, so it does not point at any declaration. THE SILENT PART: no existing authored-text claim asserts a grounded infer fact -- the passing match_binder claims assert resolve-side structure or negative (not-yet-typed) states -- so nothing ever went red and the route's grounding was never exercised by a green run.",
+
+    "RECEIPT, 2026-10-06, session clever-bat-68, from the variant-scrutinee infer work (#13210), printed by reading the readings through the gunbc run --function decode route rather than inferred. The cascade reproduces on a fixture stripped to the mbt_decls-proven shapes (data vfp_fixture_src in v2.test.claim.variant_field_infer_probe), and independently on a minimal arrow-field module (data vfp_arrow_src) and a compound generic-alias module (data vfp_compound_src), while the same shapes ground in the real corpus compile (3054 modules resolved). The real pipeline and the fixture route differ somewhere between assembly and infer's grounding join; THE TWO CANDIDATE LINKS ARE UNDISTINGUISHED: (1) assemble_program_from_ingest's wiring does not deliver to infer what the real pipeline's assembly delivers (binding table / builtins the grounding join reads), or (2) the floor's claim-execution context does not supply it. Distinguishing them needs an instrument inside the grounding join, which is out of scope here.",
+
+    "RUNG FOUND AT: below the ladder -- the cascade is silent about the route-level cause: no diagnostic says the assembled program lacks the grounding context the real pipeline supplies; the reader is handed a module-wide failure that reads like per-binding ungroundability. ATTAINABLE CEILING: structurally decidable -- the real pipeline grounds the same shapes, so the difference is a wiring fact, findable by comparing what the two assembly routes hand infer. NEXT-RUNG TRIGGER: either assemble_program_from_ingest delivers the grounding context so an assembled-text fixture's facts derive like the corpus's, or the route refuses with a diagnostic naming the missing grounding context -- so a fact-level claim on an authored-text fixture either holds or is told why it cannot. SANCTIONED WORKAROUND (DESIGN 3's witness rule): supply the subject as a LOWERED VALUE through the real pipeline's data path (v2.test.lens_common.resolve_fixture: namespace_graft + body_lowering_fold + admit_normalized_tree) for fact-level claims; authored text remains valid for resolve-side and refusal controls. NOT FIXED IN #13210: #13210's probe switches its fact-level claims to the lowered-value route and this row records the route defect for its own follow-up.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.variant_field_infer_probe", decl_name: "vfp_fixture_src", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.program_assembly", decl_name: "assemble_program_from_ingest", field: WholeDeclaration },
+  ],
+}
