@@ -1317,18 +1317,28 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
     let env_override = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok());
-    let cgroup_high = binding_high_cgroup_dir().and_then(|dir| {
-        read_cgroup_u64(&dir, "memory.high").map(|v| (dir.display().to_string(), v))
-    });
-    let cgroup_max = binding_cap_cgroup_dir().and_then(|dir| {
-        read_cgroup_u64(&dir, "memory.max").map(|v| (dir.display().to_string(), v))
+    let cgroup_high = crate::v1_rt::host_budget_tightest_cgroup("memory.high");
+    let cgroup_max = crate::v1_rt::host_budget_tightest_cgroup("memory.max");
+    let cgroup_v1_limit = crate::v1_rt::host_budget_cgroup_v1().map(|(dir, v)| {
+        (
+            dir,
+            match v {
+                crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+                    CgroupV1MemoryLimitValue::Limited(bytes)
+                }
+                crate::v1_rt::HostBudgetCgroupV1::Unlimited => CgroupV1MemoryLimitValue::Unlimited,
+                crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+                    CgroupV1MemoryLimitValue::Unparseable(body)
+                }
+            },
+        )
     });
     resolve_host_budget(
         env_override,
         cgroup_high,
         cgroup_max,
-        read_cgroup_v1_hierarchical_limit(),
-        darwin_physical_memory_bytes(),
+        cgroup_v1_limit,
+        crate::v1_rt::host_budget_darwin_physical(),
     )
 }
 
@@ -1361,7 +1371,8 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
 /// RUNG: *mitigatable*. The `.dag` authority states the correct rule and the Rust path does not
 /// enforce it; nothing detects the divergence today.
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
-    crate::v1_rt::read_host_budget_bytes()
+    let resolution = read_host_budget_resolution();
+    (resolution.bytes(), resolution.label())
 }
 
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable

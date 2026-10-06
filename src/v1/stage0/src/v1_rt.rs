@@ -1616,16 +1616,37 @@ pub fn contiguous_loop_elementwise_kernel(
 }
 
 /// Host memory planning ceiling as `(bytes, source label)`.
-/// Authority: `gunbc.host_budget_source`. Same join as the interpreter.
+/// Authority: `gunbc.host_budget_source`. Observations are the live reads
+/// `read_host_budget_resolution` consumes; this is the `(bytes, label)` view of
+/// the same precedence, including cgroup v1 `hierarchical_memory_limit`.
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
     let env = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok());
+    let v1_reading = host_budget_cgroup_v1();
+    if let Some((dir, HostBudgetCgroupV1::Unparseable(body))) = v1_reading.clone() {
+        return (
+            None,
+            format!(
+                "unreadable: cgroup v1 memory hierarchy at {dir} holds this process but its \
+                 hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
+                 tightest cannot be replaced by another reading"
+            ),
+        );
+    }
     let high = host_budget_tightest_cgroup("memory.high");
     let max = host_budget_tightest_cgroup("memory.max");
+    let v1 = match v1_reading {
+        Some((d, HostBudgetCgroupV1::Limited(b))) => Some((
+            format!("cgroup v1 memory.stat hierarchical_memory_limit ({d})"),
+            b,
+        )),
+        _ => None,
+    };
     let observed = [
         high.map(|(d, b)| (format!("cgroup memory.high ({})", d), b)),
         max.map(|(d, b)| (format!("cgroup memory.max ({})", d), b)),
+        v1,
     ]
     .into_iter()
     .flatten()
@@ -1657,7 +1678,7 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         return (
             Some(requested),
             format!(
-                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit",
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit",
                 requested
             ),
         );
@@ -1671,7 +1692,14 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
     )
 }
 
-fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
+#[derive(Clone)]
+pub enum HostBudgetCgroupV1 {
+    Limited(u64),
+    Unlimited,
+    Unparseable(String),
+}
+
+pub fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
     let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
     let rel = self_cg
         .lines()
@@ -1699,7 +1727,80 @@ fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
     best.map(|(v, d)| (d.display().to_string(), v))
 }
 
-fn host_budget_darwin_physical() -> Option<u64> {
+pub fn host_budget_cgroup_v1() -> Option<(String, HostBudgetCgroupV1)> {
+    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    if page_size <= 0 {
+        return Some((
+            "/proc/self/mountinfo".to_string(),
+            HostBudgetCgroupV1::Unparseable("sysconf(_SC_PAGESIZE) unreadable".to_string()),
+        ));
+    }
+    let page_size = page_size as u64;
+    let dir = host_budget_cgroup_v1_memory_dir(&self_cg, &mountinfo)?;
+    let value = match std::fs::read_to_string(std::path::Path::new(&dir).join("memory.stat")) {
+        Ok(stat) => host_budget_cgroup_v1_from_stat(&stat, page_size),
+        Err(e) => HostBudgetCgroupV1::Unparseable(format!("memory.stat: {e}")),
+    };
+    Some((dir, value))
+}
+
+fn host_budget_cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<String> {
+    let (mount_root, mount_point) = mountinfo.lines().find_map(|line| {
+        let fields: Vec<&str> = line.split(' ').collect();
+        let dash = fields.iter().position(|f| *f == "-")?;
+        let fstype = fields.get(dash + 1)?;
+        let super_opts = fields.get(dash + 3)?;
+        if *fstype == "cgroup" && super_opts.split(',').any(|o| o == "memory") {
+            Some((fields.get(3)?.to_string(), fields.get(4)?.to_string()))
+        } else {
+            None
+        }
+    })?;
+    let path = self_cg.lines().find_map(|l| {
+        let mut parts = l.splitn(3, ':');
+        let (_id, controllers, path) = (parts.next()?, parts.next()?, parts.next()?);
+        controllers
+            .split(',')
+            .any(|c| c == "memory")
+            .then(|| path.trim().to_string())
+    })?;
+    let rel = if mount_root == "/" {
+        path.as_str()
+    } else {
+        let rest = path.strip_prefix(mount_root.as_str())?;
+        if !(rest.is_empty() || rest.starts_with('/')) {
+            return None;
+        }
+        rest
+    };
+    Some(
+        std::path::Path::new(&mount_point)
+            .join(rel.trim_start_matches('/'))
+            .display()
+            .to_string(),
+    )
+}
+
+fn host_budget_cgroup_v1_from_stat(memory_stat: &str, page_size: u64) -> HostBudgetCgroupV1 {
+    let hits: std::vec::Vec<&str> = memory_stat
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "))
+        .collect();
+    let [body] = hits.as_slice() else {
+        return HostBudgetCgroupV1::Unparseable(memory_stat.to_string());
+    };
+    let unlimited = (i64::MAX as u64 / page_size) * page_size;
+    match body.trim().parse::<i128>() {
+        Ok(n) if n < 0 => HostBudgetCgroupV1::Unparseable(body.to_string()),
+        Ok(n) if n >= unlimited as i128 => HostBudgetCgroupV1::Unlimited,
+        Ok(n) => HostBudgetCgroupV1::Limited(n as u64),
+        Err(_) => HostBudgetCgroupV1::Unparseable(body.to_string()),
+    }
+}
+
+pub fn host_budget_darwin_physical() -> Option<u64> {
     if std::env::consts::OS != "macos" {
         return None;
     }
