@@ -559,6 +559,21 @@ data fabric_workspace_read_secret_id: NonEmptyStr = "cloudflare-r2-workspace-rea
 
 data fabric_workspace_write_secret_id: NonEmptyStr = "cloudflare-r2-workspace-write-token"
 
+// THE STORED WORKSPACE MINTS, pinned from what run_workspace_object_read and run_workspace_object_write
+// reported when they executed through the federated fleet-converge modes (2026-10-05: runs 37291106411
+// and 37292959180, receipts r2-workspace-object-{read,write}-mint-receipt). Each token id is the S3
+// access key id (r2_s3_access_key_is_created_token_id_citation). As for the durable origin's pins, the
+// instrument that re-derives the token ids is the account's token listing
+// (gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile), and a rotation changes a
+// credential's version and key id together.
+data fabric_workspace_read_secret_version: NonEmptyStr = "1"
+
+data fabric_workspace_read_access_key_id: NonEmptyStr = "e20cbd2a4ea865923de90edae08e4625"
+
+data fabric_workspace_write_secret_version: NonEmptyStr = "1"
+
+data fabric_workspace_write_access_key_id: NonEmptyStr = "6a9344d903c39cb7be832c930fa2c6a2"
+
 fn fabric_workspace_standing() -> R2OriginStanding {
   match allocated_bucket(purpose: FabricWorkspace {}) {
     Absent => R2OriginUnallocated { purpose: FabricWorkspace {} }
@@ -569,13 +584,19 @@ fn fabric_workspace_standing() -> R2OriginStanding {
           jurisdiction: R2JurisdictionDefault,
           location_hint: row.location_hint,
           purpose: FabricWorkspace {},
-          read_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_workspace_object_read"),
-            secret_id: fabric_workspace_read_secret_id,
+          read_credential: OriginCredentialPinned {
+            access_key_id: fabric_workspace_read_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_workspace_read_secret_id),
+              version: fabric_workspace_read_secret_version,
+            ),
           },
-          write_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_workspace_object_write"),
-            secret_id: fabric_workspace_write_secret_id,
+          write_credential: OriginCredentialPinned {
+            access_key_id: fabric_workspace_write_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_workspace_write_secret_id),
+              version: fabric_workspace_write_secret_version,
+            ),
           },
         }
       }
