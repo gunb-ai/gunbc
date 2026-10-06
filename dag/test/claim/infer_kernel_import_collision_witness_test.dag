@@ -32,14 +32,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Optional types in the closure; the kernel overlay would keep winning by name and the
 // imported declaration would keep winning by interned identity. Refusal is the construction.
 //
-// THE RED BYTES ARE THE FILES. collision is the corpus declaration
-// dag/gunbc/instruments/native_emission_controls_optional_collision.dag. The importer is
-// fixtures/native_emission_controls_optional_importer.dag (not a source-root module, so the
-// accepted corpus does not violate the wall). This witness reads those files and hands the
-// bytes to compile_fixture, so a drift between file and claim is a failed read, not a second
-// source (review 76934).
+// THE RED BYTES ARE THE FILES. Both live under fixtures/ (not a source-root): a second
+// Optional type in the accepted corpus is itself a leaf-name fork. This witness reads
+// those files and hands the bytes to compile_fixture (review 76934).
 
-data collision_path: String = "dag/gunbc/instruments/native_emission_controls_optional_collision.dag"
+data collision_path: String = "fixtures/native_emission_controls_optional_collision.dag"
 data importer_path: String = "fixtures/native_emission_controls_optional_importer.dag"
 
 fn file_text(path: String) -> String {
