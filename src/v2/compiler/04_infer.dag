@@ -69,7 +69,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
@@ -146,6 +146,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
+import v2.std.integer { integer_int_type_node }
 import v2.std.logic { bool_node }
 import v2.std.node {
   StructuralLabel,
@@ -3568,6 +3569,58 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
 // reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
 // all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
 // refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
+// THE KERNEL VALUE TYPE AND THE CORPUS NAME ARE ONE TYPE. `type Int = GroupCompletion<Nat>`
+// (v2.std.integer) and the kernel atom `dag_binding_type_int` (integer_int_type_node) answer the
+// same value-type question. Alias-normalizing first unfolds Int to GroupCompletion<Nat> and then
+// the judge compares that product to the kernel atom -- record_field_value_does_not_inhabit for
+// `n: 0` at a field declared Int (the N7 bind_outcome reconstruct). The kernel spelling is
+// recognized BEFORE unfold, on both sides, so a produced `Int` inhabits a declared kernel Int
+// (and the converse). Bool is the same join infer_established_value_type_optional already owns.
+fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
+  if infer_type_equal_ignoring_provenance(a: t, b: integer_int_type_node()) {
+    optional_present(value: integer_int_type_node())
+  } else if infer_type_equal_ignoring_provenance(a: t, b: bool_node()) {
+    optional_present(value: bool_node())
+  } else {
+    match infer_kernel_value_type_from_name(id: infer_type_name_symbol(t: t)) {
+      Present { value: k } => optional_present(value: k)
+      Absent =>
+        match node_atom_identity_optional(node: t) {
+          Present { value: id } => dag_binding_denotation(sym: id)
+          Absent => optional_absent()
+        }
+    }
+  }
+}
+
+fn infer_type_name_symbol(t: Node) -> Optional<Symbol> {
+  match declaration_reference_path_optional(node: t) {
+    Present { value: path } => qualified_name_last_segment(qn: path)
+    Absent => node_atom_identity_optional(node: t)
+  }
+}
+
+fn infer_kernel_value_type_from_name(id: Optional<Symbol>) -> Optional<Node> {
+  match id {
+    Absent => optional_absent()
+    Present { value: s } =>
+      if (s == ^dag_binding_type_int) || (s == ^Int) {
+        optional_present(value: integer_int_type_node())
+      } else if (s == ^bool_node_symbol) || (s == ^Bool) {
+        optional_present(value: bool_node())
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn infer_inhabitance_type_normalized(t: Node, declarations: SymbolIndex) -> Node {
+  match infer_kernel_value_type_optional(t: t) {
+    Present { value: k } => k
+    Absent => infer_type_alias_normalized(t: t, declarations: declarations)
+  }
+}
+
 fn infer_declared_type_obligation(
   position: DeclaredTypePosition,
   parameter_identity: Symbol,
@@ -3580,10 +3633,10 @@ fn infer_declared_type_obligation(
   DeclaredTypeObligation {
     position: position,
     parameter_identity: parameter_identity,
-    declared: infer_type_alias_normalized(t: declared, declarations: declarations),
-    produced: infer_type_alias_normalized(t: produced, declarations: declarations),
+    declared: infer_inhabitance_type_normalized(t: declared, declarations: declarations),
+    produced: infer_inhabitance_type_normalized(t: produced, declarations: declarations),
     produced_declared_carrier: match refinement_declared_carrier(index: declarations, source_type: produced) {
-      Present { value: c } => Present { value: infer_type_alias_normalized(t: c, declarations: declarations) }
+      Present { value: c } => Present { value: infer_inhabitance_type_normalized(t: c, declarations: declarations) }
       Absent => Absent
     },
     application: application,

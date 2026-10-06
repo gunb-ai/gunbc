@@ -1,0 +1,109 @@
+module v2.test.claim.compiler.generic_closure_outcome_construct_probe
+
+import v2.compiler.infer {
+  infer,
+  infer_kernel_value_type_optional,
+  infer_type_equal_ignoring_provenance
+}
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, Some, diagnostics_fatal_reason }
+import v2.std.integer { integer_int_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
+import std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
+  rcf_read,
+  rcf_refuses_with
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: infer_declared_type_obligation's kernel-value join (infer_kernel_value_type_optional).
+// A generic-variant construct inside bind_outcome's continuation was refusing
+// record_field_value_does_not_inhabit because a field declared Int (kernel atom
+// dag_binding_type_int) was judged against a produced Int (the corpus alias
+// type Int = GroupCompletion<Nat>). The join recognizes both names as integer_int_type_node
+// before alias unfold.
+//
+// SUPPLIED claims judge that join at its own interface. ONE claim runs the real
+// ingest→resolve→infer route on the bind_outcome-shaped fixture.
+
+data gbo_lambda_source: String = "module v2.test.gbo_lambda\n\ntype Out<T> = Acc { value: T, n: Int } | Rej { n: Int }\n\nfn bind<T, U>(o: Out<T>, f: fn(T) -> Out<U>) -> Out<U> {\n  match o {\n    Rej { n: n } => Rej { n: n }\n    Acc { value: v, n: _ } => f(v)\n  }\n}\n\nfn g() -> Out<Int> {\n  bind(o: Acc { value: 1, n: 0 }, f: fn(x) { Acc { value: x, n: 0 } })\n}\n"
+
+data gbo_lambda_bad_source: String = "module v2.test.gbo_lambda_bad\n\ntype Out<T> = Acc { value: T, n: Int } | Rej { n: Int }\n\nfn bind<T, U>(o: Out<T>, f: fn(T) -> Out<U>) -> Out<U> {\n  match o {\n    Rej { n: n } => Rej { n: n }\n    Acc { value: v, n: _ } => f(v)\n  }\n}\n\nfn g() -> Out<Int> {\n  bind(o: Acc { value: 1, n: 0 }, f: fn(x) { Acc { value: x, n: true } })\n}\n"
+
+data gbo_ingest: SourceRootIngest = [
+  rcf_read(source: gbo_lambda_source, id: ^gbo_lambda_read, unit: ^gbo_lambda_cu, path: "src/v2/test/fixture/gbo/lambda.dag"),
+  rcf_read(source: gbo_lambda_bad_source, id: ^gbo_lambda_bad_read, unit: ^gbo_lambda_bad_cu, path: "src/v2/test/fixture/gbo/lambda_bad.dag")
+]
+
+fn gbo_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: gbo_ingest, lm: dag_language_model())
+}
+
+fn gbo_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match gbo_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn gbo_resolved_lambda() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_lambda") }
+fn gbo_resolved_lambda_bad() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_lambda_bad") }
+
+fn gbo_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn gbo_is_kernel_int(t: Node) -> Bool {
+  match infer_kernel_value_type_optional(t: t) {
+    Absent => false
+    Present { value: k } => infer_type_equal_ignoring_provenance(a: k, b: integer_int_type_node())
+  }
+}
+
+test fn gbo_an_int_name_atom_is_the_kernel_int_holds() -> Bool {
+  gbo_is_kernel_int(t: gbo_atom(id: ^Int))
+}
+
+test fn gbo_a_kernel_int_atom_is_the_kernel_int_holds() -> Bool {
+  gbo_is_kernel_int(t: gbo_atom(id: ^dag_binding_type_int))
+}
+
+test fn gbo_a_bool_name_is_not_the_kernel_int_holds() -> Bool {
+  !gbo_is_kernel_int(t: gbo_atom(id: ^Bool))
+}
+
+// THE ROUTE: bind_outcome-shaped reconstruct Acc { value: x, n: 0 } at Out<Int>.
+// Before the join this refused record_field_value_does_not_inhabit at n
+// (declared dag_binding_type_int, produced Int). Deleting the join turns this green-to-red.
+test fn gbo_the_bind_outcome_reconstruct_does_not_refuse_int_field_inhabitance_holds() -> Bool {
+  !rcf_refuses_with(resolved: gbo_resolved_lambda(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// CONTROL one term away: n: true at a field declared Int still refuses.
+test fn gbo_a_bool_at_the_int_field_still_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: gbo_resolved_lambda_bad(), reason: ^record_field_value_does_not_inhabit)
+}
