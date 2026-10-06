@@ -11,12 +11,13 @@ module gunbc.rung_drop.standing
 // instead of the arm it came from.
 
 import std.types { List }
-import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
 fn standing_rung_drops() -> List<RungDrop> {
   filter(rung_drop_roster, d => match d.standing {
     Standing => true
     Retired { trigger_fired: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
   })
 }

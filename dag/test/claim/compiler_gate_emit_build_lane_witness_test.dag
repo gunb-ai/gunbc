@@ -147,7 +147,7 @@ test fn the_emit_build_lane_blocks_and_is_read_by_the_gate() -> Bool {
 // ruling that moved it beside the floor; the hosted compiler and clippy lanes left it by the
 // 2026-09-28 ruling that put the merge path on the fleet (the seed build is the fleet prelude's, and
 // the lint is a step on `generated`); emit-build joined it on the 2026-10-02 sign-off; the v1 unit-test lane rejoined it when
-// the lane blocked again after gunbc#13452 (gunbc.rung_drop rust_unit_tests_over_their_cap retired by operator supersession).
+// the lane blocked again after gunbc#13452 (gunbc.rung_drop rust_unit_tests_over_their_cap superseded, not retired by its trigger).
 test fn the_established_lanes_still_block() -> Bool {
   let blocking = compiler_gate_blocking_job_ids()
   let established = [compiler_gate_unit_test_job_id, compiler_gate_emit_build_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id]

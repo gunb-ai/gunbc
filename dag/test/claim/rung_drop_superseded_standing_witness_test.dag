@@ -1,0 +1,80 @@
+module test.claim.rung_drop_superseded_standing_witness_test
+
+import std.types { String, Bool, NonEmptyStr }
+import std.markdown { MarkdownDocument }
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.rung_drop { Standing, Retired, Superseded }
+import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_blocks }
+import gunbc.rung_drop_amendment { standing_sentence }
+import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
+
+// A SUPERSEDED DROP NEVER RENDERS AS ONE WHOSE TRIGGER FIRED. DESIGN 4b(3) retires a drop by its
+// trigger and by nothing else, so the projection's "RETIRED -- TRIGGER FIRED" is a claim that the
+// trigger fired, and consumers read it that way. The red is the shape the first supersession was
+// written in before this arm existed: the ruling stored in Retired.trigger_fired, rendered as
+// "RETIRED -- TRIGGER FIRED. NOT BY ITS TRIGGER". Each test renders the SAME text through both arms,
+// so a renderer that ignored the arm agrees with itself and is caught.
+
+data supersession_fixture: String = "fixture ruling; fixture decision record"
+
+fn rendered_blocks(blocks_doc: MarkdownDocument) -> String {
+  serialize_markdown_source(doc: blocks_doc)
+}
+
+fn superseded_fixture_text() -> String {
+  rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: Superseded {
+    ruling: "fixture ruling" as NonEmptyStr,
+    decision_record: "fixture decision record" as NonEmptyStr,
+    loss_holder: "fixture_loss_holder" as NonEmptyStr
+  }) })
+}
+
+fn retired_fixture_text() -> String {
+  rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: Retired {
+    trigger_fired: supersession_fixture as NonEmptyStr
+  }) })
+}
+
+// RED, AND ITS CONTROL. The superseded rendering carries the ruling, the decision record and the
+// loss holder and does NOT say the trigger fired; the same text through Retired does.
+test fn w_RED_a_superseded_row_never_renders_as_trigger_fired() -> Bool {
+  let superseded = superseded_fixture_text()
+  let retired = retired_fixture_text()
+  (superseded.contains("TRIGGER FIRED.") == false)
+    && superseded.contains("SUPERSEDED")
+    && superseded.contains("fixture ruling")
+    && superseded.contains("fixture decision record")
+    && superseded.contains("fixture_loss_holder")
+    && retired.contains("TRIGGER FIRED.")
+}
+
+test fn the_heading_suffix_names_the_arm() -> Bool {
+  rung_drop_standing_suffix(standing: Superseded {
+    ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "h" as NonEmptyStr
+  }) == " · SUPERSEDED"
+    && rung_drop_standing_suffix(standing: Retired { trigger_fired: "t" as NonEmptyStr }) == " · RETIRED"
+    && rung_drop_standing_suffix(standing: Standing) == ""
+}
+
+// THE AMENDMENT'S CLOSING SENTENCE IS DERIVED FROM THE SAME ARM, so an amended superseded row
+// cannot be closed with "has since fired" or "stands whole".
+test fn the_amendment_sentence_for_a_superseded_row_says_the_trigger_did_not_fire() -> Bool {
+  let s = standing_sentence(standing: Superseded {
+    ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "the_holder" as NonEmptyStr
+  })
+  s.contains("did NOT fire") && s.contains("the_holder")
+    && (s.contains("has since fired") == false) && (s.contains("stands whole") == false)
+}
+
+// THE LIVE ROW: the first real supersession is carried in the arm, names its loss holder, and its
+// rendering does not say the trigger fired.
+test fn the_live_over_cap_row_is_superseded_and_names_its_loss_holder() -> Bool {
+  match rust_unit_tests_over_their_cap.standing {
+    Superseded { ruling: _, decision_record: d, loss_holder: h } =>
+      (h as String) == "v1_integration_tests_deleted_from_the_unit_lane"
+        && (d as String).contains("msg_a8b84443")
+        && (rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: rust_unit_tests_over_their_cap.standing) }).contains("TRIGGER FIRED.") == false)
+    Standing => false
+    Retired { trigger_fired: _ } => false
+  }
+}
