@@ -4725,12 +4725,16 @@ fn body_lower_admit_roster_from_entries(entries: List<Node>, template: Node) -> 
   }
 }
 
-// THE CONFORMING ROSTER: a left-nested conj spine, one record per entry, under NAMED edges —
-// @left carries the record, @right carries the rest, the empty conj root ends the spine. Every edge
-// is authored and distinct within its node, so connective_edges_conform accepts it, and an empty
-// authored list lowers to the empty conj root without refusing. All built nodes share the template's
-// minted occurrence (the template left the tree with the swap); close_lowered_image marks every
-// member below the root OccurrencePending so allocation gives each a real id after normalization.
+// THE CONFORMING ROSTER: the declared sequence-pair spine — one record per entry, under the
+// grammar's sequence-projection edges (@grammar_sequence_left_node_projection carries the record,
+// @grammar_sequence_right_node_projection carries the rest, the empty conj root ends the spine).
+// This is the substrate's standing linked-list-in-a-tree shape, read by the shared
+// sugar_sequence_pair_optional; the carrier mints it and adds no second name for it (DESIGN §2).
+// Every edge is authored and distinct within its node, so connective_edges_conform accepts it, and
+// an empty authored list lowers to the empty conj root without refusing. All built nodes share the
+// template's minted occurrence (the template left the tree with the swap); close_lowered_image marks
+// every member below the root OccurrencePending so allocation gives each a real id after
+// normalization.
 fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optional<Node> {
   fold(
     xs: entries,
@@ -4746,8 +4750,14 @@ fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optiona
                 value: sugar_type_node(
                   connective: Conj,
                   children: [
-                    Edge { label: Authored { name: ^left }, target: record_edge.target },
-                    Edge { label: Authored { name: ^right }, target: rest }
+                    Edge {
+                      label: Authored { name: ^grammar_sequence_left_node_projection },
+                      target: record_edge.target
+                    },
+                    Edge {
+                      label: Authored { name: ^grammar_sequence_right_node_projection },
+                      target: rest
+                    }
                   ],
                   n: template
                 )

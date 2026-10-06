@@ -95,16 +95,18 @@ data wall_clause_fallback: Node = Node {
   occurrence_id: wall_clause_fallback_locus
 }
 
-// A ROSTER SPINE with one well-formed record: @left the record, @right the empty conj root.
+// A ROSTER SPINE with one well-formed record: the record rides the grammar's
+// sequence-left projection edge, the empty conj root rides the sequence-right one — the declared
+// sequence-pair shape (sugar_sequence_pair_optional reads exactly these symbols).
 data wall_roster_single: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Authored { name: ^left },
+      label: Authored { name: ^grammar_sequence_left_node_projection },
       target: wall_record(mp: ^bcb, dn: ^listed_caller)
     },
     Edge {
-      label: Authored { name: ^right },
+      label: Authored { name: ^grammar_sequence_right_node_projection },
       target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
     }
   ],
