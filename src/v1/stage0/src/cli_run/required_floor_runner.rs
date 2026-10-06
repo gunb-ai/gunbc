@@ -316,6 +316,29 @@ pub(crate) fn route_gap_suppressed_rows_value(
     )
 }
 
+/// THE SECOND MARSHAL the run site and the pairing witness share: the discovery walk's
+/// declared-identity index, marshaled WHOLE as a keyed map (identity -> disposition label) —
+/// the shape the modeled relation judges membership with. The runner does no membership test:
+/// `contains_key` here would BE the refuse-if-undeclared decision made outside
+/// `v2.workflow.floor_route_gap`'s `floor_route_gap_admission_partition`, so the judgment
+/// travels to the .dag authority and this marshal only moves the data. Keyed, because the
+/// alternative — the same universe flattened into a list the relation re-scans per row — is
+/// the corpus-sized join the .dag contract retires.
+pub(crate) fn route_gap_declared_map_value(
+    declared: &HashMap<String, RequiredFloorDisposition>,
+) -> v1_interpreter::Value {
+    let mut entries = im::HashMap::new();
+    for (identity, disposition) in declared {
+        let key = v1_interpreter::CanonKey::new(v1_interpreter::str_value(identity))
+            .expect("identity is a valid string map key");
+        entries = entries.update(
+            key,
+            v1_interpreter::str_value(required_floor_disposition_label(disposition)),
+        );
+    }
+    v1_interpreter::map_value(entries)
+}
+
 /// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
 /// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
 /// external or blocking interaction picks wall instead — but the choice is made here, by
@@ -10473,12 +10496,10 @@ pub fn run_required_floor(
     // reverse join, so the stale arm can never fire for it. The cheapest way to fake a green
     // run, enrolling an identity that does not exist, costs a refusal, never a count.
     let suppressed_rows_value = route_gap_suppressed_rows_value(&hermetic, &route_gap_suppressed);
-    let declared_value = v1_interpreter::list_value(
-        cost_debt_disposition_index
-            .keys()
-            .map(v1_interpreter::str_value)
-            .collect::<Vec<_>>(),
-    );
+    // THE DECLARED INDEX, MARshaled WHOLE AS A KEYED MAP: the relation does the membership
+    // judgment (map_contains_key per row) — this site only moves the data, no contains_key
+    // here, or the refuse-if-undeclared decision would live in Rust beside the .dag authority.
+    let declared_value = route_gap_declared_map_value(&cost_debt_disposition_index);
     let route_gap_decided = v1_interpreter::run_in_context_with_args(
         &hermetic,
         ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
@@ -18140,28 +18161,6 @@ mod expected_red_roster_join_suppression_tests {
 mod route_gap_admission_partition_tests {
     use super::*;
 
-    fn string_list(value: &Value, what: &str) -> Vec<String> {
-        let Value::List(items) = value else {
-            panic!("{what} is not a List");
-        };
-        items
-            .iter()
-            .map(|item| match item {
-                Value::Str(s) => s.to_string(),
-                _ => panic!("{what} holds a non-String element"),
-            })
-            .collect()
-    }
-
-    fn string_list_value(xs: &[String]) -> Value {
-        Value::List(Rc::new(
-            xs.iter()
-                .map(v1_interpreter::str_value)
-                .collect::<Vec<Value>>()
-                .into(),
-        ))
-    }
-
     /// THE FIXTURE'S SUPPRESSED ROWS, decoded to (identity, declared-arm) pairs — the shape the
     /// shared marshal re-encodes into the relation's coproduct.
     fn suppressed_row_pairs(
@@ -18291,7 +18290,11 @@ mod route_gap_admission_partition_tests {
             };
             let suppressed =
                 suppressed_row_pairs(&ctx, &read("route_gap_partition_fixture_suppressed"));
-            let declared = string_list(&read("route_gap_partition_fixture_declared"), "declared");
+            // THE DECLARED SET AS THE FIXTURE SUPPLIES IT: the modeled keyed map the relation
+            // judges membership with — the same shape the run site marshals its disposition
+            // index into. No list is flattened here, and the misnamed fixture identity is
+            // deliberately absent from it.
+            let declared = read("partition_fixture_declared");
             assert_eq!(
                 suppressed.len(),
                 3,
@@ -18306,7 +18309,7 @@ mod route_gap_admission_partition_tests {
                     Some("suppressed".to_string()),
                     route_gap_suppressed_rows_value(&ctx, marshal_input.as_slice()),
                 ),
-                (Some("declared".to_string()), string_list_value(&declared)),
+                (Some("declared".to_string()), declared),
             ];
             let decided = v1_interpreter::with_active_context(&ctx, || {
                 v1_interpreter::run_in_context_with_args(
@@ -18389,6 +18392,83 @@ mod route_gap_admission_partition_tests {
                 "FloorRouteGapSuppressedRow"
             );
             assert_eq!(fields.len(), 2, "identity and ground, nothing else");
+        });
+    }
+
+    /// THE SECOND MARSHAL'S SHAPE AND ROUTE: the disposition index marshals as a keyed Map, and
+    /// judged THROUGH THE RELATION it measures a row the index declares and refuses one it does
+    /// not — the membership judgment exercised on the same call path the run site takes, not a
+    /// Rust-side contains_key.
+    #[test]
+    fn the_declared_index_marshal_judges_membership_through_the_relation() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let mut declared: HashMap<String, RequiredFloorDisposition> = HashMap::new();
+            declared.insert(
+                "test.claim.any_witness_test.any_holds".to_string(),
+                RequiredFloorDisposition::Planned,
+            );
+            let declared_value = route_gap_declared_map_value(&declared);
+            assert!(
+                matches!(declared_value, v1_interpreter::Value::Map(_)),
+                "the declared index marshals as a keyed Map, not a list"
+            );
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(
+                        &ctx,
+                        &[
+                            (
+                                "test.claim.any_witness_test.any_holds".to_string(),
+                                SuppressionGround::OutsideRequiredGate,
+                            ),
+                            (
+                                "test.claim.absent_witness_test.gone_holds".to_string(),
+                                SuppressionGround::OutsideRequiredGate,
+                            ),
+                        ],
+                    ),
+                ),
+                (Some("declared".to_string()), declared_value),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled partition evaluates over the marshaled index");
+            let rows = admission_rows(&ctx, &decided);
+            assert_eq!(rows.len(), 2, "both suppressed rows land somewhere");
+            let declared_row = rows
+                .iter()
+                .find(|(i, g, refused)| !refused && i == "test.claim.any_witness_test.any_holds")
+                .expect("the declared identity is measured");
+            assert_eq!(
+                declared_row.1, "OutsideRequiredGate",
+                "a measured row keeps its ground"
+            );
+            assert!(
+                rows.iter()
+                    .any(|(i, _g, refused)| *refused
+                        && i == "test.claim.absent_witness_test.gone_holds"),
+                "an identity the index does not hold is refused, not counted"
+            );
         });
     }
 }

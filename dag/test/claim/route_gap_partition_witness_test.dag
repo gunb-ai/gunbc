@@ -12,21 +12,23 @@ import v2.workflow.floor_route_gap {
 import v2.test.fixture.route_gap_admission_partition {
   route_gap_partition_fixture_suppressed,
   route_gap_partition_fixture_expected,
+  partition_fixture_declared,
   partition_fixture_decided,
 }
 
 // THE ROUTE WITNESS for the route-gap admission partition (docs/plans/
 // route-gap-dormant-observation.md). The required floor's runner marshals the run's real values
-// -- the identities suppression removed with the ground that removed each and the per-row
-// membership bit read from its keyed disposition index -- into `v2.workflow.floor_route_gap`
+// -- the identities suppression removed with the ground that removed each, and the discovery
+// walk's declared-identity index WHOLE AS A KEYED MAP -- into `v2.workflow.floor_route_gap`
 // `.floor_route_gap_admission_partition`, the modeled relation on the authority that owns the
-// register; the runner-side classifier this relation replaces was deleted, so this surface is
-// the run site's only route to the answer. This claim drives that surface over the shared
-// fixture (src/v2/test/fixture/route_gap_admission_partition.dag) and asserts both arms at
-// identity grain on the floor: a declared suppressed row comes back MEASURED with its ground
-// kept (the declared `FloorRouteGapSuppressionGround` arms, not free labels), and a misnamed
-// enrollment -- renamed, deleted, or fabricated -- comes back REFUSED, the wall's discriminating
-// arm. Substrate inputs only: constructed lists through the modeled
+// register; the membership judgment (`map_contains_key` per row) happens HERE, in the relation,
+// not in the marshal, and the runner-side classifier this relation replaces was deleted, so
+// this surface is the run site's only route to the answer. This claim drives that surface over
+// the shared fixture (src/v2/test/fixture/route_gap_admission_partition.dag) and asserts both
+// arms at identity grain on the floor: a declared suppressed row comes back MEASURED with its
+// ground kept (the declared `FloorRouteGapSuppressionGround` arms, not free labels), and a
+// misnamed enrollment -- renamed, deleted, or fabricated -- comes back REFUSED, the wall's
+// discriminating arm. Substrate inputs only: constructed lists and maps through the modeled
 // relation; no host effect, no service, no wet lane. The seed's pairing witness in
 // `required_floor_runner` evaluates the same fixture rows through `run_in_context_with_args`,
 // the real call path the run site uses.
@@ -74,12 +76,12 @@ fn count_refused_naming(rows: List<FloorRouteGapAdmissionRow>, identity: String)
 
 // THE MEASUREMENT ARM, AT IDENTITY GRAIN: a declared suppressed row keeps its ground and is
 // named, never absorbed into a count. For identities whose module the 2026-08-29 gate cut
-// withdrew this record closes nothing -- the gate decision owns their dormancy. Membership now
-// travels per row (the runner reads it from its keyed index), so the relation decides from the
-// row itself.
+// withdrew this record closes nothing -- the gate decision owns their dormancy. Membership is
+// judged by the relation against the fixture's keyed declared map.
 test fn the_partition_measures_a_declared_suppressed_row_with_its_ground_kept() -> Bool {
   let decided = floor_route_gap_admission_partition(
-    suppressed: route_gap_partition_fixture_suppressed
+    suppressed: route_gap_partition_fixture_suppressed,
+    declared: partition_fixture_declared(),
   )
   count(decided) == 3
     && count_measured_holding(
@@ -100,7 +102,8 @@ test fn the_partition_measures_a_declared_suppressed_row_with_its_ground_kept() 
 // refusal, never as a count.
 test fn the_partition_refuses_an_enrollment_the_tree_does_not_declare() -> Bool {
   let decided = floor_route_gap_admission_partition(
-    suppressed: route_gap_partition_fixture_suppressed
+    suppressed: route_gap_partition_fixture_suppressed,
+    declared: partition_fixture_declared(),
   )
   count(decided) == 3
     && count_refused_naming(

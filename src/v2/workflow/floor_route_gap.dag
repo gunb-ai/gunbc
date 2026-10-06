@@ -2,6 +2,7 @@ module v2.workflow.floor_route_gap
 
 import std.types { List }
 import v2.std.algebra { Cons, Empty, list_flat_map }
+import v2.std.collection { Map, map_contains_key }
 
 // THE EXPECTATION IS TYPED AT THE TWO FACTS THE INTERPRETER OBSERVES. An identity-only row
 // says merely that some route gap once existed; it cannot object when the witness reaches a
@@ -2339,22 +2340,26 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
 }
 
 // THE ADMISSION PARTITION, MODELED ON THE AUTHORITY THAT OWNS THE REGISTER. This is the single
-// implementation of the route-gap admission decision: the required floor's runner marshals the
-// run's real values -- the identities suppression removed, each with the ground that removed
-// it, and the discovery walk's declared-identity index -- into this relation
-// through the hermetic frame it already holds. Nothing re-derives the membership test in Rust:
-// a runner-side copy would be a second authority over one decision, the shape the changed-
-// selection capability documented at v2.workflow.required_floor's dissolve-on note retires.
+// implementation of the route-gap admission decision, membership test included: the required
+// floor's runner marshals the run's real values -- the identities suppression removed, each
+// with the ground that removed it, and the discovery walk's declared-identity index AS A KEYED
+// MAP -- into this relation through the hermetic frame it already holds. Nothing re-derives the
+// membership judgment in Rust: a runner-side contains_key would BE the refuse-if-undeclared
+// decision made outside this authority, the shape the changed-selection capability documented
+// at v2.workflow.required_floor's dissolve-on note retires. Here the relation asks the map
+// itself, per row, whether the tree declares the identity -- and what each arm MEANS is the
+// authority's, not the marshal's.
 //
 // COST, NAMED, AND SHAPE-FIXED: the relation is one call per required run, LINEAR in the
-// suppressed population, and it never scans a corpus-sized list. Membership is marshaled per
-// suppressed row as a Boolean the runner reads from its keyed disposition index
-// (cost_debt_disposition_index.contains_key, O(1) per identity) -- the declared-identity
-// universe is the discovery walk's own knowledge and stays on the walk's side of the marshal;
-// flattening it into a list the .dag re-scans was the corpus-sized join this shape retires
-// (541 suppressed x 28,274 declared on run 37236808750 would have been ~15M interpreted
-// comparisons per required run). The arm decision itself stays here: membership is an input
-// fact, what each arm MEANS is the authority's.
+// suppressed population, and it never scans a corpus-sized list. The declared index arrives as
+// a keyed Map (the runner's disposition index marshaled whole), so the membership test is a
+// keyed lookup per suppressed row -- O(1) amortized per identity in the eval's map substrate --
+// and flattening the universe into a list for a linear contains was the corpus-sized join this
+// shape retires: on the required-run census the plan doc cites (declared in the tens of
+// thousands, suppressed in the hundreds), a per-row linear scan is millions of interpreted
+// comparisons per required run, a proven cost-shape defect that DESIGN.md's §6 says is always
+// fixed, not retired on "n is small here".
+//
 // THE GROUND IS A DECLARED COPRODUCT, NOT A LABEL. Suppression grounds are a closed set -- the
 // floor removes a row as outside the required gate, as withheld cost debt, or as declined for
 // want of a CI wet lane -- so the field carries that set, and a fabricated ground is a
@@ -2370,7 +2375,6 @@ type FloorRouteGapSuppressionGround = OutsideRequiredGate | WithheldCostDebt | D
 type FloorRouteGapSuppressedRow = {
   identity: String,
   ground: FloorRouteGapSuppressionGround,
-  declared: Bool,
 }
 
 // THE TWO ARMS AT IDENTITY GRAIN. A declared suppressed row is MEASUREMENT: it keeps its ground
@@ -2384,10 +2388,11 @@ type FloorRouteGapAdmissionRow =
 
 fn floor_route_gap_admission_partition(
   suppressed: List<FloorRouteGapSuppressedRow>,
+  declared: Map<String, String>,
 ) -> List<FloorRouteGapAdmissionRow> {
   map(
     suppressed,
-    row => match row.declared {
+    row => match map_contains_key(m: declared, key: row.identity) {
       true => FloorRouteGapAdmissionMeasuredRow { identity: row.identity, ground: row.ground }
       false => FloorRouteGapAdmissionRefusedRow { identity: row.identity }
     },
