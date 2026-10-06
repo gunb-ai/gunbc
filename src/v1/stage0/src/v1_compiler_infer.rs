@@ -6276,7 +6276,7 @@ pub fn declared_type_carries_optional(declared: Rc<Node>, scope: Rc<InferScope>)
     }
 }
 
-pub fn position_is_declared_return(position: DeclaredTypePosition) -> bool {
+pub fn position_forbids_bare_lift(position: DeclaredTypePosition) -> bool {
     match position.clone() {
         DeclaredTypePosition::PositionDeclaredReturn => true,
         DeclaredTypePosition::PositionDataInitializer => true,
@@ -6356,7 +6356,7 @@ pub fn optional_at_required_obligation_diags(
         obligation.declared.clone(),
         obligation.produced.clone(),
         scope.clone(),
-    ) || (position_is_declared_return(obligation.position.clone())
+    ) || (position_forbids_bare_lift(obligation.position.clone())
         && required_produced_at_optional_declared(
             obligation.declared.clone(),
             obligation.produced.clone(),
