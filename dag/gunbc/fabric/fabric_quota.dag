@@ -79,23 +79,30 @@ fn fabric_quota_lease_for(short_hostname: String, limit: UpstreamRateLimit, amou
     HostStoreResolved { store: store, executor: _ } =>
       match now_epoch_seconds() {
         Absent => QuotaLeaseRefused { detail: "the clock could not be read as epoch seconds" }
-        Present { value: now } =>
-          match quota_term_seconds(limit: limit, term: term, at: now) {
-            Absent => QuotaLeaseRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
-            Present { value: term_seconds } => {
-          let partition = quota_partition(limit: limit)
-          match fabric_seat_acquire(
-            store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
-            request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: amount }, at: now, term_seconds: term_seconds },
-            policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
-          ) {
-            SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store, limit: limit }
-            SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
-            other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
-          }
-            }
-          }
+        Present { value: now } => fabric_quota_lease_at(store: store, now: now, limit: limit, amount: amount, actor: actor, term: term)
       }
+  }
+}
+
+// THE LEASE AT A GIVEN STORE AND INSTANT. fabric_quota_lease_for resolves both from the executing host;
+// everything after that -- the term derivation, the seat acquisition, the fold -- is this function, so a
+// witness that supplies a store in a temporary directory and an instant runs the PRODUCTION lease rather
+// than a constructed QuotaLeased.
+fn fabric_quota_lease_at(store: FabricStorageBinding, now: EpochSecs, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term: QuotaTerm) -> QuotaLease {
+  match quota_term_seconds(limit: limit, term: term, at: now) {
+    Absent => QuotaLeaseRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
+    Present { value: term_seconds } => {
+      let partition = quota_partition(limit: limit)
+      match fabric_seat_acquire(
+        store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
+        request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: amount }, at: now, term_seconds: term_seconds },
+        policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
+      ) {
+        SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store, limit: limit }
+        SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
+        other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
+      }
+    }
   }
 }
 
@@ -145,20 +152,25 @@ type QuotaSettle
 // partition unfoldable while the caller believed it had settled. The lease carries its own limit so the
 // settlement folds against the pool the lease was granted from.
 fn fabric_quota_settle(lease: QuotaLease, actual: Nat) -> QuotaSettle {
+  match now_epoch_seconds() {
+    Absent => QuotaSettleRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => fabric_quota_settle_at(lease: lease, actual: actual, now: now)
+  }
+}
+
+// THE SETTLEMENT AT A GIVEN INSTANT, for the same reason the lease has one: the checked transition and
+// everything after the clock read is this function.
+fn fabric_quota_settle_at(lease: QuotaLease, actual: Nat, now: EpochSecs) -> QuotaSettle {
   match lease {
     QuotaFull { wire: w } => QuotaSettleRefused { detail: join(["nothing to settle: ", w], "") }
     QuotaLeaseRefused { detail: d } => QuotaSettleRefused { detail: join(["nothing to settle: ", d], "") }
     QuotaLeased { grant: g, partition: p, store: store, limit: limit } =>
-      match now_epoch_seconds() {
-        Absent => QuotaSettleRefused { detail: "the clock could not be read as epoch seconds" }
-        Present { value: now } =>
-          match fabric_pool_transition(
-            store: store, partition: p, root: quota_root_pool(limit: limit), actor: g.reference, at: now,
-            payload: fn(identity) { PoolSettled { reference: g.reference, actual: actual } }, attempts: 3, budget: 4096,
-          ) {
-            PoolTransitionAppended { id: _ } => QuotaSettled { partition: p, actual: actual }
-            other => QuotaSettleRefused { detail: pool_transition_wire(t: other) }
-          }
+      match fabric_pool_transition(
+        store: store, partition: p, root: quota_root_pool(limit: limit), actor: g.reference, at: now,
+        payload: fn(identity) { PoolSettled { reference: g.reference, actual: actual } }, attempts: 3, budget: 4096,
+      ) {
+        PoolTransitionAppended { id: _ } => QuotaSettled { partition: p, actual: actual }
+        other => QuotaSettleRefused { detail: pool_transition_wire(t: other) }
       }
   }
 }

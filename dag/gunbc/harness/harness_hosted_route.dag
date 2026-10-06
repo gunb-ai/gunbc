@@ -39,7 +39,7 @@ import extdeps.openrouter.nvidia_nemotron_3_ultra_free {
 }
 import extdeps.nvidia.api_trial_terms { NvidiaApiTrialTerms, nvidia_api_trial_terms_wire }
 import gunbc.secret_provision { openrouter_free_tier_key_secret_ref }
-import gunbc.auth.access_token_source { AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, resolve_access_token }
+import gunbc.auth.access_token_source { AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, resolve_access_token, access_token_upsert_required_reason }
 import gunbc.auth.secret_ref_credential {
   SecretCredentialReady, SecretCredentialAccessUpsertRequired, SecretCredentialWireDecodeRefused,
   SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch, fetch_secret_ref_credential_with_token,
@@ -333,18 +333,35 @@ type HostedBindOutcome
   = HostedBound { url: NonEmptyStr, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
   | HostedBindRefused { detail: String }
 
-fn hosted_secret_text(route: HarnessHostedRoute) -> String? {
+// EACH WAY THE KEY CAN FAIL TO ARRIVE IS ITS OWN CAUSE, because they have different remedies: no Secret
+// Manager access token to fetch with (a federation or upsert problem, nothing to do with the secret), a
+// refused read (the secret or its accessor cell), a response that did not decode, and a response that
+// answered about another version. Collapsing them to "could not be read" would send the operator to the
+// secret when the fault is the token.
+type HostedKeyFetch
+  = HostedKeyFetched { text: String }
+  | HostedKeyFetchRefused { cause: String }
+
+fn hosted_secret_text(route: HarnessHostedRoute) -> HostedKeyFetch {
   match resolve_access_token() {
     AccessTokenReady { token: t } =>
       match fetch_secret_ref_credential_with_token(secret_ref: route.secret, access_token: t) {
-        SecretCredentialReady { credential: c, resolved_version: _ } => Present { value: trim(s: c as String) }
-        SecretCredentialAccessUpsertRequired { plan: _ } => none
-        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
-        SecretCredentialFetchRefused { reason: _ } => none
-        SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
+        SecretCredentialReady { credential: c, resolved_version: _ } => HostedKeyFetched { text: trim(s: c as String) }
+        SecretCredentialAccessUpsertRequired { plan: p } =>
+          HostedKeyFetchRefused { cause: join(["the secret read needs a Secret Manager access upsert first: ", access_token_upsert_required_reason(plan: p)], "") }
+        SecretCredentialWireDecodeRefused { identity_cause: i, payload_cause: pc } =>
+          HostedKeyFetchRefused { cause: join([
+            "the Secret Manager access response did not decode (version identity ", match i { Present { value: _ } => "refused" Absent => "decoded" },
+            ", payload ", match pc { Present { value: _ } => "refused" Absent => "decoded" }, ")",
+          ], "") }
+        SecretCredentialFetchRefused { reason: r } => HostedKeyFetchRefused { cause: join(["the Secret Manager read was refused: ", r as String], "") }
+        SecretCredentialResolvedVersionMismatch { requested: q, resolved: r } =>
+          HostedKeyFetchRefused { cause: join(["the Secret Manager read asked for version ", q, " and was answered about ", r], "") }
       }
-    AccessTokenUpsertRequired { plan: _ } => none
-    AccessTokenEnsureRefused { reason: _ } => none
+    AccessTokenUpsertRequired { plan: p } =>
+      HostedKeyFetchRefused { cause: join(["no Secret Manager access token is available and an access upsert is required: ", access_token_upsert_required_reason(plan: p)], "") }
+    AccessTokenEnsureRefused { reason: r } =>
+      HostedKeyFetchRefused { cause: join(["no Secret Manager access token could be ensured: ", r as String], "") }
   }
 }
 
@@ -477,8 +494,8 @@ fn harness_hosted_bind(unit: HarnessServingUnit, short_hostname: String, actor: 
     Absent => HostedBindRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat and has no hosted route"], "") }
     Present { value: route } =>
       match hosted_secret_text(route: route) {
-        Absent => HostedBindRefused { detail: join(["the OpenRouter key could not be read from Secret Manager (", route.secret.secret as String, ")"], "") }
-        Present { value: key_text } =>
+        HostedKeyFetchRefused { cause: c } => HostedBindRefused { detail: join(["the OpenRouter key (", route.secret.secret as String, ") could not be fetched: ", c], "") }
+        HostedKeyFetched { text: key_text } =>
           if key_text == "" {
             HostedBindRefused { detail: "the OpenRouter key secret is empty" }
           } else {

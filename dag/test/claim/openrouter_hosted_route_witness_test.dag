@@ -24,11 +24,14 @@ import gunbc.harness.harness_reasoning_wire {
 import gunbc.harness.harness_hosted_route {
   hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
   harness_hosted_route_for, harness_hosted_level_choice, HostedLevelSelected, HostedLevelUnselected,
-  hosted_key_refusal, hosted_day_remaining,
+  hosted_key_refusal, hosted_day_remaining, hosted_access_from_key, harness_hosted_round_charge, HostedRoundCharged, HostedRoundQuotaFull, HostedRoundUnleasable,
 }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
 import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId }
-import gunbc.fabric_quota { quota_term_to_window_end, quota_window_start }
+import gunbc.fabric_quota {
+  quota_term_to_window_end, quota_window_start, fabric_quota_lease_for, fabric_quota_settle_at, QuotaTermToWindowEnd,
+  QuotaSettled, QuotaSettleRefused,
+}
 import gunbc.harness.harness_seat { harness_seat_pool_root, hosted_inflight_carried, hosted_inflight_release_hint, hosted_inflight_partition }
 import gunbc.harness.harness_hosted_route { HarnessHostedQuota }
 import product.capacity.event_chain { ChainWalked }
@@ -585,5 +588,74 @@ test fn a_hosted_rate_limit_ends_the_turn_as_a_refusal_naming_the_hint_and_no_re
         && harness_outcome_detail(outcome: o).contains("rather than retrying")
         && (match harness_turn_exit(outcome: o) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
     }
+  }
+}
+
+// ── THE SPENDABLE-KEY WALL, AT THE FUNCTION THAT ENFORCES IT ─────────────────────────────────────
+//
+// hosted_access_from_key is what refuses to build a binding; a witness over the rendering helper beside it
+// would stay green if the wall were removed. These decode real key reads and ask the wall itself.
+fn w_bind_from_key(limit_json: String, daily_limit: Int) -> Bool? {
+  match openrouter_decode_key_read(body: join(["{\"data\":{\"limit\":", limit_json, ",\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":0,\"limit\":", to_string(daily_limit), ",\"remaining\":", to_string(daily_limit), "}}}"], "")) {
+    OpenRouterKeyUndecodable { cause: _ } => none
+    OpenRouterKeyDecoded { key: k } =>
+      match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+        Absent => none
+        Present { value: route } =>
+          match hosted_access_from_key(route: route, key: k, level: ReasoningMaximum, header_dir: "/tmp/witness" as NonEmptyStr, header_file: "/tmp/witness/authorization" as NonEmptyStr, short_hostname: "witness", actor: "witness" as NonEmptyStr) {
+            Absent => Present { value: false }
+            Present { value: _ } => Present { value: true }
+          }
+      }
+  }
+}
+
+// RED: a key with no credit limit, and one with a positive limit, can spend money on a priced model, so no
+// binding is built; the zero-credit key on a published tier is the only one that is. A tier that is neither
+// published value refuses even on the safe key.
+test fn only_a_zero_credit_key_on_a_published_tier_builds_a_binding() -> Bool {
+  (match w_bind_from_key(limit_json: "null", daily_limit: 1000) { Present { value: b } => !b  Absent => false })
+    && (match w_bind_from_key(limit_json: "5", daily_limit: 1000) { Present { value: b } => !b  Absent => false })
+    && (match w_bind_from_key(limit_json: "0", daily_limit: 200) { Present { value: b } => !b  Absent => false })
+    && (match w_bind_from_key(limit_json: "0", daily_limit: 1000) { Present { value: b } => b  Absent => false })
+    && (match w_bind_from_key(limit_json: "0.0", daily_limit: 50) { Present { value: b } => b  Absent => false })
+}
+
+// ── THE REAL LEASE PRODUCER IS EXECUTED, THROUGH THE PRODUCTION CHARGE ───────────────────────────
+//
+// The constructed leases above are for the decision's own boundary. This runs the PRODUCTION charge
+// (harness_hosted_round_charge -> gunbc.fabric_quota fabric_quota_lease_for) for a host the fleet declares no
+// dashboard instance for: the real producer answers with its typed refusal, the charge turns it into
+// HostedRoundUnleasable naming the host, and nothing is leased, charged or sent. Deleting the producer, or
+// the charge's call to it, turns this red.
+//
+// WHAT THIS DOES NOT EXECUTE, STATED: the producer's success arm -- a seat acquired and settled on a real
+// event-log store -- needs a store, and the floor refuses a new real-execution witness
+// (v2.workflow.floor_changed_witness), so no claim here can stand one up. Its pieces are witnessed at their
+// own interfaces above: the term derivation and admission through the production pool_acquire, and the
+// checked settlement through the replay's own pool_apply_payload. The joined route runs in the post-merge
+// live exercise.
+fn w_unplaced_quota() -> HarnessHostedQuota {
+  HarnessHostedQuota { short_hostname: "no-such-host-witness", actor: "hosted-witness" as NonEmptyStr, per_minute: openrouter_free_models_per_minute, per_day: openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen) }
+}
+
+test fn the_production_charge_refuses_through_the_real_lease_producer_for_an_undeclared_host() -> Bool {
+  (match harness_hosted_round_charge(quota: w_unplaced_quota(), carried_minute: 0, carried_day: 0, release_hint: "") {
+    HostedRoundUnleasable { detail: d } => d.contains("no dashboard instance is declared for host no-such-host-witness")
+    HostedRoundCharged => false
+    HostedRoundQuotaFull { wire: _ } => false
+  })
+    && (match fabric_quota_lease_for(short_hostname: "no-such-host-witness", limit: openrouter_free_models_per_minute, amount: 1, actor: "hosted-witness" as NonEmptyStr, term: QuotaTermToWindowEnd) {
+      QuotaLeaseRefused { detail: d } => d.contains("no dashboard instance is declared")
+      QuotaLeased { grant: _, partition: _, store: _, limit: _ } => false
+      QuotaFull { wire: _ } => false
+    })
+}
+
+// A SETTLEMENT OF A LEASE THAT NEVER EXISTED IS A TYPED REFUSAL, not a recorded charge.
+test fn settling_a_refused_lease_records_nothing() -> Bool {
+  match fabric_quota_settle_at(lease: QuotaLeaseRefused { detail: "no dashboard instance is declared for host x" }, actual: 1, now: w_day_start + 59) {
+    QuotaSettleRefused { detail: d } => d.contains("nothing to settle")
+    QuotaSettled { partition: _, actual: _ } => false
   }
 }

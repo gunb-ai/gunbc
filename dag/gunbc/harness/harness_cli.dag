@@ -30,7 +30,7 @@ import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, 
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, NemotronUltraFreeOnOpenRouter }
-import gunbc.harness.harness_hosted_route { HarnessBackendAccess, BackendAdmittedBySeat, harness_hosted_backend_access }
+import gunbc.harness.harness_hosted_route { HarnessBackendAccess, BackendAdmittedBySeat, harness_hosted_backend_access, harness_hosted_access_wire }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
 }
@@ -1096,27 +1096,53 @@ fn harness_binding_answer(binding: HarnessSeatBinding) -> HarnessBindingAnswer {
 // harness_requirement_placement): the listing is governed by NVIDIA's trial terms, so reaching it is an
 // operator's explicit act, not a placement default. It takes its tool environment as arguments, as the
 // worker does, so it runs on whatever host invokes it rather than assuming the MacBook's.
+// THE ROUTE'S STANDING IS WRITTEN BESIDE THE EVENTS BEFORE THE HOSTED PROBE'S TURN RUNS: the tier and daily
+// counters the key read reported, the quota rows each request is charged to, and the NVIDIA trial terms
+// that govern the endpoint. A run whose receipt cannot be written does not run, and gives its credential back.
+fn harness_hosted_route_receipt(binding: HarnessSeatBinding) -> String? {
+  match binding {
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } => Present { value: harness_hosted_access_wire(access: a) }
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => none
+    HarnessSeatPending { detail: _ } => none
+    HarnessSeatRefused { detail: _ } => none
+  }
+}
+
 fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_scratch_path: String, events_path: String) -> ProcessExit {
   let binding = harness_bind_hosted(short_hostname: harness_executor_short_hostname(), unit: NemotronUltraFreeOnOpenRouter, actor: join(["hosted-probe:", worktree], "") as NonEmptyStr, max_tokens: harness_default_max_token_count)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
     BindingReady { backend } => {
-      let outcome = harness_run_turn(
-        config: harness_worker_config(
-          worktree: worktree as FilePath,
-          timeout_program: timeout_program as FilePath,
-          request_scratch_path: request_scratch_path as FilePath,
-          events_path: events_path as FilePath,
-          backend: backend,
-          system_prompt: harness_default_system_prompt,
-          alignment_chain_fingerprint: "",
-        ),
-        prompt: harness_probe_prompt,
-        step_budget: harness_default_step_budget,
-      )
-      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
-      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+      match harness_hosted_route_receipt(binding: binding) {
+        Absent => {
+          let seat_release = harness_release_seat(binding: binding, reason: "the hosted route receipt could not be derived" as NonEmptyStr)
+          ExitFailure { code: 1, reason: join(["hosted probe: the binding carries no hosted access to describe; ", harness_seat_release_wire(r: seat_release)], "") }
+        }
+        Present { value: receipt } => {
+          let written = Filesystem.Write(path: join([events_path, ".route"], ""), content: concat(receipt, "\n"))
+          if !written.success {
+            let seat_release = harness_release_seat(binding: binding, reason: "the hosted route receipt could not be written" as NonEmptyStr)
+            ExitFailure { code: 1, reason: join(["hosted probe: the route receipt could not be written to ", events_path, ".route: ", written.error, "; ", harness_seat_release_wire(r: seat_release)], "") }
+          } else {
+            let outcome = harness_run_turn(
+              config: harness_worker_config(
+                worktree: worktree as FilePath,
+                timeout_program: timeout_program as FilePath,
+                request_scratch_path: request_scratch_path as FilePath,
+                events_path: events_path as FilePath,
+                backend: backend,
+                system_prompt: harness_default_system_prompt,
+                alignment_chain_fingerprint: "",
+              ),
+              prompt: harness_probe_prompt,
+              step_budget: harness_default_step_budget,
+            )
+            let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+            harness_turn_exit_released(outcome: outcome, seat: seat_release)
+          }
+        }
+      }
     }
   }
 }

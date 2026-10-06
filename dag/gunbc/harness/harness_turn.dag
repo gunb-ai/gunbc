@@ -620,8 +620,8 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       ], "")
     TurnHostedQuotaFull { wire: w, steps_taken: n } =>
       join([
-        "after ", to_string(value: n), " tool rounds the hosted upstream's quota was full (", w,
-        "); the request was not sent, because the upstream would have answered 429",
+        "after ", to_string(value: n), " tool rounds the local quota ledger refused the request (", w,
+        "); it was not sent. The ledger is this fleet's own pre-check, not an answer from the upstream, whose count it can differ from at a window boundary",
       ], "")
     TurnHostedQuotaUnleasable { detail: d, steps_taken: n } =>
       join([
