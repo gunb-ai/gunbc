@@ -43,6 +43,7 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleRealizedBy,
   ProdRoleRealizationRefused,
   ProdRoleUnheld,
+  prod_role_realization_refusal_detail,
   ProdRoleHolderUnrealized,
   ProdRoleHolderUnactuatable,
   prod_role_realization,
@@ -65,6 +66,9 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment, DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonConvergence,
@@ -542,6 +546,36 @@ test fn the_gcp_iam_job_runs_on_the_holders_host_and_is_refused_under_no_prod_ro
     && !any(unheld_labels, l => l == srv1_host || l == srv2_host)
     && count(unheld.steps) == 1
     && unheld_refuses
+}
+
+// THE REFUSED JOB'S SCRIPT IS THE MODELED EMISSION, byte for byte: an echo of the typed cause redirected
+// to stderr and exit 1, built here as bash_build nodes and emitted by v2.workflow.bash_emit -- so a
+// hand-joined shell string in the job, or any drift from the modeled route, is red.
+fn expected_gcp_iam_refusal_script(detail: String) -> String {
+  match bash_emit_stmts(statements: [
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: join(["REFUSED gunbc.fleet_converge_workflow gcp-iam-converge: ", detail], "")),
+      ]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
+    bash_build_exit(code: "1"),
+  ], set_e: true) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn the_refused_gcp_iam_job_script_is_the_bash_emit_emission() -> Bool {
+  let expected = expected_gcp_iam_refusal_script(detail: prod_role_realization_refusal_detail(cause: ProdRoleUnheld))
+  let unheld = fleet_converge_gcp_iam_converge_job_under(realization: fx_unheld())
+  expected != ""
+    && count(unheld.steps) == 1
+    && all(unheld.steps, st => match st {
+      RunStep { name: _, id: _, run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run == expected
+      _ => false
+    })
 }
 
 // ── THE POSITIVE CONTROL, over the REAL selection and roster ────────────────────────────────────
