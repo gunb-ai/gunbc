@@ -112,7 +112,9 @@ fn assess_reference_binding_observation(
               } else {
                 refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
               }
-            _ => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+            OccurrenceReferenceBindingDecided { result: OccurrenceUnbound { occurrence: _ } } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+            OccurrenceReferenceBindingDecided { result: OccurrenceAmbiguous { occurrence: _, candidates: _ } } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+            OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
           }
       }
     SiblingBranchProductionRefused { gap: _ } =>
@@ -136,7 +138,9 @@ fn assess_reference_binding_observation(
               } else {
                 refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
               }
-            _ => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+            OccurrenceReferenceBindingDecided { result: OccurrenceUnbound { occurrence: _ } } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+            OccurrenceReferenceBindingDecided { result: OccurrenceAmbiguous { occurrence: _, candidates: _ } } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+            OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
           }
       }
     LaterDeclarationProductionRefused { gap: _ } =>
@@ -150,7 +154,9 @@ fn assess_reference_binding_observation(
             OccurrenceReferenceBindingDecided {
               result: OccurrenceUnbound { occurrence: _ },
             } => established(capability: LaterDeclarationExcluded)
-            _ => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+            OccurrenceReferenceBindingDecided { result: OccurrenceBound { binding: _ } } => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+            OccurrenceReferenceBindingDecided { result: OccurrenceAmbiguous { occurrence: _, candidates: _ } } => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+            OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
           }
       }
     DistinctHomonymProductionRefused { gap: _ } =>
@@ -179,7 +185,9 @@ fn assess_reference_binding_observation(
               } else {
                 refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
               }
-            _ => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+            OccurrenceReferenceBindingDecided { result: OccurrenceBound { binding: _ } } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+            OccurrenceReferenceBindingDecided { result: OccurrenceUnbound { occurrence: _ } } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+            OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
           }
       }
     RepeatedMentionDependencyObservation { provider_file, projected_dependencies } =>

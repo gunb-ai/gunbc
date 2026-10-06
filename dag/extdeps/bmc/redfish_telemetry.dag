@@ -102,18 +102,26 @@ fn redfish_status(v: JsonValue) -> ObservationAttempt<RedfishStatusPair, NonEmpt
         MemberString { value: h } =>
           if h == "OK" { RedfishHealthOk } else if h == "Warning" { RedfishHealthWarning } else if h == "Critical" { RedfishHealthCritical }
           else if h == "" { RedfishHealthUnreported } else { RedfishHealthOther { health: h as NonEmptyStr } }
-        _ => RedfishHealthUnreported
+        MemberArray { elements: _ } => RedfishHealthUnreported
+        MemberObject { value: _ } => RedfishHealthUnreported
+        MemberFailed { cause: _ } => RedfishHealthUnreported
       },
       state: match read_string_member(v: status, key: "State") {
         MemberString { value: s } =>
           if s == "Enabled" { RedfishStateEnabled } else if s == "Disabled" { RedfishStateDisabled } else if s == "Absent" { RedfishStateAbsent }
           else if s == "" { RedfishStateUnreported } else { RedfishStateOther { state: s as NonEmptyStr } }
-        _ => RedfishStateUnreported
+        MemberArray { elements: _ } => RedfishStateUnreported
+        MemberObject { value: _ } => RedfishStateUnreported
+        MemberFailed { cause: _ } => RedfishStateUnreported
       },
     } }
     MemberFailed { cause: MemberReadMissing { key: _ } } =>
       ObservationEstablished { observed: RedfishStatusPair { health: RedfishHealthUnreported, state: RedfishStateUnreported } }
-    _ => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
+    MemberString { value: _ } => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
+    MemberArray { elements: _ } => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
+    MemberFailed { cause: MemberReadSubjectNotObject } => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
+    MemberFailed { cause: MemberReadDuplicated { key: _ } } => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
+    MemberFailed { cause: MemberReadWrongShape { key: _ } } => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
   }
 }
 
@@ -158,7 +166,9 @@ fn redfish_point(v: JsonValue, kind: RedfishPointKind, reading_key: String) -> O
           }
         }
       }
-    _ => ObservationRefused { cause: "a Redfish telemetry point carries no single string Name" }
+    MemberArray { elements: _ } => ObservationRefused { cause: "a Redfish telemetry point carries no single string Name" }
+    MemberObject { value: _ } => ObservationRefused { cause: "a Redfish telemetry point carries no single string Name" }
+    MemberFailed { cause: _ } => ObservationRefused { cause: "a Redfish telemetry point carries no single string Name" }
   }
 }
 
@@ -181,7 +191,9 @@ fn redfish_sensor_point(body: String) -> ObservationAttempt<RedfishTelemetryPoin
           else if t == "" { RedfishOtherReading { reading_type: "unnamed" } } else { RedfishOtherReading { reading_type: t as NonEmptyStr } },
         reading_key: "Reading",
       )
-      _ => ObservationRefused { cause: "a Redfish Sensor carries no single string ReadingType" }
+      MemberArray { elements: _ } => ObservationRefused { cause: "a Redfish Sensor carries no single string ReadingType" }
+      MemberObject { value: _ } => ObservationRefused { cause: "a Redfish Sensor carries no single string ReadingType" }
+      MemberFailed { cause: _ } => ObservationRefused { cause: "a Redfish Sensor carries no single string ReadingType" }
     }
   }
 }
@@ -217,9 +229,13 @@ fn redfish_thermal_points(body: String) -> ObservationAttempt<List<RedfishTeleme
             ObservationEstablished { observed: f } => ObservationEstablished { observed: concat(t, f) }
           }
         }
-        _ => ObservationRefused { cause: "the Redfish Thermal resource carries no Fans array" }
+        MemberString { value: _ } => ObservationRefused { cause: "the Redfish Thermal resource carries no Fans array" }
+        MemberObject { value: _ } => ObservationRefused { cause: "the Redfish Thermal resource carries no Fans array" }
+        MemberFailed { cause: _ } => ObservationRefused { cause: "the Redfish Thermal resource carries no Fans array" }
       }
-      _ => ObservationRefused { cause: "the Redfish Thermal resource carries no Temperatures array" }
+      MemberString { value: _ } => ObservationRefused { cause: "the Redfish Thermal resource carries no Temperatures array" }
+      MemberObject { value: _ } => ObservationRefused { cause: "the Redfish Thermal resource carries no Temperatures array" }
+      MemberFailed { cause: _ } => ObservationRefused { cause: "the Redfish Thermal resource carries no Temperatures array" }
     }
   }
 }
@@ -239,7 +255,9 @@ fn redfish_member_ids(body: String) -> ObservationAttempt<List<NonEmptyStr>, Non
             ObservationRefused { cause } => ObservationRefused { cause: cause }
             ObservationEstablished { observed: ids } => match read_string_member(v: e, key: "@odata.id") {
               MemberString { value: id } => if id == "" { ObservationRefused { cause: "a Redfish collection member has an empty @odata.id" } } else { ObservationEstablished { observed: concat([id as NonEmptyStr], ids) } }
-              _ => ObservationRefused { cause: "a Redfish collection member carries no single string @odata.id" }
+              MemberArray { elements: _ } => ObservationRefused { cause: "a Redfish collection member carries no single string @odata.id" }
+              MemberObject { value: _ } => ObservationRefused { cause: "a Redfish collection member carries no single string @odata.id" }
+              MemberFailed { cause: _ } => ObservationRefused { cause: "a Redfish collection member carries no single string @odata.id" }
             }
           })
           match reversed {
@@ -247,7 +265,9 @@ fn redfish_member_ids(body: String) -> ObservationAttempt<List<NonEmptyStr>, Non
             ObservationEstablished { observed: ids } => ObservationEstablished { observed: reverse(ids) }
           }
         }
-        _ => ObservationRefused { cause: "the Redfish collection carries no Members array" }
+        MemberString { value: _ } => ObservationRefused { cause: "the Redfish collection carries no Members array" }
+        MemberObject { value: _ } => ObservationRefused { cause: "the Redfish collection carries no Members array" }
+        MemberFailed { cause: _ } => ObservationRefused { cause: "the Redfish collection carries no Members array" }
       }
     }
   }
@@ -277,14 +297,18 @@ fn redfish_log_entry(v: JsonValue) -> ObservationAttempt<RedfishLogEntry, NonEmp
         MemberString { value: m } => if m == "" { ObservationRefused { cause: "a Redfish log entry has an empty Message" } } else {
           ObservationEstablished { observed: RedfishLogEntry {
             id: id,
-            severity: match read_string_member(v: v, key: "Severity") { MemberString { value: s } => if s == "" { "Unreported" as NonEmptyStr } else { s as NonEmptyStr } _ => "Unreported" as NonEmptyStr },
+            severity: match read_string_member(v: v, key: "Severity") { MemberString { value: s } => if s == "" { "Unreported" as NonEmptyStr } else { s as NonEmptyStr } MemberArray { elements: _ } => "Unreported" as NonEmptyStr MemberObject { value: _ } => "Unreported" as NonEmptyStr MemberFailed { cause: _ } => "Unreported" as NonEmptyStr },
             message: m as NonEmptyStr,
           } }
         }
-        _ => ObservationRefused { cause: "a Redfish log entry carries no single string Message" }
+        MemberArray { elements: _ } => ObservationRefused { cause: "a Redfish log entry carries no single string Message" }
+        MemberObject { value: _ } => ObservationRefused { cause: "a Redfish log entry carries no single string Message" }
+        MemberFailed { cause: _ } => ObservationRefused { cause: "a Redfish log entry carries no single string Message" }
       }
     }
-    _ => ObservationRefused { cause: "a Redfish log entry carries no single string Id" }
+    MemberArray { elements: _ } => ObservationRefused { cause: "a Redfish log entry carries no single string Id" }
+    MemberObject { value: _ } => ObservationRefused { cause: "a Redfish log entry carries no single string Id" }
+    MemberFailed { cause: _ } => ObservationRefused { cause: "a Redfish log entry carries no single string Id" }
   }
 }
 
@@ -309,7 +333,9 @@ fn redfish_log_entries(body: String) -> ObservationAttempt<List<RedfishLogEntry>
             ObservationEstablished { observed: entries } => ObservationEstablished { observed: reverse(entries) }
           }
         }
-        _ => ObservationRefused { cause: "the Redfish log entry collection carries no Members array" }
+        MemberString { value: _ } => ObservationRefused { cause: "the Redfish log entry collection carries no Members array" }
+        MemberObject { value: _ } => ObservationRefused { cause: "the Redfish log entry collection carries no Members array" }
+        MemberFailed { cause: _ } => ObservationRefused { cause: "the Redfish log entry collection carries no Members array" }
       }
     }
   }
