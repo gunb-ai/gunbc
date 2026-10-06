@@ -1,10 +1,10 @@
 module test.claim.roadmap.roadmap_belt_recapture_witness_test
 
 // RECAPTURE ADMISSION AT ITS OWN INTERFACE (DESIGN §3). The dirty-worktree, missing-head,
-// unobservable-base and submission-binding refusals are decided from supplied observations --
-// porcelain, a typed head, a typed spawn base, a typed capture roster -- because those claims are
-// about those preconditions, not about git. The real recapture path is the wet inhabitance
-// test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.
+// unobservable-base and head-address capture refusals are decided from supplied observations --
+// porcelain, a typed head, a typed spawn base, a typed SubmissionCaptureObservation -- because
+// those claims are about those preconditions, not about git. The real recapture path is the wet
+// inhabitance test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -14,11 +14,13 @@ import gunbc.roadmap_belt_actuate {
   WorktreeHeadObserved, WorktreeHeadUnobserved,
   BaseShaObserved, BaseShaUnobserved,
   belt_capture_standing, CaptureOnBase, CaptureBaseStale, CaptureStandingUnderivable,
-  belt_scm_recapture_submission_bind,
-  RecaptureBoundToSubmission, RecaptureHasNoSubmissionCapture, RecaptureHeadIsNotTheRecordedSubmission,
+  belt_scm_recapture_capture_gate,
+  RecaptureCaptureProceeds, RecaptureCaptureRefused, RecaptureCapturePoisoned,
+  recapture_capture_absent_detail,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound,
+  CaptureForHead, CaptureAbsent, CaptureUnreadable,
 }
 import gunbc.scm.repository_envelope { RepositoryCommit }
 import test.fixture.legacy_intake_scene { legacy_corrective_scene, legacy_unconverted, legacy_ref }
@@ -113,34 +115,26 @@ fn recorded_capture(head: String) -> SubmissionCapture {
   }
 }
 
-test fn a_head_matching_the_recorded_submission_is_bound() -> Bool {
-  match belt_scm_recapture_submission_bind(
-    head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    captures: [recorded_capture(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
-  ) {
-    RecaptureBoundToSubmission { recorded_sha } => recorded_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    RecaptureHasNoSubmissionCapture => false
-    RecaptureHeadIsNotTheRecordedSubmission { head_sha: _, recorded_sha: _ } => false
+test fn a_capture_at_this_heads_address_proceeds() -> Bool {
+  match belt_scm_recapture_capture_gate(observation: CaptureForHead { capture: recorded_capture(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") }) {
+    RecaptureCaptureProceeds { capture } => capture.head_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    RecaptureCaptureRefused { detail: _ } => false
+    RecaptureCapturePoisoned { detail: _ } => false
   }
 }
 
-test fn an_absent_submission_capture_refuses_recapture_binding() -> Bool {
-  match belt_scm_recapture_submission_bind(head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", captures: []) {
-    RecaptureHasNoSubmissionCapture => true
-    RecaptureBoundToSubmission { recorded_sha: _ } => false
-    RecaptureHeadIsNotTheRecordedSubmission { head_sha: _, recorded_sha: _ } => false
+test fn an_absent_capture_at_this_heads_address_refuses() -> Bool {
+  match belt_scm_recapture_capture_gate(observation: CaptureAbsent) {
+    RecaptureCaptureRefused { detail } => detail == recapture_capture_absent_detail
+    RecaptureCaptureProceeds { capture: _ } => false
+    RecaptureCapturePoisoned { detail: _ } => false
   }
 }
 
-test fn a_clean_head_that_is_not_the_recorded_submission_refuses_recapture_binding() -> Bool {
-  match belt_scm_recapture_submission_bind(
-    head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    captures: [recorded_capture(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
-  ) {
-    RecaptureHeadIsNotTheRecordedSubmission { head_sha, recorded_sha } =>
-      head_sha == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-        && recorded_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    RecaptureBoundToSubmission { recorded_sha: _ } => false
-    RecaptureHasNoSubmissionCapture => false
+test fn an_unreadable_capture_at_this_heads_address_poisons_and_is_not_absence() -> Bool {
+  match belt_scm_recapture_capture_gate(observation: CaptureUnreadable { reason: "envelope damaged" }) {
+    RecaptureCapturePoisoned { detail } => detail == "envelope damaged"
+    RecaptureCaptureProceeds { capture: _ } => false
+    RecaptureCaptureRefused { detail: _ } => false
   }
 }

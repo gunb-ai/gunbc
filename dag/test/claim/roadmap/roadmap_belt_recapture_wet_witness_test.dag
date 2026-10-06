@@ -22,6 +22,7 @@ import gunbc.roadmap_belt_actuate {
   belt_scm_recapture, Recaptured, RecaptureRefused, RecapturePoisoned,
   belt_exec, ExecOk, ExecFailed, ExecRefused,
   belt_attempt_submission_dir_for_instance,
+  recapture_capture_absent_detail,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound,
@@ -188,13 +189,44 @@ test fn a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_re
     node_id: recapture_node,
     attempt_key: recapture_attempt,
   ) {
-    RecaptureRefused { detail } =>
-      detail == join([
-        "HEAD ", observed,
-        " is not the revision the attempt's durable submission capture names (",
-        recorded,
-        "): recapture stamps CaptureWork only onto that recorded commit",
-      ], "")
+    RecaptureRefused { detail } => detail == recapture_capture_absent_detail
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  refused && cleaned.success
+}
+
+test fn a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution() -> Bool {
+  let instance = fresh_instance()
+  let worktree = plant_worktree(instance: instance)
+  let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD~1"])
+  let submissions = belt_attempt_submission_dir_for_instance(
+    instance: instance,
+    node_id: recapture_node as RoadmapNodeId,
+    attempt_key: recapture_attempt,
+  )
+  let misplaced = worktree != "" && worker_sha != "" && base_sha != "" && worker_sha != base_sha
+    && shell.Remove.FileForce(path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], "") as FilePath).success
+    && Filesystem.Write(
+      path: join([submissions, "/", submission_capture_basename(head_sha: base_sha)], ""),
+      content: submission_capture_text(capture: SubmissionCapture {
+        head_sha: worker_sha,
+        scm_repository: "/planted.json",
+        scm_commit_ordinal: 1,
+        scm_root_locator: SubmissionCaptureRootBound { locator: "planted" },
+        digest: "planted",
+        submission: WorkerSubmission { readiness: SubmissionReady, explanation: "planted", limitations: "none" },
+      }),
+    ).success
+  let refused = misplaced && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } => detail == recapture_capture_absent_detail
     RecapturePoisoned { detail: _ } => false
     Recaptured { commit_ordinal: _, repository_path: _ } => false
   }

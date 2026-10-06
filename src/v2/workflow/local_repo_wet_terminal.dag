@@ -339,6 +339,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test", function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness_test.dag",
+      function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.workspace_network_real_reader_witness_test", function: "real_reader_takes_the_route_the_reader_identity_dictates" },
       entry: "dag/test/claim/workspace_network_real_reader_witness_test.dag",
       function: "real_reader_takes_the_route_the_reader_identity_dictates",

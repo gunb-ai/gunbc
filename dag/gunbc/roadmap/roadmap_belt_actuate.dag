@@ -12037,9 +12037,9 @@ fn belt_scm_corrective_integrate_cli(project_key: String, source: Int, supersede
 // (BaseAdvance) as a fresh CaptureWork of the same unit and attempt, without creating a git commit
 // -- the realization already exists. The tick's capture fires only while the worktree is dirty;
 // once commit-outcome is skipped: worktree clean, this is the only producer a corrective integrate
-// can name as --arg source. THE HEAD MUST BE THE ATTEMPT'S OWN RECORDED SUBMISSION: a clean
-// checkout of an unrelated commit is not that attempt's recapture, so recapture binds HEAD to
-// SubmissionCapture.head_sha and refuses when the record is absent or names another revision.
+// can name as --arg source. THE HEAD MUST BE THE ATTEMPT'S OWN RECORDED SUBMISSION, READ AT THE
+// SAME ADDRESS VERIFICATION AND THE DASHBOARD USE: belt_submission_capture_for_head. CaptureForHead
+// proceeds; CaptureAbsent refuses; CaptureUnreadable poisons and is never read as absence.
 // Invocation:
 // `GUNBC_BELT_INSTANCE_ID=<instance> gunbc run --source-root dag --source-root src/v2 --entry
 // dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_scm_recapture_cli
@@ -12069,20 +12069,18 @@ fn belt_scm_recapture_preconditions(
   }
 }
 
-type RecaptureSubmissionBinding
-  = RecaptureBoundToSubmission { recorded_sha: String }
-  | RecaptureHasNoSubmissionCapture
-  | RecaptureHeadIsNotTheRecordedSubmission { head_sha: String, recorded_sha: String }
+type RecaptureCaptureGate
+  = RecaptureCaptureProceeds { capture: SubmissionCapture }
+  | RecaptureCaptureRefused { detail: String }
+  | RecaptureCapturePoisoned { detail: String }
 
-fn belt_scm_recapture_submission_bind(head_sha: String, captures: List<SubmissionCapture>) -> RecaptureSubmissionBinding {
-  match (captures |> filter(c => c.head_sha == head_sha)).first() {
-    Present { value: bound } => RecaptureBoundToSubmission { recorded_sha: bound.head_sha }
-    Absent =>
-      match captures.first() {
-        Absent => RecaptureHasNoSubmissionCapture
-        Present { value: recorded } =>
-          RecaptureHeadIsNotTheRecordedSubmission { head_sha: head_sha, recorded_sha: recorded.head_sha }
-      }
+data recapture_capture_absent_detail: String = "no submission capture binds this HEAD: recapture stamps CaptureWork only onto the attempt's durable capture at this head's own address"
+
+fn belt_scm_recapture_capture_gate(observation: SubmissionCaptureObservation) -> RecaptureCaptureGate {
+  match observation {
+    CaptureForHead { capture } => RecaptureCaptureProceeds { capture: capture }
+    CaptureAbsent => RecaptureCaptureRefused { detail: recapture_capture_absent_detail }
+    CaptureUnreadable { reason } => RecaptureCapturePoisoned { detail: reason }
   }
 }
 
@@ -12127,7 +12125,7 @@ fn belt_scm_recapture(
                 RecaptureRefused { detail: join(["the attempt has no committed revision: ", detail], "") }
               RecaptureBaseUnobservable { detail } => RecapturePoisoned { detail: detail }
               RecaptureAdmitted { head_sha, base_sha: _ } =>
-                match belt_submission_captures_observe(
+                match belt_scm_recapture_capture_gate(observation: belt_submission_capture_for_head(
                   instance: instance,
                   worktree: worktree,
                   dir: belt_attempt_submission_dir_for_instance(
@@ -12135,24 +12133,11 @@ fn belt_scm_recapture(
                     node_id: node_id as RoadmapNodeId,
                     attempt_key: attempt_key,
                   ),
-                ) {
-                  CaptureRosterUnobservable { reason } => RecapturePoisoned { detail: reason }
-                  CaptureRosterObserved { captures } =>
-                    match belt_scm_recapture_submission_bind(head_sha: head_sha, captures: captures) {
-                      RecaptureHasNoSubmissionCapture =>
-                        RecaptureRefused {
-                          detail: "the attempt has no durable submission capture, so this HEAD is not a recapture of a recorded candidate",
-                        }
-                      RecaptureHeadIsNotTheRecordedSubmission { head_sha: observed, recorded_sha } =>
-                        RecaptureRefused {
-                          detail: join([
-                            "HEAD ", observed,
-                            " is not the revision the attempt's durable submission capture names (",
-                            recorded_sha,
-                            "): recapture stamps CaptureWork only onto that recorded commit",
-                          ], ""),
-                        }
-                      RecaptureBoundToSubmission { recorded_sha: _ } =>
+                  head_sha: head_sha,
+                )) {
+                  RecaptureCaptureRefused { detail } => RecaptureRefused { detail: detail }
+                  RecaptureCapturePoisoned { detail } => RecapturePoisoned { detail: detail }
+                  RecaptureCaptureProceeds { capture: _ } =>
                 match belt_scm_capture_candidate_tree(
                   instance: instance,
                   worktree: worktree,
@@ -12190,7 +12175,6 @@ fn belt_scm_recapture(
                         }
                     }
                 }
-                    }
                 }
             }
         }
