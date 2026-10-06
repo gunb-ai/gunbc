@@ -4021,7 +4021,10 @@ fn foreign_concrete_coproduct_where_parent_required(
 //
 // CARDINALITY VERDICT ONLY (optional_at_required_obligation_diags): PositionRecordLiteralField,
 // PositionDeclaredReturn, PositionLetAnnotation, PositionDataInitializer. Each builds the same
-// DeclaredTypeObligation and is refused when an optional stands where a required value is declared;
+// DeclaredTypeObligation and is refused when an optional stands where a required value is declared
+// (and, at PositionDeclaredReturn and PositionDataInitializer ONLY, when a bare required value stands
+// where an optional is declared: position_forbids_bare_lift, the other direction; let and record-field
+// stay one-way);
 // the relation's other arms are NOT consulted there, because those seams already carry their own
 // older chains (declared_type_conformance_diags, the record-literal field chain) whose agreement
 // with this relation has not been measured on the corpus. So at these four the honest claim is one
@@ -4437,7 +4440,7 @@ fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
 }
 
-// THE MIRROR, AT THE DECLARED RETURN (gunbc.recurring_failure_mode optional_compared_with_required_value,
+// THE MIRROR, AT THE DECLARED RETURN (gunbc.recurring_failure_mode bare_value_admitted_where_optional_is_declared,
 // class C5). A fn declared `-> T?` whose body produces a bare T was accepted: no declared coercion
 // lifts T into T? (DESIGN 4, 2026-09-26), and the Rust emission refused it as E0308 `expected
 // Option<T>, found T` (gunbc.running_release_identity running_release_member_string). It is judged

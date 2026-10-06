@@ -138,7 +138,7 @@ test fn optional_compared_with_optional_stays_admitted() -> Bool {
   eq_admitted(source: optionality_both_optional_green_source)
 }
 
-// C5, THE SAME CLASS AT THE DECLARED RETURN: a fn declared `-> T?` whose body produces a bare T. No
+// C5 (gunbc.recurring_failure_mode bare_value_admitted_where_optional_is_declared), AT THE DECLARED RETURN: a fn declared `-> T?` whose body produces a bare T. No
 // declared coercion lifts T into T?, and the Rust emission refused it (E0308, gunbc.running_release_
 // identity running_release_member_string). The red is a bare-Int body under `-> Int?`; the controls
 // are the explicit present spelling and the absent spelling, which the arm must not widen into.
