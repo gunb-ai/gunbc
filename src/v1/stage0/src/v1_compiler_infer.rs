@@ -6407,8 +6407,6 @@ pub fn coproduct_at_record_declared_type(
             scope.type_env.clone().source_indices.clone(),
             produced.clone(),
         );
-        let declared_head = expected_type_head_exposure(declared.clone(), scope.clone());
-        let produced_head = expected_type_head_exposure(produced.clone(), scope.clone());
         if (application_type_names_compatible(
             declared_name.clone(),
             produced_name.clone(),
@@ -6422,11 +6420,14 @@ pub fn coproduct_at_record_declared_type(
         )) {
             false
         } else {
-            (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
-                declared_head.clone(),
-            ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
-                produced_head.clone(),
-            ))
+            let declared_product = nominal_product_head_name(declared.clone(), scope.clone());
+            let produced_product = nominal_product_head_name(produced.clone(), scope.clone());
+            let declared_coproduct = nominal_coproduct_head_name(declared.clone(), scope.clone());
+            let produced_coproduct = nominal_coproduct_head_name(produced.clone(), scope.clone());
+            ((declared_product.clone() != "".to_string())
+                && (produced_coproduct.clone() != "".to_string()))
+                || ((declared_coproduct.clone() != "".to_string())
+                    && (produced_product.clone() != "".to_string()))
         }
     }
 }
@@ -6571,6 +6572,94 @@ pub fn nominal_product_head_name_if_declared_product(
                 if ((peeled.connective.clone() == Connective::Conj)
                     && ((peeled.children.clone().len() as i64) > 0))
                 {
+                    name.clone()
+                } else {
+                    "".to_string()
+                }
+            }
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn nominal_coproduct_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (((((((name.clone() == "".to_string())
+            || (n.return_cardinality.clone() == Cardinality::CardOptional))
+            || type_node_is_callable(n.clone()))
+            || crate::std_types::is_kernel_type(name.clone()))
+            || (crate::v1_std_core::qualified_last_segment(name.clone())
+                == "Optional".to_string()))
+            || crate::v1_compiler_infer_types::node_is_element_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+        {
+            "".to_string()
+        } else {
+            match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                {
+                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                        unreachable!()
+                    };
+                    nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
+                }
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(
+                        view.as_ref(),
+                        TypeHeadView::CoproductHead {
+                            type_identity: _,
+                            ..
+                        }
+                    ) =>
+                {
+                    let TypeHeadView::CoproductHead {
+                        type_identity: _, ..
+                    } = view.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
+                }
+                TypeHeadExposure::OpaqueTypeHead {
+                    type_identity: _, ..
+                } => {
+                    nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
+                }
+                _ => "".to_string(),
+            }
+        }
+    }
+}
+
+pub fn nominal_coproduct_head_name_if_declared_coproduct(
+    name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    {
+        let representative = transparent_alias_representative(
+            scope.type_env.clone().symbol_index.clone(),
+            name.clone(),
+        );
+        match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            representative.clone(),
+        ) {
+            Some(decl) => {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    decl.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                if (peeled.connective.clone() == Connective::Disj) {
                     name.clone()
                 } else {
                     "".to_string()

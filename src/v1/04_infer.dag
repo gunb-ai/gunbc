@@ -4513,13 +4513,18 @@ fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferS
     && type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
 }
 
-// Product-vs-coproduct is settled from exact type-head census identities. A second bare-name
-// declaration lookup can select a homonym and fabricate a refusal, so it is not an authority here.
+// Product and coproduct are disjoint identities. The first spelling of this relation judged
+// only a COPRODUCT value at a PRODUCT formal, and it keyed that judgment on ProductHead /
+// CoproductHead exposures. A generic product APPLICATION exposes ApplicationHead, so
+// CarrierClosed<T> at a T coproduct (gunbc#13198: roadmap_standings_read at
+// issue_query_snapshot_for_projection.standings) matched neither side and the inhabitance
+// relation fell through to Inhabits. THE HEADS ARE THE SAME AUTHORITIES THE NOMINAL-PRODUCT
+// AND GENERIC-COPRODUCT ARMS ALREADY USE: a declared product, applied or not, and a declared
+// coproduct, applied or not. A second leaf-name lookup is not an authority here. Either
+// direction refuses; same-declaration and transparent-alias pairs still abstain.
 fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let declared_name = authored_name_at(source_indices: scope.type_env.source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: scope.type_env.source_indices, node: produced)
-  let declared_head = expected_type_head_exposure(formal: declared, scope: scope)
-  let produced_head = expected_type_head_exposure(formal: produced, scope: scope)
   if application_type_names_compatible(
       formal_name: declared_name, lit_name: produced_name,
       type_env: scope.type_env, module_name: scope.module_name,
@@ -4528,8 +4533,12 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
         index: scope.type_env.symbol_index, left: declared_name, right: produced_name) {
     false
   } else {
-    type_head_exposure_is_product(exposure: declared_head)
-      && type_head_exposure_is_coproduct(exposure: produced_head)
+    let declared_product = nominal_product_head_name(n: declared, scope: scope)
+    let produced_product = nominal_product_head_name(n: produced, scope: scope)
+    let declared_coproduct = nominal_coproduct_head_name(n: declared, scope: scope)
+    let produced_coproduct = nominal_coproduct_head_name(n: produced, scope: scope)
+    (declared_product != "" && produced_coproduct != "")
+      || (declared_coproduct != "" && produced_product != "")
   }
 }
 
@@ -4714,6 +4723,44 @@ fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
 // NEXT-RUNG TRIGGER: a refinement-inhabitance relation that consumes where_refinement_chain and
 // decides the two directions separately, at which point brand narrowing becomes a refusal here
 // rather than an abstention.
+// The coproduct dual of nominal_product_head_name: a declared coproduct, applied or not.
+// nominal_coproduct_application_head_name requires children and so answers "" for an
+// unapplied RoadmapStandings; type_head_exposure_is_coproduct misses an ApplicationHead
+// of a generic coproduct. This is the one head both of those questions share.
+fn nominal_coproduct_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        nominal_coproduct_head_name_if_declared_coproduct(name: name, scope: scope)
+      ExposedTypeHead { view: CoproductHead { type_identity: _ } } =>
+        nominal_coproduct_head_name_if_declared_coproduct(name: name, scope: scope)
+      OpaqueTypeHead { type_identity: _ } =>
+        nominal_coproduct_head_name_if_declared_coproduct(name: name, scope: scope)
+      _ => ""
+    }
+  }
+}
+
+fn nominal_coproduct_head_name_if_declared_coproduct(name: String, scope: InferScope) -> String {
+  let representative = transparent_alias_representative(
+    index: scope.type_env.symbol_index, name: name)
+  match lookup_type_by_name(env: scope.type_env, name: representative) {
+    Present { value: decl } =>
+      let peeled = peel_nominal_alias_identity(
+        n: decl, env: scope.type_env, module_name: scope.module_name)
+      if peeled.connective == Disj { name } else { "" }
+    Absent => ""
+  }
+}
+
 fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
   let representative = transparent_alias_representative(
     index: scope.type_env.symbol_index, name: name)

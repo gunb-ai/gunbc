@@ -130,6 +130,35 @@ test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
   violation_count(source: coproduct_value_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
+// THE DUAL, AND THE #13198 SPECIMEN. A generic product APPLICATION (CarrierClosed<T> / Wrap<Inner>)
+// at a parameter declared as the inner coproduct was admitted: ApplicationHead is not ProductHead,
+// the declared coproduct is not a product, and declared_type_inhabitance fell through to Inhabits.
+// The actual is a CALL, not a record literal, so structured_application_site_type_mismatch cannot
+// stand in as the wall. Named argument, same as the production site.
+data generic_product_at_its_argument_coproduct_source: String = "module probe_inhabit_generic_product_at_coproduct\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> { result: T, tag: String }\nfn mk_wrap() -> Wrap<Inner> { Wrap { result: InnerA { v: \"z\" }, tag: \"c\" } }\nfn takes_inner(x: Inner) -> Int { 1 }\nfn probe() -> Int { takes_inner(x: mk_wrap()) }\n"
+
+test fn w_a_generic_product_at_the_coproduct_it_wraps_is_refused() -> Bool {
+  violation_count(source: generic_product_at_its_argument_coproduct_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data unapplied_product_at_coproduct_source: String = "module probe_inhabit_product_at_coproduct\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_box() -> Box { Box { value: \"forty\" } }\nfn takes_choice(x: Choice) -> Int { 1 }\nfn probe() -> Int { takes_choice(x: make_box()) }\n"
+
+test fn w_an_unapplied_product_at_a_coproduct_argument_is_refused() -> Bool {
+  violation_count(source: unapplied_product_at_coproduct_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data generic_product_at_matching_product_source: String = "module probe_inhabit_generic_product_ok\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> { result: T, tag: String }\nfn mk_wrap() -> Wrap<Inner> { Wrap { result: InnerA { v: \"z\" }, tag: \"c\" } }\nfn takes_wrap(x: Wrap<Inner>) -> Int { 1 }\nfn probe() -> Int { takes_wrap(x: mk_wrap()) }\n"
+
+test fn w_a_generic_product_at_its_own_declared_application_is_admitted() -> Bool {
+  violation_count(source: generic_product_at_matching_product_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data generic_product_field_projected_source: String = "module probe_inhabit_generic_product_field\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> { result: T, tag: String }\nfn mk_wrap() -> Wrap<Inner> { Wrap { result: InnerA { v: \"z\" }, tag: \"c\" } }\nfn takes_inner(x: Inner) -> Int { 1 }\nfn probe() -> Int { takes_inner(x: mk_wrap().result) }\n"
+
+test fn w_the_inner_field_of_a_generic_product_at_that_coproduct_is_admitted() -> Bool {
+  violation_count(source: generic_product_field_projected_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
 // The syntax contrast that exposed the application hole. The cast seam already refused the same
 // optional-to-required transition; the binding seam now refuses it too, and that RED lives at
 // test.claim.optional_at_required_position_witness_test an_optional_at_a_string_parameter_must_refuse,

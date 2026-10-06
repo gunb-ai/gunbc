@@ -112,6 +112,7 @@ import extdeps.languages.json.emit {
   json_int,
   json_array,
   JsonValue,
+  JsonKeyValue,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
@@ -2114,14 +2115,14 @@ fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHtt
   )
 }
 
-fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
-  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
-  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonKeyValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ]
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ]
   match roster {
     ProfileStoreUnread { step: _, reason: _ } => unreadable
     ProfileStoreRead { profiles: _, skipped } =>
       if count(skipped) == 0 {
-        [] as List<JsonValue>
+        []
       } else {
         partial
       }
@@ -2186,7 +2187,7 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
 // projected one — absence is the member's ABSENCE, never an empty string standing in for none,
 // and the client reads absence (like a failed fetch) as the initials fallback, never an
 // identity claim from a hole in the wire.
-fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
+fn auth_session_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
@@ -2195,7 +2196,7 @@ fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
 
 // THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
 // never an empty string standing in for none.
-fn auth_session_name_members(name: String?) -> List<JsonValue> {
+fn auth_session_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
@@ -2203,7 +2204,7 @@ fn auth_session_name_members(name: String?) -> List<JsonValue> {
 }
 
 // THE OPTIONAL EMAIL MEMBER, the same law as the name: absence is the member's ABSENCE.
-fn auth_session_email_members(email: Email?) -> List<JsonValue> {
+fn auth_session_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []
