@@ -485,6 +485,8 @@ fn vfp_decode_grounded_generic() -> CliWireResponse {
 }
 
 
+data vfp_nullary_sum_src: String = "module p\n\ntype A = MkA\n\nfn f() -> A { MkA }"
+
 data vfp_fx1_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a.seed\n}"
 
 data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a\n}"
