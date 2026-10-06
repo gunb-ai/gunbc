@@ -91,6 +91,7 @@ pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
+pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
 mod required_lane_roster;
@@ -2402,13 +2403,17 @@ mod process_cwd_mutation_reachability_gate {
         // main.rs and gunbc_cli_dispatch_generated.rs and called only from that dispatch;
         // `run_native_claim_program` -- the `gunbc test` producer in target_invocation_host.rs
         // (#12250), called only from its own TargetProducer match (the other declaration, in
-        // native_lane_runner, is reached by the qualified `cli_run::` spelling).
+        // native_lane_runner, is reached by the qualified `cli_run::` spelling);
+        // `run_native_serve_program` -- its serve twin (#13135), the same shape: the
+        // target_invocation_host.rs producer is called only from its own TargetProducer match, and
+        // native_lane_runner's declaration is reached by the qualified `cli_run::` spelling.
         let expected: BTreeSet<String> = [
             "handle_serve",
             "invoke_bound_target_producer",
             "main",
             "run",
             "run_native_claim_program",
+            "run_native_serve_program",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -6208,6 +6213,9 @@ mod compile_clean_via_index_verdict_equivalence {
         fs::create_dir_all(&provider_root).expect("create provider root");
 
         // The ONLY difference from the admitting test: no reference to the provider.
+        // QUALIFIED, not bare: since #12741 a bare name across source trees refuses typed
+        // (CrossTreeBareReference), so the cross-tree reference the de-fork must follow is
+        // written the way production must write it.
         fs::write(
             entry_root.join("seed.dag"),
             "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
@@ -6286,7 +6294,7 @@ mod compile_clean_via_index_verdict_equivalence {
 
         fs::write(
             entry_root.join("seed.dag"),
-            "module v1.regen_seed_probe\nfn probe() -> Int {\n  regen_provider_probe_answer()\n}\n",
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  std.regen_provider_probe.regen_provider_probe_answer()\n}\n",
         )
         .expect("write seed");
         fs::write(
@@ -11830,6 +11838,8 @@ pub enum WitnessRuntimeCause {
     ShellOutputLimitExceeded,
     ShellSpawnRefused,
     CallContractMismatch,
+    /// A host filesystem effect (create, write) failed. Not a type error: the world refused.
+    HostIoFailed,
     /// A fixture compile instrument refused to answer (`FixtureRenderRefusal`): the read path
     /// was not emitted by a clean compile, or the closure held no fixture module.
     FixtureRenderRefused,
@@ -11872,6 +11882,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
             WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
+            WitnessRuntimeCause::HostIoFailed => "host-io-failed",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::FixtureRenderRefused => "fixture-render-refused",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
@@ -11913,6 +11924,7 @@ impl WitnessRuntimeCause {
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
             E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
+            E::HostIoFailed { .. } => WitnessRuntimeCause::HostIoFailed,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
@@ -11957,6 +11969,11 @@ pub enum ClaimOutcome {
     RuntimeError {
         cause: WitnessRuntimeCause,
         message: String,
+        /// WHERE it was raised: the innermost `.dag` declaration being evaluated, then the call
+        /// path out to the claim. A third fact beside the other two — the message says what went
+        /// wrong, this says which declaration was running — and the one every arm can carry,
+        /// because most `InterpError` arms have no source position at their raise site.
+        raised_in: v1_interpreter::RaisePath,
     },
     /// A budget refusal, with the pair that explains it kept as data.
     ///
@@ -18360,6 +18377,234 @@ pub fn render_witness_claim_result_text_mirror(
     )
 }
 
+/// Mirror of `gunbc.observation_ci_render` `ci_witness_runtime_error_detail_text`: the line that
+/// LOCATES a runtime-error row. The ERROR row keeps its bytes and its `cause=` key; this line
+/// repeats the target label and carries `raised_in=` (innermost declaration being evaluated),
+/// `call_path=` (out to the claim) and `message=` (last, newlines escaped). Each frame is the
+/// declaration's own span, not the raise site's: most interpreter error arms have no position.
+pub fn render_witness_runtime_error_detail_text_mirror(
+    subject: &str,
+    function: &str,
+    raised_in: &v1_interpreter::RaisePath,
+    message: &str,
+) -> String {
+    let label = witness_bazel_target_label(subject, function);
+    let frames: Vec<String> = raised_in
+        .frames
+        .iter()
+        .map(|f| format!("{}@{}:{}", f.decl, f.file, f.start))
+        .collect();
+    let (innermost, call_path) = if frames.is_empty() {
+        ("unrecorded".to_string(), "unrecorded".to_string())
+    } else {
+        (frames[0].clone(), frames.join("<-"))
+    };
+    let elided = if raised_in.elided == 0 {
+        String::new()
+    } else {
+        format!(" elided={}", raised_in.elided)
+    };
+    format!(
+        "{label} error-at raised_in={innermost} call_path={call_path}{elided} message={}",
+        message.replace('\n', "\\n")
+    )
+}
+
+#[cfg(test)]
+mod runtime_error_location_tests {
+    use super::{
+        render_witness_claim_result_text_mirror, render_witness_runtime_error_detail_text_mirror,
+        run_claim, CiWitnessVerdict, ClaimOutcome, WitnessRuntimeCause,
+    };
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, RaiseFrame, RaisePath};
+    use std::rc::Rc;
+
+    fn claim_outcome(content: &str, function: &str) -> ClaimOutcome {
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "fixture/raise.dag".to_string(),
+                    content: content.to_string(),
+                }
+            )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        run_claim(&ctx, function)
+    }
+
+    // THE DISCRIMINATING CONTROL. One program, two claims, the same throw raised in two different
+    // declarations: `raised_in` must name the declaration that was running at the raise, and the
+    // call path must run out to the claim. A renderer or recorder that named the claim, the first
+    // declaration in the module, or a constant would fail one of the two.
+    #[test]
+    fn a_runtime_error_is_located_at_the_declaration_that_raised_it() {
+        let src = "module fixture.raise\n\
+                   fn divide(d: Int) -> Int { 10 / d }\n\
+                   fn via_helper(d: Int) -> Int { divide(d: d) + 1 }\n\
+                   fn other(d: Int) -> Int { 7 / d }\n\
+                   fn w_deep() -> Bool { via_helper(d: 0) == 11 }\n\
+                   fn w_other() -> Bool { other(d: 0) == 1 }\n";
+        let deep = claim_outcome(src, "fixture.raise.w_deep");
+        let ClaimOutcome::RuntimeError {
+            cause, raised_in, ..
+        } = &deep
+        else {
+            panic!("expected a runtime error, got {deep:?}");
+        };
+        assert_eq!(*cause, WitnessRuntimeCause::DivisionByZero);
+        let decls: Vec<&str> = raised_in.frames.iter().map(|f| f.decl.as_str()).collect();
+        assert_eq!(decls.first().copied(), Some("divide"), "{decls:?}");
+        assert!(
+            decls.contains(&"via_helper") && decls.last().copied() == Some("w_deep"),
+            "{decls:?}"
+        );
+        assert!(raised_in.frames[0].file.ends_with("fixture/raise.dag"));
+
+        let other = claim_outcome(src, "fixture.raise.w_other");
+        let ClaimOutcome::RuntimeError { raised_in, .. } = &other else {
+            panic!("expected a runtime error, got {other:?}");
+        };
+        assert_eq!(
+            raised_in.frames.first().map(|f| f.decl.as_str()),
+            Some("other")
+        );
+    }
+
+    // A HOST WRITE FAILURE IS A TYPED IO REFUSAL CARRYING ITS PATH, never a TypeError. A directory
+    // standing where `Cargo.toml` should be written makes the host refuse the write on every
+    // platform and as every user (a permission-denied control would pass vacuously as root).
+    #[test]
+    fn a_host_write_failure_renders_as_the_io_cause_with_its_path() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-host-io-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Cargo.toml")).unwrap();
+        let err = crate::v1_interpreter::emit_host_materialize_workspace_files_for_test(
+            &dir,
+            &[("Cargo.toml".to_string(), "[package]".to_string())],
+        )
+        .expect_err("the write must fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, crate::v1_interpreter::InterpError::HostIoFailed { operation, .. }
+                if operation.ends_with(": write")),
+            "{err}"
+        );
+        let cause = WitnessRuntimeCause::of_interp_error(&err);
+        assert_eq!(cause, WitnessRuntimeCause::HostIoFailed);
+        assert_ne!(cause.token(), WitnessRuntimeCause::TypeError.token());
+        assert_eq!(cause.token(), "host-io-failed");
+        let message = format!("{err}");
+        assert!(
+            message.contains("gunbc-host-io-control-") && message.contains("/Cargo.toml"),
+            "{message}"
+        );
+        let row = render_witness_claim_result_text_mirror(
+            "test.claim.foo",
+            "w_bar",
+            9_000_000,
+            CiWitnessVerdict::RuntimeError(cause),
+        );
+        assert!(row.ends_with("ERROR in 9ms cause=host-io-failed"), "{row}");
+    }
+
+    // A HOST READ FAILURE IS THE SAME TYPED REFUSAL. A directory standing where the Cargo
+    // configuration file is probed makes the read fail with something other than NotFound (which
+    // is the ordinary absent-config case and is not an error).
+    #[test]
+    fn a_host_read_failure_renders_as_the_io_cause_with_its_path() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-host-read-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".cargo/config")).unwrap();
+        let err = crate::v1_interpreter::emit_host_cargo_configuration_digest_for_test(&dir)
+            .expect_err("the read must fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, crate::v1_interpreter::InterpError::HostIoFailed { operation, .. }
+                if operation.ends_with(": read Cargo configuration")),
+            "{err}"
+        );
+        assert_eq!(
+            WitnessRuntimeCause::of_interp_error(&err).token(),
+            "host-io-failed"
+        );
+        let message = format!("{err}");
+        assert!(
+            message.contains("gunbc-host-read-control-") && message.contains("/.cargo/config"),
+            "{message}"
+        );
+    }
+
+    // Byte-equal to `test.claim.observation_ci_render_witness_test`
+    // `w_runtime_error_detail_names_the_raising_declaration`: the mirror and its authority agree.
+    #[test]
+    fn detail_mirror_matches_the_dag_authority_literal() {
+        let path = RaisePath {
+            frames: vec![
+                RaiseFrame {
+                    decl: "inner".into(),
+                    file: "dag/test/claim/foo.dag".into(),
+                    start: 120,
+                },
+                RaiseFrame {
+                    decl: "w_bar".into(),
+                    file: "dag/test/claim/foo.dag".into(),
+                    start: 40,
+                },
+            ],
+            elided: 0,
+        };
+        assert_eq!(
+            render_witness_runtime_error_detail_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                &path,
+                "type error: expected Int\ngot Str"
+            ),
+            "//test/claim/foo:w_bar error-at raised_in=inner@dag/test/claim/foo.dag:120 call_path=inner@dag/test/claim/foo.dag:120<-w_bar@dag/test/claim/foo.dag:40 message=type error: expected Int\\ngot Str"
+        );
+        assert_eq!(
+            render_witness_runtime_error_detail_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                &RaisePath { frames: vec![], elided: 3 },
+                "m"
+            ),
+            "//test/claim/foo:w_bar error-at raised_in=unrecorded call_path=unrecorded elided=3 message=m"
+        );
+    }
+
+    // THE ERROR ROW ITSELF IS BYTE-STABLE: the location rides on its own line, so the row a reader
+    // already greps (`cause=` keyed, trailing) is unchanged, and non-error rows are untouched.
+    #[test]
+    fn claim_rows_are_byte_stable() {
+        assert_eq!(
+            render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                230_000_000,
+                CiWitnessVerdict::Passed
+            ),
+            "//test/claim/foo:w_bar                                      PASSED in 230ms"
+        );
+        assert_eq!(
+            render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                230_000_000,
+                CiWitnessVerdict::RuntimeError(WitnessRuntimeCause::TypeError)
+            ),
+            "//test/claim/foo:w_bar                                      ERROR in 230ms cause=type-error"
+        );
+    }
+}
+
 /// Render one per-witness claim-result line through the `.dag` authority. Every choice about
 /// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
 /// seed transports subject, function, verdict and wall time only.
@@ -19530,6 +19775,8 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
     // pre-push drift --wet gate runs through claim_batch -> run_claim; without this mapping
     // ExitSuccess -> exit 1 false-blocks push (receipt: claim_batch rebuilt on reverted seed
     // reproduced the false-block).
+    // A path left by an error some earlier evaluation absorbed must not be read as this one's.
+    let _ = v1_interpreter::take_raise_path();
     let evaluated = match run_claim_evaluation(ctx, function) {
         Ok(result) => result,
         Err(payload) => return ClaimOutcome::Panicked { payload },
@@ -19590,6 +19837,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             other => ClaimOutcome::RuntimeError {
                 cause: WitnessRuntimeCause::of_interp_error(&other),
                 message: format!("{other}"),
+                raised_in: v1_interpreter::take_raise_path(),
             },
         },
     }
@@ -19902,6 +20150,7 @@ pub fn partition_cost_debt_roster<'a>(
                     ..
                 }) => CostDebtRosterStanding::OutsideThisRunsUniverse,
                 Some(RequiredFloorDisposition::Planned)
+                | Some(RequiredFloorDisposition::PlannedAsReachConsumer)
                 | Some(RequiredFloorDisposition::DeclinedLongModule { .. })
                 | Some(RequiredFloorDisposition::DeclinedFixtureMember { .. })
                 | Some(RequiredFloorDisposition::DeclinedOutsideRequiredGate) => {
@@ -19923,6 +20172,7 @@ fn disposition_is_a_cost_debt_withhold(disposition: &RequiredFloorDisposition) -
         RequiredFloorDisposition::DeclinedCostDebt => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -23858,36 +24108,6 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
-/// Why an excluded witness row failed admission. These are the two REFUSING arms of
-/// `std.witness_admission`'s `WitnessExecutionStanding`; they are separate because their remedies
-/// differ. The other two arms are absent because neither refuses: one has an executing consumer,
-/// the other is frozen legacy debt the migration ratchet tolerates without ever counting as covered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeferredAdmissionCause {
-    /// Nothing claims the row — no roster, no path policy. Remedy: name a cadence or delete it.
-    UnexecutedDeferredWitness,
-    /// A broad `OfflineLocalRecipe` path policy claims it, nothing executes it, and it is outside
-    /// the frozen legacy population. Remedy: an exact admission naming an executing cadence.
-    UnclassifiedPathDeferral,
-}
-
-impl DeferredAdmissionCause {
-    fn label(self) -> &'static str {
-        match self {
-            Self::UnexecutedDeferredWitness => "UnexecutedDeferredWitness",
-            Self::UnclassifiedPathDeferral => "UnclassifiedPathDeferral",
-        }
-    }
-}
-
-/// Phase 0(b) admission invariant refusal — an excluded witness row with zero executing consumers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeferredAdmissionRefusal {
-    pub entry: String,
-    pub function: String,
-    pub cause: DeferredAdmissionCause,
-}
-
 #[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
@@ -24843,84 +25063,6 @@ pub enum WitnessExecutionStanding {
     LegacyFrozenPathDeferral,
     UnclassifiedPathDeferral,
     UnexecutedDeferredWitness,
-}
-
-/// One deferred row with its standing, so a caller can ask the coverage question and the floor
-/// question separately instead of receiving one boolean that answers neither honestly.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeferredRowStanding {
-    pub entry: String,
-    pub function: String,
-    pub standing: WitnessExecutionStanding,
-}
-
-pub fn classify_deferred_discovery_rows(
-    deferred_rows: &[DeferredDiscoveryRow],
-) -> Vec<DeferredRowStanding> {
-    classify_deferred_discovery_rows_in(
-        deferred_rows,
-        &witness_admission_explicit_consumer_keys(),
-        &witness_admission_offline_exclusion_substrings(),
-        &witness_admission_fixture_exclusion_substrings(),
-        frozen_path_deferral_keys(),
-    )
-}
-
-/// The same fold over supplied rosters — the grain the fixture controls plant into, so a control
-/// can hold the row fixed and move only freeze membership (the discriminator this wall adds).
-fn classify_deferred_discovery_rows_in(
-    deferred_rows: &[DeferredDiscoveryRow],
-    explicit: &[String],
-    offline: &[String],
-    fixture: &[String],
-    frozen: &[String],
-) -> Vec<DeferredRowStanding> {
-    deferred_rows
-        .iter()
-        .map(|row| {
-            let key = witness_admission_manifest_key(&row.entry, &row.function);
-            let standing = if explicit.iter().any(|k| k == &key) {
-                WitnessExecutionStanding::HasExecutingConsumer
-            } else if path_matches_any_substring(&row.entry, offline) {
-                if frozen.iter().any(|k| k == &key) {
-                    WitnessExecutionStanding::LegacyFrozenPathDeferral
-                } else {
-                    WitnessExecutionStanding::UnclassifiedPathDeferral
-                }
-            } else if path_matches_any_substring(&row.entry, fixture) {
-                WitnessExecutionStanding::HasExecutingConsumer
-            } else {
-                WitnessExecutionStanding::UnexecutedDeferredWitness
-            };
-            DeferredRowStanding {
-                entry: row.entry.clone(),
-                function: row.function.clone(),
-                standing,
-            }
-        })
-        .collect()
-}
-
-fn refusals_from_standings(rows: &[DeferredRowStanding]) -> Vec<DeferredAdmissionRefusal> {
-    rows.iter()
-        .filter_map(|row| {
-            let cause = match row.standing {
-                WitnessExecutionStanding::UnclassifiedPathDeferral => {
-                    DeferredAdmissionCause::UnclassifiedPathDeferral
-                }
-                WitnessExecutionStanding::UnexecutedDeferredWitness => {
-                    DeferredAdmissionCause::UnexecutedDeferredWitness
-                }
-                WitnessExecutionStanding::HasExecutingConsumer
-                | WitnessExecutionStanding::LegacyFrozenPathDeferral => return None,
-            };
-            Some(DeferredAdmissionRefusal {
-                entry: row.entry.clone(),
-                function: row.function.clone(),
-                cause,
-            })
-        })
-        .collect()
 }
 
 /// The second direction of the identity join: a frozen row whose witness the tree no longer
@@ -27582,6 +27724,7 @@ impl ShardStyle {
         _execution_leg: &str,
         wall_nanos: u128,
         verdict: CiWitnessVerdict,
+        outcome: &ClaimOutcome,
     ) {
         if !self.stream {
             return;
@@ -27606,6 +27749,22 @@ impl ShardStyle {
                     eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
                 } else {
                     eprintln!("{ts} {tag}{line}");
+                }
+                // THE THROW'S LOCATION, beside the row rather than inside it. The verdict carries
+                // only the cause (it is `Copy` and keyed on class); the message and the raising
+                // declaration are on the outcome, which is where they were being dropped.
+                if let ClaimOutcome::RuntimeError {
+                    message, raised_in, ..
+                } = outcome
+                {
+                    let detail = render_witness_runtime_error_detail_text_mirror(
+                        subject, function, raised_in, message,
+                    );
+                    if self.color {
+                        eprintln!("\x1b[2m{ts}\x1b[0m {tag}{detail}");
+                    } else {
+                        eprintln!("{ts} {tag}{detail}");
+                    }
                 }
             }
             // Fail-closed: routine lines may already be folded, so a silent return would read as
@@ -28064,6 +28223,71 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             ),
             HashSet::from(["a".to_string()]),
             "a line removed inside `a` edits `a`"
+        );
+    }
+
+    // DESIGN §4c: an annotation is not program data, so a `//` edit charges no witness. Lines:
+    // 3 `// note a`, 4-7 `a`, 9 `// note c`, 10-13 `c` (whose body carries a `//` line).
+    const NOTE_HEAD: &str = "module m.note\n\n// note a\ntest fn a() -> Bool {\n  true\n}\n\n// note c new\ntest fn c() -> Bool {\n  // body note new\n  true\n}\n";
+    const NOTE_PATH: &str = "src/v2/test/claim/note_fixture_test.dag";
+
+    fn note_diff(hunks: &str) -> String {
+        let path = NOTE_PATH;
+        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}")
+    }
+
+    #[test]
+    fn a_leading_annotation_edit_charges_no_witness() {
+        let diff = note_diff("@@ -8 +8 @@\n-// note c old\n+// note c new\n@@ -10 +10 @@\n-  // body note old\n+  // body note new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "editing only `//` lines changes no declaration's annotation-erased text"
+        );
+    }
+
+    #[test]
+    fn a_body_edit_beside_an_annotation_still_charges_it() {
+        let diff = note_diff("@@ -11 +11 @@\n-  false\n+  true\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::from(["c".to_string()]),
+            "a non-annotation line edited inside `c` edits `c`"
+        );
+    }
+
+    #[test]
+    fn a_slash_slash_line_inside_a_multi_line_string_still_charges_it() {
+        // Lines: 3-6 `d`, whose string literal spans lines 4-5; line 4 opens with `//`.
+        let path = "src/v2/test/claim/note_string_fixture_test.dag";
+        let head = "module m.note_string\n\ntest fn d() -> Bool {\n  \"a\n// in a string, new\n  b\" == \"\"\n}\n";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +5 @@\n-// in a string, old\n+// in a string, new\n"
+        );
+        assert_eq!(
+            edited_in(&text_attribution_edits(&diff, path, head, &["d"]), path),
+            HashSet::from(["d".to_string()]),
+            "a `//` line inside a string literal is program data, not an annotation"
+        );
+    }
+
+    #[test]
+    fn a_moved_annotation_block_charges_neither_declaration() {
+        // Base: `// note c new` sat inside `a`'s body; the head moved it above `c`.
+        let diff = note_diff("@@ -5 +4,0 @@\n-// note c new\n@@ -8,0 +8 @@\n+// note c new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "moving a `//` block between two declarations charges neither"
         );
     }
 
@@ -29341,80 +29565,14 @@ mod node_frontier_plumbing_controls {
     // that is what the first shape of this test asserted, and it was false the moment the freeze
     // started tolerating rows. What holds is: no row REFUSES, and the tolerated population is
     // counted as UNCOVERED rather than folded into the green.
-    fn long_lane_row(function: &str) -> super::DeferredDiscoveryRow {
-        super::DeferredDiscoveryRow {
-            entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag".to_string(),
-            function: function.to_string(),
-            exclude_reason: "test/claim/long/".to_string(),
-            reads_live_tree: false,
-        }
-    }
-
     // THE WALL, and its discriminator. The row, the offline path policy and the rosters are held
     // identical across both halves; only freeze membership moves. Before 2026-08-04 the offline
     // pattern alone admitted this row, so the refusing half could not have been written.
     // A sibling function under the same frozen ENTRY is a different identity: the freeze is a
     // join over (entry, function), so adding a test decl to an already-frozen file still refuses.
-    #[test]
-    fn new_function_in_a_frozen_entry_still_refuses() {
-        let offline = vec!["test/claim/long/".to_string()];
-        let frozen_row = long_lane_row("already_frozen_holds");
-        let frozen = vec![super::witness_admission_manifest_key(
-            &frozen_row.entry,
-            &frozen_row.function,
-        )];
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            &[long_lane_row("added_after_the_freeze_holds")],
-            &[],
-            &offline,
-            &[],
-            &frozen,
-        ));
-        assert_eq!(refused.len(), 1);
-        assert_eq!(
-            refused[0].cause,
-            super::DeferredAdmissionCause::UnclassifiedPathDeferral
-        );
-    }
-
     // An exact admission is total for the row it covers and needs no freeze row — the precedence
     // witness_row_excluded_two_kinds_note states, exercised at the grain the wall reads.
-    #[test]
-    fn exact_admission_admits_an_offline_path_row_without_freeze_membership() {
-        let row = long_lane_row("exactly_admitted_holds");
-        let explicit = vec![super::witness_admission_manifest_key(
-            &row.entry,
-            &row.function,
-        )];
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            &[row],
-            &explicit,
-            &["test/claim/long/".to_string()],
-            &[],
-            &[],
-        ));
-        assert!(refused.is_empty(), "{refused:?}");
-    }
-
     // Scope control: FixtureExplicitRoster patterns are deliberately untouched by this wall.
-    #[test]
-    fn fixture_roster_path_rows_are_unaffected_by_the_freeze_wall() {
-        let row = super::DeferredDiscoveryRow {
-            entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag".to_string(),
-            function: "floor_skip_control_holds".to_string(),
-            exclude_reason: "test/fixture/floor_skip/".to_string(),
-            reads_live_tree: false,
-        };
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            &[row],
-            &[],
-            &[],
-            &["test/fixture/floor_skip/".to_string()],
-            &[],
-        ));
-        assert!(refused.is_empty(), "{refused:?}");
-    }
-
     #[test]
     fn frozen_path_deferral_source_scan_parses_inline_and_wrapped_rows() {
         let source = concat!(
@@ -29437,9 +29595,7 @@ mod node_frontier_plumbing_controls {
     }
 
     // The contradictory-intersection wall's file-reading half: an entry path resolves through
-    // its own `module ...` line, not through the path string, and a frozen row naming a file the
-    // tree does not carry is skipped here (that disposition belongs to
-    // `collect_stale_frozen_path_deferrals`) rather than panicking a second authority.
+    // its own `module ...` line, not through the path string.
     #[test]
     fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
         let dir = std::env::temp_dir().join(format!(
@@ -29456,7 +29612,6 @@ mod node_frontier_plumbing_controls {
         let source = concat!(
             "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
             "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
-            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
             "]\n"
         );
         let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
@@ -29466,10 +29621,30 @@ mod node_frontier_plumbing_controls {
                 "test/claim/one_test.dag".to_string(),
                 "test.claim.one.x_holds".to_string()
             )],
-            "the missing entry is skipped, not panicked, and the module line — not the path — \
-             names the qualified identity"
+            "the module line — not the path — names the qualified identity"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // A frozen row naming a file the tree does not carry is STALE, and `run_required_floor`
+    // refuses it before this scan runs. Reaching the scan with one is an ordering bug, so the scan
+    // fails loudly rather than skipping the row (the skip it replaces relied on a refusal no
+    // required run executed).
+    #[test]
+    #[should_panic(expected = "the stale-row refusal must run before the intersection scan")]
+    fn frozen_path_deferral_scan_refuses_a_missing_entry_rather_than_skipping_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_freeze_missing_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir fixture root");
+        let source = concat!(
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
+            "]\n"
+        );
+        super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
     }
 
     // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
@@ -34087,18 +34262,18 @@ fn roster_entry_registry_cache(
 mod nfr_observation_roster_test {
     use super::non_fold_residue_site_is_rostered;
 
-    // Green-by-execution for the one observation-stack wildcard site
-    // (ci_hold_cause_text over SchedulerHold, merged via #7168): the roster now
-    // carries it, so the corpus nfr witness's unrostered count no longer counts it.
-    // Reds if the roster row's key drifts from the scan's `{rel}::{fn}` key, or if
-    // the hand edit malformed the frontier list (the reader panics on a bad list).
+    // The one observation-stack wildcard site (ci_hold_cause_text over SchedulerHold, rostered via
+    // #7168) was enumerated by gunbc#13277, which drained its row. A dissolved site must stay
+    // unrostered: a row for a site with no wildcard is the stale arm the floor's
+    // NonFoldResidueRosterDiverged refuses. Reds if the row returns, or if the reader panics on a
+    // malformed frontier list.
     #[test]
-    fn observation_hold_cause_wildcard_is_rostered() {
+    fn observation_hold_cause_row_stays_drained() {
         assert!(
-            non_fold_residue_site_is_rostered(
+            !non_fold_residue_site_is_rostered(
                 "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text"
             ),
-            "the observation ci_hold_cause_text wildcard must be rostered after the fix"
+            "ci_hold_cause_text has no wildcard since gunbc#13277; its roster row must stay drained"
         );
     }
 }
@@ -42811,6 +42986,12 @@ pub enum RequiredFloorDisposition {
     /// the static compiler-floor gate did not admit the identity; the exact changed-witness
     /// identity set did. It nevertheless executes in the same fold and terminal ledger.
     PlannedAsChangedWitness,
+    /// Outside the static gate, selected because its evaluation reaches a declaration the diff
+    /// changed (`namespace_baseline` `body_reach_from_changed_declarations`) and homed under the
+    /// v2 claim root. It executes in the same fold, and its verdict is DIFFERENTIAL: the head
+    /// standing is joined with the base standing (`v2.workflow.required_floor`
+    /// `claim_differential`), never read as an absolute pass/fail (operator ruling 2026-09-27).
+    PlannedAsReachConsumer,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
@@ -43240,6 +43421,12 @@ pub struct RequiredFloorOutcome {
     /// over this population, never an independently maintained tally.
     pub claim_cost: Vec<WitnessExecutionOccurrence>,
     pub failures: Vec<String>,
+    /// THE REACH DIFFERENTIAL'S BLOCKING VERDICTS, one (identity, differential) per claim the
+    /// model's `reach_claim_verdict` said blocks: a regression, a failing new claim, an unrostered
+    /// unmeasured base or a refused verdict. Its own field rather than free text in `failures`,
+    /// so the required context's adjudication names each identity and why it blocked
+    /// (neat-boar-16's srv1 control, 2026-10-01, found them unattributed).
+    pub reach_differential_blocking: Vec<(String, String)>,
     /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
     /// site-projection loop considered. This is the sole admission authority for the site; see
     /// the type's doc comment.
@@ -43277,6 +43464,83 @@ pub struct RequiredFloorOutcome {
     /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
     /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
     pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
+    /// COST-DEBT ROWS WHOSE CLAIM DID NOT PASS when this change required its verdict, each with
+    /// its cause. Authority: `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing`.
+    /// The population is the rostered identities this change ADMITS (head roster, not base) or
+    /// RESTORES (touches the witness of), so it cannot red a PR for a row it did not author or
+    /// touch. A cost row may never hide a semantic red: this blocks whatever the expected-red
+    /// roster says, because a withhold suppresses that enrolment.
+    pub cost_debt_verdict_refused: Vec<ChangedWitnessBlocker>,
+}
+
+/// Whether the floor outcome permits a green run.
+///
+/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// caller, because a mode that forgot one of them would green a run the other refused. (The
+/// count is stated because a reader checks it; it was five before main added `route_gap` and
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
+/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// were wired in here directly; that was reverted and the count returned to seven.)
+///
+/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
+/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
+/// an enrolled claim produced no verdict — and gating on them directly would red every lane
+/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
+/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
+/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
+/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
+/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
+/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
+///
+/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
+/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
+/// today and, should it stop producing a verdict again, it is already rostered and the eighth
+/// conjunct admits it. Repayment and deletion are therefore one act, which is what
+/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
+/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
+/// — it requires the fix to be complete, and the diagnostic names every row to delete.
+pub fn required_floor_outcome_is_clean(outcome: &RequiredFloorOutcome) -> bool {
+    outcome.failures.is_empty()
+        // THE PER-PR CLAIM DIFFERENTIAL: a reached claim whose verdict this change moved, or that
+        // refused (`v2.workflow.required_floor` `reach_claim_verdict`), stops the line.
+        && outcome.reach_differential_blocking.is_empty()
+        && outcome.non_verdict_unenrolled.is_empty()
+        && outcome.stale_non_verdict.is_empty()
+        && outcome.stale_quarantine.is_empty()
+        && outcome.interrupted_before_verdict.is_empty()
+        && outcome.completed_over_cost_requirement.is_empty()
+        && outcome.host_tool_unresolved.is_empty()
+        && outcome.route_gap.is_empty()
+        && outcome.stale_route_gap.is_empty()
+        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
+        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
+        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
+        // roster that has stopped describing the tree, which voids the contract's monotone
+        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
+        && outcome.stale_cost_debt.is_empty()
+        // A CHANGED witness identity that did not execute to a passing verdict — declined,
+        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
+        // required context. The classification authority is
+        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
+        // is only the identities this change's diff touched, never the standing declined
+        // corpus, so this conjunct cannot red a PR for debt it did not author.
+        && outcome.changed_witness_blocking.is_empty()
+        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
+        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
+        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
+        // the line every one of the fifteen incident rows cleared on the run that measured them
+        // and crossed on the run that did not. Three refusing states, deliberately distinct:
+        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
+        // the one that must not be folded into the others — absence of a measurement is not
+        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
+        //
+        // The population is only what this change enrols, so this conjunct cannot red a PR for
+        // debt it did not author. Authority:
+        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
+        && outcome.enrolment_margin_blocking.is_empty()
+        // A COST ROW MAY NEVER HIDE A SEMANTIC RED. A rostered identity this change admits or
+        // restores must pass; authority `v2.workflow.floor_cost_debt_verdict`.
+        && outcome.cost_debt_verdict_refused.is_empty()
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -44216,6 +44480,7 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut planned_as_changed_witness = 0usize;
+    let mut planned_as_reach_consumer = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
@@ -44228,6 +44493,7 @@ fn write_required_floor_disposition_tsv(
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::PlannedAsChangedWitness => planned_as_changed_witness += 1,
+            RequiredFloorDisposition::PlannedAsReachConsumer => planned_as_reach_consumer += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
@@ -44247,7 +44513,8 @@ fn write_required_floor_disposition_tsv(
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
-         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}",
+         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}\
+         \tplanned_as_reach_consumer={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -44258,7 +44525,8 @@ fn write_required_floor_disposition_tsv(
         declined_discovery_excluded,
         declined_cost_debt,
         declined_changed_witness_outside_discovery,
-        declined_no_ci_wet_lane
+        declined_no_ci_wet_lane,
+        planned_as_reach_consumer
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
@@ -45189,6 +45457,7 @@ mod terminal_ledger_completeness_law {
                 ClaimOutcome::RuntimeError {
                     cause: WitnessRuntimeCause::TypeError,
                     message: "boom".into(),
+                    raised_in: Default::default(),
                 },
                 false,
                 RuntimeErroredBeforeVerdict,

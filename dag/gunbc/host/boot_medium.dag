@@ -1,0 +1,91 @@
+module gunbc.boot_medium
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
+import gunbc.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_posix_accounts { fleet_automation_user }
+import gunbc.fleet_known_hosts_anchor { SshTarget }
+import gunbc.machine_intake_boot_image_export_ownership { boot_image_export_ownership_requirement }
+
+// WHERE A CONTROLLER READS BOOT MEDIA FROM: the host that serves the export, as the fleet-SSH target
+// that may write it, and the export directory. The directory is the one gunbc.machine_intake_boot_image_export_ownership
+// states its ownership requirement over, so the path a publication is admitted into and the path a
+// controller is pointed at cannot be two literals that happen to agree. The target is the fleet's
+// AUTOMATION principal (gunbc.fleet_posix_accounts fleet_automation_user), the account that owns the
+// export; the bootstrap principal may read it but not write it (fleet-converge run 36613515243).
+type BootImageExport {
+  target: SshTarget
+  dir: NonEmptyStr
+}
+
+data bmc_boot_image_export: BootImageExport = BootImageExport {
+  target: SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String) as NonEmptyStr,
+    principal: fleet_automation_user.name,
+  },
+  dir: boot_image_export_ownership_requirement.export_path,
+}
+
+// WHAT A MEDIUM PROMISES TO PRINT WHEN THE BOOT HAS DONE ITS WORK, and so what the terminal watch
+// accepts. It is a property of the medium, not of the host: the census program prints its envelope on
+// the census volume and nothing else does, and the stock installer prints no terminal at all, so a
+// boot of it can be refused before any controller write. A new medium adds its arm here with the
+// acceptance predicate its terminal is read by; the boot subject does not change.
+type BootMediumTerminal
+  = BootMediumNoTerminal { reason: NonEmptyStr }
+  | BootMediumVolumeLabel { label: NonEmptyStr }
+
+// THE MEDIUM IS BOOT POLICY, NOT A HOST FACT: which artifact a boot attaches, named by its content
+// digest, where it is exported, and what terminal it is accepted by. The published file is the
+// export's directory joined to image_name (gunbc.machine_intake_boot_image_fetch boot_image_published_path),
+// and its readback must equal digest. A medium is a value a boot is admitted WITH; nothing here
+// imports the module that built it, so a census, a stock installer and a runner image are rows of
+// one carrier rather than arms of a Mt. Collins type.
+//
+// DIVERGES FROM gunbc.boot_artifact BootArtifact, with this reason: that record's identity is a
+// std.content_hash ContentHash beside an entrypoint, a build identity, a purpose and a format, and no
+// producer of those exists for a medium a controller attaches from an export -- the census build
+// receipt and the cdimage SHA256SUMS row both carry the sha256 hex the export's readback prints, and
+// nothing else. Authoring the rest would fabricate it. Trigger to join them: the boot run choosing its
+// delivery through gunbc.boot_artifact_delivery, whose request carries a BootArtifact.
+type BootMedium {
+  image_name: NonEmptyStr
+  digest: NonEmptyStr
+  export: BootImageExport
+  terminal: BootMediumTerminal
+}
+
+// TWO EXPORTS ARE ONE EXPORT ONLY WHEN THE DIRECTORY AND THE WHOLE SSH TARGET AGREE: the same
+// directory served by another host, or reached as another principal, is a different set of bytes.
+fn boot_image_export_eq(a: BootImageExport, b: BootImageExport) -> Bool {
+  (a.dir as String) == (b.dir as String)
+    && (a.target.endpoint as String) == (b.target.endpoint as String)
+    && (a.target.principal as String) == (b.target.principal as String)
+}
+
+// THE STOCK INSTALLER, read off its upstream row: the filename and the digest cdimage's SHA256SUMS
+// cites (extdeps.provisioning.ubuntu_install_media noble_numbat_2404_3_live_server_arm64), so neither
+// is re-spelled here.
+data stock_installer_boot_medium: BootMedium = BootMedium {
+  image_name: ubuntu_install_media_filename(artifact: noble_numbat_2404_3_live_server_arm64),
+  digest: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
+  export: bmc_boot_image_export,
+  terminal: BootMediumNoTerminal { reason: "the stock installer carries no program that prints a terminal" },
+}
+
+// A SERVED MEDIUM IS THE ONE THE BOOT WAS ADMITTED WITH ONLY WHEN ITS READBACK DIGEST IS THE MEDIUM'S
+// DIGEST. Every readback of the export or of the controller's attached image is judged here, so a
+// share holding other bytes under the medium's name is refused by one rule wherever it is read.
+type BootMediumReadback
+  = BootMediumReadbackHeld
+  | BootMediumReadbackDigestDiffers { image_name: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+
+fn boot_medium_readback(medium: BootMedium, observed: NonEmptyStr) -> BootMediumReadback {
+  if (observed as String) == (medium.digest as String) {
+    BootMediumReadbackHeld
+  } else {
+    BootMediumReadbackDigestDiffers { image_name: medium.image_name, expected: medium.digest, observed: observed }
+  }
+}
+

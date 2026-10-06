@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_event_carrier_witness_test
 
 import std.types { Bool, String, FilePath, NonEmptyStr }
+import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemFileIndeterminate, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_event_log { RoadmapEvent, RoadmapEventEnvelope, Claimed, roadmap_event_envelope, RoadmapEventId, EventPrincipalAuthenticated }
@@ -73,6 +74,24 @@ test fn the_all_events_read_concatenates_and_the_first_refusal_refuses_the_whole
   (match joined { AllEventsRead { envelopes } => count(envelopes) == 3  AllEventsReadRefused { step: _, reason: _ } => false })
     && (match refused { AllEventsReadRefused { step, reason } => step == "node node-two decode" && reason == "corrupt"  AllEventsRead { envelopes: _ } => false })
     && (match empty { AllEventsRead { envelopes } => count(envelopes) == 0  AllEventsReadRefused { step: _, reason: _ } => false })
+}
+
+// RED control at the receipt-flow site: the flow's unreadable arm consumes this observation, and
+// the listing-refused world must arrive with the owner's "could not be listed" cause -- existence
+// unknown -- never a claim that the receipt is listed. (The append flow itself is wet -- it runs
+// the carrier program -- so the dry control pins the observation boundary it consumes.)
+test fn a_refused_listing_at_the_receipt_site_arrives_with_existence_unknown_never_listed() -> Bool {
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/ops", success: false, entries: "", error: "Permission denied (os error 13)"),
+    name: "receipt.json",
+    path: "/srv/gunbc/ops/receipt.json",
+    read: FilesystemReadRefused { error: "not reached" },
+  ) {
+    FilesystemFileIndeterminate { cause } =>
+      string_contains(s: cause, pattern: "could not be listed")
+        && !string_contains(s: cause, pattern: "is listed")
+    _ => false
+  }
 }
 
 fn progress_on(node: RoadmapNodeId, parent: RoadmapEventId?, note: String, at: String) -> RoadmapEvent {

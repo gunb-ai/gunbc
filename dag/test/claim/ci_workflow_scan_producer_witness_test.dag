@@ -1,7 +1,7 @@
 module test.claim.ci_workflow_scan_producer_witness
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
-import extdeps.transports.rest { RestExchangePerformance, RestExchangeUnreached }
+import extdeps.transports.rest { RestExchangeRefusal, RestExchangeUnreached }
 import extdeps.github.code_search {
   CodeSearchPage,
   CodeSearchHit,
@@ -83,7 +83,7 @@ fn w_repo() -> CodeSearchRepository {
   }
 }
 
-fn w_refusal() -> RestExchangePerformance {
+fn w_refusal() -> RestExchangeRefusal {
   RestExchangeUnreached { cause: "fixture: the endpoint was never reached" as NonEmptyStr }
 }
 

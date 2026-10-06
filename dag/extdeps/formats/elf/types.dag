@@ -118,7 +118,8 @@ fn validate_elf64_ident(ident: ElfIdent) -> ElfDecodeOutcome<ElfIdent> {
   else {
     match ident.class {
       ElfClass64 => ElfDecoded { value: ident }
-      _ => ElfRejected { reason: ElfClassNotElf64 { class: ident.class } }
+      ElfClassNone => ElfRejected { reason: ElfClassNotElf64 { class: ident.class } }
+      ElfClass32 => ElfRejected { reason: ElfClassNotElf64 { class: ident.class } }
     }
   }
 }
