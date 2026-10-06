@@ -1,5 +1,6 @@
 module test.claim.budget_tree_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.measure { Memory, One, byte_size }
 import extdeps.accounting.budget {
   Appropriation,

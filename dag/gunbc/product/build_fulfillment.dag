@@ -40,6 +40,13 @@ import product.inventory {
   BalanceDerived,
   BalanceRefused,
   InsufficientStock,
+  EventLotMismatch,
+  EventBeforeAcquisition,
+  LotAlreadyAcquired,
+  ZeroQuantityEvent,
+  ReservationHolderUnknown,
+  ReservationOverRelease,
+  MoreAssetsThanUnits,
   admit_consumption,
   derive_inventory_balance,
   inventory_lot_identity_eq,
@@ -473,13 +480,23 @@ fn resolve_from_offering(
           match c {
             InsufficientStock { position: _, requested: _, held: _ } =>
               resolve_from_market(line: line, market: market, owned_available: b.available)
-            _ =>
-              LineRefused {
-                line: line,
-                cause: LedgerRefusedDraw { cause: c, requested: req, available: avail },
-              }
+            EventLotMismatch => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
+            EventBeforeAcquisition => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
+            LotAlreadyAcquired => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
+            ZeroQuantityEvent => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
+            ReservationHolderUnknown { holder: _ } => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
+            ReservationOverRelease { holder: _, requested: _, held: _ } => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
+            MoreAssetsThanUnits { assets: _, quantity: _ } => line_refused_ledger_draw(line: line, cause: c, requested: req, available: avail)
           }
       }
+  }
+}
+
+// A ledger refusal other than insufficient stock refuses the line, carrying the draw it refused.
+fn line_refused_ledger_draw(line: BomLine, cause: LedgerRefusalCause, requested: Nat, available: Nat) -> LineResolution {
+  LineRefused {
+    line: line,
+    cause: LedgerRefusedDraw { cause: cause, requested: requested, available: available },
   }
 }
 
@@ -575,12 +592,8 @@ fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<Suppl
         match dimm.identity {
           ObservedMemoryModule { printed_part: _, capacity: _, source: _, missing_catalog_binding } => match acc {
             CompatibilityRefutedForPlatform { reason: _ } => acc
-            _ => match recipe.memory_purchase {
-              QualificationMemoryPurchase { maximum_units: _, completion } =>
-                if any(completion, obligation => obligation == MemoryCatalogBinding) { acc }
-                else { CompatibilityEvidenceUnread { obligation: missing_catalog_binding } }
-              ProductionMemoryPurchase => CompatibilityEvidenceUnread { obligation: missing_catalog_binding }
-            }
+            CompatibilityEstablished => observed_module_catalog_screen(recipe: recipe, acc: acc, missing_catalog_binding: missing_catalog_binding)
+            CompatibilityEvidenceUnread { obligation: _ } => observed_module_catalog_screen(recipe: recipe, acc: acc, missing_catalog_binding: missing_catalog_binding)
           }
           CatalogMemoryModule { catalog } => {
             let implication = part_implication(candidate: catalog, failures: recipe.memory_evidence.training_failures,
@@ -590,15 +603,8 @@ fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<Suppl
               CompatibilityRefutedForPlatform { reason: _ } => screened
               CompatibilityEvidenceUnread { obligation: _ } => match acc {
                 CompatibilityRefutedForPlatform { reason: _ } => acc
-                _ => match implication {
-                  PartNotImplicated => acc
-                  _ => match recipe.memory_purchase {
-                    ProductionMemoryPurchase => screened
-                    QualificationMemoryPurchase { maximum_units: _, completion } =>
-                      if any(completion, obligation => obligation == MemoryTrainingFailureScreen) { acc }
-                      else { screened }
-                  }
-                }
+                CompatibilityEstablished => catalog_module_unread_screen(recipe: recipe, acc: acc, implication: implication, screened: screened)
+                CompatibilityEvidenceUnread { obligation: _ } => catalog_module_unread_screen(recipe: recipe, acc: acc, implication: implication, screened: screened)
               }
               CompatibilityEstablished => acc
             }
@@ -609,6 +615,40 @@ fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<Suppl
     SupplyRow { part: row.part, compatibility: compatibility, owned: row.owned, market: row.market }
   })
 }
+
+// An observed (uncatalogued) module not already refuted: only a qualification purchase that
+// completes the catalog binding keeps the accumulated compatibility.
+fn observed_module_catalog_screen(recipe: NodeRecipe, acc: LineCompatibility, missing_catalog_binding: NonEmptyStr) -> LineCompatibility {
+  match recipe.memory_purchase {
+    QualificationMemoryPurchase { maximum_units: _, completion } =>
+      if any(completion, obligation => obligation == MemoryCatalogBinding) { acc }
+      else { CompatibilityEvidenceUnread { obligation: missing_catalog_binding } }
+    ProductionMemoryPurchase => CompatibilityEvidenceUnread { obligation: missing_catalog_binding }
+  }
+}
+
+// A catalogued module whose screen is unread, over an accumulator not already refuted: a part the
+// training evidence does not implicate keeps the accumulator; an implicated one is decided by the purchase.
+fn catalog_module_unread_screen(recipe: NodeRecipe, acc: LineCompatibility, implication: PartImplication, screened: LineCompatibility) -> LineCompatibility {
+  match implication {
+    PartNotImplicated => acc
+    PartEvidenceUnresolved { step: _ } => implicated_part_purchase_screen(recipe: recipe, acc: acc, screened: screened)
+    PartSampleQualificationRequired { step: _, standing: _ } => implicated_part_purchase_screen(recipe: recipe, acc: acc, screened: screened)
+    PartImplicatedByFailingStep { step: _, standing: _ } => implicated_part_purchase_screen(recipe: recipe, acc: acc, screened: screened)
+  }
+}
+
+// An implicated part: a production purchase takes the screen; a qualification purchase that
+// completes the training-failure screen keeps the accumulator.
+fn implicated_part_purchase_screen(recipe: NodeRecipe, acc: LineCompatibility, screened: LineCompatibility) -> LineCompatibility {
+  match recipe.memory_purchase {
+    ProductionMemoryPurchase => screened
+    QualificationMemoryPurchase { maximum_units: _, completion } =>
+      if any(completion, obligation => obligation == MemoryTrainingFailureScreen) { acc }
+      else { screened }
+  }
+}
+
 
 fn memory_recipe_admission_refusal(recipe: NodeRecipe, assessment: MemoryChangeAssessment) -> NonEmptyStr? {
   if !declaration_ref_eq(a: recipe.processor, b: recipe.memory.proposed.platform.processor)
@@ -764,7 +804,10 @@ fn owned_stock_consumed(resolutions: BuildResolution) -> List<LotDraw> {
         match f {
           OwnedInventory { lot: l, quantity: q, reservation: _, available_after: _ } =>
             draw_step(acc: acc, lot: l, quantity: q)
-          _ => acc
+          NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
+          IncludedInSystem { part: _, quantity: _ } => acc
+          SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } => acc
+          CompatibilityUnread { part: _, obligation: _ } => acc
         }
     }
   })

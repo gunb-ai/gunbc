@@ -1,5 +1,8 @@
 module v2.test.lens_enforcement.gate_test
 
+import v2.lens.enforcement.standing_intent { StandingIntent }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.lens.enforcement.contract { EnrollmentDiscoveryReceipt, LensContract }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding

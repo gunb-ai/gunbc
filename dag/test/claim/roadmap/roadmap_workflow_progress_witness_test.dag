@@ -15,6 +15,9 @@ import gunbc.roadmap_provider_events {
   ProviderFailed,
   ProviderEventsRefused,
 }
+import gunbc.roadmap_workflow_command {
+  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
+}
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
   review_segment,
@@ -119,7 +122,7 @@ fn fixture_evidence(
     node_id: "node-1",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/node-1-afeedfacefeedface",
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
     worktree: AttemptWorktreePresent { path: "/wt/node-1-afeedfacefeedface" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
@@ -158,6 +161,53 @@ fn fixture_evidence(
     goal_audit: [],
     session_placement: SessionPlacementAbsent { unit: "" },
   }
+}
+
+fn fixture_evidence_with_standing(
+  standing: WorkflowModeledStateStanding,
+  events: String,
+  process: WorkerProcessEvidence,
+) -> WorkflowAttemptEvidence {
+  let base = fixture_evidence(events: events, process: process)
+  WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state: standing,
+    worktree: base.worktree,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
+    review: base.review,
+    submission_capture: base.submission_capture,
+    integration: base.integration,
+    goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
+  }
+}
+
+fn segment_detail(
+  segments: List<WorkflowSegment>,
+  key: String,
+) -> String {
+  fold(segments, init: "", f: fn(acc, segment) {
+    if acc == "" && workflow_segment_kind_key(kind: segment.kind) == key {
+      segment.detail
+    } else {
+      acc
+    }
+  })
 }
 
 fn segment_state(
@@ -250,6 +300,59 @@ test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
       string_contains(s: detail, pattern: "conflicts")
     _ => false
   }
+}
+
+// COMPOSED control (side chat on this PR): the evidence construction carries the typed pointer
+// standing, so this route goes evidence -> provider, not helper text. An attempt whose
+// current-attempt-key pointer could not be read has UNKNOWN standing: the provider must refuse
+// with the standing-unknown arm and must NOT mint the legacy, supersedable standing that an
+// established absence carries.
+test fn an_unreadable_pointer_refuses_with_unknown_standing_and_never_legacy_standing() -> Bool {
+  let unreadable = workflow_provider_from_evidence(evidence: fixture_evidence_with_standing(
+    standing: WorkflowModeledStateUnreadable { cause: "Permission denied (os error 13)" },
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  let absent = workflow_provider_from_evidence(evidence: fixture_evidence_with_standing(
+    standing: WorkflowModeledStateAbsent,
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  match unreadable {
+    ProviderEventsRefused { activity, detail } =>
+      activity == "attempt standing unknown"
+        && string_contains(s: detail, pattern: "could not be read")
+        && !string_contains(s: detail, pattern: "legacy")
+        && match absent {
+          ProviderEventsRefused { activity: absent_activity, detail: absent_detail } =>
+            absent_activity != "attempt standing unknown"
+              && string_contains(s: absent_detail, pattern: "predates modeled admission")
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// Composed control THROUGH the progress fold (side chat review 5409834403): an unreadable pointer
+// refuses verification, review AND goal audit -- never pending, never absence-shaped -- while
+// established absence still renders the legacy arm (pending).
+test fn an_unreadable_pointer_refuses_verification_review_and_audit_through_workflow_attempt_progress() -> Bool {
+  let unreadable = workflow_attempt_progress(evidence: fixture_evidence_with_standing(
+    standing: WorkflowModeledStateUnreadable { cause: "Permission denied (os error 13)" },
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  let absent = workflow_attempt_progress(evidence: fixture_evidence_with_standing(
+    standing: WorkflowModeledStateAbsent,
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  segment_state(unreadable.segments, "verify") == "refused"
+    && segment_state(unreadable.segments, "review") == "refused"
+    && segment_state(unreadable.segments, "audit") == "refused"
+    && string_contains(s: segment_detail(unreadable.segments, "verify"), pattern: "standing is unknown")
+    && segment_state(absent.segments, "verify") == "pending"
+    && segment_state(absent.segments, "review") == "pending"
 }
 
 // review 44032 REDs. The Agent obligation's design contract requires a compatible process exit, so
@@ -393,7 +496,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
-    modeled_state_present: base.modeled_state_present,
+    modeled_state: base.modeled_state,
     worktree: base.worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: nested_admitted_forgery(),
@@ -429,7 +532,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
-    modeled_state_present: base.modeled_state_present,
+    modeled_state: base.modeled_state,
     worktree: base.worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: base.admission_receipt,
@@ -463,7 +566,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     node_id: "legacy",
     attempt_key: "",
     branch: "dispatch/legacy",
-    modeled_state_present: false,
+    modeled_state: WorkflowModeledStateAbsent,
     worktree: AttemptWorktreeUnobserved { path: "", cause: "no modeled state pointer" },
     admission_receipt_readable: false,
     admission_receipt: "",
@@ -522,7 +625,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
-    modeled_state_present: base.modeled_state_present,
+    modeled_state: base.modeled_state,
     worktree: base.worktree,
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\"}",
@@ -666,7 +769,7 @@ fn publication_segment_of(
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
-    modeled_state_present: base.modeled_state_present,
+    modeled_state: base.modeled_state,
     worktree: base.worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: base.admission_receipt,
@@ -829,7 +932,7 @@ fn evidence_with_worktree(base: WorkflowAttemptEvidence, worktree: AttemptWorktr
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
-    modeled_state_present: base.modeled_state_present,
+    modeled_state: base.modeled_state,
     worktree: worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: base.admission_receipt,
