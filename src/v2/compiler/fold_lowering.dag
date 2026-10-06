@@ -63,7 +63,7 @@ import v2.std.node {
   LoopCarrierEdge,
   LoopDomainEdge,
   LoopRealizedDeclarationEdge,
-  BinderTypeEdge,
+  BinderStructureEdge,
   core_edge_label,
   Found,
   Instantiation,
@@ -299,8 +299,8 @@ fn fold_roster_form(row: DeclarationRef) -> CollectionRosterForm {
 // THE ROW AS THE CALL'S SIGNATURE. A primitive-call row's param_types/return_type are read as one generic
 // Arrow over a single carrier binder M: ReceiverSelf is M, and M is BOUNDED by the free-monoid structure
 // (v2.std.algebra_structure_signature free_monoid_structure_node over M) through the binder's one
-// BinderTypeEdge -- the same annotation carrier a kinded parameter uses, read as a StructureBound
-// (v2.std.type_binder type_param_bound). So concat(a, b) is judged by v2.compiler.infer's ordinary
+// BinderStructureEdge -- the binder marker for a structure bound, distinct from a kind's BinderTypeEdge,
+// read as a StructureBound (v2.std.type_binder type_param_bound). So concat(a, b) is judged by v2.compiler.infer's ordinary
 // application path: one M must take both operands (a mixed kernel String / FreeMonoid<Char> pair refuses --
 // Ruling 3, no crossing), and M's instance must inhabit the free-monoid structure through a declared
 // AlgebraInhabitanceDecl row (infer_application_structure_bounds), so Int refuses at the bound. A template
@@ -312,7 +312,7 @@ fn collection_roster_carrier_type() -> Node {
 fn collection_roster_carrier_binder() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } },
-    children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type()) }]
+    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type()) }]
   )
 }
 

@@ -3754,8 +3754,8 @@ fn infer_application_argument_inhabitance(
 }
 
 // A TYPE PARAMETER BOUNDED BY A STRUCTURE ADMITS AN INSTANCE ONLY THROUGH A DECLARED INHABITANCE ROW. The bound
-// is the binder's one annotation read as a StructureBound (v2.std.type_binder type_param_bound -- derived
-// from the annotation, never a stored tag); the instance is the one the argument walk just fixed. It is
+// is the binder's BinderStructureEdge read as a StructureBound (v2.std.type_binder type_param_bound -- the
+// marker the binder was built with, never guessed from the annotation's shape); the instance is the one the argument walk just fixed. It is
 // admitted when some row of v2.extdeps.languages.dag dag_algebra_inhabitance_decls -- the ONE inhabitance
 // authority, the same rows the binary-operator arm reads -- has an inhabitant that is the instance (matched
 // over the row's own type parameters, compared with aliases unfolded) AND declares every field the bound

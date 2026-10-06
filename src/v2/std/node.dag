@@ -189,6 +189,7 @@ type CoreEdgeLabel
   | ArrowEffectClaimsEdge
   | ArrowExecutionModeClaimEdge
   | BinderTypeEdge
+  | BinderStructureEdge
   | BinderDefaultEdge
   | ArrowResourceRequirementsEdge
   | LexicalReferenceEdge
@@ -253,6 +254,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ArrowEffectClaimsEdge,
     ArrowExecutionModeClaimEdge,
     BinderTypeEdge,
+    BinderStructureEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
     LexicalReferenceEdge,
@@ -288,6 +290,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     BinderTypeEdge => ^core_binder_type_edge
+    BinderStructureEdge => ^core_binder_structure_edge
     BinderDefaultEdge => ^core_binder_default_edge
     ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
     LexicalReferenceEdge => ^core_lexical_reference_edge
@@ -1093,8 +1096,12 @@ fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget 
 //
 // A KINDED TYPE PARAMETER (`type MachineWidth<bits: WidthResolution>`) carries its kind the way a value
 // binder carries its type: one BinderTypeEdge, here on the binder's own Atom, so the identity the
-// binder declares is unchanged and an unkinded binder is exactly the leaf it was. Any other child is
-// unwritable. v2.std.type_binder type_param_kind_optional is the one reader of the edge.
+// binder declares is unchanged and an unkinded binder is exactly the leaf it was. A binder bounded by
+// a signature-world STRUCTURE instead carries one BinderStructureEdge: a distinct marker, so whether an
+// annotation is a kind or a structure is decided by how the binder was BUILT and never re-guessed from
+// the annotation's shape. Resolve lowers every authored annotation as a BinderTypeEdge, so no source
+// spelling can write a structure bound. Any other child is unwritable. v2.std.type_binder
+// type_param_bound is the one reader of both edges.
 fn type_binder_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
@@ -1110,7 +1117,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_children_conform(children: List<Edge>) -> Bool {
   match children {
     Empty => true
-    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge) || edge_is_core(e: k, marker: BinderStructureEdge)
     Cons { head: _, tail: Cons { head: _, tail: _ } } => false
   }
 }

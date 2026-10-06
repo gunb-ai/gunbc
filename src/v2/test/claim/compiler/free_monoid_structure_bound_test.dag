@@ -6,7 +6,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
+import v2.std.node { Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
 import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
 import v2.std.algebra_structure_signature { free_monoid_structure_node }
 import std.types { Bool }
@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: the collection roster's concat binds a carrier M BOUNDED BY THE FREE-MONOID STRUCTURE
 // (v2.std.algebra_structure_signature free_monoid_structure_type_node, its own binder ^free_monoid_field_concat),
-// carried on the binder's one BinderTypeEdge and read as a StructureBound (v2.std.type_binder type_param_bound).
+// carried on the binder's one BinderStructureEdge and read as a StructureBound (v2.std.type_binder type_param_bound).
 // v2.compiler.infer infer_application_structure_bounds admits M's instance only through a declared
 // AlgebraInhabitanceDecl row: std.algebra FreeMonoid<T> (witness list_append) and the kernel host text
 // (witness v2.std.node host_text_concatenation). BOUNDARY: source text in, through the production assembly
@@ -179,11 +179,11 @@ fn fmb_carrier() -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [])
 }
 
-fn fmb_binders(annotation: Node) -> Node {
+fn fmb_binders(marker: CoreEdgeLabel, annotation: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: type_binder_set_children(
-      binders: [Edge { label: Authored { name: ^fmb_carrier }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: annotation }]) }],
+      binders: [Edge { label: Authored { name: ^fmb_carrier }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [Edge { label: core_edge_label(marker: marker), target: annotation }]) }],
       source: fmb_carrier()
     )
   )
@@ -200,7 +200,16 @@ fn fmb_conforms(c: TypeApplicationConformance) -> Bool {
 }
 
 test fn fmb_structure_bound_is_not_judged_as_a_kind_at_resolve() -> Bool {
-  let structure_bound = type_application_conformance(binders: fmb_binders(annotation: free_monoid_structure_node(inhabitant: fmb_carrier())), arguments: [fmb_carrier()], inhabits: fn(a, k) { KindUnresolved })
-  let kind_bound = type_application_conformance(binders: fmb_binders(annotation: fmb_carrier()), arguments: [fmb_carrier()], inhabits: fn(a, k) { ArgumentOutsideKind })
+  let structure_bound = type_application_conformance(binders: fmb_binders(marker: BinderStructureEdge, annotation: free_monoid_structure_node(inhabitant: fmb_carrier())), arguments: [fmb_carrier()], inhabits: fn(a, k) { KindUnresolved })
+  let kind_bound = type_application_conformance(binders: fmb_binders(marker: BinderTypeEdge, annotation: fmb_carrier()), arguments: [fmb_carrier()], inhabits: fn(a, k) { ArgumentOutsideKind })
   fmb_conforms(c: structure_bound) && !fmb_conforms(c: kind_bound)
+}
+
+// SUPPLIED, RED, THE SHAPE TRAP (review 76687): a KIND whose annotation has EXACTLY the structure's shape -- a Conj of
+// ^algebra_edge and ^inhabitant_edge, as an authored record kind with those field names lowers -- carried on the kind's
+// BinderTypeEdge is still judged as a kind, and refuses when its argument is outside it. Whether a bound is a structure
+// is the marker the binder was built with (v2.std.type_binder type_param_bound), never the annotation's shape.
+test fn fmb_structure_shaped_kind_is_still_kind_checked() -> Bool {
+  let shaped_kind = type_application_conformance(binders: fmb_binders(marker: BinderTypeEdge, annotation: free_monoid_structure_node(inhabitant: fmb_carrier())), arguments: [fmb_carrier()], inhabits: fn(a, k) { ArgumentOutsideKind })
+  !fmb_conforms(c: shaped_kind)
 }
