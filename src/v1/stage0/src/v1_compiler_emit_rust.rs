@@ -249,8 +249,8 @@ pub use crate::v1_compiler_infer_emit_info::{
     TypeSummaryLookup, TypeSurfaceOccurrence,
 };
 use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
-    BareOccurrenceBoundByImports, BareOccurrenceDeclaredInItsFile,
-    BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName,
+    BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName,
+    BareOccurrenceUndecided,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
@@ -1070,15 +1070,14 @@ pub fn unstamped_reference_is_host_option(
         {
             BareOccurrenceBinding::BareOccurrenceDeclaredInItsFile {
                 declaration: decl, ..
-            } => match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
-                decl.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(d) => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
-                std::option::Option::None => false,
-            },
-            BareOccurrenceBinding::BareOccurrenceDeclaredTwiceInItsFile => false,
+            } => {
+                declaration_node_owns_host_option(decl.clone(), source_indices.clone(), env.clone())
+            }
+            BareOccurrenceBinding::BareOccurrenceImportedByName {
+                declaration: decl, ..
+            } => {
+                declaration_node_owns_host_option(decl.clone(), source_indices.clone(), env.clone())
+            }
             BareOccurrenceBinding::BareOccurrenceIsKernelName => {
                 match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
                     kernel_mint_declaration_rows(),
@@ -1097,8 +1096,23 @@ pub fn unstamped_reference_is_host_option(
                     } => false,
                 }
             }
-            BareOccurrenceBinding::BareOccurrenceBoundByImports => false,
+            BareOccurrenceBinding::BareOccurrenceUndecided => false,
         }
+    }
+}
+
+pub fn declaration_node_owns_host_option(
+    decl: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+        decl.clone(),
+        source_indices.clone(),
+        env.clone(),
+    ) {
+        Some(d) => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
+        std::option::Option::None => false,
     }
 }
 

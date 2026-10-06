@@ -352,6 +352,7 @@ pub struct SymbolIndex {
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
+    pub file_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -366,6 +367,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
+        file_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
     })
 }
 
@@ -409,9 +411,9 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
 #[serde(tag = "_variant")]
 pub enum BareOccurrenceBinding {
     BareOccurrenceDeclaredInItsFile { declaration: Rc<Node> },
-    BareOccurrenceDeclaredTwiceInItsFile,
+    BareOccurrenceImportedByName { declaration: Rc<Node> },
     BareOccurrenceIsKernelName,
-    BareOccurrenceBoundByImports,
+    BareOccurrenceUndecided,
 }
 impl BareOccurrenceBinding {
     pub fn declaration(&self) -> Rc<Node> {
@@ -419,13 +421,13 @@ impl BareOccurrenceBinding {
             BareOccurrenceBinding::BareOccurrenceDeclaredInItsFile {
                 declaration: __val, ..
             } => __val.clone(),
-            BareOccurrenceBinding::BareOccurrenceDeclaredTwiceInItsFile => {
-                panic!("no declaration on unit variant")
-            }
+            BareOccurrenceBinding::BareOccurrenceImportedByName {
+                declaration: __val, ..
+            } => __val.clone(),
             BareOccurrenceBinding::BareOccurrenceIsKernelName => {
                 panic!("no declaration on unit variant")
             }
-            BareOccurrenceBinding::BareOccurrenceBoundByImports => {
+            BareOccurrenceBinding::BareOccurrenceUndecided => {
                 panic!("no declaration on unit variant")
             }
         }
@@ -453,6 +455,38 @@ pub fn symbol_index_bare_declarations(index: Rc<SymbolIndex>, name: String) -> R
     }
 }
 
+pub fn bare_occurrence_import(
+    index: Rc<SymbolIndex>,
+    name: String,
+    reference: Rc<Node>,
+) -> Option<Rc<BareOccurrenceBinding>> {
+    match v1_rt::map_get(
+        &index.file_named_imports.clone(),
+        reference.span.clone().file.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(named) => match v1_rt::map_get(&named, name.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(from_module) => match symbol_index_lookup(
+                index.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(from_module.clone(), ".".to_string()),
+                    name.clone(),
+                ),
+            ) {
+                Some(decl) => Some(Rc::new(
+                    BareOccurrenceBinding::BareOccurrenceImportedByName {
+                        declaration: decl.clone(),
+                    },
+                )),
+                std::option::Option::None => {
+                    Some(Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided))
+                }
+            },
+        },
+    }
+}
+
 pub fn bare_occurrence_binding(
     index: Rc<SymbolIndex>,
     name: String,
@@ -477,7 +511,7 @@ pub fn bare_occurrence_binding(
             .fold(0, |n: i64, _d: Rc<Node>| v1_rt::int_add(n, 1));
         if (local_count.clone() == 1) {
             local.iter().cloned().fold(
-                Rc::new(BareOccurrenceBinding::BareOccurrenceDeclaredTwiceInItsFile),
+                Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided),
                 |acc: Rc<BareOccurrenceBinding>, d: Rc<Node>| {
                     Rc::new(BareOccurrenceBinding::BareOccurrenceDeclaredInItsFile {
                         declaration: d.clone(),
@@ -486,12 +520,17 @@ pub fn bare_occurrence_binding(
             )
         } else {
             if (local_count.clone() > 1) {
-                Rc::new(BareOccurrenceBinding::BareOccurrenceDeclaredTwiceInItsFile)
+                Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided)
             } else {
-                if overlay_skips_kernel_name(name.clone()) {
-                    Rc::new(BareOccurrenceBinding::BareOccurrenceIsKernelName)
-                } else {
-                    Rc::new(BareOccurrenceBinding::BareOccurrenceBoundByImports)
+                match bare_occurrence_import(index.clone(), name.clone(), reference.clone()) {
+                    Some(imported) => imported.clone(),
+                    std::option::Option::None => {
+                        if overlay_skips_kernel_name(name.clone()) {
+                            Rc::new(BareOccurrenceBinding::BareOccurrenceIsKernelName)
+                        } else {
+                            Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided)
+                        }
+                    }
                 }
             }
         }
@@ -596,6 +635,7 @@ pub fn symbol_index_insert(
         services: index.services.clone(),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
+        file_named_imports: index.file_named_imports.clone(),
     })
 }
 
@@ -621,6 +661,7 @@ pub fn symbol_index_insert_decl(
         services: index.services.clone(),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
+        file_named_imports: index.file_named_imports.clone(),
     })
 }
 
@@ -643,6 +684,7 @@ pub fn symbol_index_insert_service(
         ),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
+        file_named_imports: index.file_named_imports.clone(),
     })
 }
 
