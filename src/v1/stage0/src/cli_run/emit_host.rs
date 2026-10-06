@@ -3291,21 +3291,25 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
     }
 }
 
-fn transport_emission_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+fn is_drop_run_operation(operation: &str) -> bool {
+    operation == "Run" || operation == "gunbc.WitnessBin.Run"
+}
+
+fn transport_emission_run(d: &Rc<ErrorNode>) -> Option<(String, String)> {
     match &*d.diagnostic {
         crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
             service,
+            operation,
             declaring_module,
             ..
-        } => Some((declaring_module.clone(), service.clone())),
+        } if is_drop_run_operation(operation) => Some((declaring_module.clone(), service.clone())),
         _ => None,
     }
 }
 
-/// The drop population: `extdeps.gunbc` `WitnessBin` when its *only* unmodeled-transport
-/// refusals are the rust stderr-capture gap on `Run`. A sibling unmodeled key, another
-/// transport, or the same fact on another service stays in the render set.
-fn services_excluded_for_stderr_capture_gap(
+/// `extdeps.gunbc` `gunbc.WitnessBin.Run` when that operation's unmodeled-transport refusals
+/// are solely the rust stderr-capture gap. Other operations on the same service are not members.
+fn run_operations_excluded_for_stderr_capture_gap(
     typed: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
 ) -> BTreeSet<(String, String)> {
     let target = crate::v1_compiler_artifact::RenderTarget::Rust;
@@ -3328,24 +3332,24 @@ fn services_excluded_for_stderr_capture_gap(
         );
         rows
     };
-    let mut gap_services: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut gap_runs: BTreeSet<(String, String)> = BTreeSet::new();
     for d in &unmodeled {
         if let Some(key) = stderr_capture_policy_gap_service(d) {
-            gap_services.insert(key);
+            gap_runs.insert(key);
         }
     }
-    gap_services
+    gap_runs
         .into_iter()
         .filter(|key| {
             unmodeled
                 .iter()
-                .filter(|d| transport_emission_service(d).as_ref() == Some(key))
+                .filter(|d| transport_emission_run(d).as_ref() == Some(key))
                 .all(|d| stderr_capture_policy_gap_service(d).is_some())
         })
         .collect()
 }
 
-fn strip_excluded_services(
+fn strip_excluded_run_operations(
     typed: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
     excluded: &BTreeSet<(String, String)>,
 ) -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
@@ -3364,19 +3368,40 @@ fn strip_excluded_services(
                 let items = Rc::new(
                     tm.items
                         .iter()
-                        .filter(|item| {
+                        .filter_map(|item| {
                             if item.module_item_kind
                                 != crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
                             {
-                                return true;
+                                return Some((*item).clone());
                             }
                             let service = crate::v1_compiler_infer_env::authored_name(
                                 tm.type_env.clone(),
                                 (*item).clone(),
                             );
-                            !excluded.contains(&(module_name.clone(), service))
+                            if !excluded.contains(&(module_name.clone(), service)) {
+                                return Some((*item).clone());
+                            }
+                            let kept: Vec<Rc<crate::v1_std_core::Node>> = item
+                                .children
+                                .iter()
+                                .filter(|op| {
+                                    !is_drop_run_operation(
+                                        &crate::v1_compiler_infer_env::authored_name(
+                                            tm.type_env.clone(),
+                                            (*op).clone(),
+                                        ),
+                                    )
+                                })
+                                .cloned()
+                                .collect();
+                            if kept.is_empty() {
+                                return None;
+                            }
+                            Some(Rc::new(crate::v1_std_core::Node {
+                                children: Rc::new(kept),
+                                ..(**item).clone()
+                            }))
                         })
-                        .cloned()
                         .collect::<im::Vector<_>>(),
                 );
                 Rc::new(crate::v1_compiler_infer_items::TypedModule {
@@ -3392,16 +3417,15 @@ fn strip_excluded_services(
     })
 }
 
-/// Compile stays the full closure. Emit strips only the drop population
-/// (`extdeps.gunbc` `WitnessBin` whose rust refusals are solely the capture-policy gap),
-/// each named as a typed exclusion under the rung drop. Any other emit refusal stays.
+/// Compile stays the full closure. Emit strips only `gunbc.WitnessBin.Run` when its rust
+/// refusals are solely the capture-policy gap. Other operations on that service stay.
 fn union_emit_graph_excluding_unmodeled_stderr_capture(
     resolved: Rc<v1_compiler_compile::ResolvedPipelineResult>,
 ) -> (Rc<v1_compiler_compile::ResolvedPipelineResult>, Vec<String>) {
     let Some(typed) = resolved.graph.clone() else {
         return (resolved, Vec::new());
     };
-    let excluded_keys = services_excluded_for_stderr_capture_gap(&typed);
+    let excluded_keys = run_operations_excluded_for_stderr_capture_gap(&typed);
     if excluded_keys.is_empty() {
         return (resolved, Vec::new());
     }
@@ -3409,12 +3433,13 @@ fn union_emit_graph_excluding_unmodeled_stderr_capture(
         .iter()
         .map(|(module, service)| {
             format!(
-                "module={module} service={service} cause=ShellChannelNotRealizedByTarget \
+                "module={module} service={service} operation=gunbc.WitnessBin.Run \
+                 cause=ShellChannelNotRealizedByTarget \
                  fact=stderr_capture_policy_unrealized drop={STDERR_CAPTURE_POLICY_DROP}"
             )
         })
         .collect();
-    let graph = strip_excluded_services(typed, &excluded_keys);
+    let graph = strip_excluded_run_operations(typed, &excluded_keys);
     (
         Rc::new(v1_compiler_compile::ResolvedPipelineResult {
             graph: Some(graph),
@@ -3538,6 +3563,7 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
     })?;
     if !gunbc_observed.excluded.iter().any(|row| {
         row.contains("module=extdeps.gunbc")
+            && row.contains("operation=gunbc.WitnessBin.Run")
             && row.contains("cause=ShellChannelNotRealizedByTarget")
             && row.contains(STDERR_CAPTURE_POLICY_DROP)
     }) {
@@ -3762,6 +3788,7 @@ mod fixture_closure_union_tests {
         assert!(
             observed.excluded.iter().any(|row| {
                 row.contains("module=extdeps.gunbc")
+                    && row.contains("operation=gunbc.WitnessBin.Run")
                     && row.contains("cause=ShellChannelNotRealizedByTarget")
                     && row.contains(STDERR_CAPTURE_POLICY_DROP)
             }),
