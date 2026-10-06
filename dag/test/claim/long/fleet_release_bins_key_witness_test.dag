@@ -2,7 +2,7 @@ module test.claim.long.fleet_release_bins_key_witness
 
 import std.types { String, List, Bool }
 import v2.std.node { Node }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
 import extdeps.shell.exec { TransportScript }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

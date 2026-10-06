@@ -3,7 +3,7 @@ module test.claim.machine_intake.ampere_socket_console_observation_witness_test
 import std.types { Bool, Int, List, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.ampere.ras_error_section {
   AmpereRasGic, AmpereRasPmproFw, AmpereRasBert, AmperePayloadFirmwareSpecific, AmpereRasTypeUndefined,
   ampere_ras_section_header_of, AmpereRasTypeDefined,

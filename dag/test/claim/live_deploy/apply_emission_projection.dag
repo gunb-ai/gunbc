@@ -10,7 +10,7 @@ import v2.std.orchestration {
   Pipeline, Predicate, ExitZero, LogMatches, StrEq, StrEmpty, StrNonempty, IntNe, Not, And, Or,
   ValueSource, CmdSubstLines, Glob, ModeledList, Expr, ExprLit, ExprVarRef, ExprCmdSubst,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // THE APPLY'S OWN STEP EMISSION, WITH THE HOST OBSERVATION MOCKED AND NOTHING ELSE CHANGED.
 //

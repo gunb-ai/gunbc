@@ -60,7 +60,7 @@ import std.observation {
   clock_basis_eq,
   observation_duration_of,
 }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
 // Per-witness cost receipts (placement workstream #5 spine). THE RECORD is

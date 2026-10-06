@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, HostQuiescenceEvidence, residue_spec_members, residue_spec_decode, quiescence_evidence_members, quiescence_evidence_decode, quiescence_evidence_covers, ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, release_provenance_members, release_provenance_decode, release_provenance_covers, parse_claimant_standing }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,

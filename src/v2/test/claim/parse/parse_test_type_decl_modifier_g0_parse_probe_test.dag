@@ -10,7 +10,7 @@ import v2.std.language_model { LanguageModel }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, node_subtree_nodes, symbol_lexeme }
 import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

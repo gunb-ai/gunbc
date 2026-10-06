@@ -72,7 +72,7 @@ module gunbc.compiler_gate_workflow
 
 import std.measure { Minute, minute, minute_count, Second, second, second_count, seconds_per_minute }
 import std.types { Bool, Int, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
@@ -1605,6 +1605,10 @@ type CompilerGateLaneRow {
   arm: CompilerGateArm
 }
 
+// THE UNIT-TEST ROW IS NOT BLOCKING UNDER A DECLARED DROP (operator-approved, escalation
+// msg_e83c070f, 2026-10-05): the step overran its cap on every head after gunbc#12951, so its red
+// said nothing about the diff and refused every merge. The job still runs and reports;
+// gunbc.rung_drop rust_unit_tests_over_their_cap names the trigger that flips it back to LaneBlocks.
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
     CompilerGateLaneRow {
@@ -1614,7 +1618,9 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
         notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
         unobserved_error: "the v1 unit-test lane produced no success"
       },
-      standing: LaneBlocks,
+      standing: LaneAnnouncedNotBlocking {
+        flip_trigger: "gunbc.rung_drop rust_unit_tests_over_their_cap: the full v1 --lib unit suite completes under its cap on the fleet runner on every head. Sufficient for: the lane red meaning a test failed, never that its clock ran out."
+      },
     },
     CompilerGateLaneRow {
       job_id: compiler_gate_emit_build_job_id,

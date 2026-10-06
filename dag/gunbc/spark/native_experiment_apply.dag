@@ -5,7 +5,7 @@ import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count_value }
 import v2.std.algebra { zip_map }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { serialize_content_hash }
@@ -184,7 +184,7 @@ fn spark_refusal_for_phase(phase: ExecutionCellPhase, member: SystemdExecutionMe
 
 fn spark_result_of_outcome(actuation: ExecutionCellActuation<SystemdExecutionMember>, outcome: SparkPairHostApplyOutcome) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
   match outcome {
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => ExecutionCellActuated { actuation: actuation }
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => ExecutionCellActuated { actuation: actuation }
     SparkPairHostApplyFailed { host: _, cause: c } =>
       ExecutionCellPhaseRefused { refusal: spark_refusal_for_phase(phase: actuation.phase, member: actuation.member, detail: c) }
     SparkPairHostUnreached { host: _, cause: c } =>
@@ -785,8 +785,8 @@ fn spark_profile_readback_verdict(head_leg: SparkProfileReadbackLeg, head_outcom
       SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: head_leg.member, cause: c as NonEmptyStr } }
     SparkPairHostUnreached { host: _, cause: c } =>
       SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: head_leg.member, cause: c as NonEmptyStr } }
-    SparkPairHostApplied { host: _, detail: _, standing: _ } =>
-      match first(filter(rank_outcomes, o => match o { SparkPairHostApplyFailed { host: _, cause: _ } => true  SparkPairHostUnreached { host: _, cause: _ } => true  SparkPairHostApplied { host: _, detail: _, standing: _ } => false })) {
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } =>
+      match first(filter(rank_outcomes, o => match o { SparkPairHostApplyFailed { host: _, cause: _ } => true  SparkPairHostUnreached { host: _, cause: _ } => true  SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => false })) {
         Present { value: SparkPairHostApplyFailed { host: failed_host, cause: c } } =>
           match first(filter(rank_legs, l => host_identity_eq(a: l.member.host, b: failed_host))) {
             Present { value: l } =>
@@ -799,7 +799,7 @@ fn spark_profile_readback_verdict(head_leg: SparkProfileReadbackLeg, head_outcom
               SparkProfileReadbackHalted { refusal: SparkRankProfileReadbackRefused { member: l.member, cause: c as NonEmptyStr } }
             Absent => SparkProfileReadbacksConverged
           }
-        Present { value: SparkPairHostApplied { host: _, detail: _, standing: _ } } => SparkProfileReadbacksConverged
+        Present { value: SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } } => SparkProfileReadbacksConverged
         Absent => SparkProfileReadbacksConverged
       }
   }
@@ -882,28 +882,28 @@ fn spark_workload_run(phase: SparkExperimentWorkloadPhase, run_leg: fn(SparkPair
       SparkWorkloadRun { outcomes: [gate_outcome], workload_halt: Present { value: SparkEndpointReadinessRefused { member: phase.readiness_gate.member, cause: c as NonEmptyStr } } }
     SparkPairHostUnreached { host: _, cause: c } =>
       SparkWorkloadRun { outcomes: [gate_outcome], workload_halt: Present { value: SparkEndpointReadinessRefused { member: phase.readiness_gate.member, cause: c as NonEmptyStr } } }
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => {
       let prefill_outcome = run_leg(phase.prefill_seats.plan)
       match prefill_outcome {
         SparkPairHostApplyFailed { host: _, cause: c } =>
           SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
         SparkPairHostUnreached { host: _, cause: c } =>
           SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
-        SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+        SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => {
           let churn_outcome = run_leg(phase.churn.plan)
           match churn_outcome {
             SparkPairHostApplyFailed { host: _, cause: c } =>
               SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
             SparkPairHostUnreached { host: _, cause: c } =>
               SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
-            SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+            SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => {
               let sampling_outcome = run_leg(phase.sampling.plan)
               match sampling_outcome {
                 SparkPairHostApplyFailed { host: _, cause: c } =>
                   SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
                 SparkPairHostUnreached { host: _, cause: c } =>
                   SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
-                SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+                SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } =>
                   SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: none }
               }
             }
@@ -939,7 +939,7 @@ fn spark_experiment_route(
           ExecutionCellConverged { started: _ } => {
             let head_outcome = run_leg(head_readback.plan)
             let rank_outcomes = match head_outcome {
-              SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+              SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } =>
                 map(rank_readbacks, l => run_leg(l.plan))
               SparkPairHostApplyFailed { host: _, cause: _ } =>
                 [] as List<SparkPairHostApplyOutcome>
