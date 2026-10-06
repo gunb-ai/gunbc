@@ -86,12 +86,17 @@ fn type_variable_instance_lookup(
   })
 }
 
+// A match's arms against its scrutinee's coproduct: `declared` is the scrutinee's declared
+// coproduct and `produced` is the arms' covered carrier, so the one relation decides coverage --
+// exhaustive exactly when the arms structurally equal the whole coproduct
+// (gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees).
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
   | PositionRecordField { record: Node }
   | PositionLetAnnotation { bound: Node }
   | PositionBinderDefault { default: Node }
+  | PositionMatchCoverage { match_node: Node, scrutinee: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
@@ -142,6 +147,10 @@ fn position_record_field(record: Node) -> DeclaredTypePosition {
   PositionRecordField { record: record }
 }
 
+fn position_match_coverage(match_node: Node, scrutinee: Node) -> DeclaredTypePosition {
+  PositionMatchCoverage { match_node: match_node, scrutinee: scrutinee }
+}
+
 // An annotated let (`let x: T = e`) is a declared position like the others, not a cast. Its
 // obligation is located at the authored annotation (the declared type the author wrote, as a
 // declared return is located at the body it judges), and the position names the bound value e
@@ -161,6 +170,10 @@ fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
   ^infer_reason_default_does_not_inhabit_binder_type
 }
 
+fn inhabitance_no_candidate_match_coverage_reason() -> Symbol {
+  ^infer_reason_match_arms_do_not_cover_scrutinee
+}
+
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
@@ -168,6 +181,7 @@ fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
     PositionRecordField { record: _ } => ^position_record_field
     PositionLetAnnotation { bound: _ } => ^position_let_annotation
     PositionBinderDefault { default: _ } => ^position_binder_default
+    PositionMatchCoverage { match_node: _, scrutinee: _ } => ^position_match_coverage
   }
 }
 
@@ -398,6 +412,7 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
     PositionRecordField { record: record } => [Edge { label: Authored { name: ^inhabitance_record }, target: record }]
     PositionLetAnnotation { bound: bound } => [Edge { label: Authored { name: ^inhabitance_bound_value }, target: bound }]
     PositionBinderDefault { default: default } => [Edge { label: Authored { name: ^inhabitance_default_value }, target: default }]
+    PositionMatchCoverage { match_node: _, scrutinee: scrutinee } => [Edge { label: Authored { name: ^inhabitance_scrutinee }, target: scrutinee }]
   }
 }
 
@@ -408,6 +423,7 @@ fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
     PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
     PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
     PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
+    PositionMatchCoverage { match_node: _, scrutinee: _ } => inhabitance_no_candidate_match_coverage_reason()
   }
 }
 

@@ -1,0 +1,933 @@
+module v2.test.claim.variant_field_infer_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer {
+  ConstructIsRecord,
+  ConstructIsVariantArm,
+  ConstructNotARecord,
+  infer,
+  infer_record_construct_read,
+  inferred_facts_resolved_type
+}
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_node, qualified_name_last_segment }
+import v2.std.witness { Holds, Violates }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import v2.std.algebra { list_map }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.algebra { contains, list_map }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  CoreMarker,
+  Match,
+  MatchArmBodyEdge,
+  Node,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  symbol_lexeme
+}
+import v2.compiler.inferred_tree { ObligatedInferredTree }
+import v2.std.node_query { binder_edge, construct_node, construct_tag_optional, pattern_wildcard_name }
+import v2.std.qualified_name { qualified_name_init }
+import v2.std.node {
+  Authored,
+  FieldProjectionBaseEdge,
+  FieldProjectionFieldEdge,
+  Instantiation,
+  MatchArmPatternEdge,
+  Positional,
+  TypeNode,
+  core_edge_label,
+  node_with_occurrence_id
+}
+import v2.std.arrow_signature { declared_signature_arrow }
+import v2.std.type_binder { type_decl_wrapper }
+import v2.test.lens_common.resolve_fixture {
+  ClaimLoweredModule,
+  ClaimLoweredParam,
+  claim_lowered_atom,
+  claim_lowered_function,
+  claim_lowered_minted,
+  claim_lowered_path,
+  claim_lowered_record,
+  claim_lowered_root,
+  claim_resolve_lowered
+}
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import v2.std.collection { List }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ProcessExit, ExitSuccess }
+
+data vfp_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_pilot.dag"
+}
+
+fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: vfp_artifact,
+        compilation_unit: ^variant_field_infer_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn vfp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+}
+
+fn vfp_last(xs: List<Symbol>) -> Symbol {
+  fold(xs, init: ^vfp_no_reason, f: fn(acc, x) { x })
+}
+
+fn vfp_find_match(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Match } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_match(n: e.target)
+      }
+    })
+  }
+}
+
+fn vfp_find_construction(n: Node) -> Optional<Node> {
+  match construct_tag_optional(n: n) {
+    Present { value: _ } => Present { value: n }
+    Absent => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_construction(n: e.target)
+      }
+    })
+  }
+}
+
+fn vfp_first_arm_body_of(m: Node) -> Optional<Node> {
+  fold(m.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => Present { value: e.target }
+          _ => Absent
+        }
+    }
+  })
+}
+
+fn vfp_type_name(t: Node) -> Symbol {
+  match declaration_reference_path_optional(node: t) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: s } => s
+        Absent => ^vfp_empty_path
+      }
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Atom { identity: s } } => s
+        _ => ^vfp_type_not_named
+      }
+  }
+}
+
+
+fn vfp_fact_in(inferred: ObligatedInferredTree, subject: Optional<Node>) -> Symbol {
+  match subject {
+    Absent => ^vfp_subject_absent
+    Present { value: s } =>
+      match inferred.facts.lookup(s) {
+        Absent => ^vfp_no_facts
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => ^vfp_underived
+            Holds { value: t } => vfp_type_name(t: t)
+          }
+      }
+  }
+}
+
+fn vfp_reports(reading: VfpReading, reason: Symbol) -> Bool {
+  contains(xs: reading.reasons, item: reason, eq: fn(a, b) { a == b })
+}
+
+fn vfp_infers(reading: VfpReading) -> Bool {
+  match reading.reasons {
+    Cons { head: h, tail: _ } => h == ^infers
+    Empty => false
+  }
+}
+
+// THE CONSTRUCT READ, DECODED: what infer_record_construct_read answers for the fixture's
+// construction, read directly on the resolved tree. The variant arm is named by its declaring
+// path's last segment (^Boxed when the read mints the variant row); the sentinels say where the
+// read stopped instead. TEMPORARY decode instrument: goes out with the RFM retirement once the
+// per-identity evidence is recorded.
+fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
+  match vfp_find_construction(n: resolved.root) {
+    Absent => ^vfp_read_subject_absent
+    Present { value: node } =>
+      match infer_record_construct_read(node: node, resolved: resolved) {
+        ConstructIsRecord { construct: _ } => ^vfp_read_record
+        ConstructIsVariantArm { construct: c } =>
+          match qualified_name_last_segment(qn: c.arm_path) {
+            Present { value: s } => s
+            Absent => ^vfp_read_arm_path_absent
+          }
+        ConstructNotARecord => ^vfp_read_not_a_record
+      }
+  }
+}
+
+// THE CARRIER HALF OF THE SAME DECODE: what the read names as the variant's declaring coproduct
+// (^Seal for the fixture) -- the field the alias mechanism exists to fill, since the tag's own
+// path (the module-level alias `p.Boxed`) does not carry it. TEMPORARY: goes out with the RFM
+// retirement.
+fn vfp_construct_read_carrier_decode(resolved: ResolvedTree) -> Symbol {
+  match vfp_find_construction(n: resolved.root) {
+    Absent => ^vfp_read_subject_absent
+    Present { value: node } =>
+      match infer_record_construct_read(node: node, resolved: resolved) {
+        ConstructIsRecord { construct: _ } => ^vfp_read_record
+        ConstructIsVariantArm { construct: c } =>
+          match qualified_name_last_segment(qn: c.variant_path) {
+            Present { value: s } => s
+            Absent => ^vfp_read_no_carrier
+          }
+        ConstructNotARecord => ^vfp_read_not_a_record
+      }
+  }
+}
+
+// WHAT THE FIXTURE ESTABLISHES, decided once per program by one nullary producer enrolled WARM in
+// v2.workflow.floor_pure_producer_share. `reasons` is the whole chain in order: a resolve or infer
+// refusal's reasons, or `^infers` followed by the accepted inference's advisories. A FACT field is
+// the picked node's resolved type name on an accepted inference, or the sentinels where the route
+// stops: ^vfp_subject_absent when the finder found nothing, ^vfp_no_facts when the node carries no
+// facts, ^vfp_underived when the facts do not resolve, or the refusal's reason (the head at resolve,
+// the last at infer).
+type VfpReading {
+  reasons: List<Symbol>
+  construction_fact: Symbol
+  match_fact: Symbol
+  arm_body_fact: Symbol
+  construct_read: Symbol
+  construct_read_carrier: Symbol
+}
+
+// THE COMBINED FIXTURE'S READING: one module exercising every shape the enrolled claims measure
+// (positional + named payload binders, a formal-typed payload field, a compound payload, an arrow
+// payload, a monomorphic projection). ONE nullary producer so every planned claim reaches one
+// closed computation identity and the derived producer-share admits it -- per-claim re-runs of
+// this fill refused the enrolment margin (~609k eval steps each).
+type VfpFixtureReading {
+  reasons: List<Symbol>
+  construct_read: Symbol
+  construct_read_carrier: Symbol
+  rt_construction_fact: Symbol
+  rt_match_fact: Symbol
+  rt_arm_fact: Symbol
+  generic_arm_fact: Symbol
+  projection_fact: Symbol
+  compound_arm_fact: Symbol
+}
+
+// THE ARROW FIXTURE'S READING: same shape as the combined reading, for the arrow module alone.
+type VfpArrowReading {
+  reasons: List<Symbol>
+  construct_read: Symbol
+  arrow_arm_fact: Symbol
+}
+
+// PREORDER COLLECTORS over the resolved tree: all matches, and a match's arm bodies in order.
+fn vfp_matches_of(n: Node) -> List<Node> { vfp_matches_of_at(n: n, depth: 24) }
+
+fn vfp_matches_of_at(n: Node, depth: Int) -> List<Node> {
+  match depth <= 0 {
+    true => Empty
+    false =>
+      match n.kind {
+        ComputationNode { behavior: Match } =>
+          Cons { head: n, tail: fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1)) }) }
+        _ =>
+          fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1)) })
+      }
+  }
+}
+
+fn vfp_arm_bodies_of(m: Node) -> List<Node> { vfp_arm_bodies_of_at(m: m, depth: 24) }
+
+// The arm-body edges hang under the match's ARM nodes, not under the match itself, so the walk
+// descends and stays bound (a fixture has no nested matches; the bound guards a cyclic tree).
+fn vfp_arm_bodies_of_at(m: Node, depth: Int) -> List<Node> {
+  match depth <= 0 {
+    true => Empty
+    false =>
+      fold(m.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => list_append(left: acc, right: Cons { head: e.target, tail: vfp_arm_bodies_of_at(m: e.target, depth: depth - 1) })
+          _ => list_append(left: acc, right: vfp_arm_bodies_of_at(m: e.target, depth: depth - 1))
+        }
+      })
+  }
+}
+
+fn vfp_first_of(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: h, tail: _ } => Present { value: h }
+    Empty => Absent
+  }
+}
+
+fn vfp_second_of(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: _, tail: t } => vfp_first_of(xs: t)
+    Empty => Absent
+  }
+}
+
+fn vfp_third_of(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: _, tail: t } => vfp_second_of(xs: t)
+    Empty => Absent
+  }
+}
+
+fn vfp_fourth_of(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: _, tail: t } => vfp_third_of(xs: t)
+    Empty => Absent
+  }
+}
+
+fn vfp_arm_body_first(m: Optional<Node>) -> Optional<Node> {
+  match m {
+    Absent => Absent
+    Present { value: n } => vfp_first_of(xs: vfp_arm_bodies_of(m: n))
+  }
+}
+
+fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
+  match m {
+    Absent => Absent
+    Present { value: n } => vfp_second_of(xs: vfp_arm_bodies_of(m: n))
+  }
+}
+
+// THE EXHAUSTIVENESS CONTROL: the same carrier with one arm dropped, so the match must refuse for
+// want of coverage -- decided by the single inhabitance relation, which surfaces the established
+// non-exhaustive reason (the same one the inline count it replaced reported).
+
+// THE LOWERED FIXTURES (DESIGN 3: the subject as a value). The fact-level probes read
+// claim_resolve_lowered -- the same real resolve + admission + symbol-index fill the corpus compile
+// runs, over a ClaimLoweredModule value instead of assembled text. The assembled-text route grounds
+// nothing at infer (gunbc.recurring_failure_mode
+// authored_text_fixtures_ground_nothing_at_infer, links undistinguished), so it stays only for the
+// resolve-side and refusal controls (vfp_partial_src). The shapes below are the shapes the real
+// lowering writes; the producing fn is cited at each builder.
+
+fn vfp_int_atom(site: Int) -> Node { claim_lowered_atom(identity: ^Int, n: site) }
+
+// A REFERENCE LOWERING WRITES FOR A MODULE-LOCAL NAME: a dotted path of minted atoms.
+fn vfp_ref(segs: List<Symbol>, site: Int) -> Node { claim_lowered_path(segments: segs, n: site) }
+
+// A LOCAL VARIABLE REFERENCE: the one lowering writes for a binder use (v2.std.qualified_name
+// lexical_reference_node); resolve records the binding under the node's occurrence.
+fn vfp_lexical(label: Symbol, site: Int) -> Node {
+  lexical_reference_node(label: label, occurrence_id: claim_lowered_minted(n: site))
+}
+
+// A FIELD PROJECTION `base.field`: the Conj of a base edge and a field edge
+// (v2.std.node_query field_projection_optional).
+fn vfp_projection(base: Node, field: Symbol, site: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: FieldProjectionBaseEdge), target: base },
+      Edge { label: core_edge_label(marker: FieldProjectionFieldEdge), target: claim_lowered_atom(identity: field, n: site + 1) }
+    ],
+    occurrence_id: claim_lowered_minted(n: site)
+  )
+}
+
+// A CALL: the Transform shape body_lowering writes for an applied operator with its arguments.
+fn vfp_call(callee: Node, arg: Node, site: Int) -> Node {
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Positional, target: callee }, Edge { label: Positional, target: arg }],
+    occurrence_id: claim_lowered_minted(n: site)
+  )
+}
+
+// THE MATCH: the ComputationNode { behavior: Match } shape -- the scrutinee positional first, then
+// the arm wires (body_lowering_fold body_lower_match_arm_wire's carrier).
+fn vfp_match(scrutinee: Node, arms: List<Node>, site: Int) -> Node {
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Match },
+    children: list_append(
+      left: [Edge { label: Positional, target: scrutinee }],
+      right: list_map(xs: arms, f: fn(a) { Edge { label: Positional, target: a } })
+    ),
+    occurrence_id: claim_lowered_minted(n: site)
+  )
+}
+
+// THE ARM WIRE: one pattern edge and one body edge (body_lower_match_arm_wire).
+fn vfp_arm(pattern: Node, body: Node, site: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+    ],
+    occurrence_id: claim_lowered_minted(n: site)
+  )
+}
+
+// AN INSTANTIATED TYPE `Head<A>`: the Instantiation conj, each argument positional.
+fn vfp_applied(head: Node, args: List<Node>, site: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Instantiation },
+    children: list_append(
+      left: [Edge { label: Positional, target: head }],
+      right: list_map(xs: args, f: fn(a) { Edge { label: Positional, target: a } })
+    ),
+    occurrence_id: claim_lowered_minted(n: site)
+  )
+}
+
+// AN ARROW TYPE `fn(D) -> C`: declared_signature_arrow's shape (domain conj, codomain, order).
+fn vfp_arrow_type(domain: Node, codomain: Node, site: Int) -> Node {
+  declared_signature_arrow(
+    params: [binder_edge(name: pattern_wildcard_name(), type_node: domain)],
+    codomain: codomain,
+    source: claim_lowered_atom(identity: ^vfp_arrow_site, n: site)
+  )
+}
+
+// A GENERIC TYPE DECLARATION'S WRAPPER: type_decl_wrapper carries the formal binders beside the
+// member body; a formal is Authored { T } -> T (body_lowering_fold generic param edges).
+fn vfp_generic_decl(name: Symbol, member: Node, site: Int) -> Node {
+  type_decl_wrapper(
+    binders: node_with_occurrence_id(
+      kind: TypeNode { connective: Conj },
+      children: [Edge { label: Authored { name: name }, target: claim_lowered_atom(identity: name, n: site + 2) }],
+      occurrence_id: claim_lowered_minted(n: site + 1)
+    ),
+    member: member
+  )
+}
+
+// A NAMED VARIANT PAYLOAD FIELD: a binder edge (declared_field_from_edge's shape).
+fn vfp_named_field(name: Symbol, type_node: Node, site: Int) -> Edge {
+  binder_edge(name: name, type_node: type_node)
+}
+
+// A POSITIONAL VARIANT PAYLOAD FIELD: the target IS the type (member_edge_type_node).
+fn vfp_positional_field(type_node: Node) -> Edge {
+  Edge { label: Positional, target: type_node }
+}
+
+fn vfp_conj(edges: List<Edge>, site: Int) -> Node {
+  node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: edges, occurrence_id: claim_lowered_minted(n: site))
+}
+
+// A NULLARY VARIANT'S TARGET: the bare identifier lowering writes (an alias-shaped atom).
+fn vfp_nullary(name: Symbol, site: Int) -> Node { claim_lowered_atom(identity: name, n: site) }
+
+// A CONSTRUCT PATTERN OR VALUE: construct_node's shape -- a Conj whose first edge is the construct
+// tag, then the field edges; resolve's construct-tag writer resolves the tag through the index.
+fn vfp_construct(tag: List<Symbol>, fields: List<Edge>, site: Int) -> Node {
+  construct_node(reference: vfp_ref(segs: tag, site: site), field_edges: fields, source: claim_lowered_atom(identity: ^vfp_construct_site, n: site + 20))
+}
+
+fn vfp_fixture_qn() -> QualifiedName { [^vfp_fixture] }
+
+fn vfp_arrow_qn() -> QualifiedName { [^vfp_arrow] }
+
+// THE COMBINED FIXTURE (module vfp_fixture): the same declarations the assembled fixture authored,
+// in the same order -- the records ParseTree and NonEmptyDiagnostics; the coproducts Diagnostics,
+// Outcome<T>, Box<T>, Hold<T> and Seal; then make, unbox, pick and unkeep. Site numbers are
+// disjoint per declaration so minted occurrences never collide.
+fn vfp_fixture_module() -> ClaimLoweredModule {
+  let q = [^vfp_fixture]
+  let parse_tree = vfp_conj(edges: [vfp_named_field(name: ^root, type_node: vfp_int_atom(site: 101), site: 102)], site: 100)
+  let non_empty = vfp_conj(edges: [vfp_named_field(name: ^head, type_node: vfp_int_atom(site: 201), site: 202)], site: 200)
+  let diagnostics = node_with_occurrence_id(
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Authored { name: ^None }, target: vfp_nullary(name: ^None, site: 301) },
+      Edge { label: Authored { name: ^Some }, target: vfp_conj(edges: [vfp_named_field(name: ^diagnostics, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^NonEmptyDiagnostics), site: 302), site: 303)], site: 304) }
+    ],
+    occurrence_id: claim_lowered_minted(n: 300)
+  )
+  let outcome = vfp_generic_decl(
+    name: ^Outcome,
+    member: node_with_occurrence_id(
+      kind: TypeNode { connective: Disj },
+      children: [
+        Edge { label: Authored { name: ^Accepted }, target: vfp_conj(edges: [vfp_named_field(name: ^value, type_node: claim_lowered_atom(identity: ^T, n: 402), site: 403), vfp_named_field(name: ^diagnostics, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^Diagnostics), site: 404), site: 405)], site: 401) },
+        Edge { label: Authored { name: ^Rejected }, target: vfp_conj(edges: [vfp_named_field(name: ^diagnostics, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^NonEmptyDiagnostics), site: 407), site: 408)], site: 406) }
+      ],
+      occurrence_id: claim_lowered_minted(n: 400)
+    ),
+    site: 410
+  )
+  let box_t = vfp_generic_decl(
+    name: ^Box,
+    member: vfp_conj(edges: [vfp_named_field(name: ^inner, type_node: claim_lowered_atom(identity: ^T, n: 502), site: 503)], site: 501),
+    site: 510
+  )
+  let hold_t = vfp_generic_decl(
+    name: ^Hold,
+    member: node_with_occurrence_id(
+      kind: TypeNode { connective: Disj },
+      children: [
+        Edge { label: Authored { name: ^Keep }, target: vfp_conj(edges: [vfp_named_field(name: ^boxed, type_node: vfp_applied(head: vfp_ref(segs: list_snoc_item(xs: q, item: ^Box), site: 602), args: [claim_lowered_atom(identity: ^T, n: 603)], site: 601), site: 604)], site: 611) },
+        Edge { label: Authored { name: ^Dropped }, target: vfp_nullary(name: ^Dropped, site: 605) }
+      ],
+      occurrence_id: claim_lowered_minted(n: 600)
+    ),
+    site: 610
+  )
+  let seal = node_with_occurrence_id(
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Authored { name: ^Boxed }, target: vfp_conj(edges: [vfp_positional_field(type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 702))], site: 701) },
+      Edge { label: Authored { name: ^Held }, target: vfp_conj(edges: [vfp_named_field(name: ^value, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 704), site: 705)], site: 703) }
+    ],
+    occurrence_id: claim_lowered_minted(n: 700)
+  )
+  let make = claim_lowered_function(
+    site: 800,
+    params: [ClaimLoweredParam { name: ^n, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 802) }],
+    codomain: vfp_ref(segs: list_snoc_item(xs: q, item: ^Seal), site: 803),
+    body: vfp_construct(tag: [^Boxed], fields: [vfp_positional_field(type_node: vfp_lexical(label: ^n, site: 804))], site: 801)
+  )
+  let unbox = claim_lowered_function(
+    site: 920,
+    params: [ClaimLoweredParam { name: ^s, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^Seal), site: 922) }],
+    codomain: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 923),
+    body: vfp_match(
+      scrutinee: vfp_lexical(label: ^s, site: 904),
+      arms: [
+        vfp_arm(pattern: vfp_construct(tag: [^Boxed], fields: [vfp_positional_field(type_node: vfp_lexical(label: ^v, site: 906))], site: 905), body: vfp_lexical(label: ^v, site: 907), site: 901),
+        vfp_arm(pattern: vfp_construct(tag: [^Held], fields: [vfp_named_field(name: ^value, type_node: vfp_lexical(label: ^w, site: 909), site: 910)], site: 908), body: vfp_lexical(label: ^w, site: 911), site: 902)
+      ],
+      site: 900
+    )
+  )
+  let pick = claim_lowered_function(
+    site: 1020,
+    params: [ClaimLoweredParam { name: ^o, type_node: vfp_applied(head: vfp_ref(segs: list_snoc_item(xs: q, item: ^Outcome), site: 1022), args: [vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 1023)], site: 1021) }],
+    codomain: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 1024),
+    body: vfp_match(
+      scrutinee: vfp_lexical(label: ^o, site: 1004),
+      arms: [
+        vfp_arm(pattern: vfp_construct(tag: [^Accepted], fields: [vfp_named_field(name: ^value, type_node: vfp_lexical(label: ^val, site: 1006), site: 1007), vfp_named_field(name: ^diagnostics, type_node: vfp_lexical(label: ^dd, site: 1008), site: 1009)], site: 1005), body: vfp_lexical(label: ^val, site: 1010), site: 1001),
+        vfp_arm(pattern: vfp_construct(tag: [^Rejected], fields: [vfp_named_field(name: ^diagnostics, type_node: vfp_lexical(label: ^d, site: 1012), site: 1013)], site: 1011), body: vfp_projection(base: vfp_lexical(label: ^d, site: 1014), field: ^head, site: 1015), site: 1002)
+      ],
+      site: 1000
+    )
+  )
+  let unkeep = claim_lowered_function(
+    site: 1120,
+    params: [
+      ClaimLoweredParam { name: ^k, type_node: vfp_applied(head: vfp_ref(segs: list_snoc_item(xs: q, item: ^Hold), site: 1122), args: [vfp_applied(head: vfp_ref(segs: list_snoc_item(xs: q, item: ^Box), site: 1124), args: [vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 1125)], site: 1123)], site: 1121) },
+      ClaimLoweredParam { name: ^fallback, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 1126) }
+    ],
+    codomain: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 1127),
+    body: vfp_match(
+      scrutinee: vfp_lexical(label: ^k, site: 1104),
+      arms: [
+        vfp_arm(pattern: vfp_construct(tag: [^Keep], fields: [vfp_named_field(name: ^boxed, type_node: vfp_lexical(label: ^b, site: 1106), site: 1107)], site: 1105), body: vfp_projection(base: vfp_lexical(label: ^b, site: 1108), field: ^inner, site: 1109), site: 1101),
+        vfp_arm(pattern: vfp_construct(tag: [^Dropped], fields: [], site: 1110), body: vfp_lexical(label: ^fallback, site: 1111), site: 1102)
+      ],
+      site: 1100
+    )
+  )
+  ClaimLoweredModule {
+    module: vfp_fixture_qn(),
+    members: [
+      Edge { label: Authored { name: ^ParseTree }, target: parse_tree },
+      Edge { label: Authored { name: ^NonEmptyDiagnostics }, target: non_empty },
+      Edge { label: Authored { name: ^Diagnostics }, target: diagnostics },
+      Edge { label: Authored { name: ^Outcome }, target: outcome },
+      Edge { label: Authored { name: ^Box }, target: box_t },
+      Edge { label: Authored { name: ^Hold }, target: hold_t },
+      Edge { label: Authored { name: ^Seal }, target: seal },
+      Edge { label: Authored { name: ^make }, target: make },
+      Edge { label: Authored { name: ^unbox }, target: unbox },
+      Edge { label: Authored { name: ^pick }, target: pick },
+      Edge { label: Authored { name: ^unkeep }, target: unkeep }
+    ],
+    records: [^ParseTree, ^NonEmptyDiagnostics],
+    imports: []
+  }
+}
+
+// THE ARROW FIXTURE (module vfp_arrow), the same module the assembled fixture authored: ParseTree,
+// Apply<T> = Mk { f: fn(ParseTree) -> T }, and useit matching Mk with `g(n)` in the arm body.
+fn vfp_arrow_module() -> ClaimLoweredModule {
+  let q = [^vfp_arrow]
+  let parse_tree = vfp_conj(edges: [vfp_named_field(name: ^root, type_node: vfp_int_atom(site: 2101), site: 2102)], site: 2100)
+  let apply_t = vfp_generic_decl(
+    name: ^Apply,
+    member: vfp_conj(edges: [vfp_named_field(name: ^f, type_node: vfp_arrow_type(domain: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 2202), codomain: claim_lowered_atom(identity: ^T, n: 2203), site: 2201), site: 2204)], site: 2211),
+    site: 2210
+  )
+  let useit = claim_lowered_function(
+    site: 2320,
+    params: [
+      ClaimLoweredParam { name: ^a, type_node: vfp_applied(head: vfp_ref(segs: list_snoc_item(xs: q, item: ^Apply), site: 2322), args: [vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 2323)], site: 2321) },
+      ClaimLoweredParam { name: ^n, type_node: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 2324) }
+    ],
+    codomain: vfp_ref(segs: list_snoc_item(xs: q, item: ^ParseTree), site: 2325),
+    body: vfp_match(
+      scrutinee: vfp_lexical(label: ^a, site: 2304),
+      arms: [
+        vfp_arm(pattern: vfp_construct(tag: [^Mk], fields: [vfp_named_field(name: ^f, type_node: vfp_lexical(label: ^g, site: 2306), site: 2307)], site: 2305), body: vfp_call(callee: vfp_lexical(label: ^g, site: 2308), arg: vfp_lexical(label: ^n, site: 2309), site: 2310), site: 2301)
+      ],
+      site: 2300
+    )
+  )
+  ClaimLoweredModule {
+    module: vfp_arrow_qn(),
+    members: [
+      Edge { label: Authored { name: ^ParseTree }, target: parse_tree },
+      Edge { label: Authored { name: ^Apply }, target: apply_t },
+      Edge { label: Authored { name: ^useit }, target: useit }
+    ],
+    records: [^ParseTree],
+    imports: []
+  }
+}
+
+// THE LOWERED ROUTE: real resolve + admission + fill over the lowered modules (DESIGN 3: supply the
+// subject as a value). vfp_fixture_resolved is the WARM PRODUCER the probe claims share;
+// vfp_fixture_resolved_direct is its own identity so the long-home claim that must bill its own
+// frame is not admitted by the derived producer-share.
+fn vfp_fixture_resolved() -> Outcome<ResolvedTree> {
+  claim_resolve_lowered(modules: [vfp_fixture_module()], subject: vfp_fixture_qn())
+}
+
+fn vfp_fixture_resolved_direct() -> Outcome<ResolvedTree> {
+  claim_resolve_lowered(modules: [vfp_fixture_module()], subject: vfp_fixture_qn())
+}
+
+fn vfp_arrow_resolved() -> Outcome<ResolvedTree> {
+  claim_resolve_lowered(modules: [vfp_arrow_module()], subject: vfp_arrow_qn())
+}
+
+fn vfp_partial_reading() -> VfpReading { vfp_reading(src: vfp_partial_src) }
+
+// THE ARROW FIXTURE, ITS OWN MODULE: the payload field's type is an arrow whose RESULT is the
+// formal (`f: fn(ParseTree) -> T`) -- the one shape the match_binder fixture never exercises, and
+// the current suspect for the grounding cascade. It rides alone so a refusal here cannot take the
+// other readings' facts down with it, and it carries a second consumer claim (its resolve-side
+// construct read) so the derived producer-share admits its fill.
+
+data vfp_partial_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn partial(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n  }\n}"
+
+
+
+fn vfp_reading(src: String) -> VfpReading {
+  match vfp_assemble(src: src) {
+    Rejected { diagnostics: r } => VfpReading {
+      reasons: vfp_reasons(r: r),
+      construction_fact: r.head.reason,
+      match_fact: r.head.reason,
+      arm_body_fact: r.head.reason,
+      construct_read: ^vfp_refused_at_resolve,
+      construct_read_carrier: ^vfp_refused_at_resolve
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpReading {
+          reasons: vfp_reasons(r: r),
+          construction_fact: vfp_last(xs: vfp_reasons(r: r)),
+          match_fact: vfp_last(xs: vfp_reasons(r: r)),
+          arm_body_fact: vfp_last(xs: vfp_reasons(r: r)),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construction_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_construction(n: resolved.root)
+          ),
+          match_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_match(n: resolved.root)
+          ),
+          arm_body_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: match vfp_find_match(n: resolved.root) {
+              Absent => Absent
+              Present { value: m } => vfp_first_arm_body_of(m: m)
+            }
+          ),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
+        }
+      }
+  }
+}
+
+// THE COMBINED FIXTURE'S PRODUCER: matches appear in fixture declaration order -- unbox, pick,
+// unkeep, useit. The first construct-tagged node in preorder is make's `Boxed(n)`.
+fn vfp_fixture_reading_over(resolved: Outcome<ResolvedTree>) -> VfpFixtureReading {
+  match resolved {
+    Rejected { diagnostics: r } => VfpFixtureReading {
+      reasons: vfp_reasons(r: r),
+      construct_read: ^vfp_refused_at_resolve,
+      construct_read_carrier: ^vfp_refused_at_resolve,
+      rt_construction_fact: r.head.reason,
+      rt_match_fact: r.head.reason,
+      rt_arm_fact: r.head.reason,
+      generic_arm_fact: r.head.reason,
+      projection_fact: r.head.reason,
+      compound_arm_fact: r.head.reason
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpFixtureReading {
+          reasons: vfp_reasons(r: r),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved),
+          rt_construction_fact: vfp_last(xs: vfp_reasons(r: r)),
+          rt_match_fact: vfp_last(xs: vfp_reasons(r: r)),
+          rt_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
+          generic_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
+          projection_fact: vfp_last(xs: vfp_reasons(r: r)),
+          compound_arm_fact: vfp_last(xs: vfp_reasons(r: r))
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpFixtureReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved),
+          rt_construction_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_construction(n: resolved.root)
+          ),
+          rt_match_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_first_of(xs: vfp_matches_of(n: resolved.root))
+          ),
+          rt_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+          ),
+          generic_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_first(m: vfp_second_of(xs: vfp_matches_of(n: resolved.root)))
+          ),
+          projection_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_second(m: vfp_second_of(xs: vfp_matches_of(n: resolved.root)))
+          ),
+          compound_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_first(m: vfp_third_of(xs: vfp_matches_of(n: resolved.root)))
+          )
+        }
+      }
+  }
+}
+
+// THE COMBINED FIXTURE'S PRODUCER: matches appear in fixture declaration order -- unbox, pick,
+// unkeep. The first construct-tagged node in preorder is make's `Boxed(n)`.
+fn vfp_fixture_reading() -> VfpFixtureReading {
+  vfp_fixture_reading_over(resolved: vfp_fixture_resolved())
+}
+
+// THE COMBINED FIXTURE'S OWN-FRAME READING: a separate computation identity from the warm producer
+// so the long-home claim that must bill its own frame is not admitted by the derived
+// producer-share.
+fn vfp_reading_direct() -> VfpReading {
+  let r = vfp_fixture_reading_over(resolved: vfp_fixture_resolved_direct())
+  VfpReading {
+    reasons: r.reasons,
+    construction_fact: r.rt_construction_fact,
+    match_fact: r.rt_match_fact,
+    arm_body_fact: r.rt_arm_fact,
+    construct_read: r.construct_read,
+    construct_read_carrier: r.construct_read_carrier
+  }
+}
+
+fn vfp_arrow_reading_over(resolved: Outcome<ResolvedTree>) -> VfpArrowReading {
+  match resolved {
+    Rejected { diagnostics: r } => VfpArrowReading {
+      reasons: vfp_reasons(r: r),
+      construct_read: ^vfp_refused_at_resolve,
+      arrow_arm_fact: r.head.reason
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpArrowReading {
+          reasons: vfp_reasons(r: r),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          arrow_arm_fact: vfp_last(xs: vfp_reasons(r: r))
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpArrowReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          arrow_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+          )
+        }
+      }
+  }
+}
+
+// THE ARROW FIXTURE'S PRODUCER.
+fn vfp_arrow_reading() -> VfpArrowReading {
+  vfp_arrow_reading_over(resolved: vfp_arrow_resolved())
+}
+
+// THE CLAIMS OVER THE ROUND-TRIP FIXTURE: the construction derives the carrier, its tag resolves to
+// the carrier's declaration, the match types from its arms, and the arm's binder types from the
+// variant's payload field. Together they are the positive control for the native route's
+// variant-scrutinee inference: each names one stage, so a regression lands on one row, not four.
+test fn vfp_the_construction_types_as_its_carrier_holds() -> Bool {
+  vfp_fixture_reading().rt_construction_fact == ^Seal
+}
+
+test fn vfp_the_construct_read_names_the_variant_holds() -> Bool {
+  vfp_fixture_reading().construct_read == ^Boxed
+}
+
+test fn vfp_the_construct_read_carrier_is_the_declaring_coproduct_holds() -> Bool {
+  vfp_fixture_reading().construct_read_carrier == ^Seal
+}
+
+test fn vfp_the_match_types_from_its_arms_holds() -> Bool {
+  vfp_fixture_reading().rt_match_fact == ^ParseTree
+}
+
+test fn vfp_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
+  vfp_fixture_reading().rt_arm_fact == ^ParseTree
+}
+
+// THE COVERAGE CONTROL: a one-arm match over a two-variant carrier must refuse, and the refusal must
+// be the non-exhaustive reason the coverage obligation reports on the inhabitance relation's refusal.
+test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Bool {
+  vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
+}
+
+// THE GENERIC COPRODUCT CONTROL: the payload binder under a formal-typed field instantiates at the
+// scrutinee's argument. The arm body is `val`, whose only declared type is the variant field's raw
+// formal T; the read must hold ParseTree (the instance) and never the formal. Red without
+// instantiation. Its SECOND arm is the monomorphic projection control: `d.head` carries no formal
+// at all, so it must read Int on any grounding-healthy run.
+test fn vfp_the_generic_arm_binder_types_at_the_scrutinees_argument_holds() -> Bool {
+  vfp_fixture_reading().generic_arm_fact == ^ParseTree
+}
+
+test fn vfp_the_projection_arm_types_from_the_rejected_payload_holds() -> Bool {
+  vfp_fixture_reading().projection_fact == ^Int
+}
+
+// THE COMPOUND CONTROL, DECLARED RED pending deep instantiation: `b` binds `boxed: Box<T>`, but a
+// pattern binder's facts are minted by the lexical facts path under the parent frame, whose
+// infer_frame_instantiated substitutes shallowly -- Box<T> holds raw, so the body `b.inner` reads
+// the formal and the fact is T. This row asserts the defect as it stands and goes red (flips to
+// ^Int) when the follow-up lands: deep substitution inside infer_frame_instantiated (the one
+// instantiation authority), with match arms a coproduct-instance frame if the facts still do not
+// flow; the operand-level helper is interim there and is deleted by it.
+test fn vfp_the_compound_arm_binder_still_rides_the_formal_pending_deep_instantiation() -> Bool {
+  vfp_fixture_reading().compound_arm_fact == ^T
+}
+
+// THE ARROW CONTROL, DECLARED RED pending deep instantiation: `g` binds `f: fn(ParseTree) -> T` and
+// the arm body `g(n)` reads the formal for the same reason as the compound row -- the facts layer's
+// shallow substitution never rewrites the Arrow's result. Asserts the defect as it stands; flips
+// to ^ParseTree with the same follow-up that deletes the interim operand helper.
+test fn vfp_the_arrow_arm_binder_still_rides_the_formal_pending_deep_instantiation() -> Bool {
+  vfp_arrow_reading().arrow_arm_fact == ^T
+}
+
+// THE ARROW FIXTURE'S RESOLVE-SIDE CONTROL (its second consumer claim): resolve must bind the
+// module's sole variant tag so the construct read names Mk, separating resolve binding from
+// whatever the infer facts say about the arrow binder.
+test fn vfp_the_arrow_fixture_resolves_and_names_its_variant_holds() -> Bool {
+  vfp_arrow_reading().construct_read == ^Mk
+}
+// THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
+// want of coverage, resolve has already bound the construction's tag to its variant's declaring
+// path -- the control separates the resolve binding (green on both sides of the fix) from the
+// infer facts (red on main, green here), and gives the partial reading its second consumer under
+// the warm-producer sharing conjunct.
+test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
+  vfp_partial_reading().construct_read == ^Boxed
+}
+
+// THE BISECT FIXTURES THE LEDGER CITES (temporary; they go out when their rows' follow-ups
+// land): the nullary single-arm sum the single_arm_sum_parses_as_an_alias row's 2026-10-06
+// receipt cites, and the recursive record the grounding-cascade row cites.
+data vfp_nullary_sum_src: String = "module p\n\ntype A = MkA\n\nfn f() -> A { MkA }"
+
+data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a\n}"
+
+// TEMPORARY DECODE INSTRUMENT -- the one reading for the combined fixture: prints every field
+// through `gunbc run --function` so the actual values are readable, not guessed. DELETED WITH THE
+// RFM RETIREMENT RECEIPT.
+fn vfp_decode_fixture_reading(r: VfpFixtureReading) -> CliWireResponse {
+  CliWirePrintable { bytes: "read=" + symbol_lexeme(sym: r.construct_read) + " carr=" + symbol_lexeme(sym: r.construct_read_carrier) + " rt_constr=" + symbol_lexeme(sym: r.rt_construction_fact) + " rt_match=" + symbol_lexeme(sym: r.rt_match_fact) + " rt_arm=" + symbol_lexeme(sym: r.rt_arm_fact) + " gen_arm=" + symbol_lexeme(sym: r.generic_arm_fact) + " proj=" + symbol_lexeme(sym: r.projection_fact) + " comp=" + symbol_lexeme(sym: r.compound_arm_fact) + " reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
+}
+
+fn vfp_decode_fixture() -> CliWireResponse { vfp_decode_fixture_reading(r: vfp_fixture_reading()) }
+
+fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
+  CliWirePrintable { bytes: "arr_read=" + symbol_lexeme(sym: r.construct_read) + " arr=" + symbol_lexeme(sym: r.arrow_arm_fact) + " arr_reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
+}
+
+fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
+
+// TEMPORARY FINDER INSTRUMENT -- prints which link of the subject chain is Absent on the arrow
+// fixture's resolved tree (the finder runs on the RESOLVED tree, independent of infer's outcome).
+// DELETED WITH THE RFM RETIREMENT RECEIPT.
+fn vfp_decode_finder() -> CliWireResponse {
+  match vfp_arrow_resolved() {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: "finder:resolve_refused:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match vfp_find_match(n: resolved.root) {
+        Absent => CliWirePrintable { bytes: "finder:no_match_node", exit: ExitSuccess }
+        Present { value: m } =>
+          match vfp_arm_bodies_of(m: m) {
+            Empty => CliWirePrintable { bytes: "finder:match_but_no_arm_bodies", exit: ExitSuccess }
+            Cons { head: _, tail: _ } => CliWirePrintable { bytes: "finder:match_and_arm_body", exit: ExitSuccess }
+          }
+      }
+  }
+}
