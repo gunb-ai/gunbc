@@ -299,14 +299,8 @@ data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 // first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
 // silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
 // exceeds two thirds of the cap.
-// RE-DERIVED 2026-10-05, PROVISIONAL ON CENSORED WALLS: PR session/vivid-ibex-684-class runs
-// 37363874713 (attempt 1, alongside floor/emit/generated) and its failed-jobs rerun (solo) both hit
-// the 40-minute step cap with zero failing tests and no test-result line -- the suite was killed
-// mid-run twice, so the observed wall is >= 40 minutes and the prior maximum (36676083674) is
-// superseded as the largest observation. 40 x 1.5 rounded up to the next 5 = 60. This stays
-// provisional until a complete (uncapped) wall lands; re-derive from that wall per the rule above.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 60)
+  minute(count: 40)
 }
 
 // Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
