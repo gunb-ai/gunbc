@@ -3,6 +3,7 @@ module gunbc.cloudflare.r2_conditional_put_race_probe
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, HttpStatus }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.citation { http_status_is_success }
+import std.measure { Microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -11,7 +12,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.object_storage { ObjectEntityTag, PutUnconditional, PutIfMatch }
 import extdeps.tools.curl {
   curl_sigv4_s3_upload_command, curl_sigv4_s3_parallel_upload_command, curl_sigv4_s3_delete_command,
-  curl_parallel_cli_tool, curl_parallel_transfer_report, S3ParallelUpload,
+  curl_s3_entity_tag_cli_tool, curl_parallel_transfer_report, S3ParallelUpload,
   CurlParallelTransferReport, CurlParallelTransferReported, CurlParallelTransferUnreported,
   ReportStatusAndEntityTag,
 }
@@ -86,9 +87,9 @@ fn race_answer_of(status: HttpStatus) -> RaceAnswer {
 }
 
 // Both requests were sent before either was answered, on the shared origin of curl's parallel pass
-// (the bet extdeps.tools.curl states beside curl_parallel_cli_tool).
-fn race_requests_overlapped(a_pre: Int, a_start: Int, b_pre: Int, b_start: Int) -> Bool {
-  a_pre < b_start && b_pre < a_start
+// (the bet extdeps.tools.curl states above curl_sigv4_s3_parallel_upload_command).
+fn race_requests_overlapped(a_pre: Microsecond, a_start: Microsecond, b_pre: Microsecond, b_start: Microsecond) -> Bool {
+  microsecond_count(m: a_pre) < microsecond_count(m: b_start) && microsecond_count(m: b_pre) < microsecond_count(m: a_start)
 }
 
 fn race_answers_verdict(a: RaceAnswer, b: RaceAnswer, overlapped: Bool) -> RaceRoundVerdict {
@@ -115,10 +116,10 @@ fn race_round_verdict(observation: RaceRoundObservation) -> RaceRoundVerdict {
     RaceRoundRaced { a: a, b: b } =>
       match a {
         CurlParallelTransferUnreported { cause: c } => RaceRoundInconclusive { cause: concat("writer a: ", c as String) as NonEmptyStr }
-        CurlParallelTransferReported { status: sa, pretransfer_us: pa, starttransfer_us: ta } =>
+        CurlParallelTransferReported { status: sa, pretransfer: pa, starttransfer: ta } =>
           match b {
             CurlParallelTransferUnreported { cause: c } => RaceRoundInconclusive { cause: concat("writer b: ", c as String) as NonEmptyStr }
-            CurlParallelTransferReported { status: sb, pretransfer_us: pb, starttransfer_us: tb } =>
+            CurlParallelTransferReported { status: sb, pretransfer: pb, starttransfer: tb } =>
               race_answers_verdict(a: race_answer_of(status: sa), b: race_answer_of(status: sb), overlapped: race_requests_overlapped(a_pre: pa, a_start: ta, b_pre: pb, b_start: tb))
           }
       }
@@ -181,7 +182,7 @@ fn race_probe_verdict(declared_rounds: Int, observations: List<RaceRoundObservat
 
 fn race_report_words(r: CurlParallelTransferReport) -> String {
   match r {
-    CurlParallelTransferReported { status: s, pretransfer_us: p, starttransfer_us: t } => join([to_string(s), " pre_us=", to_string(p), " start_us=", to_string(t)], "")
+    CurlParallelTransferReported { status: s, pretransfer: p, starttransfer: t } => join([to_string(s), " pre_us=", to_string(microsecond_count(m: p)), " start_us=", to_string(microsecond_count(m: t))], "")
     CurlParallelTransferUnreported { cause: c } => concat("unreported: ", c as String)
   }
 }
@@ -335,11 +336,11 @@ fn race_run_with_netrc(locator: R2ObjectLocator, netrc: FilePath, workspace: Fil
 }
 
 // THE ENTRY THE fleet-converge MODE r2_conditional_put_race_probe RUNS. The transport row observed is
-// the parallel one; like every host CLI observation it checks PRESENCE, and the version this path owes
-// is the highest pin among the flags it spells (the seed's %header write-out, 7.84), carried by
-// extdeps.tools.curl rather than checked here.
+// the highest pin among the flags this path spells -- the seed's %header write-out, 7.84
+// (extdeps.tools.curl curl_s3_entity_tag_cli_tool), which subsumes --parallel-immediate's 7.68 and
+// --aws-sigv4's 7.75. Like every host CLI observation it checks PRESENCE; the pin is carried.
 fn run_r2_conditional_put_race_probe() -> ProcessExit {
-  match observe_host_cli_dependency(tool: curl_parallel_cli_tool) {
+  match observe_host_cli_dependency(tool: curl_s3_entity_tag_cli_tool) {
     HostCliDependencyAbsent { absence: a } => exit_failure(reason: join(["THE TRANSPORT IS NOT ON THIS HOST: ", a.tool as String, " (", a.hint, ")"], ""))
     HostCliDependencyPresent =>
       match race_probe_target() {

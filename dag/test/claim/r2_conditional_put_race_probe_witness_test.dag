@@ -1,6 +1,8 @@
 module test.claim.r2_conditional_put_race_probe
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.nat { Nat }
+import std.measure { microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
 import extdeps.object_storage { ObjectEntityTag, PutIfMatch }
 import extdeps.exec.command { argv_words }
@@ -20,8 +22,8 @@ import gunbc.cloudflare.r2_conditional_put_race_probe {
 // r2_conditional_put_race_probe, whose receipt is the live reading; the route claim below runs the
 // real argv builder and the real line parser over the format that builder emits.
 
-fn rep(status: Int, pre: Int, start: Int) -> CurlParallelTransferReport {
-  CurlParallelTransferReported { status: status, pretransfer_us: pre, starttransfer_us: start }
+fn rep(status: Int, pre: Nat, start: Nat) -> CurlParallelTransferReport {
+  CurlParallelTransferReported { status: status, pretransfer: microsecond(count: pre), starttransfer: microsecond(count: start) }
 }
 
 fn raced(a: CurlParallelTransferReport, b: CurlParallelTransferReport) -> RaceRoundObservation { RaceRoundRaced { a: a, b: b } }
@@ -141,18 +143,18 @@ test fn the_parser_reads_each_writer_from_the_format_the_builder_emits() -> Bool
   let ws = parallel_argv()
   let stdout = concat(substitute_line(format: write_out_after(ws: ws, label: race_writer_b), code: "412"), substitute_line(format: write_out_after(ws: ws, label: race_writer_a), code: "200"))
   let a_ok = match curl_parallel_transfer_report(stdout: stdout, label: race_writer_a) {
-    CurlParallelTransferReported { status: s, pretransfer_us: p, starttransfer_us: t } => s == 200 && p == 1000 && t == 9000
+    CurlParallelTransferReported { status: s, pretransfer: p, starttransfer: t } => s == 200 && microsecond_count(m: p) == 1000 && microsecond_count(m: t) == 9000
     CurlParallelTransferUnreported { cause: _ } => false
   }
   let b_ok = match curl_parallel_transfer_report(stdout: stdout, label: race_writer_b) {
-    CurlParallelTransferReported { status: s, pretransfer_us: _, starttransfer_us: _ } => s == 412
+    CurlParallelTransferReported { status: s, pretransfer: _, starttransfer: _ } => s == 412
     CurlParallelTransferUnreported { cause: _ } => false
   }
   a_ok && b_ok
 }
 
 fn unrep(r: CurlParallelTransferReport) -> Bool {
-  match r { CurlParallelTransferUnreported { cause: _ } => true  CurlParallelTransferReported { status: _, pretransfer_us: _, starttransfer_us: _ } => false }
+  match r { CurlParallelTransferUnreported { cause: _ } => true  CurlParallelTransferReported { status: _, pretransfer: _, starttransfer: _ } => false }
 }
 
 test fn a_missing_duplicated_or_000_writer_line_is_unreported() -> Bool {

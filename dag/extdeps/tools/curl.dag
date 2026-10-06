@@ -4,7 +4,8 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
 import std.algebra { trim }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Microsecond, microsecond }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -381,14 +382,12 @@ fn curl_sigv4_s3_delete_command(url: String, netrc_path: FilePath, sigv4_region:
 // about to be sent, time_starttransfer the moment its first response byte arrived (manpage, "-w,
 // --write-out"), both in seconds. Their common origin is the shared start of the parallel pass -- a
 // bet stated here, not a reading of curl's source -- so overlap is decided on that origin.
-data curl_parallel_min_version: VersionConstraint = ">= 7.68"
-
-data curl_parallel_cli_tool: CliTool = CliTool {
-  program: curl_program(),
-  min_version: Present { value: curl_parallel_min_version },
-  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
-}
-
+//
+// NO CliTool ROW OF ITS OWN: 7.68 is already curl_cli_tool's pin, so a parallel row would be a second
+// name for it. A path that races conditional PUTs also signs them (curl_aws_sigv4_cli_tool, 7.75) and
+// reads a seed's entity tag (curl_s3_entity_tag_cli_tool, 7.84), and the row that path observes is
+// the highest of the pins it spells.
+//
 // ONE TRANSFER OF A PARALLEL UPLOAD. label is printed at the head of the transfer's write-out line, so
 // a status is attributable to the transfer it belongs to even though -Z prints in completion order and
 // every transfer may share one URL; a label must be one word.
@@ -431,11 +430,11 @@ fn curl_sigv4_s3_parallel_upload_command(uploads: List<S3ParallelUpload>, netrc_
   )
 }
 
-// WHAT ONE LABELLED TRANSFER REPORTED. Timings are whole microseconds: curl prints them with six
-// decimals. Exactly one line must carry the label; none, two, a 000 status or an unparseable field is
+// WHAT ONE LABELLED TRANSFER REPORTED. Timings are std.measure Microsecond: curl prints seconds with
+// six decimals, so the reading is exact, and a negative never crosses into Nat. Exactly one line must carry the label; none, two, a 000 status or an unparseable field is
 // unreported, never a guess.
 type CurlParallelTransferReport
-  = CurlParallelTransferReported { status: HttpStatus, pretransfer_us: Int, starttransfer_us: Int }
+  = CurlParallelTransferReported { status: HttpStatus, pretransfer: Microsecond, starttransfer: Microsecond }
   | CurlParallelTransferUnreported { cause: NonEmptyStr }
 
 fn curl_word_at(words: List<String>, index: Int) -> String {
@@ -445,7 +444,7 @@ fn curl_word_at(words: List<String>, index: Int) -> String {
   }
 }
 
-fn curl_seconds_as_microseconds(text: String) -> Int? {
+fn curl_seconds_as_microseconds(text: String) -> Microsecond? {
   let parts = split(s: text, delimiter: ".")
   if length(parts) != 2 {
     none
@@ -457,7 +456,11 @@ fn curl_seconds_as_microseconds(text: String) -> Int? {
         if string_length(s: frac) != 6 { none } else {
           match parse_int(s: frac) {
             Absent => none
-            Present { value: f } => Present { value: whole * 1000000 + f }
+            Present { value: f } =>
+              match checked_int_to_nat(n: whole * 1000000 + f) {
+                Absent => none
+                Present { value: n } => Present { value: microsecond(count: n) }
+              }
           }
         }
     }
@@ -480,7 +483,7 @@ fn curl_parallel_report_of_fields(fields: List<String>) -> CurlParallelTransferR
               Present { value: pre } =>
                 match curl_seconds_as_microseconds(text: curl_word_at(words: fields, index: 3)) {
                   Absent => CurlParallelTransferUnreported { cause: "the transfer's time_starttransfer did not parse" }
-                  Present { value: start } => CurlParallelTransferReported { status: status, pretransfer_us: pre, starttransfer_us: start }
+                  Present { value: start } => CurlParallelTransferReported { status: status, pretransfer: pre, starttransfer: start }
                 }
             }
         }
