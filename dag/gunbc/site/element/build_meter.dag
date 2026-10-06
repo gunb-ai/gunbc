@@ -304,6 +304,9 @@ data build_meter_droop_class: String = "el-build-meter-droop"
 // and the target the link opens, which can be longer than the strip.
 data build_meter_digest_measure: String = "24ch"
 data build_meter_sleep_class: String = "el-build-meter-sleep"
+data build_meter_room_class: String = "el-build-meter-room"
+data build_meter_snooze_class: String = "el-build-meter-snooze"
+data build_meter_z_class: String = "el-build-meter-z"
 data build_meter_blink_class: String = "el-build-meter-blink"
 data build_meter_name_class: String = "el-build-meter-name"
 data build_meter_badge_class: String = "el-build-meter-badge"
@@ -329,6 +332,8 @@ data build_meter_lid_attribute: String = "data-lid"
 data build_meter_worker_attribute: String = "data-worker"
 data build_meter_edge_attribute: String = "data-edge"
 data build_meter_history_attribute: String = "data-history"
+data build_meter_prop_attribute: String = "data-prop"
+data build_meter_z_attribute: String = "data-z"
 data build_meter_look_left: String = "left"
 data build_meter_look_right: String = "right"
 
@@ -841,13 +846,38 @@ fn build_meter_pose_droops(pose: BuildMeterPose) -> Bool {
   }
 }
 
-fn build_meter_pose_sits(pose: BuildMeterPose) -> Bool {
+// Where the worker rests. On its feet it works, idles or stands stopped. Sitting, it has no feet
+// and its eyes are shut, and it naps: on the floor beside a published attempt's finish rule its
+// body is two units lower, and on a chair in the waiting room (waiting for a serving seat) the seat
+// holds it at its standing height.
+type BuildMeterRest
+  = BuildMeterOnFeet
+  | BuildMeterOnFloor
+  | BuildMeterOnChair
+
+fn build_meter_pose_rest(pose: BuildMeterPose) -> BuildMeterRest {
   match pose {
-    BuildMeterWorking => false
-    BuildMeterWaitingForSeat => false
-    BuildMeterStopped => false
-    BuildMeterDone => true
-    BuildMeterIdle => false
+    BuildMeterWorking => BuildMeterOnFeet
+    BuildMeterWaitingForSeat => BuildMeterOnChair
+    BuildMeterStopped => BuildMeterOnFeet
+    BuildMeterDone => BuildMeterOnFloor
+    BuildMeterIdle => BuildMeterOnFeet
+  }
+}
+
+fn build_meter_rest_sits(rest: BuildMeterRest) -> Bool {
+  match rest {
+    BuildMeterOnFeet => false
+    BuildMeterOnFloor => true
+    BuildMeterOnChair => true
+  }
+}
+
+fn build_meter_rest_drop(rest: BuildMeterRest) -> Int {
+  match rest {
+    BuildMeterOnFeet => 0
+    BuildMeterOnFloor => 2
+    BuildMeterOnChair => 0
   }
 }
 
@@ -865,8 +895,8 @@ fn build_meter_eye_node(x: Int) -> Fragment {
   build_meter_rect(x: x, y: build_meter_eye_top, w: build_meter_eye_size, h: build_meter_eye_size, attributes: [])
 }
 
-// Standing: feet under the body. Sitting (a published attempt): no feet, the body two units
-// lower and on the floor, eyes shut.
+// Standing: feet under the body. Sitting: no feet and eyes shut, on the floor or on a chair
+// (build_meter_pose_rest).
 fn build_meter_worker_node(pose: BuildMeterPose, stale: Bool, x: Int) -> Fragment {
   if stale { build_meter_paused_worker_node(x: x) } else { build_meter_solid_worker_node(pose: pose, x: x) }
 }
@@ -883,10 +913,11 @@ fn build_meter_paused_worker_node(x: Int) -> Fragment {
 }
 
 fn build_meter_solid_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
-  let sits = build_meter_pose_sits(pose: pose)
+  let rest = build_meter_pose_rest(pose: pose)
+  let sits = build_meter_rest_sits(rest: rest)
   let reaches = build_meter_pose_reaches(pose: pose)
   build_meter_svg(tag: "g", attributes: [
-    build_meter_translate(x: x, y: if sits { build_meter_worker_top + 2 } else { build_meter_worker_top }),
+    build_meter_translate(x: x, y: build_meter_worker_top + build_meter_rest_drop(rest: rest)),
   ], children: [build_meter_svg(tag: "g", attributes: [
     attr(name: "class", value: build_meter_worker_class),
     attr(name: build_meter_worker_attribute, value: "solid"),
@@ -911,18 +942,94 @@ fn build_meter_solid_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
     ]))])
 }
 
-// A small hourglass beside a worker waiting for a seat.
-fn build_meter_hourglass_node(x: Int) -> Fragment {
-  build_meter_svg(tag: "g", attributes: [build_meter_translate(x: x, y: build_meter_floor - 10)], children: [
-    build_meter_painted(paint: "prop", children: [
-      build_meter_rect(x: 0, y: 0, w: 6, h: 1, attributes: []),
-      build_meter_rect(x: 0, y: 9, w: 6, h: 1, attributes: []),
-    ]),
-    build_meter_painted(paint: "base", children: [
-      build_meter_rect(x: 1, y: 1, w: 4, h: 2, attributes: []),
-      build_meter_rect(x: 2, y: 3, w: 2, h: 3, attributes: []),
-      build_meter_rect(x: 1, y: 6, w: 4, h: 3, attributes: []),
-    ]),
+// THE WAITING ROOM. A worker waiting for a serving seat naps on a chair beside an empty one, under
+// a wall clock. The room says nothing the accessible name does not, and it has no number: the view
+// carries no place in a queue, so no ticket or count is drawn. Every prop is in the prop paint and
+// is drawn before the worker, which sits in front of its own chair's seat.
+//
+// A chair is seen from the side, backrest to the left: a post two units wide that is the backrest
+// and the back leg, a seat two units thick, and a one-unit front leg, all standing on the floor. The
+// empty chair is eight units deep; the worker's own chair runs under the worker, so only its post,
+// the seat beside the worker and the front leg under it show. The clock is a five-unit ring with
+// two hands, on the wall above the empty chair. The room puts the worker eighteen units further
+// along the strip.
+data build_meter_room_width: Int = 18
+data build_meter_chair_post_top: Int = 8
+data build_meter_chair_seat_y: Int = build_meter_floor - 4
+data build_meter_empty_chair_depth: Int = 8
+data build_meter_worker_chair_depth: Int = 19
+
+data build_meter_clock_rows: List<BuildMeterBox> = [
+  build_meter_box(x: 1, y: 0, w: 3, h: 1),
+  build_meter_box(x: 0, y: 1, w: 1, h: 3),
+  build_meter_box(x: 4, y: 1, w: 1, h: 3),
+  build_meter_box(x: 1, y: 4, w: 3, h: 1),
+  build_meter_box(x: 2, y: 1, w: 1, h: 2),
+  build_meter_box(x: 3, y: 2, w: 1, h: 1),
+]
+
+fn build_meter_chair_rows(x: Int, depth: Int) -> List<BuildMeterBox> {
+  [
+    build_meter_box(x: x, y: build_meter_chair_post_top, w: 2, h: build_meter_floor - build_meter_chair_post_top),
+    build_meter_box(x: x, y: build_meter_chair_seat_y, w: depth, h: 2),
+    build_meter_box(x: x + depth - 1, y: build_meter_chair_seat_y + 2, w: 1, h: build_meter_floor - build_meter_chair_seat_y - 2),
+  ]
+}
+
+fn build_meter_prop_node(prop: String, x: Int, y: Int, rows: List<BuildMeterBox>) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [
+    attr(name: build_meter_prop_attribute, value: prop),
+    attr(name: build_meter_paint_attribute, value: "prop"),
+    build_meter_translate(x: x, y: y),
+  ], children: build_meter_rows(rows: rows))
+}
+
+// The room for a worker drawn at worker_x.
+fn build_meter_waiting_room_node(worker_x: Int) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_room_class)], children: [
+    build_meter_prop_node(prop: "empty-chair", x: worker_x - 15, y: 0, rows: build_meter_chair_rows(x: 0, depth: build_meter_empty_chair_depth)),
+    build_meter_prop_node(prop: "clock", x: worker_x - 12, y: 1, rows: build_meter_clock_rows),
+    build_meter_prop_node(prop: "chair", x: worker_x - 4, y: 0, rows: build_meter_chair_rows(x: 0, depth: build_meter_worker_chair_depth)),
+  ])
+}
+
+// THE NAP: two z glyphs beside a sitting worker's head, the small one (three units wide, so its
+// diagonal needs four rows to read as a z rather than an I) lower and nearer, in the prop paint. It
+// is the one drawing of sleep, shared by the worker on a chair and the worker on the floor, and
+// placed from the worker's own top so it rides with either. At rest both glyphs show; decoration
+// drifts each up and away in turn (build_meter_drift_cycle), seeded per attempt like the blink and
+// removed under reduced motion by the shared rule, which leaves both showing. The glyph that moves
+// is an inner group, because a CSS transform replaces an SVG transform attribute on the same
+// element.
+data build_meter_snooze_width: Int = 9
+data build_meter_z_small_rows: List<BuildMeterBox> = [
+  build_meter_box(x: 0, y: 0, w: 3, h: 1),
+  build_meter_box(x: 1, y: 1, w: 1, h: 1),
+  build_meter_box(x: 0, y: 2, w: 1, h: 1),
+  build_meter_box(x: 0, y: 3, w: 3, h: 1),
+]
+data build_meter_z_large_rows: List<BuildMeterBox> = [
+  build_meter_box(x: 0, y: 0, w: 4, h: 1),
+  build_meter_box(x: 2, y: 1, w: 1, h: 1),
+  build_meter_box(x: 1, y: 2, w: 1, h: 1),
+  build_meter_box(x: 0, y: 3, w: 4, h: 1),
+]
+
+fn build_meter_z_node(index: Int, x: Int, y: Int, rows: List<BuildMeterBox>) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [build_meter_translate(x: x, y: y)], children: [
+    build_meter_svg(tag: "g", attributes: [
+      attr(name: "class", value: build_meter_z_class),
+      attr(name: build_meter_z_attribute, value: to_string(index)),
+      attr(name: build_meter_paint_attribute, value: "prop"),
+    ], children: build_meter_rows(rows: rows)),
+  ])
+}
+
+// The nap for a worker drawn at worker_x whose body's top row is at top.
+fn build_meter_snooze_node(worker_x: Int, top: Int) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_snooze_class)], children: [
+    build_meter_z_node(index: 1, x: worker_x + build_meter_worker_width + 1, y: top + 4, rows: build_meter_z_small_rows),
+    build_meter_z_node(index: 2, x: worker_x + build_meter_worker_width + 4, y: top - 2, rows: build_meter_z_large_rows),
   ])
 }
 
@@ -943,18 +1050,27 @@ fn build_meter_history_nodes(view: BuildMeterView) -> List<Fragment> {
   }
 }
 
+// A paused (stale) worker has no scene: it neither waits nor sleeps.
+fn build_meter_in_room(view: BuildMeterView) -> Bool {
+  !view.stale && match build_meter_pose_rest(pose: view.pose) {
+    BuildMeterOnChair => true
+    BuildMeterOnFeet => false
+    BuildMeterOnFloor => false
+  }
+}
+
+fn build_meter_naps(view: BuildMeterView) -> Bool {
+  !view.stale && build_meter_rest_sits(rest: build_meter_pose_rest(pose: view.pose))
+}
+
 fn build_meter_art(view: BuildMeterView) -> Fragment {
   let history = build_meter_history_width(view: view)
   let edge_x = history + 3
-  let worker_x = edge_x + build_meter_edge_mark_width(view: view) + (if build_meter_pose_reaches(pose: view.pose) && !view.stale { 2 } else { 0 })
-  let waiting = match view.pose {
-    BuildMeterWaitingForSeat => true
-    BuildMeterWorking => false
-    BuildMeterStopped => false
-    BuildMeterDone => false
-    BuildMeterIdle => false
-  }
-  let width = worker_x + build_meter_worker_width + (if waiting { 11 } else { 1 })
+  let in_room = build_meter_in_room(view: view)
+  let naps = build_meter_naps(view: view)
+  let worker_x = edge_x + build_meter_edge_mark_width(view: view) + (if build_meter_pose_reaches(pose: view.pose) && !view.stale { 2 } else { 0 }) + (if in_room { build_meter_room_width } else { 0 })
+  let worker_top = build_meter_worker_top + build_meter_rest_drop(rest: build_meter_pose_rest(pose: view.pose))
+  let width = worker_x + build_meter_worker_width + (if naps { build_meter_snooze_width } else { 1 })
   let finish = if build_meter_is_published(handoff: view.handoff) && history > 0 {
     [build_meter_rect(x: 0, y: build_meter_floor, w: history, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "finish")])]
   } else { [] }
@@ -973,8 +1089,10 @@ fn build_meter_art(view: BuildMeterView) -> Fragment {
   ], children: concat(
     build_meter_history_nodes(view: view),
     concat(finish, concat(edge, concat(
-      [build_meter_worker_node(pose: view.pose, stale: view.stale, x: worker_x)],
-      if waiting { [build_meter_hourglass_node(x: worker_x + build_meter_worker_width + 4)] } else { [] })))))
+      if in_room { [build_meter_waiting_room_node(worker_x: worker_x)] } else { [] },
+      concat(
+        [build_meter_worker_node(pose: view.pose, stale: view.stale, x: worker_x)],
+        if naps { [build_meter_snooze_node(worker_x: worker_x, top: worker_top)] } else { [] }))))))
 }
 
 fn build_meter_outcome_key(view: BuildMeterView) -> String {
@@ -986,12 +1104,16 @@ fn build_meter_outcome_key(view: BuildMeterView) -> String {
 
 data build_meter_blink_period_property: String = "meter-blink-period"
 data build_meter_blink_delay_property: String = "meter-blink-delay"
+data build_meter_drift_period_property: String = "meter-drift-period"
+data build_meter_drift_delay_property: String = "meter-drift-delay"
 
 fn build_meter_seed_style(attempt_key: String) -> String {
   let seed = build_meter_seed(attempt_key: attempt_key)
   join([
     "--", build_meter_blink_period_property, ": ", to_string(6100 + seed * 470), "ms; ",
-    "--", build_meter_blink_delay_property, ": -", to_string(seed * 830), "ms",
+    "--", build_meter_blink_delay_property, ": -", to_string(seed * 830), "ms; ",
+    "--", build_meter_drift_period_property, ": ", to_string(build_meter_drift_timing.duration_ms + seed * 390), "ms; ",
+    "--", build_meter_drift_delay_property, ": -", to_string(seed * 610), "ms",
   ], "")
 }
 
@@ -1037,6 +1159,7 @@ data build_meter_blink_timing: TimingToken = TimingToken { name: "meter-blink", 
 data build_meter_tap_timing: TimingToken = TimingToken { name: "meter-tap", duration_ms: 2200, easing: "step-end" }
 data build_meter_beat_timing: TimingToken = TimingToken { name: "meter-beat", duration_ms: 1400, easing: "step-end" }
 data build_meter_doze_timing: TimingToken = TimingToken { name: "meter-doze", duration_ms: 900, easing: "ease" }
+data build_meter_drift_timing: TimingToken = TimingToken { name: "meter-drift", duration_ms: 4800, easing: "step-end" }
 
 fn build_meter_opacity_frame(offset_percent: Int, value: String) -> Keyframe {
   Keyframe { offset_percent: offset_percent, decls: [decl(prop: Opacity, value: value)] }
@@ -1068,6 +1191,19 @@ data build_meter_nudge_cycle: MotionCycle = MotionCycle { name: "meter-nudge", f
   Keyframe { offset_percent: 8, decls: [decl(prop: Transform, value: build_meter_shift(x: build_meter_negative(length: scale_var(t: space_1)), y: "0"))] },
   Keyframe { offset_percent: 24, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
   Keyframe { offset_percent: 100, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+] }
+
+// A nap's z drifting: it appears where it rests, rises one unit, slides one unit away from the
+// worker while it fades, and is gone a moment before the cycle starts again. Each step is a whole
+// unit (step-end), as everything in the drawing is, and the rest position is the drawing's own,
+// so stilling the cycle leaves the z showing where it rests.
+data build_meter_drift_cycle: MotionCycle = MotionCycle { name: "meter-drift", frames: [
+  Keyframe { offset_percent: 0, decls: [decl(prop: Opacity, value: "0"), decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+  Keyframe { offset_percent: 12, decls: [decl(prop: Opacity, value: "1"), decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+  Keyframe { offset_percent: 50, decls: [decl(prop: Opacity, value: "1"), decl(prop: Transform, value: build_meter_shift(x: "0", y: build_meter_negative(length: scale_var(t: space_1))))] },
+  Keyframe { offset_percent: 75, decls: [decl(prop: Opacity, value: ".5"), decl(prop: Transform, value: build_meter_shift(x: scale_var(t: space_1), y: build_meter_negative(length: scale_var(t: space_1))))] },
+  Keyframe { offset_percent: 88, decls: [decl(prop: Opacity, value: "0"), decl(prop: Transform, value: build_meter_shift(x: scale_var(t: space_1), y: build_meter_negative(length: scale_var(t: space_1))))] },
+  Keyframe { offset_percent: 100, decls: [decl(prop: Opacity, value: "0"), decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
 ] }
 
 data build_meter_long_blink_cycle: MotionCycle = MotionCycle { name: "meter-long-blink", frames: [
@@ -1224,6 +1360,14 @@ fn build_meter_rules() -> List<BuildRule> {
         decl(prop: AnimationDelay, value: join(["var(--", build_meter_blink_delay_property, ", 0ms)"], "")),
       ] },
       AmbientRule { selector: RawSelector { text: build_meter_within(target: build_meter_arm_class) }, cycle: build_meter_tap_cycle, timing: build_meter_tap_timing, repeat: RunForever },
+      AmbientRule { selector: RawSelector { text: build_meter_within(target: build_meter_z_class) }, cycle: build_meter_drift_cycle, timing: build_meter_drift_timing, repeat: RunForever },
+      StaticRule { selector: RawSelector { text: build_meter_within(target: build_meter_z_class) }, decls: [
+        decl(prop: AnimationDuration, value: join(["var(--", build_meter_drift_period_property, ", ", to_string(build_meter_drift_timing.duration_ms), "ms)"], "")),
+        decl(prop: AnimationDelay, value: join(["var(--", build_meter_drift_delay_property, ", 0ms)"], "")),
+      ] },
+      StaticRule { selector: RawSelector { text: build_meter_attribute_selector(target: build_meter_within(target: build_meter_z_class), attribute: build_meter_z_attribute, value: "2") }, decls: [
+        decl(prop: AnimationDelay, value: join(["calc(var(--", build_meter_drift_delay_property, ", 0ms) - var(--", build_meter_drift_period_property, ", ", to_string(build_meter_drift_timing.duration_ms), "ms) / 2)"], "")),
+      ] },
       build_meter_lid_state_rule(state_class: build_meter_drowsy_class, lid_class: build_meter_droop_class, opacity: "1"),
       build_meter_lid_state_rule(state_class: build_meter_asleep_class, lid_class: build_meter_droop_class, opacity: "1"),
       build_meter_lid_state_rule(state_class: build_meter_asleep_class, lid_class: build_meter_sleep_class, opacity: "1"),

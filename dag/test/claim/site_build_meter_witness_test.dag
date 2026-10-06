@@ -29,7 +29,7 @@ import gunbc.site.element.build_meter {
   FailureTarget, FailureExactEvent, FailureRoundOperation, FailureStageGroup, failure_target_key, failure_target_round, failure_target_anchor,
   build_meter, build_meter_rules, build_meter_class, build_meter_kind_key, build_meter_evidence_key, build_meter_pose_key,
   build_meter_coverage_key, failure_kind_key, build_meter_visible_rounds, build_meter_blink_class, build_meter_name_class,
-  build_meter_digest_class,
+  build_meter_digest_class, build_meter_naps, build_meter_in_room,
 }
 import gunbc.workflow_reconcile { WorkflowFactKey }
 import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_antenna_path, robot_mark_body_transform }
@@ -379,8 +379,8 @@ test fn the_meters_motion_is_removed_under_reduced_motion() -> Bool {
 // #stoic-robot symbol spells them (the copy below is that symbol's, the external referent), and
 // every pose of the meter's worker, solid or outlined, draws the robot variant from the same
 // numbers: square eyes three units wide, a ball-topped antenna above the body, a flat mouth, and
-// no round eye anywhere. Waiting droops one lid row (a shorter bar); published sleeps with both,
-// leaving a flat line on the eyes' lowest row.
+// no round eye anywhere. A worker waiting for a seat and a published worker both sit and sleep
+// with both lid rows, leaving a flat line on the eyes' lowest row.
 fn worker_html(pose: BuildMeterPose, stale: Bool) -> String {
   fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale))
 }
@@ -393,7 +393,9 @@ fn draws_the_robot(h: String) -> Bool {
 }
 
 test fn the_worker_is_the_robot_mark_in_every_pose() -> Bool {
-  let solid = map([BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle], p => worker_html(pose: p, stale: false))
+  let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
+  let done = worker_html(pose: BuildMeterDone, stale: false)
+  let solid = concat([waiting, done], map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle], p => worker_html(pose: p, stale: false)))
   let outline = worker_html(pose: BuildMeterWorking, stale: true)
   robot_mark_body_path == "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
     && robot_mark_antenna_path == "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
@@ -402,8 +404,9 @@ test fn the_worker_is_the_robot_mark_in_every_pose() -> Bool {
       && has(s: h, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
       && has(s: h, pattern: "x=\"13\" y=\"4\" width=\"3\" height=\"3\"")
       && has(s: h, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\""))
-    && has(s: worker_html(pose: BuildMeterWaitingForSeat, stale: false), pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"4\" width=\"3\" height=\"1\"")
-    && has(s: worker_html(pose: BuildMeterDone, stale: false), pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
+    && has(s: waiting, pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"4\" width=\"3\" height=\"1\"")
+    && has(s: waiting, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
+    && has(s: done, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
     && draws_the_robot(h: outline)
     && has(s: outline, pattern: "x=\"4\" y=\"6\" width=\"3\" height=\"1\"")
     && has(s: outline, pattern: "x=\"13\" y=\"6\" width=\"3\" height=\"1\"")
@@ -466,4 +469,31 @@ test fn the_failure_target_is_stated_at_its_precision() -> Bool {
     && has(s: round, pattern: "data-edge=\"seal\"")
     && has(s: exact, pattern: "Attempt fixture-…: open the event.</span>")
     && has(s: exact, pattern: "href=\"/issue/node#work-e1\"")
+}
+
+// THE NAP AND THE WAITING ROOM ARE PROPS OF THEIR POSES. Both sitting workers nap with the one z
+// drawing. The worker waiting for a serving seat sits in the waiting room: its own chair, an empty
+// chair and a wall clock, and no finish rule. The published worker sits on the floor beside the
+// finish rule, with no chair and no clock. A working, stopped or idle worker, and a paused (stale)
+// one in any pose, draws neither the nap nor the room. The z cycle is one the shared reduced-motion
+// rule stills, which leaves both glyphs showing.
+fn quiet_view(pose: BuildMeterPose, stale: Bool) -> BuildMeterView {
+  fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale)
+}
+
+test fn the_nap_and_the_waiting_room_belong_to_their_poses() -> Bool {
+  let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  let drawn_quiet = [worker_html(pose: BuildMeterWorking, stale: false), worker_html(pose: BuildMeterWaitingForSeat, stale: true)]
+  let decided_quiet = concat(map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle], p => quiet_view(pose: p, stale: false)), map([BuildMeterWaitingForSeat, BuildMeterDone], p => quiet_view(pose: p, stale: true)))
+  occurrences(s: waiting, pattern: "<g class=\"el-build-meter-z\"") == 2
+    && occurrences(s: published, pattern: "<g class=\"el-build-meter-z\"") == 2
+    && has(s: waiting, pattern: "data-prop=\"chair\"") && has(s: waiting, pattern: "data-prop=\"empty-chair\"") && has(s: waiting, pattern: "data-prop=\"clock\"")
+    && !has(s: waiting, pattern: "data-paint=\"finish\"")
+    && has(s: published, pattern: "data-paint=\"finish\"") && !has(s: published, pattern: "data-prop=")
+    && all(drawn_quiet, h => !has(s: h, pattern: "el-build-meter-z") && !has(s: h, pattern: "data-prop="))
+    && all(decided_quiet, v => !build_meter_naps(view: v) && !build_meter_in_room(view: v))
+    && build_meter_naps(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false)) && build_meter_in_room(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false))
+    && build_meter_naps(view: quiet_view(pose: BuildMeterDone, stale: false)) && !build_meter_in_room(view: quiet_view(pose: BuildMeterDone, stale: false))
+    && has(s: reduced_motion_block(rules: build_meter_rules()), pattern: ".el-build-meter .el-build-meter-z { animation: none }")
 }

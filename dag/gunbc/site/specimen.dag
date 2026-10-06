@@ -662,15 +662,16 @@ fn specimen_field_list_section() -> Fragment {
 }
 
 // THE WORKER AT ITS REAL SIZE. One meter per pose, drawn at the strip's own 22px with no
-// enlargement, so the robot's antenna, square eyes and lids are judged where they are shown:
-// working, waiting (half-lidded), stopped, paused on a stale revision (outlined) and asleep after
-// publishing. Each is the production meter over a supplied view; the page's theme switch shows
-// the same strip in the other scheme.
+// enlargement, so the robot's antenna, square eyes, lids and props are judged where they are
+// shown: working, stopped, paused on a stale revision (outlined), and the two naps side by side,
+// waiting for a seat (asleep on a chair in the waiting room, under the clock) and published (asleep
+// on the floor beside the finish rule). Each is the production meter over a supplied view; the
+// page's theme switch shows the same strip in the other scheme.
 data specimen_pose_captions: List<String> = [
   "Tool-heavy, mixed typed operations — supplied",
-  "Waiting for a seat, no round yet",
   "Verification failed after 18 rounds",
   "Stale: launched on an earlier revision",
+  "Waiting for a seat, no round yet",
   "Published",
 ]
 
