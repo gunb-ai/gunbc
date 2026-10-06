@@ -221,24 +221,24 @@ fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
   }
 }
 
+// EACH STEP GOES THROUGH std.checked_arithmetic's authority, never an unchecked
+// multiply inspected after the fact: the step that crosses the bound refuses with
+// none, instead of wrapping into a plausible-looking number that a later Nat check
+// would happily accept.
 fn semver_digits_to_int(cps: List<Int>, acc: Int) -> Int? {
   if cps.count() == 0 {
     Present { value: acc }
   } else {
     match cps.first() {
       Present { value: h } =>
-        // EACH STEP GOES THROUGH std.checked_arithmetic's authority, never an unchecked
-        // multiply inspected after the fact: the step that crosses the bound refuses with
-        // none, instead of wrapping into a plausible-looking number that a later Nat check
-        // would happily accept.
         match checked_int_multiply(a: acc, b: 10) {
           CheckedIntReady { value: times } =>
             match checked_int_add(a: times, b: h - 48) {
               CheckedIntReady { value: next } =>
                 semver_digits_to_int(cps: cps.skip(n: 1), acc: next)
-              CheckedIntOverflow { .. } => none
+              CheckedIntOverflow { cause: _ } => none
             }
-          CheckedIntOverflow { .. } => none
+          CheckedIntOverflow { cause: _ } => none
         }
       Absent => Present { value: acc }
     }
@@ -262,13 +262,13 @@ fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
 
 // ---- core MAJOR.MINOR.PATCH -----------------------------------------------
 
+// THE LAST FIELD CONSUMES THE WHOLE REMAINDER, never a dot-split: a leftover delimiter
+// then fails the numeric run here instead of being split off and silently accepted.
+// SemVer 2.0.0 §2 is X.Y.Z with no trailing delimiter, so "1.2.3." must refuse, not rank.
 fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<NonNegativeInt>? {
   if remaining == 0 {
     if cps.count() == 0 { Present { value: [] } } else { none }
   } else if remaining == 1 {
-    // THE LAST FIELD CONSUMES THE WHOLE REMAINDER, never a dot-split: a leftover delimiter
-    // then fails the numeric run here instead of being split off and silently accepted.
-    // SemVer 2.0.0 §2 is X.Y.Z with no trailing delimiter, so "1.2.3." must refuse, not rank.
     match semver_nat_field(cps: cps) {
       Absent => none
       Present { value: v } => Present { value: [v] }
