@@ -32,6 +32,10 @@ fn h(v: String) -> Fnv1a64Structural {
   content_hash_atom(value: v)
 }
 
+fn iface(v: String) -> InterfaceHash {
+  content_hash_atom(value: v)
+}
+
 test fn the_durable_budgets_consumer_frontier_stays_unbound_until_the_seed_path_runs() -> Bool {
   match dissolution_status(condition: materialization_store_durable_budgets_consumer_frontier, present_decls: [
     decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "ensure_durable_typecheck_store")

@@ -86,7 +86,7 @@ fn typecheck_module_request_from_hex(
     Present { value: src } => match hex_digest(hex: compiler_digest_hex) {
       Absent => TypecheckModuleRequestDigestRefused { which: "compiler_digest" }
       Present { value: compiler } => {
-        let imports = import_interface_hexes |> map(h => hex_digest(hex: h))
+        let imports = import_interface_hexes |> map(h => interface_hash_from_hex(hex: h))
         if imports |> any(d => match d { Absent => true Present { value: _ } => false }) {
           TypecheckModuleRequestDigestRefused { which: "direct_import_interfaces" }
         } else {
@@ -94,7 +94,7 @@ fn typecheck_module_request_from_hex(
             req: typecheck_module_request(
               source_digest: src,
               direct_import_interfaces: imports |> flat_map(d => match d {
-                Present { value: v } => [v as InterfaceHash]
+                Present { value: v } => [v]
                 Absent => []
               }),
               compiler_digest: compiler
@@ -104,6 +104,10 @@ fn typecheck_module_request_from_hex(
       }
     }
   }
+}
+
+fn interface_hash_from_hex(hex: String) -> InterfaceHash? {
+  fnv1a64_structural_hex_digest(hex: hex)
 }
 
 fn typecheck_module_payloads(interface: String, diagnostics: String) -> List<ArtifactPayload> {

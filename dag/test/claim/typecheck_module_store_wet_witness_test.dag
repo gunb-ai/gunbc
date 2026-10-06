@@ -69,10 +69,14 @@ fn opened_production_budgets(root: WitnessScratchRoot) -> LocalStoreCapability? 
   }
 }
 
+fn interface_hash_of_bytes(s: String) -> InterfaceHash {
+  content_hash_atom(value: s)
+}
+
 fn sample_req(source_bytes: String, import_bytes: List<String>) -> ArtifactRequest {
   typecheck_module_request(
     source_digest: content_hash_atom(value: source_bytes),
-    direct_import_interfaces: import_bytes |> map(s => content_hash_atom(value: s) as InterfaceHash),
+    direct_import_interfaces: import_bytes |> map(s => interface_hash_of_bytes(s: s)),
     compiler_digest: content_hash_atom(value: "seed-compiler")
   )
 }
