@@ -12,6 +12,7 @@ import gunbc.git_diff_change_window {
   GitDiffWindowReadRefused,
   GitObservedMergeBase,
 }
+import extdeps.github.merge_group_event { merge_queue_group_composition }
 import extdeps.github.actions {
   github_event_name_pull_request,
   github_event_name_push,
@@ -34,8 +35,9 @@ data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot ma
 // catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and
 // its correct baseline is the repo's default merge target (PushParent), which is exactly today's
 // behavior for a bare local floor_diff_observe invocation (DiffPolicy.base = origin/main). It is
-// grouped with workflow_dispatch / merge_group / schedule because all mean 'observe against the
-// default branch'. Push is NOT grouped here: a push event always requires a before SHA. The
+// grouped with workflow_dispatch / schedule because all mean 'observe against the default branch'.
+// Push is NOT grouped here: a push event always requires a before SHA. Nor is merge_group: a group
+// is observed against its own parent (MergeGroupBase, resolve_merge_group_base). The
 // catch-all (a future GitHub trigger not yet modeled — ⊤-as-ignorance, genuinely not-knowing the
 // base) is the final else → BaselineRefused, which HALTS the floor (never a silent origin/main).
 // Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps
@@ -80,7 +82,14 @@ type DiffBaseline
     }
   | PushBefore { ref: GitRef }
   | PushParent { ref: GitRef }
+  | MergeGroupBase { ref: GitRef }
   | OperatorOverride { ref: GitRef }
+
+// The merge_group payload's base_sha as the resolver receives it: observed, or refused with the
+// observation's own cause (extdeps.github.merge_group_event). There is no absent-means-main arm.
+type MergeGroupBaseInput
+  = MergeGroupBaseSha { sha: String }
+  | MergeGroupBaseInputRefused { reason: String }
 
 type PushBeforeInput
   = PushBeforeSha { sha: String }
@@ -94,6 +103,7 @@ type CiDiffEvent {
   push_before: PushBeforeInput?
   head_sha: String?
   diff_window: GitDiffWindowObservation?
+  merge_group_base: MergeGroupBaseInput?
 }
 
 type DiffBaselineResolution
@@ -113,6 +123,7 @@ type DiffBaselineKind
   | ExactReplayBaseline
   | PushBeforeBaseline
   | PushParentBaseline
+  | MergeGroupBaseBaseline
   | OperatorOverrideBaseline
 
 fn diff_baseline_kind(b: DiffBaseline) -> DiffBaselineKind {
@@ -121,6 +132,7 @@ fn diff_baseline_kind(b: DiffBaseline) -> DiffBaselineKind {
     ExactReplayBoundary { base: _, head: _, observed_relation: _ } => ExactReplayBaseline
     PushBefore { ref: _ } => PushBeforeBaseline
     PushParent { ref: _ } => PushParentBaseline
+    MergeGroupBase { ref: _ } => MergeGroupBaseBaseline
     OperatorOverride { ref: _ } => OperatorOverrideBaseline
   }
 }
@@ -132,6 +144,7 @@ fn diff_baseline_ref(b: DiffBaseline) -> GitRef {
       git_object_id_wire_hex(oid: oid) as GitRef
     PushBefore { ref: r } => r
     PushParent { ref: r } => r
+    MergeGroupBase { ref: r } => r
     OperatorOverride { ref: r } => r
   }
 }
@@ -143,6 +156,7 @@ fn diff_baseline_diff_base(b: DiffBaseline) -> String {
     MergeTarget { ref: r } => r as String
     PushBefore { ref: r } => r as String
     PushParent { ref: r } => r as String
+    MergeGroupBase { ref: r } => r as String
     OperatorOverride { ref: r } => r as String
   }
 }
@@ -154,6 +168,7 @@ fn diff_baseline_diff_head(b: DiffBaseline, default_head: String) -> String {
     MergeTarget { ref: _ } => default_head
     PushBefore { ref: _ } => default_head
     PushParent { ref: _ } => default_head
+    MergeGroupBase { ref: _ } => default_head
     OperatorOverride { ref: _ } => default_head
   }
 }
@@ -164,6 +179,7 @@ fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
     MergeTarget { ref: _ } => false
     PushBefore { ref: _ } => false
     PushParent { ref: _ } => false
+    MergeGroupBase { ref: _ } => false
     OperatorOverride { ref: _ } => false
   }
 }
@@ -275,6 +291,36 @@ fn resolve_push_before(push_before: PushBeforeInput?, head_sha: String?) -> Diff
   }
 }
 
+// A MERGE GROUP IS JUDGED AGAINST ITS OWN PARENT, not the base branch. In the queue the base
+// branch has not yet moved past the groups queued ahead, so main..group-head charges their changes
+// to this landing: a blocking base-vs-head verdict then blames the wrong change, and one red
+// change ahead blocks every group behind it (gunbc#12514's first live merge_group run, group head
+// 529d438 over four unlanded PRs). The parent is sound as a base because each change ahead was
+// judged by its own group and a failed group's successors are rebuilt
+// (extdeps.github.merge_group_event merge_queue_group_composition); while that guarantee is not
+// what GitHub documents, the arm refuses rather than narrowing. An absent, empty, unreadable or
+// malformed base_sha REFUSES; it never falls back to the base branch (DESIGN section 5).
+fn resolve_merge_group_base(input: MergeGroupBaseInput?) -> DiffBaselineResolution {
+  let queue = merge_queue_group_composition
+  if !(queue.parent_is_preceding_group_head
+    && queue.each_group_runs_required_checks
+    && queue.successors_rebuilt_when_a_group_fails) {
+    BaselineRefused {
+      reason: "merge_group event but the merge queue's group composition does not make the group parent a judged base — halting the floor (AFFECTED-SET REFUSAL)"
+    }
+  } else {
+    match input {
+      Absent =>
+        BaselineRefused {
+          reason: "merge_group event but no merge_group.base_sha was observed — halting the floor (AFFECTED-SET REFUSAL)"
+        }
+      Present { value: MergeGroupBaseInputRefused { reason: r } } => BaselineRefused { reason: r }
+      Present { value: MergeGroupBaseSha { sha: sha } } =>
+        BaselineSelected { baseline: MergeGroupBase { ref: sha as GitRef } }
+    }
+  }
+}
+
 fn resolve_diff_baseline_by_event(
   event: CiDiffEvent,
   push_parent_ref: GitRef,
@@ -284,8 +330,9 @@ fn resolve_diff_baseline_by_event(
     resolve_merge_target(base_ref: event.base_ref, default_remote_name: default_remote_name)
   } else if event.event_name == github_event_name_push {
     resolve_push_before(push_before: event.push_before, head_sha: event.head_sha)
+  } else if event.event_name == github_event_name_merge_group {
+    resolve_merge_group_base(input: event.merge_group_base)
   } else if event.event_name == github_event_name_workflow_dispatch
-    || event.event_name == github_event_name_merge_group
     || event.event_name == github_event_name_schedule
     || event.event_name == "" {
     BaselineSelected { baseline: PushParent { ref: push_parent_ref } }

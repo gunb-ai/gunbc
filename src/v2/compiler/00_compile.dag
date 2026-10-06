@@ -64,6 +64,13 @@ import v2.std.demand_engine {
   DemandLeaseOffer,
   DemandNotAdmitted,
   DemandRefused,
+  DemandWaiting,
+  DemandReady,
+  DemandLeasePending,
+  DemandRunning,
+  DemandSuspended,
+  DemandCommitPending,
+  DemandBlocked,
   DemandState,
   DemandAdmission,
   demand_engine_completion_keys,
@@ -1855,6 +1862,17 @@ fn native_test_eval_body(
   }
 }
 
+fn native_test_eval_one_not_arrow(
+  prepared: NativeTestPreparedModule,
+  declaration: Symbol
+) -> NativeTestObservation {
+  native_test_entry_refused(
+    module: prepared.module,
+    declaration: declaration,
+    reason: ^native_test_entry_declaration_not_arrow
+  )
+}
+
 fn native_test_eval_one(
   prepared: NativeTestPreparedModule,
   declaration: Symbol
@@ -1896,12 +1914,12 @@ fn native_test_eval_one(
                     body: body
                   )
               }
-            _ =>
-              native_test_entry_refused(
-                module: prepared.module,
-                declaration: declaration,
-                reason: ^native_test_entry_declaration_not_arrow
-              )
+            TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Cardinality } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }
       }
   }

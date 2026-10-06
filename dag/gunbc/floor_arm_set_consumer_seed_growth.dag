@@ -70,8 +70,34 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // own line attribution (FloorDiffEdits `touched_declarations`, ExistingSeedItemModified with
 // floor_diff_edits_from_line_ranges, InterfaceConsumerPlanning and interface_consumer_planning);
 // the propagation rule it realizes is modeled as v2.workflow.floor_subject_seed reach_propagates.
+// Its follow-up (the per-PR v2 differential, operator ruling 2026-09-27) adds no declaration:
+// ExistingSeedItemModified are RequiredFloorDisposition (the PlannedAsReachConsumer arm, modeled
+// first in v2.workflow.required_floor), run_required_floor (plans reach consumers outside the
+// gate and publishes their head standings), required_floor_disposition_label, the label-detail
+// match, write_required_floor_disposition_tsv and namespace_baseline ReachedDeclaration (rel_path).
+// THE BASE SIDE OF THE PER-PR v2 DIFFERENTIAL (review 72143) adds the declarations at the head of the
+// list below: the base producer (v1_compiler.cli_run.reach_base_standings), the floor's spawn of it in
+// a detached worktree at the diff base (run_reach_base_arm), and the claim_executor mode that runs
+// it. Rust is needed for the same reason as the rest of this row, and once more: the base arm is a
+// separate PROCESS over a separate checkout, and no .dag effect spawns a process or creates a git
+// worktree. The verdict is .dag (v2.workflow.required_floor reach_claim_verdict), and no Rust here
+// decides one.
 data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "BaseStanding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "reach_planned_for_event", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "reach_deferred_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "ReachBaseArm", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "base_standing_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "reach_base_standings", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings", decl_name: "is_located_compile_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings.tests", decl_name: "only_verdicts_are_base_standings", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings.tests", decl_name: "verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "run_reach_base_arm", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "reach_baseline_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "reach_base_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "remove_reach_base_worktree", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_executor", decl_name: "run_reach_base_standings", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "BaselineReconstruction", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "reconstruct_base_index", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "InterfaceChangeGround", field: WholeDeclaration },

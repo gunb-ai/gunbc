@@ -37,7 +37,7 @@ fn workspace_http_write(result: WorkspaceStoreWrite, observed_at: Timestamp) -> 
 fn workspace_http_create_over(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, store: FabricStorageBinding,
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
-  observed_at: Timestamp, new_expires_at: Timestamp, pinned_image: NonEmptyStr, public_key_ref: NonEmptyStr,
+  observed_at: Timestamp, new_expires_at: Timestamp, pinned_image: NonEmptyStr,
 ) -> ServeHttpResponse {
   match workspace_create_submission(body: request.body) {
     Absent => workspace_http_reason(status: 400, reason: "Expected JSON csrf_token, idempotency_key and profile")
@@ -60,7 +60,7 @@ fn workspace_http_create_over(
               security: request.security, policy: policy, deployment_policy: deployment_policy,
               observed_at: observed_at, expires_at: new_expires_at, csrf_presented: submission.csrf_token,
               idempotency_key: submission.idempotency_key, profile_wire: submission.profile,
-              pinned_image: pinned_image, enrolled_public_key_ref: public_key_ref,
+              pinned_image: pinned_image,
             ) {
               WorkspaceRequestAdmitted { request: admitted } => workspace_http_create_result(store: store, admitted: admitted, observed_at: observed_at, result: workspace_record_request_at(store: store, request: admitted, observed_at: observed_at))
               WorkspaceRequestAdmissionRefused { decision } => match decision {

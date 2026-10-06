@@ -3,7 +3,7 @@ module test.claim.spark.group_arm_launch_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.content_hash { ContentHash, content_hash_equal }
 import v2.std.optional { Present, Absent }
-import std.measure { token_count, kibibyte, mebibyte, basis_point }
+import std.measure { token_count, kibibyte, mebibyte, basis_point, second_count }
 import extdeps.systemd { Active }
 import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmissionOmitted, KvWatermarkExplicit, KvWatermarkOmitted, VllmSchedulerAdmissionRequest }
 import gunbc.compute.host_occupancy { HostOccupant, HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
@@ -12,7 +12,7 @@ import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.spark.serving_capacity_intent { scheduler_envelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused }
 import gunbc.spark.group_arm_launch {
-  GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmHostOccupancy,
+  GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmHostOccupancy,
   GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmittedForAdoptionOnly, ArmOwnFence, ArmOwnFenceHeld, ArmOwnFenceAbsent, ArmOwnFenceUnread, ArmOwnRollbackUnresolved, GroupArmLaunchAdmissionRefused,
   ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit,
   ArmSuccessorKeyed, ArmSuccessorUnkeyed, group_arm_launch_admission, group_arm_read_units, group_arm_row_successor, group_arm_launch_plan,
@@ -27,11 +27,14 @@ import gunbc.spark.glm53_arm_staircase {
   glm53_staircase_cold_intent, glm53_staircase_scheduler_admission, glm53_staircase_units,
   glm53_previous_step_incumbent,
 }
-import gunbc.spark.arm_group_launch_dispatch {
+import gunbc.spark.arm_group_launch_dispatch { arm_launch_step_timeout_minutes, arm_launch_step_needed, ArmLaunchStepNeedDerived, ArmLaunchStepNeedRefused,
   arm_group_of_word, ArmGroupNamed, ArmGroupWordRefused,
   arm_group_launch_select, ArmGroupLaunchSelection, ArmGroupLaunchSelected, ArmGroupLaunchSelectionRefused, ArmV41GroupA, ArmGlm53GroupAStep,
 }
 import gunbc.spark.v41_group_a_launch { v41_arm_plan }
+import gunbc.spark.glm53_staircase_load { glm53_step_performance_subject, glm53_autotune_standing_wire }
+import gunbc.spark.serving_performance_subject { serving_subject_key, serving_subject_key_equal }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmFlashinferAutotuneSkipOps }
 import test.claim.spark.v41_group_a_launch_witness { with_w_plan, w_suspended_for }
 
 // ── THE STAIRCASE IS A CLOSED SET, AND EVERY STEP KEEPS THE COLD FLOOR ────────────────────────────
@@ -365,4 +368,55 @@ test fn w_a_marker_on_a_running_restored_arm_admits_to_resolution_only() -> Bool
       GroupArmLaunchAdmissionRefused { causes: _ } => false
     }
   })
+}
+
+// THE LAUNCH STEP OUTLASTS EVERY ARM'S READINESS DEADLINE PLUS THE TRANSACTION'S BUDGETS: the literal the
+// workflow renders against the derivation from each arm's own VLLM_ENGINE_READY_TIMEOUT_S (the front door's
+// reader). RED: a step timeout of 60 with a 3600 s readiness deadline (nvfp4-8, fleet-converge 37190290418).
+test fn w_the_launch_step_timeout_covers_every_arms_readiness() -> Bool {
+  match arm_launch_step_needed() {
+    ArmLaunchStepNeedRefused { causes: _ } => false
+    ArmLaunchStepNeedDerived { need: n } => (arm_launch_step_timeout_minutes as Int) * 60 >= second_count(s: n) && second_count(s: n) > 3600
+  }
+}
+
+// ── THE AUTOTUNE POLICY IS PART OF LAUNCH AND PERFORMANCE IDENTITY (side-chat ruling on #13319, finding 3)
+//
+// THE RED: the same NVFP4 step with and without VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS. With it, rank 0 runs
+// tuned tactics and ranks 1-3 heuristic ones, so its throughput is a lower bound; without it every rank
+// tunes. If both shared a successor key, a suspension granted to one would admit the other, and if both
+// shared a performance subject their calibration evidence would compare as one configuration. Both keys
+// must differ, and the load receipt must state the policy.
+fn w_without_skip_ops(i: GroupArmLaunchInputs) -> GroupArmLaunchInputs {
+  GroupArmLaunchInputs {
+    assignment: i.assignment, profile: i.profile, intent: i.intent,
+    deployment_env: filter(i.deployment_env, a => (a.name as String) != (vllm_environment_variable_name(v: VllmFlashinferAutotuneSkipOps) as String)),
+    container: i.container, units: i.units, purpose: i.purpose,
+  }
+}
+
+test fn w_skip_ops_present_or_absent_is_a_different_successor_and_subject() -> Bool {
+  match glm53_step_inputs(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) {
+    Absent => false
+    Present { value: skipping } => {
+      let without = w_without_skip_ops(i: skipping)
+      length(skipping.deployment_env) == length(without.deployment_env) + 1
+        && (match group_arm_row_successor(inputs: skipping) {
+          ArmSuccessorUnkeyed { causes: _ } => false
+          ArmSuccessorKeyed { key: kw } => match group_arm_row_successor(inputs: without) {
+            ArmSuccessorUnkeyed { causes: _ } => false
+            ArmSuccessorKeyed { key: ko } => !content_hash_equal(left: kw, right: ko)
+          }
+        })
+        && (match glm53_step_performance_subject(inputs: skipping) {
+          Absent => false
+          Present { value: pw } => match glm53_step_performance_subject(inputs: without) {
+            Absent => false
+            Present { value: po } => !serving_subject_key_equal(a: serving_subject_key(s: pw), b: serving_subject_key(s: po))
+          }
+        })
+        && string_contains(s: glm53_autotune_standing_wire(env: skipping.deployment_env), pattern: "LOWER BOUND")
+        && !string_contains(s: glm53_autotune_standing_wire(env: without.deployment_env), pattern: "LOWER BOUND")
+    }
+  }
 }
