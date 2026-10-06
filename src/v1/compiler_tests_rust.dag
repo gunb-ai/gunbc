@@ -1783,6 +1783,43 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
 }
 
 // A same-leaf declaration in one module does not change what another module emits.
+fn ct_unstamped_bare_optional_follows_the_lookup_binding_order_test() -> String {
+  [
+    "    // AN UNSTAMPED BARE `Optional` FOLLOWS THE TYPECHECKER'S lookup_binding ORDER: own file, then\n",
+    "    // the file's named import (followed through re-exports), then the kernel\n",
+    "    // (v1.compiler.infer_env bare_occurrence_binding). The member references of a coproduct body reach\n",
+    "    // the emitter from the type environment's copy with no Node.declaration, so the census route is\n",
+    "    // the emitter's own decision. THE RED is the importer: with the kernel ahead of the named import\n",
+    "    // (the order direct_import_export_precedence_note states) its payload routes kernel_mint to\n",
+    "    // v2.std.optional, measured on gunbc#13454 at 57551c4b. The control keeps a module that names\n",
+    "    // Optional without importing it on the kernel arm.\n",
+    "    #[test]\n",
+    "    fn unstamped_bare_optional_follows_the_lookup_binding_order() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let sources = vec![\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/optional.dag\".to_string(), content: \"module v2.std.optional\\n\\ntype Optional<T>\\n  = Present { value: T }\\n  | Absent\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/collision.dag\".to_string(), content: \"module hom.collision\\n\\ntype Optional\\n  = CollisionWrapped { value: Int }\\n  | CollisionEmpty\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/importer.dag\".to_string(), content: \"module hom.importer\\n\\nimport hom.collision { Optional }\\n\\ntype HeldChoice\\n  = HeldOptional { held: Optional }\\n  | HeldNothing\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/plain.dag\".to_string(), content: \"module hom.plain\\n\\ntype PlainChoice\\n  = PlainHeld { held: Optional<Int> }\\n  | PlainNothing\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/user.dag\".to_string(), content: \"module hom.user\\n\\nimport hom.importer { HeldChoice }\\nimport hom.plain { PlainChoice }\\n\\nfn pick(h: HeldChoice, p: PlainChoice) -> Int {\\n  1\\n}\\n\".to_string() }),\n",
+    "        ];\n",
+    "        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(std::rc::Rc::new(sources.into()));\n",
+    "        assert!(!receipt.starts_with(\"REFUSED\"), \"{receipt}\");\n",
+    "        let routes = |enclosing: &str| -> Vec<String> {\n",
+    "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == \"declaration_field\" && c[3] == \"Optional\")\n",
+    "                .map(|c| c[13].to_string()).collect()\n",
+    "        };\n",
+    "        let held = routes(\"HeldChoice\");\n",
+    "        assert!(!held.is_empty() && held.iter().all(|r| r == \"referencing_module_import:Resolved:hom.collision.Optional\"), \"the imported Optional must route to the import, never the kernel mint:\\n{receipt}\");\n",
+    "        let plain = routes(\"PlainChoice\");\n",
+    "        assert!(!plain.is_empty() && plain.iter().all(|r| r == \"kernel_mint:Resolved:v2.std.optional.Optional\"), \"an unimported Optional is the kernel's:\\n{receipt}\");\n",
+    "        assert!(!receipt.contains(\"LeafAmbiguous:Optional\"), \"{receipt}\");\n",
+    "    }\n",
+    "\n",
+  ] |> join(separator: "")
+}
+
 fn ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test() -> String {
   concat(
     "    // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel\n",
@@ -1996,6 +2033,7 @@ fn ct_coercion_tests() -> String {
     ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
     ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
+    ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
