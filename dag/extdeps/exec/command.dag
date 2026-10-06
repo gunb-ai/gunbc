@@ -186,6 +186,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_download_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_delete_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_parallel_upload_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_version_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bmcweb_session_login_command"),
     decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_readonly_file_serve_command"),
     decl_ref(module_path: "extdeps.tools.websocat", decl_name: "websocat_nbd_proxy_bridge_command"),

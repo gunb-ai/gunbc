@@ -4,7 +4,9 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Microsecond, microsecond }
+import std.measure { Second, second, second_count, Microsecond, microsecond, microsecond_count }
+import std.algebra { Less, Equal, Greater }
+import extdeps.version.semver { SemVerVersion, semver_compare, semver_core_of_dotted, semver_minimum_of_constraint }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -374,20 +376,25 @@ fn curl_sigv4_s3_delete_command(url: String, netrc_path: FilePath, sigv4_region:
 // every per-transfer option -- the netrc, the SigV4 provider, the precondition header, -o and -w -- is
 // repeated after it, and every transfer reads the same netrc file.
 //
-// WHAT THIS GUARANTEES AND WHAT IT DOES NOT. curl starts every transfer in the same pass of its event
-// loop; it cannot make the SERVER see the requests overlap -- one TLS handshake can finish long before
-// the other, and a request can be answered before its sibling is even sent. So a parallel transfer
-// reports its own timing, and a consumer that needs the requests to have overlapped must check it.
-// The timing variables are each transfer's own clock: time_pretransfer is the moment its request was
-// about to be sent, time_starttransfer the moment its first response byte arrived (manpage, "-w,
-// --write-out"), both in seconds. Their common origin is the shared start of the parallel pass -- a
-// bet stated here, not a reading of curl's source -- so overlap is decided on that origin.
+// WHAT THIS GUARANTEES AND WHAT IT DOES NOT. curl starts the transfers in one pass of its event loop; it
+// cannot make the requests overlap. Its per-transfer timing variables (%{time_pretransfer} and kin)
+// cannot show whether they did either: each is an offset from that transfer's OWN start (the easy
+// handle's progress start), so two transfers' timings share no origin. What does share one is the
+// trace: --trace-ascii writes every event of every transfer from the one process, --trace-time stamps
+// each event line from that process's wall clock ("Added in 7.14.0"), and --trace-ids prefixes each line
+// with the transfer and connection it belongs to ("Added in 8.2.0"). All three are GLOBAL options, so
+// they are spelled once, before the first transfer.
 //
-// NO CliTool ROW OF ITS OWN: 7.68 is already curl_cli_tool's pin, so a parallel row would be a second
-// name for it. A path that races conditional PUTs also signs them (curl_aws_sigv4_cli_tool, 7.75) and
-// reads a seed's entity tag (curl_s3_entity_tag_cli_tool, 7.84), and the row that path observes is
-// the highest of the pins it spells.
-//
+// THE 8.2 PIN IS THE HIGHEST THIS PATH SPELLS, so it is a row of the same family as the SigV4 (7.75) and
+// %header (7.84) rows, and the row a racing path observes.
+data curl_trace_ids_min_version: VersionConstraint = ">= 8.2"
+
+data curl_trace_ids_cli_tool: CliTool = CliTool {
+  program: curl_program(),
+  min_version: Present { value: curl_trace_ids_min_version },
+  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
+}
+
 // ONE TRANSFER OF A PARALLEL UPLOAD. label is printed at the head of the transfer's write-out line, so
 // a status is attributable to the transfer it belongs to even though -Z prints in completion order and
 // every transfer may share one URL; a label must be one word.
@@ -398,10 +405,9 @@ type S3ParallelUpload {
   precondition: ObjectPutPrecondition
 }
 
-// The per-transfer line: label, status, then the two timing variables. %{http_code} is 000 when no
-// response was received.
+// The per-transfer line: label, then status. %{http_code} is 000 when no response was received.
 fn curl_parallel_write_out_format(label: NonEmptyStr) -> String {
-  join([label as String, " %\{http_code\} %\{time_pretransfer\} %\{time_starttransfer\}\n"], "")
+  join([label as String, " %\{http_code\}\n"], "")
 }
 
 fn curl_sigv4_s3_parallel_upload_arguments(upload: S3ParallelUpload, netrc_path: FilePath, sigv4_region: NonEmptyStr) -> List<String> {
@@ -417,11 +423,11 @@ fn curl_sigv4_s3_parallel_upload_arguments(upload: S3ParallelUpload, netrc_path:
   )
 }
 
-fn curl_sigv4_s3_parallel_upload_command(uploads: List<S3ParallelUpload>, netrc_path: FilePath, sigv4_region: NonEmptyStr) -> ArgvCommand {
+fn curl_sigv4_s3_parallel_upload_command(uploads: List<S3ParallelUpload>, netrc_path: FilePath, sigv4_region: NonEmptyStr, trace_path: FilePath) -> ArgvCommand {
   argv_command(
     program: curl_program(),
     arguments: concat(
-      ["-Z", "--parallel-immediate"],
+      ["-Z", "--parallel-immediate", "--trace-ascii", trace_path as String, "--trace-time", "--trace-ids"],
       fold(uploads, init: [], f: (acc, u) => concat(
         if length(acc) == 0 { acc } else { concat(acc, ["--next"]) },
         curl_sigv4_s3_parallel_upload_arguments(upload: u, netrc_path: netrc_path, sigv4_region: sigv4_region),
@@ -430,13 +436,6 @@ fn curl_sigv4_s3_parallel_upload_command(uploads: List<S3ParallelUpload>, netrc_
   )
 }
 
-// WHAT ONE LABELLED TRANSFER REPORTED. Timings are std.measure Microsecond: curl prints seconds with
-// six decimals, so the reading is exact, and a negative never crosses into Nat. Exactly one line must carry the label; none, two, a 000 status or an unparseable field is
-// unreported, never a guess.
-type CurlParallelTransferReport
-  = CurlParallelTransferReported { status: HttpStatus, pretransfer: Microsecond, starttransfer: Microsecond }
-  | CurlParallelTransferUnreported { cause: NonEmptyStr }
-
 fn curl_word_at(words: List<String>, index: Int) -> String {
   match words.skip(n: index).first() {
     Present { value: w } => w
@@ -444,32 +443,15 @@ fn curl_word_at(words: List<String>, index: Int) -> String {
   }
 }
 
-fn curl_seconds_as_microseconds(text: String) -> Microsecond? {
-  let parts = split(s: text, delimiter: ".")
-  if length(parts) != 2 {
-    none
-  } else {
-    let frac = curl_word_at(words: parts, index: 1)
-    match parse_int(s: curl_word_at(words: parts, index: 0)) {
-      Absent => none
-      Present { value: whole } =>
-        if string_length(s: frac) != 6 { none } else {
-          match parse_int(s: frac) {
-            Absent => none
-            Present { value: f } =>
-              match checked_int_to_nat(n: whole * 1000000 + f) {
-                Absent => none
-                Present { value: n } => Present { value: microsecond(count: n) }
-              }
-          }
-        }
-    }
-  }
-}
+// WHAT ONE LABELLED TRANSFER REPORTED. Exactly one line must carry the label; none, two, a 000 status
+// or an unparseable field is unreported, never a guess.
+type CurlParallelTransferReport
+  = CurlParallelTransferReported { status: HttpStatus }
+  | CurlParallelTransferUnreported { cause: NonEmptyStr }
 
 fn curl_parallel_report_of_fields(fields: List<String>) -> CurlParallelTransferReport {
-  if length(fields) != 4 {
-    CurlParallelTransferUnreported { cause: "the transfer's write-out line does not have four fields" }
+  if length(fields) != 2 {
+    CurlParallelTransferUnreported { cause: "the transfer's write-out line does not have two fields" }
   } else {
     let code = curl_word_at(words: fields, index: 1)
     match parse_int(s: code) {
@@ -477,15 +459,7 @@ fn curl_parallel_report_of_fields(fields: List<String>) -> CurlParallelTransferR
       Present { value: n } =>
         match http_status_of(n: n) {
           Absent => CurlParallelTransferUnreported { cause: join(["no HTTP status was received (", code, ")"], "") as NonEmptyStr }
-          Present { value: status } =>
-            match curl_seconds_as_microseconds(text: curl_word_at(words: fields, index: 2)) {
-              Absent => CurlParallelTransferUnreported { cause: "the transfer's time_pretransfer did not parse" }
-              Present { value: pre } =>
-                match curl_seconds_as_microseconds(text: curl_word_at(words: fields, index: 3)) {
-                  Absent => CurlParallelTransferUnreported { cause: "the transfer's time_starttransfer did not parse" }
-                  Present { value: start } => CurlParallelTransferReported { status: status, pretransfer: pre, starttransfer: start }
-                }
-            }
+          Present { value: status } => CurlParallelTransferReported { status: status }
         }
     }
   }
@@ -502,6 +476,223 @@ fn curl_parallel_transfer_report(stdout: String, label: NonEmptyStr) -> CurlPara
       Present { value: fields } => curl_parallel_report_of_fields(fields: fields)
       Absent => CurlParallelTransferUnreported { cause: join(["no write-out line for transfer ", label as String], "") as NonEmptyStr }
     }
+  }
+}
+
+// ── THE TRACE, READ AS EVENTS ON ONE CLOCK ──────────────────────────────────────────────────────
+//
+// THE SHAPE --trace-ascii WRITES WITH --trace-time AND --trace-ids. Every event opens with a line
+// "HH:MM:SS.uuuuuu [X-C] <direction> <what>, N bytes (0xN)" -- or "== Info: <text>" -- where X is the
+// transfer id and C the connection id (x before one exists); the event's bytes follow as dump lines
+// "OOOO: <text>", OOOO a hex offset, which carry no stamp. The directions this reader names are
+// "=> Send header", "=> Send data" and "<= Recv header"; every other event (TLS data, received data,
+// info) is kept as an instant and nothing else.
+//
+// THE CLOCK IS CHECKED ON EVERY STAMPED LINE. A stamp lower than the line before it -- a wall-clock step
+// backwards, or midnight passing -- refuses the whole trace: a backwards step between one transfer's
+// answer and the other's send is exactly what could fake an overlap, and nothing in the trace can tell
+// that step from a real one. A step forwards can only make requests look further apart, so it is not
+// refused.
+//
+// THE CREDENTIAL. With --aws-sigv4 the request carries an Authorization header naming the access key id
+// and an HMAC signature; the SigV4 secret itself is never sent, so it is never traced. The header IS
+// traced, so a send-header event's bytes are dropped here and never reach an event: only a send-data
+// event keeps its bytes, which are the uploaded body. The trace FILE still holds the header, so it lives
+// in a directory the caller minted and removes with its custody.
+type CurlTraceEventKind
+  = CurlTraceSendHeader
+  | CurlTraceSendData
+  | CurlTraceRecvHeader
+  | CurlTraceOtherEvent
+
+type CurlTraceEvent {
+  at: Microsecond
+  transfer: NonEmptyStr
+  kind: CurlTraceEventKind
+  body: List<String>
+}
+
+type CurlTraceReading
+  = CurlTraceRead { events: List<CurlTraceEvent> }
+  | CurlTraceRefused { cause: NonEmptyStr }
+
+// "HH:MM:SS.uuuuuu" as microseconds since midnight on the trace's own clock.
+fn curl_trace_time_of_day(text: String) -> Microsecond? {
+  let hms = split(s: text, delimiter: ":")
+  let sec = split(s: curl_word_at(words: hms, index: 2), delimiter: ".")
+  if length(hms) != 3 || length(sec) != 2 || string_length(s: curl_word_at(words: sec, index: 1)) != 6 {
+    none
+  } else {
+    match parse_int(s: curl_word_at(words: hms, index: 0)) {
+      Absent => none
+      Present { value: h } =>
+        match parse_int(s: curl_word_at(words: hms, index: 1)) {
+          Absent => none
+          Present { value: m } =>
+            match parse_int(s: curl_word_at(words: sec, index: 0)) {
+              Absent => none
+              Present { value: s } =>
+                match parse_int(s: curl_word_at(words: sec, index: 1)) {
+                  Absent => none
+                  Present { value: u } =>
+                    match checked_int_to_nat(n: ((h * 60 + m) * 60 + s) * 1000000 + u) {
+                      Absent => none
+                      Present { value: n } => Present { value: microsecond(count: n) }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn curl_trace_transfer_of_tag(tag: String) -> NonEmptyStr? {
+  if starts_with(s: tag, prefix: "[") == false { none } else {
+    let id = curl_word_at(words: split(s: substring(s: tag, start: 1, end: string_length(s: tag)), delimiter: "-"), index: 0)
+    if id == "" { none } else { Present { value: id as NonEmptyStr } }
+  }
+}
+
+fn curl_trace_kind_of(rest: String) -> CurlTraceEventKind {
+  if starts_with(s: rest, prefix: "=> Send header,") { CurlTraceSendHeader }
+  else if starts_with(s: rest, prefix: "=> Send data,") { CurlTraceSendData }
+  else if starts_with(s: rest, prefix: "<= Recv header,") { CurlTraceRecvHeader }
+  else { CurlTraceOtherEvent }
+}
+
+// A dump line: four hex digits then ": ". Its text is everything after that prefix.
+fn curl_trace_dump_text(line: String) -> String? {
+  if string_length(s: line) >= 6 && substring(s: line, start: 4, end: 6) == ": " { Present { value: substring(s: line, start: 6, end: string_length(s: line)) } } else { none }
+}
+
+type CurlTraceScan {
+  events: List<CurlTraceEvent>
+  open: CurlTraceEvent?
+  last_at: Int
+  refused: String
+}
+
+fn curl_trace_close(scan: CurlTraceScan) -> List<CurlTraceEvent> {
+  match scan.open {
+    Absent => scan.events
+    Present { value: e } => concat(scan.events, [e])
+  }
+}
+
+fn curl_trace_step(scan: CurlTraceScan, line: String) -> CurlTraceScan {
+  if scan.refused != "" || trim(s: line) == "" { scan } else {
+    match curl_trace_dump_text(line: line) {
+      Present { value: text } =>
+        match scan.open {
+          Absent => CurlTraceScan { events: scan.events, open: none, last_at: scan.last_at, refused: "a dump line precedes any event" }
+          Present { value: e } =>
+            match e.kind {
+              CurlTraceSendData => CurlTraceScan { events: scan.events, open: Present { value: CurlTraceEvent { at: e.at, transfer: e.transfer, kind: e.kind, body: concat(e.body, [text]) } }, last_at: scan.last_at, refused: "" }
+              CurlTraceSendHeader => scan
+              CurlTraceRecvHeader => scan
+              CurlTraceOtherEvent => scan
+            }
+        }
+      Absent => {
+        let words = split(s: line, delimiter: " ")
+        match curl_trace_time_of_day(text: curl_word_at(words: words, index: 0)) {
+          Absent => CurlTraceScan { events: scan.events, open: scan.open, last_at: scan.last_at, refused: "a trace line is neither a stamped event nor a dump line" }
+          Present { value: at } =>
+            if microsecond_count(m: at) < scan.last_at {
+              CurlTraceScan { events: scan.events, open: scan.open, last_at: scan.last_at, refused: "the trace clock stepped backwards" }
+            } else {
+              match curl_trace_transfer_of_tag(tag: curl_word_at(words: words, index: 1)) {
+                Absent => CurlTraceScan { events: scan.events, open: scan.open, last_at: scan.last_at, refused: "a stamped trace line names no transfer" }
+                Present { value: x } => {
+                  let prefix_length = string_length(s: curl_word_at(words: words, index: 0)) + string_length(s: curl_word_at(words: words, index: 1)) + 2
+                  let rest = if string_length(s: line) > prefix_length { substring(s: line, start: prefix_length, end: string_length(s: line)) } else { "" }
+                  CurlTraceScan {
+                    events: curl_trace_close(scan: scan),
+                    open: Present { value: CurlTraceEvent { at: at, transfer: x, kind: curl_trace_kind_of(rest: rest), body: [] } },
+                    last_at: microsecond_count(m: at),
+                    refused: "",
+                  }
+                }
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn curl_trace_reading(trace: String) -> CurlTraceReading {
+  let scan = fold(split(s: trace, delimiter: "\n"), init: CurlTraceScan { events: [], open: none, last_at: 0, refused: "" }, f: (acc, l) => curl_trace_step(scan: acc, line: l))
+  if scan.refused != "" { CurlTraceRefused { cause: scan.refused as NonEmptyStr } } else { CurlTraceRead { events: curl_trace_close(scan: scan) } }
+}
+
+// The one transfer whose sent body carries text, or absent when none or more than one does.
+fn curl_trace_transfer_sending(events: List<CurlTraceEvent>, text: NonEmptyStr) -> NonEmptyStr? {
+  let carriers = filter(events, e => match e.kind {
+    CurlTraceSendData => length(filter(e.body, b => string_contains(s: b, pattern: text as String))) > 0
+    CurlTraceSendHeader => false
+    CurlTraceRecvHeader => false
+    CurlTraceOtherEvent => false
+  })
+  let ids = fold(carriers, init: [], f: (acc, e) => if length(filter(acc, i => i == e.transfer as String)) > 0 { acc } else { concat(acc, [e.transfer as String]) })
+  if length(ids) != 1 { none } else {
+    match ids.first() { Present { value: i } => Present { value: i as NonEmptyStr }  Absent => none }
+  }
+}
+
+fn curl_trace_kind_is(kind: CurlTraceEventKind, want: CurlTraceEventKind) -> Bool {
+  match kind {
+    CurlTraceSendHeader => match want { CurlTraceSendHeader => true  CurlTraceSendData => false  CurlTraceRecvHeader => false  CurlTraceOtherEvent => false }
+    CurlTraceSendData => match want { CurlTraceSendData => true  CurlTraceSendHeader => false  CurlTraceRecvHeader => false  CurlTraceOtherEvent => false }
+    CurlTraceRecvHeader => match want { CurlTraceRecvHeader => true  CurlTraceSendHeader => false  CurlTraceSendData => false  CurlTraceOtherEvent => false }
+    CurlTraceOtherEvent => match want { CurlTraceOtherEvent => true  CurlTraceSendHeader => false  CurlTraceSendData => false  CurlTraceRecvHeader => false }
+  }
+}
+
+// The stamps of one transfer's events of one kind, in trace order (the trace is monotone once read).
+fn curl_trace_instants(events: List<CurlTraceEvent>, transfer: NonEmptyStr, kind: CurlTraceEventKind) -> List<Microsecond> {
+  map(filter(events, e => e.transfer as String == transfer as String && curl_trace_kind_is(kind: e.kind, want: kind)), e => e.at)
+}
+
+// ── THE INSTALLED VERSION, READ ─────────────────────────────────────────────────────────────────
+//
+// A pin carried on a row and never compared is a decoration. curl --version prints "curl M.m.p (...)"
+// on its first line (manpage, "-V, --version"); it is read here, compared against the row's own floor
+// through extdeps.version.semver, and the observed version is reported whatever the answer.
+fn curl_version_command() -> ArgvCommand {
+  argv_command(program: curl_program(), arguments: ["--version"])
+}
+
+type CurlVersionStanding
+  = CurlVersionMeetsPin { observed: SemVerVersion }
+  | CurlVersionBelowPin { observed: SemVerVersion, required: VersionConstraint }
+  | CurlVersionUnreadable { cause: NonEmptyStr }
+
+fn curl_installed_version(stdout: String) -> SemVerVersion? {
+  let first = curl_word_at(words: split(s: stdout, delimiter: "\n"), index: 0)
+  let words = split(s: trim(s: first), delimiter: " ")
+  if curl_word_at(words: words, index: 0) != "curl" { none } else {
+    semver_core_of_dotted(text: curl_word_at(words: split(s: curl_word_at(words: words, index: 1), delimiter: "-"), index: 0))
+  }
+}
+
+fn curl_version_standing(tool: CliTool, stdout: String) -> CurlVersionStanding {
+  match curl_installed_version(stdout: stdout) {
+    Absent => CurlVersionUnreadable { cause: "curl --version printed no 'curl M.m.p' first line" }
+    Present { value: observed } =>
+      match tool.min_version {
+        Absent => CurlVersionUnreadable { cause: "the row carries no version floor to compare against" }
+        Present { value: c } =>
+          match semver_minimum_of_constraint(constraint: c) {
+            Absent => CurlVersionUnreadable { cause: join(["the row's constraint is not a '>= M.m' floor: ", c as String], "") as NonEmptyStr }
+            Present { value: floor } =>
+              match semver_compare(a: observed, b: floor) {
+                Less => CurlVersionBelowPin { observed: observed, required: c }
+                Equal => CurlVersionMeetsPin { observed: observed }
+                Greater => CurlVersionMeetsPin { observed: observed }
+              }
+          }
+      }
   }
 }
 
