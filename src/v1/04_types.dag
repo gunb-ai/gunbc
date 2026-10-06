@@ -36,7 +36,7 @@ import v1.std.core { Unmarked,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
   InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
-  leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality, wrap_optional_layer,
+  leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality, wrap_optional_layer, node_is_optional_layer,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   default_ident_span, kernel_span,
@@ -73,6 +73,23 @@ fn resolved_type(n: Node) -> Node {
 // gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
+}
+
+// OptionalOf is one optional around the receiver element. Nest (Optional<T?>) only
+// when that element is already optional. Substituting an optional from an argument
+// into the inner slot is not the element's declared cardinality (split(String?).first()
+// must stay String?, not Optional<String?>).
+fn algebra_optional_of_type(inner: Node, receiver: Node) -> Node {
+  match receiver.children |> first {
+    Present { value: child } =>
+      let el_opt = node_is_optional_layer(n: child_type_node(ch: child))
+      if el_opt {
+        wrap_optional_layer(n: inner)
+      } else {
+        with_optional_cardinality(n: inner)
+      }
+    Absent => with_optional_cardinality(n: inner)
+  }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
@@ -519,7 +536,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_b.diagnostics, built.diagnostics) }
     OptionalOf { inner: inner } =>
       let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
-      KernelTypeBuild { ty: wrap_optional_layer(n: ib.ty), diagnostics: ib.diagnostics }
+      KernelTypeBuild { ty: algebra_optional_of_type(inner: ib.ty, receiver: base), diagnostics: ib.diagnostics }
     WitnessOf { inner: inner } =>
       let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
       let built = make_container_type(kind_name: "Witness", element: ib.ty)
@@ -745,7 +762,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_applied.diagnostics, built.diagnostics) }
     OptionalOf { inner: inner } =>
       let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
-      KernelTypeBuild { ty: wrap_optional_layer(n: ib.ty), diagnostics: ib.diagnostics }
+      KernelTypeBuild { ty: algebra_optional_of_type(inner: ib.ty, receiver: receiver), diagnostics: ib.diagnostics }
     WitnessOf { inner: inner } =>
       let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
       let built = make_container_type(kind_name: "Witness", element: ib.ty)

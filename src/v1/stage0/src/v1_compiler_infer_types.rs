@@ -125,6 +125,20 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn algebra_optional_of_type(inner: Rc<Node>, receiver: Rc<Node>) -> Rc<Node> {
+    match receiver.children.clone().first().cloned() {
+        Some(child) => {
+            let el_opt = crate::v1_std_core::node_is_optional_layer(child_type_node(child.clone()));
+            if el_opt.clone() {
+                crate::v1_std_core::wrap_optional_layer(inner.clone())
+            } else {
+                with_optional_cardinality(inner.clone())
+            }
+        }
+        std::option::Option::None => with_optional_cardinality(inner.clone()),
+    }
+}
+
 pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::NoExprData => true,
@@ -1273,7 +1287,7 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::wrap_optional_layer(ib.ty.clone()),
+                    ty: algebra_optional_of_type(ib.ty.clone(), base.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -1978,7 +1992,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::wrap_optional_layer(ib.ty.clone()),
+                    ty: algebra_optional_of_type(ib.ty.clone(), receiver.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
