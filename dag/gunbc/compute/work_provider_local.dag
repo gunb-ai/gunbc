@@ -99,7 +99,7 @@ import gunbc.materialization_store_budgets { materialization_store_durable_famil
 }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
 import gunbc.compute.work_request {
-  work_refusal_detail,
+  work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
@@ -1752,10 +1752,12 @@ fn compute_store_read_decide(lookup: StoreLookup) -> ComputeStoreRead {
           match stored_outcome_decode(text: text) {
             StoredOutcomeUnreadable { reason } => ComputeStoreRefused { detail: join(["a served compute record's outcome is unreadable: ", reason], "") }
             StoredOutcomeFound { ending, identity, document } =>
-              if ending == "succeeded" {
-                ComputeStoreServed { ending: ending, identity: identity, document: document }
-              } else {
-                ComputeStoreRefused { detail: join(["a served compute record ended ", ending, ", and only a success is ever committed"], "") }
+              match work_ending_decode(word: ending) {
+                Present { value: e } => match e {
+                  WorkEndedSucceeded => ComputeStoreServed { ending: ending, identity: identity, document: document }
+                  _ => ComputeStoreRefused { detail: join(["a served compute record ended ", ending, ", and only a success is ever committed"], "") }
+                }
+                Absent => ComputeStoreRefused { detail: join(["a served compute record's ending is not a work ending: ", ending], "") }
               }
           }
       }

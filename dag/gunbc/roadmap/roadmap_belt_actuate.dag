@@ -299,7 +299,7 @@ import gunbc.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
-import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree }
+import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
@@ -8546,7 +8546,7 @@ fn belt_run_claim_through_compute(
     let execution = ValidationExecution {
       validation: validation,
       command: command,
-      exit_code: if ending == "succeeded" { 0 } else { 1 },
+      exit_code: match work_ending_decode(word: ending) { Present { value: e } => match e { WorkEndedSucceeded => 0  WorkEndedFailed => 1  WorkEndedRefusedByInfrastructure => 1  WorkEndedCancelled => 1  WorkEndedOutputMismatch => 1 }  Absent => 1 },
       stdout: document,
       stderr: if host_record_was_written(h: record) { "" } else { host_record_wire(h: record) },
       computation: citation,
@@ -8571,25 +8571,38 @@ fn belt_run_claim_through_compute(
           },
         },
       }
-    } else if ending == "succeeded" {
-      BeltValidationRun {
-        executions: acc.executions |> append(execution),
-        verdict: ValidationPassed {
-          command: if prior == "" { wire } else { join([prior, "; ", wire], "") },
-          oracle_identity: oracle_identity,
-        },
-      }
-    } else if ending == "failed" {
-      BeltValidationRun {
-        executions: acc.executions |> append(execution),
-        verdict: ValidationFailed { command: wire, exit_code: 1, detail: document },
-      }
     } else {
-      BeltValidationRun {
-        executions: acc.executions |> append(execution),
-        verdict: ValidationRefused {
-          cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
-        },
+      match work_ending_decode(word: ending) {
+        Present { value: e } =>
+          match e {
+            WorkEndedSucceeded =>
+              BeltValidationRun {
+                executions: acc.executions |> append(execution),
+                verdict: ValidationPassed {
+                  command: if prior == "" { wire } else { join([prior, "; ", wire], "") },
+                  oracle_identity: oracle_identity,
+                },
+              }
+            WorkEndedFailed =>
+              BeltValidationRun {
+                executions: acc.executions |> append(execution),
+                verdict: ValidationFailed { command: wire, exit_code: 1, detail: document },
+              }
+            _ =>
+              BeltValidationRun {
+                executions: acc.executions |> append(execution),
+                verdict: ValidationRefused {
+                  cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
+                },
+              }
+          }
+        Absent =>
+          BeltValidationRun {
+            executions: acc.executions |> append(execution),
+            verdict: ValidationRefused {
+              cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
+            },
+          }
       }
     }
   }
