@@ -275,7 +275,30 @@ type TypeDeclIndex {
   leaf_owners: Map<String, LeafOwner>
   identities_by_leaf: Map<String, List<String>>
   qualified_names: SymbolIndex
+  file_scopes: Map<String, TypeDeclFileScope>
 }
+
+// THE SCOPE AN OCCURRENCE'S FILE GIVES A BARE NAME: the module's named imports (leaf -> the module
+// it is imported from) and the modules it imports whole. It is the resolver's own binding input,
+// read from the module's import nodes (v1.std.core module_imports), so an unstamped reference is
+// decided by what its declaring scope binds, never by which declaration happens to mint the leaf.
+type TypeDeclFileScope {
+  module_path: String
+  named_imports: Map<String, String>
+  glob_imports: List<String>
+}
+
+// WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE, read from that occurrence's file scope.
+// OccurrenceUnboundInScope is the only arm that admits the kernel mint: the scope neither declares
+// nor imports the leaf and imports no module whole, so nothing the module wrote binds the name.
+// OccurrenceUndecided refuses: no recorded scope for the file, two local declarers, a named import
+// whose module does not declare the leaf here (a re-export this index cannot follow), or a whole
+// import that may bind it.
+type TypeDeclOccurrenceBinding
+  = OccurrenceDeclaredHere { identity: String }
+  | OccurrenceImported { identity: String }
+  | OccurrenceUnboundInScope
+  | OccurrenceUndecided
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
 // `String` and `Int` are kernel spellings (std.types is_kernel_type), and resolve leaves a
@@ -301,7 +324,7 @@ type TypeDeclResolution
   | TypeDeclNotDeclared
 
 fn empty_type_decl_index() -> TypeDeclIndex {
-  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map(), identities_by_leaf: empty_map(), qualified_names: empty_symbol_index() }
+  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map(), identities_by_leaf: empty_map(), qualified_names: empty_symbol_index(), file_scopes: empty_map() }
 }
 
 fn type_decl_identity(owner_module: String, decl_name: String) -> String {
@@ -344,7 +367,8 @@ fn type_decl_index_insert(index: TypeDeclIndex, owner_module: String, decl_name:
     },
     leaf_owners: map_insert(index.leaf_owners, decl_name, type_decl_leaf_owner_after(prior: map_get(index.leaf_owners, decl_name), owner_module: owner_module)),
     identities_by_leaf: map_insert(index.identities_by_leaf, decl_name, type_decl_leaf_identities_with(prior: map_get(index.identities_by_leaf, decl_name), identity: identity)),
-    qualified_names: index.qualified_names
+    qualified_names: index.qualified_names,
+    file_scopes: index.file_scopes
   }
 }
 
@@ -382,6 +406,7 @@ type TypeDeclReferenceRoute
   | RouteDeclaringSpan
   | RouteReferencingModuleDeclarer
   | RouteQualifiedSpelling
+  | RouteReferencingModuleImport
   | RouteKernelMint
   | RouteLeafSpelling
 
@@ -413,12 +438,8 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
           let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
           let referencing_module_identity = match by_spelling {
             TypeDeclLeafAmbiguous { leaf: l } =>
-              if authored == l {
-                match type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) {
-                  Present { value: identity } => Present { value: identity }
-                  Absent => type_decl_kernel_mint_declarer(index: index, leaf: l)
-                }
-              } else { type_decl_qualifier_declarer(index: index, authored: authored) }
+              if authored == l { type_decl_occurrence_identity(index: index, leaf: l, reference: type_expr) }
+              else { type_decl_qualifier_declarer(index: index, authored: authored) }
             TypeDeclResolved { identity: _, decl: _ } => none
             TypeDeclKernelSpellingUndecided { leaf: _ } => none
             TypeDeclNotDeclared => none
@@ -467,11 +488,11 @@ fn type_decl_qualifier_declarer(index: TypeDeclIndex, authored: String) -> Strin
   }
 }
 
-// THE KERNEL MINT'S DECLARER. A bare kernel-mint spelling (`Optional`, what `T?` resolves to) that a
-// module uses without declaring or importing it is the kernel type, and which corpus declaration the
-// kernel type IS is a modeled fact: gunbc.structural_realization_bindings kernel_mint_declaration_rows,
-// the row the pattern side reads through kernel_mint_ownership. A module that declares the leaf itself
-// was answered by type_decl_referencing_module_declarer first; a spelling no row mints, or two rows
+// THE KERNEL MINT'S DECLARER. Which corpus declaration the kernel type IS is a modeled fact
+// (gunbc.structural_realization_bindings kernel_mint_declaration_rows, the row the pattern side reads
+// through kernel_mint_ownership), but that answers WHICH declaration a mint stands for, not WHETHER an
+// occurrence denotes it. So this arm is reached only from type_decl_occurrence_identity, and only when
+// the occurrence's own file scope is OccurrenceUnboundInScope. A spelling no row mints, or two rows
 // mint, stays LeafAmbiguous and refuses. Counted as kernel_mint; interim under
 // referencing_module_declarer_route_dissolves_on.
 fn type_decl_kernel_mint_declarer(index: TypeDeclIndex, leaf: String) -> String? {
@@ -490,27 +511,68 @@ fn type_decl_kernel_mint_declarer(index: TypeDeclIndex, leaf: String) -> String?
 fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String, reference: Node) -> TypeDeclReferenceRoute {
   if authored != leaf { RouteQualifiedSpelling }
   else {
-    match type_decl_referencing_module_declarer(index: index, leaf: leaf, reference: reference) {
-      Present { value: _ } => RouteReferencingModuleDeclarer
-      Absent => RouteKernelMint
+    match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
+      OccurrenceDeclaredHere { identity: _ } => RouteReferencingModuleDeclarer
+      OccurrenceImported { identity: _ } => RouteReferencingModuleImport
+      OccurrenceUnboundInScope => RouteKernelMint
+      OccurrenceUndecided => RouteLeafSpelling
     }
   }
 }
 
-fn type_decl_index_with_qualified_names(index: TypeDeclIndex, qualified_names: SymbolIndex) -> TypeDeclIndex {
-  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names }
+// THE IDENTITY A BARE AMBIGUOUS LEAF DENOTES AT THIS OCCURRENCE, or none (it stays LeafAmbiguous and
+// refuses). Every arm is decided by the occurrence's scope; the kernel mint is consulted only after
+// the scope establishes that nothing the module wrote binds the leaf.
+fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
+  match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
+    OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
+    OccurrenceImported { identity: identity } => Present { value: identity }
+    OccurrenceUnboundInScope => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
+    OccurrenceUndecided => none
+  }
 }
 
-data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
+fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: Node) -> TypeDeclOccurrenceBinding {
+  match map_get(index.file_scopes, reference.span.file) {
+    Absent => OccurrenceUndecided
+    Present { value: scope } =>
+      let local = type_decl_local_declarers(index: index, leaf: leaf, reference: reference)
+      let local_count = local |> fold(init: 0, f: (n, _identity) => n + 1)
+      if local_count == 1 { local |> fold(init: OccurrenceUndecided, f: (acc, identity) => OccurrenceDeclaredHere { identity: identity }) }
+      else if local_count > 1 { OccurrenceUndecided }
+      else {
+        match map_get(scope.named_imports, leaf) {
+          Present { value: from_module } =>
+            let imported = type_decl_identity(owner_module: from_module, decl_name: leaf)
+            match map_get(index.by_identity, imported) {
+              Present { value: _ } => OccurrenceImported { identity: imported }
+              Absent => OccurrenceUndecided
+            }
+          Absent =>
+            let glob_count = scope.glob_imports |> fold(init: 0, f: (n, _m) => n + 1)
+            if glob_count == 0 { OccurrenceUnboundInScope } else { OccurrenceUndecided }
+        }
+      }
+  }
+}
 
-fn type_decl_referencing_module_declarer(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
-  let local = type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
+fn type_decl_index_with_qualified_names(index: TypeDeclIndex, qualified_names: SymbolIndex) -> TypeDeclIndex {
+  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names, file_scopes: index.file_scopes }
+}
+
+fn type_decl_index_with_file_scope(index: TypeDeclIndex, file: String, scope: TypeDeclFileScope) -> TypeDeclIndex {
+  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: index.qualified_names, file_scopes: map_insert(index.file_scopes, file, scope) }
+}
+
+data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer, RouteReferencingModuleImport, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, referencing_module_import, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then type_decl_occurrence_binding and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
+
+fn type_decl_local_declarers(index: TypeDeclIndex, leaf: String, reference: Node) -> List<String> {
+  type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
     match map_get(index.by_identity, identity) {
       Present { value: decl } => decl.span.file == reference.span.file
       Absent => false
     }
   )
-  if (local |> fold(init: 0, f: (n, _identity) => n + 1)) == 1 { local |> fold(init: none, f: (acc, identity) => Present { value: identity }) } else { none }
 }
 
 fn resolve_type_decl_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeDeclResolution {
@@ -524,6 +586,7 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
     RouteDeclaringSpan => "declaring_span"
     RouteReferencingModuleDeclarer => "referencing_module_declarer"
     RouteQualifiedSpelling => "qualified_spelling"
+    RouteReferencingModuleImport => "referencing_module_import"
     RouteKernelMint => "kernel_mint"
     RouteLeafSpelling => "leaf_spelling"
   }

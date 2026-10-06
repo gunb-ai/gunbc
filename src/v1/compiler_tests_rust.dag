@@ -1819,7 +1819,7 @@ fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String 
     "    // A QUALIFIED REFERENCE IS NOT DECIDED BY THE LOCAL DECLARER. hom.local declares its own Slot\n",
     "    // and ALSO names no.such.module.Slot, which resolve cannot bind, so the reference reaches the\n",
     "    // emitter unstamped while two modules declare Slot. The referencing-module arm\n",
-    "    // (v1.compiler.infer_emit_info type_decl_referencing_module_declarer) would pick the LOCAL Slot:\n",
+    "    // (v1.compiler.infer_emit_info type_decl_occurrence_binding) would pick the LOCAL Slot:\n",
     "    // the wrong-declarer class itself. It is admitted only for a bare spelling, so this refuses.\n",
     "    // THE CONTROL is the same module without the second declarer: the spelling names a sole\n",
     "    // declarer, and nothing refuses.\n",

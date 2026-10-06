@@ -191,7 +191,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names, type_decl_index_with_file_scope, TypeDeclFileScope
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -17228,6 +17228,21 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 // The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
 // is built once over every module (build_symbol_index_census) and every module's type environment
 // carries the same one, so the first module's is the closure's.
+// THE SCOPE ONE MODULE'S FILE GIVES A BARE NAME, read from its import nodes: what
+// v1.compiler.infer_emit_info type_decl_occurrence_binding decides an unstamped reference by.
+fn type_decl_file_scope_of(typed_module: TypedModule) -> TypeDeclFileScope {
+  let si = typed_module.type_env.source_indices
+  let imports = module_imports(n: typed_module.module)
+  TypeDeclFileScope {
+    module_path: authored_name_at(source_indices: si, node: typed_module.module),
+    named_imports: imports |> filter(imp => !import_is_all(n: imp)) |> fold(init: empty_map(), f: (acc, imp) =>
+      let from_module = import_module_path_at(imp: imp, source_indices: si)
+      import_specific_names_at(n: imp, source_indices: si) |> fold(init: acc, f: (inner, name) => map_insert(inner, name, from_module))
+    ),
+    glob_imports: imports |> filter(imp => import_is_all(n: imp)) |> map(imp => import_module_path_at(imp: imp, source_indices: si))
+  }
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
   let qualified_names = match modules |> first {
     Present { value: m } => m.type_env.symbol_index
@@ -17250,7 +17265,10 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  let scoped_type_decls = modules |> fold(init: built_raw.type_decl_items, f: (index, typed_module) =>
+    type_decl_index_with_file_scope(index: index, file: typed_module.module.span.file, scope: type_decl_file_scope_of(typed_module: typed_module))
+  )
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: scoped_type_decls, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)

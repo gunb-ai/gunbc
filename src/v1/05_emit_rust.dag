@@ -622,8 +622,8 @@ fn declaration_owns_host_option(module_path: String, decl_name: String) -> Bool 
 // unstamped) is decided by WHICH declaration it is, read through the join every emitter reader of a
 // declaration node uses (v1.compiler.infer_env declaration_ref_of_declaration_node: the declaring span
 // against the corpus symbol index), so a coproduct another module declares as `Optional` is never read
-// as the host option. Only a reference that is neither keeps the spelling rule (the kernel mint's name,
-// applied).
+// as the host option. A reference that is neither is not the host option: its spelling establishes
+// nothing about which declaration it denotes, so no leaf rule stands in for the declaration.
 fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   match n.declaration {
     Present { value: d } =>
@@ -636,7 +636,7 @@ fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineInd
       let declared = if is_declaration_structure { declaration_ref_of_declaration_node(decl: n, source_indices: source_indices, env: env) } else { none }
       match declared {
         Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
-        Absent => authored_name_at(source_indices: source_indices, node: n) == kernel_optional_mint_name && n.children |> count > 0
+        Absent => false
       }
   }
 }
