@@ -13,8 +13,8 @@ import extdeps.openrouter.openrouter {
   openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
   CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day, openrouter_free_models_per_minute,
   EffortHigh, EffortMedium,
-  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent,
-  openrouter_rate_limit_wire, openrouter_rate_limit_hints,
+  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread,
+  openrouter_rate_limit_wire, openrouter_rate_limit_hints, HeaderDumpRead, HeaderDumpUnread,
 }
 import gunbc.harness.harness_reasoning_wire {
   NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
@@ -531,10 +531,10 @@ data w_429_body: String = "{\"error\":{\"code\":429,\"message\":\"Rate limit exc
 data w_429_headers: String = "HTTP/2 429\r\ncontent-type: application/json\r\nretry-after: 30\r\nx-ratelimit-limit: 20\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 1791265800000\r\n\r\n"
 
 test fn a_429_decodes_to_the_typed_refusal_with_the_upstreams_retry_hints() -> Bool {
-  match openrouter_decode_rate_limited(body: w_429_body, header_dump: w_429_headers) {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: w_429_headers }) {
     Absent => false
     Present { value: r } =>
-      (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false })
+      (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
         && (match r.hints.reset { Present { value: v } => v == "1791265800000"  Absent => false })
         && (match r.hints.remaining { Present { value: v } => v == "0"  Absent => false })
         && (match r.provider_code { Absent => true  Present { value: _ } => false })
@@ -547,29 +547,43 @@ test fn a_429_decodes_to_the_typed_refusal_with_the_upstreams_retry_hints() -> B
 // A RETRY-AFTER THAT IS NOT DELTA-SECONDS IS CARRIED AS TEXT, never read as a number it is not; and a
 // refusal with no hint headers is still a typed refusal, saying so. The LAST block of a dump is the answer.
 test fn a_retry_after_that_is_not_seconds_and_a_missing_hint_are_stated_not_guessed() -> Bool {
-  (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "HTTP/2 429\r\nretry-after: Wed, 21 Oct 2026 07:28:00 GMT\r\n\r\n") {
-    Present { value: r } => (match r.hints.retry_after { RetryAfterUnparsed { text: t } => t.contains("21 Oct 2026")  RetryAfterSeconds { seconds: _ } => false  RetryAfterAbsent => false })
+  (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/2 429\r\nretry-after: Wed, 21 Oct 2026 07:28:00 GMT\r\n\r\n" }) {
+    Present { value: r } => (match r.hints.retry_after { RetryAfterUnparsed { text: t } => t.contains("21 Oct 2026")  RetryAfterSeconds { seconds: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
     Absent => false
   })
-    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nX-RateLimit-Reset: 5\r\n\r\n") {
-      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 12  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nX-RateLimit-Reset: 5\r\n\r\n" }) {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 12  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
         && (match r.hints.reset { Present { value: v } => v == "5"  Absent => false })
       Absent => false
     })
-    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "") {
-      Present { value: r } => (match r.hints.retry_after { RetryAfterAbsent => true  RetryAfterSeconds { seconds: _ } => false  RetryAfterUnparsed { text: _ } => false }) && openrouter_rate_limit_wire(r: r).contains("no Retry-After")
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "" }) {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterAbsent => true  RetryAfterSeconds { seconds: _ } => false  RetryAfterUnparsed { text: _ } => false  RetryAfterUnread { cause: _ } => false }) && openrouter_rate_limit_wire(r: r).contains("no Retry-After")
       Absent => false
     })
-    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n") {
-      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 7  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n" }) {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 7  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
       Absent => false
     })
+}
+
+// RED: a header dump that could not be read is NOT "no Retry-After". The upstream may have sent a hint that
+// this process failed to read, so the refusal says the hint is unknown and why, and carries no reset or counters.
+test fn an_unread_header_dump_is_stated_unknown_not_reported_as_no_retry_after() -> Bool {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpUnread { cause: "the dump file is absent" }) {
+    Absent => false
+    Present { value: r } =>
+      (match r.hints.retry_after { RetryAfterUnread { cause: c } => c.contains("dump file is absent")  RetryAfterAbsent => false  RetryAfterSeconds { seconds: _ } => false  RetryAfterUnparsed { text: _ } => false })
+        && (match r.hints.reset { Absent => true  Present { value: _ } => false })
+        && openrouter_rate_limit_wire(r: r).contains("Retry-After unknown")
+        && !openrouter_rate_limit_wire(r: r).contains("no Retry-After")
+        && openrouter_rate_limit_wire(r: r).contains("NOT retried")
+  }
 }
 
 // RED: delay-seconds is 1*DIGIT, and the integer parser would accept a sign, so a signed, fractional or
 // unit-suffixed value is carried as text and never read as a number of seconds.
 fn w_retry_after_of(value: String) -> OpenRouterRetryAfter? {
-  match openrouter_decode_rate_limited(body: w_429_body, header_dump: join(["HTTP/2 429\r\nretry-after: ", value, "\r\n\r\n"], "")) {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: join(["HTTP/2 429\r\nretry-after: ", value, "\r\n\r\n"], "") }) {
     Present { value: r } => Present { value: r.hints.retry_after }
     Absent => none
   }
@@ -580,6 +594,7 @@ fn w_is_unparsed(r: OpenRouterRetryAfter?) -> Bool {
     Present { value: RetryAfterUnparsed { text: _ } } => true
     Present { value: RetryAfterSeconds { seconds: _ } } => false
     Present { value: RetryAfterAbsent } => false
+    Present { value: RetryAfterUnread { cause: _ } } => false
     Absent => false
   }
 }
@@ -596,17 +611,17 @@ test fn a_signed_fractional_or_suffixed_retry_after_is_not_read_as_seconds() -> 
 // RED: a 402, or any body that is not a 429, is NOT a rate-limit refusal -- it keeps its own typed error
 // (the 402 limit_source decode above), so a paid-model refusal is never read as a wait-and-retry.
 test fn only_a_429_is_a_rate_limit_refusal() -> Bool {
-  (match openrouter_decode_rate_limited(body: "{\"error\":{\"code\":402,\"message\":\"x\",\"metadata\":{\"limit_source\":\"openrouter_key_limit\"}}}", header_dump: w_429_headers) {
+  (match openrouter_decode_rate_limited(body: "{\"error\":{\"code\":402,\"message\":\"x\",\"metadata\":{\"limit_source\":\"openrouter_key_limit\"}}}", header_dump: HeaderDumpRead { text: w_429_headers }) {
     Absent => true
     Present { value: _ } => false
   })
-    && (match openrouter_decode_rate_limited(body: "not json", header_dump: w_429_headers) { Absent => true  Present { value: _ } => false })
+    && (match openrouter_decode_rate_limited(body: "not json", header_dump: HeaderDumpRead { text: w_429_headers }) { Absent => true  Present { value: _ } => false })
 }
 
 // THE TURN ENDS ON IT. It is a terminal outcome of the turn -- there is no retry arm in the loop to take --
 // and a refusal exit that says it was not retried and carries the hint into the operator's line.
 test fn a_hosted_rate_limit_ends_the_turn_as_a_refusal_naming_the_hint_and_no_retry() -> Bool {
-  match openrouter_decode_rate_limited(body: w_429_body, header_dump: w_429_headers) {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: w_429_headers }) {
     Absent => false
     Present { value: r } => {
       let o = TurnHostedRateLimited { refusal: r, steps_taken: 3 }

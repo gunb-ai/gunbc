@@ -19,7 +19,7 @@ import gunbc.harness.harness_hosted_route {
   HostedRoundLease,
 }
 import extdeps.openrouter.openrouter {
-  OpenRouterRateLimitRefusal, openrouter_decode_rate_limited, openrouter_rate_limit_wire,
+  OpenRouterRateLimitRefusal, OpenRouterHeaderDump, HeaderDumpRead, HeaderDumpUnread, openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
 import gunbc.harness.harness_seat {
   HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
@@ -1271,7 +1271,7 @@ fn harness_send_round(
 type HarnessPostOutcome {
   body: String
   success: Bool
-  headers: String
+  headers: OpenRouterHeaderDump?
 }
 
 // A 429 FROM A HOSTED UPSTREAM IS A TYPED REFUSAL WITH THE UPSTREAM'S OWN RETRY HINTS, decoded from the
@@ -1279,7 +1279,14 @@ type HarnessPostOutcome {
 fn harness_hosted_rate_limited(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> OpenRouterRateLimitRefusal? {
   match config.backend_access {
     BackendAdmittedBySeat => none
-    BackendAdmittedByHostedQuota { header_file: _, quota: _ } => openrouter_decode_rate_limited(body: posted.body, header_dump: posted.headers)
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } =>
+      openrouter_decode_rate_limited(
+        body: posted.body,
+        header_dump: match posted.headers {
+          Present { value: d } => d
+          Absent => HeaderDumpUnread { cause: "no response header dump was taken for this request" }
+        },
+      )
   }
 }
 
@@ -1295,7 +1302,7 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: "" }
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none }
     }
     Present { value: hf } => {
       let posted = http.Client.PostJsonFromFileWithHeaderFile(
@@ -1306,7 +1313,11 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
       let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: if dump.success { dump.content } else { "" } }
+      HarnessPostOutcome {
+        body: posted.body,
+        success: posted.success,
+        headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+      }
     }
   }
 }

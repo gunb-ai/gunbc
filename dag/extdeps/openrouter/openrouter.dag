@@ -414,6 +414,14 @@ type OpenRouterRetryAfter
   = RetryAfterSeconds { seconds: Nat }
   | RetryAfterUnparsed { text: String }
   | RetryAfterAbsent
+  | RetryAfterUnread { cause: String }
+
+// THE HEADER DUMP IS READ OR IT IS NOT, AND THE TWO ARE DIFFERENT FACTS. A dump that was read and carries no
+// Retry-After says the upstream gave no hint; a dump that could not be read says nothing about whether it did.
+// Reading a failed read as "no hint" would invent an absence the caller then acts on, so the failure is carried.
+type OpenRouterHeaderDump
+  = HeaderDumpRead { text: String }
+  | HeaderDumpUnread { cause: String }
 
 type OpenRouterRateLimitHints {
   retry_after: OpenRouterRetryAfter
@@ -496,7 +504,14 @@ fn openrouter_retry_after_from_digits(text: String) -> OpenRouterRetryAfter {
   }
 }
 
-fn openrouter_rate_limit_hints(dump: String) -> OpenRouterRateLimitHints {
+fn openrouter_rate_limit_hints(dump: OpenRouterHeaderDump) -> OpenRouterRateLimitHints {
+  match dump {
+    HeaderDumpUnread { cause: c } => OpenRouterRateLimitHints { retry_after: RetryAfterUnread { cause: c }, reset: none, limit: none, remaining: none }
+    HeaderDumpRead { text: t } => openrouter_rate_limit_hints_of_text(dump: t)
+  }
+}
+
+fn openrouter_rate_limit_hints_of_text(dump: String) -> OpenRouterRateLimitHints {
   let scan = fold(split(s: dump, delimiter: "\n"), init: HeaderScan { retry_after: none, reset: none, limit: none, remaining: none }, f: (acc, line) =>
     openrouter_header_scan_line(acc: acc, line: line))
   OpenRouterRateLimitHints {
@@ -515,7 +530,7 @@ type OpenRouterRateLimitRefusal {
   hints: OpenRouterRateLimitHints
 }
 
-fn openrouter_decode_rate_limited(body: String, header_dump: String) -> OpenRouterRateLimitRefusal? {
+fn openrouter_decode_rate_limited(body: String, header_dump: OpenRouterHeaderDump) -> OpenRouterRateLimitRefusal? {
   match openrouter_decode_error_body(body: body) {
     OpenRouterErrorUndecodable { cause: _ } => none
     OpenRouterErrorDecoded { error: e } =>
@@ -533,6 +548,7 @@ fn openrouter_retry_after_wire(r: OpenRouterRetryAfter) -> String {
     RetryAfterSeconds { seconds: n } => join(["Retry-After ", to_string(n), " s"], "")
     RetryAfterUnparsed { text: t } => join(["Retry-After '", t, "' (not delta-seconds; not interpreted)"], "")
     RetryAfterAbsent => "no Retry-After"
+    RetryAfterUnread { cause: c } => join(["Retry-After unknown: the response headers could not be read (", c, ")"], "")
   }
 }
 
