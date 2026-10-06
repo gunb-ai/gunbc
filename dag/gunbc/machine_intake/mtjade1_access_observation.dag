@@ -719,13 +719,17 @@ data mtjade1_managed_bmc_secret_standing: JadeManagedBmcSecretStanding = SecretL
   ref: mtjade1_bmc_gunbc_secret_ref,
 }
 
-// J3 VIRTUAL-MEDIA RESIDUE ON THIS UNIT'S BASELINE. Authored by this lane on 2026-10-06: not factory
-// state (before_general was empty) and not prior-life. The stale RMedia general path is left in
-// place (eager-gull-22: no more writes). J2 archive and later converge read this standing so they
-// never treat 192.168.1.188:/srv/bmc as factory or as someone else's share.
+// J3 VIRTUAL-MEDIA RESIDUE ON THIS UNIT'S BASELINE. Origin is a JOIN of three committed files, not a
+// lane name: before_general.json (empty share), SEQUENCE.txt (the incident receipt), and the restore
+// GET (the sticky path). Eager-gull-22: leave the stale path; no more writes. J2 archive and later
+// converge read this standing so they never treat a nonempty GET as factory empty.
 data mtjade1_j3_media_incident_receipt_path: NonEmptyStr = "artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z/SEQUENCE.txt"
 
 data mtjade1_j3_media_incident_receipt_sha256: NonEmptyStr = "e272c4bbba2f7d2daafb696c01504867f1e95b3a53bec901e1b8fed1f06f2e7c"
+
+data mtjade1_j3_before_general_path: NonEmptyStr = "artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z/before_general.json"
+
+data mtjade1_j3_before_general_sha256: NonEmptyStr = "3ecfab34e466d2703363cd1b3627ff67f56761b3ccc593e9ae600e878e3eab43"
 
 data mtjade1_j3_restore_get_path: NonEmptyStr = "artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z/restore_get.response.json"
 
@@ -739,20 +743,30 @@ data mtjade1_j3_restore_put_response_path: NonEmptyStr = "artifacts/bmc/mtjade1-
 
 data mtjade1_j3_restore_put_response_sha256: NonEmptyStr = "3ecfab34e466d2703363cd1b3627ff67f56761b3ccc593e9ae600e878e3eab43"
 
+type MediaGeneralSnapshot {
+  server_address: String
+  source_path: String
+  share_type: String
+  mount_cd: Int
+  remote_media_support: Int
+}
+
 type RmediaPathOrigin
-  = AuthoredByThisLane { date: NonEmptyStr, lane: NonEmptyStr }
-  | FactoryEmpty
+  = StickyAfterEmptyBefore {
+      before_path: NonEmptyStr
+      before_sha256: NonEmptyStr
+      incident_receipt_path: NonEmptyStr
+      incident_receipt_sha256: NonEmptyStr
+    }
+  | FactoryEmpty {
+      before_path: NonEmptyStr
+      before_sha256: NonEmptyStr
+    }
 
 type RmediaGeneralResidue {
   subject: NonEmptyStr
   origin: RmediaPathOrigin
-  server_address: NonEmptyStr
-  source_path: NonEmptyStr
-  share_type: NonEmptyStr
-  mount_cd: Int
-  remote_media_support: Int
-  incident_receipt_path: NonEmptyStr
-  incident_receipt_sha256: NonEmptyStr
+  snapshot: MediaGeneralSnapshot
   get_capture_path: NonEmptyStr
   get_capture_sha256: NonEmptyStr
 }
@@ -762,10 +776,17 @@ type RmediaGeneralResidueGap
   | ResidueDigestMismatch { expected: NonEmptyStr, observed: String }
   | ResidueJsonUnreadable { gap: String }
   | ResidueFieldUnread { field: NonEmptyStr, cause: String }
+  | ResidueBeforeNotEmpty { before_server: String }
+  | ResidueManagerUnread { cause: String }
+  | ResiduePutEchoOrPersistMismatch { cause: String }
 
 type RmediaGeneralResidueStanding
   = RmediaGeneralResidueObserved { residue: RmediaGeneralResidue }
   | RmediaGeneralResidueRefused { gap: RmediaGeneralResidueGap }
+
+type MediaGeneralSnapshotRead
+  = MediaGeneralSnapshotHeld { snapshot: MediaGeneralSnapshot }
+  | MediaGeneralSnapshotRefused { gap: RmediaGeneralResidueGap }
 
 fn residue_str(obj: JsonValue, key: String) -> JsonFieldRead<String> {
   json_field_string(obj: obj, key: key)
@@ -775,88 +796,12 @@ fn residue_int(obj: JsonValue, key: String) -> JsonFieldRead<Int> {
   json_field_int(obj: obj, key: key)
 }
 
-fn decode_rmedia_general_get(content: String, expected_sha256: NonEmptyStr) -> RmediaGeneralResidueStanding {
-  let observed = sha256_hex_of_text(text: content)
-  if observed != (expected_sha256 as String) {
-    RmediaGeneralResidueRefused { gap: ResidueDigestMismatch { expected: expected_sha256, observed: observed } }
-  } else {
-    match parse_json_document(s: content) {
-      JsonDocumentUnreadable { gap: g } => RmediaGeneralResidueRefused { gap: ResidueJsonUnreadable { gap: json_document_gap_text(gap: g) } }
-      JsonDocumentParsed { value: root } => {
-        let server = residue_str(obj: root, key: "cd_remote_server_address")
-        match json_field_value(r: server) {
-          Absent => RmediaGeneralResidueRefused { gap: ResidueFieldUnread { field: "cd_remote_server_address", cause: read_cause(r: server) } }
-          Present { value: addr } =>
-            if addr == "" {
-              RmediaGeneralResidueRefused { gap: ResidueFieldUnread { field: "cd_remote_server_address", cause: "empty" } }
-            } else {
-              let path = residue_str(obj: root, key: "cd_remote_source_path")
-              match json_field_value(r: path) {
-                Absent => RmediaGeneralResidueRefused { gap: ResidueFieldUnread { field: "cd_remote_source_path", cause: read_cause(r: path) } }
-                Present { value: src } => {
-                  let kind = residue_str(obj: root, key: "cd_remote_share_type")
-                  match json_field_value(r: kind) {
-                    Absent => RmediaGeneralResidueRefused { gap: ResidueFieldUnread { field: "cd_remote_share_type", cause: read_cause(r: kind) } }
-                    Present { value: share } => {
-                      let mount = residue_int(obj: root, key: "mount_cd")
-                      match json_field_value(r: mount) {
-                        Absent => RmediaGeneralResidueRefused { gap: ResidueFieldUnread { field: "mount_cd", cause: read_cause(r: mount) } }
-                        Present { value: m } => {
-                          let remote = residue_int(obj: root, key: "remote_media_support")
-                          match json_field_value(r: remote) {
-                            Absent => RmediaGeneralResidueRefused { gap: ResidueFieldUnread { field: "remote_media_support", cause: read_cause(r: remote) } }
-                            Present { value: r } =>
-                              RmediaGeneralResidueObserved {
-                                residue: RmediaGeneralResidue {
-                                  subject: "mtjade1",
-                                  origin: AuthoredByThisLane { date: "2026-10-06", lane: "gentle-carp-328" },
-                                  server_address: addr as NonEmptyStr,
-                                  source_path: src as NonEmptyStr,
-                                  share_type: share as NonEmptyStr,
-                                  mount_cd: m,
-                                  remote_media_support: r,
-                                  incident_receipt_path: mtjade1_j3_media_incident_receipt_path,
-                                  incident_receipt_sha256: mtjade1_j3_media_incident_receipt_sha256,
-                                  get_capture_path: mtjade1_j3_restore_get_path,
-                                  get_capture_sha256: expected_sha256,
-                                },
-                              }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-        }
-      }
-    }
+fn media_general_json_text(content: String) -> String {
+  match split(s: content, delimiter: "\n").first() {
+    Absent => content
+    Present { value: line } => line
   }
 }
-
-fn read_mtjade1_rmedia_general_residue() -> RmediaGeneralResidueStanding uses fs: std.resources.Filesystem {
-  let read = Filesystem.Read(path: mtjade1_j3_restore_get_path as String)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: e } => RmediaGeneralResidueRefused { gap: ResidueCaptureUnreadable { error: e } }
-    FilesystemReadSucceeded { content: text } => decode_rmedia_general_get(content: text, expected_sha256: mtjade1_j3_restore_get_sha256)
-  }
-}
-
-// OBSERVED 2.11.104000 BEHAVIOR OF PUT /api/settings/media/general: the controller echoed the
-// factory-empty body (HTTP 200) and the subsequent GET still carried 192.168.1.188:/srv/bmc.
-// Evidence is the one approved restore PUT plus its GET, not a MegaRacVirtualMediaAttach receipt.
-type MediaGeneralPutApplyStanding
-  = PutAcknowledgedNotApplied {
-      firmware_wire: NonEmptyStr
-      request_path: NonEmptyStr
-      request_sha256: NonEmptyStr
-      response_path: NonEmptyStr
-      response_sha256: NonEmptyStr
-      get_path: NonEmptyStr
-      get_sha256: NonEmptyStr
-    }
-  | PutApplyUnread { gap: RmediaGeneralResidueGap }
 
 fn digest_held(content: String, expected: NonEmptyStr) -> RmediaGeneralResidueGap? {
   let observed = sha256_hex_of_text(text: content)
@@ -867,54 +812,242 @@ fn digest_held(content: String, expected: NonEmptyStr) -> RmediaGeneralResidueGa
   }
 }
 
-fn request_server_empty(content: String) -> Bool {
-  match parse_json_document(s: content) {
-    JsonDocumentUnreadable { gap: _ } => false
-    JsonDocumentParsed { value: root } =>
-      match json_field_value(r: json_field_string(obj: root, key: "cd_remote_server_address")) {
-        Absent => false
-        Present { value: addr } => addr == ""
+fn decode_media_general_snapshot(content: String, expected_sha256: NonEmptyStr) -> MediaGeneralSnapshotRead {
+  match digest_held(content: content, expected: expected_sha256) {
+    Present { value: g } => MediaGeneralSnapshotRefused { gap: g }
+    Absent =>
+      match parse_json_document(s: media_general_json_text(content: content)) {
+        JsonDocumentUnreadable { gap: g } => MediaGeneralSnapshotRefused { gap: ResidueJsonUnreadable { gap: json_document_gap_text(gap: g) } }
+        JsonDocumentParsed { value: root } => {
+          let server = residue_str(obj: root, key: "cd_remote_server_address")
+          match json_field_value(r: server) {
+            Absent => MediaGeneralSnapshotRefused { gap: ResidueFieldUnread { field: "cd_remote_server_address", cause: read_cause(r: server) } }
+            Present { value: addr } => {
+              let path = residue_str(obj: root, key: "cd_remote_source_path")
+              match json_field_value(r: path) {
+                Absent => MediaGeneralSnapshotRefused { gap: ResidueFieldUnread { field: "cd_remote_source_path", cause: read_cause(r: path) } }
+                Present { value: src } => {
+                  let kind = residue_str(obj: root, key: "cd_remote_share_type")
+                  match json_field_value(r: kind) {
+                    Absent => MediaGeneralSnapshotRefused { gap: ResidueFieldUnread { field: "cd_remote_share_type", cause: read_cause(r: kind) } }
+                    Present { value: share } => {
+                      let mount = residue_int(obj: root, key: "mount_cd")
+                      match json_field_value(r: mount) {
+                        Absent => MediaGeneralSnapshotRefused { gap: ResidueFieldUnread { field: "mount_cd", cause: read_cause(r: mount) } }
+                        Present { value: m } => {
+                          let remote = residue_int(obj: root, key: "remote_media_support")
+                          match json_field_value(r: remote) {
+                            Absent => MediaGeneralSnapshotRefused { gap: ResidueFieldUnread { field: "remote_media_support", cause: read_cause(r: remote) } }
+                            Present { value: r } =>
+                              MediaGeneralSnapshotHeld {
+                                snapshot: MediaGeneralSnapshot {
+                                  server_address: addr,
+                                  source_path: src,
+                                  share_type: share,
+                                  mount_cd: m,
+                                  remote_media_support: r,
+                                },
+                              }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn decode_rmedia_general_residue(
+  before_content: String,
+  before_sha256: NonEmptyStr,
+  get_content: String,
+  get_sha256: NonEmptyStr,
+  sequence_content: String,
+  sequence_sha256: NonEmptyStr,
+  before_path: NonEmptyStr,
+  get_path: NonEmptyStr,
+  incident_path: NonEmptyStr,
+) -> RmediaGeneralResidueStanding {
+  match digest_held(content: sequence_content, expected: sequence_sha256) {
+    Present { value: g } => RmediaGeneralResidueRefused { gap: g }
+    Absent =>
+      match decode_media_general_snapshot(content: before_content, expected_sha256: before_sha256) {
+        MediaGeneralSnapshotRefused { gap: g } => RmediaGeneralResidueRefused { gap: g }
+        MediaGeneralSnapshotHeld { snapshot: before } =>
+          match decode_media_general_snapshot(content: get_content, expected_sha256: get_sha256) {
+            MediaGeneralSnapshotRefused { gap: g } => RmediaGeneralResidueRefused { gap: g }
+            MediaGeneralSnapshotHeld { snapshot: get } =>
+              if before.server_address != "" {
+                RmediaGeneralResidueRefused { gap: ResidueBeforeNotEmpty { before_server: before.server_address } }
+              } else {
+                RmediaGeneralResidueObserved {
+                  residue: RmediaGeneralResidue {
+                    subject: "mtjade1",
+                    origin:
+                      if get.server_address == "" {
+                        FactoryEmpty { before_path: before_path, before_sha256: before_sha256 }
+                      } else {
+                        StickyAfterEmptyBefore {
+                          before_path: before_path,
+                          before_sha256: before_sha256,
+                          incident_receipt_path: incident_path,
+                          incident_receipt_sha256: sequence_sha256,
+                        }
+                      },
+                    snapshot: get,
+                    get_capture_path: get_path,
+                    get_capture_sha256: get_sha256,
+                  },
+                }
+              }
+          }
+      }
+  }
+}
+
+fn read_mtjade1_rmedia_general_residue() -> RmediaGeneralResidueStanding uses fs: std.resources.Filesystem {
+  let before_read = Filesystem.Read(path: mtjade1_j3_before_general_path as String)
+  match filesystem_read_outcome(content: before_read.content, success: before_read.success, error: before_read.error) {
+    FilesystemReadRefused { error: e } => RmediaGeneralResidueRefused { gap: ResidueCaptureUnreadable { error: e } }
+    FilesystemReadSucceeded { content: before_text } => {
+      let get_read = Filesystem.Read(path: mtjade1_j3_restore_get_path as String)
+      match filesystem_read_outcome(content: get_read.content, success: get_read.success, error: get_read.error) {
+        FilesystemReadRefused { error: e } => RmediaGeneralResidueRefused { gap: ResidueCaptureUnreadable { error: e } }
+        FilesystemReadSucceeded { content: get_text } => {
+          let seq_read = Filesystem.Read(path: mtjade1_j3_media_incident_receipt_path as String)
+          match filesystem_read_outcome(content: seq_read.content, success: seq_read.success, error: seq_read.error) {
+            FilesystemReadRefused { error: e } => RmediaGeneralResidueRefused { gap: ResidueCaptureUnreadable { error: e } }
+            FilesystemReadSucceeded { content: seq_text } =>
+              decode_rmedia_general_residue(
+                before_content: before_text,
+                before_sha256: mtjade1_j3_before_general_sha256,
+                get_content: get_text,
+                get_sha256: mtjade1_j3_restore_get_sha256,
+                sequence_content: seq_text,
+                sequence_sha256: mtjade1_j3_media_incident_receipt_sha256,
+                before_path: mtjade1_j3_before_general_path,
+                get_path: mtjade1_j3_restore_get_path,
+                incident_path: mtjade1_j3_media_incident_receipt_path,
+              )
+          }
+        }
+      }
+    }
+  }
+}
+
+// PUT /api/settings/media/general: the standing is echo-versus-persist, not a named share. Firmware
+// is the Manager capture's FirmwareVersion. Evidence is the restore PUT request, its echoed
+// response, and the GET; not a MegaRacVirtualMediaAttach receipt.
+type MediaGeneralPutApplyStanding
+  = PutAcknowledgedNotApplied {
+      firmware_wire: NonEmptyStr
+      requested: MediaGeneralSnapshot
+      persisted: MediaGeneralSnapshot
+      request_path: NonEmptyStr
+      request_sha256: NonEmptyStr
+      response_path: NonEmptyStr
+      response_sha256: NonEmptyStr
+      get_path: NonEmptyStr
+      get_sha256: NonEmptyStr
+    }
+  | PutApplyUnread { gap: RmediaGeneralResidueGap }
+
+fn put_apply_standing_of(
+  firmware_wire: NonEmptyStr,
+  requested: MediaGeneralSnapshot,
+  echoed: MediaGeneralSnapshot,
+  persisted: MediaGeneralSnapshot,
+  request_path: NonEmptyStr,
+  request_sha256: NonEmptyStr,
+  response_path: NonEmptyStr,
+  response_sha256: NonEmptyStr,
+  get_path: NonEmptyStr,
+  get_sha256: NonEmptyStr,
+) -> MediaGeneralPutApplyStanding {
+  if echoed.server_address != requested.server_address || echoed.source_path != requested.source_path {
+    PutApplyUnread { gap: ResiduePutEchoOrPersistMismatch { cause: "PUT response did not echo the request share" } }
+  } else {
+    if persisted.server_address == requested.server_address && persisted.source_path == requested.source_path {
+      PutApplyUnread { gap: ResiduePutEchoOrPersistMismatch { cause: "GET matched the request share, so persist was not refused" } }
+    } else {
+      PutAcknowledgedNotApplied {
+        firmware_wire: firmware_wire,
+        requested: requested,
+        persisted: persisted,
+        request_path: request_path,
+        request_sha256: request_sha256,
+        response_path: response_path,
+        response_sha256: response_sha256,
+        get_path: get_path,
+        get_sha256: get_sha256,
+      }
+    }
+  }
+}
+
+fn firmware_wire_of_current_manager(read: CurrentManagerRead) -> NonEmptyStr? {
+  match read.identity.decoded {
+    RecordedManagerRefused { gap: g } => none
+    RecordedManagerDecoded { observation: o } =>
+      if o.firmware_version == "" {
+        none
+      } else {
+        Present { value: o.firmware_version as NonEmptyStr }
       }
   }
 }
 
 fn read_mtjade1_media_general_put_standing() -> MediaGeneralPutApplyStanding uses fs: std.resources.Filesystem {
-  let req = Filesystem.Read(path: mtjade1_j3_restore_put_request_path as String)
-  match filesystem_read_outcome(content: req.content, success: req.success, error: req.error) {
-    FilesystemReadRefused { error: e } => PutApplyUnread { gap: ResidueCaptureUnreadable { error: e } }
-    FilesystemReadSucceeded { content: req_text } =>
-      match digest_held(content: req_text, expected: mtjade1_j3_restore_put_request_sha256) {
-        Present { value: g } => PutApplyUnread { gap: g }
-        Absent => {
-          let resp = Filesystem.Read(path: mtjade1_j3_restore_put_response_path as String)
-          match filesystem_read_outcome(content: resp.content, success: resp.success, error: resp.error) {
-            FilesystemReadRefused { error: e } => PutApplyUnread { gap: ResidueCaptureUnreadable { error: e } }
-            FilesystemReadSucceeded { content: resp_text } =>
-              match digest_held(content: resp_text, expected: mtjade1_j3_restore_put_response_sha256) {
-                Present { value: g } => PutApplyUnread { gap: g }
-                Absent =>
-                  match read_mtjade1_rmedia_general_residue() {
-                    RmediaGeneralResidueRefused { gap: g } => PutApplyUnread { gap: g }
-                    RmediaGeneralResidueObserved { residue: r } =>
-                      if request_server_empty(content: req_text)
-                        && (r.server_address as String) == "192.168.1.188"
-                        && (r.source_path as String) == "/srv/bmc" {
-                        PutAcknowledgedNotApplied {
-                          firmware_wire: "2.11.104000",
-                          request_path: mtjade1_j3_restore_put_request_path,
-                          request_sha256: mtjade1_j3_restore_put_request_sha256,
-                          response_path: mtjade1_j3_restore_put_response_path,
-                          response_sha256: mtjade1_j3_restore_put_response_sha256,
-                          get_path: mtjade1_j3_restore_get_path,
-                          get_sha256: mtjade1_j3_restore_get_sha256,
-                        }
-                      } else {
-                        PutApplyUnread { gap: ResidueFieldUnread { field: "cd_remote_server_address", cause: "request empty vs GET residue pairing did not hold" } }
+  match firmware_wire_of_current_manager(read: read_mtjade1_current_manager_read()) {
+    Absent => PutApplyUnread { gap: ResidueManagerUnread { cause: "current Manager capture did not yield FirmwareVersion" } }
+    Present { value: fw } => {
+      let req = Filesystem.Read(path: mtjade1_j3_restore_put_request_path as String)
+      match filesystem_read_outcome(content: req.content, success: req.success, error: req.error) {
+        FilesystemReadRefused { error: e } => PutApplyUnread { gap: ResidueCaptureUnreadable { error: e } }
+        FilesystemReadSucceeded { content: req_text } =>
+          match decode_media_general_snapshot(content: req_text, expected_sha256: mtjade1_j3_restore_put_request_sha256) {
+            MediaGeneralSnapshotRefused { gap: g } => PutApplyUnread { gap: g }
+            MediaGeneralSnapshotHeld { snapshot: requested } => {
+              let resp = Filesystem.Read(path: mtjade1_j3_restore_put_response_path as String)
+              match filesystem_read_outcome(content: resp.content, success: resp.success, error: resp.error) {
+                FilesystemReadRefused { error: e } => PutApplyUnread { gap: ResidueCaptureUnreadable { error: e } }
+                FilesystemReadSucceeded { content: resp_text } =>
+                  match decode_media_general_snapshot(content: resp_text, expected_sha256: mtjade1_j3_restore_put_response_sha256) {
+                    MediaGeneralSnapshotRefused { gap: g } => PutApplyUnread { gap: g }
+                    MediaGeneralSnapshotHeld { snapshot: echoed } => {
+                      let get = Filesystem.Read(path: mtjade1_j3_restore_get_path as String)
+                      match filesystem_read_outcome(content: get.content, success: get.success, error: get.error) {
+                        FilesystemReadRefused { error: e } => PutApplyUnread { gap: ResidueCaptureUnreadable { error: e } }
+                        FilesystemReadSucceeded { content: get_text } =>
+                          match decode_media_general_snapshot(content: get_text, expected_sha256: mtjade1_j3_restore_get_sha256) {
+                            MediaGeneralSnapshotRefused { gap: g } => PutApplyUnread { gap: g }
+                            MediaGeneralSnapshotHeld { snapshot: persisted } =>
+                              put_apply_standing_of(
+                                firmware_wire: fw,
+                                requested: requested,
+                                echoed: echoed,
+                                persisted: persisted,
+                                request_path: mtjade1_j3_restore_put_request_path,
+                                request_sha256: mtjade1_j3_restore_put_request_sha256,
+                                response_path: mtjade1_j3_restore_put_response_path,
+                                response_sha256: mtjade1_j3_restore_put_response_sha256,
+                                get_path: mtjade1_j3_restore_get_path,
+                                get_sha256: mtjade1_j3_restore_get_sha256,
+                              )
+                          }
                       }
+                    }
                   }
               }
+            }
           }
-        }
       }
+    }
   }
 }
