@@ -525,8 +525,8 @@ fn arm_committed_scheduled_end_passed(expiries: List<ArmCommittedExpiry>, now: E
   let instants = flat_map(expiries, e => match e { ArmExpiresAt { epoch: t } => [t]  ArmNoScheduledExpiry => [] as List<EpochSecs>  ArmExpiryUnrecorded => [] as List<EpochSecs>  ArmExpiryUnreadable { word: _ } => [] as List<EpochSecs> })
   if count(instants) == 0 || count(instants) != count(expiries) { none }
   else {
-    let latest = fold(instants, init: 0, f: (a, t) => if t > a { t } else { a })
-    if latest <= now { Present { value: latest } } else { none }
+    let latest = fold(map(instants, t => t as Int), init: 0, f: (a, t) => if t > a { t } else { a })
+    if latest <= (now as Int) { Present { value: latest } } else { none }
   }
 }
 
