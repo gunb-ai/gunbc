@@ -1,6 +1,6 @@
 # CI end-to-end accounting (one required run, every job, every step)
 
-**Status:** analysis, not a ruling. It is the input to consolidating the required CI (`gunbc.witness.compiler_gate_workflow` → `.github/workflows/witnesses.yml`) into one job over one prepared corpus.
+**Status:** analysis, not a ruling. It is the input to consolidating the required CI (`gunbc.compiler_gate_workflow` → `.github/workflows/witnesses.yml`) into one job over one prepared corpus.
 
 **Instrument.** Every figure below is from ONE run, `gunb-ai/gunbc` actions run **37501346261** (pull_request, 2026-10-06; head `f937ee1b`; all lanes green). The figures come from that run's job API timestamps, the step timings, and the per-phase lines the binary prints (`[floor-phase]`, `[pre-entry]`, `✅ … done in`). They are a dated receipt for that run and are not a standing fact: to re-derive them, re-read any required run's logs the same way, and use the floor's per-claim cost artifact `required-floor-claim-cost` for claim cost. The 787 claim rows sum from that artifact's `observed_cpu_ms` column.
 
