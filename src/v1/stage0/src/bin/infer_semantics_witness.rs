@@ -87,7 +87,7 @@ fn build_module_index() -> HashMap<String, std::path::PathBuf> {
     index
 }
 
-fn pool_root_strings() -> Vec<String> {
+fn pool_root_strings() -> std::vec::Vec<String> {
     source_roots()
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
@@ -101,13 +101,14 @@ fn resolve_imports_transitively(
     _module_index: &HashMap<String, std::path::PathBuf>,
 ) -> Vec<Rc<SourceFile>> {
     v1_compiler::cli_run::resolve_seeded_compile_closure(
-        vec![Rc::new(SourceFile {
+        std::vec![Rc::new(SourceFile {
             path: entry_path.to_string(),
             content: entry_content.to_string(),
         })],
         &pool_root_strings(),
     )
     .unwrap_or_else(|e| panic!("witness compile-subject closure: {e}"))
+    .into()
 }
 
 fn compile_dag(source: &str) -> Rc<PipelineResult> {
