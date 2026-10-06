@@ -3226,12 +3226,49 @@ pub(crate) fn fixture_closure_union_emit_receipt(
     })
 }
 
-const STDERR_CAPTURE_POLICY_GAP_FACT: &str = "implements no stderr capture policy";
 const STDERR_CAPTURE_POLICY_DROP: &str =
     "gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture";
 
-/// A rust TransportEmissionNotModeled whose fact is the declared capture-policy gap,
-/// not an unmodeled key and not another transport.
+/// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
+/// `ShellChannelNotRealizedByTarget` on every `ShellResultChannel` rust does not realize.
+/// Equality to that rendering is the discriminator: `ShellOutputKeyNotModeled` and any other
+/// transport stay out, including a fact that merely contains English about capture.
+fn rust_shell_channel_not_realized_facts() -> &'static BTreeSet<String> {
+    static FACTS: OnceLock<BTreeSet<String>> = OnceLock::new();
+    FACTS.get_or_init(|| {
+        use crate::v1_compiler_artifact::RenderTarget;
+        use crate::v1_compiler_emit::{
+            render_target_name, shell_channel_realized_by_target, shell_emission_refusal_fact,
+            shell_result_channel_key, ShellEmissionRefusal, ShellResultChannel,
+        };
+        let target = RenderTarget::Rust;
+        let target_name = render_target_name(target);
+        [
+            ShellResultChannel::ShellChanStdout,
+            ShellResultChannel::ShellChanStderr,
+            ShellResultChannel::ShellChanExitSuccess,
+            ShellResultChannel::ShellChanExitCode,
+            ShellResultChannel::ShellChanStdoutLines,
+            ShellResultChannel::ShellChanStderrTruncated,
+            ShellResultChannel::ShellChanStderrTotalBytes,
+            ShellResultChannel::ShellChanStderrRetainedBytes,
+        ]
+        .into_iter()
+        .filter(|channel| !shell_channel_realized_by_target(*channel, target))
+        .map(|channel| {
+            shell_emission_refusal_fact(Rc::new(
+                ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                    key: shell_result_channel_key(channel),
+                    target_name: target_name.clone(),
+                },
+            ))
+        })
+        .collect()
+    })
+}
+
+/// A rust shell TransportEmissionNotModeled whose missing_realization_fact is exactly a
+/// ShellChannelNotRealizedByTarget fact for an unrealized rust channel.
 fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
     match &*d.diagnostic {
         crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
@@ -3243,7 +3280,7 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
             ..
         } if transport_kind == "shell"
             && target == "rust"
-            && missing_realization_fact.contains(STDERR_CAPTURE_POLICY_GAP_FACT) =>
+            && rust_shell_channel_not_realized_facts().contains(missing_realization_fact) =>
         {
             Some((declaring_module.clone(), service.clone()))
         }
@@ -3647,6 +3684,42 @@ mod fixture_closure_union_tests {
         assert_eq!(union.fixture_compiles, 2);
         assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
         assert!(union.conflicts.contains("dag/a.dag"));
+    }
+
+    #[test]
+    fn capture_gap_keys_on_shell_channel_not_realized_fact_equality() {
+        use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        let span = crate::v1_std_core::kernel_span("probe".to_string());
+        let mk = |fact: String| {
+            make_error_node(
+                Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                    transport_kind: "shell".to_string(),
+                    service: "WitnessBin".to_string(),
+                    operation: "Run".to_string(),
+                    declaring_module: "extdeps.gunbc".to_string(),
+                    target: "rust".to_string(),
+                    missing_realization_fact: fact,
+                    span: span.clone(),
+                }),
+                "extdeps.gunbc".to_string(),
+            )
+        };
+        let gap = shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: "stderr_truncated".to_string(),
+                target_name: "rust".to_string(),
+            },
+        ));
+        let unmodeled_key =
+            shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                key: "not_a_channel".to_string(),
+            }));
+        let substring_poison =
+            "unmodeled key 'not_a_channel' implements no stderr capture policy".to_string();
+        assert!(stderr_capture_policy_gap_service(&mk(gap)).is_some());
+        assert!(stderr_capture_policy_gap_service(&mk(unmodeled_key)).is_none());
+        assert!(stderr_capture_policy_gap_service(&mk(substring_poison)).is_none());
     }
 
     #[test]
