@@ -204,44 +204,6 @@ pub(crate) fn build_module_index_primary_precedence(source_roots: &[String]) -> 
     try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Import-line BFS only. Kept as the discriminating mutant for
-/// [`import_closure_dag_files`]: a provider reached only by reference is not a
-/// member of this set. Production skip-set membership uses the one closure
-/// authority instead (DESIGN §3 — the same fork #13437 closed on the fixture walker).
-fn import_only_closure_dag_files(
-    workspace: &Path,
-    source_roots: &[PathBuf],
-    seed_entries: &[&str],
-) -> Result<HashSet<String>, String> {
-    let index = dag_module_index(source_roots)?;
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
-    for rel in seed_entries {
-        let path = workspace.join(rel);
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
-        seen.insert(file_key_in_workspace(workspace, rel));
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(candidates) = index.get(&module_path) else {
-                continue;
-            };
-            for path in candidates {
-                let rel = normalize_repo_path(&module_index_path_key(path));
-                if !seen.insert(rel) {
-                    continue;
-                }
-                let file_content = std::fs::read_to_string(path)
-                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                queue.push(file_content);
-            }
-        }
-    }
-    Ok(seen)
-}
-
 fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
     normalize_repo_path(&module_index_path_key(&workspace.join(rel)))
 }
@@ -363,6 +325,42 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
 
     fn provider_key(dir: &Path) -> String {
         file_key_in_workspace(dir, PROVIDER)
+    }
+
+    /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
+    /// not a member of this set. Not compiled into production (§3 / §3c).
+    fn import_only_closure_dag_files(
+        workspace: &Path,
+        source_roots: &[PathBuf],
+        seed_entries: &[&str],
+    ) -> Result<HashSet<String>, String> {
+        let index = dag_module_index(source_roots)?;
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut queue: Vec<String> = Vec::new();
+        for rel in seed_entries {
+            let path = workspace.join(rel);
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
+            seen.insert(file_key_in_workspace(workspace, rel));
+            queue.push(content);
+        }
+        while let Some(content) = queue.pop() {
+            for module_path in extract_import_paths(&content) {
+                let Some(candidates) = index.get(&module_path) else {
+                    continue;
+                };
+                for path in candidates {
+                    let rel = normalize_repo_path(&module_index_path_key(path));
+                    if !seen.insert(rel) {
+                        continue;
+                    }
+                    let file_content = std::fs::read_to_string(path)
+                        .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                    queue.push(file_content);
+                }
+            }
+        }
+        Ok(seen)
     }
 
     /// RED: an entry whose provider is reached only by qualified reference is closed.
