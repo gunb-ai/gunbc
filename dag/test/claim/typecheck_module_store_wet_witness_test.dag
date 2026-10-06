@@ -4,7 +4,9 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, List, String, NonEmptyStr, EpochMs }
 import std.measure { measure_count }
-import std.materialization_provider { output_typed_module_interface }
+import std.content_hash { content_hash_atom }
+import std.interface_summary { InterfaceHash }
+import std.materialization_provider { output_typed_module_interface, ArtifactRequest, ArtifactPayload }
 import std.materialization_object {
   store_lookup_is_hit,
   store_lookup_is_miss,
@@ -13,7 +15,6 @@ import std.materialization_object {
   store_object_name,
 }
 import std.materialization_store_grant {
-  MaterializationStoreRoot,
   WitnessScratchRoot,
   materialization_store_durable_root_path,
 }
@@ -26,12 +27,9 @@ import extdeps.realization.materialization_store_local {
   LocalStoreInitialization,
   LocalStoreInitialized,
   LocalStoreInitializationRefused,
-  local_store_initialize,
-  local_store_object_bytes,
   store_path,
 }
 import gunbc.materialization_store_budgets {
-  materialization_store_durable_family_budgets,
   typecheck_module_measured_largest_entry,
 }
 import gunbc.typecheck_module_store {
@@ -44,6 +42,9 @@ import gunbc.typecheck_module_store {
   TypecheckModuleHit,
   TypecheckModuleMiss,
   TypecheckModuleRefused,
+  TypecheckModuleMaterialized,
+  TypecheckModuleCommitRefused,
+  initialize_witness_typecheck_store,
   open_durable_typecheck_store,
 }
 import gunbc.clock_read {
@@ -57,8 +58,8 @@ fn fresh_root_path() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
 }
 
-fn opened_production_budgets(root: MaterializationStoreRoot) -> LocalStoreCapability? {
-  match local_store_initialize(root: root, instance_label: "typecheck-c2", budgets: materialization_store_durable_family_budgets) {
+fn opened_production_budgets(root: WitnessScratchRoot) -> LocalStoreCapability? {
+  match initialize_witness_typecheck_store(root: root) {
     LocalStoreInitialized { opening: o } => match o {
       LocalStoreOpened { capability: c, durability: _ } => Present { value: c }
       LocalStoreUnavailable { root_path: _, cause: _ } => none
@@ -67,15 +68,19 @@ fn opened_production_budgets(root: MaterializationStoreRoot) -> LocalStoreCapabi
   }
 }
 
-fn sample_req() -> std.materialization_provider.ArtifactRequest {
-  typecheck_module_request(source: "dag/std/types.dag", import_interfaces: ["std.logic"], compiler: "seed-compiler")
+fn sample_req(source_bytes: String, import_bytes: List<String>) -> ArtifactRequest {
+  typecheck_module_request(
+    source_digest: content_hash_atom(value: source_bytes),
+    direct_import_interfaces: import_bytes |> map(s => content_hash_atom(value: s) as InterfaceHash),
+    compiler_digest: content_hash_atom(value: "seed-compiler")
+  )
 }
 
-fn sample_payloads(interface: String) -> List<std.materialization_provider.ArtifactPayload> {
+fn sample_payloads(interface: String) -> List<ArtifactPayload> {
   typecheck_module_payloads(interface: interface, diagnostics: "")
 }
 
-fn object_path(root_path: String, req: std.materialization_provider.ArtifactRequest) -> String {
+fn object_path(root_path: String, req: ArtifactRequest) -> String {
   match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
     Absent => ""
     Present { value: addr } => store_path(root_path: root_path, name: store_object_name(address: addr))
@@ -95,7 +100,7 @@ type TypecheckStoreColdWarmReceipt {
   saved_millis: EpochMs
 }
 
-fn typecheck_module_store_cold_warm_receipt(capability: LocalStoreCapability, req: std.materialization_provider.ArtifactRequest, payloads: List<std.materialization_provider.ArtifactPayload>) -> TypecheckStoreColdWarmReceipt {
+fn typecheck_module_store_cold_warm_receipt(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>) -> TypecheckStoreColdWarmReceipt {
   let t0 = observer_clock_read()
   let cold = typecheck_module_serve(capability: capability, req: req)
   match cold {
@@ -122,24 +127,28 @@ fn typecheck_module_store_cold_warm_receipt(capability: LocalStoreCapability, re
 }
 
 test fn typecheck_module_miss_computes_and_warm_hits_by_real_execution() -> Bool {
+  let types = Filesystem.Read(path: "dag/std/types.dag")
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened_production_budgets(root: root) {
     Absent => false
     Present { value: store } => {
-      let req = sample_req()
+      let req = sample_req(source_bytes: types.content, import_bytes: [])
       let payloads = sample_payloads(interface: "export fn types_surface\n")
       let receipt = typecheck_module_store_cold_warm_receipt(capability: store, req: req, payloads: payloads)
       let served = typecheck_module_materialize(capability: store, req: req, payloads: payloads)
-      receipt.cold_was_miss && receipt.warm_was_hit
+      types.success && receipt.cold_was_miss && receipt.warm_was_hit
         && match served {
-          TypecheckModuleHit { lookup: h } =>
-            match store_lookup_payload(l: h, id: output_typed_module_interface) {
-              Present { value: v } => v == "export fn types_surface\n"
-              Absent => false
-            }
-          TypecheckModuleMiss { lookup: _ } => false
-          TypecheckModuleRefused { lookup: _ } => false
+          TypecheckModuleMaterialized { serve: s } => match s {
+            TypecheckModuleHit { lookup: h } =>
+              match store_lookup_payload(l: h, id: output_typed_module_interface) {
+                Present { value: v } => v == "export fn types_surface\n"
+                Absent => false
+              }
+            TypecheckModuleMiss { lookup: _ } => false
+            TypecheckModuleRefused { lookup: _ } => false
+          }
+          TypecheckModuleCommitRefused { commit: _ } => false
         }
     }
   }
@@ -148,9 +157,10 @@ test fn typecheck_module_miss_computes_and_warm_hits_by_real_execution() -> Bool
 }
 
 test fn a_tampered_typecheck_entry_refuses_and_is_not_a_miss_by_real_execution() -> Bool {
+  let types = Filesystem.Read(path: "dag/std/types.dag")
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
-  let req = sample_req()
+  let req = sample_req(source_bytes: types.content, import_bytes: [])
   let payloads = sample_payloads(interface: "export fn types_surface\n")
   let verdict = match opened_production_budgets(root: root) {
     Absent => false
@@ -160,16 +170,19 @@ test fn a_tampered_typecheck_entry_refuses_and_is_not_a_miss_by_real_execution()
       let corrupt = Filesystem.Write(path: object_path(root_path: root_path, req: req), content: replace(good.content, "types_surface", "TYPES_SURFACE"))
       let after = typecheck_module_serve(capability: store, req: req)
       match first {
-        TypecheckModuleHit { lookup: _ } =>
-          good.success && corrupt.success
-            && match after {
-              TypecheckModuleRefused { lookup: l } =>
-                store_lookup_is_miss(l: l) == false && store_lookup_refusal_tag(l: l) == "contract_wrong_content"
-              TypecheckModuleHit { lookup: _ } => false
-              TypecheckModuleMiss { lookup: _ } => false
-            }
-        TypecheckModuleMiss { lookup: _ } => false
-        TypecheckModuleRefused { lookup: _ } => false
+        TypecheckModuleMaterialized { serve: s } => match s {
+          TypecheckModuleHit { lookup: _ } =>
+            types.success && good.success && corrupt.success
+              && match after {
+                TypecheckModuleRefused { lookup: l } =>
+                  store_lookup_is_miss(l: l) == false && store_lookup_refusal_tag(l: l) == "contract_wrong_content"
+                TypecheckModuleHit { lookup: _ } => false
+                TypecheckModuleMiss { lookup: _ } => false
+              }
+          TypecheckModuleMiss { lookup: _ } => false
+          TypecheckModuleRefused { lookup: _ } => false
+        }
+        TypecheckModuleCommitRefused { commit: _ } => false
       }
     }
   }
@@ -177,15 +190,33 @@ test fn a_tampered_typecheck_entry_refuses_and_is_not_a_miss_by_real_execution()
   verdict && removed.success
 }
 
-test fn real_corpus_typecheck_entries_fit_the_measured_largest_entry_by_real_execution() -> Bool {
+test fn a_failed_prepare_is_absent_bytes_not_zero() -> Bool {
+  match typecheck_module_entry_bytes(
+    req: sample_req(source_bytes: "ok", import_bytes: []),
+    payloads: []
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn real_content_keyed_entries_fit_the_measured_largest_entry_by_real_execution() -> Bool {
   let types = Filesystem.Read(path: "dag/std/types.dag")
   let provider = Filesystem.Read(path: "dag/std/materialization_provider.dag")
-  let req_types = typecheck_module_request(source: "dag/std/types.dag", import_interfaces: [], compiler: "seed-compiler")
-  let req_provider = typecheck_module_request(source: "dag/std/materialization_provider.dag", import_interfaces: ["std.types"], compiler: "seed-compiler")
+  let req_types = sample_req(source_bytes: types.content, import_bytes: [])
+  let req_provider = sample_req(source_bytes: provider.content, import_bytes: [types.content])
   let cap = measure_count(m: typecheck_module_measured_largest_entry())
+  let iface_types = "interface std.types\n"
+  let iface_provider = "interface std.materialization_provider\n"
   types.success && provider.success
-    && measure_count(m: typecheck_module_entry_bytes(req: req_types, payloads: sample_payloads(interface: types.content))) <= cap
-    && measure_count(m: typecheck_module_entry_bytes(req: req_provider, payloads: sample_payloads(interface: provider.content))) <= cap
+    && match typecheck_module_entry_bytes(req: req_types, payloads: sample_payloads(interface: iface_types)) {
+      Absent => false
+      Present { value: n } => measure_count(m: n) <= cap
+    }
+    && match typecheck_module_entry_bytes(req: req_provider, payloads: sample_payloads(interface: iface_provider)) {
+      Absent => false
+      Present { value: n } => measure_count(m: n) <= cap
+    }
 }
 
 test fn the_durable_production_open_uses_the_granted_root_by_real_execution() -> Bool {

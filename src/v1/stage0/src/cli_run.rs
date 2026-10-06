@@ -117,6 +117,7 @@ pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub mod pre_entry_phase;
 mod required_lane_resolution_census;
+mod typecheck_store_session;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
@@ -16430,7 +16431,7 @@ fn reconcile_with_typed_cache(
                 {
                     check_index_module_source_identity(index, &mod_name, &decl_file)?;
                 }
-                let typed_key = match typed_module_content_key(
+                let store_parts = match typed_module_store_hex_parts(
                     index,
                     &resolved,
                     &mod_name,
@@ -16439,14 +16440,23 @@ fn reconcile_with_typed_cache(
                     &closure_path_to_authored_name,
                     !cycle_residue_slots.contains(&slot),
                 ) {
-                    Ok(key) => key,
+                    Ok(parts) => parts,
                     Err(ref e) if typed_key_dependency_hash_not_ready(e) => {
                         next_pending.push(slot);
                         continue;
                     }
                     Err(e) => return Err(e),
                 };
+                let typed_key = store_parts.key.clone();
                 let cached = index_get_typed(index, &typed_key)?;
+                if let Some(hit) = cached.as_ref() {
+                    typecheck_store_session::durable_typecheck_commit(
+                        &store_parts.source_digest_hex,
+                        &store_parts.import_interface_hexes,
+                        &store_parts.compiler_digest_hex,
+                        hit.as_ref(),
+                    )?;
+                }
                 let was_cache_hit = cached.is_some();
                 // Record this module's cache keys with the armed schedule retention
                 // (idempotent; hit or miss) so its state can be dropped exactly when no
@@ -16481,6 +16491,18 @@ fn reconcile_with_typed_cache(
                             || -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
                                 if let Some(hit) = index_get_typed(index, &typed_key)? {
                                     return Ok(hit);
+                                }
+                                match typecheck_store_session::durable_typecheck_lookup(
+                                    &store_parts.source_digest_hex,
+                                    &store_parts.import_interface_hexes,
+                                    &store_parts.compiler_digest_hex,
+                                )? {
+                                    typecheck_store_session::DurableTypecheckGet::Hit(hit) => {
+                                        return index_insert_typed(index, typed_key.clone(), hit);
+                                    }
+                                    typecheck_store_session::DurableTypecheckGet::Miss
+                                    | typecheck_store_session::DurableTypecheckGet::Unavailable => {
+                                    }
                                 }
                                 // A miss on a key this index already evicted is a READMISSION —
                                 // the governor re-buying paid-for work — counted for the stall
@@ -16587,6 +16609,12 @@ fn reconcile_with_typed_cache(
                                 }
                                 let computed =
                                     index_insert_typed(index, typed_key.clone(), computed)?;
+                                typecheck_store_session::durable_typecheck_commit(
+                                    &store_parts.source_digest_hex,
+                                    &store_parts.import_interface_hexes,
+                                    &store_parts.compiler_digest_hex,
+                                    computed.as_ref(),
+                                )?;
                                 Ok(computed)
                             };
 

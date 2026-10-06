@@ -1,7 +1,7 @@
 module gunbc.typecheck_module_store
 
-import std.types { List, String, NonEmptyStr }
-import std.content_hash { content_hash_atom }
+import std.types { List, String, Bool, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, fnv1a64_structural_hex_digest }
 import std.interface_summary { InterfaceHash }
 import std.measure { ByteSize }
 import std.materialization_provider {
@@ -21,33 +21,88 @@ import std.materialization_object {
   StoreLookup,
   store_lookup_is_hit,
   store_lookup_is_miss,
+  store_lookup_payload,
+  store_lookup_refusal_tag,
 }
-import std.materialization_store_grant { DurableHostVolumeRoot }
+import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.realization.materialization_store_local {
   LocalStoreCapability,
   LocalStoreOpening,
+  LocalStoreOpened,
+  LocalStoreUnavailable,
+  LocalStoreInitialization,
+  LocalStoreInitialized,
+  LocalStoreInitializationRefused,
   LocalStoreCommit,
   local_store_open,
+  local_store_initialize,
   local_store_lookup,
   local_store_commit,
   local_store_object_bytes,
 }
 import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets }
+import v2.std.optional { Present, Absent }
 
 // THE TYPECHECK-MODULE CONSUMER OF THE LOCAL STORE (C2). TypecheckModuleRequest keys are DERIVED
-// (std.materialization_provider request_key); this module never takes a key, digest, or roster as a
-// caller-chosen argument. A HIT is the store's verified read (local_store_lookup already runs
-// provider_serve_persisted); a miss computes by committing the contract payloads (typed module
-// interface + typecheck diagnostics) and reading back. A stale or tampered object REFUSES, and that
+// (std.materialization_provider request_key / std.interface_summary typed_module_key). Callers
+// supply already-derived Fnv1a64Structural digests — source CONTENT, direct-import interface
+// hashes, compiler identity — never a path or a module name. A HIT is the store's verified read;
+// a miss computes elsewhere and commits here; a stale or tampered object REFUSES, and that
 // refusal is not a miss. The durable open takes gunbc.materialization_store_budgets
 // materialization_store_durable_family_budgets and DurableHostVolumeRoot; it does not initialize a
-// missing volume and does not fall through to scratch.
+// missing volume by falling through to scratch.
 
-fn typecheck_module_request(source: NonEmptyStr, import_interfaces: List<String>, compiler: NonEmptyStr) -> ArtifactRequest {
+data typecheck_store_instance_label: NonEmptyStr = "gunbc-typecheck-host"
+
+fn typecheck_module_request(
+  source_digest: Fnv1a64Structural,
+  direct_import_interfaces: List<InterfaceHash>,
+  compiler_digest: Fnv1a64Structural
+) -> ArtifactRequest {
   TypecheckModuleRequest {
-    source_digest: content_hash_atom(value: source),
-    direct_import_interfaces: import_interfaces |> map(s => content_hash_atom(value: s as NonEmptyStr) as InterfaceHash),
-    compiler: compiler_identity_input(digest: content_hash_atom(value: compiler))
+    source_digest: source_digest,
+    direct_import_interfaces: direct_import_interfaces,
+    compiler: compiler_identity_input(digest: compiler_digest)
+  }
+}
+
+type TypecheckModuleRequestBuild
+  = TypecheckModuleRequestBuilt { req: ArtifactRequest }
+  | TypecheckModuleRequestDigestRefused { which: String }
+
+fn hex_digest(hex: String) -> Fnv1a64Structural? {
+  fnv1a64_structural_hex_digest(hex: hex)
+}
+
+fn typecheck_module_request_from_hex(
+  source_digest_hex: String,
+  import_interface_hexes: List<String>,
+  compiler_digest_hex: String
+) -> TypecheckModuleRequestBuild {
+  match hex_digest(hex: source_digest_hex) {
+    Absent => TypecheckModuleRequestDigestRefused { which: "source_digest" }
+    Present { value: src } => match hex_digest(hex: compiler_digest_hex) {
+      Absent => TypecheckModuleRequestDigestRefused { which: "compiler_digest" }
+      Present { value: compiler } => {
+        let imports = import_interface_hexes |> map(h => hex_digest(hex: h))
+        if imports |> any(d => match d { Absent => true Present { value: _ } => false }) {
+          TypecheckModuleRequestDigestRefused { which: "direct_import_interfaces" }
+        } else {
+          TypecheckModuleRequestBuilt {
+            req: typecheck_module_request(
+              source_digest: src,
+              direct_import_interfaces: imports |> flat_map(d => match d {
+                Present { value: v } => [v as InterfaceHash]
+                Absent => []
+              }),
+              compiler_digest: compiler
+            )
+          }
+        }
+      }
+    }
   }
 }
 
@@ -58,19 +113,78 @@ fn typecheck_module_payloads(interface: String, diagnostics: String) -> List<Art
   ]
 }
 
-fn typecheck_module_prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
+type TypecheckModulePrepared
+  = TypecheckModuleObjectPrepared { object: String }
+  | TypecheckModuleObjectNotPrepared { commit: std.materialization_object.StoreCommit }
+
+fn typecheck_module_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> TypecheckModulePrepared {
   match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
-    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
-    StoreCommitNotPrepared { commit: _ } => ""
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } =>
+      TypecheckModuleObjectPrepared { object: o }
+    StoreCommitNotPrepared { commit: c } => TypecheckModuleObjectNotPrepared { commit: c }
   }
 }
 
-fn typecheck_module_entry_bytes(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ByteSize {
-  local_store_object_bytes(object: typecheck_module_prepared_object(req: req, payloads: payloads))
+fn typecheck_module_entry_bytes(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ByteSize? {
+  match typecheck_module_prepare(req: req, payloads: payloads) {
+    TypecheckModuleObjectPrepared { object: o } => Present { value: local_store_object_bytes(object: o) }
+    TypecheckModuleObjectNotPrepared { commit: _ } => none
+  }
 }
 
 fn open_durable_typecheck_store() -> LocalStoreOpening {
   local_store_open(root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets)
+}
+
+fn initialize_durable_typecheck_store() -> LocalStoreInitialization {
+  local_store_initialize(
+    root: DurableHostVolumeRoot,
+    instance_label: typecheck_store_instance_label,
+    budgets: materialization_store_durable_family_budgets
+  )
+}
+
+// First production open: initialize (create-new marker, or converge on an existing one) then return
+// that opening. A grant or catalog refusal stays a refusal; nothing opens WitnessScratchRoot here.
+fn ensure_durable_typecheck_store() -> LocalStoreOpening {
+  match initialize_durable_typecheck_store() {
+    LocalStoreInitialized { opening: o } => o
+    LocalStoreInitializationRefused { root_path: p, cause: c } =>
+      LocalStoreUnavailable { root_path: p, cause: c }
+  }
+}
+
+fn lookup_typecheck_module(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
+  local_store_lookup(capability: capability, req: req)
+}
+
+fn commit_typecheck_module(
+  capability: LocalStoreCapability,
+  req: ArtifactRequest,
+  interface_text: String,
+  diagnostics_text: String
+) -> LocalStoreCommit {
+  local_store_commit(
+    capability: capability,
+    req: req,
+    payloads: typecheck_module_payloads(interface: interface_text, diagnostics: diagnostics_text),
+    parts: []
+  )
+}
+
+// Distinct from the durable door: witnesses exercise the same family budgets on an ephemeral
+// scratch root. WitnessScratchRoot is the only admitted argument; there is no DurableHostVolumeRoot
+// arm and no required argument on ensure_durable_typecheck_store.
+fn initialize_witness_typecheck_store(root: WitnessScratchRoot) -> LocalStoreInitialization {
+  local_store_initialize(
+    root: root,
+    instance_label: "gunbc-typecheck-witness" as NonEmptyStr,
+    budgets: materialization_store_durable_family_budgets
+  )
+}
+
+fn open_witness_typecheck_store(root: WitnessScratchRoot) -> LocalStoreOpening {
+  local_store_open(root: root, budgets: materialization_store_durable_family_budgets)
 }
 
 type TypecheckModuleServe
@@ -79,7 +193,7 @@ type TypecheckModuleServe
   | TypecheckModuleRefused { lookup: StoreLookup }
 
 fn typecheck_module_serve(capability: LocalStoreCapability, req: ArtifactRequest) -> TypecheckModuleServe {
-  let lookup = local_store_lookup(capability: capability, req: req)
+  let lookup = lookup_typecheck_module(capability: capability, req: req)
   if store_lookup_is_hit(l: lookup) {
     TypecheckModuleHit { lookup: lookup }
   } else {
@@ -95,14 +209,121 @@ fn typecheck_module_commit_computed(capability: LocalStoreCapability, req: Artif
   local_store_commit(capability: capability, req: req, payloads: payloads, parts: [])
 }
 
-fn typecheck_module_materialize(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>) -> TypecheckModuleServe {
+type TypecheckModuleMaterialize
+  = TypecheckModuleMaterialized { serve: TypecheckModuleServe }
+  | TypecheckModuleCommitRefused { commit: LocalStoreCommit }
+
+// Distinct from typecheck_module (the seed infer operation): lookup, then on a miss commit the
+// already-computed interface+diagnostics payloads. A refused commit stays a refused commit; it is
+// never re-served as a miss.
+fn typecheck_module_materialize(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>) -> TypecheckModuleMaterialize {
   match typecheck_module_serve(capability: capability, req: req) {
-    TypecheckModuleHit { lookup: h } => TypecheckModuleHit { lookup: h }
-    TypecheckModuleRefused { lookup: r } => TypecheckModuleRefused { lookup: r }
-    TypecheckModuleMiss { lookup: _ } =>
-      match typecheck_module_commit_computed(capability: capability, req: req, payloads: payloads).commit {
-        StoreCommitSettled { receipt: _ } => typecheck_module_serve(capability: capability, req: req)
-        StoreCommitRefused { key: _, refusal: _ } => typecheck_module_serve(capability: capability, req: req)
+    TypecheckModuleHit { lookup: h } => TypecheckModuleMaterialized { serve: TypecheckModuleHit { lookup: h } }
+    TypecheckModuleRefused { lookup: r } => TypecheckModuleMaterialized { serve: TypecheckModuleRefused { lookup: r } }
+    TypecheckModuleMiss { lookup: _ } => {
+      let written = typecheck_module_commit_computed(capability: capability, req: req, payloads: payloads)
+      match written.commit {
+        StoreCommitSettled { receipt: _ } => TypecheckModuleMaterialized { serve: typecheck_module_serve(capability: capability, req: req) }
+        StoreCommitRefused { key: _, refusal: _ } => TypecheckModuleCommitRefused { commit: written }
       }
+    }
+  }
+}
+
+fn typecheck_lookup_refused_integrity(l: StoreLookup) -> Bool {
+  let tag = store_lookup_refusal_tag(l: l)
+  tag != "hit" && tag != "miss"
+}
+
+data ensure_durable_typecheck_store_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.typecheck_module_store",
+  decl_name: "ensure_durable_typecheck_store"
+)
+
+data lookup_typecheck_module_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.typecheck_module_store",
+  decl_name: "lookup_typecheck_module"
+)
+
+data commit_typecheck_module_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.typecheck_module_store",
+  decl_name: "commit_typecheck_module"
+)
+
+// Production inhabitance is the seed typecheck path calling ensure/lookup/commit. Bound dissolution
+// on the declaration existing would fire before that path runs (DESIGN 3c / 4b(1)).
+data typecheck_materialization_seed_path_note: DissolutionCondition = unbound_dissolution(description: "TRIGGER: v1_compiler.cli_run reconcile_with_typed_cache looks up through lookup_typecheck_module and commits through commit_typecheck_module after constructing TypecheckModuleRequest from source-content, import-interface and compiler digests (typecheck_module_request_from_hex). SUFFICIENT FOR: a verified store hit skips typecheck_module compute; a stale or tampered object refuses rather than serving; the durable open is ensure_durable_typecheck_store. This row is retired by that executing consumer and nothing else." as NonEmptyStr)
+
+// Seed-facing operations (distinct from typecheck_module): hex digests in, typed store outcome
+// out. ensure_durable_typecheck_store is inside these folds so reconcile does not take a store
+// argument.
+
+type SeedTypecheckLookup
+  = SeedTypecheckHit { interface_text: String, diagnostics_text: String }
+  | SeedTypecheckMiss
+  | SeedTypecheckUnavailable { root_path: String }
+  | SeedTypecheckIntegrityRefused { tag: String }
+  | SeedTypecheckDigestRefused { which: String }
+
+type SeedTypecheckCommit
+  = SeedTypecheckCommitted
+  | SeedTypecheckCommitMissedOpen { root_path: String }
+  | SeedTypecheckCommitRefused
+  | SeedTypecheckCommitDigestRefused { which: String }
+
+fn seed_lookup_typecheck_hex(
+  source_digest_hex: String,
+  import_interface_hexes: List<String>,
+  compiler_digest_hex: String
+) -> SeedTypecheckLookup {
+  match typecheck_module_request_from_hex(
+    source_digest_hex: source_digest_hex,
+    import_interface_hexes: import_interface_hexes,
+    compiler_digest_hex: compiler_digest_hex
+  ) {
+    TypecheckModuleRequestDigestRefused { which: w } => SeedTypecheckDigestRefused { which: w }
+    TypecheckModuleRequestBuilt { req: req } => match ensure_durable_typecheck_store() {
+      LocalStoreUnavailable { root_path: p, cause: _ } => SeedTypecheckUnavailable { root_path: p }
+      LocalStoreOpened { capability: c, durability: _ } => match typecheck_module_serve(capability: c, req: req) {
+        TypecheckModuleMiss { lookup: _ } => SeedTypecheckMiss
+        TypecheckModuleRefused { lookup: l } => SeedTypecheckIntegrityRefused { tag: store_lookup_refusal_tag(l: l) }
+        TypecheckModuleHit { lookup: h } => match store_lookup_payload(l: h, id: output_typed_module_interface) {
+          Absent => SeedTypecheckIntegrityRefused { tag: "missing_typed_module_interface" }
+          Present { value: iface } => match store_lookup_payload(l: h, id: output_typecheck_diagnostics) {
+            Absent => SeedTypecheckIntegrityRefused { tag: "missing_typecheck_diagnostics" }
+            Present { value: diags } => SeedTypecheckHit { interface_text: iface, diagnostics_text: diags }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn seed_commit_typecheck_hex(
+  source_digest_hex: String,
+  import_interface_hexes: List<String>,
+  compiler_digest_hex: String,
+  interface_text: String,
+  diagnostics_text: String
+) -> SeedTypecheckCommit {
+  match typecheck_module_request_from_hex(
+    source_digest_hex: source_digest_hex,
+    import_interface_hexes: import_interface_hexes,
+    compiler_digest_hex: compiler_digest_hex
+  ) {
+    TypecheckModuleRequestDigestRefused { which: w } => SeedTypecheckCommitDigestRefused { which: w }
+    TypecheckModuleRequestBuilt { req: req } => match ensure_durable_typecheck_store() {
+      LocalStoreUnavailable { root_path: p, cause: _ } => SeedTypecheckCommitMissedOpen { root_path: p }
+      LocalStoreOpened { capability: c, durability: _ } =>
+        match commit_typecheck_module(
+          capability: c,
+          req: req,
+          interface_text: interface_text,
+          diagnostics_text: diagnostics_text
+        ).commit {
+          StoreCommitSettled { receipt: _ } => SeedTypecheckCommitted
+          StoreCommitRefused { key: _, refusal: _ } => SeedTypecheckCommitRefused
+        }
+    }
   }
 }

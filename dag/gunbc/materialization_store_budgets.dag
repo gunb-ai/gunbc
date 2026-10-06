@@ -1,29 +1,19 @@
 module gunbc.materialization_store_budgets
 
 import std.types { List }
-import std.dissolution { DissolutionCondition, bound_dissolution }
-import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.cache_identity { typed_module_artifact_kind }
-import std.content_hash { content_hash_atom }
-import std.materialization_provider {
-  ArtifactRequest,
-  ArtifactPayload,
-  TypecheckModuleRequest,
-  compiler_identity_input,
-  output_typed_module_interface,
-  output_typecheck_diagnostics,
-}
-import std.materialization_object { store_commit_prepare, StoreCommitPrepared, StoreCommitNotPrepared }
 import extdeps.realization.materialization_store_local {
   LocalStoreFamilyBudget,
   local_store_budget_sum,
   materialization_store_local_facts_at,
-  local_store_object_bytes,
 }
 import extdeps.cache.types { CacheInterfaceCatalogFacts }
-import gunbc.typed_module_cache_capacity { typed_module_cache_entries_ceiling }
-import std.render_repeat_string_bootstrap { repeat_string }
+import gunbc.typed_module_cache_capacity {
+  typed_module_bytes_per_entry_estimate,
+  typed_module_cache_entries_ceiling,
+}
 
 // THE DURABLE STORE'S BUDGETS ARE POLICY, AND POLICY IS THIS LAYER'S FACT (DESIGN section 3). The
 // transport (extdeps.realization.materialization_store_local) owns the budget's shape and its
@@ -32,37 +22,21 @@ import std.render_repeat_string_bootstrap { repeat_string }
 // is structural (std.materialization_store_grant DurableHostVolumeRoot names one path), so the host
 // ceiling is the declared sum of these rows and nothing else.
 
-// POLICY DERIVED FROM THE PER-MODULE GRAIN C2 HOLDS. The probe object is a TypecheckModuleRequest
-// persisted at interface+diagnostics grain (not a TypeEnv snapshot). The family budget is that
-// measured entry size times the in-process typed-module residency ceiling, so the durable family
-// cannot outgrow the working set the seed already admits. The wet consumer re-derives the same
-// entry size over real corpus files and refuses if any exceeds this probe.
-
-fn typecheck_budget_probe_request() -> ArtifactRequest {
-  TypecheckModuleRequest {
-    source_digest: content_hash_atom(value: "budget-probe-source"),
-    direct_import_interfaces: [],
-    compiler: compiler_identity_input(digest: content_hash_atom(value: "budget-probe-compiler"))
-  }
-}
-
-data typecheck_module_measured_interface_probe: String = repeat_string(s: "export fn measured_entry\n", n: 6144)
+// POLICY DERIVED FROM AN EXISTING PER-ENTRY AUTHORITY, NOT A SYNTHETIC INTERFACE LITERAL. The
+// in-process typed-module cap already names a per-entry byte estimate
+// (gunbc.typed_module_cache_capacity typed_module_bytes_per_entry_estimate) and a residency
+// ceiling. The durable family cannot outgrow that working set. C2's instrument (the seed
+// typecheck path committing real interface+diagnostics objects) must keep every served object
+// at or under that per-entry estimate; a larger real object is a revision of the estimate, never
+// a second authored size in this file.
 
 fn typecheck_module_measured_largest_entry() -> ByteSize {
-  local_store_object_bytes(object: match store_commit_prepare(
-    req: typecheck_budget_probe_request(),
-    payloads: [
-      ArtifactPayload { id: output_typed_module_interface, content: typecheck_module_measured_interface_probe },
-      ArtifactPayload { id: output_typecheck_diagnostics, content: "" },
-    ],
-    blobs: []
-  ) {
-    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
-    StoreCommitNotPrepared { commit: _ } => ""
-  })
+  typed_module_bytes_per_entry_estimate
 }
 
-data materialization_store_typed_module_budget_policy: ByteSize = byte_size(count: measure_count(m: typecheck_module_measured_largest_entry()) * typed_module_cache_entries_ceiling)
+data materialization_store_typed_module_budget_policy: ByteSize = byte_size(
+  count: measure_count(m: typecheck_module_measured_largest_entry()) * typed_module_cache_entries_ceiling
+)
 
 data materialization_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
   LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: materialization_store_typed_module_budget_policy },
@@ -72,8 +46,7 @@ data materialization_store_host_ceiling_bytes: ByteSize = local_store_budget_sum
 
 data materialization_store_local_facts: CacheInterfaceCatalogFacts = materialization_store_local_facts_at(ceiling: materialization_store_host_ceiling_bytes)
 
-// C2 discharged this frontier: gunbc.typecheck_module_store open_durable_typecheck_store opens
-// DurableHostVolumeRoot through the local store with materialization_store_durable_family_budgets.
-data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = bound_dissolution(
-  ref: decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "open_durable_typecheck_store")
-)
+// C2's production consumer is the seed typecheck path (gunbc.typecheck_module_store
+// typecheck_materialization_seed_path_note). Binding this row to a declaration that merely
+// exists would fire before any run opens the durable root.
+data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets from the seed typecheck path (ensure_durable_typecheck_store, lookup_typecheck_module, commit_typecheck_module). SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)

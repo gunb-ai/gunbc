@@ -1187,7 +1187,14 @@ pub(crate) fn new_multi_entry_index_shell(
     }
 }
 
-pub(crate) fn typed_module_content_key(
+pub(crate) struct TypedModuleStoreHexParts {
+    pub key: String,
+    pub source_digest_hex: String,
+    pub import_interface_hexes: Vec<String>,
+    pub compiler_digest_hex: String,
+}
+
+pub(crate) fn typed_module_store_hex_parts(
     index: &MultiEntryIndex,
     resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
@@ -1195,7 +1202,7 @@ pub(crate) fn typed_module_content_key(
     closure_names: &std::collections::HashSet<&str>,
     closure_path_to_authored_name: &HashMap<String, &str>,
     include_reference_derived_term: bool,
-) -> Result<String, String> {
+) -> Result<TypedModuleStoreHexParts, String> {
     let file = &resolved.module.span.file;
     let source_hash = index
         .source_hash_by_file
@@ -1271,21 +1278,49 @@ pub(crate) fn typed_module_content_key(
             panic!("typed-module content key refused: reconcile digest is not a valid fnv1a64 structural wire form")
         })
     }
-    Ok(typed_module_key(
+    let compiler_digest_hex = transform_content_digest();
+    let key = typed_module_key(
         module_key(
-            structural_from_wire(source_hash),
+            structural_from_wire(source_hash.clone()),
             Rc::new(
                 import_hashes
                     .iter()
                     .cloned()
-                    .map(|h| structural_from_wire(h))
+                    .map(structural_from_wire)
                     .collect(),
             ),
         ),
-        structural_from_wire(transform_content_digest()),
+        structural_from_wire(compiler_digest_hex.clone()),
     )
     .digest
-    .clone())
+    .clone();
+    Ok(TypedModuleStoreHexParts {
+        key,
+        source_digest_hex: source_hash,
+        import_interface_hexes: import_hashes.iter().cloned().collect(),
+        compiler_digest_hex,
+    })
+}
+
+pub(crate) fn typed_module_content_key(
+    index: &MultiEntryIndex,
+    resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
+    mod_name: &str,
+    interface_hash_by_name: &std::collections::HashMap<String, String>,
+    closure_names: &std::collections::HashSet<&str>,
+    closure_path_to_authored_name: &HashMap<String, &str>,
+    include_reference_derived_term: bool,
+) -> Result<String, String> {
+    Ok(typed_module_store_hex_parts(
+        index,
+        resolved,
+        mod_name,
+        interface_hash_by_name,
+        closure_names,
+        closure_path_to_authored_name,
+        include_reference_derived_term,
+    )?
+    .key)
 }
 
 /// One derivation of the typed-cache entry cap: env override, else the host
