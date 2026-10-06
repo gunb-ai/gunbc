@@ -25,11 +25,12 @@
 module v2.test.claim.caller_admission_native_wall
 
 import std.algebra { Cons, Empty }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
-import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check }
-import v2.std.diagnostic { None, Some, diagnostics_has_reason }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
+import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored }
+import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored, StructuralLabel, CoreMarker, DeclarationReferenceEdge, Positional }
 import v2.std.optional { Absent, Present }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +131,6 @@ test fn the_wall_refuses_a_call_from_a_declaration_outside_the_list_holds() -> B
 // ---------------------------------------------------------------------------
 // (2) THE CONTROL: the listed declaration is admitted -- the judge's positive direction.
 // ---------------------------------------------------------------------------
-
 test fn the_wall_admits_a_call_from_the_listed_declaration_holds() -> Bool {
   match infer_admission_judge_entries(
     application: wall_application,
@@ -196,5 +196,63 @@ test fn a_well_formed_roster_reads_as_the_authored_coordinates_holds() -> Bool {
             Cons { head: _, tail: _ } => false
           }
       }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (6) FAIL CLOSED: a declared callee whose arrow cannot be read refuses with a typed,
+// located cause carrying the looked-up key -- never an admit. This pins the application
+// layer's miss arm (facts gather absent + resolved_declarations miss), independent of the
+// lookup's success paths, which claims (1)-(2) exercise.
+// ---------------------------------------------------------------------------
+
+data wall_decl_ref_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 915 } }
+
+fn wall_decl_ref_target() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^wall_callee } },
+          children: [],
+          occurrence_id: wall_call_site_locus
+        }
+      }
+    ],
+    occurrence_id: wall_decl_ref_locus
+  }
+}
+
+fn wall_unreadable_callee_application() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: wall_decl_ref_target() }],
+    occurrence_id: wall_call_site_locus
+  }
+}
+
+test fn a_declared_callee_whose_arrow_is_unreadable_refuses_holds() -> Bool {
+  match infer_caller_admission_application_diags(
+    application: wall_unreadable_callee_application(),
+    caller: Present { value: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller } },
+    module_symbol: ^bcb,
+    entries: [],
+    declarations: empty_symbol_index()
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_caller_admission_callee_unreadable)
+        && match d.head.correction {
+          Suggested { node: key } =>
+            match key.occurrence_id {
+              OccurrenceMinted { id: kid } => kid.value == 915
+              OccurrenceProjected { id: kid, caused_by: _ } => kid.value == 915
+              OccurrencePending { caused_by: _ } => false
+              OccurrenceSynthetic => false
+            }
+          Unavailable { reason: _ } => false
+        }
   }
 }

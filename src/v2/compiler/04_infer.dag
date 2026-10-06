@@ -6695,7 +6695,37 @@ fn infer_admit_spine_entries(spine: Node) -> Outcome<List<Node>> {
               }
           }
       }
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_rejected(Diagnostic {
+        reason: ^infer_reason_admit_callers_entries_unreadable,
+        at: node_locus(node: spine),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    TypeNode { connective: Arrow } =>
+      outcome_rejected(Diagnostic {
+        reason: ^infer_reason_admit_callers_entries_unreadable,
+        at: node_locus(node: spine),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    TypeNode { connective: Cardinality } =>
+      outcome_rejected(Diagnostic {
+        reason: ^infer_reason_admit_callers_entries_unreadable,
+        at: node_locus(node: spine),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(Diagnostic {
+        reason: ^infer_reason_admit_callers_entries_unreadable,
+        at: node_locus(node: spine),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    TypeNode { connective: Disj } =>
+      outcome_rejected(Diagnostic {
+        reason: ^infer_reason_admit_callers_entries_unreadable,
+        at: node_locus(node: spine),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    ComputationNode { behavior: _ } =>
       outcome_rejected(Diagnostic {
         reason: ^infer_reason_admit_callers_entries_unreadable,
         at: node_locus(node: spine),
@@ -6735,7 +6765,8 @@ fn infer_admit_spine_side(edges: List<Edge>, name: Symbol) -> Optional<Node> {
             } else {
               optional_absent()
             }
-          _ => optional_absent()
+          StructuralLabel { label: _ } => optional_absent()
+          Positional => optional_absent()
         }
     }
   })

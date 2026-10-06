@@ -2481,9 +2481,11 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // A trailing comma before `]` is admitted, as dag_grammar_comma_list_expr admits it and as v1 reads
 // the list; without it every multi-line caller list written with one refused its whole module.
 // `admit_callers` is matched as an exact-word terminal and stays an ordinary identifier everywhere
-// else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
-// native route checks caller admission, and the stage that does adds its Arrow carrier together
-// with that consumer (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+// else. The clause is consumed when the fn lowers to an Arrow: the lowering mints the authored
+// roster onto the Arrow under the AdmitCallersEdge core marker, and v2.compiler.infer
+// infer_caller_admission_diags judges every call against it (a caller outside the list refuses,
+// never admits). The former drop gunbc.rung_drop.admit_callers_discarded_on_the_native_route is
+// retired by that carrier-plus-consumer restoration.
 // `uses net: Network, fs: Filesystem` after a fn's return clause declares the resources the fn
 // requires, as v1 02_parse parse_uses_clause reads it: one or more comma-separated entries, each a
 // name, a type and an optional parenthesised config. `uses` is matched as an exact-word terminal and

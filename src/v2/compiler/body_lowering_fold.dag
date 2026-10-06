@@ -106,7 +106,11 @@ import v2.std.compilers.body_lowering {
   lower_bind_annotated,
   lower_loop,
   lower_match,
-  lower_unary_prefix
+  lower_unary_prefix,
+  application_head_read,
+  ApplicationHeadRead,
+  ApplicationHeadFound,
+  AtomHead
 }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
@@ -131,7 +135,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_last_segment, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -199,7 +203,6 @@ import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
   binder_edge,
   construct_field_edges,
-  construct_tag_path_optional,
   member_edge_type_node,
   node_positional_child_targets,
   construct_node,
@@ -4754,9 +4757,10 @@ fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optiona
 }
 
 // ONE ENTRY -> ONE RECORD CONJ IN THE SPINE, ALWAYS GROUNDABLE. The entry's call is read through the
-// shared construct readers -- construct_tag_path_optional for the callee (the same accessor every
-// other callee consumer uses) and the authored field edges for the two coordinates, whose string
-// literals are read by the language's own dag_string_literal_value_symbol_optional. The record carries
+// shared readers -- application_head_read for the callee (the canonical Transform-head surface, the
+// same accessor every other callee consumer uses) and the authored field edges for the two
+// coordinates, whose string literals are read by the language's own
+// dag_string_literal_value_symbol_optional. The record carries
 // the operator spelling (^decl_ref) and the two lexemes as plain atoms. An entry that READS but is not
 // such a call lowers to a marker record the reader refuses at the entry
 // (^infer_reason_admit_callers_entry_not_decl_ref) — never dropped, never a raw token subtree. Only a
@@ -4769,11 +4773,22 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
     Absent => optional_absent()
     Present { value: call } =>
       match call.kind {
+        TypeNode { connective: Conj } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Atom { identity: _ } } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Arrow } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Cardinality } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Instantiation } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Disj } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
         ComputationNode { behavior: Transform } =>
-          match body_lower_admit_callee_identity_optional(call: call) {
-            Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
-            Present { value: callee } =>
-              if symbol_eq(a: callee, b: ^decl_ref) {
+          match application_head_read(site: call) {
+            ApplicationHeadFound { head: _, head_identity: AtomHead { identity: id }, operands: _ } =>
+              if symbol_eq(a: id, b: ^decl_ref) {
                     match body_lower_admit_string_field_edge(call: call, field: ^module_path, template: template) {
                       Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
                       Present { value: mp_edge } =>
@@ -4802,8 +4817,23 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
                   } else {
                     optional_present(value: body_lower_admit_entry_marker(template: template))
                   }
+            ApplicationHeadFound { head: _, head_identity: ArrowHead, operands: _ } =>
+              optional_present(value: body_lower_admit_entry_marker(template: template))
+            ApplicationHeadRefused { diagnostics: _ } =>
+              optional_present(value: body_lower_admit_entry_marker(template: template))
+            NotApplicationHead =>
+              optional_present(value: body_lower_admit_entry_marker(template: template))
           }
-        _ => optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Loop } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Branch } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Bind } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Match } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Value } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
       }
   }
 }
@@ -12410,19 +12440,3 @@ fn body_lower_finish_for_normalize(
 }
 
 
-// The canonical call's callee: the transform's head positional edge carries the bare callee
-// atom (body-lowering's call shape). Absent for any other shape.
-fn body_lower_admit_callee_identity_optional(call: Node) -> Optional<Symbol> {
-  match first(call.children) {
-    Absent => optional_absent()
-    Present { value: head } =>
-      match head.label {
-        Positional =>
-          match head.target.kind {
-            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-            _ => optional_absent()
-          }
-        _ => optional_absent()
-      }
-  }
-}
