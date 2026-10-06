@@ -25,7 +25,22 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node {
+  Arrow,
+  ArrowBodyEdge,
+  Atom,
+  Authored,
+  ComputationNode,
+  StructuralLabel,
+  Edge,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  core_edge_label,
+  fold_node
+}
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -75,13 +90,12 @@ import v2.extdeps.languages.dag {
 // non-external, the old NonExternalAnchorScheme refusal). The tagged declaration's value subtree is
 // scanned for vocabulary atoms: any non-accepted atom refuses; none found refuses IF the value
 // region structurally carries its expression content (dag_surface_expr productions present -
-// parse-shaped and emit-shaped trees), and is out of representation IF the region carries no
-// expression productions (03_normalize currently collapses data-decl value internals to bare token
-// markers - the general-body-producer frontier, docs/plans/general-body-producer-design.md). The
-// out-of-representation arm contributes no finding at THIS grain because the fact is absent from
-// the carrier, not because the check widened - the corpus witness enforces the same rule at parse
-// grain, where value content is always present, so scheme enforcement stays whole-corpus while the
-// normalize-grain representation matures.
+// parse-shaped and emit-shaped trees) and when the declaration is a lowered Arrow member, whose
+// initializer body is its value content. A tree whose declaration carries neither is out of
+// representation and contributes no finding, because the fact is absent from the carrier, not
+// because the check widened. Since normalize lowers a data declaration to a named Arrow
+// (body_lower_data_decl_to_member) the normalized and inferred grains carry the value, so scheme
+// enforcement holds there too (see the lowered carrier shape beside mandatory_tag_decl_type_node).
 
 type MandatoryTagRegion {
   region_dotted_prefix: String
@@ -284,17 +298,82 @@ fn mandatory_tag_decl_name(d: Node) -> MandatoryTagDeclName {
   }
 }
 
+// THE LOWERED CARRIER SHAPE. Normalize lowers a `data` declaration to a named nullary Arrow member
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member, 2026-09-24, #12197): the
+// dag_surface_data_decl production is consumed and the declaration stands as a Conj member whose
+// Authored edge carries the declared name and targets an Arrow whose domain is the first Positional
+// child, whose codomain is the second (body_lower_callable_arrow), and whose initializer is the
+// ArrowBodyEdge target. The root lens grain runs over the inferred tree, so this is the shape the
+// compile door actually hands this gate; a reader of only the parse and emit shapes finds no
+// declaration and reports every well-tagged module as missing its tag.
+fn mandatory_tag_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+type MandatoryTagPositionalScan {
+  seen: Int
+  second: Optional<Node>
+}
+
+fn mandatory_tag_lowered_codomain(d: Node) -> Optional<Node> {
+  let scan = fold(d.children, init: MandatoryTagPositionalScan { seen: 0, second: optional_absent() }, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        MandatoryTagPositionalScan {
+          seen: acc.seen + 1,
+          second: if acc.seen == 1 { optional_present(value: e.target) } else { acc.second }
+        }
+      Authored { name: _ } => acc
+      StructuralLabel { label: _ } => acc
+    }
+  })
+  scan.second
+}
+
+fn mandatory_tag_lowered_body(d: Node) -> Optional<Node> {
+  fold(d.children, init: optional_absent(), f: fn(acc, e) {
+    if e.label == core_edge_label(marker: ArrowBodyEdge) { optional_present(value: e.target) } else { acc }
+  })
+}
+
+fn mandatory_tag_lowered_member(n: Node, required_name: Symbol) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match e.label {
+      Authored { name: nm } =>
+        if (nm == required_name) && mandatory_tag_is_arrow(n: e.target) {
+          optional_present(value: e.target)
+        } else {
+          acc
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
 fn mandatory_tag_decl_type_node(d: Node) -> Optional<Node> {
+  if mandatory_tag_is_arrow(n: d) {
+    mandatory_tag_lowered_codomain(d: d)
+  } else {
   match find_named_child(root: d, name: ^dag_surface_data_decl_type) {
     Accepted { value: ty, diagnostics: _ } => optional_present(value: ty)
     Rejected { diagnostics: _ } => mandatory_tag_parse_type_node(d: d)
   }
+  }
 }
 
 fn mandatory_tag_decl_value_node(d: Node) -> Optional<Node> {
+  if mandatory_tag_is_arrow(n: d) {
+    mandatory_tag_lowered_body(d: d)
+  } else {
   match find_named_child(root: d, name: ^dag_surface_data_decl_expr) {
     Accepted { value: v, diagnostics: _ } => optional_present(value: v)
     Rejected { diagnostics: _ } => mandatory_tag_parse_value_node(d: d)
+  }
   }
 }
 
@@ -318,6 +397,10 @@ fn mandatory_tag_scan_decls(subtree: Node, required_name: Symbol) -> MandatoryTa
         MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 1 }
     }
   } else {
+    match mandatory_tag_lowered_member(n: subtree, required_name: required_name) {
+      Present { value: arrow } =>
+        MandatoryTagDeclScan { found: optional_present(value: arrow), projection_gated_count: 0 }
+      Absent =>
     fold(subtree.children, init: MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
       match acc.found {
         Present { value: _ } => acc
@@ -329,6 +412,7 @@ fn mandatory_tag_scan_decls(subtree: Node, required_name: Symbol) -> MandatoryTa
           }
       }
     })
+    }
   }
 }
 
@@ -407,7 +491,7 @@ fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<Dia
       )
       match value_hits {
         Empty =>
-          if mandatory_tag_subtree_has_production(n: v, want: ^dag_surface_expr) {
+          if mandatory_tag_is_arrow(n: d) || mandatory_tag_subtree_has_production(n: v, want: ^dag_surface_expr) {
             [mandatory_tag_value_unreadable_diagnostic(d: d)]
           } else {
             []
