@@ -4723,6 +4723,18 @@ fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
 // NEXT-RUNG TRIGGER: a refinement-inhabitance relation that consumes where_refinement_chain and
 // decides the two directions separately, at which point brand narrowing becomes a refusal here
 // rather than an abstention.
+fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
+  let representative = transparent_alias_representative(
+    index: scope.type_env.symbol_index, name: name)
+  match lookup_type_by_name(env: scope.type_env, name: representative) {
+    Present { value: decl } =>
+      let peeled = peel_nominal_alias_identity(
+        n: decl, env: scope.type_env, module_name: scope.module_name)
+      if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
+    Absent => ""
+  }
+}
+
 // The coproduct dual of nominal_product_head_name: a declared coproduct, applied or not.
 // nominal_coproduct_application_head_name requires children and so answers "" for an
 // unapplied RoadmapStandings; type_head_exposure_is_coproduct misses an ApplicationHead
@@ -4757,18 +4769,6 @@ fn nominal_coproduct_head_name_if_declared_coproduct(name: String, scope: InferS
       let peeled = peel_nominal_alias_identity(
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if peeled.connective == Disj { name } else { "" }
-    Absent => ""
-  }
-}
-
-fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
-  let representative = transparent_alias_representative(
-    index: scope.type_env.symbol_index, name: name)
-  match lookup_type_by_name(env: scope.type_env, name: representative) {
-    Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(
-        n: decl, env: scope.type_env, module_name: scope.module_name)
-      if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
   }
 }
