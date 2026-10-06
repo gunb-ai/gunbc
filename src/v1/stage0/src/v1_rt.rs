@@ -1899,21 +1899,32 @@ fn host_budget_cgroup_v1_from_stat(memory_stat: &str, page_size: u64) -> HostBud
     }
 }
 
+/// Darwin `hw.memsize` via `sysctlbyname`. Authority: `extdeps.darwin.sysctl` `HwMemsize`.
 pub fn host_budget_darwin_physical() -> Option<u64> {
-    if std::env::consts::OS != "macos" {
-        return None;
+    #[cfg(target_os = "macos")]
+    {
+        let name = std::ffi::CStr::from_bytes_with_nul(b"hw.memsize\0").ok()?;
+        let mut value: u64 = 0;
+        let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
+        // SAFETY: `name` is a NUL-terminated literal, `value`/`len` are live locals sized to
+        // match, and `newp`/`newlen` are null/0 for a read-only query per sysctl(3).
+        let rc = unsafe {
+            libc::sysctlbyname(
+                name.as_ptr(),
+                (&mut value as *mut u64).cast::<libc::c_void>(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if rc == 0 && value > 0 {
+            Some(value)
+        } else {
+            None
+        }
     }
-    let out = std::process::Command::new("sysctl")
-        .args(["-n", "hw.memsize"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
     }
-    String::from_utf8(out.stdout)
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .filter(|v| *v > 0)
 }

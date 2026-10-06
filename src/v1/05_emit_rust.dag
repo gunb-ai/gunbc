@@ -17072,17 +17072,17 @@ fn shell_error_stderr_binding(result_fields: List<ShellResultField>) -> String {
 fn emit_shell_stderr_policy_binding(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
   if op_has_stderr_capture_param(op_node: op_node, source_indices: source_indices) {
     concat(
-      "let __stderr_complete_limit: Option<usize> = match &*stderr_capture {\n",
+      "let (__stderr_complete_limit, __stderr_complete_source): (Option<usize>, String) = match &*stderr_capture {\n",
       "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => {\n",
       "        match v1_rt::read_host_budget_bytes() {\n",
-      "            (Some(n), _) => Some(n as usize),\n",
+      "            (Some(n), source) => (Some(n as usize), source),\n",
       "            (None, source) => return Err(format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active host budget authority ({})\", source).into()),\n",
       "        }\n",
       "    }\n",
       "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => {\n",
       "        let n = crate::std_measure::byte_size_count(bytes.clone());\n",
       "        if n < 0 { return Err(\"WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative\".into()); }\n",
-      "        None\n",
+      "        (None, String::new())\n",
       "    }\n",
       "};\n",
       "let __stderr_tail_bytes: usize = match &*stderr_capture {\n",
@@ -17101,7 +17101,7 @@ fn emit_shell_stderr_policy_binding(op_node: Node, source_indices: Map<String, N
 
 data shell_capture_drain_start: String = "let mut stdout_pipe = output.stdout.take();\nlet mut stderr_pipe = output.stderr.take();\nlet stdout_thread = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {\n    let mut buf = Vec::new();\n    if let Some(ref mut reader) = stdout_pipe {\n        std::io::Read::read_to_end(reader, &mut buf)?;\n    }\n    Ok(buf)\n});\nlet stderr_thread = std::thread::spawn(move || -> std::io::Result<(Vec<u8>, u64, bool)> {\n    let mut reader = match stderr_pipe {\n        Some(r) => r,\n        None => return Ok((Vec::new(), 0, false)),\n    };\n    let mut chunk = [0u8; 65536];\n    let mut total: u64 = 0;\n    if let Some(max_bytes) = __stderr_complete_limit {\n        let mut retained = Vec::new();\n        loop {\n            let n = std::io::Read::read(&mut reader, &mut chunk)?;\n            if n == 0 { break; }\n            total += n as u64;\n            if total <= max_bytes as u64 { retained.extend_from_slice(&chunk[..n]); }\n        }\n        let truncated = total > max_bytes as u64;\n        return Ok((if truncated { Vec::new() } else { retained }, total, truncated));\n    }\n    let cap = __stderr_tail_bytes;\n    let mut ring = Vec::with_capacity(cap);\n    let mut start = 0usize;\n    loop {\n        let n = std::io::Read::read(&mut reader, &mut chunk)?;\n        if n == 0 { break; }\n        total += n as u64;\n        for &b in &chunk[..n] {\n            if cap == 0 { continue; }\n            if ring.len() < cap {\n                ring.push(b);\n            } else {\n                ring[start] = b;\n                start = (start + 1) % cap;\n            }\n        }\n    }\n    let retained = if ring.len() < cap || cap == 0 {\n        ring\n    } else {\n        let mut out = Vec::with_capacity(cap);\n        for i in 0..cap { out.push(ring[(start + i) % cap]); }\n        out\n    };\n    let retained_len = retained.len() as u64;\n    Ok((retained, total, total > retained_len))\n});\n"
 
-data shell_capture_join_project: String = "let status = output.wait()?;\n__stdin_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdin write thread panicked\"))??;\nlet stdout_bytes = stdout_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdout drain thread panicked\"))??;\nlet (stderr_bytes, stderr_total_u64, stderr_truncated) = stderr_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stderr drain thread panicked\"))??;\nif let Some(max_bytes) = __stderr_complete_limit {\n    if stderr_total_u64 > max_bytes as u64 {\n        return Err(format!(\"WitnessStderrCaptureCompleteBudgetExceeded: stderr total {} exceeds GUNBC_MEMORY_BUDGET_BYTES {}\", stderr_total_u64, max_bytes).into());\n    }\n}\nlet stderr_total_bytes = stderr_total_u64 as i64;\nlet stderr_retained_bytes = stderr_bytes.len() as i64;\nlet stdout = String::from_utf8_lossy(&stdout_bytes).to_string();\nlet stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();\nlet output = std::process::Output { status, stdout: stdout_bytes, stderr: stderr_bytes };\n"
+data shell_capture_join_project: String = "let status = output.wait()?;\n__stdin_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdin write thread panicked\"))??;\nlet stdout_bytes = stdout_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdout drain thread panicked\"))??;\nlet (stderr_bytes, stderr_total_u64, stderr_truncated) = stderr_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stderr drain thread panicked\"))??;\nif let Some(max_bytes) = __stderr_complete_limit {\n    if stderr_total_u64 > max_bytes as u64 {\n        return Err(format!(\"WitnessStderrCaptureCompleteBudgetExceeded: stderr total {} exceeds host budget {} ({})\", stderr_total_u64, max_bytes, __stderr_complete_source).into());\n    }\n}\nlet stderr_total_bytes = stderr_total_u64 as i64;\nlet stderr_retained_bytes = stderr_bytes.len() as i64;\nlet stdout = String::from_utf8_lossy(&stdout_bytes).to_string();\nlet stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();\nlet output = std::process::Output { status, stdout: stdout_bytes, stderr: stderr_bytes };\n"
 
 // Answers the declared fields in declared order, from the projection the binding
 // resolved, as the method's SUCCESS value.

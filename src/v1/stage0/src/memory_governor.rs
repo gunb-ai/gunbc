@@ -1563,32 +1563,8 @@ pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
 ///
 /// Exists because the governor previously had NO source on Darwin and fell back to the most
 /// permissive cap it could name; macOS's memory facts were never asked for.
-#[cfg(target_os = "macos")]
 pub fn darwin_physical_memory_bytes() -> Option<u64> {
-    let name = c"hw.memsize";
-    let mut value: u64 = 0;
-    let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
-    // SAFETY: `name` is a NUL-terminated literal, `value`/`len` are live locals sized to
-    // match, and `newp`/`newlen` are null/0 for a read-only query per sysctl(3).
-    let rc = unsafe {
-        libc::sysctlbyname(
-            name.as_ptr(),
-            (&mut value as *mut u64).cast::<libc::c_void>(),
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    if rc == 0 && value > 0 {
-        Some(value)
-    } else {
-        None
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn darwin_physical_memory_bytes() -> Option<u64> {
-    None
+    crate::v1_rt::host_budget_darwin_physical()
 }
 
 /// The bind request an executor may carry, read from `GUNBC_BIND_MEMORY_CGROUP_BYTES`.

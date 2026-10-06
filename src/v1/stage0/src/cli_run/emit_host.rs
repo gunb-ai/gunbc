@@ -3530,6 +3530,7 @@ mod fixture_closure_union_tests {
         let program = format!(
             "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
              let __stderr_complete_limit: Option<usize> = {limit};\n\
+             let __stderr_complete_source: String = {source};\n\
              let __stderr_tail_bytes: usize = {tail};\n\
              let mut output = std::process::Command::new(\"sh\")\n\
              .args([\"-c\", \"{script}\"])\n\
@@ -3543,6 +3544,11 @@ mod fixture_closure_union_tests {
              }}\n",
             script = script.replace("{payload}", stderr_payload),
             limit = limit,
+            source = if complete_limit.is_some() {
+                "\"host budget\"".to_string()
+            } else {
+                "String::new()".to_string()
+            },
             tail = tail_bytes,
             drain = drain,
         );
