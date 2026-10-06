@@ -1614,9 +1614,6 @@ pub fn contiguous_loop_elementwise_kernel(
     }
     out
 }
-
-/// The one host-budget precedence. Authority: `gunbc.host_budget_source`.
-/// `read_host_budget_bytes` and `memory_governor::resolve_host_budget` both call this.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HostBudgetJoinSource {
     CgroupMemoryHigh { cgroup_dir: String },
@@ -1629,14 +1626,15 @@ impl HostBudgetJoinSource {
     pub fn label(&self) -> String {
         match self {
             HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir } => {
-                format!("cgroup memory.high ({cgroup_dir})")
+                format!("cgroup memory.high ({})", cgroup_dir)
             }
             HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir } => {
-                format!("cgroup memory.max ({cgroup_dir})")
+                format!("cgroup memory.max ({})", cgroup_dir)
             }
-            HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir } => {
-                format!("cgroup v1 memory.stat hierarchical_memory_limit ({cgroup_dir})")
-            }
+            HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir } => format!(
+                "cgroup v1 memory.stat hierarchical_memory_limit ({})",
+                cgroup_dir
+            ),
             HostBudgetJoinSource::DarwinPhysicalMemory => "sysctl hw.memsize".to_string(),
         }
     }
@@ -1671,7 +1669,6 @@ impl HostBudgetJoin {
             HostBudgetJoin::Unreadable { .. } => None,
         }
     }
-
     pub fn label(&self) -> String {
         match self {
             HostBudgetJoin::Resolved {
@@ -1681,17 +1678,21 @@ impl HostBudgetJoin {
                 observed_bytes,
             } => match requested_bytes {
                 Some(requested) => format!(
-                    "effective planning minimum {effective_bytes} bytes (env request {requested}; observed {}={observed_bytes} bytes)",
-                    source.label()
+                    "effective planning minimum {} bytes (env request {}; observed {}={} bytes)",
+                    effective_bytes,
+                    requested,
+                    source.label(),
+                    observed_bytes
                 ),
                 None => source.label(),
             },
-            HostBudgetJoin::Unreadable { reason } => format!("unreadable: {reason}"),
+            HostBudgetJoin::Unreadable { reason } => format!("unreadable: {}", reason),
             HostBudgetJoin::DeclaredUnverified {
                 requested_bytes,
                 reason,
             } => format!(
-                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={requested_bytes}; {reason}"
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; {}",
+                requested_bytes, reason
             ),
         }
     }
@@ -1706,13 +1707,7 @@ pub fn resolve_host_budget_join(
 ) -> HostBudgetJoin {
     let cgroup_v1_limit = match cgroup_v1_limit {
         Some((dir, HostBudgetCgroupV1::Unparseable(body))) => {
-            return HostBudgetJoin::Unreadable {
-                reason: format!(
-                    "cgroup v1 memory hierarchy at {dir} holds this process but its \
-                     hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
-                     tightest cannot be replaced by another reading"
-                ),
-            };
+            return HostBudgetJoin::Unreadable { reason: format!("cgroup v1 memory hierarchy at {} holds this process but its hierarchical_memory_limit is unreadable ({}); a bound that may be the tightest cannot be replaced by another reading", dir, body) };
         }
         Some((dir, HostBudgetCgroupV1::Limited(bytes))) => Some((dir, bytes)),
         Some((_, HostBudgetCgroupV1::Unlimited)) | None => None,
@@ -1758,26 +1753,11 @@ pub fn resolve_host_budget_join(
         };
     }
     if let Some(requested_bytes) = env_override {
-        return HostBudgetJoin::DeclaredUnverified {
-            requested_bytes,
-            reason: "no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string(),
-        };
+        return HostBudgetJoin::DeclaredUnverified { requested_bytes, reason: "no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string() };
     }
-    HostBudgetJoin::Unreadable {
-        reason: format!(
-            "no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES \
-             cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than \
-             admitting against the widest signal available: a host-shared reading is a number \
-             about the MACHINE, not about this slot, and admitting against one is the rc=137 \
-             SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
-             gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must \
-             expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
-            std::env::consts::OS
-        ),
-    }
+    HostBudgetJoin::Unreadable { reason: format!("no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.", std::env::consts::OS) }
 }
 
-/// `(bytes, source label)` view of `resolve_host_budget_join` over the live observations.
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
     let join = resolve_host_budget_join(
         std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
@@ -1840,7 +1820,7 @@ pub fn host_budget_cgroup_v1() -> Option<(String, HostBudgetCgroupV1)> {
     let dir = host_budget_cgroup_v1_memory_dir(&self_cg, &mountinfo)?;
     let value = match std::fs::read_to_string(std::path::Path::new(&dir).join("memory.stat")) {
         Ok(stat) => host_budget_cgroup_v1_from_stat(&stat, page_size),
-        Err(e) => HostBudgetCgroupV1::Unparseable(format!("memory.stat: {e}")),
+        Err(e) => HostBudgetCgroupV1::Unparseable(format!("memory.stat: {}", e)),
     };
     Some((dir, value))
 }
@@ -1906,8 +1886,6 @@ pub fn host_budget_darwin_physical() -> Option<u64> {
         let name = std::ffi::CStr::from_bytes_with_nul(b"hw.memsize\0").ok()?;
         let mut value: u64 = 0;
         let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
-        // SAFETY: `name` is a NUL-terminated literal, `value`/`len` are live locals sized to
-        // match, and `newp`/`newlen` are null/0 for a read-only query per sysctl(3).
         let rc = unsafe {
             libc::sysctlbyname(
                 name.as_ptr(),
