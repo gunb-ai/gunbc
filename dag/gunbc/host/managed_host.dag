@@ -16,8 +16,11 @@ import gunbc.machine_intake_subject {
 }
 import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
-import gunbc.rung_drop { RungDrop, Standing, Retired, TypedDeclaration, AuthoredProse }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.standing { standing_rung_drops }
+import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
+  mtcollins1_bmc_secure_standing_predates_reflash,
+}
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
 import gunbc.machine_intake_mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
@@ -191,21 +194,17 @@ data mtcollins1_bmc_secure_standing_drop_ref: DeclarationRef = decl_ref(
   decl_name: "mtcollins1_bmc_secure_standing_predates_reflash",
 )
 
-fn drop_population_names_host(drop: RungDrop, host: HostIdentity) -> Bool {
-  match drop.declaration {
-    AuthoredProse { legacy: _, authored: _ } => false
-    TypedDeclaration {
-      previous: _, temporary: _, reason: _, population: pop, restoration_trigger: _
-    } => any(pop, p => string_contains(s: p, pattern: host as String))
-  }
-}
-
+// COVERING IS IDENTITY, NOT PROSE. RungDrop.population is the 4b(3) English bound for the DESIGN
+// projection; grepping it would admit any host whose name appears in a sentence and would drop
+// mtcollins1 if the sentence were reworded. This drop covers operator_host_mtcollins1 when the
+// standing row is the cited one. HostIdentity equality is the member list; the DeclarationRef on
+// MemberUnderDeclaredDrop is the citation.
 fn drop_covers_superseded_bmc_secure(drop: RungDrop, host: HostIdentity) -> Bool {
   match drop.standing {
     Retired { trigger_fired: _ } => false
     Standing =>
-      (drop.identity as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
-        && drop_population_names_host(drop: drop, host: host)
+      (drop.identity as String) == (mtcollins1_bmc_secure_standing_predates_reflash.identity as String)
+        && (host as String) == (operator_host_mtcollins1 as String)
   }
 }
 
@@ -350,18 +349,14 @@ fn project_managed_host_admission(
               SubjectStale { axes: _ } =>
                 match covering_bmc_secure_drop(drops: drops, host: record.host) {
                   Absent => none
-                  Present { value: d } =>
-                    if (d.identity as String) != (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String) {
-                      none
-                    } else {
-                      Present {
-                        value: member_under_declared_drop(
-                          drop: mtcollins1_bmc_secure_standing_drop_ref,
-                          standing_subject: record.subject,
-                          current_subject: current,
-                          host: row,
-                        ),
-                      }
+                  Present { value: _ } =>
+                    Present {
+                      value: member_under_declared_drop(
+                        drop: mtcollins1_bmc_secure_standing_drop_ref,
+                        standing_subject: record.subject,
+                        current_subject: current,
+                        host: row,
+                      ),
                     }
                 }
             }
