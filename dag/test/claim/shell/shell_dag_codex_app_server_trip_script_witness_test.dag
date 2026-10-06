@@ -66,20 +66,20 @@ fn trip_surface(codex_home: String) -> String {
 
 // RED TODAY: the trip surface is one concatenated shell line and carries command separators
 // throughout. Greens when the trip is a typed ArgvCommand with the payload on stdin.
-test fn trip_surface_renders_no_shell_control_word() -> Bool {
+test fn trip_surface_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: w))
 }
 
 // RED TODAY: the stdio capture is muxed through literal sentinels that can collide with real
 // output. Greens when streams are captured separately — a capture that cannot separate streams
 // refuses rather than muxing.
-test fn trip_surface_carries_no_stdio_sentinel() -> Bool {
+test fn trip_surface_carries_no_stdio_sentinel() -> Bool  {
   !any(stdio_sentinels, s => string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: s))
 }
 
 // RED TODAY: a codex_home carrying a command separator is interpolated raw into the export line.
 // Greens when the typed realization refuses it or carries it as data, never as shell.
-test fn adversarial_codex_home_renders_no_shell_control_word() -> Bool {
+test fn adversarial_codex_home_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(s: trip_surface(codex_home: "/tmp/codex-home; reboot"), pattern: w))
 }
 
@@ -87,7 +87,7 @@ test fn adversarial_codex_home_renders_no_shell_control_word() -> Bool {
 // payload — the initialize request line is the first frame of the stdin payload — and addresses
 // the declared executable and codex_home. The rebind changes who constructs the invocation,
 // never what the app-server is asked.
-test fn trip_surface_carries_the_declared_payload_and_subject() -> Bool {
+test fn trip_surface_carries_the_declared_payload_and_subject() -> Bool  {
   string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: codex_app_server_initialize_request_line() as String)
     && string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: "/usr/bin/codex")
     && string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: "/tmp/codex-home")

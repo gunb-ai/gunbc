@@ -93,7 +93,7 @@ fn head_foreground_words() -> List<String> {
 // binary path, `run` and `--rm` (three words). What remains is every field a launch can be wrong
 // about -- name, network, ipc, shm size, memlock, gpus, devices, capabilities, mounts, environment,
 // image and the engine's own argv -- and it is compared word for word.
-test fn w_the_two_launch_projections_agree_word_for_word() -> Bool {
+test fn w_the_two_launch_projections_agree_word_for_word() -> Bool  {
   match head_spec() {
     Absent => false
     Present { value: spec } => {
@@ -109,7 +109,7 @@ test fn w_the_two_launch_projections_agree_word_for_word() -> Bool {
 // The rendered unit text must literally contain the foreground argv joined by spaces. A renderer
 // that went back to building its own word list would still produce a plausible unit and would fail
 // here on the first word that differs.
-test fn w_the_head_unit_exec_line_is_the_projection() -> Bool {
+test fn w_the_head_unit_exec_line_is_the_projection() -> Bool  {
   let words = head_foreground_words()
   count(words) > 0 && match glm_native_all_unit_renders().first() {
     Absent => false
@@ -127,7 +127,7 @@ test fn w_the_head_unit_exec_line_is_the_projection() -> Bool {
 // Named individually rather than folded into the equality above, because a general equality that
 // goes red tells a reader only THAT something moved. These say which three the fleet has already
 // been burned by, so a future loss reports itself by name.
-test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool {
+test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool  {
   let words = head_foreground_words()
   count(words) > 0
     && any(words, w => w == "--shm-size")
@@ -162,7 +162,7 @@ test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool {
 // 2026-10-01). Without it the plan refuses (gunbc.spark.serving_arm serving_arm_admits, "no registry
 // reading exists") and no launch line renders, rather than rendering the base image the fleet stopped
 // running -- so removing that reading turns this red.
-test fn w_every_rank_launches_one_image() -> Bool {
+test fn w_every_rank_launches_one_image() -> Bool  {
   let lines = glm_native_launch_lines()
   count(lines) == 4
     && all(lines, l => (l.image_reference as String) == (l.container.image as String))

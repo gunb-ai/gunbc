@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // standing refusal omits tmux rows from admission (fixture_projection_standing_refusal_tmux_entry)
 // — the wire must not fabricate a partial session row.
 
-test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
+test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool  {
   let o = BeltSessionsObserved {
     live: dispatch_live_sessions_from_entries(
       entries: [fixture_projection_standing_refusal_tmux_entry()],
@@ -64,7 +64,7 @@ fn fixture_live() -> DispatchLiveSession {
   }
 }
 
-test fn sessions_observed_projects_to_wire() -> Bool {
+test fn sessions_observed_projects_to_wire() -> Bool  {
   let j = belt_sessions_observed_json(o: BeltSessionsObserved { live: [fixture_live()] })
   return string_contains(s: j, pattern: "\"schema\": \"roadmap-sessions/v1\"")
     && string_contains(s: j, pattern: "\"observe_refused\": false")
@@ -86,7 +86,7 @@ test fn sessions_observed_projects_to_wire() -> Bool {
     && belt_sessions_http_status(o: BeltSessionsObserved { live: [fixture_live()] }) == 200
 }
 
-test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
+test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool  {
   let retained = DispatchLiveSession {
     session_name: "gunbc-dispatch-5-regen-cutover",
     node_id: "5-regen-cutover",
@@ -109,7 +109,7 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
     && string_contains(s: j, pattern: "only retained tmux session metadata will be removed")
 }
 
-test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
+test fn sessions_refusal_is_loud_on_the_wire() -> Bool  {
   let o = ObserveRefused { reason: "tmux ls: permission denied" }
   let j = belt_sessions_observed_json(o: o)
   return string_contains(s: j, pattern: "\"observe_refused\": true")
@@ -125,7 +125,7 @@ test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
 // literal) are now the discriminating NEGATIVES: any reappearing in the emitted source is a second
 // session presentation authority standing back up.
 
-test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
+test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool  {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "fetch('/sessions.json')")
     && string_contains(s: js, pattern: "sj.observe_refused")
@@ -149,7 +149,7 @@ test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
     && string_contains(s: js, pattern: ".catch(")
 }
 
-test fn sessions_client_reobserves_after_dispatch_and_on_cadence() -> Bool {
+test fn sessions_client_reobserves_after_dispatch_and_on_cadence() -> Bool  {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "const gunbcObserveSessions = () =>")
     && string_contains(s: js, pattern: "const gunbcObserveAttempts = () =>")
@@ -161,7 +161,7 @@ test fn sessions_client_reobserves_after_dispatch_and_on_cadence() -> Bool {
     && string_contains(s: js, pattern: "3000")
 }
 
-test fn sessions_client_serializes_each_observation_source() -> Bool {
+test fn sessions_client_serializes_each_observation_source() -> Bool  {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "let gunbcSessionsObservationInFlight = false")
     && string_contains(s: js, pattern: "let gunbcAttemptsObservationInFlight = false")
@@ -177,7 +177,7 @@ test fn sessions_client_serializes_each_observation_source() -> Bool {
 // dataset fact for admission logic; the visible claim lives in the disclosure's session-facts line.
 // The discriminating negatives are the exact strings the old mechanism emitted.
 
-test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
+test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool  {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "sb.dataset.sessionPresence = 'present'")
     && !string_contains(s: js, pattern: "sb.textContent = 'session")
@@ -185,7 +185,7 @@ test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
     && !string_contains(s: js, pattern: "session · present")
 }
 
-test fn sessions_refusal_withdraws_prior_presence() -> Bool {
+test fn sessions_refusal_withdraws_prior_presence() -> Bool  {
   let js = dispatch_client_js_source()
   let presence_reset_selector = ".dispatch-btn[data-session-presence=\"present\"], .session-facts"
   return count(split(s: js, delimiter: presence_reset_selector)) == 4
@@ -195,14 +195,14 @@ test fn sessions_refusal_withdraws_prior_presence() -> Bool {
     && string_contains(s: js, pattern: "pb.remove()")
 }
 
-test fn attempts_refusal_withdraws_prior_rows() -> Bool {
+test fn attempts_refusal_withdraws_prior_rows() -> Bool  {
   let js = dispatch_client_js_source()
   return count(split(s: js, delimiter: ".dispatch-attempts")) == 5
     && string_contains(s: js, pattern: "aj.attempts_refused")
     && string_contains(s: js, pattern: "staleAttempts.remove()")
 }
 
-test fn sessions_banner_is_styled_loud() -> Bool {
+test fn sessions_banner_is_styled_loud() -> Bool  {
   any(xs: roadmap_rules(), predicate: fn(r) {
     match r {
       StaticRule { selector: sel, decls: decls } =>

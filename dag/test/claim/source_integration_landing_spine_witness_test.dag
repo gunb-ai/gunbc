@@ -495,7 +495,7 @@ fn p0_transition(
   }
 }
 
-test fn witness_p0_full_claim_readiness_reaches_closed_one() -> Bool {
+test fn witness_p0_full_claim_readiness_reaches_closed_one() -> Bool  {
   let receipt = p0_closed_one()
   let first = receipt.closed_space.subject.ready_evidence.proposal.ensures_guarantees.first
   first == p0_builds_claim()
@@ -505,7 +505,7 @@ test fn witness_p0_full_claim_readiness_reaches_closed_one() -> Bool {
     && receipt.unique.result == "unique-result-42"
 }
 
-test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool {
+test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool  {
   let wrong = p0_claim(
     id: "builds",
     target: "another-target",
@@ -534,7 +534,7 @@ test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool {
   }
 }
 
-test fn witness_p0_unrelated_satisfied_claim_blocks() -> Bool {
+test fn witness_p0_unrelated_satisfied_claim_blocks() -> Bool  {
   let unrelated = p0_claim(
     id: "unrelated",
     target: "accepted-main",
@@ -558,7 +558,7 @@ test fn witness_p0_unrelated_satisfied_claim_blocks() -> Bool {
   }
 }
 
-test fn witness_p0_omitted_guarantee_blocks() -> Bool {
+test fn witness_p0_omitted_guarantee_blocks() -> Bool  {
   match landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
@@ -579,7 +579,7 @@ test fn witness_p0_omitted_guarantee_blocks() -> Bool {
   }
 }
 
-test fn witness_p0_duplicate_requirement_blocks() -> Bool {
+test fn witness_p0_duplicate_requirement_blocks() -> Bool  {
   let duplicate = p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
     guarantees: LandingRequiredClaims {
@@ -605,7 +605,7 @@ test fn witness_p0_duplicate_requirement_blocks() -> Bool {
   }
 }
 
-test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool {
+test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool  {
   let forged = p0_link(
     claim: p0_builds_claim(),
     direction: EvidenceSupports,
@@ -666,7 +666,7 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
   }
 }
 
-test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
+test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool  {
   let challenged = landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
@@ -729,7 +729,7 @@ test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
   }
 }
 
-test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
+test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool  {
   let challenged = landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
@@ -776,7 +776,7 @@ test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
   }
 }
 
-test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
+test fn witness_p0_closed_zero_is_closure_qualified() -> Bool  {
   let receipt = p0_closed_receipt(
     candidates: LandingNoResultClasses {
       incompatible_core: "the two required guarantees cannot coexist",
@@ -808,7 +808,7 @@ test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
   }
 }
 
-test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
+test fn witness_p0_closed_many_owns_material_alternatives() -> Bool  {
   let first = p0_result(
     handle: "first-result",
     preview: "The new call uses the renamed function.",
@@ -954,7 +954,7 @@ fn p0_incomplete_closure_stays_machine_owned(
   }
 }
 
-test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
+test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool  {
   all([
     LandingCaptureCompletenessCertificate,
     LandingAffectedScopeCertificate,
@@ -966,7 +966,7 @@ test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
   ], missing => p0_incomplete_closure_stays_machine_owned(missing: missing))
 }
 
-test fn witness_p0_admission_and_transition_flow_forward() -> Bool {
+test fn witness_p0_admission_and_transition_flow_forward() -> Bool  {
   let admitted = p0_admitted()
   let transition = p0_transition(
     admitted: admitted,
@@ -978,7 +978,7 @@ test fn witness_p0_admission_and_transition_flow_forward() -> Bool {
     && carried == p0_proposal()
 }
 
-test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
+test fn witness_p0_cross_paired_read_back_refuses() -> Bool  {
   let transition = p0_transition(
     admitted: p0_admitted(),
     identity: "transition-42",
@@ -1010,7 +1010,7 @@ test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
     }
 }
 
-test fn witness_p0_cross_paired_projection_refuses() -> Bool {
+test fn witness_p0_cross_paired_projection_refuses() -> Bool  {
   let transition = p0_transition(
     admitted: p0_admitted(),
     identity: "transition-42",
@@ -1039,7 +1039,7 @@ test fn witness_p0_cross_paired_projection_refuses() -> Bool {
   }
 }
 
-test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
+test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool  {
   let admitted = p0_admitted()
   let first = p0_transition(
     admitted: admitted,
@@ -1094,7 +1094,7 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
   }
 }
 
-test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> Bool {
+test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> Bool  {
   let transition = p0_transition(
     admitted: p0_admitted(),
     identity: "transition-42",
@@ -1147,7 +1147,7 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
   }
 }
 
-test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
+test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool  {
   let transition = p0_transition(
     admitted: p0_admitted(),
     identity: "transition-42",
@@ -1188,7 +1188,7 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
   }
 }
 
-test fn witness_p0_refused_admission_cannot_advance() -> Bool {
+test fn witness_p0_refused_admission_cannot_advance() -> Bool  {
   let semantic = p0_closed_one()
   match landing_admitted_result(
     admission: LandingUnauthorized {
@@ -1210,7 +1210,7 @@ test fn witness_p0_refused_admission_cannot_advance() -> Bool {
   }
 }
 
-test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
+test fn witness_p0_stale_parent_retries_inside_machine() -> Bool  {
   match landing_user_boundary(
     receipt: LandingTransitionSpine {
       transition: LandingRetryStaleParent {
@@ -1229,7 +1229,7 @@ test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
   }
 }
 
-test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
+test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool  {
   let machine = landing_user_boundary(
     receipt: LandingTransitionSpine {
       transition: LandingRetryStaleParent {
@@ -1343,7 +1343,7 @@ fn p0_primary_message_is_plain(message: String) -> Bool {
   ], forbidden => !string_contains(s: message, pattern: forbidden))
 }
 
-test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool {
+test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool  {
   let refusal = LandingRefusal {
     kind: LandingPermanentEffectFailure,
     locus: "private-node-42",
@@ -1375,7 +1375,7 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
   }
 }
 
-test fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
+test fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool  {
   let early = p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
     guarantees: LandingRequiredClaims {

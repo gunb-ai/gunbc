@@ -116,7 +116,7 @@ data switch_one_wrong_one_unread: Crs812SwitchSubject = subject_with(readings: [
 
 // THE POSITIVE CONTROL, FIRST. Every refusal below is only informative because this one converges:
 // an assessor that never returns GoalSatisfied would satisfy all of them and check nothing.
-test fn a_correctly_configured_switch_converges() -> Bool {
+test fn a_correctly_configured_switch_converges() -> Bool  {
   match inspect_fabric_switch(subject: configured_switch) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -132,7 +132,7 @@ test fn a_correctly_configured_switch_converges() -> Bool {
 // THE CENTRAL DIVERGENCE, AND IT NAMES BOTH SIDES. An operator reading this needs the desired mode
 // and the reported one, not the fact that they differ -- a divergence carrying only "lane 1 is
 // wrong" is a diagnostic without the information needed to act on it.
-test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
+test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool  {
   match inspect_fabric_switch(subject: switch_running_at_half_rate) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -158,7 +158,7 @@ test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
 // handler reporting over its read subset would converge and an uncaptured switch would be
 // indistinguishable from a correct one. It must NOT converge -- and it must not refuse the whole
 // observation either, which is what the first cut did.
-test fn one_unread_lane_is_an_unknown_and_not_a_failed_read() -> Bool {
+test fn one_unread_lane_is_an_unknown_and_not_a_failed_read() -> Bool  {
   match inspect_fabric_switch(subject: switch_with_one_unread_lane) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -176,7 +176,7 @@ test fn one_unread_lane_is_an_unknown_and_not_a_failed_read() -> Bool {
 // member must report BOTH: the unknown does not suppress the deviation, and the deviation does not
 // silence the unknown. Under the shape this replaces, the whole observation refused here and the
 // miscoded lane was never reported at all.
-test fn a_proved_divergence_and_an_unread_lane_are_reported_together() -> Bool {
+test fn a_proved_divergence_and_an_unread_lane_are_reported_together() -> Bool  {
   match inspect_fabric_switch(subject: switch_one_wrong_one_unread) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -207,7 +207,7 @@ test fn a_proved_divergence_and_an_unread_lane_are_reported_together() -> Bool {
 // discriminating input for the same fallback, on the other axis: narrowing the comparison to the
 // lanes the intent happens to mention would make the switch converge MORE easily the more of it
 // went unmodelled.
-test fn a_lane_outside_the_intent_diverges() -> Bool {
+test fn a_lane_outside_the_intent_diverges() -> Bool  {
   match inspect_fabric_switch(subject: switch_with_an_unmodelled_lane) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -232,7 +232,7 @@ test fn a_lane_outside_the_intent_diverges() -> Bool {
 // from an empty population is the vacuous pass DESIGN section 5 refuses by name.
 // AN INTENT NAMING NO LANES IS AN ILL-FORMED QUESTION. Zero DECLARED lanes means no denominator, so
 // this refuses -- and it is the only empty-population refusal left.
-test fn an_intent_that_names_no_lanes_refuses_the_assessment() -> Bool {
+test fn an_intent_that_names_no_lanes_refuses_the_assessment() -> Bool  {
   match inspect_fabric_switch(subject: switch_whose_intent_names_no_lanes) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -252,7 +252,7 @@ test fn an_intent_that_names_no_lanes_refuses_the_assessment() -> Bool {
 // THE DISCRIMINATING PAIR FOR THE EXPECTATION-DRIVEN JOIN. A switch whose intent names two lanes and
 // whose readings are EMPTY is fully unknown, not empty: it must report one unknown per expected
 // lane. The cut before this one refused here and called a declared roster an absent one.
-test fn an_intent_with_nothing_read_is_fully_unknown_and_not_empty() -> Bool {
+test fn an_intent_with_nothing_read_is_fully_unknown_and_not_empty() -> Bool  {
   match inspect_fabric_switch(subject: switch_with_no_lanes) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -269,7 +269,7 @@ test fn an_intent_with_nothing_read_is_fully_unknown_and_not_empty() -> Bool {
 // THE CONTROL THAT SEPARATES A DECLARED DENOMINATOR FROM AN OBSERVED ONE. The pair lane is not
 // mentioned by the readings at all. Nothing in the observation says it is missing -- only the intent
 // does -- so a denominator derived from the readings would report this switch as fully converged.
-test fn a_lane_the_readings_omit_entirely_is_still_an_unknown() -> Bool {
+test fn a_lane_the_readings_omit_entirely_is_still_an_unknown() -> Bool  {
   match inspect_fabric_switch(subject: switch_with_a_lane_omitted_entirely) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -307,7 +307,7 @@ test fn a_lane_the_readings_omit_entirely_is_still_an_unknown() -> Bool {
 // which needs both the remaining six legs read AND their coding fixed -- and then becomes the
 // regression control that the switch still refuses to ASSESS while its intent is undecided. It does
 // not retire.
-test fn the_fleet_switch_cannot_be_assessed_while_its_plant_cannot_answer() -> Bool {
+test fn the_fleet_switch_cannot_be_assessed_while_its_plant_cannot_answer() -> Bool  {
   match fabric_switch_inspection() {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -328,7 +328,7 @@ test fn the_fleet_switch_cannot_be_assessed_while_its_plant_cannot_answer() -> B
 // THE LANE SPEED IS SELECTED BY THE REQUIRED MODE, not written down. These three rows are the
 // discriminating input for that claim: a literal in the desired module agrees with exactly one of
 // them, so if the derivation is ever replaced by a constant again, two of the three go red.
-test fn the_wire_value_is_selected_by_the_required_link_mode() -> Bool {
+test fn the_wire_value_is_selected_by_the_required_link_mode() -> Bool  {
   match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr2) {
     LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr2)
     NoLaneSpeedForMode { mode: u } => false
@@ -346,7 +346,7 @@ test fn the_wire_value_is_selected_by_the_required_link_mode() -> Bool {
 // A MODE THIS SWITCH HAS NO WIRE VALUE FOR REFUSES rather than falling back to the nearest speed.
 // Picking a neighbouring value would be the absorbing fallback: the switch would configure itself
 // to something nobody asked for, and the fact that the hardware cannot do the job would disappear.
-test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool {
+test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool  {
   match crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr) {
     NoLaneSpeedForMode { mode: u } => true
     LaneSpeedForMode { speed: s } => false
@@ -370,7 +370,7 @@ test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool {
 // RED is authorable and mutation-confirmed.
 data decided_intent_for_request_control: Crs812SwitchIntent = decided_intent
 
-test fn the_request_is_not_derived_from_the_goal() -> Bool {
+test fn the_request_is_not_derived_from_the_goal() -> Bool  {
   match inspect_fabric_switch(subject: fabric_switch_subject_under(intent: decided_intent_for_request_control)) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>

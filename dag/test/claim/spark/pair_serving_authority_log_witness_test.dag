@@ -108,32 +108,32 @@ fn alw_arm_round_trips(index: Int) -> Bool {
   })
 }
 
-test fn an_unestablished_active_arm_round_trips_through_the_wire() -> Bool {
+test fn an_unestablished_active_arm_round_trips_through_the_wire() -> Bool  {
   alw_arm_round_trips(index: 0)
 }
 
-test fn a_keyed_active_arm_round_trips_through_the_wire() -> Bool {
+test fn a_keyed_active_arm_round_trips_through_the_wire() -> Bool  {
   alw_arm_round_trips(index: 1)
 }
 
-test fn a_pending_arm_round_trips_through_the_wire() -> Bool {
+test fn a_pending_arm_round_trips_through_the_wire() -> Bool  {
   alw_arm_round_trips(index: 2)
 }
 
-test fn a_suspended_for_successor_arm_round_trips_through_the_wire() -> Bool {
+test fn a_suspended_for_successor_arm_round_trips_through_the_wire() -> Bool  {
   alw_arm_round_trips(index: 3)
 }
 
-test fn a_fenced_arm_round_trips_through_the_wire() -> Bool {
+test fn a_fenced_arm_round_trips_through_the_wire() -> Bool  {
   alw_arm_round_trips(index: 4)
 }
 
-test fn a_released_arm_round_trips_through_the_wire() -> Bool {
+test fn a_released_arm_round_trips_through_the_wire() -> Bool  {
   alw_arm_round_trips(index: 5)
 }
 
 // The `previous` position, with a leased arm, so both sides of one event are read back.
-test fn a_leased_previous_arm_round_trips_through_the_wire() -> Bool {
+test fn a_leased_previous_arm_round_trips_through_the_wire() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     match get(xs: alw_w_all_arms(h: h), index: 3) {
       Absent => false
@@ -146,7 +146,7 @@ test fn a_leased_previous_arm_round_trips_through_the_wire() -> Bool {
 // lease's observed state, which is a fact about the reading instant rather than about the
 // authority: one pending state read while its lease runs and again after it expires is ONE state,
 // or the settling transition could never name the state it leaves.
-test fn the_wire_distinguishes_arms_and_fields_but_not_the_lease_observation() -> Bool {
+test fn the_wire_distinguishes_arms_and_fields_but_not_the_lease_observation() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let arms = alw_w_all_arms(h: h)
     let live = alw_w_lease(h: h, inaccessible: false)
@@ -165,7 +165,7 @@ test fn the_wire_distinguishes_arms_and_fields_but_not_the_lease_observation() -
 
 // A document of another schema, or one whose state word names an arm its fields do not inhabit,
 // is a typed refusal -- never an authority.
-test fn a_foreign_or_incoherent_document_does_not_decode() -> Bool {
+test fn a_foreign_or_incoherent_document_does_not_decode() -> Bool  {
   match pair_authority_event_decode(text: "{\"schema\":\"capacity-pool-event/v1\"}") {
     EventUndecodable { reason: _ } =>
       match pair_authority_event_decode(text: "{\"schema\":\"pair-serving-authority-event/v1\",\"partition\":\"p\",\"parent\":\"\",\"recorded_at\":1,\"actor\":\"w\",\"kind\":\"transitioned\",\"transaction\":\"t\",\"prev_state\":\"suspension-pending-reconciliation\",\"prev_group\":\"group-a\",\"next_state\":\"active\",\"next_group\":\"group-a\",\"next_realization_obligation\":\"o\"}") {
@@ -214,7 +214,7 @@ fn alw_env(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnvelope<PairA
 }
 
 // No transitions: the resting row at generation 0. Two chained transitions: the last next, at 2.
-test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
+test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
@@ -233,7 +233,7 @@ test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
 
 // RED -- an event that claims to leave a state that was not current is refused AT THAT EVENT, and
 // the fold does not continue past it.
-test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -> Bool {
+test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
@@ -247,7 +247,7 @@ test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -
 }
 
 // RED -- a transition whose next state names another group than the partition's is refused.
-test fn a_transition_to_another_groups_authority_refuses() -> Bool {
+test fn a_transition_to_another_groups_authority_refuses() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let elsewhere = ReleasedToFleet { group: FabricGroupB, release_receipt: h }
@@ -266,7 +266,7 @@ fn alw_w_with_lifecycle(h: ContentHash) -> ChainEvent<PairAuthorityEvent> {
   ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: resting, next: pending, transaction: "tx-1" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: none, placement: alw_ref(previous: resting, next: pending, operation: "tx-1") } }
 }
 
-test fn the_lifecycle_identity_round_trips_through_the_wire() -> Bool {
+test fn the_lifecycle_identity_round_trips_through_the_wire() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_w_with_lifecycle(h: h))) {
       EventDecoded { event: back } =>
@@ -280,7 +280,7 @@ test fn the_lifecycle_identity_round_trips_through_the_wire() -> Bool {
 }
 
 // A transition without a lifecycle decodes to none.
-test fn a_transition_without_a_lifecycle_decodes_to_none() -> Bool {
+test fn a_transition_without_a_lifecycle_decodes_to_none() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
@@ -292,7 +292,7 @@ test fn a_transition_without_a_lifecycle_decodes_to_none() -> Bool {
 }
 
 // RED -- a lifecycle member that is not a content-hash wire refuses the document.
-test fn an_incoherent_lifecycle_member_refuses_the_document() -> Bool {
+test fn an_incoherent_lifecycle_member_refuses_the_document() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_w_with_lifecycle(h: h)).replace(from: "sha256:", to: "sha256x:")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false }
   })
@@ -300,7 +300,7 @@ test fn an_incoherent_lifecycle_member_refuses_the_document() -> Bool {
 
 // AND THE FOLD KEEPS IT: the record of transitions carries each event's lifecycle so a recovery
 // can select by it rather than by the transaction word; an operator's write carries none.
-test fn the_fold_records_each_transitions_lifecycle() -> Bool {
+test fn the_fold_records_each_transitions_lifecycle() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
@@ -328,7 +328,7 @@ fn alw_host(s: String) -> HostIdentity {
   s as HostIdentity
 }
 
-test fn the_hosts_wire_distinguishes_every_population() -> Bool {
+test fn the_hosts_wire_distinguishes_every_population() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let joined = alw_fenced_over(hs: [alw_host(s: "a,b"), alw_host(s: "c")])
@@ -354,13 +354,13 @@ fn alw_hosts_wire_refuses(replaced: String) -> Bool {
     && (match pair_authority_event_decode(text: wire.replace(from: "[\"srv5\", \"srv6\"]", to: replaced)) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
 }
 
-test fn a_malformed_hosts_member_refuses_rather_than_normalizing() -> Bool {
+test fn a_malformed_hosts_member_refuses_rather_than_normalizing() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     alw_hosts_wire_refuses(replaced: "[\"srv5\", \"\", \"srv6\"]") && alw_hosts_wire_refuses(replaced: "[\"srv5\", 6]")
   })
 }
 
-test fn a_hosts_wire_that_is_not_an_array_or_is_empty_refuses() -> Bool {
+test fn a_hosts_wire_that_is_not_an_array_or_is_empty_refuses() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     alw_hosts_wire_refuses(replaced: "\"srv5,srv6\"") && alw_hosts_wire_refuses(replaced: "[]")
   })
@@ -483,7 +483,7 @@ fn alw_release(parent: EventId?, admitted_by: String, at: Int) -> ChainEvent<Pai
 
 // Both host-effect events round-trip, the admitted one with its term and residue (a named
 // container and an image ancestor are distinct on the wire), the released one with its evidence.
-test fn host_effect_events_round_trip_through_the_wire() -> Bool {
+test fn host_effect_events_round_trip_through_the_wire() -> Bool  {
   let named = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "vllm-a" as NonEmptyStr } } }
   let by_image = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByAncestor { image: "vllm-a" as NonEmptyStr } } }
   let named_event = ChainEvent { partition: host_placement_partition, parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: HostEffectAdmitted { host: alw_host(s: "srv10"), purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: named } }
@@ -512,7 +512,7 @@ test fn host_effect_events_round_trip_through_the_wire() -> Bool {
 // The preparation, finalization and abort events round-trip; a preparation of nothing (an empty
 // next population) is a valid record on this wire while a committing AUTHORITY with no hosts is
 // not; a mis-keyed member refuses.
-test fn placement_events_round_trip_through_the_wire() -> Bool {
+test fn placement_events_round_trip_through_the_wire() -> Bool  {
   let prepared = alw_prepare(parent: none, group: FabricGroupB, previous: [alw_host(s: "srv12")], next: [alw_host(s: "srv12"), alw_host(s: "srv13")], at: 1000)
   let releasing = alw_prepare(parent: none, group: FabricGroupB, previous: [alw_host(s: "srv12")], next: [] as List<HostIdentity>, at: 1001)
   (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: prepared)) { EventDecoded { event: back } => match back.payload { PlacementPrepared { operation: o, group: FabricGroupB, previous_hosts: ph, next_hosts: nh } => (o as String) == "tx-op" && length(ph) == 1 && length(nh) == 2  _ => false }  EventUndecodable { reason: _ } => false })
@@ -528,7 +528,7 @@ test fn placement_events_round_trip_through_the_wire() -> Bool {
 // container is declared, a docker ps that listed nothing. A listing is residue; a scan that did
 // not reach a verdict (pgrep exit 2, docker ps non-zero, a leg that did not run) is unread; and
 // the evidence carries exactly the host and residue it was taken against.
-test fn the_observer_mints_quiet_only_from_a_scan_that_found_nothing() -> Bool {
+test fn the_observer_mints_quiet_only_from_a_scan_that_found_nothing() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let plain = alw_residue(pattern: "/srv/build")
   let with_container = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "vllm-a" as NonEmptyStr } } }
@@ -546,7 +546,7 @@ test fn the_observer_mints_quiet_only_from_a_scan_that_found_nothing() -> Bool {
 // refuses at that event and the claim stays live (a commitment of the host after it still
 // refuses); the reading for this claim, its host and residue, after its admission, releases it
 // and the commitment then lands.
-test fn a_release_whose_evidence_is_for_another_host_or_effect_refuses_at_that_event() -> Bool {
+test fn a_release_whose_evidence_is_for_another_host_or_effect_refuses_at_that_event() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let claim = alw_env(id: "e2", e: alw_effect(parent: none, host: srv5, at: 1000))
   let commit = alw_prepare(parent: Present { value: "e3" as EventId }, group: FabricGroupA, previous: [] as List<HostIdentity>, next: [srv5], at: 1050)
@@ -585,7 +585,7 @@ fn alw_refuses_at_e3(prefix: List<ChainEnvelope<PairAuthorityEvent>>, after: Cha
 // commitment refuses; a finalization or an abort of a non-pending preparation refuses; a release
 // preparation (next = []) keeps the OLD hosts fenced until finalized; an authority event on this
 // partition refuses; a placement event on a GROUP partition refuses in the authority fold.
-test fn the_placement_fold_fences_preparations_under_a_live_host_effect() -> Bool {
+test fn the_placement_fold_fences_preparations_under_a_live_host_effect() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let claim = alw_env(id: "e2", e: alw_effect(parent: none, host: srv5, at: 1000))
   let prep = alw_prepare(parent: Present { value: "e2" as EventId }, group: FabricGroupA, previous: [] as List<HostIdentity>, next: [srv5], at: 1050)
@@ -624,7 +624,7 @@ test fn the_placement_fold_fences_preparations_under_a_live_host_effect() -> Boo
 // establishment refuses; a transition or an entry state before any establishment refuses; a
 // leased state cannot be established; an authority naming another group than the partition's
 // refuses; the established event round-trips.
-test fn the_partition_folds_from_an_unestablished_genesis_through_the_establishment() -> Bool {
+test fn the_partition_folds_from_an_unestablished_genesis_through_the_establishment() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
@@ -653,7 +653,7 @@ test fn the_partition_folds_from_an_unestablished_genesis_through_the_establishm
 // released C1 cannot release a later C2 on the same host with the same residue (the reading names
 // C1); a recovery provenance naming another claim refuses; one naming this claim, with this
 // claim's evidence, releases. Both round-trip through the wire.
-test fn a_claims_evidence_cannot_release_a_later_identical_claim_and_a_recovery_names_its_claim() -> Bool {
+test fn a_claims_evidence_cannot_release_a_later_identical_claim_and_a_recovery_names_its_claim() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let c1 = alw_env(id: "e2", e: alw_effect(parent: none, host: srv5, at: 1000))
   let c2 = alw_env(id: "e4", e: alw_effect(parent: Present { value: "e3" as EventId }, host: srv5, at: 1020))
@@ -685,7 +685,7 @@ fn alw_recovery_for(claim: String) -> ReleaseProvenance {
 // claim, with evidence correctly bound to the claim, it refuses at that event and the claim stays
 // live; written by E1 it releases; naming another claim in its provenance, it refuses. A recovery
 // by an operator, naming the claim, is the other executor's only route.
-test fn a_terminal_release_by_another_executor_refuses() -> Bool {
+test fn a_terminal_release_by_another_executor_refuses() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let claim = alw_env(id: "e2", e: alw_effect(parent: none, host: srv5, at: 1000))
   let commit = alw_env(id: "e4", e: alw_prepare(parent: Present { value: "e3" as EventId }, group: FabricGroupA, previous: [] as List<HostIdentity>, next: [srv5], at: 1050))
@@ -729,7 +729,7 @@ fn alw_cancel(parent: EventId?, preparation: String, at: Int) -> ChainEvent<Pair
 
 // A claim written by E2 naming E1 as claimant refuses in the placement fold; the same claim
 // written by E1 lands as AppendClaimed by E1.
-test fn an_append_claim_is_written_by_its_claimant_and_is_the_write_its_preparation_is_for() -> Bool {
+test fn an_append_claim_is_written_by_its_claimant_and_is_the_write_its_preparation_is_for() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let prep = alw_env(id: "e3", e: alw_prepare(parent: none, group: FabricGroupA, previous: [] as List<HostIdentity>, next: [srv5], at: 1000))
   (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_written_by(parent: Present { value: "e3" as EventId }, preparation: "e3", actor: "executor-2", claimant: "executor-1", at: 1001))]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e3c" && r.contains("written by its claimant")  _ => false })
@@ -742,7 +742,7 @@ test fn an_append_claim_is_written_by_its_claimant_and_is_the_write_its_preparat
 // On the group partition, a cancellation of a preparation an accepted authority event already
 // consumed refuses at the cancellation (the authority stays readable); a cancellation of a
 // preparation nothing consumed lands and a later consumer of it refuses (round 16).
-test fn a_consumed_preparation_cannot_be_cancelled_and_a_cancelled_one_cannot_be_consumed() -> Bool {
+test fn a_consumed_preparation_cannot_be_cancelled_and_a_cancelled_one_cannot_be_consumed() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
@@ -758,7 +758,7 @@ test fn a_consumed_preparation_cannot_be_cancelled_and_a_cancelled_one_cannot_be
 
 // The joined read's word on a cancellation: covered by a recovery naming the preparation AND
 // appended at the head the claim named; a cancellation at another head is a gap.
-test fn a_cancellation_must_move_the_head_its_claim_named() -> Bool {
+test fn a_cancellation_must_move_the_head_its_claim_named() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let claimed_at_e0 = PlacementPreparationRecord { id: "p1" as EventId, operation: "tx-op" as NonEmptyStr, group: FabricGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: [srv5], recorded_at: 1000, prepared_by: "witness" as NonEmptyStr, state: AppendClaimed { claimant: "witness" as NonEmptyStr, expected_head: HeadAt { id: "e0" as EventId }, intent: alw_intent(parent: Present { value: "e0" as EventId }, previous: none, next: alw_w_active_unestablished(), operation: "tx-op", lifecycle: none, grant: none, entry_state: none) } }
   let at_e0 = CancelledPreparation { preparation: "p1" as EventId, provenance: alw_recovery_for(claim: "p1"), actor: "operator" as NonEmptyStr, at_head: HeadAt { id: "e0" as EventId } }
@@ -773,7 +773,7 @@ test fn a_cancellation_must_move_the_head_its_claim_named() -> Bool {
 // The intent is a typed value compared field for field -- each field alone distinguishes two
 // writes (no digest stands between the claim and the event) -- and a claim carrying a previous
 // state, a lifecycle, a grant and an entry state round-trips through the wire to the same value.
-test fn the_write_intent_is_compared_field_for_field_and_round_trips() -> Bool {
+test fn the_write_intent_is_compared_field_for_field_and_round_trips() -> Bool  {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
@@ -797,7 +797,7 @@ test fn the_write_intent_is_compared_field_for_field_and_round_trips() -> Bool {
 // A PREPARED PREPARATION'S FENCE IS ITS PREPARER'S: a stranger's claimant-terminal abort of it
 // refuses in the placement fold (the fence stays), the preparer's own lands, and an operator's
 // recovery naming it lands.
-test fn a_prepared_preparation_is_aborted_only_by_its_preparer_or_a_recovery() -> Bool {
+test fn a_prepared_preparation_is_aborted_only_by_its_preparer_or_a_recovery() -> Bool  {
   let srv5 = alw_host(s: "srv5")
   let prep = alw_env(id: "e3", e: alw_prepare(parent: none, group: FabricGroupA, previous: [] as List<HostIdentity>, next: [srv5], at: 1000))
   let stranger = ChainEvent { partition: host_placement_partition, parent: Present { value: "e3" as EventId }, recorded_at: 1001, actor: "someone-else" as NonEmptyStr, payload: PlacementAborted { preparation: "e3" as EventId, reason: "not mine", provenance: ClaimantTerminal { claim: "e3" as EventId, claimant_executor: "someone-else" as NonEmptyStr } } }
@@ -809,7 +809,7 @@ test fn a_prepared_preparation_is_aborted_only_by_its_preparer_or_a_recovery() -
 
 // A LANE-LABEL RESIDUE SURVIVES THE EVENT LOG'S WIRE, and a document naming two filters (an image and a
 // label) is incoherent and decodes to nothing rather than to either one.
-test fn a_label_residue_round_trips_and_two_filters_refuse() -> Bool {
+test fn a_label_residue_round_trips_and_two_filters_refuse() -> Bool  {
   let spec = HostEffectResidueSpec { process_pattern: "/srv/probe" as NonEmptyStr, container: Present { value: DockerPsByLabel { label: DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "a-lane" as NonEmptyStr } } } }
   let round = match residue_spec_decode(doc: json_object(members: residue_spec_members(prefix: "residue_", s: spec)), prefix: "residue_") {
     Present { value: back } => match back.container {
@@ -830,7 +830,7 @@ test fn a_label_residue_round_trips_and_two_filters_refuse() -> Bool {
 
 // A LABELLED, MEMORY-CAPPED EPHEMERAL RUN carries its labels and a cap with no swap headroom, and an
 // unlabelled, uncapped run carries neither.
-test fn an_ephemeral_run_carries_its_labels_and_memory_cap() -> Bool {
+test fn an_ephemeral_run_carries_its_labels_and_memory_cap() -> Bool  {
   let capped = join(argv_words(command: docker_run_ephemeral_command(image: "img" as NonEmptyStr, gpus_all: true, mounts: [], labels: [DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "a-lane" as NonEmptyStr }], memory_limit: Present { value: byte_size(count: 1024) }, entrypoint: "sh" as NonEmptyStr, argv: ["-c", "true"])), " ")
   let plain = join(argv_words(command: docker_run_ephemeral_command(image: "img" as NonEmptyStr, gpus_all: false, mounts: [], labels: [] as List<DockerLabel>, memory_limit: Absent, entrypoint: "sh" as NonEmptyStr, argv: ["-c", "true"])), " ")
   contains(capped, "--label gunbc.lane=a-lane --memory 1024 --memory-swap 1024 --entrypoint sh img -c true")

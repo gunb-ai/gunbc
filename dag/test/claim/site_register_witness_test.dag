@@ -234,7 +234,7 @@ fn witness_watcher_owns_applied_theme() -> Bool {
     && string_contains(s: js, pattern: "applyTheme();")
 }
 
-test fn site_register_keystone_holds() -> Bool {
+test fn site_register_keystone_holds() -> Bool  {
   moodboard_preconditions_hold()
     && witness_themes_coherent()
     && witness_gamer_cyan_refused()

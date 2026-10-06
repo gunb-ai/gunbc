@@ -43,7 +43,7 @@ data unexecutable_transport: HostEffectTransport = EmitArtifactThenThinRun {
 // failure arm, leaving `systemctl list-units exit=1`: the text-carrier signature. Greens when the
 // typed-argv read's TypedArgvExecRefused reason reaches the cause, the build_cache_typed_argv_read
 // shape.
-test fn census_read_over_unexecutable_transport_carries_the_typed_refusal() -> Bool {
+test fn census_read_over_unexecutable_transport_carries_the_typed_refusal() -> Bool  {
   match observe_slot_population_over_host_effect_transport(host: census_fixture_host, transport: unexecutable_transport) {
     CensusRefused { cause } => cause != "" && !string_contains(s: cause, pattern: "exit=")
     _ => false
@@ -53,7 +53,7 @@ test fn census_read_over_unexecutable_transport_carries_the_typed_refusal() -> B
 // PAIRED REFUSAL-SHAPE CONTROL, green today and after: the unexecutable transport does produce a
 // refusal, never a fabricated empty population — the red arm discriminates HOW the cause reads,
 // not WHETHER the read refuses. A transport refusal is unobserved, never an empty census.
-test fn census_read_over_unexecutable_transport_is_a_refusal() -> Bool {
+test fn census_read_over_unexecutable_transport_is_a_refusal() -> Bool  {
   match observe_slot_population_over_host_effect_transport(host: census_fixture_host, transport: unexecutable_transport) {
     CensusRefused { cause: _ } => true
     _ => false
@@ -64,7 +64,7 @@ test fn census_read_over_unexecutable_transport_is_a_refusal() -> Bool {
 // command failure's cause keeps its exit code — `exit=` is the right vocabulary for a command
 // that ran, which is exactly why its presence on the transport-refusal path above is the defect.
 // The shared classifier is untouched by the rebind.
-test fn planted_command_failure_cause_keeps_its_exit_code() -> Bool {
+test fn planted_command_failure_cause_keeps_its_exit_code() -> Bool  {
   match slot_census_from_command_outcome(host: census_fixture_host, success: false, exit_code: 3, stdout: "", stderr: "connection refused") {
     CensusRefused { cause } =>
       string_contains(s: cause, pattern: "exit=3")
@@ -77,7 +77,7 @@ test fn planted_command_failure_cause_keeps_its_exit_code() -> Bool {
 // list-units outcome classifies as a census, not a refusal. The host must have a derivable desired
 // slot population (gunbc.runner_slot_population_census slot_population_census refuses one without),
 // so the planted outcome is read for a fleet host rather than for census_fixture_host.
-test fn planted_list_units_success_classifies_as_a_census() -> Bool {
+test fn planted_list_units_success_classifies_as_a_census() -> Bool  {
   match slot_census_from_command_outcome(host: operator_host_srv1, success: true, exit_code: 0, stdout: "", stderr: "") {
     CensusRefused { cause: _ } => false
     _ => true

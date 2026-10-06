@@ -9,6 +9,6 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // The fault run passes inject_fault: true, which a correct module does not hold. It replaced a
 // hand-written Rust driver that no per-change path compiled (gunbc.recurring_failure_mode
 // hand_shim_shadows_an_emitted_module).
-test fn self_host_target_carriers_behavioral_receipt_holds() -> Bool {
+test fn self_host_target_carriers_behavioral_receipt_holds() -> Bool  {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/07_target_carriers.dag")
 }

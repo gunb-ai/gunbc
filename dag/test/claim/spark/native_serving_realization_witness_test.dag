@@ -47,7 +47,7 @@ fn normal_serving_render_of_the_experiment_lines() -> List<GlmNativeUnitRender> 
     arm_host_unit_file_for(intent: ArmNormalServing, launch: l, units: glm_native_arm_units, served_alias: "glm-5.3-flash" as NonEmptyStr))
 }
 
-test fn w_the_production_route_renders_no_normal_serving_unit_without_a_proved_fit() -> Bool {
+test fn w_the_production_route_renders_no_normal_serving_unit_without_a_proved_fit() -> Bool  {
   all(glm_native_all_unit_renders_for(intent: ArmNormalServing), r => match r {
     GlmNativeUnitRendered { unit_name: _, text: _ } => false
     GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => true
@@ -55,7 +55,7 @@ test fn w_the_production_route_renders_no_normal_serving_unit_without_a_proved_f
     && all_four_rendered(rs: glm_native_all_unit_renders())
 }
 
-test fn w_normal_serving_units_are_persistent_and_enrolled() -> Bool {
+test fn w_normal_serving_units_are_persistent_and_enrolled() -> Bool  {
   let rs = normal_serving_render_of_the_experiment_lines()
   all_four_rendered(rs: rs)
     && all(rs, r => {
@@ -70,7 +70,7 @@ test fn w_normal_serving_units_are_persistent_and_enrolled() -> Bool {
     })
 }
 
-test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool {
+test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool  {
   let rs = glm_native_experiment_all_unit_renders()
   all_four_rendered(rs: rs)
     && all(rs, r => {
@@ -91,7 +91,7 @@ test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool {
 // THE EXPERIMENT MEASURES THE SAME ENGINE, which is the point of rendering it from the same arm:
 // a different engine line would make the receipt the experiment mints evidence about a different
 // unit than the one the arm would serve.
-test fn w_the_experiment_runs_the_same_engine_line_as_the_service() -> Bool {
+test fn w_the_experiment_runs_the_same_engine_line_as_the_service() -> Bool  {
   let normal = normal_serving_render_of_the_experiment_lines()
   let experiment = glm_native_experiment_all_unit_renders()
   all_four_rendered(rs: normal)
@@ -132,7 +132,7 @@ fn first_matching_line(lines: List<String>, prefix: String) -> String {
 // seat population (group_b_experiment_subject_seats, the 2026-09-28 262K x 8 objective), and the
 // utilization is the engine-advised 0.8567 -- not the authored sixteen-sequence row
 // (gunbc.spark.serving_arm glm_native_concurrent_profile) the crash-looping units ran.
-test fn w_the_engine_argv_is_the_derived_restoration_profile() -> Bool {
+test fn w_the_engine_argv_is_the_derived_restoration_profile() -> Bool  {
   let normal = glm_native_all_unit_renders()
   all_four_rendered(rs: normal)
     && all(normal, r => {

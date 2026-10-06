@@ -27,7 +27,7 @@ fn screenshot_artifact_matches_live_bytes(artifact: ScreenshotArtifact) -> Bool 
     && verify_file_byte_count(read: bytes, expected: artifact.bytes) == FileByteCountMatches
 }
 
-test fn witness_checked_in_screenshots_match_receipts() -> Bool {
+test fn witness_checked_in_screenshots_match_receipts() -> Bool  {
   let specimens = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens
   screenshot_artifact_matches_live_bytes(artifact: specimens.connection_refused.screenshot)
     && screenshot_artifact_matches_live_bytes(artifact: specimens.empty_502.screenshot)

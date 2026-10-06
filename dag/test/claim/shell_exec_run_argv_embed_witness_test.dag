@@ -45,14 +45,14 @@ fn src_has(path: String, needle: String) -> Bool {
 // program. NEXT-RUNG TRIGGER: the byte-exact bound returns when one render fits under the tier this
 // identity is judged by. The budget itself is unchanged and still cited — `host_exec_arg_max_strlen`
 // — so the literal is grounded in the same external authority it always was.
-test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
+test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool  {
   let spec = deployment_spec_srv1()
   let emitted_len = length(apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec)))
   let budget = byte_size_count(b: host_exec_arg_max_strlen)
   emitted_len > 0 && emitted_len < budget
 }
 
-test fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
+test fn witness_shell_exec_run_uses_stdin_transport() -> Bool  {
   src_has(path: shell_exec_dag_path, needle: "stdin: script")
 }
 
@@ -63,11 +63,11 @@ test fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
 // `set -eu` — which a POSIX sh WOULD accept — and this reds, which is the whole content of the
 // claim. Rendering the program to find the same line cost ~194,000 eval steps against a 72,300
 // ceiling and proved nothing this does not.
-test fn witness_apply_script_requires_bash_receiver() -> Bool {
+test fn witness_apply_script_requires_bash_receiver() -> Bool  {
   string_contains(s: deploy_shell_strict_options_command, pattern: "pipefail")
 }
 
-test fn witness_shell_exec_run_uses_bash_receiver() -> Bool {
+test fn witness_shell_exec_run_uses_bash_receiver() -> Bool  {
   src_has(path: shell_exec_dag_path, needle: "argv: [\"bash\", \"-s\"]")
     && !src_has(path: shell_exec_dag_path, needle: "argv: [\"sh\", \"-s\"]")
 }

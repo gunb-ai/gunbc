@@ -123,14 +123,14 @@ fn hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
 // ── THE KEY ────────────────────────────────────────────────────────────────────────────────────
 
 // Same ranks, same key: the key is a function of the declaration and nothing else.
-test fn the_declared_key_is_a_function_of_its_ranks() -> Bool {
+test fn the_declared_key_is_a_function_of_its_ranks() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     hashes_equal(l: t_declared(head_digest: a, worker_digest: b).key, r: t_declared(head_digest: a, worker_digest: b).key)
   })
 }
 
 // RED -- one worker's bytes change and the key changes; the head's bytes change and it changes again.
-test fn any_ranks_bytes_changing_changes_the_key() -> Bool {
+test fn any_ranks_bytes_changing_changes_the_key() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let base = t_declared(head_digest: a, worker_digest: b)
     !hashes_equal(l: base.key, r: t_declared(head_digest: a, worker_digest: c).key)
@@ -142,7 +142,7 @@ test fn any_ranks_bytes_changing_changes_the_key() -> Bool {
 
 // Every rank's observed unit digest equals its declared one: established, carrying both sides and
 // the head's image id as UNCOMPARED -- the observed side has an image id, the declared side has none.
-test fn a_pair_matching_every_rank_is_established_with_its_image_uncompared() -> Bool {
+test fn a_pair_matching_every_rank_is_established_with_its_image_uncompared() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let d = t_declared(head_digest: a, worker_digest: b)
     match t_agreement(declared: d, observed: t_observed(head_digest: a, image: img, workers: t_three_workers(digest: b))) {
@@ -155,7 +155,7 @@ test fn a_pair_matching_every_rank_is_established_with_its_image_uncompared() ->
 
 // RED -- ONE worker runs a unit whose bytes differ from the declared ones. The verdict is Drifted,
 // naming exactly that host, and it is not Established however many ranks agree.
-test fn one_drifted_worker_is_drifted_naming_that_host() -> Bool {
+test fn one_drifted_worker_is_drifted_naming_that_host() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let workers = [t_worker(host: operator_host_srv6, unit_digest: b), t_worker(host: operator_host_srv7, unit_digest: c), t_worker(host: operator_host_srv8, unit_digest: b)]
     let verdict = t_agreement(declared: t_declared(head_digest: a, worker_digest: b), observed: t_observed(head_digest: a, image: img, workers: workers))
@@ -169,7 +169,7 @@ test fn one_drifted_worker_is_drifted_naming_that_host() -> Bool {
 
 // RED -- the HEAD was launched from different unit bytes: the head row drifts through the same
 // provenance comparison the offer route uses, so a head drift is a drift and not a population issue.
-test fn a_head_launched_from_other_bytes_is_drifted() -> Bool {
+test fn a_head_launched_from_other_bytes_is_drifted() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     match t_agreement(declared: t_declared(head_digest: a, worker_digest: b), observed: t_observed(head_digest: c, image: img, workers: t_three_workers(digest: b))) {
       PairRealizationDrifted { key: _, drifted: ds } => length(ds) == 1 && all(ds, x => (x.host as String) == (operator_host_srv5 as String))
@@ -180,7 +180,7 @@ test fn a_head_launched_from_other_bytes_is_drifted() -> Bool {
 
 // RED -- a declared worker host with no observed rank: the two sides are not about the same
 // machines, which is reported as a population difference and never as agreement over the rest.
-test fn a_missing_worker_rank_is_a_population_difference() -> Bool {
+test fn a_missing_worker_rank_is_a_population_difference() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let workers = [t_worker(host: operator_host_srv6, unit_digest: b), t_worker(host: operator_host_srv8, unit_digest: b)]
     match t_agreement(declared: t_declared(head_digest: a, worker_digest: b), observed: t_observed(head_digest: a, image: img, workers: workers)) {
@@ -191,7 +191,7 @@ test fn a_missing_worker_rank_is_a_population_difference() -> Bool {
 }
 
 // RED -- the answering head is on a host the declaration does not name as head.
-test fn a_head_on_another_host_is_a_population_difference() -> Bool {
+test fn a_head_on_another_host_is_a_population_difference() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let head = endpoint_incarnation_observation(
       endpoint: vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
@@ -215,7 +215,7 @@ test fn a_head_on_another_host_is_a_population_difference() -> Bool {
 
 // An observation that refused is UNREAD, carrying the refusal and the declared key -- never Drifted
 // (nothing was compared) and never Established.
-test fn a_refused_observation_is_unread_not_drifted() -> Bool {
+test fn a_refused_observation_is_unread_not_drifted() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let refused = ObservedPairRealizationRefused { refusal: PairWorkerUnitRefused { host: operator_host_srv7, refusal: IncarnationUnitNotActive { unit: spark_pair_worker_unit_name } } }
     let d = t_declared(head_digest: a, worker_digest: b)
@@ -227,7 +227,7 @@ test fn a_refused_observation_is_unread_not_drifted() -> Bool {
 }
 
 // A declaration that could not be keyed has nothing to agree with, whatever was observed.
-test fn an_unavailable_declaration_is_reported_before_the_observation() -> Bool {
+test fn an_unavailable_declaration_is_reported_before_the_observation() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     match pair_realization_agreement(
       declared: DeclaredPairRealizationUnavailable { group: FabricGroupA, obligation: "witness" as NonEmptyStr },
@@ -240,7 +240,7 @@ test fn an_unavailable_declaration_is_reported_before_the_observation() -> Bool 
 }
 
 // The receipt lines locate the verdict: a drift renders one line per drifted host under its verdict line.
-test fn the_receipt_renders_one_line_per_drifted_rank() -> Bool {
+test fn the_receipt_renders_one_line_per_drifted_rank() -> Bool  {
   with_digests(scenario: fn(a, b, c, img) {
     let workers = [t_worker(host: operator_host_srv6, unit_digest: c), t_worker(host: operator_host_srv7, unit_digest: c), t_worker(host: operator_host_srv8, unit_digest: b)]
     let lines = pair_realization_agreement_lines(a: t_agreement(declared: t_declared(head_digest: a, worker_digest: b), observed: t_observed(head_digest: a, image: img, workers: workers)))

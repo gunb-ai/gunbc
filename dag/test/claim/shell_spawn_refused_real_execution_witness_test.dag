@@ -43,7 +43,7 @@ fn exited(outcome: ShellOutcome) -> Bool {
 // DISCRIMINATING RED: an absent binary reaches the caller as ShellSpawnRefused naming the program,
 // as a VALUE. Before this arm existed the call aborted the evaluation, so this function could not
 // return at all.
-test fn absent_binary_is_a_typed_spawn_refusal() -> Bool {
+test fn absent_binary_is_a_typed_spawn_refusal() -> Bool  {
   let r = test.ShellSpawnProbe.Observed(program: absent_program)
   spawn_refused_names(outcome: r.outcome, program: absent_program)
 }
@@ -51,7 +51,7 @@ test fn absent_binary_is_a_typed_spawn_refusal() -> Bool {
 // THE EVALUATION CONTINUES PAST THE REFUSAL, and what was read before it is kept. This is the
 // shape of a paginated read whose later request fails: the earlier result is still in hand, so a
 // caller can report it as partial evidence instead of losing it with the evaluation.
-test fn a_refusal_after_a_success_keeps_the_earlier_result() -> Bool {
+test fn a_refusal_after_a_success_keeps_the_earlier_result() -> Bool  {
   let first = test.ShellSpawnProbe.Observed(program: "true" as NonEmptyStr)
   let later = test.ShellSpawnProbe.Observed(program: absent_program)
   exited(outcome: first.outcome) && first.success
@@ -60,14 +60,14 @@ test fn a_refusal_after_a_success_keeps_the_earlier_result() -> Bool {
 
 // POSITIVE CONTROL: a present program spawns and is ShellExited, so the red above is caused by the
 // absent binary and not by the operation's shape.
-test fn present_binary_exits() -> Bool {
+test fn present_binary_exits() -> Bool  {
   let r = test.ShellSpawnProbe.Observed(program: "true" as NonEmptyStr)
   exited(outcome: r.outcome) && r.success
 }
 
 // A NONZERO EXIT IS AN ANSWER, NOT A SPAWN REFUSAL: `false` ran and said no. Collapsing the two
 // would report 'there was no program' for 'the program refused', which have different remedies.
-test fn nonzero_exit_is_not_a_spawn_refusal() -> Bool {
+test fn nonzero_exit_is_not_a_spawn_refusal() -> Bool  {
   let r = test.ShellSpawnProbe.Observed(program: "false" as NonEmptyStr)
   exited(outcome: r.outcome) && !r.success
 }

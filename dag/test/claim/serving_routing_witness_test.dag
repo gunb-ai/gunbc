@@ -59,7 +59,7 @@ fn w_endpoint(group: FabricGroup) -> String {
   }
 }
 
-test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool {
+test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool  {
   length(serving_enrolled_groups) == 2
     && w_endpoint(group: FabricGroupA) != "unresolved"
     && w_endpoint(group: FabricGroupB) != "unresolved"
@@ -87,7 +87,7 @@ fn w_ceiling(group: FabricGroup) -> Nat {
   }
 }
 
-test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
+test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool  {
   w_ceiling(group: FabricGroupA) == 4
     && w_ceiling(group: FabricGroupB) == 8
     && (match w_ceiling_row(group: FabricGroupA) {
@@ -130,7 +130,7 @@ fn w_unit_is_glm(id: String) -> Bool {
   }
 }
 
-test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken() -> Bool {
+test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken() -> Bool  {
   w_admits(id: harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String)
     && w_admits(id: harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
     && w_admits(id: "glm-5.3-flash")
@@ -142,7 +142,7 @@ test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken(
 
 // THE FIRST ADMITTED ID IN THE ROUTE'S OWN ORDER WINS, and a list carrying nothing admitted refuses
 // with the whole list rather than with a bare fact of mismatch.
-test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with_the_list() -> Bool {
+test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with_the_list() -> Bool  {
   (match serving_admit_advertised(advertised: ["tinyllama-1.1b", "glm-5.3-flash"]) {
      ServingModelAdmitted { id: i, unit: _ } => (i as String) == "glm-5.3-flash"
      ServingModelNotAdmitted { advertised: _ } => false
@@ -169,7 +169,7 @@ test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with
 // The assertion is therefore that the two strings DIFFER and that resolution keeps the advertised
 // one. An equality against the alias alone would stay green on a build that had gone back to
 // deriving the id from the unit, if the two ever coincided.
-test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -> Bool {
+test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -> Bool  {
   (match serving_admits_id(id: "glm-5.3-flash") {
      ServingModelAdmitted { id: i, unit: u } =>
        (i as String) == "glm-5.3-flash"
@@ -202,7 +202,7 @@ fn w_ready(standing: HarnessBackendStanding) -> Bool {
   })
 }
 
-test fn a_route_that_does_not_answer_is_never_ready_and_one_that_answers_wrongly_is_not_either() -> Bool {
+test fn a_route_that_does_not_answer_is_never_ready_and_one_that_answers_wrongly_is_not_either() -> Bool  {
   w_ready(standing: HarnessBackendServing {
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
     unit: DeepseekV4FlashOnVllm,
@@ -243,7 +243,7 @@ fn w_admitted(a: ServingGroupAdmission) -> Bool {
 // TWO MUTUALLY ADMISSIBLE TURNS BOTH GET IN. One tolerant turn is in flight and seated, the route
 // reports no capacity pressure, and the declared ceiling has room: the second tolerant turn is
 // admitted. Under the scalar ceiling this replaces, this row is red.
-test fn two_mutually_admissible_tolerant_turns_are_both_admitted() -> Bool {
+test fn two_mutually_admissible_tolerant_turns_are_both_admitted() -> Bool  {
   w_admitted(a: w_admit(incoming: BatchQualityTolerant, occupants: 0, quality_held: 0, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 4))
     && w_admitted(a: w_admit(incoming: BatchQualityTolerant, occupants: 1, quality_held: 0, tolerant_held: 1, pressure: RouteAdmittingMore, ceiling: 4))
     && w_admitted(a: w_admit(incoming: BatchQualityTolerant, occupants: 3, quality_held: 0, tolerant_held: 3, pressure: RouteAdmittingMore, ceiling: 4))
@@ -252,7 +252,7 @@ test fn two_mutually_admissible_tolerant_turns_are_both_admitted() -> Bool {
 // AND THE NEGATIVE THAT BOUNDS IT. A tolerant turn arriving beside a turn somebody is reading is
 // refused, whatever the ceiling says; a quality-sensitive turn requires an idle route, because
 // nothing here observes whether the turns already in flight are past their prefill.
-test fn a_turn_the_co_tenancy_law_forbids_is_refused_however_much_ceiling_remains() -> Bool {
+test fn a_turn_the_co_tenancy_law_forbids_is_refused_however_much_ceiling_remains() -> Bool  {
   (match w_admit(incoming: BatchQualityTolerant, occupants: 1, quality_held: 1, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 4) {
      InadmissibleQualityTurnInFlight { held: h, basis: _ } => h == 1
      _ => false
@@ -272,7 +272,7 @@ test fn a_turn_the_co_tenancy_law_forbids_is_refused_however_much_ceiling_remain
 // are asserted, because either alone is a different and wrong design: a ceiling alone is a static
 // claim about a stateless box, and a reading alone admits every arrival that finds it momentarily
 // quiet.
-test fn admission_is_the_minimum_of_the_declared_ceiling_and_the_routes_own_signal() -> Bool {
+test fn admission_is_the_minimum_of_the_declared_ceiling_and_the_routes_own_signal() -> Bool  {
   (match w_admit(incoming: BatchQualityTolerant, occupants: 4, quality_held: 0, tolerant_held: 4, pressure: RouteAdmittingMore, ceiling: 4) {
      InadmissibleClassCeilingReached { held: h, ceiling: c } => h == 4 && c == 4
      _ => false
@@ -290,7 +290,7 @@ test fn admission_is_the_minimum_of_the_declared_ceiling_and_the_routes_own_sign
 // AN OCCUPANT THE LEDGER NEVER ADMITTED IS TREATED AS ONE SOMEBODY IS READING. The engine on this
 // fleet was launched out of band and anything can post to it, so a turn we did not seat has an
 // unknowable class -- and nothing is placed beside it, for either class.
-test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool {
+test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool  {
   (match w_admit(incoming: BatchQualityTolerant, occupants: 3, quality_held: 0, tolerant_held: 1, pressure: RouteAdmittingMore, ceiling: 4) {
      InadmissibleUnexplainedOccupancy { occupants: n, seated: s } => n == 3 && s == 1
      _ => false
@@ -328,7 +328,7 @@ test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool 
 // The quality partition keeps its exact name so its history continues rather than restarting empty,
 // and the quality ceiling is still one. A branch that widened the reader's protection would fail
 // here, which is the control the ruling asked for.
-test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Bool {
+test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Bool  {
   (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-a-quality-seat-v1"
     && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
     && (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-a-tolerant-seat-c4-v1"
@@ -355,7 +355,7 @@ test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Boo
 // restart. Both halves together are what discriminate: a build that versioned everything would break
 // the quality pool's continuity, and one that versioned nothing would reinterpret the tolerant
 // pool's history.
-test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition_is_not() -> Bool {
+test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition_is_not() -> Bool  {
   (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String)
       != (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 2) as String)
     && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String)
@@ -369,7 +369,7 @@ test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition
 // requirements must produce two different references, and the exact one must refuse a route serving
 // the other model. Asserting only that AnyAdmittedModel admits both would pass on a screen that
 // admits everything.
-test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model() -> Bool {
+test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model() -> Bool  {
   harness_requirement_admits(requirement: AnyAdmittedModel, observed: DeepseekV4FlashOnVllm)
     && harness_requirement_admits(requirement: AnyAdmittedModel, observed: Glm53FlashOnVllm)
     && harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: Glm53FlashOnVllm)
@@ -382,7 +382,7 @@ test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model()
 // A turn placed on group B must not be sized by the pair route's engine cap. The two units'
 // budgets are asserted to be no larger than their own declared ceilings, which is the property that
 // was structurally unavailable while one global row answered for every route.
-test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() -> Bool {
+test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() -> Bool  {
   token_count_value(t: harness_context_budget_for(unit: DeepseekV4FlashOnVllm))
       <= token_count_value(t: harness_unit_declared_context_ceiling(unit: DeepseekV4FlashOnVllm))
     && token_count_value(t: harness_context_budget_for(unit: Glm53FlashOnVllm))
@@ -395,7 +395,7 @@ test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() 
 // engine's reported model path against the DeepSeek declaration -- both failures were measured on
 // the live end-to-end run of 2026-09-16. The declared model paths must also differ, since the two
 // groups serve different checkpoints.
-test fn each_groups_service_identity_comes_from_its_own_launch_authority() -> Bool {
+test fn each_groups_service_identity_comes_from_its_own_launch_authority() -> Bool  {
   let a = serving_group_launch(group: FabricGroupA)
   let b = serving_group_launch(group: FabricGroupB)
   (a.container_name as String) == "gunbc-spark-pair"

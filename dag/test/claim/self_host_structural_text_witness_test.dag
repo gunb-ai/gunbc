@@ -12,7 +12,7 @@ data structural_text_witness_note: String = "PERMANENT REGRESSION CONTROLS for t
 // v2.std.text.String spelling (the bare spelling binds kernel under uniform kernel precedence and
 // has its own host control below). The image is the list-literal realization Rc::new(vec![..]) of
 // FreeMonoid<Char>; the host spelling for the same literal is the must_not_contain.
-test fn w_string_literal_at_text_return_boundary_emits_scalar_sequence() -> Bool {
+test fn w_string_literal_at_text_return_boundary_emits_scalar_sequence() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_return_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { \"hi\" }\n",
     "src/test_claim_text_return_probe.rs",
@@ -22,7 +22,7 @@ test fn w_string_literal_at_text_return_boundary_emits_scalar_sequence() -> Bool
 }
 
 // THE SCALAR SEQUENCE AT A CALL-ARGUMENT BOUNDARY.
-test fn w_string_literal_at_text_argument_boundary_emits_scalar_sequence() -> Bool {
+test fn w_string_literal_at_text_argument_boundary_emits_scalar_sequence() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_arg_probe\nimport v2.std.text { string_is_empty }\nfn takes(s: v2.std.text.String) -> v2.std.text.String { s }\nfn probe() -> v2.std.text.String { takes(s: \"hi\") }\n",
     "src/test_claim_text_arg_probe.rs",
@@ -32,7 +32,7 @@ test fn w_string_literal_at_text_argument_boundary_emits_scalar_sequence() -> Bo
 }
 
 // THE SCALAR SEQUENCE AT A RECORD-FIELD BOUNDARY.
-test fn w_string_literal_at_text_record_field_emits_scalar_sequence() -> Bool {
+test fn w_string_literal_at_text_record_field_emits_scalar_sequence() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_field_probe\nimport v2.std.text { string_is_empty }\ntype Carrier { t: v2.std.text.String }\nfn probe() -> Carrier { Carrier { t: \"hi\" } }\n",
     "src/test_claim_text_field_probe.rs",
@@ -42,7 +42,7 @@ test fn w_string_literal_at_text_record_field_emits_scalar_sequence() -> Bool {
 }
 
 // THE SCALAR SEQUENCE AT A DATA-INITIALIZER BOUNDARY.
-test fn w_string_literal_at_text_data_initializer_emits_scalar_sequence() -> Bool {
+test fn w_string_literal_at_text_data_initializer_emits_scalar_sequence() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_data_probe\nimport v2.std.text { string_is_empty }\ndata anchor: v2.std.text.String = \"hi\"\n",
     "src/test_claim_text_data_probe.rs",
@@ -52,7 +52,7 @@ test fn w_string_literal_at_text_data_initializer_emits_scalar_sequence() -> Boo
 }
 
 // THE SCALAR SEQUENCE AT AN ANNOTATED LET.
-test fn w_string_literal_at_annotated_let_emits_scalar_sequence() -> Bool {
+test fn w_string_literal_at_annotated_let_emits_scalar_sequence() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_let_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { let x: v2.std.text.String = \"hi\"\n  x }\n",
     "src/test_claim_text_let_probe.rs",
@@ -64,7 +64,7 @@ test fn w_string_literal_at_annotated_let_emits_scalar_sequence() -> Bool {
 // SCALARS, NOT BYTES -- THE NON-ASCII DISCRIMINATOR. é is ONE scalar 233 (two UTF-8 bytes
 // 195, 169) and U+1F600 is ONE scalar 128512 (four UTF-8 bytes starting 240). A byte-grain
 // decomposition, or a UTF-16 code-unit one (surrogates 55357, 56832), reds this row in the bytes.
-test fn w_non_ascii_literal_elements_are_unicode_scalars_not_utf8_bytes() -> Bool {
+test fn w_non_ascii_literal_elements_are_unicode_scalars_not_utf8_bytes() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_scalar_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { \"aé😀\" }\n",
     "src/test_claim_text_scalar_probe.rs",
@@ -74,7 +74,7 @@ test fn w_non_ascii_literal_elements_are_unicode_scalars_not_utf8_bytes() -> Boo
 }
 
 // THE EMPTY LITERAL IS THE MONOID UNIT.
-test fn w_empty_string_literal_at_text_boundary_emits_the_empty_carrier() -> Bool {
+test fn w_empty_string_literal_at_text_boundary_emits_the_empty_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_empty_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { \"\" }\n",
     "src/test_claim_text_empty_probe.rs",
@@ -89,7 +89,7 @@ test fn w_empty_string_literal_at_text_boundary_emits_the_empty_carrier() -> Boo
 // pins that: the literal stays the host string and never elaborates. A repair that re-keys
 // elaboration on the import spelling, or a resolver change that lets the import shadow the
 // kernel overlay, reds here.
-test fn w_bare_string_with_text_import_stays_host_deterministically() -> Bool {
+test fn w_bare_string_with_text_import_stays_host_deterministically() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_bare_probe\nimport v2.std.text { String }\nfn probe() -> String { \"hi\" }\n",
     "src/test_claim_text_bare_probe.rs",
@@ -100,7 +100,7 @@ test fn w_bare_string_with_text_import_stays_host_deterministically() -> Bool {
 
 // HOST CONTROL: the same literal at a KERNEL String boundary (no text import anywhere in the
 // probe) keeps the host spelling. A repair that folded every string literal would red here.
-test fn w_literal_at_kernel_string_boundary_still_emits_host_string() -> Bool {
+test fn w_literal_at_kernel_string_boundary_still_emits_host_string() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.kernel_string_probe\nimport std.types { String }\nfn probe() -> String { \"hi\" }\n",
     "src/test_claim_kernel_string_probe.rs",
@@ -113,7 +113,7 @@ test fn w_literal_at_kernel_string_boundary_still_emits_host_string() -> Bool {
 // gunbc.rust_source_type_bindings) and carries NO homomorphism row; a literal at its boundary
 // stays the host string. This is the row a spelling-keyed decision cannot pass together with the
 // text rows above -- Symbol and text.String share closures, not representations.
-test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool {
+test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.symbol_literal_probe\nimport v2.std.node { Symbol }\nfn takes(identity: Symbol) -> Symbol { identity }\nfn probe() -> Symbol { takes(identity: \"x\") }\n",
     "src/test_claim_symbol_literal_probe.rs",
@@ -130,7 +130,7 @@ test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool {
 // the same fixture is a blocking refusal. It stays enrolled as the discriminating control that the
 // wall is real; its paired positive controls are the literal rows above and
 // test.claim.text_boundary_identity_wall_witness_test.
-test fn w_nonliteral_kernel_string_at_text_return_boundary_refuses() -> Bool {
+test fn w_nonliteral_kernel_string_at_text_return_boundary_refuses() -> Bool  {
   match compile_dag_diagnostic_census("module test.claim.text_nonliteral_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { concat(\"x\", \"y\") }\n") {
     CensusObserved { rows: rows } => {
       let rs: List<CompileDiagnosticCensusRow> = rows
@@ -150,7 +150,7 @@ test fn w_nonliteral_kernel_string_at_text_return_boundary_refuses() -> Bool {
 // and a bare `.is_empty()` exclude reds that structural lowering (the substring-oracle
 // over-match class). Each override body contained `s.chars()` / `s.is_empty()` verbatim, so the
 // narrowed excludes still go red if any name-keyed override returns.
-test fn w_emitted_text_module_realizes_ops_by_declared_bodies_not_host_strings() -> Bool {
+test fn w_emitted_text_module_realizes_ops_by_declared_bodies_not_host_strings() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_ops_probe\nimport v2.std.text { string_is_empty }\nimport std.types { Bool }\nfn probe(s: v2.std.text.String) -> Bool { string_is_empty(s: s) }\n",
     "src/v2_std_text.rs",

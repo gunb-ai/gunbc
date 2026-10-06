@@ -274,7 +274,7 @@ fn excluded_entry(identity: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
 
 // ── A. THE EXACT POPULATION, AND THE TOTAL DERIVED FROM IT ─────────────────────────────────────
 
-test fn engram_population_is_twelve_named_tensors_across_two_shards() -> Bool {
+test fn engram_population_is_twelve_named_tensors_across_two_shards() -> Bool  {
   let entries = safetensors_population_entries(s: deepseek_v4_1_flash_engram_population)
   count(entries) == 12
     && count(entries) == deepseek_v4_1_flash_engram_tensor_count
@@ -288,7 +288,7 @@ test fn engram_population_is_twelve_named_tensors_across_two_shards() -> Bool {
 // shard headers partitioned by name; the derived figure is the sum of the twelve spans carried one
 // by one. Their agreement is what establishes that the summary covered this population and no
 // other tensor -- and a typo in any single offset below reds this.
-test fn engram_derived_total_equals_the_partition_summary() -> Bool {
+test fn engram_derived_total_equals_the_partition_summary() -> Bool  {
   match deepseek_v4_1_flash_engram_derived_bytes() {
     Absent => false
     Present { value: derived } =>
@@ -298,7 +298,7 @@ test fn engram_derived_total_equals_the_partition_summary() -> Bool {
 
 // EVERY ENTRY'S DECLARED SPAN AGREES WITH ITS SHAPE AND DTYPE. This is header-internal consistency
 // and nothing more: it says the manifest is well formed and says nothing about the payload bytes.
-test fn every_engram_entry_span_agrees_with_its_shape_and_dtype() -> Bool {
+test fn every_engram_entry_span_agrees_with_its_shape_and_dtype() -> Bool  {
   let entries = safetensors_population_entries(s: deepseek_v4_1_flash_engram_population)
   count(entries) == 12
     && all(entries, e => byte_size_count(b: safetensors_entry_span(e: e)) == byte_size_count(b: safetensors_entry_declared_bytes(e: e)))
@@ -307,7 +307,7 @@ test fn every_engram_entry_span_agrees_with_its_shape_and_dtype() -> Bool {
 // EACH SHARD FILE IS ITS HEADER PLUS EXACTLY THIS LAYER'S PAYLOAD. The two Engram shards carry no
 // other tensor, so the file size minus the 8-byte prefix and the JSON header is exactly the six
 // spans -- another independent join between the tree listing and the headers.
-test fn each_engram_shard_file_is_its_header_plus_exactly_that_layers_payload() -> Bool {
+test fn each_engram_shard_file_is_its_header_plus_exactly_that_layers_payload() -> Bool  {
   let l1 = shard_population(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1)
   let l14 = shard_population(shard: deepseek_v4_1_flash_engram_shard_14_path, entries: deepseek_v4_1_flash_engram_entries_layer_14)
   match safetensors_population_declared_bytes(s: l1) {
@@ -341,7 +341,7 @@ fn impossible_shard() -> SafetensorsShardFile {
   )
 }
 
-test fn a_shard_whose_header_exceeds_its_file_refuses_rather_than_declaring_no_payload() -> Bool {
+test fn a_shard_whose_header_exceeds_its_file_refuses_rather_than_declaring_no_payload() -> Bool  {
   match safetensors_shard_payload(shard: impossible_shard()) {
     ShardHeaderExceedsFile { path: _, declared_overhead: o, file_bytes: fb } =>
       byte_size_count(b: o) == 4104 && byte_size_count(b: fb) == 64
@@ -368,7 +368,7 @@ test fn a_shard_whose_header_exceeds_its_file_refuses_rather_than_declaring_no_p
 // THE CONFIG AND THE HEADERS ARE DIFFERENT FILES, so their agreement is evidence. The embed row
 // counts are config.json's unpadded_embeddings; the n-gram projections are [max_ngram_size,
 // hidden_size]; the embed width is head_dim.
-test fn header_shapes_agree_with_the_config_dimensions() -> Bool {
+test fn header_shapes_agree_with_the_config_dimensions() -> Bool  {
   let rows = deepseek_v4_1_flash_engram_embed_rows()
   let ngram = deepseek_v4_1_flash_engram_ngram_projection_shape()
   count(rows) == 2
@@ -390,7 +390,7 @@ test fn header_shapes_agree_with_the_config_dimensions() -> Bool {
 // THE WEIGHT/SCALE RELATION IS DERIVED PER AXIS, AND THE TWO PAIRS BLOCK DIFFERENTLY. embed is
 // scaled along its last axis only; wkv along both. A relation demanding uniform blocking would red
 // on the real embed pair, which is why the fold classifies each axis rather than the pair.
-test fn fp8_payload_and_ue8m0_scale_pair_at_the_declared_block_size() -> Bool {
+test fn fp8_payload_and_ue8m0_scale_pair_at_the_declared_block_size() -> Bool  {
   match deepseek_v4_1_flash_scale_pairing(payload_name: "layers.1.engram.embed.weight" as NonEmptyStr, scale_name: "layers.1.engram.embed.scale" as NonEmptyStr) {
     Absent => false
     Present { value: embed } =>
@@ -433,7 +433,7 @@ fn population_is_refused(entries: List<SafetensorsEntry>) -> Bool {
   }
 }
 
-test fn a_duplicate_tensor_subject_refuses() -> Bool {
+test fn a_duplicate_tensor_subject_refuses() -> Bool  {
   population_is_refused(entries: [
     fixture_entry(name: "layers.1.engram.embed.weight", rows: 4, cols: 8, begin_offset: 0),
     fixture_entry(name: "layers.1.engram.embed.weight", rows: 4, cols: 8, begin_offset: 32),
@@ -444,11 +444,11 @@ test fn a_duplicate_tensor_subject_refuses() -> Bool {
     ])
 }
 
-test fn an_empty_population_refuses_rather_than_being_a_component_of_no_tensors() -> Bool {
+test fn an_empty_population_refuses_rather_than_being_a_component_of_no_tensors() -> Bool  {
   population_is_refused(entries: [])
 }
 
-test fn a_span_that_disagrees_with_its_shape_refuses() -> Bool {
+test fn a_span_that_disagrees_with_its_shape_refuses() -> Bool  {
   population_is_refused(entries: [
     safetensors_entry(name: "layers.1.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [4, 8], begin_offset: 0, end_offset: 31),
   ])
@@ -460,7 +460,7 @@ test fn a_span_that_disagrees_with_its_shape_refuses() -> Bool {
     && byte_size_count(b: safetensors_dtype_byte_width(d: SafeF32)) == 4
 }
 
-test fn a_zero_length_dimension_refuses() -> Bool {
+test fn a_zero_length_dimension_refuses() -> Bool  {
   population_is_refused(entries: [
     safetensors_entry(name: "layers.1.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [0, 8], begin_offset: 0, end_offset: 8),
   ])
@@ -470,7 +470,7 @@ test fn a_zero_length_dimension_refuses() -> Bool {
 // the incomplete arm, which has no path to `PopulationEstablished`, so neither can be consumed as
 // the component. The partial arm keeps THE ROWS it did read, not a count of them: the assertion below
 // names the exact six tensors, so reducing the carrier back to a number reds it.
-test fn a_partial_or_failed_scan_stays_incomplete_rather_than_becoming_empty() -> Bool {
+test fn a_partial_or_failed_scan_stays_incomplete_rather_than_becoming_empty() -> Bool  {
   match safetensors_population_standing(members: [], shards: [], closure: fixture_closure(), reading: PopulationUnscanned { obligation: "the shard headers were never read" as NonEmptyStr }) {
     PopulationIncomplete { obligation: _, partial_entries: es } => count(es) == 0
     PopulationEstablished { population: _ } => false
@@ -510,7 +510,7 @@ fn fixture_subject(reading: SafetensorsPopulationReading) -> ComponentSubject {
   )
 }
 
-test fn a_component_over_a_refused_population_is_refused_and_has_no_byte_count() -> Bool {
+test fn a_component_over_a_refused_population_is_refused_and_has_no_byte_count() -> Bool  {
   match establish_component_subject(subject: fixture_subject(reading: PopulationScanned { entries: [] })) {
     ComponentSubjectRefused { identity: _, defects: ds } => count(ds) > 0
     ComponentSubjectEstablished { subject: _, declared_bytes: _, tensor_count: _ } => false
@@ -556,7 +556,7 @@ fn repacked_artifact() -> MaterializedComponentArtifact {
 // encoding is not the published byte identity whatever the membership closure is, so this is a defect the
 // program knows independently -- and keeping it live means one more control still exercises the real
 // subject, and proves the gate does not dilute a known defect into incompleteness.
-test fn a_repacked_encoding_may_not_claim_the_published_byte_identity() -> Bool {
+test fn a_repacked_encoding_may_not_claim_the_published_byte_identity() -> Bool  {
   match realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
@@ -570,7 +570,7 @@ test fn a_repacked_encoding_may_not_claim_the_published_byte_identity() -> Bool 
 // THE TRANSFORM-POSITIVE HALF NEEDS CLOSED MEMBERSHIP, because it is the half that CONCLUDES. Splitting it
 // out keeps one witness to one interface rather than one witness spanning two, which is what the conjoined
 // form was doing once the live subject stopped being usable for a positive verdict.
-test fn a_relation_naming_both_exact_ends_realizes_the_repacked_encoding() -> Bool {
+test fn a_relation_naming_both_exact_ends_realizes_the_repacked_encoding() -> Bool  {
   match realize_component(
     standing: closed_membership_standing(),
     artifact: repacked_artifact(),
@@ -591,7 +591,7 @@ test fn a_relation_naming_both_exact_ends_realizes_the_repacked_encoding() -> Bo
 // A RELATION THAT PRESERVES TOO LITTLE RELATES SOMETHING ELSE. An empty preserved list used to be
 // accepted for the published encoding and any non-empty list of prose for anything else; the required
 // minimum is now declared once and the shortfall is named.
-test fn a_faithfulness_relation_preserving_nothing_is_refused() -> Bool {
+test fn a_faithfulness_relation_preserving_nothing_is_refused() -> Bool  {
   match realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
@@ -619,7 +619,7 @@ test fn a_faithfulness_relation_preserving_nothing_is_refused() -> Bool {
 // would vanish into a single verdict. The consequence for the LIVE subject is real and is asserted next
 // door rather than lost here: the published Engram artifact's realization is Open, not Faithful, until the
 // revision's index is enumerated. That is the honest state, and it is what the gate exists to produce.
-test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool {
+test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool  {
   match component_realization_standing(r: realize_component(
     standing: closed_membership_standing(),
     artifact: engram_published_artifact,
@@ -639,7 +639,7 @@ test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool
 
 // ── B. THE ROUTES ──────────────────────────────────────────────────────────────────────────────
 
-test fn the_four_declared_routes_are_well_formed() -> Bool {
+test fn the_four_declared_routes_are_well_formed() -> Bool  {
   count(engram_routes) == 4
     && all(engram_routes, r => match route_structural_standing(r: r, origin_provider_id: engram_origin_provider_id, roster: engram_admitted_providers) {
       RouteWellFormed => true
@@ -693,7 +693,7 @@ fn malformed(origin: String, fill: List<String>, retained: List<String>, token_t
 // residue: naming a provider this component does not admit.
 fn peer_host_provider_id() -> String { "peer-serving-host" }
 
-test fn a_peer_origin_refuses() -> Bool {
+test fn a_peer_origin_refuses() -> Bool  {
   malformed(
     origin: peer_host_provider_id(),
     fill: [],
@@ -703,7 +703,7 @@ test fn a_peer_origin_refuses() -> Bool {
 }
 
 // PLACEMENT IS READ OFF THE TIER, NOT WRITTEN BESIDE IT, so a hop cannot disagree with its provider.
-test fn hop_placement_is_derived_from_the_provider_tier() -> Bool {
+test fn hop_placement_is_derived_from_the_provider_tier() -> Bool  {
   match route_hop_placement(h: route_hop(provider: engram_origin_provider, role: DurableOrigin)) {
     RemoteNetwork => true
     LocalInProcess => false
@@ -725,7 +725,7 @@ test fn hop_placement_is_derived_from_the_provider_tier() -> Bool {
 // A REMOTE FILESYSTEM IS NOT A CONTENT ADDRESS AND THE TIER NAME DOES NOT DECIDE IT. The NFS export
 // and the M0 origin are BOTH `CasTier`; only their keying values differ, and only the content-keyed
 // one answers true.
-test fn cas_tier_alone_does_not_establish_content_addressed_integrity() -> Bool {
+test fn cas_tier_alone_does_not_establish_content_addressed_integrity() -> Bool  {
   route_hop_is_content_addressed(h: route_hop(provider: engram_origin_provider, role: DurableOrigin))
     && !route_hop_is_content_addressed(h: route_hop(provider: engram_nfs_provider, role: TokenTimeAccess))
     && !route_hop_is_content_addressed(h: route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet))
@@ -735,7 +735,7 @@ test fn cas_tier_alone_does_not_establish_content_addressed_integrity() -> Bool 
 // AND THE VERIFICATION POINT IS A ROUTE CHOICE WITH A CONSEQUENCE. Every declared route verifies at
 // the content-keyed origin and passes; a route that named the NFS token-time hop as its only
 // verification point does not. That red is what keeps the integrity axis from being a decoration.
-test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addressed() -> Bool {
+test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addressed() -> Bool  {
   all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r, roster: engram_admitted_providers)))
     && match route_integrity_standing(roster: engram_admitted_providers, r: materialization_route(
       identity: fixture_route_verified_at_nfs_token_time(),
@@ -766,7 +766,7 @@ test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addresse
 // C AND D ARE NOT INTERCHANGEABLE. In C, NFS is the hop the runtime reads on every gather. In D,
 // NFS appears only as a fill source. The predicate reads the ROLES rather than the labels, so the
 // distinction cannot be lost by a rename.
-test fn nfs_fill_only_and_nfs_token_time_stay_distinguishable() -> Bool {
+test fn nfs_fill_only_and_nfs_token_time_stay_distinguishable() -> Bool  {
   route_provider_serves_token_time(r: engram_route_c_nfs_token_time, provider_id: engram_nfs_provider_id)
     && !route_provider_is_fill_only(r: engram_route_c_nfs_token_time, provider_id: engram_nfs_provider_id)
     && route_provider_is_fill_only(r: engram_route_d_nfs_fill_then_nvme, provider_id: engram_nfs_provider_id)
@@ -787,7 +787,7 @@ test fn nfs_fill_only_and_nfs_token_time_stay_distinguishable() -> Bool {
 // THE ORIGIN HOP IS REMOTE ON EVERY ROUTE, INCLUDING THE FULLY RESIDENT ONE, so the predicate has
 // to read the token-time hop and not the chain. This control is the red for that: route A fetches
 // over the network and still relieves nothing, because the runtime reads it from the pool.
-test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_free() -> Bool {
+test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_free() -> Bool  {
   match engram_pool_relief(r: engram_route_a_resident) {
     NoPoolReliefEveryHopInMemoryPool { how: _ } => true
     PoolReliefBoundedByWorkingSet { resident_upper_bound: _, authority: _ } => false
@@ -836,7 +836,7 @@ test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_f
 // NO WITNESS COVERED THE SettingsAbsent PATH, which is why the mapping now takes the placement as a
 // parameter: the pinned image has one arm, so a control over the pinned value could only ever exercise
 // that arm and would be a decoration by DESIGN 4b's own test. All three reds are authorable here.
-test fn an_absent_placement_setting_is_unobserved_rather_than_an_established_absence() -> Bool {
+test fn an_absent_placement_setting_is_unobserved_rather_than_an_established_absence() -> Bool  {
   match mechanism_standing_from_placement(m: EngramPlacementSettingsAbsent {
     searched: ["/opt/vllm/engine/config.py" as NonEmptyStr],
   }) {
@@ -862,7 +862,7 @@ test fn an_absent_placement_setting_is_unobserved_rather_than_an_established_abs
     }
 }
 
-test fn a_route_naming_an_unadmitted_provider_refuses_pool_relief_rather_than_claiming_the_pool() -> Bool {
+test fn a_route_naming_an_unadmitted_provider_refuses_pool_relief_rather_than_claiming_the_pool() -> Bool  {
   match pool_relief_standing(
     r: materialization_route(
       identity: fixture_route_identity(),
@@ -889,7 +889,7 @@ test fn a_route_naming_an_unadmitted_provider_refuses_pool_relief_rather_than_cl
 // A LOWER BOUND CANNOT ACT AS AN UPPER ONE. Route A's declared payload is a floor on what it
 // occupies, and the fold that feeds the memory screen reads only upper bounds -- so the floor never
 // becomes a ceiling by being the only number available.
-test fn a_lower_bound_is_never_read_as_an_upper_bound() -> Bool {
+test fn a_lower_bound_is_never_read_as_an_upper_bound() -> Bool  {
   let floor_only = ResidentMemoryLowerBoundOnly {
     lower_bound: byte_size(count: 4096),
     authority: fixture_relation(),
@@ -957,7 +957,7 @@ fn engram_per_rank_floor(ranks: Nat) -> Nat {
 
 // A READING FROM ANOTHER TOPOLOGY IS REFUSED, AND REFUSED DIFFERENTLY FROM AN ABSENT ONE. The two
 // need opposite remedies, so they are two arms rather than one miss.
-test fn foreign_profile_evidence_refuses_and_is_not_the_same_as_absent() -> Bool {
+test fn foreign_profile_evidence_refuses_and_is_not_the_same_as_absent() -> Bool  {
   let rows = engram_route_evidence_rows(context: context_a())
   match route_evidence_for(route: engram_route_b_identity, wanted: context_a(), rows: rows) {
     RouteEvidenceFound { evidence: e } => declaration_ref_eq(a: e.route, b: engram_route_b_identity)
@@ -1013,7 +1013,7 @@ fn lookup_is_ambiguous_over(rows: List<RouteEvidence>) -> Bool {
   }
 }
 
-test fn two_evidence_rows_for_one_key_refuse_instead_of_taking_the_first() -> Bool {
+test fn two_evidence_rows_for_one_key_refuse_instead_of_taking_the_first() -> Bool  {
   lookup_is_ambiguous_over(rows: [ambiguous_row_absent_mechanism(), ambiguous_row_unobserved_mechanism()])
     && lookup_is_ambiguous_over(rows: [ambiguous_row_unobserved_mechanism(), ambiguous_row_absent_mechanism()])
     && count(route_evidence_lookup_obligations(l: route_evidence_for(
@@ -1073,7 +1073,7 @@ fn has_gap_on(e: ParetoEntry, axis: DeclarationRef) -> Bool {
 // AN ESTABLISHED MECHANISM ABSENCE SCORES ZERO ON THE HARD-CONSTRAINED AXIS -- for exactly the route
 // it was established for. Route A, which needs no such mechanism, still scores one in the same
 // evidence population.
-test fn a_mechanism_absence_excludes_only_the_route_it_was_established_for() -> Bool {
+test fn a_mechanism_absence_excludes_only_the_route_it_was_established_for() -> Bool  {
   let rows = [
     fixture_evidence(route: engram_route_b_identity, subject: context_a(),
       mechanism: MechanismEstablishedAbsent { runtime: fixture_relation(), receipt: fixture_relation(), how: "fixture: the engine refused to map the component from a file" as NonEmptyStr },
@@ -1096,7 +1096,7 @@ test fn a_mechanism_absence_excludes_only_the_route_it_was_established_for() -> 
 // A PREREQUISITE OBSERVATION IS NOT A SERVING RECEIPT. With the mechanism observed and no launch,
 // the mechanism axis carries a reading and the runtime axis is still a gap -- so a probe cannot
 // satisfy the gate a launch is for.
-test fn a_capability_probe_cannot_mint_a_serving_receipt() -> Bool {
+test fn a_capability_probe_cannot_mint_a_serving_receipt() -> Bool  {
   let rows = [
     fixture_evidence(route: engram_route_b_identity, subject: context_a(),
       mechanism: MechanismPrerequisiteObserved { runtime: fixture_relation(), receipt: fixture_relation(), caveat: "fixture: the symbol exists" as NonEmptyStr },
@@ -1116,7 +1116,7 @@ test fn a_capability_probe_cannot_mint_a_serving_receipt() -> Bool {
 
 // AN UNMEASURED ROUTE IS NOT A ZERO-RAM ROUTE. Nothing anywhere turns an unestablished working set
 // into a reading, so the resident axis gaps rather than scoring best.
-test fn an_unmeasured_route_gaps_the_resident_axis_rather_than_scoring_zero() -> Bool {
+test fn an_unmeasured_route_gaps_the_resident_axis_rather_than_scoring_zero() -> Bool  {
   let rows = engram_route_evidence_rows(context: context_a())
   all(engram_routes, r => {
     let e = entry_for(route: r, rows: rows, ctx: context_a())
@@ -1140,7 +1140,7 @@ test fn an_unmeasured_route_gaps_the_resident_axis_rather_than_scoring_zero() ->
 // IT ASSERTS THE ARM AND THE CAUSE COUNT, NOT ONE CAUSE'S TEXT. Four candidates are excluded, so the
 // spine emits at least four causes; requiring a substring of any of them would make this a change
 // detector over prose the exclusion fold owns.
-test fn the_live_engram_route_selection_is_a_scoped_negative_on_this_runtime_and_capacity() -> Bool {
+test fn the_live_engram_route_selection_is_a_scoped_negative_on_this_runtime_and_capacity() -> Bool  {
   match select_component_route(
     field: engram_route_field,
     standing: engram_component_standing,
@@ -1175,7 +1175,7 @@ test fn the_live_engram_route_selection_is_a_scoped_negative_on_this_runtime_and
 // route A needs no such mechanism. If that absence leaked onto A, the field would be empty and this arm
 // would read `NoFeasibleRealization` instead of an evidence need. So the arm is not merely "no winner":
 // it is evidence that three exclusions did not become four.
-test fn the_per_rank_memory_screen_excludes_only_when_the_floor_exceeds_the_budget() -> Bool {
+test fn the_per_rank_memory_screen_excludes_only_when_the_floor_exceeds_the_budget() -> Bool  {
   let tight = select_component_route(
     field: engram_route_field,
     standing: engram_component_standing,
@@ -1214,7 +1214,7 @@ test fn the_per_rank_memory_screen_excludes_only_when_the_floor_exceeds_the_budg
 // reading, route A would be screened against a fabricated capacity. The assertion is that the result
 // is an evidence need -- not an exclusion either, because an absent capacity establishes nothing about
 // whether the component fits.
-test fn an_unestablished_budget_neither_admits_nor_excludes() -> Bool {
+test fn an_unestablished_budget_neither_admits_nor_excludes() -> Bool  {
   match select_component_route(
     field: engram_route_field,
     standing: engram_component_standing,
@@ -1235,7 +1235,7 @@ test fn an_unestablished_budget_neither_admits_nor_excludes() -> Bool {
 // honest and their binding is wrong -- the same distinction the foreign-profile evidence arm makes one
 // layer down. A budget tight enough to exclude under context A must NOT exclude under context B when it
 // is offered there, because it is not a fact about context B at all.
-test fn a_foreign_context_budget_is_refused_rather_than_priced() -> Bool {
+test fn a_foreign_context_budget_is_refused_rather_than_priced() -> Bool  {
   match select_component_route(
     field: engram_route_field,
     standing: engram_component_standing,
@@ -1255,7 +1255,7 @@ test fn a_foreign_context_budget_is_refused_rather_than_priced() -> Bool {
 // THE REUSE KEY INCLUDES THE BUDGET, and this is the equality that makes that possible. Two budgets
 // differing only in available bytes are NOT the same input, so a table keyed on them cannot serve one
 // candidate's verdict for another's capacity.
-test fn budget_equality_separates_two_capacities_and_two_contexts() -> Bool {
+test fn budget_equality_separates_two_capacities_and_two_contexts() -> Bool  {
   let b1 = budget_of(context: context_a(), ranks: 4, available: 100)
   let b2 = budget_of(context: context_a(), ranks: 4, available: 101)
   let b3 = budget_of(context: context_b(), ranks: 4, available: 100)
@@ -1276,7 +1276,7 @@ test fn budget_equality_separates_two_capacities_and_two_contexts() -> Bool {
 // contributes an obligation rather than the component's whole footprint. `ComponentRouteNotThisSubject`
 // is no longer reachable through this producer at all: it is reserved for a component declared
 // `ComponentResident`, where no route question was ever asked.
-test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> Bool {
+test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> Bool  {
   match component_resident_share(s: engram_route_standing(
     component: engram_component_identity,
     context: context_a(),
@@ -1305,7 +1305,7 @@ test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> B
 
 // EVERY DECLARED ROUTE IS EVALUATED UNDER THE CONTEXT IT WAS ASKED ABOUT, and a different context
 // is a different decision rather than the same one reused.
-test fn the_route_decision_is_parameterized_by_the_consumer_context() -> Bool {
+test fn the_route_decision_is_parameterized_by_the_consumer_context() -> Bool  {
   let a = engram_route_standing(
     component: engram_component_identity,
     context: context_a(),
@@ -1366,7 +1366,7 @@ fn complete_entry(identity: DeclarationRef, label: NonEmptyStr, resident: Int, n
   }
 }
 
-test fn two_complete_non_dominated_routes_need_policy_rather_than_a_forced_winner() -> Bool {
+test fn two_complete_non_dominated_routes_need_policy_rather_than_a_forced_winner() -> Bool  {
   match select_realization(
     assessment: settled_fixture_assessment(),
     candidate_field_identity: fixture_relation(),
@@ -1397,7 +1397,7 @@ test fn two_complete_non_dominated_routes_need_policy_rather_than_a_forced_winne
 // byte-identical to the `SelectionNeedsPolicy` pair above except that the closure axis has no reading
 // and carries the scoped-closure gap. Putting the residual back on the faithfulness axis reds this,
 // because the answer returns to SelectionNeedsPolicy.
-test fn a_scoped_membership_closure_is_an_evidence_need_at_the_selector() -> Bool {
+test fn a_scoped_membership_closure_is_an_evidence_need_at_the_selector() -> Bool  {
   match select_realization(
     assessment: settled_fixture_assessment(),
     candidate_field_identity: fixture_relation(),
@@ -1435,7 +1435,7 @@ fn entry_with_scoped_closure(identity: DeclarationRef, label: NonEmptyStr, resid
 // AND WHEN EVERY COMPLETE CANDIDATE VIOLATES THE MECHANISM CONSTRAINT, THE ANSWER IS INFEASIBLE --
 // not a refusal, and not the last candidate standing. The two are different states with different
 // replies, so they stay different arms.
-test fn every_candidate_violating_a_hard_constraint_is_infeasible_not_refused() -> Bool {
+test fn every_candidate_violating_a_hard_constraint_is_infeasible_not_refused() -> Bool  {
   match select_realization(
     assessment: settled_fixture_assessment(),
     candidate_field_identity: fixture_relation(),
@@ -1467,7 +1467,7 @@ test fn every_candidate_violating_a_hard_constraint_is_infeasible_not_refused() 
 // runtime and a supplied capacity the live answer is an exclusion. The open state is reached today by an
 // unsupplied capacity, so that is the input this control uses -- the subject it was written for is the
 // three-way distinction between open, settled and excluded, and that subject is unchanged.
-test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() -> Bool {
+test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() -> Bool  {
   match component_route_placement_standing(s: engram_route_standing(
     component: engram_component_identity,
     context: context_a(),
@@ -1523,7 +1523,7 @@ fn half_read_component_standing() -> ComponentSubjectStanding {
   ))
 }
 
-test fn a_half_read_population_needs_evidence_rather_than_reporting_no_feasible_route() -> Bool {
+test fn a_half_read_population_needs_evidence_rather_than_reporting_no_feasible_route() -> Bool  {
   match component_realization_standing(r: realize_component(
     standing: half_read_component_standing(),
     artifact: engram_published_artifact,
@@ -1562,7 +1562,7 @@ test fn a_half_read_population_needs_evidence_rather_than_reporting_no_feasible_
 // identity reads one only once membership is CLOSED. And the same matching identity over the LIVE subject
 // yields NO reading at all, which is the state the gate introduced: absent is not zero, and a consumer that
 // treated it as zero would read "proven unfaithful" where the truth is "not established either way".
-test fn a_decided_unfaithful_encoding_still_reads_zero_and_excludes() -> Bool {
+test fn a_decided_unfaithful_encoding_still_reads_zero_and_excludes() -> Bool  {
   match faithfulness_reading(r: realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
@@ -1643,7 +1643,7 @@ fn overlap_defects_over(shard: NonEmptyStr, entries: List<SafetensorsEntry>) -> 
   safetensors_overlap_defects(entries: safetensors_sharded_entries(shard: shard, entries: entries))
 }
 
-test fn overlapping_spans_refuse_including_the_non_adjacent_pair() -> Bool {
+test fn overlapping_spans_refuse_including_the_non_adjacent_pair() -> Bool  {
   let one = "a.engram.one" as NonEmptyStr
   count(overlap_defects_over(shard: one, entries: [
     overlap_entry(name: "a", begin: 0, end: 100),
@@ -1708,7 +1708,7 @@ fn extent_population_with_bounds(shift: Nat, shards: List<SafetensorsShardFile>)
 // list disabled the check for every shard at once. The occupied shard identities are reconciled against
 // the bound rows first: absent bounds are an obligation, two bounds for one shard refuse, and only an
 // exact resolution permits the comparison.
-test fn omitting_a_shards_bounds_leaves_an_obligation_rather_than_disabling_the_extent_check() -> Bool {
+test fn omitting_a_shards_bounds_leaves_an_obligation_rather_than_disabling_the_extent_check() -> Bool  {
   let shifted = safetensors_sharded_entries(
     shard: "fixture.safetensors" as NonEmptyStr, entries: extent_entries(shift: 1))
   count(safetensors_shard_bounds_obligations(shards: [], entries: shifted)) == 1
@@ -1729,7 +1729,7 @@ test fn omitting_a_shards_bounds_leaves_an_obligation_rather_than_disabling_the_
     }
 }
 
-test fn a_population_that_reconciles_may_still_not_fit_the_shard_it_names() -> Bool {
+test fn a_population_that_reconciles_may_still_not_fit_the_shard_it_names() -> Bool  {
   match extent_population(shift: 0) {
     PopulationEstablished { population: _ } => true
     PopulationRefused { defects: _ } => false
@@ -1762,7 +1762,7 @@ data renamed_engram_entries: List<SafetensorsShardedEntry> = concat(
         safetensors_entry(name: "layers.14.engram.q_weight_renamed" as NonEmptyStr, dtype: e.dtype, shape: e.shape, begin_offset: e.begin_offset, end_offset: e.end_offset)
       } else { e })))
 
-test fn a_renamed_tensor_is_reported_as_both_extra_and_missing() -> Bool {
+test fn a_renamed_tensor_is_reported_as_both_extra_and_missing() -> Bool  {
   let before = safetensors_population_total(entries: deepseek_v4_1_flash_engram_sharded_entries)
   let after = safetensors_population_total(entries: renamed_engram_entries)
   byte_size_count(b: before) == byte_size_count(b: after)
@@ -1778,7 +1778,7 @@ test fn a_renamed_tensor_is_reported_as_both_extra_and_missing() -> Bool {
 
 // AND A MISASSIGNED MEMBER IS ITS OWN STATE. Same names, same spans, one entry read from the other
 // shard: count and total again unchanged, and the two sources now disagree about where it lives.
-test fn a_tensor_in_the_wrong_shard_is_refused_as_misassigned() -> Bool {
+test fn a_tensor_in_the_wrong_shard_is_refused_as_misassigned() -> Bool  {
   match fixture_population(
     members: deepseek_v4_1_flash_engram_index_members,
     entries: concat(
@@ -1793,7 +1793,7 @@ test fn a_tensor_in_the_wrong_shard_is_refused_as_misassigned() -> Bool {
 
 // THE LIVE POPULATION RECONCILES, AND CARRIES ITS RESIDUAL. The scoped closure is not a silent
 // weakening: the obligation is readable, and the established subject surfaces it.
-test fn the_live_population_reconciles_and_carries_its_scoped_residual() -> Bool {
+test fn the_live_population_reconciles_and_carries_its_scoped_residual() -> Bool  {
   count(safetensors_population_members(s: deepseek_v4_1_flash_engram_population)) == 12
     && count(safetensors_population_closure_obligations(s: deepseek_v4_1_flash_engram_population)) == 1
     && count(component_subject_obligations(s: engram_component_standing)) == 1
@@ -1826,7 +1826,7 @@ fn artifact_with_identity(i: EncodingIdentity) -> MaterializedComponentArtifact 
 // gating it, I said, would red a claim that is not about membership. That was circular. A test's current
 // expectation is not evidence for the behaviour it encodes; it is the thing that has to move when the
 // behaviour is found wrong.
-test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -> Bool {
+test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -> Bool  {
   match component_realization_standing(r: realize_component(
     standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: engram_published_identity),
@@ -1863,7 +1863,7 @@ test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -
 // THE THIRD CONJUNCT IS WHAT KEEPS THIS FROM BEING A BLANKET REFUSAL: a genuinely defective relation still
 // reports Unfaithful rather than being masked as evidence-missing. The residual removes the ability to
 // conclude faithfulness, never the ability to detect its absence.
-test fn a_scoped_membership_blocks_a_faithful_verdict_by_either_route() -> Bool {
+test fn a_scoped_membership_blocks_a_faithful_verdict_by_either_route() -> Bool  {
   (match component_realization_standing(r: realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
@@ -1902,7 +1902,7 @@ test fn a_scoped_membership_blocks_a_faithful_verdict_by_either_route() -> Bool 
 // THE POSITIVE CONTROL FOR THE GATE, over the same two routes. Close the membership and nothing else, and
 // both arms settle faithful again -- which is what makes the three refusals above evidence about the
 // residual rather than about fixtures that cannot conclude at all.
-test fn closing_the_membership_lets_both_routes_conclude_faithful() -> Bool {
+test fn closing_the_membership_lets_both_routes_conclude_faithful() -> Bool  {
   (match component_realization_standing(r: realize_component(
     standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: engram_published_identity),
@@ -1925,7 +1925,7 @@ test fn closing_the_membership_lets_both_routes_conclude_faithful() -> Bool {
 
 // A RELATION MUST NAME BOTH ENDS AND PRESERVE THE REQUIRED PROPERTIES. Each clause is its own red,
 // because a relation that is merely well formed used to be accepted.
-test fn a_relation_about_another_subject_or_encoding_or_too_little_is_refused() -> Bool {
+test fn a_relation_about_another_subject_or_encoding_or_too_little_is_refused() -> Bool  {
   let good_target = engram_resident_encoding
   match component_realization_standing(r: realize_component(
     standing: engram_component_standing,
@@ -1980,7 +1980,7 @@ test fn a_relation_about_another_subject_or_encoding_or_too_little_is_refused() 
 // is unfaithful, and a relation that cannot say what it produced stays OPEN even though the artifact
 // itself carries a perfectly good digest. That last arm is the one a supplied target digest used to
 // discharge on the relation's behalf.
-test fn a_relation_must_name_the_exact_bytes_it_mapped_from_and_produced() -> Bool {
+test fn a_relation_must_name_the_exact_bytes_it_mapped_from_and_produced() -> Bool  {
   let matching = relation_with_target(t: repacked_artifact().identity)
   let foreign = relation_with_target(
     t: SingleObjectIdentity { digest: as_content_hash_cryptographic(digest: fixture_digest_b()) })
@@ -2063,7 +2063,7 @@ fn closed_membership_standing() -> ComponentSubjectStanding {
 }
 
 
-test fn an_unestablished_actual_source_identity_is_an_obligation_rather_than_faithful() -> Bool {
+test fn an_unestablished_actual_source_identity_is_an_obligation_rather_than_faithful() -> Bool  {
   let rel = relation_with_target(t: repacked_artifact().identity)
   match component_realization_standing(r: realize_component(
     standing: closed_subject_with_published_identity(i: engram_published_identity),
@@ -2096,7 +2096,7 @@ fn relation_with_target(t: EncodingIdentity) -> FaithfulnessRelation {
 // THE RESIDENT ROUTE IS OPEN AT THIS HEAD, DELIBERATELY. Its encoding has no established identity, so
 // faithfulness defers -- which is why no route is selectable and the result is an evidence need rather
 // than an impossibility.
-test fn the_resident_encoding_has_no_established_identity_so_route_a_defers() -> Bool {
+test fn the_resident_encoding_has_no_established_identity_so_route_a_defers() -> Bool  {
   match component_realization_standing(r: realize_component(
     standing: engram_component_standing,
     artifact: engram_resident_artifact,
@@ -2118,7 +2118,7 @@ test fn the_resident_encoding_has_no_established_identity_so_route_a_defers() ->
 // The chain a first cut admitted unchallenged, because nothing examined the fill hops at all. Admission
 // is over the provider roster for EVERY hop now, so this refuses, and so would a peer in any position
 // added later.
-test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool {
+test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool  {
   malformed(
     origin: engram_origin_provider_id,
     fill: [peer_host_provider_id()],
@@ -2140,7 +2140,7 @@ test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool {
 // Every declared route's verification point is addressed by content, so verification is POSSIBLE --
 // and no route has a digest observation, so the verification axis gaps rather than scoring. Reading
 // ContentKeyed as "verified" is exactly the inference this separation refuses.
-test fn addressing_capability_does_not_establish_verified_integrity() -> Bool {
+test fn addressing_capability_does_not_establish_verified_integrity() -> Bool  {
   all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r, roster: engram_admitted_providers)))
     && all(engram_routes, r => match engram_route_evidence_for(r: r, context: context_a()).verification {
       RouteVerificationUnestablished { obligation: _ } => true
@@ -2186,7 +2186,7 @@ fn live_published_realization() -> FaithfulComponentRealization {
 // `cited_figure_read_obligation` run: the source citation yields nothing to read, the version yields
 // its obligation, and the combined fold returns exactly the second. Re-citing the version without
 // reading a revision would red the middle conjunct rather than quietly improving the look of the file.
-test fn the_safetensors_spec_module_cites_its_source_and_admits_an_unpinned_version() -> Bool {
+test fn the_safetensors_spec_module_cites_its_source_and_admits_an_unpinned_version() -> Bool  {
   match cited_figure_read_obligation(standing: safetensors_specification_standing) {
     Absent => true
     Present { value: _ } => false
@@ -2253,7 +2253,7 @@ fn deferral_account_covers(rows: List<FrontierRow>, expected_names: List<String>
 // were observed not to have occurred. No such observation enters this fold, and `present_decls: []`
 // answers a different question again. The `unbound_count == count(...)` assertion is what makes the
 // limitation visible rather than hiding it, so it stays and the claim shrinks to match it.
-test fn the_engram_deferral_account_is_a_complete_inventory_with_unbound_dissolution() -> Bool {
+test fn the_engram_deferral_account_is_a_complete_inventory_with_unbound_dissolution() -> Bool  {
   let expiry = fold_frontier_expiry(rows: engram_materialization_frontier, present_decls: [])
   frontier_rows_well_formed(rows: engram_materialization_frontier)
     && deferral_account_covers(
@@ -2272,7 +2272,7 @@ test fn the_engram_deferral_account_is_a_complete_inventory_with_unbound_dissolu
 // THE MISSING-ROW DISCRIMINATOR. Dropping any one subject from the enrolled population must refuse,
 // and this is the arm the first repair lacked: every quantity it checked was derived from the list it
 // was checking, so a shorter list simply satisfied all of them at a smaller size.
-test fn a_deferral_account_missing_a_subject_is_refused() -> Bool {
+test fn a_deferral_account_missing_a_subject_is_refused() -> Bool  {
   !deferral_account_covers(
     rows: filter(engram_materialization_frontier, r =>
       frontier_subject_key(subject: r.subject)
@@ -2291,7 +2291,7 @@ test fn a_deferral_account_missing_a_subject_is_refused() -> Bool {
 // sole_constructor with no exported builder, exactly as `RouteLaunchReceipt` is under finding 9, so
 // this fixture CANNOT mint one and tests the exposed comparison instead -- which is the same join the
 // reading and the gap both run.
-test fn an_origin_readback_about_another_subject_or_encoding_does_not_verify_this_route() -> Bool {
+test fn an_origin_readback_about_another_subject_or_encoding_does_not_verify_this_route() -> Bool  {
   count(origin_verification_mismatches(
     verified_subject: engram_component_identity,
     verified_identity: engram_published_artifact.identity,
@@ -2332,7 +2332,7 @@ test fn an_origin_readback_about_another_subject_or_encoding_does_not_verify_thi
 // C and D share a serving context and differ in which provider serves token time. A receipt naming D's
 // token-time provider must not satisfy C's runtime axis, and a receipt filed under the right context but
 // about the wrong route must not either.
-test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one() -> Bool {
+test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one() -> Bool  {
   count(route_receipt_fields_mismatches(
     roster: engram_admitted_providers,
     receipt_route: engram_route_d_identity, receipt_subject: context_a(),
@@ -2361,7 +2361,7 @@ test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one
 // `NotThisSubject` and score as settled -- green with no evidence need, for a question nothing answered.
 // It is now open with a DEFECT remedy, and its resident share is an obligation rather than the
 // component's whole declared footprint.
-test fn a_routed_subject_no_authority_covers_is_open_and_defective() -> Bool {
+test fn a_routed_subject_no_authority_covers_is_open_and_defective() -> Bool  {
   let unknown = fixture_uncovered_component_subject()
   let st = engram_route_standing(
     component: unknown,
@@ -2432,7 +2432,7 @@ fn fixture_proven_ground() -> RelationGround {
 // right subject, right source and target encodings, the full required preservation set -- and if
 // nothing shows the transform actually preserves them, the realization must DEFER rather than pass.
 // A first cut had no such check, so a reference to a file-path string carried the relation.
-test fn a_relation_with_no_established_ground_is_not_evidence() -> Bool {
+test fn a_relation_with_no_established_ground_is_not_evidence() -> Bool  {
   match realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
@@ -2456,7 +2456,7 @@ test fn a_relation_with_no_established_ground_is_not_evidence() -> Bool {
 
 // AND THE LIVE RESIDENT ENCODING IS UNESTABLISHED FOR BOTH REASONS, NAMED. Giving it an identity is
 // necessary and NOT sufficient: the relation is still missing, so route A defers on the relation too.
-test fn the_resident_faithfulness_names_both_missing_things() -> Bool {
+test fn the_resident_faithfulness_names_both_missing_things() -> Bool  {
   match engram_resident_faithfulness {
     FaithfulnessUnestablished { obligation: o } =>
       string_contains(s: o as String, pattern: "no structure-preserving relation is declared")

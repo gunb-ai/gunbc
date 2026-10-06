@@ -70,15 +70,15 @@ fn expected_utf8_byte_order() -> List<String> {
   ["B", "Z10", "Z9", "a", "b", "z", from_code_point(233)]
 }
 
-test fn sorted_map_keys_free_call_orders_as_emitted_rust_does() -> Bool {
+test fn sorted_map_keys_free_call_orders_as_emitted_rust_does() -> Bool  {
   sorted_map_keys(discriminating_key_map()) == expected_utf8_byte_order()
 }
 
-test fn sorted_map_keys_method_call_orders_as_emitted_rust_does() -> Bool {
+test fn sorted_map_keys_method_call_orders_as_emitted_rust_does() -> Bool  {
   (discriminating_key_map() |> sorted_map_keys()) == expected_utf8_byte_order()
 }
 
-test fn sorted_map_keys_is_independent_of_insertion_order() -> Bool {
+test fn sorted_map_keys_is_independent_of_insertion_order() -> Bool  {
   sorted_map_keys(reverse_insertion_key_map()) == expected_utf8_byte_order()
     && sorted_map_keys(reverse_insertion_key_map()) == sorted_map_keys(discriminating_key_map())
 }

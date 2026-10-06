@@ -26,27 +26,27 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 // RED TODAY: the rendered invoke carries the prelude's absorbing fallback and stderr swallow.
 // Greens when the toplevel read is the shared typed git.Core.ShowToplevel with a nonzero-refuse
 // arm.
-test fn heal_regen_invoke_prelude_renders_no_shell_control_word() -> Bool {
+test fn heal_regen_invoke_prelude_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: w))
 }
 
 // RED TODAY, the absorbing fallback named alone: `|| pwd` substitutes the working directory for a
 // failed toplevel read, and a heal-regen acting on the wrong root regenerates against the wrong
 // tree. Greens when the fallback spelling is deleted, not preserved.
-test fn heal_regen_invoke_has_no_pwd_fallback() -> Bool {
+test fn heal_regen_invoke_has_no_pwd_fallback() -> Bool  {
   !string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: "|| pwd")
 }
 
 // TYPED-FORM POSITIVE CONTROL, green today and after: the invoke still reads the repository
 // toplevel through the same upstream argv the shared typed ShowToplevel authority names.
-test fn heal_regen_invoke_still_reads_the_repo_toplevel() -> Bool {
+test fn heal_regen_invoke_still_reads_the_repo_toplevel() -> Bool  {
   string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: "rev-parse")
     && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: "--show-toplevel")
 }
 
 // POSITIVE CONTROL, green today and after: the invoke remains the declared two-call composition —
 // regen then verify — because workflow and corpus have different revision authorities.
-test fn heal_regen_invoke_composes_the_declared_two_calls() -> Bool {
+test fn heal_regen_invoke_composes_the_declared_two_calls() -> Bool  {
   string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_regen_target.entry)
     && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_regen_target.function)
     && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_verify_target.entry)

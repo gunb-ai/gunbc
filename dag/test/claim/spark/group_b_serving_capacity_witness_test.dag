@@ -41,7 +41,7 @@ import v2.std.algebra { any, length }
 // intent's subject is UNESTABLISHED until the open terms land, with the 262K prefill workspace
 // named among the obligations.
 
-test fn w_the_restoration_intent_derives_from_the_engine_kv_inventory() -> Bool {
+test fn w_the_restoration_intent_derives_from_the_engine_kv_inventory() -> Bool  {
   match group_b_restoration_intent_admission {
     ServingCapacityIntentRefused { cause: _ } => false
     ServingCapacityIntentAdmitted { intent: i } =>
@@ -61,7 +61,7 @@ test fn w_the_restoration_intent_derives_from_the_engine_kv_inventory() -> Bool 
 // 1,805,689 = 6 x 262,144 + 232,825, and the basis named -- the inventory was derived by the
 // engine FROM THE LIMITING RANK (TP3/srv11, the smallest residual arena), so six is the count
 // the worst rank admits.
-test fn w_the_six_seat_derivation_is_pinned_to_the_limiting_rank() -> Bool {
+test fn w_the_six_seat_derivation_is_pinned_to_the_limiting_rank() -> Bool  {
   group_b_kv_inventory_tokens / 262144 == 6
     && group_b_kv_inventory_tokens == 6 * 262144 + 232825
     && group_b_restoration_seats == 6
@@ -72,14 +72,14 @@ test fn w_the_six_seat_derivation_is_pinned_to_the_limiting_rank() -> Bool {
 // GiB) is the forbidden linear route, and its number is pinned: floor(1,805,689 x 2408 / 1703 /
 // 262,144) = 9, not 6 -- three fabricated seats. The declared count must never equal it; the row
 // goes RED the moment arena bytes become a seat-count input.
-test fn w_the_seat_count_refuses_the_residual_arena_route() -> Bool {
+test fn w_the_seat_count_refuses_the_residual_arena_route() -> Bool  {
   let seats_via_tp0_arena_linear = (group_b_kv_inventory_tokens * 2408 / 1703) / group_b_restoration_window_tokens
   seats_via_tp0_arena_linear == 9
     && seats_via_tp0_arena_linear != group_b_restoration_seats
     && group_b_restoration_seats == 6
 }
 
-test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
+test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool  {
   match group_b_restoration_intent() {
     Absent => false
     Present { value: intent } =>
@@ -111,7 +111,7 @@ test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
 // fields that mattered (seat count sixteen -> six, utilization 8400 -> 8567) while the window
 // coincides BY DESIGN: 262144 is what the derived count buys at the advised envelope, not the
 // retired over-provision.
-test fn w_the_derived_profile_is_not_the_retired_crash_looping_shape() -> Bool {
+test fn w_the_derived_profile_is_not_the_retired_crash_looping_shape() -> Bool  {
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
@@ -126,7 +126,7 @@ test fn w_the_derived_profile_is_not_the_retired_crash_looping_shape() -> Bool {
 }
 
 // ── THE VERDICT PATH: UNESTABLISHED UNTIL THE REAL RECEIPTS LAND ─────────────────────────────────
-test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land() -> Bool {
+test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land() -> Bool  {
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
@@ -155,7 +155,7 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
 //
 // Cold guarantee, scheduler ceiling and route offer are three facts; today all three read eight, and
 // the executable renders no scheduler flag, so the launch is the one group B ran before the split.
-test fn w_group_b_holds_the_cold_floor_with_no_best_effort_seats() -> Bool {
+test fn w_group_b_holds_the_cold_floor_with_no_best_effort_seats() -> Bool  {
   match group_b_scheduler_envelope() {
     Absent => false
     Present { value: e } =>
@@ -172,7 +172,7 @@ test fn w_group_b_holds_the_cold_floor_with_no_best_effort_seats() -> Bool {
 
 // THE OFFER IS BOUNDED BY THE ENGINE'S CEILING, read off the two rows rather than assumed from their
 // agreement: a later edit that raised the offer past the ceiling must turn the accessor Absent.
-test fn w_the_route_offer_never_exceeds_the_scheduler_ceiling() -> Bool {
+test fn w_the_route_offer_never_exceeds_the_scheduler_ceiling() -> Bool  {
   match group_b_scheduler_envelope() {
     Absent => false
     Present { value: e } =>

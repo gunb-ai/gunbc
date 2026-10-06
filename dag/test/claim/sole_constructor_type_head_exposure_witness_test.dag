@@ -86,26 +86,26 @@ data sc_conforming_green: String = "module probe_sc_conforming_green\ntype Inner
 // in-module construction must stay clean.
 data sc_construction_green: String = "module probe_sc_construction_green\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn make(i: Inner) -> Wrapped { Wrapped { root: i } }\nfn f(i: Inner) -> Int { make(i: i).root.v }\n"
 
-test fn sealed_carrier_at_payload_formal_refuses() -> Bool {
+test fn sealed_carrier_at_payload_formal_refuses() -> Bool  {
   sc_refuses_inhabitance(source: sc_sealed_at_payload_red)
 }
 
-test fn payload_at_sealed_carrier_formal_refuses() -> Bool {
+test fn payload_at_sealed_carrier_formal_refuses() -> Bool  {
   sc_refuses_inhabitance(source: sc_payload_at_sealed_red)
 }
 
-test fn sealed_carrier_at_kernel_formal_refuses() -> Bool {
+test fn sealed_carrier_at_kernel_formal_refuses() -> Bool  {
   sc_refuses_inhabitance(source: sc_sealed_at_kernel_red)
 }
 
-test fn unsealed_twin_still_refuses() -> Bool {
+test fn unsealed_twin_still_refuses() -> Bool  {
   sc_refuses_inhabitance(source: sc_plain_at_payload_red)
 }
 
-test fn conforming_projection_through_sealed_carrier_is_clean() -> Bool {
+test fn conforming_projection_through_sealed_carrier_is_clean() -> Bool  {
   sc_has_zero_blocking(source: sc_conforming_green)
 }
 
-test fn sole_constructor_construction_is_unaffected() -> Bool {
+test fn sole_constructor_construction_is_unaffected() -> Bool  {
   sc_has_zero_blocking(source: sc_construction_green)
 }

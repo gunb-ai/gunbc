@@ -121,14 +121,14 @@ fn summed_capacity_bytes(s: MachineShape) -> Nat {
 
 // CONTROL 1: both orientations of one shared pool are accepted. If this holds, the carrier admits
 // two encodings of one topology and supplies no canonical identity between them.
-test fn witness_both_owner_orientations_validate() -> Bool {
+test fn witness_both_owner_orientations_validate() -> Bool  {
   shape_validates(s: encoding_pool_under_cpu()) && shape_validates(s: encoding_pool_under_gpu())
 }
 
 // CONTROL 2: the duplicated-pool encoding is ALSO accepted, and it sums to twice the physical
 // capacity. This is the double count made writable -- nothing requires an author to reach for
 // SharedLevelEdge rather than repeat the level under each accessor.
-test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool {
+test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool  {
   let dup = encoding_pool_duplicated()
   shape_validates(s: dup) && summed_capacity_bytes(s: dup) == pool_bytes + pool_bytes
 }
@@ -155,7 +155,7 @@ test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool
 // finding itself.
 // CONTROL 3: the honest shared encodings sum to the pool ONCE. Paired with control 2 this shows the
 // carrier can express the correct answer and does not require it.
-test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
+test fn witness_shared_encodings_sum_the_pool_once() -> Bool  {
   summed_capacity_bytes(s: encoding_pool_under_cpu()) == pool_bytes
     && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
 }

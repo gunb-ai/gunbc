@@ -30,6 +30,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // file joins ordinary DiscoverySelection as the permanent P1 regression wall. P2 capture, P3 target
 // effects, and P0 primary projection are absent from the capability population by construction.
 
-test fn witness_p1_proof_kernel_acceptance_contract_holds() -> Bool {
+test fn witness_p1_proof_kernel_acceptance_contract_holds() -> Bool  {
   kernel_closing_contract_holds(admissions: p1_first_slice_acceptance_admissions())
 }

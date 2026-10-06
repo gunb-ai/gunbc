@@ -62,15 +62,15 @@ fn parses(text: String) -> Bool {
   }
 }
 
-test fn w_a_minimal_object_is_a_complete_document() -> Bool {
+test fn w_a_minimal_object_is_a_complete_document() -> Bool  {
   parses(text: "{\"Id\":\"c0\"}")
 }
 
-test fn w_trailing_content_after_a_complete_value_refuses() -> Bool {
+test fn w_trailing_content_after_a_complete_value_refuses() -> Bool  {
   !parses(text: "{\"Id\":\"c0\"} {\"Id\":\"c1\"}")
 }
 
-test fn w_an_unterminated_object_refuses_rather_than_reading_a_prefix() -> Bool {
+test fn w_an_unterminated_object_refuses_rather_than_reading_a_prefix() -> Bool  {
   !parses(text: "{\"Id\":\"c0\"")
 }
 
@@ -96,19 +96,19 @@ data minimal_container: String = join([
   "\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false}}]",
 ], "")
 
-test fn w_a_one_element_array_decodes() -> Bool {
+test fn w_a_one_element_array_decodes() -> Bool  {
   decodes(stdout: minimal_container)
 }
 
-test fn w_a_two_element_array_refuses_rather_than_taking_the_first() -> Bool {
+test fn w_a_two_element_array_refuses_rather_than_taking_the_first() -> Bool  {
   !decodes(stdout: "[{\"Id\":\"c0\"},{\"Id\":\"c1\"}]")
 }
 
-test fn w_a_bare_object_refuses_because_it_is_not_the_array_the_daemon_answers() -> Bool {
+test fn w_a_bare_object_refuses_because_it_is_not_the_array_the_daemon_answers() -> Bool  {
   !decodes(stdout: "{\"Id\":\"c0\"}")
 }
 
-test fn w_an_empty_array_refuses() -> Bool {
+test fn w_an_empty_array_refuses() -> Bool  {
   !decodes(stdout: "[]")
 }
 
@@ -116,7 +116,7 @@ test fn w_an_empty_array_refuses() -> Bool {
 // otherwise complete document refuses, rather than reading a container whose state nobody reported
 // as one that is not running -- the fabricated default DESIGN section 5 forbids, on the field a
 // relaunch reads to decide whether its rank came back.
-test fn w_a_state_missing_a_required_bool_refuses() -> Bool {
+test fn w_a_state_missing_a_required_bool_refuses() -> Bool  {
   !decodes(stdout: join([
     "[{\"Id\":\"c0\",\"Created\":\"2026-09-16T00:00:00Z\",\"Image\":\"sha256:ab\",",
     "\"State\":{\"Status\":\"running\",\"Paused\":false,",
@@ -126,7 +126,7 @@ test fn w_a_state_missing_a_required_bool_refuses() -> Bool {
 
 // AND AN UNMODELLED STATUS REFUSES rather than being carried through as text, because the five
 // states this reader names are the ones its consumers branch on.
-test fn w_an_unmodelled_status_refuses_rather_than_passing_the_text_through() -> Bool {
+test fn w_an_unmodelled_status_refuses_rather_than_passing_the_text_through() -> Bool  {
   !decodes(stdout: join([
     "[{\"Id\":\"c0\",\"Created\":\"2026-09-16T00:00:00Z\",\"Image\":\"sha256:ab\",",
     "\"State\":{\"Status\":\"levitating\",\"Running\":true,\"Paused\":false,",
@@ -142,7 +142,7 @@ test fn w_an_unmodelled_status_refuses_rather_than_passing_the_text_through() ->
 data one_member: JsonValue = JsonObject { members: [json_kv(key: "CapAdd", value: JsonNull)] }
 data empty_object: JsonValue = JsonObject { members: [] }
 
-test fn w_a_member_the_object_never_mentions_reads_as_missing() -> Bool {
+test fn w_a_member_the_object_never_mentions_reads_as_missing() -> Bool  {
   match json_member_presence(obj: empty_object, key: "CapAdd") {
     JsonMemberMissing => true
     JsonMemberNull => false
@@ -151,7 +151,7 @@ test fn w_a_member_the_object_never_mentions_reads_as_missing() -> Bool {
   }
 }
 
-test fn w_an_explicit_null_reads_as_null_and_not_as_missing() -> Bool {
+test fn w_an_explicit_null_reads_as_null_and_not_as_missing() -> Bool  {
   match json_member_presence(obj: one_member, key: "CapAdd") {
     JsonMemberNull => true
     JsonMemberMissing => false
@@ -160,7 +160,7 @@ test fn w_an_explicit_null_reads_as_null_and_not_as_missing() -> Bool {
   }
 }
 
-test fn w_a_member_named_twice_is_unreadable_rather_than_resolved() -> Bool {
+test fn w_a_member_named_twice_is_unreadable_rather_than_resolved() -> Bool  {
   match json_member_presence(
     obj: JsonObject { members: [
       json_kv(key: "ShmSize", value: JsonNumber { lexeme: "1" }),
@@ -175,7 +175,7 @@ test fn w_a_member_named_twice_is_unreadable_rather_than_resolved() -> Bool {
   }
 }
 
-test fn w_asking_a_non_object_for_a_member_is_unreadable() -> Bool {
+test fn w_asking_a_non_object_for_a_member_is_unreadable() -> Bool  {
   match json_member_presence(obj: JsonString { value: "HostConfig" }, key: "ShmSize") {
     JsonMemberUnreadable { cause: _ } => true
     JsonMemberMissing => false
@@ -196,7 +196,7 @@ data scalars: JsonValue = JsonObject { members: [
   json_kv(key: "Soft", value: JsonNumber { lexeme: "-1" }),
 ] }
 
-test fn w_a_string_member_reads_as_its_string() -> Bool {
+test fn w_a_string_member_reads_as_its_string() -> Bool  {
   match json_field_string(obj: scalars, key: "Name") {
     FieldRead { value: v } => v == "/glm"
     FieldAbsent => false
@@ -204,7 +204,7 @@ test fn w_a_string_member_reads_as_its_string() -> Bool {
   }
 }
 
-test fn w_a_bool_member_reads_as_its_bool() -> Bool {
+test fn w_a_bool_member_reads_as_its_bool() -> Bool  {
   match json_field_bool(obj: scalars, key: "Privileged") {
     FieldRead { value: v } => !v
     FieldAbsent => false
@@ -212,7 +212,7 @@ test fn w_a_bool_member_reads_as_its_bool() -> Bool {
   }
 }
 
-test fn w_a_negative_number_refuses_as_a_nat_rather_than_clamping() -> Bool {
+test fn w_a_negative_number_refuses_as_a_nat_rather_than_clamping() -> Bool  {
   match json_field_nat(obj: scalars, key: "Soft") {
     FieldMalformed { cause: _ } => true
     FieldRead { value: _ } => false
@@ -220,7 +220,7 @@ test fn w_a_negative_number_refuses_as_a_nat_rather_than_clamping() -> Bool {
   }
 }
 
-test fn w_the_same_negative_number_reads_as_an_int() -> Bool {
+test fn w_the_same_negative_number_reads_as_an_int() -> Bool  {
   match json_field_int(obj: scalars, key: "Soft") {
     FieldRead { value: v } => v == -1
     FieldMalformed { cause: _ } => false
@@ -228,7 +228,7 @@ test fn w_the_same_negative_number_reads_as_an_int() -> Bool {
   }
 }
 
-test fn w_a_number_asked_for_as_a_string_is_malformed_not_absent() -> Bool {
+test fn w_a_number_asked_for_as_a_string_is_malformed_not_absent() -> Bool  {
   match json_field_string(obj: scalars, key: "ShmSize") {
     FieldMalformed { cause: _ } => true
     FieldRead { value: _ } => false
@@ -240,7 +240,7 @@ test fn w_a_number_asked_for_as_a_string_is_malformed_not_absent() -> Bool {
 // means by ShmSize, so it lives with the docker reader rather than the language one -- and the row
 // asserts the COUNT comes through, because a carrier that arrives with the wrong magnitude is worse
 // than one that refuses.
-test fn w_a_byte_field_carries_its_count_into_the_measure() -> Bool {
+test fn w_a_byte_field_carries_its_count_into_the_measure() -> Bool  {
   match json_field_byte_size(obj: scalars, key: "ShmSize") {
     FieldRead { value: b } => byte_size_count(b: b) == 67108864
     FieldMalformed { cause: _ } => false
@@ -249,7 +249,7 @@ test fn w_a_byte_field_carries_its_count_into_the_measure() -> Bool {
 }
 
 // ── 5. LISTS: HOMOGENEOUS READS, HETEROGENEOUS REFUSES ────────────────────────────────────────
-test fn w_a_string_array_reads_as_its_strings() -> Bool {
+test fn w_a_string_array_reads_as_its_strings() -> Bool  {
   match json_field_string_list(
     obj: JsonObject { members: [json_kv(key: "CapAdd", value: JsonArray { elements: [
       JsonString { value: "CAP_IPC_LOCK" },
@@ -263,7 +263,7 @@ test fn w_a_string_array_reads_as_its_strings() -> Bool {
   }
 }
 
-test fn w_an_array_carrying_a_non_string_refuses_the_whole_list() -> Bool {
+test fn w_an_array_carrying_a_non_string_refuses_the_whole_list() -> Bool  {
   match json_field_string_list(
     obj: JsonObject { members: [json_kv(key: "CapAdd", value: JsonArray { elements: [
       JsonString { value: "CAP_IPC_LOCK" },
@@ -289,14 +289,14 @@ fn device_object(host: String, inside: String, perms: String) -> JsonValue {
   ] }
 }
 
-test fn w_a_complete_device_entry_reads() -> Bool {
+test fn w_a_complete_device_entry_reads() -> Bool  {
   match docker_inspect_device_entry(v: device_object(host: "/dev/infiniband", inside: "/dev/infiniband", perms: "rwm")) {
     DeviceEntryRead { device: d } => (d.path_on_host as String) == "/dev/infiniband"
     DeviceEntryMalformed { cause: _ } => false
   }
 }
 
-test fn w_a_device_entry_missing_its_container_path_refuses() -> Bool {
+test fn w_a_device_entry_missing_its_container_path_refuses() -> Bool  {
   match docker_inspect_device_entry(v: JsonObject { members: [
     json_kv(key: "PathOnHost", value: JsonString { value: "/dev/infiniband" }),
     json_kv(key: "CgroupPermissions", value: JsonString { value: "rwm" }),
@@ -306,7 +306,7 @@ test fn w_a_device_entry_missing_its_container_path_refuses() -> Bool {
   }
 }
 
-test fn w_a_device_entry_with_empty_permissions_refuses_rather_than_reading_none() -> Bool {
+test fn w_a_device_entry_with_empty_permissions_refuses_rather_than_reading_none() -> Bool  {
   match docker_inspect_device_entry(v: device_object(host: "/dev/infiniband", inside: "/dev/infiniband", perms: "")) {
     DeviceEntryMalformed { cause: _ } => true
     DeviceEntryRead { device: _ } => false
@@ -321,21 +321,21 @@ fn ulimit_object(name: String, soft: String, hard: String) -> JsonValue {
   ] }
 }
 
-test fn w_a_complete_ulimit_entry_reads_both_bounds() -> Bool {
+test fn w_a_complete_ulimit_entry_reads_both_bounds() -> Bool  {
   match docker_inspect_ulimit_entry(v: ulimit_object(name: "memlock", soft: "-1", hard: "-1")) {
     UlimitEntryRead { ulimit: u } => u.soft == -1 && u.hard == -1
     UlimitEntryMalformed { cause: _ } => false
   }
 }
 
-test fn w_a_ulimit_entry_with_an_empty_name_refuses() -> Bool {
+test fn w_a_ulimit_entry_with_an_empty_name_refuses() -> Bool  {
   match docker_inspect_ulimit_entry(v: ulimit_object(name: "", soft: "-1", hard: "-1")) {
     UlimitEntryMalformed { cause: _ } => true
     UlimitEntryRead { ulimit: _ } => false
   }
 }
 
-test fn w_a_ulimit_entry_whose_soft_bound_is_a_string_refuses() -> Bool {
+test fn w_a_ulimit_entry_whose_soft_bound_is_a_string_refuses() -> Bool  {
   match docker_inspect_ulimit_entry(v: JsonObject { members: [
     json_kv(key: "Name", value: JsonString { value: "memlock" }),
     json_kv(key: "Soft", value: JsonString { value: "unlimited" }),
@@ -351,10 +351,10 @@ test fn w_a_ulimit_entry_whose_soft_bound_is_a_string_refuses() -> Bool {
 // THE DAEMON CANONICALISES A CAPABILITY NAME, so a spec that asked for `IPC_LOCK` and a readback
 // saying `CAP_IPC_LOCK` are the same capability. A comparison that missed this would report a
 // relaunch as having lost a capability it still has.
-test fn w_an_unprefixed_capability_canonicalises_to_the_prefixed_form() -> Bool {
+test fn w_an_unprefixed_capability_canonicalises_to_the_prefixed_form() -> Bool  {
   docker_capability_canonical(name: "IPC_LOCK") == docker_capability_canonical(name: "CAP_IPC_LOCK")
 }
 
-test fn w_canonicalisation_does_not_merge_two_different_capabilities() -> Bool {
+test fn w_canonicalisation_does_not_merge_two_different_capabilities() -> Bool  {
   docker_capability_canonical(name: "IPC_LOCK") != docker_capability_canonical(name: "SYS_PTRACE")
 }

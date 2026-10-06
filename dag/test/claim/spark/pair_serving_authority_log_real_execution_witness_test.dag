@@ -132,7 +132,7 @@ fn alr_current_may_launch(c: CurrentAuthority) -> Bool {
 // write and reads back at 2 with the lease running, and stale after its expiry; a grant fenced on
 // another event, or naming another transaction, is refused before any append; a transition still
 // expecting the resting row is stale and names the current.
-test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution() -> Bool {
+test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -174,7 +174,7 @@ test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_exec
 
 // RED -- an unclaimed group has no authority to read or move: both refuse at the claim, and the
 // log is never touched.
-test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
+test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -259,7 +259,7 @@ fn alr_release_with_quiet(handle: HostEffectHandle, store: FabricStorageBinding,
   }
 }
 
-test fn a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execution() -> Bool {
+test fn a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -293,7 +293,7 @@ test fn a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execu
 // (the claim is old, the effect is not known gone); a release with quiescence evidence lands the
 // re-claim; a claim on a host the Active state commits refuses at `committed`; a second claim on a
 // host another live claim holds refuses at `held`.
-test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -> Bool {
+test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -324,7 +324,7 @@ test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -
 // production unit is in a group, so this is driven with a fixture identity: the first claim
 // lands, a second is refused as held, the release lands, a second release of the same claim is
 // refused at `evidence` (it is not live), and a third claim is admitted again.
-test fn an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_execution() -> Bool {
+test fn an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -350,7 +350,7 @@ test fn an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_executio
 // ReleasedToFleet(B) is established at generation 0; the committing transition refuses under the
 // claim; the claim's own release lands; the same transition then succeeds at generation 1 and the
 // placement partition shows group B's live commitment naming the host.
-test fn a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real_execution() -> Bool {
+test fn a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
   alr_with_temp_dir(scenario: fn(dir) {
     let store = alr_witness_layout(dir: dir)
@@ -387,7 +387,7 @@ test fn a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real
 // re-claim proceeds. No arm of this route takes text or an exit code as a receipt.
 data alr_sleeper_fixture: String = "import os, sys, time\npid = os.fork()\nif pid:\n    sys.stdout.write('%d\\n' % pid)\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\ntime.sleep(float(sys.argv[1]))\nos._exit(0)\n"
 
-test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
+test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -433,7 +433,7 @@ test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
 // the head it read -- STALE, and its fresh re-decision refuses at `host-effects`. A preparation
 // whose group append never happens fences the host until it is aborted; the abort of a
 // preparation no authority event consumed lands, and the host is claimable again.
-test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Bool {
+test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -489,7 +489,7 @@ test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Boo
 // recovery. (3) A release that dies after its group append, before finalization: the authority
 // reads Released, the old hosts are STILL fenced, the abort REFUSES because the join finds the
 // consuming authority event, and the finalization from that join lands and frees them.
-test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_aborted_by_real_execution() -> Bool {
+test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_aborted_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)
@@ -563,7 +563,7 @@ fn alr_exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-test fn a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution() -> Bool {
+test fn a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution() -> Bool  {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let store = alr_witness_layout(dir: dir)

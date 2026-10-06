@@ -25,7 +25,7 @@ fn refusal_says(c: RouterCapability, pattern: String) -> Bool {
 
 // THE REALIZATION'S FORBIDDEN CAPABILITIES ARE ENUMERATED, and each names why. Every forbidden one
 // is something the router does today, which is what makes this a migration and not a description.
-test fn the_router_may_not_select_a_host_or_fabricate_a_placement() -> Bool {
+test fn the_router_may_not_select_a_host_or_fabricate_a_placement() -> Bool  {
   fold([NormaliseRequestToDemand, AskPlacementAuthority, ProjectEndpointFromGrant, ProxyBytes, ReleaseSeatOnCompletion], init: true, f: (acc, c) => acc && is_permitted(c: c))
     && fold([ComputeOwnLoadScore, SelectHostDirectly, MaintainAuthoritativeBindingLedger, FabricatePlacementWhenUnreadable, ForwardWithoutPermit], init: true, f: (acc, c) => acc && !is_permitted(c: c))
     && refusal_says(c: FabricatePlacementWhenUnreadable, pattern: "absorbing fallback")
@@ -37,7 +37,7 @@ test fn the_router_may_not_select_a_host_or_fabricate_a_placement() -> Bool {
 // THE ROSTER IS THE CONTRACT, AND IT IS COMPLETE IN THE SENSE THAT MATTERS: every capability the
 // module can spell appears in the emitted contract, so a capability added later cannot be quietly
 // left out of what the ctrl-side change is measured against.
-test fn every_capability_reaches_the_emitted_contract() -> Bool {
+test fn every_capability_reaches_the_emitted_contract() -> Bool  {
   let contract = router_realization_contract()
   length(router_capabilities) == 10
     && fold(router_capabilities, init: true, f: (acc, c) => acc && string_contains(s: contract, pattern: match router_capability_permission(c: c) { PermittedInRealization => "permitted "  ForbiddenInRealization { because: _ } => "forbidden " }))

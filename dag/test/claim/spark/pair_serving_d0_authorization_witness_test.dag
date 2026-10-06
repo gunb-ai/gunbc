@@ -43,7 +43,7 @@ fn w_request(intent: ContentHash) -> AuthorizationRequest<D0Subject> {
 // the boundary-stratified readback of the produced row stores is transcribed there is no subject and the
 // obligation is the readback's own; once it is verified the keyed candidate is the successor. The claim is
 // exhaustive over both so it flips, rather than rots, when the readback lands.
-test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back() -> Bool {
+test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back() -> Bool  {
   let live = match d0_live_subject(group: FabricGroupA) {
     D0SubjectUnestablished { obligations: o } => length(o) >= 1 && any(o, x => (x as String).contains("read back"))
     D0SubjectFor { subject: s } => length(s.hosts) == 4
@@ -70,7 +70,7 @@ fn w_read_back() -> V41DerivationEvidence {
 // same keyed standing that is a subject once its readback is verified is no subject while it is unread, and
 // the refusal names the readback's obligation. The derivation is an input, so no caller reaches a consent
 // by forgetting to look.
-test fn a_keyed_candidate_with_an_unread_readback_cannot_be_authorized() -> Bool {
+test fn a_keyed_candidate_with_an_unread_readback_cannot_be_authorized() -> Bool  {
   let unread = V41DerivationEvidence { row_store_readback: V41StoreReadbackUnread { obligation: "the stores have not been read back" as NonEmptyStr } }
   let blocked = match d0_subject_of_candidate(group: FabricGroupA, standing: w_keyed(), derivation: unread) {
     D0SubjectUnestablished { obligations: o } => length(o) == 1 && any(o, x => (x as String) == "the stores have not been read back")
@@ -88,7 +88,7 @@ test fn a_keyed_candidate_with_an_unread_readback_cannot_be_authorized() -> Bool
 // the same subject and digests to the same revision, so a rerun re-derives the request the
 // operator decided over; the same filing under another transaction, another executing revision,
 // or an intent frozen without its revision, is refused rather than resumed.
-test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction() -> Bool {
+test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction() -> Bool  {
   match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: successor } => {
@@ -119,7 +119,7 @@ test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transac
 // resumable authorization ONLY against a claim held by this transaction -- an absent claim (a
 // start), another attempt's claim and a completed claim each refuse without consulting the
 // decision's window. An approval over another revision is a mismatch under either fold.
-test fn a_recorded_approval_resumes_only_under_this_transactions_held_claim() -> Bool {
+test fn a_recorded_approval_resumes_only_under_this_transactions_held_claim() -> Bool  {
   match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: intent } => {
@@ -145,7 +145,7 @@ test fn a_recorded_approval_resumes_only_under_this_transactions_held_claim() ->
 // THE DOOR'S STEP FOR A FROZEN FILING WITH NO CLAIM: not filed files the frozen request, pending
 // enters the poll, a decision goes through the live gate at the instant of the read (an approval
 // inside its window admits; a denial refuses), and an unreadable clock refuses before any of it.
-test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() -> Bool {
+test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() -> Bool  {
   match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: intent } => {
@@ -168,7 +168,7 @@ test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() 
 // consent and the revision as given; there is no way to name Group B; another declared host, a
 // kernel host that is not srv1 under a declared srv1, a blank consent, a blank revision, and a
 // revision that is not the checked-out tree's HEAD each refuse.
-test fn the_mode_admits_only_srv1_group_a_and_a_named_consent_and_revision() -> Bool {
+test fn the_mode_admits_only_srv1_group_a_and_a_named_consent_and_revision() -> Bool  {
   let rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) {
     D0ModeAdmitted { group: g, transaction: tx, authorization: a, execution_revision: r } => (fabric_group_wire(g: g) as String) == "group-a" && (tx as String) == "d0-esc-1" && (a as String) == "d0-esc-1" && (r as String) == rev

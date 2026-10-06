@@ -32,35 +32,35 @@ fn surface_carries_no_shell_control_word(rendered: String) -> Bool {
 // RED TODAY: the pre-calibration surface renders the reset echo's 2>/dev/null. Greens when the
 // reset and peak reads are typed filesystem observation leaves with a typed refusal on a missing
 // file.
-test fn pre_calibration_surface_renders_no_shell_control_word() -> Bool {
+test fn pre_calibration_surface_renders_no_shell_control_word() -> Bool  {
   surface_carries_no_shell_control_word(rendered: ci_floor_peak_pre_script())
 }
 
 // RED TODAY, the specific hazard named alone: the reset is a fire-and-forget echo whose stderr
 // swallow hides exactly the unsupported-reset case the pre_peak comparison needs to know about.
 // Greens when the reset observation refuses typed instead of swallowing.
-test fn pre_calibration_reset_is_not_a_swallowed_echo() -> Bool {
+test fn pre_calibration_reset_is_not_a_swallowed_echo() -> Bool  {
   !string_contains(s: ci_floor_peak_pre_script(), pattern: "2>/dev/null")
 }
 
 // POSITIVE CONTROLS, green today and after: each surface observes the cgroup v2 memory.peak file —
 // the rebind changes who constructs the reading, never what is read. One claim per surface: each
 // renders one script, so the pair stays inside the per-claim budget (operator ruling 2026-10-02).
-test fn pre_calibration_surface_still_reads_the_cgroup_peak_file() -> Bool {
+test fn pre_calibration_surface_still_reads_the_cgroup_peak_file() -> Bool  {
   string_contains(s: ci_floor_peak_pre_script(), pattern: "memory.peak")
 }
 
-test fn post_calibration_surface_still_reads_the_cgroup_peak_file() -> Bool {
+test fn post_calibration_surface_still_reads_the_cgroup_peak_file() -> Bool  {
   string_contains(s: ci_floor_peak_post_script(), pattern: "memory.peak")
 }
 
 // POSITIVE CONTROLS, green today and after: each surface keeps its [calibration] observation label —
 // the consumers present the same readings, from typed values after the rebind.
-test fn pre_calibration_surface_keeps_its_observation_label() -> Bool {
+test fn pre_calibration_surface_keeps_its_observation_label() -> Bool  {
   string_contains(s: ci_floor_peak_pre_script(), pattern: "[calibration]")
 }
 
-test fn post_calibration_surface_keeps_its_observation_label() -> Bool {
+test fn post_calibration_surface_keeps_its_observation_label() -> Bool  {
   string_contains(s: ci_floor_peak_post_script(), pattern: "[calibration]")
 }
 

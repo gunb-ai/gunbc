@@ -127,21 +127,21 @@ import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 // than one: no quality assessment for any exact profile, no runtime feasibility observation, an
 // unestablished workload demand, and ten unfunded performance dimensions. A single blocking axis
 // would mean the whole question turned on one measurement.
-test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -> Bool {
+test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -> Bool  {
   match select_serving_deployment(input: deepseek_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
   }
 }
 
-test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
+test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool  {
   match select_serving_deployment(input: glm_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
   }
 }
 
-test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
+test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool  {
   match v4_1_gb10_kv_layout {
     Sm12KvLayoutAdmitted { policy: k } =>
       (w_kv_is(k: k, w: "fp8_ds_mla") && v41_sm12_kv_cache_dtype_admitted(dtype: vllm_kv_cache_dtype_wire(request: k)))
@@ -238,7 +238,7 @@ fn causes_name_axis(cs: List<NonEmptyStr>, axis: DeclarationRef) -> Bool {
   any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: axis)))
 }
 
-test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
+test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool  {
   match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_vllm_gb10_lead, stem: "plant_gb10_lead")) {
     NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_authorized_runtime)
     _ => false
@@ -260,7 +260,7 @@ test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
     }
 }
 
-test fn matching_the_authorized_v4_1_digest_does_not_establish_source() -> Bool {
+test fn matching_the_authorized_v4_1_digest_does_not_establish_source() -> Bool  {
   any(deepseek_v4_1_candidate_field.candidates, c =>
     authorized_v4_1_runtime_holds(c: c)
       && match c.profile.runtime.vllm_source {
@@ -342,7 +342,7 @@ fn report_at(tp: Nat, divergence: Nat, score_delta: Int) -> ServingQualityReport
   )
 }
 
-test fn a_report_within_the_bar_assesses_as_passed() -> Bool {
+test fn a_report_within_the_bar_assesses_as_passed() -> Bool  {
   match assess_quality(report: report_at(tp: 4, divergence: 0, score_delta: 0), requirement: deepseek_quality_requirement) {
     QualityPassed { verdict: _ } => true
     _ => false
@@ -354,14 +354,14 @@ test fn a_report_within_the_bar_assesses_as_passed() -> Bool {
 // A same-artifact profile that was TESTED AND FAILED is a decided negative. The previous version
 // could not express it: QualityRefused fired only on artifact mismatch, so a tested-and-bad profile
 // collapsed into the same absent-receipt state as one nobody had run.
-test fn a_measured_quality_failure_is_failed_rather_than_unobserved() -> Bool {
+test fn a_measured_quality_failure_is_failed_rather_than_unobserved() -> Bool  {
   match assess_quality(report: report_at(tp: 2, divergence: 2238, score_delta: 0), requirement: deepseek_quality_requirement) {
     QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
     _ => false
   }
 }
 
-test fn a_task_score_regression_is_also_a_failure() -> Bool {
+test fn a_task_score_regression_is_also_a_failure() -> Bool  {
   match assess_quality(report: report_at(tp: 4, divergence: 0, score_delta: -150), requirement: deepseek_quality_requirement) {
     QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
     _ => false
@@ -405,7 +405,7 @@ fn evidence_admitting(profiles: List<ServingQualityAssessment>, w: WorkloadDeman
   )
 }
 
-test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bool {
+test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bool  {
   execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
     != execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters)
     && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
@@ -435,7 +435,7 @@ data over_utilised_field: ServingDeploymentCandidateField = serving_candidate_fi
   candidates: [native_tp4_x2],
 )
 
-test fn a_memory_fraction_above_the_device_makes_the_field_unestablished() -> Bool {
+test fn a_memory_fraction_above_the_device_makes_the_field_unestablished() -> Bool  {
   match establish_serving_candidate_field(field: over_utilised_field) {
     ServingFieldUnestablished { causes: c } => count(c) > 0
     ServingFieldEstablished => false
@@ -455,7 +455,7 @@ data duplicated_domain_field: ServingDeploymentCandidateField = serving_candidat
   candidates: [native_tp4_x2],
 )
 
-test fn a_duplicated_value_in_the_declared_domain_refuses() -> Bool {
+test fn a_duplicated_value_in_the_declared_domain_refuses() -> Bool  {
   match establish_serving_candidate_field(field: duplicated_domain_field) {
     ServingFieldUnestablished { causes: c } => count(c) > 0
     ServingFieldEstablished => false
@@ -488,14 +488,14 @@ data field_missing_one: ServingDeploymentCandidateField = serving_candidate_fiel
   candidates: [native_tp8_x1, native_tp4_x2, native_tp1_x8],
 )
 
-test fn the_complete_field_is_established() -> Bool {
+test fn the_complete_field_is_established() -> Bool  {
   match establish_serving_candidate_field(field: complete_field) {
     ServingFieldEstablished => true
     ServingFieldUnestablished { causes: _ } => false
   }
 }
 
-test fn a_field_missing_a_combination_its_domain_admits_is_unestablished() -> Bool {
+test fn a_field_missing_a_combination_its_domain_admits_is_unestablished() -> Bool  {
   match establish_serving_candidate_field(field: field_missing_one) {
     ServingFieldUnestablished { causes: c } => count(c) > 0
     ServingFieldEstablished => false
@@ -508,7 +508,7 @@ data field_with_extra: ServingDeploymentCandidateField = serving_candidate_field
   candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8, cand(name: "undeclared_tp2_x2", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2))],
 )
 
-test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool {
+test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool  {
   match establish_serving_candidate_field(field: field_with_extra) {
     ServingFieldUnestablished { causes: c } => count(c) > 0
     ServingFieldEstablished => false
@@ -623,17 +623,17 @@ data no_redundancy_goal_flip_constraints: List<HardConstraint> = concat(serving_
   HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
 ])
 
-test fn changing_the_workload_changes_the_decision_identity() -> Bool {
+test fn changing_the_workload_changes_the_decision_identity() -> Bool  {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     != decision_snapshot_key(input: input_with(field: settled_field, w: wider_established_demand))
 }
 
-test fn changing_the_candidate_roster_changes_the_decision_identity() -> Bool {
+test fn changing_the_candidate_roster_changes_the_decision_identity() -> Bool  {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     != decision_snapshot_key(input: input_with(field: complete_field, w: established_demand))
 }
 
-test fn an_unchanged_input_keeps_its_decision_identity() -> Bool {
+test fn an_unchanged_input_keeps_its_decision_identity() -> Bool  {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     == decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
 }
@@ -651,7 +651,7 @@ fn profile_with_layout(p: ServingDecisionParameters, k: VllmKvCacheDtypeRequest)
   )
 }
 
-test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
+test fn changing_weight_treatment_changes_the_decision_identity() -> Bool  {
   let requant_art = ModelArtifact {
     identity: artifact_deepseek_v4_flash_native.identity,
     label: artifact_deepseek_v4_flash_native.label,
@@ -672,7 +672,7 @@ test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
     != decision_snapshot_key(input: input_with(field: requant_field, w: established_demand))
 }
 
-test fn candidate_identity_includes_the_complete_profile() -> Bool {
+test fn candidate_identity_includes_the_complete_profile() -> Bool  {
   let t = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
   match v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead) {
     ServingProfileSm12JoinFailed { runtime: _, standing: _ } => false
@@ -684,7 +684,7 @@ test fn candidate_identity_includes_the_complete_profile() -> Bool {
   }
 }
 
-test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
+test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool  {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     != decision_snapshot_key(input: serving_decision_input(
       field: settled_field,
@@ -700,7 +700,7 @@ test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
     ))
 }
 
-test fn changing_axis_goal_changes_the_decision_identity() -> Bool {
+test fn changing_axis_goal_changes_the_decision_identity() -> Bool  {
   decision_snapshot_key(input: serving_decision_input(
     field: settled_field,
     evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
@@ -723,7 +723,7 @@ test fn changing_axis_goal_changes_the_decision_identity() -> Bool {
   ))
 }
 
-test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
+test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool  {
   match select_serving_deployment(input: serving_decision_input(
     field: settled_field,
     evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
@@ -753,7 +753,7 @@ test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
   }
 }
 
-test fn changing_funded_axes_changes_the_decision_identity() -> Bool {
+test fn changing_funded_axes_changes_the_decision_identity() -> Bool  {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     != decision_snapshot_key(input: serving_decision_input(
       field: settled_field,
@@ -766,7 +766,7 @@ test fn changing_funded_axes_changes_the_decision_identity() -> Bool {
     ))
 }
 
-test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool {
+test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool  {
   match select_serving_deployment(input: serving_decision_input(
     field: settled_field,
     evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
@@ -785,7 +785,7 @@ test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool
 //
 // Even beside a passing quality assessment, a scenario workload must not settle a deployment. It has
 // its own hard-bounded axis so it cannot hide behind whichever other evidence is missing first.
-test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -> Bool {
+test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -> Bool  {
   match select_serving_deployment(input: input_with(field: settled_field, w: unestablished_demand)) {
     ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
@@ -795,7 +795,7 @@ test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -
 // AND THE UNFUNDED PERFORMANCE ROSTER DOES THE SAME. Quality passing and the workload established is
 // still not enough, because ten dimensions that could change the decision have no reading. This is
 // the row that stops a future selection going green on a narrow question.
-test fn a_passing_quality_and_established_demand_still_need_the_performance_evidence() -> Bool {
+test fn a_passing_quality_and_established_demand_still_need_the_performance_evidence() -> Bool  {
   match select_serving_deployment(input: input_with(field: settled_field, w: established_demand)) {
     ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
@@ -808,7 +808,7 @@ test fn a_passing_quality_and_established_demand_still_need_the_performance_evid
 // no launch vocabulary in this module at all: binding replica shapes to exact hosts, failure domains
 // and endpoints is the fabric's relation, and the shape carries replica ORDINALS rather than host
 // identities so it cannot pretend otherwise.
-test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool {
+test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool  {
   match admit_shape(s: select_serving_deployment(input: deepseek_decision_input)) {
     FabricPlacementRequired { because: _ } => true
     ShapeAdmittedForPlacement { shape: _ } => false
@@ -816,7 +816,7 @@ test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool {
 }
 
 // ── THE LOWER BOUND DISPROVES; IT DOES NOT ESTABLISH ──────────────────────────────────────────
-test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
+test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool  {
   match weight_fit_of(c: native_tp1_x8, fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
     WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
     _ => false
@@ -829,7 +829,7 @@ test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
 // AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE. The 2.05-bpw figure
 // came from someone else's deployment write-up; the previous version typed it identically to a byte
 // count read on a Spark, so it looked exact.
-test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
+test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool  {
   match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
     _ => false
@@ -840,7 +840,7 @@ test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool 
 }
 
 // CEILING, AND THE HELPER REFUSES ZERO RANKS ITSELF rather than trusting a guard at its call site.
-test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool {
+test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool  {
   match per_rank_bytes_ceiling(total: byte_size(101), ranks: 2) {
     Present { value: v } => byte_size_count(b: v) == 51
     Absent => false
@@ -854,7 +854,7 @@ test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool {
 }
 
 // ── A DEGENERATE SHAPE IS NOT A CHEAP ONE ─────────────────────────────────────────────────────
-test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
+test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool  {
   (match fleet_fit_of(c: cand(name: "zero_replicas", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 0)), fleet: fixture_eight_host_fleet) {
      FleetFitDegenerate { because: _ } => true
      _ => false
@@ -873,7 +873,7 @@ test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
 // srv5-srv8 by identity and a shortfall of four, and the positive control -- the one-replica shape
 // that runs there today -- is admitted over the same four identities. Before this change the same
 // call answered true against `host_count: 8`.
-test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool {
+test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool  {
   (match fleet_fit_of(c: native_tp4_x2, fleet: pair_unit_a_fleet_snapshot) {
      FleetFitExceedsAdmissible { subject: s, required: r, admissible: hs, short_by: k } =>
        serving_subject_eq(a: s, b: PairServingUnitOn { group: FabricGroupA })
@@ -899,7 +899,7 @@ test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool {
 // through the dated transition row and is admitted srv5-srv8 and nothing else; the GLM canary's
 // subject is admitted srv9-srv12 and nothing of group A. A set of the right size holding the wrong
 // hosts is exactly what a count could not detect, so no length appears here.
-test fn the_v4_1_subject_is_admitted_group_a_and_the_canary_subject_group_b() -> Bool {
+test fn the_v4_1_subject_is_admitted_group_a_and_the_canary_subject_group_b() -> Bool  {
   let a = pair_unit_a_fleet_snapshot.admissible_hosts
   let b = glm_group_b_fleet_snapshot.admissible_hosts
   serving_subject_eq(a: pair_unit_a_fleet_snapshot.subject, b: group_a_served_artifact_transition.subject)
@@ -917,7 +917,7 @@ test fn the_v4_1_subject_is_admitted_group_a_and_the_canary_subject_group_b() ->
 // THE TRANSITION ROW IS THE ROUTE, NOT A DECORATION: its subject's group is a group this repository
 // claims, its two sides are the two DeepSeek artifacts in the order the ruling names, both DeepSeek
 // domains take their artifact from it, and the V4.1 quality requirement is about its TO side.
-test fn the_group_a_transition_is_consumed_by_both_deepseek_fields() -> Bool {
+test fn the_group_a_transition_is_consumed_by_both_deepseek_fields() -> Bool  {
   (match group_a_served_artifact_transition.subject {
      PairServingUnitOn { group: g } =>
        any(spark_pair_serving_groups, claimed => (fabric_group_wire(g: claimed) as String) == (fabric_group_wire(g: g) as String))
@@ -938,7 +938,7 @@ test fn the_group_a_transition_is_consumed_by_both_deepseek_fields() -> Bool {
 // field over the eight-host fixture fleet answers with evidence obligations. This is the exclusion
 // deep-crane-826's memory screen relies on host admissibility for (their #11193), and it holds even
 // though V4.1's footprint is externally reported -- the host fit is its own reading, never a gap.
-test fn a_planted_eight_rank_v4_1_shape_is_infeasible_on_group_a_and_open_on_eight_hosts() -> Bool {
+test fn a_planted_eight_rank_v4_1_shape_is_infeasible_on_group_a_and_open_on_eight_hosts() -> Bool  {
   match v4_1_profile_at(runtime: v4_1_runtime_published_arm64) {
     ServingProfileSm12JoinFailed { runtime: _, standing: _ } => false
     ServingProfileReady { profile: p } => {
@@ -998,7 +998,7 @@ fn settled_input_over(f: FleetSnapshot) -> ServingDeploymentDecisionInput {
   )
 }
 
-test fn swapping_one_admissible_host_for_another_changes_the_decision_identity() -> Bool {
+test fn swapping_one_admissible_host_for_another_changes_the_decision_identity() -> Bool  {
   let left = fixture_fleet_over(hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8])
   let right = fixture_fleet_over(hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv9])
   decision_snapshot_key(input: settled_input_over(f: left)) != decision_snapshot_key(input: settled_input_over(f: right))
@@ -1009,13 +1009,13 @@ test fn swapping_one_admissible_host_for_another_changes_the_decision_identity()
 //
 // The requantised build is not a cheaper way to serve the native checkpoint; it is other weights.
 // No report about it can pass a requirement whose subject is the native artifact.
-test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool {
+test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool  {
   native_quality_holds(c: native_tp4_x2)
     && native_quality_holds(c: cand(name: "v41", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)))
     && !native_quality_holds(c: cand(name: "twobit_fact", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)))
 }
 
-test fn replica_count_above_one_fails_no_redundancy() -> Bool {
+test fn replica_count_above_one_fails_no_redundancy() -> Bool  {
   no_redundancy_holds(c: native_tp8_x1)
     && no_redundancy_holds(c: cand(name: "tp2x1", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 1)))
     && no_redundancy_holds(c: cand(name: "tp4x1", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
@@ -1030,7 +1030,7 @@ fn topology_in(shapes: List<TopologyShape>, tp: Nat, replicas: Nat) -> Bool {
 // THE V4.1 DOMAIN IS EVERY SHAPE THE PAIR UNIT ON GROUP A ADMITS, AND NOTHING WIDER: the four
 // admissible identities enumerate tp1-tp4, and no five-to-eight-rank shape exists in the domain to
 // be screened. That absence is asserted by identity of shape rather than by the domain's length.
-test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
+test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool  {
   let admitted = fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot)
   match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
     ServingFieldEstablished =>
@@ -1071,7 +1071,7 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
   }
 }
 
-test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished() -> Bool {
+test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished() -> Bool  {
   token_count_value(t: serving_parameters_current.max_model_len) == 300000
     && all(v4_1_declared_profiles, p =>
       token_count_value(t: p.max_model_len) == 1048576
@@ -1140,7 +1140,7 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
     }
 }
 
-test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool {
+test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool  {
   let empty_admit: List<NonEmptyStr> = []
   let unadmitted = vllm_kv_cache_dtype_wire(request: KvAuto)
   let planted_admit = w_planted_nomatch_roster()
@@ -1167,7 +1167,7 @@ test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool
 // split loses no coverage -- every conjunct survives, attached to the wire it is about -- which is the
 // difference between splitting and dropping a case. Operator ruling 2026-09-14: a witness
 // discriminates at ONE interface, not over cases.
-test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
+test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool  {
   let unadmitted = vllm_kv_cache_dtype_wire(request: KvAuto)
   !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
     && match vllm_kv_cache_dtype_request_matching_wire(wire: unadmitted) {
@@ -1193,7 +1193,7 @@ fn w_planted_nomatch_roster() -> List<NonEmptyStr> {
 
 // A WIRE THE ROSTER ADMITS BUT NO POLICY MATCHES is the case the unadmitted one cannot reach: admission
 // and policy matching are two joins, and a wire can pass the first and fail the second.
-test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
+test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool  {
   let planted_admit = w_planted_nomatch_roster()
   let nomatch_opt = (filter(planted_admit, d =>
     match vllm_kv_cache_dtype_request_matching_wire(wire: d) {
@@ -1222,7 +1222,7 @@ test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
 // here because they are about the same real wire: the live field IS established, and the real wire
 // against the real roster IS admitted as fp8_ds_mla -- so the three negatives above are failing for
 // the planted reason rather than because this join never succeeds.
-test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
+test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool  {
   let empty_admit: List<NonEmptyStr> = []
   planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
     && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
@@ -1258,7 +1258,7 @@ test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
 // were deleted. A guard fooled by prose about the guard cannot detect the regression it exists for,
 // which is section 3's cite-the-symbol rule earning its keep: the claim's name is reachable from the
 // namespace tree and a quoted string in a comment is not.
-test fn the_real_sm12_wire_joins_as_fp8_ds_mla() -> Bool {
+test fn the_real_sm12_wire_joins_as_fp8_ds_mla() -> Bool  {
   match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
     Sm12KvLayoutAdmitted { policy: k } =>
       w_kv_is(k: k, w: "fp8_ds_mla")
@@ -1299,7 +1299,7 @@ fn v4_1_frontier_subject_key(decl_name: String) -> String {
   })
 }
 
-test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
+test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool  {
   let expected = map(v4_1_expected_frontier_subjects, n => v4_1_frontier_subject_key(decl_name: n))
   let actual = frontier_path_subjects(rows: v4_1_selection_frontier)
   frontier_rows_well_formed(rows: v4_1_selection_frontier)
@@ -1311,7 +1311,7 @@ test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_fac
     && all(actual, a => any(expected, e => e == a))
 }
 
-test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
+test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool  {
   !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
     && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
     && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
@@ -1330,7 +1330,7 @@ test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool 
     }
 }
 
-test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
+test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool  {
   !declaration_ref_eq(a: deepseek_v4_1_selection_policy, b: deepseek_v4_1_quality_requirement.identity)
 }
 
@@ -1359,7 +1359,7 @@ fn identity_populations_agree(actual: List<DeclarationRef>, expected: List<Decla
     && all(actual, a => any(expected, e => declaration_ref_eq(a: a, b: e)))
 }
 
-test fn assessment_dispositions_join_the_constraint_identities_on_the_input() -> Bool {
+test fn assessment_dispositions_join_the_constraint_identities_on_the_input() -> Bool  {
   let glm_ids = unique_constraint_identities(cs: glm_decision_input.constraints)
   let v41_ids = unique_constraint_identities(cs: deepseek_v4_1_decision_input.constraints)
   identity_populations_agree(actual: glm_ids, expected: expected_glm_constraint_authorities)
@@ -1372,7 +1372,7 @@ test fn assessment_dispositions_join_the_constraint_identities_on_the_input() ->
 // so tp4 x1 is in and tp4 x2 -- eight hosts -- is not; before this change the same claim asserted
 // the reverse over a scalar eight. The DeepSeek V4 Flash field covers the pair unit's four hosts and
 // carries tp4 x1, the shape that runs on group A today, and not tp8 x1.
-test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {
+test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool  {
   match establish_serving_candidate_field(field: glm_candidate_field) {
     ServingFieldEstablished =>
       count(glm_candidate_field.candidates)
@@ -1393,7 +1393,7 @@ test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {
   }
 }
 
-test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
+test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool  {
   match assess_quality(
     report: serving_quality_report(
       subject: execution_profile_of(c: cand(name: "twobit", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), p: serving_parameters_current),
@@ -1518,7 +1518,7 @@ fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr
 // is a property of how many topologies the fleet admits -- so it runs on the designed four-candidate
 // field. It cost 239,298 eval_steps on the live field with ZERO select_serving_deployment calls, which is
 // what located the cost in route-standing production rather than in the selection.
-test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool {
+test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool  {
   let field = v4_1_designed_field
   let routed = routed_candidates(field: field)
   let demands = distinct_route_demands(routed: routed)
@@ -1612,7 +1612,7 @@ fn distinct_route_demands(routed: List<RoutedCandidate>) -> List<ComponentRouteS
 // EVERY candidate identity to appear among the causes, which keeps a shrinking field from passing
 // silently -- but the typed standings are genuinely not checked on this path, and the row's trigger
 // is what restores them.
-test fn the_v4_1_aggregation_returns_no_feasible_naming_every_candidate() -> Bool {
+test fn the_v4_1_aggregation_returns_no_feasible_naming_every_candidate() -> Bool  {
   let input = v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "aggregation_behaviour")
   match select_serving_deployment(input: input) {
     NoFeasibleServingDeployment { causes: cs } =>
@@ -1660,7 +1660,7 @@ test fn the_v4_1_aggregation_returns_no_feasible_naming_every_candidate() -> Boo
 // field would sit outside it. That is one level up from where the defect was and it is not derivable
 // without a field roster this module does not have -- so it is named here as the limit, and the claim
 // is named for what it executes.
-test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> Bool {
+test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> Bool  {
   let live = concat(
     concat(deepseek_v4_1_candidate_field.candidates, glm_candidate_field.candidates),
     deepseek_candidate_field.candidates)
@@ -1757,7 +1757,7 @@ fn routed_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
   }
 }
 
-test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration() -> Bool {
+test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration() -> Bool  {
   match v4_1_live_candidate_at(tp: 4, replicas: 1) {
     Absent => false
     Present { value: c } =>
@@ -1771,7 +1771,7 @@ test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_inte
   }
 }
 
-test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> Bool {
+test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> Bool  {
   match v4_1_live_candidate_at(tp: 4, replicas: 1) {
     Absent => false
     Present { value: c } =>
@@ -1789,7 +1789,7 @@ test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> B
   }
 }
 
-test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool {
+test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool  {
   let f = deepseek_v4_1_decision_input.field
   declaration_ref_eq(a: f.identity, b: deepseek_v4_1_candidate_field.identity)
     && count(f.candidates) > 0
@@ -1854,7 +1854,7 @@ fn any_placement_open(ps: List<ComponentRoutePlacementStanding>) -> Bool {
   })
 }
 
-test fn the_engram_memory_screen_excludes_the_tp4_candidate_and_not_the_tp8_one() -> Bool {
+test fn the_engram_memory_screen_excludes_the_tp4_candidate_and_not_the_tp8_one() -> Bool  {
   let tp4 = engram_placements_of(c: v41_candidate_at_tp(tp: 4, replicas: 2, name: "screen_tp4"))
   let tp8 = engram_placements_of(c: v41_candidate_at_tp(tp: 8, replicas: 1, name: "screen_tp8"))
   count(tp4) == 1
@@ -1875,7 +1875,7 @@ fn disconnected_route_gap() -> AxisGap {
   }
 }
 
-test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle() -> Bool {
+test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle() -> Bool  {
   count(route_produced_causes(needs: [UnfundedAxis { gap: disconnected_route_gap() }])) == 0
     && needs_name_axis(needs: [UnfundedAxis { gap: disconnected_route_gap() }], axis: ax_component_route)
     && count(route_produced_causes(needs: [UnfundedAxis {
@@ -1898,7 +1898,7 @@ test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle
 // AND THE ROUTE AXIS IS THIS SUBJECT'S, NOT EVERY SUBJECT'S. GLM and V4-Flash declare no components,
 // so neither the axis nor its hard constraint appears in their populations and their results are
 // reached exactly as before.
-test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool {
+test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool  {
   any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
     && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
     && any(v4_1_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
@@ -1914,7 +1914,7 @@ test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool {
 // which IS that sum, so the assertion was an identity -- and pinned it to a transcribed literal
 // 510286023000 beside it. Both halves were wrong in the way DESIGN section 6 names: the oracle has to
 // be an independent referent, and it is named rather than copied.
-test fn the_v4_1_decomposition_agrees_with_the_cited_upstream_total() -> Bool {
+test fn the_v4_1_decomposition_agrees_with_the_cited_upstream_total() -> Bool  {
   match artifact_deepseek_v4_1_flash_native.upstream_total {
     Absent => false
     Present { value: upstream } =>
@@ -1950,7 +1950,7 @@ fn artifact_with_wrong_upstream_total() -> ModelArtifact {
 // snapshot key. Two artifacts identical in every other field would have shared a key, so a result
 // computed under one would have carried across the change with nothing able to notice. These two
 // differ ONLY in that field; dropping it from the digest reds this.
-test fn changing_only_the_upstream_total_changes_the_combination_identity() -> Bool {
+test fn changing_only_the_upstream_total_changes_the_combination_identity() -> Bool  {
   let sound = artifact_deepseek_v4_1_flash_native
   let shifted = artifact_with_wrong_upstream_total()
   count(shifted.components) == count(sound.components)
@@ -1961,7 +1961,7 @@ test fn changing_only_the_upstream_total_changes_the_combination_identity() -> B
       b: candidate_combination(c: cand(name: "identity_probe", art: shifted, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))))
 }
 
-test fn a_decomposition_disagreeing_with_its_upstream_total_refuses() -> Bool {
+test fn a_decomposition_disagreeing_with_its_upstream_total_refuses() -> Bool  {
   match artifact_decomposition_defect(art: artifact_with_wrong_upstream_total()) {
     Present { value: d } => string_contains(s: d as String, pattern: "different tensor populations")
     Absent => false
@@ -1997,7 +1997,7 @@ fn mismatched_artifact() -> ModelArtifact {
   }
 }
 
-test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool {
+test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool  {
   match artifact_decomposition_defect(art: mismatched_artifact()) {
     Present { value: _ } => true
     Absent => false
@@ -2016,7 +2016,7 @@ test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool 
 // LEGACY BEHAVIOUR IS UNCHANGED OUTSIDE THE NEW SUBJECT. An artifact with no components has a
 // resident footprint that IS its whole-artifact footprint, arm for arm and byte for byte, so the
 // screen divides exactly what it divided before this change.
-test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Bool {
+test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Bool  {
   let v4 = cand(name: "legacy_v4", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
   match candidate_resident_footprint(c: v4, p: serving_parameters_current) {
     FootprintObservedOnFleet { bytes: b, how: _ } => byte_size_count(b: b) == 168683720987
@@ -2042,7 +2042,7 @@ test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Boo
 // the Engram component contributes an obligation, so the sum is `FootprintUnread` and the fit stays
 // underivable. That is the arm that would be a silent zero if the route's working set were assumed
 // away -- and a zero here is exactly what would make a narrow topology look feasible.
-test fn a_routed_component_leaves_the_resident_footprint_unread_rather_than_zero() -> Bool {
+test fn a_routed_component_leaves_the_resident_footprint_unread_rather_than_zero() -> Bool  {
   let v41 = cand(name: "v41_routed", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
   match candidate_resident_footprint(c: v41, p: serving_parameters_current) {
     FootprintUnread { obligation: o } => count(o as String) > 0
@@ -2071,14 +2071,14 @@ fn fixture_mismatched_sum_field_id() -> DeclarationRef {
 // hundredths of a GiB, and a transposed row would have been a region that denotes nothing which the
 // per-rank memory screen then subtracts against. The mint is the wall; these two claims are the
 // executing evidence that it is reached FROM THIS SITE rather than only available in `std`.
-test fn the_free_memory_mint_refuses_transposed_endpoints() -> Bool {
+test fn the_free_memory_mint_refuses_transposed_endpoints() -> Bool  {
   match gib_hundredths_interval(low_hundredths: 11695, high_hundredths: 11685) {
     IntervalRefused { reason: r } => count(r as String) > 0
     IntervalReady { interval: _ } => false
   }
 }
 
-test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool {
+test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool  {
   match gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695) {
     IntervalReady { interval: _ } => true
     IntervalRefused { reason: _ } => false
@@ -2100,14 +2100,14 @@ fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat)
   }
 }
 
-test fn a_refused_free_memory_region_carries_the_mints_reason() -> Bool {
+test fn a_refused_free_memory_region_carries_the_mints_reason() -> Bool  {
   match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11695, free_construction_high: 11685)) {
     IntervalRefused { reason: r } => count(r as String) > 0
     IntervalReady { interval: _ } => false
   }
 }
 
-test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
+test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool  {
   match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11685, free_construction_high: 11695)) {
     IntervalReady { interval: i } => byte_size_count(b: group_rank_free_memory_upper(i: i)) > 0
     IntervalRefused { reason: _ } => false
@@ -2120,7 +2120,7 @@ test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
 // is writable and would otherwise stay silent until a consumer folded it. This is the claim that makes
 // an authored transposition red HERE instead -- it is the whole of the class's rung-two standing, and
 // deleting it drops the class to rung one.
-test fn every_authored_free_memory_row_mints_its_region() -> Bool {
+test fn every_authored_free_memory_row_mints_its_region() -> Bool  {
   count(group_rank_free_memory_observed) > 0
     && all(group_rank_free_memory_observed, r => match r.free {
       IntervalReady { interval: _ } => true

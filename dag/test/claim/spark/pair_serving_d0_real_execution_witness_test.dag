@@ -262,7 +262,7 @@ fn d0r_settled_eligible(o: D0Outcome) -> ContentHash? {
 }
 
 // THE WHOLE ROUTE, then expiry, then cleanup.
-test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execution() -> Bool {
+test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       match d0r_w_admitted(store: store, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
@@ -303,7 +303,7 @@ test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execut
 // once); nothing moved; and a RESUME under tx-d0 -- the claim found held, permission not
 // re-decided -- finds a live declared incumbent and restores EXACTLY Active(Keyed K), not the
 // resting row.
-test fn a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution() -> Bool {
+test fn a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       match pair_serving_authority_for(group: FabricGroupA) {
@@ -369,7 +369,7 @@ test fn a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_r
 // (harness_seat_after_grant_authority, the seam harness_fence_grant runs first) finds the
 // authority moved, releases the seat on its partition, and no binding is returned; the seat
 // partition folds back to its full room. No unaccounted seat remains.
-test fn a_seat_granted_after_the_suspension_landed_is_released_by_real_execution() -> Bool {
+test fn a_seat_granted_after_the_suspension_landed_is_released_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let partition = "witness-group-a-seat" as PartitionId
@@ -452,7 +452,7 @@ fn d0r_read_authority_at(c: CurrentAuthority, expected: PairServingGroupAuthorit
 // at generation 2 with no grant and the receipt digest on the event, and the seat gate refuses. A
 // live declared incumbent restores: the authority lands back on the resting Active state,
 // unchanged (no keyed mint), at generation 2, and the seat gate admits again.
-test fn a_fence_and_a_restore_each_reach_their_terminal_by_real_execution() -> Bool {
+test fn a_fence_and_a_restore_each_reach_their_terminal_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       match pair_serving_authority_for(group: FabricGroupA) {
@@ -524,7 +524,7 @@ fn d0r_generation_is(store: FabricStorageBinding, generation: Int, at: Int) -> B
 // holder; and once the first executor completes the claim
 // the second reads it completed and a third start is refused as spent. The host-local file store
 // could not establish any of this: its two roots would each have admitted a claim.
-test fn the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution() -> Bool {
+test fn the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, e1) {
       let e2 = d0r_second_executor_layout(dir: dir)
@@ -551,7 +551,7 @@ test fn the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution
 // the whole route from Active, settling at generation 2; then the claim completes. A second
 // consent whose first write never landed against an authority that is no longer Active is
 // ABORTED by the join, not stranded.
-test fn a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution() -> Bool {
+test fn a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "esc-d0-witness" as NonEmptyStr
@@ -591,7 +591,7 @@ test fn a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_
 // authority is not moved. The join reads the log's record, not the current state: after an
 // operator moves the group on (a later transaction fences it), the join still answers Complete
 // for tx-d0 rather than mistaking the group for one tx-d0 never touched.
-test fn a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution() -> Bool {
+test fn a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "esc-d0-witness" as NonEmptyStr
@@ -628,7 +628,7 @@ test fn a_crash_after_the_settling_write_and_before_completion_completes_the_cla
 // GROUP A'S MEMBERSHIP IS NOT WHAT THE OPERATOR SAW. A grant over four hosts with srv1 in place
 // of one Group A member is refused at admission -- before any claim (the slot stays absent) and
 // before any write (generation 0) -- naming both populations.
-test fn a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution() -> Bool {
+test fn a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "esc-other-hosts" as NonEmptyStr
@@ -661,7 +661,7 @@ fn d0r_exit_failed(e: ProcessExit) -> Bool {
 // decision under the SAME word -- claims and dies before its first write. E2's join must answer
 // FirstWrite from E2's (empty) history, never Complete from E1's terminal; and driving E2 from
 // there performs E2's own first write and settles at generation 4.
-test fn a_fresh_authorization_under_a_reused_word_is_not_completed_from_the_old_history_by_real_execution() -> Bool {
+test fn a_fresh_authorization_under_a_reused_word_is_not_completed_from_the_old_history_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let tx = "tx-d0" as NonEmptyStr
@@ -712,7 +712,7 @@ fn d0r_w_scoped(successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr
 //   pending landed → the dispatcher still drives the transaction to a terminal under the original
 //     authorization: FencedRefusal at generation 2 naming both populations, the claim completed,
 //     nothing stranded.
-test fn a_population_change_after_the_claim_aborts_before_a_write_and_fences_after_one_by_real_execution() -> Bool {
+test fn a_population_change_after_the_claim_aborts_before_a_write_and_fences_after_one_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let drifted = d0r_drifted_hosts()
@@ -768,7 +768,7 @@ test fn a_population_change_after_the_claim_aborts_before_a_write_and_fences_aft
 // pending authority: it is REFUSED -- the claim stays ClaimedBy(tx), the authority stays pending at
 // generation 1 -- and executor 1's rerun still resumes and settles. A foreign executor never
 // terminalizes a claim it did not write under.
-test fn a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_real_execution() -> Bool {
+test fn a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let e2 = d0r_second_executor_layout(dir: dir)
@@ -813,7 +813,7 @@ test fn a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_r
 // eligible one) without touching the authority. Then, after an operator restores Active and a
 // third lifecycle settles by restoring Active and dies, E2 completes that one too rather than
 // starting a second first write: the claim is CompletedBy and the generation is unchanged.
-test fn any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution() -> Bool {
+test fn any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, e1) {
       let e2 = d0r_second_executor_layout(dir: dir)
@@ -870,7 +870,7 @@ test fn any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real
 // commit the roster's fourth host AS A GROUP MEMBER (it may still carry its cell-role commitment,
 // which is another authority's), while the resting projection over the source row says the
 // opposite. The reservation is the log's, not the roster's. The reservation is the log's, not the roster's.
-test fn the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution() -> Bool {
+test fn the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       match pair_serving_authority_for(group: FabricGroupA) {
@@ -912,7 +912,7 @@ fn d0r_committed_to_group_a(standings: List<SparkHostStanding>, host: HostIdenti
 // (same revision) with NO live subject consulted -- a rerun after the candidate re-keys or the
 // hosts move still finds the request it filed; and a rerun naming another transaction under the
 // same escalation is refused rather than resumed.
-test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution() -> Bool {
+test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
@@ -943,7 +943,7 @@ test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_sub
 // an instant BEFORE the grant (a stale or fabricated clock) -- no claim is taken on the store and
 // no authority write follows either way -- while the same grant admitted at an instant inside its
 // window claims.
-test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution() -> Bool {
+test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       match d0r_w_authorization(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-late" as NonEmptyStr) {
@@ -988,7 +988,7 @@ fn d0r_after_frozen(store: FabricStorageBinding, esc: NonEmptyStr, successor: Co
   other_revision && rerun && other
 }
 
-test fn the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution() -> Bool {
+test fn the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "esc-d0-door" as NonEmptyStr
@@ -1024,7 +1024,7 @@ fn d0r_release_subject() -> D0Subject {
 
 data d0r_row_digest: NonEmptyStr = "sha256:4444444444444444444444444444444444444444444444444444444444444444" as NonEmptyStr
 
-test fn a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution() -> Bool {
+test fn a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution() -> Bool  {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "d0-group-a-release-glm53-standing-2026-10-03" as NonEmptyStr

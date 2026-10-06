@@ -13,6 +13,6 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // FalsifierSelfHostWet false (censused as PremiseInvalidated in
 // gunbc.deleted_cadence_reference_census).
 
-test fn self_host_use_site_verdict_behavioral_receipt_holds() -> Bool {
+test fn self_host_use_site_verdict_behavioral_receipt_holds() -> Bool  {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/use_site_verdict.dag")
 }

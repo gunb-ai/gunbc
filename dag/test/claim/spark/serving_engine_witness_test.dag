@@ -86,7 +86,7 @@ fn slot_is_available(v: SparkEngineSlotVerdict) -> Bool {
 
 // RED. A second engine on an occupied unified pool must refuse, and must NAME BOTH SIDES: a bare
 // refusal tells an operator that something collided and nothing about which launcher to stop.
-test fn w_a_second_engine_on_a_unified_pool_refuses_and_names_both() -> Bool {
+test fn w_a_second_engine_on_a_unified_pool_refuses_and_names_both() -> Bool  {
   slot_is_refused_as_occupied(
     v: spark_engine_slot_admits(memory_kind: UnifiedShared, incumbent: Present { value: fx_ollama }, applicant: fx_vllm),
     incumbent: "ollama" as NonEmptyStr, applicant: "vllm" as NonEmptyStr)
@@ -98,7 +98,7 @@ test fn w_a_second_engine_on_a_unified_pool_refuses_and_names_both() -> Bool {
 // CONTROL. An EMPTY unified pool admits. Without this the refusal above would be satisfied by a rule
 // that refuses every unified-memory host unconditionally, which would be a wall against deployment
 // rather than against co-tenancy.
-test fn w_an_empty_unified_pool_admits() -> Bool {
+test fn w_an_empty_unified_pool_admits() -> Bool  {
   slot_is_available(v: spark_engine_slot_admits(memory_kind: UnifiedShared, incumbent: Absent, applicant: fx_vllm))
 }
 
@@ -106,7 +106,7 @@ test fn w_an_empty_unified_pool_admits() -> Bool {
 // genuinely arbitrates two engines through the driver, so co-tenancy there is not this rule's
 // subject. A rule that refused Dram and Hbm too would be over-broad in a way no fleet row could
 // currently falsify, because the fleet has no discrete-memory serving host to notice it.
-test fn w_discrete_memory_hosts_are_outside_this_refusal() -> Bool {
+test fn w_discrete_memory_hosts_are_outside_this_refusal() -> Bool  {
   slot_is_available(v: spark_engine_slot_admits(memory_kind: Dram, incumbent: Present { value: fx_ollama }, applicant: fx_vllm))
     && slot_is_available(v: spark_engine_slot_admits(memory_kind: Hbm, incumbent: Present { value: fx_ollama }, applicant: fx_vllm))
 }
@@ -178,7 +178,7 @@ fn enforcer_admitted(v: EnforcerVerdict) -> Bool {
 
 // RED. No declared enforcer is a refusal, not a default. An undeclared enforcer still EXISTS on the
 // host; what is missing is anyone's knowledge of its threshold.
-test fn w_no_declared_enforcer_refuses() -> Bool {
+test fn w_no_declared_enforcer_refuses() -> Bool  {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorMp),
     wanted: "none" as NonEmptyStr)
@@ -186,7 +186,7 @@ test fn w_no_declared_enforcer_refuses() -> Bool {
 
 // RED. Two enforcers refuse, and the count is carried. This is the measured incident: two enforcers
 // with different definitions of "used", the lower one unable to fire first.
-test fn w_two_enforcers_refuse_rather_than_layering() -> Bool {
+test fn w_two_enforcers_refuse_rather_than_layering() -> Bool  {
   enforcer_refused_as_many(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard, fx_ray_monitor], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorMp),
     wanted_count: 2)
@@ -197,7 +197,7 @@ test fn w_two_enforcers_refuse_rather_than_layering() -> Bool {
 // monitors only user application memory; the node-memory measurement this module was built around is
 // about the OTHER mode. So this configuration refuses on unknown accounting rather than on counting,
 // and the cause names which of the two threshold subjects is live.
-test fn w_an_isolated_threshold_monitor_has_unestablished_accounting() -> Bool {
+test fn w_an_isolated_threshold_monitor_has_unestablished_accounting() -> Bool  {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], resource_isolation_enabled: true, monitor_refresh: fx_ray_live_refresh, backend: ExecutorRay),
     wanted: "unestablished:ray_user_slice_threshold" as NonEmptyStr)
@@ -207,7 +207,7 @@ test fn w_an_isolated_threshold_monitor_has_unestablished_accounting() -> Bool {
 // NOTHING declared refused as `NoEnforcerDeclared` while the monitor Ray brings was live the whole
 // time -- a true sentence about the declaration and a false one about the host. The implied monitor
 // is now a member of the population, so the refusal names what is actually counting.
-test fn w_a_live_ray_monitor_on_a_unified_pool_refuses() -> Bool {
+test fn w_a_live_ray_monitor_on_a_unified_pool_refuses() -> Bool  {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], resource_isolation_enabled: false, monitor_refresh: fx_ray_live_refresh, backend: ExecutorRay),
     wanted: "counts:ray_host_threshold" as NonEmptyStr)
@@ -217,7 +217,7 @@ test fn w_a_live_ray_monitor_on_a_unified_pool_refuses() -> Bool {
 // alone this admitted silently: a Ray configuration that starts no threshold monitor says nothing
 // about a monitor the OPERATOR declared. The rule reads the population, so the route by which an
 // enforcer became live cannot change the verdict.
-test fn w_a_declared_ray_monitor_refuses_although_ray_started_none() -> Bool {
+test fn w_a_declared_ray_monitor_refuses_although_ray_started_none() -> Bool  {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_ray_monitor], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorMp),
     wanted: "counts:ray_host_threshold" as NonEmptyStr)
@@ -225,7 +225,7 @@ test fn w_a_declared_ray_monitor_refuses_although_ray_started_none() -> Bool {
 
 // RED. A declared enforcer BESIDE the implied one is the two-enforcer incident, reached by the
 // implication rather than by two declarations. This is the case the old shape could not see at all.
-test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Bool {
+test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Bool  {
   enforcer_refused_as_many(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], resource_isolation_enabled: true, monitor_refresh: fx_ray_live_refresh, backend: ExecutorRay),
     wanted_count: 2)
@@ -249,7 +249,7 @@ test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Boo
 // This is the whole reason the extdeps citation exists rather than a local flag: the fleet's model
 // of Ray was wrong in the direction that admits, and no amount of care in THIS file could have found
 // that, because the fact lives in Ray's factory and not here.
-test fn w_a_zero_refresh_with_isolation_on_is_still_a_live_ray_monitor() -> Bool {
+test fn w_a_zero_refresh_with_isolation_on_is_still_a_live_ray_monitor() -> Bool  {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], resource_isolation_enabled: true, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorRay),
     wanted: "unestablished:ray_event" as NonEmptyStr)
@@ -258,7 +258,7 @@ test fn w_a_zero_refresh_with_isolation_on_is_still_a_live_ray_monitor() -> Bool
 // CONTROL, AND THE DISCRIMINATOR FOR THE DERIVED FIELD. What an enforcer counts is now a total
 // function of what it IS, so this row goes red if any kind's answer is edited -- which is the check
 // the deleted `counts_device_reservation` field could never carry, because a caller supplied it.
-test fn w_the_accounting_partition_over_every_enforcer_kind() -> Bool {
+test fn w_the_accounting_partition_over_every_enforcer_kind() -> Bool  {
   accounting_is(a: memory_enforcer_device_reservation_accounting(kind: RayHostThresholdMonitor), wanted: "counts" as NonEmptyStr)
     && accounting_is(a: memory_enforcer_device_reservation_accounting(kind: RayUserSliceThresholdMonitor), wanted: "unestablished" as NonEmptyStr)
     && accounting_is(a: memory_enforcer_device_reservation_accounting(kind: RayEventMonitor), wanted: "unestablished" as NonEmptyStr)
@@ -274,7 +274,7 @@ test fn w_the_accounting_partition_over_every_enforcer_kind() -> Bool {
 // row -- it changes the isolation setting and supplies a declared guard -- and "the row above" moved
 // when a row was inserted between them. A positional pointer in evidence decays exactly like a
 // positional citation in source.
-test fn w_a_declared_guard_admits_when_the_factory_yields_only_noop() -> Bool {
+test fn w_a_declared_guard_admits_when_the_factory_yields_only_noop() -> Bool  {
   enforcer_admitted(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorRay))
 }
@@ -282,7 +282,7 @@ test fn w_a_declared_guard_admits_when_the_factory_yields_only_noop() -> Bool {
 // CONTROL. A NON-Ray backend on a unified pool admits under a configuration that WOULD build a live
 // enforcing monitor on a Ray backend -- the rule is
 // about what is counting, not about unified memory in general.
-test fn w_a_non_ray_backend_is_outside_the_monitor_rule() -> Bool {
+test fn w_a_non_ray_backend_is_outside_the_monitor_rule() -> Bool  {
   enforcer_admitted(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], resource_isolation_enabled: true, monitor_refresh: fx_ray_live_refresh, backend: ExecutorMp))
     && enforcer_admitted(
@@ -294,7 +294,7 @@ test fn w_a_non_ray_backend_is_outside_the_monitor_rule() -> Bool {
 // conservative. The declared list is empty on purpose: with a guard declared beside it this is the
 // two-enforcer refusal instead, which is true on a discrete host as well and would make this row
 // green for the wrong reason.
-test fn w_ray_on_a_discrete_host_is_outside_the_counting_rule() -> Bool {
+test fn w_ray_on_a_discrete_host_is_outside_the_counting_rule() -> Bool  {
   enforcer_admitted(
     v: spark_memory_enforcer_admits(memory_kind: Dram, enforcers: [], resource_isolation_enabled: true, monitor_refresh: fx_ray_live_refresh, backend: ExecutorRay))
     && enforcer_admitted(
@@ -305,6 +305,6 @@ test fn w_ray_on_a_discrete_host_is_outside_the_counting_rule() -> Bool {
 //
 // A negative row with no error text is a belief. This asserts the population is non-empty so the
 // carrier cannot quietly become an empty list that every consumer reads as "nothing is rejected".
-test fn w_the_verified_negatives_carry_upstream_error_text() -> Bool {
+test fn w_the_verified_negatives_carry_upstream_error_text() -> Bool  {
   length(vllm_verified_negatives) > 0
 }

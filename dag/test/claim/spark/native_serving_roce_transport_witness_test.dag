@@ -96,7 +96,7 @@ fn head_exec_words() -> List<String> {
 // failing conjunction, so the receipt named the roll-up rather than the case.
 
 // ── THE PLAN IS THE RoCE ARM, KEYED BY THE LANE ───────────────────────────────────────────────
-test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
+test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool  {
   let lane = srv9_lane()
   match head_launch() {
     Absent => false
@@ -116,7 +116,7 @@ test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
 // One missing word is exactly the failure shape this claim exists against: the arm that fell back
 // had the interface env and nothing else. The device, the capability, the lock and BOTH endpoint
 // env assignments are asserted individually so a loss names itself.
-test fn w_the_container_argv_carries_the_roce_projections() -> Bool {
+test fn w_the_container_argv_carries_the_roce_projections() -> Bool  {
   let argv = head_exec_words()
   count(argv) > 0
     && argv_has(argv: argv, word: "--device")
@@ -142,7 +142,7 @@ test fn w_the_container_argv_carries_the_roce_projections() -> Bool {
 // AN ABSENCE CLAIM IS THE WEAK KIND OF EVIDENCE, so it is paired: the positive half is
 // w_the_readback_is_incarnation_bound_and_typed below, which asserts the real producers are what the
 // transaction consumes. Neither row alone would establish the repair.
-test fn w_no_stage_script_parses_nccl_itself() -> Bool {
+test fn w_no_stage_script_parses_nccl_itself() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -170,7 +170,7 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
 // apply is its authority. The head-first order is load-bearing: workers restarted before the
 // head's new rendezvous store existed were observed joining the PREVIOUS epoch's store while the
 // head crash-looped on DistStoreError (2026-09-16).
-test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
+test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -190,7 +190,7 @@ test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
 // untouched serving arm as a partial transaction. The other direction is the one that looks safe and
 // is not: marking apply as non-mutating would let a failed apply report a clean refusal over four
 // restarted engines. Both are one predicate, so both are one claim.
-test fn w_only_preflight_may_report_no_host_touched() -> Bool {
+test fn w_only_preflight_may_report_no_host_touched() -> Bool  {
   spark_native_stage_has_mutated_the_serving_arm(st: NativeStagePreflight) == false
     && spark_native_stage_has_mutated_the_serving_arm(st: NativeStagePreserve) == false
     && spark_native_stage_has_mutated_the_serving_arm(st: NativeStageMetadataCleanup) == false
@@ -204,7 +204,7 @@ test fn w_only_preflight_may_report_no_host_touched() -> Bool {
 // Each is named individually because losing one is silent: an apply that stopped checking for the
 // image would still pass preflight on every host and then fail four engines into a pull that cannot
 // happen while the GPUs are already released.
-test fn w_the_preflight_checks_image_snapshot_and_startability() -> Bool {
+test fn w_the_preflight_checks_image_snapshot_and_startability() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -371,7 +371,7 @@ fn t_delta_agrees(spec: DockerCreateSpec, observed: ContainerInspect?) -> Bool {
 // rather than that "the readback" moved. The three are the fields the arm has actually been burned
 // on: the verbs device and IPC_LOCK are the Group-B transport incident, and shm size is one of the
 // two the one-launch consolidation found had already drifted between the renderers.
-test fn w_the_readback_accepts_the_realized_plan() -> Bool {
+test fn w_the_readback_accepts_the_realized_plan() -> Bool  {
   t_delta_agrees(spec: t_spec, observed: t_inspect_of(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false))
 }
 
@@ -386,7 +386,7 @@ fn t_unplanned(o: ContainerInspect?, image_env: List<String>) -> List<String> {
 // run 37172948981, refused every host on the image's own PATH, CUDA_VERSION, ...). An observed assignment
 // identical to one in the image's Config.Env is inherited; the same NAME with a different VALUE that the
 // spec does not claim is an override nobody planned and refuses; a name neither declares refuses.
-test fn w_image_inherited_env_is_admitted_by_assignment() -> Bool {
+test fn w_image_inherited_env_is_admitted_by_assignment() -> Bool  {
   let image_env = ["PATH=/usr/local/sbin:/usr/bin", "CUDA_VERSION=13.0.1"]
   let inherited = t_inspect_with_env(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false, extra_env: image_env)
   let overridden = t_inspect_with_env(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false, extra_env: ["PATH=/tmp/evil:/usr/bin", "CUDA_VERSION=13.0.1"])
@@ -399,7 +399,7 @@ test fn w_image_inherited_env_is_admitted_by_assignment() -> Bool {
 // THE IMAGE IS ESTABLISHED BEFORE ITS ENV IS USED: an unread image refuses with its cause (never "nothing
 // inherited" or "everything inherited"), and a container created from another image than the plan's
 // resolves to refuses whatever its env says.
-test fn w_the_image_gap_refuses_an_unread_or_different_image() -> Bool {
+test fn w_the_image_gap_refuses_an_unread_or_different_image() -> Bool  {
   match t_inspect_of(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false) {
     Absent => false
     Present { value: c } =>
@@ -434,22 +434,22 @@ fn t_decoded(r: ContainerInspectRead) -> ContainerInspect? {
   }
 }
 
-test fn w_mounts_are_read_from_hostconfig_mounts_not_binds() -> Bool {
+test fn w_mounts_are_read_from_hostconfig_mounts_not_binds() -> Bool  {
   count(t_spec.mounts) > 0
     && t_mounts_count(r: t_doc_with_mounts_key(key: "Mounts")) == count(t_spec.mounts)
     && t_mounts_count(r: t_doc_with_mounts_key(key: "Binds")) == 0
     && !t_delta_agrees(spec: t_spec, observed: t_decoded(r: t_doc_with_mounts_key(key: "Binds")))
 }
 
-test fn w_the_readback_refuses_a_missing_verbs_device() -> Bool {
+test fn w_the_readback_refuses_a_missing_verbs_device() -> Bool  {
   !t_delta_agrees(spec: t_spec, observed: t_inspect_of(spec: t_spec, drop_devices: true, drop_capadd: false, drop_shm: false))
 }
 
-test fn w_the_readback_refuses_a_missing_capability() -> Bool {
+test fn w_the_readback_refuses_a_missing_capability() -> Bool  {
   !t_delta_agrees(spec: t_spec, observed: t_inspect_of(spec: t_spec, drop_devices: false, drop_capadd: true, drop_shm: false))
 }
 
-test fn w_the_readback_refuses_a_changed_shm_size() -> Bool {
+test fn w_the_readback_refuses_a_changed_shm_size() -> Bool  {
   !t_delta_agrees(spec: t_spec, observed: t_inspect_of(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: true))
 }
 
@@ -471,7 +471,7 @@ test fn w_the_readback_refuses_a_changed_shm_size() -> Bool {
 // from VLLM_ENGINE_READY_TIMEOUT_S in that head's own environment -- one authority, no second number -- and
 // the script refuses at once if the container id, running state or restart count moves. RED: the
 // single-probe script carries no deadline and no incarnation check.
-test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation() -> Bool {
+test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } => {
@@ -489,7 +489,7 @@ test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation()
   }
 }
 
-test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
+test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -512,7 +512,7 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
 // rollback while the SUCCESSOR container was still running and holding the GPUs with its unit file
 // deleted -- the worst reachable state, reported as the best. The absence of that `|| true` is
 // asserted, and so is the daemon read that establishes the container is actually gone.
-test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
+test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool  {
   let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1", container_name: glm_native_container_name)
   string_contains(s: script, pattern: "ROLLBACK-REFUSED-this-host-was-never-preserved")
     && string_contains(s: script, pattern: "rollback-actuation-accepted-incumbent-unit-restored-and-exec-started")
@@ -533,7 +533,7 @@ test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
 // marker instead, which preflight refuses on. The remove branch may clear, because its evidence is an
 // ABSENCE that was read back from the daemon: the unit is gone and no container answers that name, so
 // there is no unverified running thing left to adopt.
-test fn w_an_unverified_rollback_keeps_its_fence() -> Bool {
+test fn w_an_unverified_rollback_keeps_its_fence() -> Bool  {
   let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1", container_name: glm_native_container_name)
   string_contains(s: script, pattern: join(["mv -f /etc/systemd/system/gunbc-glm-native-head.service.gunbc-transaction /etc/systemd/system/gunbc-glm-native-head.service", ".gunbc-unresolved-rollback"], ""))
     && string_contains(s: script, pattern: "rm -f /etc/systemd/system/gunbc-glm-native-head.service /etc/systemd/system/gunbc-glm-native-head.service.gunbc-had-no-unit /etc/systemd/system/gunbc-glm-native-head.service.gunbc-transaction")
@@ -551,7 +551,7 @@ test fn w_an_unverified_rollback_keeps_its_fence() -> Bool {
 // a moment ago -- a check-then-write is asserted ABSENT, because that is the shape that was wrong.
 // And every removal is OWNERSHIP-CHECKED: cleanup, commit and rollback each read the fence and refuse
 // on a foreign identity, so B's cleanup cannot touch A's.
-test fn w_a_second_transaction_cannot_remove_the_first_ones_evidence() -> Bool {
+test fn w_a_second_transaction_cannot_remove_the_first_ones_evidence() -> Bool  {
   let unit = "gunbc-glm-native-head.service" as NonEmptyStr
   let a_preserve = spark_native_preserve_script(unit_name: unit, transaction_id: "A", container_name: glm_native_container_name)
   let b_cleanup = spark_native_metadata_cleanup_script(unit_name: unit, transaction_id: "B")
@@ -583,7 +583,7 @@ test fn w_a_second_transaction_cannot_remove_the_first_ones_evidence() -> Bool {
 // the defect itself, so the no-op arm is asserted by name. The unresolved marker is not in the
 // removal list at ALL, rather than guarded out of it. And preflight still refuses on it, which is
 // what makes the marker's survival mean something on the next run.
-test fn w_a_refusal_cannot_erase_the_unresolved_rollback_marker() -> Bool {
+test fn w_a_refusal_cannot_erase_the_unresolved_rollback_marker() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -613,7 +613,7 @@ test fn w_a_refusal_cannot_erase_the_unresolved_rollback_marker() -> Bool {
 // of those was the destructive restart, which is the exact mechanism the transaction exists to get in
 // front of. Every device path and bind source the spec projects is tested BY NAME, so the claim moves
 // with the plan rather than against a literal.
-test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
+test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -646,7 +646,7 @@ test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
 // means no leg ran anywhere, which after a fully applied arm leaves all four hosts on the SUCCESSOR.
 // The population is now derived from each leg's own printed word, and a leg that did not run or
 // printed something this reader does not know is Unread rather than assigned to a side.
-test fn w_a_host_disposition_comes_from_its_own_leg() -> Bool {
+test fn w_a_host_disposition_comes_from_its_own_leg() -> Bool  {
   let h = operator_host_srv9
   spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
     host: h, detail: spark_native_incumbent_restored_word, standing: serving_standing(attempts: []) }))
@@ -666,7 +666,7 @@ test fn w_a_host_disposition_comes_from_its_own_leg() -> Bool {
 // the mixed state as its new baseline -- the recovery evidence consumed by the recovery attempt.
 // Preflight now refuses on any leftover artifact and preserve refuses to clobber one, so the two
 // halves say the same thing and the construction is the one that holds.
-test fn w_an_unresolved_transaction_refuses_the_next_run() -> Bool {
+test fn w_an_unresolved_transaction_refuses_the_next_run() -> Bool  {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
@@ -691,7 +691,7 @@ test fn w_an_unresolved_transaction_refuses_the_next_run() -> Bool {
 // The route's telemetry standing is discharged by the READING of the answering container's
 // effective environment; this row pins the declaration half, so the reading the offer makes after
 // converge comes out disabled. The word is derived from extdeps.vllm.usage_stats, never re-typed.
-test fn w_the_container_argv_declares_the_reporter_off() -> Bool {
+test fn w_the_container_argv_declares_the_reporter_off() -> Bool  {
   let argv = head_exec_words()
   count(argv) > 0 && argv_has(argv: argv, word: vllm_usage_stats_disable_assignment_wire())
 }

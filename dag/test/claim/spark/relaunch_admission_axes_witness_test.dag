@@ -15,12 +15,12 @@ import gunbc.spark.serving_relaunch_transaction {
 data w_floor: List<String> = ["/models/glm", "--max-num-seqs", "8", "--kv-cache-dtype", "fp8", "--port", "30000"]
 data w_promoted: List<String> = ["/models/glm", "--max-num-seqs", "14", "--kv-cache-dtype", "fp8", "--port", "30000", "--scheduler-reserve-full-isl", "--watermark", "0.0"]
 
-test fn w_stripping_the_admission_flags_restores_the_floor_word_count() -> Bool {
+test fn w_stripping_the_admission_flags_restores_the_floor_word_count() -> Bool  {
   vllm_argv_without_admission_flags(argv: w_promoted) == ["/models/glm", "--max-num-seqs", "14", "--kv-cache-dtype", "fp8", "--port", "30000"]
     && vllm_argv_without_admission_flags(argv: w_floor) == w_floor
 }
 
-test fn w_adding_the_gate_moves_the_admission_axis_and_identical_controls_do_not() -> Bool {
+test fn w_adding_the_gate_moves_the_admission_axis_and_identical_controls_do_not() -> Bool  {
   (match admission_controls_comparison(planned: w_promoted, observed: w_floor) {
     AdmissionControlsCompared { moved: m } => m
     AdmissionControlsUnreadable { cause: _ } => false
@@ -32,14 +32,14 @@ test fn w_adding_the_gate_moves_the_admission_axis_and_identical_controls_do_not
 }
 
 // BOTH SPELLINGS OF THE GATE ON ONE SIDE IS UNREADABLE, NOT A SILENT PICK.
-test fn w_a_conflicting_gate_is_unreadable() -> Bool {
+test fn w_a_conflicting_gate_is_unreadable() -> Bool  {
   match admission_controls_comparison(planned: w_promoted, observed: ["/models/glm", "--scheduler-reserve-full-isl", "--no-scheduler-reserve-full-isl"]) {
     AdmissionControlsUnreadable { cause: _ } => true
     AdmissionControlsCompared { moved: _ } => false
   }
 }
 
-test fn w_a_kv_dtype_change_is_the_kv_dtype_axis() -> Bool {
+test fn w_a_kv_dtype_change_is_the_kv_dtype_axis() -> Bool  {
   let changed = ["/models/glm", "--max-num-seqs", "8", "--kv-cache-dtype", "fp8_ds_mla", "--port", "30000"]
   let axes = argv_difference_axes(planned: w_floor, differences: argv_word_differences(planned: w_floor, observed: changed))
   length(axes) == 1

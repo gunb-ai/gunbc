@@ -39,7 +39,7 @@ fn render_step(step: PipelineStep) -> String {
 // RED TODAY: the restart step's diagnosis is appended shell text — a `||` fallback arm with `;`
 // separators. Greens when the restart is typed privileged argv and the diagnosis content survives
 // as data.
-test fn tree_sync_restart_step_renders_no_shell_control_word() -> Bool {
+test fn tree_sync_restart_step_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(
     s: render_step(step: tree_sync_restart_step_with_diagnosis(spec: deployment_spec_srv1())),
     pattern: w
@@ -49,7 +49,7 @@ test fn tree_sync_restart_step_renders_no_shell_control_word() -> Bool {
 // POSITIVE CONTROL, green today and after: the tailscale apply step already renders no shell
 // control word, so the red arm discriminates on the restart step's appended text and not on the
 // pair.
-test fn tailscale_serve_apply_step_renders_no_shell_control_word() -> Bool {
+test fn tailscale_serve_apply_step_renders_no_shell_control_word() -> Bool  {
   !any(shell_control_words, w => string_contains(
     s: render_step(step: tailscale_serve_apply_step(spec: deployment_spec_srv1())),
     pattern: w
@@ -58,7 +58,7 @@ test fn tailscale_serve_apply_step_renders_no_shell_control_word() -> Bool {
 
 // TYPED-FORM POSITIVE CONTROL, green today and after: the restart step acts on the deployment's
 // declared tree-sync unit — the typed privileged argv names the same unit.
-test fn restart_step_names_the_declared_unit() -> Bool {
+test fn restart_step_names_the_declared_unit() -> Bool  {
   string_contains(
     s: render_step(step: tree_sync_restart_step_with_diagnosis(spec: deployment_spec_srv1())),
     pattern: deployment_spec_srv1().names.tree_sync_unit_name as String
@@ -67,7 +67,7 @@ test fn restart_step_names_the_declared_unit() -> Bool {
 
 // POSITIVE CONTROL, green today and after: both steps elevate through sudo — the elevation
 // mechanism is unchanged; only its construction moves to typed privileged argv.
-test fn both_steps_elevate_through_sudo() -> Bool {
+test fn both_steps_elevate_through_sudo() -> Bool  {
   string_contains(s: render_step(step: tree_sync_restart_step_with_diagnosis(spec: deployment_spec_srv1())), pattern: "sudo")
     && string_contains(s: render_step(step: tailscale_serve_apply_step(spec: deployment_spec_srv1())), pattern: "sudo")
 }

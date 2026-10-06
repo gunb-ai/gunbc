@@ -32,7 +32,7 @@ fn line_carries_no_shell_control_word(line: String) -> Bool {
 // cron_tag_marker derives (the format upsert_tagged_entries keys on, so it survives the rebind).
 // This control establishes that the red arms below measure the CONSTRUCTION of the line, not its
 // inputs.
-test fn benign_entry_renders_its_declared_fields() -> Bool {
+test fn benign_entry_renders_its_declared_fields() -> Bool  {
   let line = build_cron_entry_line(
     schedule: "*/15 * * * *",
     command: "systemd-run --user --scope true",
@@ -46,7 +46,7 @@ test fn benign_entry_renders_its_declared_fields() -> Bool {
 
 // POSITIVE CONTROL, green today and after: the benign entry itself carries no shell control word,
 // so the adversarial arms discriminate on the hazard they plant and not on the honest rendering.
-test fn benign_entry_carries_no_shell_control_word() -> Bool {
+test fn benign_entry_carries_no_shell_control_word() -> Bool  {
   let line = build_cron_entry_line(
     schedule: "*/15 * * * *",
     command: "systemd-run --user --scope true",
@@ -58,7 +58,7 @@ test fn benign_entry_carries_no_shell_control_word() -> Bool {
 
 // RED TODAY: the schedule field is a cron grammar position; one carrying `; shutdown -h now` is
 // malformed and must be refused before any line is produced. Today's concat interpolates it raw.
-test fn adversarial_schedule_field_renders_no_shell_control_word() -> Bool {
+test fn adversarial_schedule_field_renders_no_shell_control_word() -> Bool  {
   let line = build_cron_entry_line(
     schedule: "0 3 * * *; shutdown -h now",
     command: "systemd-run --user --scope true",
@@ -70,7 +70,7 @@ test fn adversarial_schedule_field_renders_no_shell_control_word() -> Bool {
 
 // RED TODAY: a command field carrying `&&` chains a second command inside the scheduler; the
 // typed intent must refuse or safely construct it, never render it bare.
-test fn adversarial_command_field_renders_no_shell_control_word() -> Bool {
+test fn adversarial_command_field_renders_no_shell_control_word() -> Bool  {
   let line = build_cron_entry_line(
     schedule: "*/15 * * * *",
     command: "echo done && rm -rf /tmp/review-agent-state",
@@ -82,7 +82,7 @@ test fn adversarial_command_field_renders_no_shell_control_word() -> Bool {
 
 // RED TODAY: a log path carrying `2>/dev/null` smuggles a redirection that swallows exactly the
 // diagnostics a failing entry owes; the typed intent must refuse it, not render it.
-test fn adversarial_log_path_field_renders_no_shell_control_word() -> Bool {
+test fn adversarial_log_path_field_renders_no_shell_control_word() -> Bool  {
   let line = build_cron_entry_line(
     schedule: "*/15 * * * *",
     command: "systemd-run --user --scope true",
@@ -95,7 +95,7 @@ test fn adversarial_log_path_field_renders_no_shell_control_word() -> Bool {
 // RED TODAY: the tag is rendered into the trailing marker comment, and a tag carrying `||` turns
 // the comment into a fallback arm if the marker framing ever shifts; the typed intent must refuse
 // a malformed tag before any line is produced.
-test fn adversarial_tag_field_renders_no_shell_control_word() -> Bool {
+test fn adversarial_tag_field_renders_no_shell_control_word() -> Bool  {
   let line = build_cron_entry_line(
     schedule: "*/15 * * * *",
     command: "systemd-run --user --scope true",

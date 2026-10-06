@@ -160,11 +160,11 @@ fn count_unattached(refusals: List<AnnotationAttachmentRefusal>) -> Int {
   )
 }
 
-test fn w_leading_block_attaches_to_the_following_subject() -> Bool {
+test fn w_leading_block_attaches_to_the_following_subject() -> Bool  {
   render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
 }
 
-test fn w_consecutive_leading_captures_merge_into_one_block() -> Bool {
+test fn w_consecutive_leading_captures_merge_into_one_block() -> Bool  {
   let single = annotation_attachment_result_graph(
     result: attach_annotations(
       captures: [leading(text: "alpha", start: 10, end: 20), leading(text: "beta", start: 30, end: 40)],
@@ -174,17 +174,17 @@ test fn w_consecutive_leading_captures_merge_into_one_block() -> Bool {
   row_count(graph: single) == 1 && render_rows(graph: single) == "|7:alpha\nbeta"
 }
 
-test fn w_distinct_subjects_produce_distinct_rows() -> Bool {
+test fn w_distinct_subjects_produce_distinct_rows() -> Bool  {
   row_count(graph: attached_graph()) == 2
 }
 
-test fn w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject() -> Bool {
+test fn w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject() -> Bool  {
   count_body_grain(refusals: attached_refusals()) == 1 &&
     render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
 }
 
 // The discriminating control for the body-grain refusal. It reruns the SAME capture against a roster with f removed, so the capture is no longer inside anything and the nearest following subject is g. It then attaches. That proves the refusal above is produced by the containment rule and not by the capture being dropped, mis-parsed, or filtered somewhere upstream — the two are indistinguishable from the refusal count alone.
-test fn w_body_grain_capture_would_otherwise_have_attached() -> Bool {
+test fn w_body_grain_capture_would_otherwise_have_attached() -> Bool  {
   let result = attach_annotations(
     captures: [leading(text: "inner", start: 150, end: 160)],
     subjects: [subject_g()]
@@ -193,7 +193,7 @@ test fn w_body_grain_capture_would_otherwise_have_attached() -> Bool {
     count_body_grain(refusals: annotation_attachment_result_refusals(result: result)) == 0
 }
 
-test fn w_trailing_capture_refuses_and_lands_no_row() -> Bool {
+test fn w_trailing_capture_refuses_and_lands_no_row() -> Bool  {
   let result = attach_annotations(
     captures: [trailing(text: "tail", start: 250, end: 260)],
     subjects: subjects()
@@ -202,13 +202,13 @@ test fn w_trailing_capture_refuses_and_lands_no_row() -> Bool {
     count_trailing(refusals: annotation_attachment_result_refusals(result: result)) == 1
 }
 
-test fn w_capture_after_the_last_subject_refuses_unattached() -> Bool {
+test fn w_capture_after_the_last_subject_refuses_unattached() -> Bool  {
   count_unattached(refusals: attached_refusals()) == 1 &&
     count_trailing(refusals: attached_refusals()) == 1
 }
 
 // Attachment REFERS to occurrence identities and never mints one, which is the property that keeps a comment edit from shifting declaration identities here and in every later-parsed module. There is no allocator in scope for the fold to draw from, so this asserts the observable consequence: every subject appearing in the output is one that was supplied on the way in.
-test fn w_attachment_refers_to_supplied_identities_and_mints_none() -> Bool {
+test fn w_attachment_refers_to_supplied_identities_and_mints_none() -> Bool  {
   fold(
     source_annotation_graph_rows(graph: attached_graph()),
     init: true,
@@ -216,7 +216,7 @@ test fn w_attachment_refers_to_supplied_identities_and_mints_none() -> Bool {
   )
 }
 
-test fn w_no_captures_yields_an_empty_graph_and_no_refusals() -> Bool {
+test fn w_no_captures_yields_an_empty_graph_and_no_refusals() -> Bool  {
   let result = attach_annotations(captures: [], subjects: subjects())
   row_count(graph: annotation_attachment_result_graph(result: result)) == 0 &&
     (annotation_attachment_result_refusals(result: result) |> count) == 0
@@ -226,7 +226,7 @@ data blank_line_split_note: String = "THE discriminating pair for block adjacenc
 
 Without the second claim the model would be untested exactly where it was wrong: same-subject-only grouping passes the first case and silently fails the second, producing one row where the author wrote two blocks. Asserting the rendered rows rather than a count is what makes the failure legible — a merge shows up as `alpha\nbeta` in a single row instead of two rows."
 
-test fn w_blank_line_splits_one_block_into_two() -> Bool {
+test fn w_blank_line_splits_one_block_into_two() -> Bool  {
   let result = attach_annotations(
     captures: [
       leading(text: "alpha", start: 10, end: 20),
@@ -238,7 +238,7 @@ test fn w_blank_line_splits_one_block_into_two() -> Bool {
   row_count(graph: graph) == 2 && render_rows(graph: graph) == "|7:alpha|7:beta"
 }
 
-test fn w_adjacent_captures_still_merge_into_one_block() -> Bool {
+test fn w_adjacent_captures_still_merge_into_one_block() -> Bool  {
   let result = attach_annotations(
     captures: [
       leading(text: "alpha", start: 10, end: 20),
@@ -250,7 +250,7 @@ test fn w_adjacent_captures_still_merge_into_one_block() -> Bool {
   row_count(graph: graph) == 1 && render_rows(graph: graph) == "|7:alpha\nbeta"
 }
 
-test fn w_empty_unattached_capture_skips_without_refusal() -> Bool {
+test fn w_empty_unattached_capture_skips_without_refusal() -> Bool  {
   let result = attach_annotations(
     captures: [leading(text: "", start: 500, end: 510)],
     subjects: subjects(),
@@ -259,7 +259,7 @@ test fn w_empty_unattached_capture_skips_without_refusal() -> Bool {
     && count_unattached(refusals: annotation_attachment_result_refusals(result: result)) == 0
 }
 
-test fn w_nonempty_unattached_capture_still_refuses() -> Bool {
+test fn w_nonempty_unattached_capture_still_refuses() -> Bool  {
   let result = attach_annotations(
     captures: [leading(text: "orphan", start: 500, end: 510)],
     subjects: subjects(),
@@ -315,12 +315,12 @@ fn hdr_only_row_subject(capture: NormalizedAnnotationCapture) -> Int {
   )
 }
 
-test fn w_a_header_gap_annotation_attaches_to_the_module_root() -> Bool {
+test fn w_a_header_gap_annotation_attaches_to_the_module_root() -> Bool  {
   row_count(graph: hdr_attached_graph(capture: hdr_gap_capture())) == 1
     && hdr_only_row_subject(capture: hdr_gap_capture()) == 1
 }
 
-test fn w_a_blank_line_before_a_header_gap_annotation_moves_it_to_the_following_declaration() -> Bool {
+test fn w_a_blank_line_before_a_header_gap_annotation_moves_it_to_the_following_declaration() -> Bool  {
   row_count(graph: hdr_attached_graph(capture: hdr_gap_capture_after_blank())) == 1
     && hdr_only_row_subject(capture: hdr_gap_capture_after_blank()) == 7
 }

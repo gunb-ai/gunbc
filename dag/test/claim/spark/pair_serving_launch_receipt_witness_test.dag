@@ -57,7 +57,7 @@ fn w_attempt(invocation: String, n: Nat, terminal: LaunchTerminal) -> PairServin
 
 // EXIT 137 IS A SIGKILL SHAPE. 128+n is the convention for "terminated by signal n", so the group A
 // head's status=137 classifies as signal 9 and NOT as an ordinary exit status.
-test fn exit_codes_above_128_classify_as_the_signal_they_encode() -> Bool {
+test fn exit_codes_above_128_classify_as_the_signal_they_encode() -> Bool  {
   (match launch_terminal_from_exit(code: 137) { LaunchKilled { signal: s } => s == 9  _ => false })
     && (match launch_terminal_from_exit(code: 143) { LaunchKilled { signal: s } => s == 15  _ => false })
     && (match launch_terminal_from_exit(code: 0) { LaunchExited { code: c } => c == 0  _ => false })
@@ -69,7 +69,7 @@ test fn exit_codes_above_128_classify_as_the_signal_they_encode() -> Bool {
 // (which this very unit runs in its own ExecStartPre), by a stop timeout escalating, and by an
 // operator. A model that read the code as OOM would send someone to tune memory that was never the
 // cause. The refusal names all three alternatives rather than saying "unknown".
-test fn a_signal_kill_without_an_oom_observation_is_not_an_oom_kill() -> Bool {
+test fn a_signal_kill_without_an_oom_observation_is_not_an_oom_kill() -> Bool  {
   let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
   match attribute_oom(attempt: killed, observation: none) {
     OomUnattributed { cause: c } =>
@@ -81,7 +81,7 @@ test fn a_signal_kill_without_an_oom_observation_is_not_an_oom_kill() -> Bool {
 
 // THE POSITIVE CONTROL: a joined observation DOES promote it, so the refusal above is about missing
 // evidence and not about the attribution being unreachable.
-test fn a_joined_oom_observation_promotes_the_kill() -> Bool {
+test fn a_joined_oom_observation_promotes_the_kill() -> Bool  {
   let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
   let observed = OomObservation {
     launch: w_launch(invocation: "inv-15-42"),
@@ -96,7 +96,7 @@ test fn a_joined_oom_observation_promotes_the_kill() -> Bool {
 
 // AND AN OOM OBSERVATION ABOUT ANOTHER LAUNCH DOES NOT COUNT. This is the case a host-keyed join
 // accepts: same host, same unit, same container name, a real OOM — belonging to a different start.
-test fn an_oom_observation_from_another_launch_does_not_attribute() -> Bool {
+test fn an_oom_observation_from_another_launch_does_not_attribute() -> Bool  {
   let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
   let elsewhere = OomObservation {
     launch: w_launch(invocation: "inv-15-35"),
@@ -113,7 +113,7 @@ test fn an_oom_observation_from_another_launch_does_not_attribute() -> Bool {
 // bring-up: eight signal kills, then a start that stuck. To systemd and to the current apply path
 // the end state is indistinguishable from a first-attempt launch; here it is a different standing,
 // and the failed terminals travel with it.
-test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool {
+test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool  {
   let flapped = concat(
     map([1, 2, 3, 4, 5, 6, 7, 8], n => w_attempt(invocation: "inv-15-3", n: n, terminal: launch_terminal_from_exit(code: 137))),
     [w_attempt(invocation: "inv-16-40", n: 9, terminal: LaunchServing)],
@@ -131,7 +131,7 @@ test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool {
     && string_contains(s: serving_standing_wire(s: serving_standing(attempts: flapped)), pattern: "8 failed attempt")
 }
 
-test fn a_serve_then_fail_run_is_not_serving_rather_than_recovered() -> Bool {
+test fn a_serve_then_fail_run_is_not_serving_rather_than_recovered() -> Bool  {
   let reversed = [
     w_attempt(invocation: "inv-16-40", n: 1, terminal: LaunchServing),
     w_attempt(invocation: "inv-15-3", n: 2, terminal: launch_terminal_from_exit(code: 137)),
@@ -146,7 +146,7 @@ test fn a_serve_then_fail_run_is_not_serving_rather_than_recovered() -> Bool {
 
 // NO ATTEMPTS IS UNOBSERVED, NOT NOT-SERVING. An empty list is the absence of evidence, and reading
 // it as a failure would make an unconverged host indistinguishable from a broken one.
-test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool {
+test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool  {
   (match serving_standing(attempts: []) { ServingStandingUnobserved { cause: _ } => true  _ => false })
     && (match serving_standing(attempts: [w_attempt(invocation: "inv-1", n: 1, terminal: LaunchReadinessTimedOut)]) {
           NotServing { failed_attempts: n, terminals: _ } => n == 1
@@ -155,7 +155,7 @@ test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool {
     && !bring_up_was_clean(s: serving_standing(attempts: []))
 }
 
-test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool {
+test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool  {
   let mixed = [
     w_attempt_from(group: FabricGroupA, invocation: "inv-old", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
     w_attempt_from(group: FabricGroupA, invocation: "inv-new", n: 2, terminal: LaunchServing, digest_hex: w_exe),
@@ -167,7 +167,7 @@ test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> 
     && !bring_up_was_clean(s: serving_standing(attempts: mixed))
 }
 
-test fn a_mixed_host_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool {
+test fn a_mixed_host_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool  {
   let mixed = [
     w_attempt_from(group: FabricGroupA, invocation: "inv-a", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
     w_attempt_from(group: FabricGroupB, invocation: "inv-b", n: 2, terminal: LaunchServing, digest_hex: w_unit),

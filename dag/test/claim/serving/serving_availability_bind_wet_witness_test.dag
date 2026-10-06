@@ -109,7 +109,7 @@ fn w_withdrawn_roster() -> HarnessDeclaredUnitRoster {
 // THIS IS THE PAIRING OBLIGATION (DESIGN section 3) for every witness that supplies a
 // DeclaredUnitDigestStanding to spark_serving_route_standing: those claims are about what the route
 // fold decides, this one is about the standing being real and arriving.
-test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier() -> Bool {
+test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier() -> Bool  {
   let roster = harness_declared_unit_roster()
   let minted = match harness_declared_unit_from_roster(roster: roster, group: FabricGroupA) {
     DeclaredUnitDigested { evidence: _ } => true
@@ -125,7 +125,7 @@ test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_fro
 // a roster whose Group A standing is unavailable: now the declared unit is what refuses, and the
 // incarnation is never consulted. Without this row the green above could not distinguish "the fold
 // consumed a real digest" from "the fold ignores its roster and always reports the incarnation".
-test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool {
+test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool  {
   let placed = w_place(declared_units: w_withdrawn_roster())
   length(placed.candidates) == 0
     && any(placed.notes, note => note.contains(w_withdrawn_obligation as String))
@@ -142,7 +142,7 @@ test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation()
 // is the arm it exists to reach -- and DeclaredUnitDigestEvidence is sole_constructor, so the only
 // way to obtain one is the real mint, which is a DigestStdin. The seven rows of that file that need
 // no digest stay hermetic there.
-test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool {
+test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool  {
   let field = "1789300000.12"
   let launch = w_launch(field: field)
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now)

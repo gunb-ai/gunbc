@@ -76,7 +76,7 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 // the rendered form must be the staging's command listing, never its refusal. The route itself is
 // asserted in the typed tests below, which match ConfigfsStagingReady and fail on Refused for the
 // same fixture.
-test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
+test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool  {
   let rendered = srv4_vm_gadget_setup_display()
   rendered != ""
     && !starts_with(s: rendered, prefix: "refused: ")
@@ -88,7 +88,7 @@ test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
 // control word either, and is the command listing rather than a refusal. This is the consumer the
 // rmdir absence frontier fronts: the described teardown exists and is gated here until the
 // host-effect lane's transport realization takes over the already-removed outcome.
-test fn usb_gadget_teardown_emits_no_shell_control_word() -> Bool {
+test fn usb_gadget_teardown_emits_no_shell_control_word() -> Bool  {
   let rendered = srv4_vm_gadget_teardown_display()
   rendered != ""
     && !starts_with(s: rendered, prefix: "refused: ")
@@ -161,7 +161,7 @@ fn op_validates_inside(g: UsbGadget, op: ConfigfsOp) -> Bool {
 //     op's command is not observable beside a refusal;
 //   - the good staging alone mints its one prepared op, so the refusals above are about the
 //     arguments, not about staging itself.
-test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool {
+test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool  {
   let g = srv4_vm_gadget()
   let outside = configfs_staging_of(gadget: g, ops: [ConfigfsMkdir { path: "/etc" }])
   let attr_outside = configfs_staging_of(gadget: g, ops: [ConfigfsWriteAttr { path: "/etc/passwd", value: "x" }])
@@ -209,7 +209,7 @@ test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool
 // The prepared form has no target field to mis-author: both endpoints are DERIVED from the
 // gadget's own record, so "this gadget's function, into this gadget's configuration, of the same
 // gadget" is a CONSTRUCTION that cannot be written wrong rather than a guard that can be passed.
-test fn link_function_relates_this_gadgets_function_to_this_gadgets_configuration() -> Bool {
+test fn link_function_relates_this_gadgets_function_to_this_gadgets_configuration() -> Bool  {
   let g = srv4_vm_gadget()
   let gd = usb_gadget_dir(gadget: g)
   let staged = configfs_staging_of(gadget: g, ops: [ConfigfsLinkFunction {
@@ -234,7 +234,7 @@ test fn link_function_relates_this_gadgets_function_to_this_gadgets_configuratio
 // and a dot segment refuse here with the same name reason; the EMPTY name is refused one rung
 // earlier still -- the type checker declines to author it as a NonEmptyStr at all, so that fault
 // cannot enter the estate to be staged.
-test fn link_names_that_are_not_single_segments_refuse_the_staging() -> Bool {
+test fn link_names_that_are_not_single_segments_refuse_the_staging() -> Bool  {
   let g = srv4_vm_gadget()
   let slash = configfs_staging_of(gadget: g, ops: [ConfigfsLinkFunction {
     function: "mass/storage.0",
@@ -259,7 +259,7 @@ test fn link_names_that_are_not_single_segments_refuse_the_staging() -> Bool {
 // carries well-formed names -- so the refusals above are about the arguments, not about the ops.
 // The old probe string-matched `/sys/kernel/config/usb_gadget/` on every op's path fields; the
 // containment verdict is the modeled form of the same fact (review 38602, finding 3's home).
-test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
+test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool  {
   let g = srv4_vm_gadget()
   let ops = srv4_vm_gadget_setup_ops()
   list_length(items: ops) == 16
@@ -305,7 +305,7 @@ fn alternate_mount_fixture() -> UsbGadget {
   }
 }
 
-test fn gadget_stages_against_its_own_mount_not_a_hard_coded_root() -> Bool {
+test fn gadget_stages_against_its_own_mount_not_a_hard_coded_root() -> Bool  {
   let g = alternate_mount_fixture()
   let ops = usb_gadget_setup_ops(gadget: g)
   let staged = configfs_staging_of(gadget: g, ops: ops)
@@ -378,7 +378,7 @@ fn teardown_walks_detach_unlink_then_rmdirs(ops: List<ConfigfsOp>) -> Bool {
   }
 }
 
-test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadget() -> Bool {
+test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadget() -> Bool  {
   let g = srv4_vm_gadget()
   let gd = usb_gadget_dir(gadget: g) as String
   let ops = usb_gadget_teardown_ops(gadget: g)
@@ -419,7 +419,7 @@ fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> Bool {
+test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> Bool  {
   match census_blocking_count_for_class(
     census: bypass_probe_census(source: prepared_op_bypass_probe_source),
     wanted: "SoleConstructorViolation"
@@ -438,7 +438,7 @@ test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> 
 // distinguishes custody of the construction route, which no content control can.
 data direct_mint_call_probe_source: String = "module probe.direct_mint_call\nimport extdeps.linux.usb_gadget { UsbGadget, MassStorageLun, ConfigfsMkdir, ConfigfsStaging, configfs_op_prepared }\n\nfn unadmitted_direct_mint() -> ConfigfsStaging {\n  configfs_op_prepared(\n    gadget: UsbGadget {\n      config_root: \"/sys/kernel/config/usb_gadget\",\n      name: \"a/b\",\n      id_vendor: \"0x1d6b\",\n      id_product: \"0x0104\",\n      manufacturer: \"gunbc\",\n      product: \"gunbc-virtual-media\",\n      serial: \"srv4-0001\",\n      config_label: \"c.1\",\n      lun: MassStorageLun {\n        backing_device: \"/dev/nbd0\",\n        cdrom: false,\n        read_only: true,\n        removable: true,\n      },\n      udc: \"1e6a0000.usb-vhub:p3\",\n    },\n    op: ConfigfsMkdir { path: \"/sys/kernel/config/usb_gadget/a/b\" },\n  )\n}\n"
 
-test fn foreign_module_cannot_call_the_prepared_mint_directly() -> Bool {
+test fn foreign_module_cannot_call_the_prepared_mint_directly() -> Bool  {
   match census_blocking_count_for_class(
     census: bypass_probe_census(source: direct_mint_call_probe_source),
     wanted: "ConstructorCallAdmissionRefused"
@@ -456,7 +456,7 @@ test fn foreign_module_cannot_call_the_prepared_mint_directly() -> Bool {
 // on the identical route. This distinguishes the segment law by acceptance, which the
 // foreign-construction probe alone cannot: that probe distinguishes module ownership, not
 // valid versus invalid content.
-test fn gadget_name_segment_law_refuses_slash_and_stages_the_estate_name_ready_on_the_production_route() -> Bool {
+test fn gadget_name_segment_law_refuses_slash_and_stages_the_estate_name_ready_on_the_production_route() -> Bool  {
   let slash_gadget = UsbGadget {
     config_root: "/sys/kernel/config/usb_gadget",
     name: "a/b",

@@ -111,16 +111,16 @@ fn resolution_is_identity_unavailable(resolution: ExactBindingResolution<RustRep
   }
 }
 
-test fn w_symbol_declaration_resolves_to_std_string() -> Bool {
+test fn w_symbol_declaration_resolves_to_std_string() -> Bool  {
   resolution_is_std_string(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: rust_source_type_binding_rows))
 }
 
-test fn w_sibling_declarations_of_one_spelling_receive_no_binding() -> Bool {
+test fn w_sibling_declarations_of_one_spelling_receive_no_binding() -> Bool  {
   sibling_declarations_without_bindings() |> all(d => resolution_is_absent(resolution: resolve_exact_binding(source: Present { value: d }, rows: rust_source_type_binding_rows)))
     && exact_binding_is_resolved(resolution: resolve_exact_binding(source: Present { value: decl_ref(module_path: "std.types", decl_name: "Bool") }, rows: rust_source_type_binding_rows))
 }
 
-test fn w_missing_source_identity_refuses() -> Bool {
+test fn w_missing_source_identity_refuses() -> Bool  {
   resolution_is_identity_unavailable(resolution: resolve_exact_binding(source: none, rows: rust_source_type_binding_rows))
 }
 
@@ -131,11 +131,11 @@ fn duplicated_symbol_rows() -> List<SourceTypeTargetBinding<RustRepresentation>>
   ]
 }
 
-test fn w_two_rows_for_one_declaration_refuse_as_ambiguous() -> Bool {
+test fn w_two_rows_for_one_declaration_refuse_as_ambiguous() -> Bool  {
   resolution_is_ambiguous(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: duplicated_symbol_rows()))
 }
 
-test fn w_corpus_bindings_are_unambiguous() -> Bool {
+test fn w_corpus_bindings_are_unambiguous() -> Bool  {
   rust_bound_declaration_refs() |> all(r => exact_binding_is_resolved(resolution: resolve_exact_binding(source: Present { value: r }, rows: rust_source_type_binding_rows)))
 }
 
@@ -148,14 +148,14 @@ fn symbol_checkpoint() -> TypeCheckpoint? {
   }
 }
 
-test fn w_symbol_binding_realizes_on_rust() -> Bool {
+test fn w_symbol_binding_realizes_on_rust() -> Bool  {
   match symbol_checkpoint() {
     Present { value: cp } => cp.dag_name == "Symbol" && cp.is_copy != none
     Absent => false
   }
 }
 
-test fn w_symbol_spelling_is_qualified_in_both_positions() -> Bool {
+test fn w_symbol_spelling_is_qualified_in_both_positions() -> Bool  {
   match symbol_checkpoint() {
     Present { value: cp } =>
       cp.target_type == "std::string::String"
@@ -165,12 +165,12 @@ test fn w_symbol_spelling_is_qualified_in_both_positions() -> Bool {
   }
 }
 
-test fn w_no_realization_spells_the_bare_string_token() -> Bool {
+test fn w_no_realization_spells_the_bare_string_token() -> Bool  {
   rust_representation_realizations |> all(r =>
     (r.spelling.reference_position as String) != "String" && (r.spelling.grounding_position as String) != "String")
 }
 
-test fn w_next_rung_representations_have_no_realization_yet() -> Bool {
+test fn w_next_rung_representations_have_no_realization_yet() -> Bool  {
   rust_representation_realization_for(representation: RustSymbolNewtype) == none
     && rust_representation_realization_for(representation: RustInternedSymbol) == none
 }
@@ -182,7 +182,7 @@ fn bare_row_verdict_keeps_it(dag_name: String) -> Bool {
   }
 }
 
-test fn w_every_bare_row_carries_a_verdict() -> Bool {
+test fn w_every_bare_row_carries_a_verdict() -> Bool  {
   rust_type_checkpoints |> all(cp => bare_row_verdict_keeps_it(dag_name: cp.dag_name))
 }
 
@@ -198,18 +198,18 @@ fn bare_table_has_name(dag_name: NonEmptyStr) -> Bool {
   rust_type_checkpoints |> any(cp => cp.dag_name == (dag_name as String))
 }
 
-test fn w_migrated_names_are_absent_from_the_bare_table() -> Bool {
+test fn w_migrated_names_are_absent_from_the_bare_table() -> Bool  {
   checkpoint_row_migration_rows() |> all(m =>
     if migrated_bindings(disposition: m.disposition) |> count == 0 { bare_table_has_name(dag_name: m.dag_name) }
     else { !bare_table_has_name(dag_name: m.dag_name) })
 }
 
-test fn w_migrated_bindings_have_exact_rows() -> Bool {
+test fn w_migrated_bindings_have_exact_rows() -> Bool  {
   checkpoint_row_migration_rows() |> all(m =>
     migrated_bindings(disposition: m.disposition) |> all(b => declaration_ref_in_list(target: b, refs: rust_bound_declaration_refs())))
 }
 
-test fn w_symbol_verdict_is_migrated_not_debt() -> Bool {
+test fn w_symbol_verdict_is_migrated_not_debt() -> Bool  {
   match checkpoint_row_migration_for(dag_name: "Symbol" as NonEmptyStr, migrations: checkpoint_row_migration_rows()) {
     Present { value: m } => migrated_bindings(disposition: m.disposition) |> any(b => declaration_ref_eq(a: b, b: symbol_identity_subject))
     Absent => false
@@ -230,7 +230,7 @@ fn decision_admits_nominality_not_enforced() -> Bool {
   }
 }
 
-test fn w_symbol_decision_is_coherent() -> Bool {
+test fn w_symbol_decision_is_coherent() -> Bool  {
   symbol_semantics_decision_coherent(decision: symbol_identity_decision)
     && decision_claims_lexeme_backed()
     && decision_admits_nominality_not_enforced()
@@ -270,26 +270,26 @@ fn decision_with_interning_claimed() -> SymbolSemanticsDecision {
   }
 }
 
-test fn w_nominality_standing_changes_independently_of_value_semantics() -> Bool {
+test fn w_nominality_standing_changes_independently_of_value_semantics() -> Bool  {
   !symbol_nominality_coherent(decision: decision_with_nominality_claimed())
     && symbol_value_semantics_coherent(decision: decision_with_nominality_claimed())
     && !symbol_semantics_decision_coherent(decision: decision_with_nominality_claimed())
 }
 
-test fn w_value_semantics_changes_independently_of_nominality_standing() -> Bool {
+test fn w_value_semantics_changes_independently_of_nominality_standing() -> Bool  {
   !symbol_value_semantics_coherent(decision: decision_with_interning_claimed())
     && symbol_nominality_coherent(decision: decision_with_interning_claimed())
     && !symbol_semantics_decision_coherent(decision: decision_with_interning_claimed())
 }
 
-test fn w_symbol_ruling_names_a_realizable_representation() -> Bool {
+test fn w_symbol_ruling_names_a_realizable_representation() -> Bool  {
   rust_representation_realization_for(representation: symbol_representation_ruling.chosen) != none
     && rust_representation_realization_for(representation: symbol_representation_ruling.next_rung) == none
     && resolution_is_std_string(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: rust_source_type_binding_rows))
     && rust_representation_eq(a: symbol_representation_ruling.chosen, b: RustStdString)
 }
 
-test fn w_census_has_no_blocking_use() -> Bool {
+test fn w_census_has_no_blocking_use() -> Bool  {
   !symbol_identity_census_blocks_decision()
 }
 
@@ -304,7 +304,7 @@ fn symbol_reference_rendering() -> ReferencePositionRendering? {
   }
 }
 
-test fn w_symbol_reference_preserves_the_provider_declaration() -> Bool {
+test fn w_symbol_reference_preserves_the_provider_declaration() -> Bool  {
   match symbol_reference_rendering() {
     Present { value: r } =>
       match r {
@@ -317,7 +317,7 @@ test fn w_symbol_reference_preserves_the_provider_declaration() -> Bool {
   }
 }
 
-test fn w_capture_acceptance_roster_is_populated() -> Bool {
+test fn w_capture_acceptance_roster_is_populated() -> Bool  {
   symbol_capture_declarers() |> count > 0
 }
 

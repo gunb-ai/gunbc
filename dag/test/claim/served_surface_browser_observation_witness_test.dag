@@ -45,7 +45,7 @@ import gunbc.served_surface_browser_observation {
   sentinel_body_502_presentation,
 }
 
-test fn witness_run_owns_one_execution_identity() -> Bool {
+test fn witness_run_owns_one_execution_identity() -> Bool  {
   let run = playwright_chromium_151_linux_arm64_headless_navigation_run
   let environment = run.environment
   environment.chromium_build == chromium_151_0_7922_34
@@ -64,7 +64,7 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
     && run.observed_on == "2026-08-01T04:58:15Z" as Rfc3339Timestamp
 }
 
-test fn witness_connection_refusal_is_exact_specimen() -> Bool {
+test fn witness_connection_refusal_is_exact_specimen() -> Bool  {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
   let presentation = connection_refused_presentation(specimen: observation)
   match presentation.stimulus {
@@ -78,7 +78,7 @@ test fn witness_connection_refusal_is_exact_specimen() -> Bool {
     }
 }
 
-test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
+test fn witness_empty_502_is_exact_not_total_profile() -> Bool  {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.empty_502
   let presentation = empty_body_502_presentation(specimen: observation)
   match presentation.stimulus {
@@ -99,7 +99,7 @@ test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
     }
 }
 
-test fn witness_bodied_502_retains_network_document() -> Bool {
+test fn witness_bodied_502_retains_network_document() -> Bool  {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.sentinel_502
   let presentation = sentinel_body_502_presentation(specimen: observation)
   match presentation.stimulus {
@@ -123,7 +123,7 @@ test fn witness_bodied_502_retains_network_document() -> Bool {
     }
 }
 
-test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool {
+test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool  {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
   let trial = observation.recovery_trials.first()
   trial.action == ExplicitReload
