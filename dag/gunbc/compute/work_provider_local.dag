@@ -93,11 +93,11 @@ import extdeps.realization.materialization_store_local {
   LocalStoreUnavailableCause, LocalStoreGrantRefused, LocalStoreNotInitialized, LocalStoreMarkerUnrecognized, LocalStoreMarkerUnavailable,
   LocalStoreMarkerMalformed, LocalStoreCatalogMismatch, LocalStoreCatalogInadmissible, LocalStoreSweepIncomplete,
   local_store_initialize, local_store_lookup, local_store_commit, local_store_family_budget, local_store_family_provider,
-  LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name, LocalStoreFamilyBudget,
+  LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, LocalStoreFamilyBudget,
 }
 import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets
 }
-import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path }
+import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
 import gunbc.compute.work_request {
   work_refusal_detail,
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
@@ -1820,7 +1820,8 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
                       match committed {
                         StoreCommitSettled { receipt: _ } =>
                           if unstaged == "" { ComputeCommitted } else { ComputeCommitRefused { detail: unstaged } }
-                        StoreCommitRefused { key: _, refusal } => ComputeCommitRefused { detail: compute_store_commit_refusal_detail(r: refusal) }
+                        StoreCommitRefused { key: _, refusal } =>
+                          ComputeCommitRefused { detail: if unstaged == "" { compute_store_commit_refusal_detail(r: refusal) } else { join([compute_store_commit_refusal_detail(r: refusal), "; and ", unstaged], "") } }
                       }
                     }
                 }
@@ -1865,15 +1866,21 @@ fn compute_dependency_read(store: ComputeStore, build: ArtifactRequest) -> Compu
   }
 }
 
-// PURE: the verified readings, named by the store's own part-naming authority.
+// PURE: the verified readings, joined to their binaries by the record's own typed part identity. The
+// hit names each byte part by its ArtifactOutputId and SHA-256; a verified reading is that part only
+// when its digest is the part's, so the join is by identity and content, never by a path's shape.
 fn compute_dependency_decide(read: LocalStorePartsLookup) -> ComputeDependencyRead {
   match read.lookup {
     StoreLookupMiss { key: _ } => ComputeDependencyRefused { detail: "the build this request depends on succeeded but its record is not in the store (evicted between the build and this read)" }
     StoreLookupRefused { key: _, refusal } => ComputeDependencyRefused { detail: join(["the build this request depends on did not verify: ", compute_store_lookup_refusal_detail(r: refusal)], "") }
-    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: _, evaluation_identity: _ } => {
+    StoreLookupHit { artifact: _, payloads: _, blobs, receipt: _, evaluation_identity: _ } => {
       let found = work_default_bins |> map(b => ComputeDependencyBinaryFound {
         bin: gunbc_binary_name(b: b) as String,
-        reading: read.parts |> filter(r => ends_with(s: fabric_blob_reading_path(reading: r) as String, suffix: local_store_part_name(record: "", id: compute_work_binary_output(b: b)))) |> first(),
+        reading: match blobs |> filter(p => p.id == compute_work_binary_output(b: b)) |> first() {
+          Absent => none
+          Present { value: part } =>
+            read.parts |> filter(r => (fabric_blob_reading_digest(reading: r).hex as String) == (part.digest.hex as String)) |> first()
+        },
       })
       match found |> filter(f => match f.reading { Present { value: _ } => false  Absent => true }) |> first() {
         Present { value: missing } => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", missing.bin], "") }
