@@ -14,7 +14,7 @@ import std.logic { Bool }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
 import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe, utf8_decode_octets }
 import std.bytes { utf8_encode_bytes, bytes_octets, pure_dag_seam_unreachable_string }
-import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonArray, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text, json_field, FieldRead, FieldAbsent, FieldMalformed,
 }
@@ -273,7 +273,11 @@ fn wire_string(obj: JsonValue, key: String) -> WireDecode<NonEmptyStr> {
     WireDecoded { value: v } =>
       match v {
         JsonString { value: s } => if s == "" { WireRefused { at: key as NonEmptyStr, cause: "empty" } } else { WireDecoded { value: s as NonEmptyStr } }
-        _ => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonNull => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonBool { value: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonNumber { lexeme: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonArray { elements: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonObject { members: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
       }
   }
 }
