@@ -4626,29 +4626,14 @@ fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
 // THE FN SHELL'S ADMIT CLAUSE, among its optionals: the optional-element projection whose target's
 // production identity is ^dag_surface_admit_callers_clause.
 fn body_lower_admit_clause_shell_optional(shell: Node) -> Optional<Node> {
-  fold(shell.children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        match e.label {
-          Authored { name: name } =>
-            if symbol_eq(a: name, b: ^grammar_optional_element_node_projection) {
-              match parse_production_emitted_identity_optional(node: e.target) {
-                Present { value: id } =>
-                  if symbol_eq(a: id, b: ^dag_surface_admit_callers_clause) {
-                    optional_present(value: e.target)
-                  } else {
-                    optional_absent()
-                  }
-                Absent => optional_absent()
-              }
-            } else {
-              optional_absent()
-            }
-          _ => optional_absent()
-        }
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
+        Absent => optional_absent()
+        Present { value: clause } => optional_present(value: clause)
       }
-  })
+  }
 }
 
 // THE CLAUSE'S ROSTER: the clause shell's named body value (the bracketed entry list), else its
@@ -4785,13 +4770,10 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
     Present { value: call } =>
       match call.kind {
         ComputationNode { behavior: Transform } =>
-          match construct_tag_path_optional(n: call) {
+          match body_lower_admit_callee_identity_optional(call: call) {
             Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
             Present { value: callee } =>
-              match qualified_name_last_segment(qn: callee) {
-                Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
-                Present { value: seg } =>
-                  if symbol_eq(a: seg, b: ^decl_ref) {
+              if symbol_eq(a: callee, b: ^decl_ref) {
                     match body_lower_admit_string_field_edge(call: call, field: ^module_path, template: template) {
                       Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
                       Present { value: mp_edge } =>
@@ -4820,7 +4802,6 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
                   } else {
                     optional_present(value: body_lower_admit_entry_marker(template: template))
                   }
-              }
           }
         _ => optional_present(value: body_lower_admit_entry_marker(template: template))
       }
@@ -4868,14 +4849,9 @@ fn body_lower_admit_entry_marker(template: Node) -> Edge {
 // component is empty (a call has no operator tail), bottoming at the lowered comp:transform. Descend
 // the left spine to the leaf; a non-empty tail is not an entry shape this reader admits.
 fn body_lower_admit_entry_call_optional(item: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
-    Absent => optional_present(value: body_lower_deep_unwrap_optional(node: item))
-    Present { value: pair } =>
-      if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
-        body_lower_admit_entry_call_optional(item: pair.left)
-      } else {
-        optional_absent()
-      }
+  match body_lower_body_subtree_lower_from_binary(captured: item) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: found, diagnostics: _ } => found
   }
 }
 
@@ -12433,3 +12409,20 @@ fn body_lower_finish_for_normalize(
   )
 }
 
+
+// The canonical call's callee: the transform's head positional edge carries the bare callee
+// atom (body-lowering's call shape). Absent for any other shape.
+fn body_lower_admit_callee_identity_optional(call: Node) -> Optional<Symbol> {
+  match first(call.children) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match head.label {
+        Positional =>
+          match head.target.kind {
+            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
