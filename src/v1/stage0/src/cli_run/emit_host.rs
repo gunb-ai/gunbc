@@ -3226,10 +3226,45 @@ pub(crate) fn fixture_closure_union_emit_receipt(
     })
 }
 
-const STDERR_CAPTURE_POLICY_DROP: &str =
-    "gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture";
-const STDERR_CAPTURE_POLICY_GAP_MODULE: &str = "extdeps.gunbc";
-const STDERR_CAPTURE_POLICY_GAP_SERVICE: &str = "gunbc.WitnessBin";
+/// Deleting `dag/gunbc/rung_drop/fixture_closure_union_unmodeled_stderr_capture.dag` fails this
+/// compile. The exclusion keys are the typed `data …: String` fields on that module, not a
+/// second authored population (review 77110).
+const STDERR_CAPTURE_POLICY_DROP_SOURCE: &str = include_str!(
+    "../../../../../dag/gunbc/rung_drop/fixture_closure_union_unmodeled_stderr_capture.dag"
+);
+
+struct CaptureGapExclusion {
+    drop_identity: &'static str,
+    declaring_module: &'static str,
+    service: &'static str,
+    operation_qualified: &'static str,
+    operation_bare: &'static str,
+}
+
+fn drop_row_string_data(name: &str) -> &'static str {
+    let prefix = format!("data {name}: String = \"");
+    let start = STDERR_CAPTURE_POLICY_DROP_SOURCE.find(&prefix).unwrap_or_else(|| {
+        panic!(
+            "rung-drop source missing `data {name}: String`; deleting or renaming the field refuses this exclusion"
+        )
+    });
+    let value_start = start + prefix.len();
+    let rel_end = STDERR_CAPTURE_POLICY_DROP_SOURCE[value_start..]
+        .find('"')
+        .unwrap_or_else(|| panic!("rung-drop data {name} is not a closed string"));
+    &STDERR_CAPTURE_POLICY_DROP_SOURCE[value_start..value_start + rel_end]
+}
+
+fn capture_gap_exclusion() -> &'static CaptureGapExclusion {
+    static GAP: OnceLock<CaptureGapExclusion> = OnceLock::new();
+    GAP.get_or_init(|| CaptureGapExclusion {
+        drop_identity: drop_row_string_data("exclusion_drop_identity"),
+        declaring_module: drop_row_string_data("exclusion_declaring_module"),
+        service: drop_row_string_data("exclusion_service"),
+        operation_qualified: drop_row_string_data("exclusion_operation_qualified"),
+        operation_bare: drop_row_string_data("exclusion_operation_bare"),
+    })
+}
 
 /// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
 /// `ShellChannelNotRealizedByTarget` on the three stderr-accounting channels the drop names.
@@ -3279,9 +3314,9 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
             ..
         } if transport_kind == "shell"
             && target == "rust"
-            && declaring_module == STDERR_CAPTURE_POLICY_GAP_MODULE
-            && service == STDERR_CAPTURE_POLICY_GAP_SERVICE
-            && (operation == "Run" || operation == "gunbc.WitnessBin.Run")
+            && declaring_module == capture_gap_exclusion().declaring_module
+            && service == capture_gap_exclusion().service
+            && is_drop_run_operation(operation)
             && rust_stderr_capture_channel_not_realized_facts()
                 .contains(missing_realization_fact) =>
         {
@@ -3292,7 +3327,8 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
 }
 
 fn is_drop_run_operation(operation: &str) -> bool {
-    operation == "Run" || operation == "gunbc.WitnessBin.Run"
+    let gap = capture_gap_exclusion();
+    operation == gap.operation_bare || operation == gap.operation_qualified
 }
 
 fn transport_emission_run(d: &Rc<ErrorNode>) -> Option<(String, String)> {
@@ -3440,9 +3476,11 @@ fn union_emit_graph_excluding_unmodeled_stderr_capture(
         .iter()
         .map(|(module, service)| {
             format!(
-                "module={module} service={service} operation=gunbc.WitnessBin.Run \
+                "module={module} service={service} operation={} \
                  cause=ShellChannelNotRealizedByTarget \
-                 fact=stderr_capture_policy_unrealized drop={STDERR_CAPTURE_POLICY_DROP}"
+                 fact=stderr_capture_policy_unrealized drop={}",
+                capture_gap_exclusion().operation_qualified,
+                capture_gap_exclusion().drop_identity,
             )
         })
         .collect();
@@ -3569,10 +3607,11 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
         ))
     })?;
     if !gunbc_observed.excluded.iter().any(|row| {
-        row.contains("module=extdeps.gunbc")
-            && row.contains("operation=gunbc.WitnessBin.Run")
+        let gap = capture_gap_exclusion();
+        row.contains(&format!("module={}", gap.declaring_module))
+            && row.contains(&format!("operation={}", gap.operation_qualified))
             && row.contains("cause=ShellChannelNotRealizedByTarget")
-            && row.contains(STDERR_CAPTURE_POLICY_DROP)
+            && row.contains(gap.drop_identity)
     }) {
         return Err(refuse(format!(
             "a fixture whose closure reaches extdeps.gunbc was admitted without the typed exclusion: {gunbc_observed:?}"
@@ -3730,17 +3769,18 @@ mod fixture_closure_union_tests {
         use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
         let span = crate::v1_std_core::kernel_span("probe".to_string());
         let mk = |fact: String| {
+            let gap = capture_gap_exclusion();
             make_error_node(
                 Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
                     transport_kind: "shell".to_string(),
-                    service: "gunbc.WitnessBin".to_string(),
-                    operation: "gunbc.WitnessBin.Run".to_string(),
-                    declaring_module: "extdeps.gunbc".to_string(),
+                    service: gap.service.to_string(),
+                    operation: gap.operation_qualified.to_string(),
+                    declaring_module: gap.declaring_module.to_string(),
                     target: "rust".to_string(),
                     missing_realization_fact: fact,
                     span: span.clone(),
                 }),
-                "extdeps.gunbc".to_string(),
+                gap.declaring_module.to_string(),
             )
         };
         let gap = shell_emission_refusal_fact(Rc::new(
@@ -3768,8 +3808,8 @@ mod fixture_closure_union_tests {
         let other_module = make_error_node(
             Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
                 transport_kind: "shell".to_string(),
-                service: "gunbc.WitnessBin".to_string(),
-                operation: "gunbc.WitnessBin.Run".to_string(),
+                service: capture_gap_exclusion().service.to_string(),
+                operation: capture_gap_exclusion().operation_qualified.to_string(),
                 declaring_module: "extdeps.other".to_string(),
                 target: "rust".to_string(),
                 missing_realization_fact: gap,
@@ -3815,16 +3855,20 @@ mod fixture_closure_union_tests {
     #[test]
     fn selection_fold_allows_only_run_capture_rows_and_vetoes_mixed_refusal() {
         let gap = gap_fact();
+        let gap_row = capture_gap_exclusion();
         let allowed = transport_row(
-            "extdeps.gunbc",
-            "gunbc.WitnessBin",
-            "gunbc.WitnessBin.Run",
+            gap_row.declaring_module,
+            gap_row.service,
+            gap_row.operation_qualified,
             gap.clone(),
         );
         let selected = select_run_operations_excluded_for_stderr_capture_gap(&[allowed]);
         assert_eq!(
             selected.iter().cloned().collect::<Vec<_>>(),
-            vec![("extdeps.gunbc".to_string(), "gunbc.WitnessBin".to_string())]
+            vec![(
+                gap_row.declaring_module.to_string(),
+                gap_row.service.to_string()
+            )]
         );
 
         let mixed_key = crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
@@ -3834,15 +3878,15 @@ mod fixture_closure_union_tests {
         ));
         let mixed = vec![
             transport_row(
-                "extdeps.gunbc",
-                "gunbc.WitnessBin",
-                "gunbc.WitnessBin.Run",
+                gap_row.declaring_module,
+                gap_row.service,
+                gap_row.operation_qualified,
                 gap.clone(),
             ),
             transport_row(
-                "extdeps.gunbc",
-                "gunbc.WitnessBin",
-                "gunbc.WitnessBin.Run",
+                gap_row.declaring_module,
+                gap_row.service,
+                gap_row.operation_qualified,
                 mixed_key,
             ),
         ];
@@ -3850,13 +3894,13 @@ mod fixture_closure_union_tests {
 
         let wrong_module = transport_row(
             "extdeps.other",
-            "gunbc.WitnessBin",
-            "gunbc.WitnessBin.Run",
+            gap_row.service,
+            gap_row.operation_qualified,
             gap.clone(),
         );
         assert!(select_run_operations_excluded_for_stderr_capture_gap(&[wrong_module]).is_empty());
 
-        let nonmember = transport_row("extdeps.gunbc", "gunbc.WitnessBin", "Sibling", gap);
+        let nonmember = transport_row(gap_row.declaring_module, gap_row.service, "Sibling", gap);
         assert!(select_run_operations_excluded_for_stderr_capture_gap(&[nonmember]).is_empty());
     }
 
@@ -3883,7 +3927,12 @@ mod fixture_closure_union_tests {
         use crate::v1_std_core::ParsedModuleItemKind;
         let env = crate::v1_compiler_infer_env::empty_type_env();
         let cache = crate::v1_compiler_infer_env::empty_type_env_cache();
-        let run = kernel_named("Run", ParsedModuleItemKind::NotAModuleItem, im::vector![]);
+        let gap = capture_gap_exclusion();
+        let run = kernel_named(
+            gap.operation_bare,
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
         let sibling = kernel_named(
             "Sibling",
             ParsedModuleItemKind::NotAModuleItem,
@@ -3895,12 +3944,12 @@ mod fixture_closure_union_tests {
             im::vector![],
         );
         let service = kernel_named(
-            "gunbc.WitnessBin",
+            gap.service,
             ParsedModuleItemKind::ModuleItemService,
             im::vector![run, sibling],
         );
         let module = kernel_named(
-            "extdeps.gunbc",
+            gap.declaring_module,
             ParsedModuleItemKind::NotAModuleItem,
             im::vector![],
         );
@@ -3935,9 +3984,9 @@ mod fixture_closure_union_tests {
             progress: ModuleTypecheckProgress::ItemsChecked,
             type_env: env.clone(),
             type_env_cache: cache.clone(),
-            interface: interface(env.clone(), cache.clone(), "extdeps.gunbc"),
+            interface: interface(env.clone(), cache.clone(), gap.declaring_module),
             func_env: Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
-                name: "extdeps.gunbc".to_string(),
+                name: gap.declaring_module.to_string(),
                 local: crate::v1_rt::rc_empty_map(),
                 parents: Rc::new(im::vector![]),
             }),
@@ -3997,12 +4046,13 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn strip_removes_only_run_and_keeps_sibling_and_unrelated_items() {
+        let gap = capture_gap_exclusion();
         let graph = supplied_graph_with_run_and_sibling();
         let mut excluded = BTreeSet::new();
-        excluded.insert(("extdeps.gunbc".to_string(), "gunbc.WitnessBin".to_string()));
+        excluded.insert((gap.declaring_module.to_string(), gap.service.to_string()));
         let stripped = strip_excluded_run_operations(graph.clone(), &excluded);
         assert_eq!(
-            service_op_names(&stripped, "extdeps.gunbc", "gunbc.WitnessBin"),
+            service_op_names(&stripped, gap.declaring_module, gap.service),
             vec!["Sibling".to_string()]
         );
         let env = crate::v1_compiler_infer_env::empty_type_env();
@@ -4011,7 +4061,7 @@ mod fixture_closure_union_tests {
             .iter()
             .find(|tm| {
                 crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
-                    == "extdeps.gunbc"
+                    == gap.declaring_module
             })
             .unwrap()
             .items
@@ -4025,8 +4075,33 @@ mod fixture_closure_union_tests {
         assert_eq!(stripped.modules.len(), 2, "unrelated module must remain");
         let empty = strip_excluded_run_operations(graph, &BTreeSet::new());
         assert_eq!(
-            service_op_names(&empty, "extdeps.gunbc", "gunbc.WitnessBin"),
-            vec!["Run".to_string(), "Sibling".to_string()]
+            service_op_names(&empty, gap.declaring_module, gap.service),
+            vec![gap.operation_bare.to_string(), "Sibling".to_string()]
+        );
+    }
+
+    #[test]
+    fn capture_gap_exclusion_reads_typed_fields_from_the_drop_module() {
+        let gap = capture_gap_exclusion();
+        assert!(!gap.drop_identity.is_empty());
+        assert!(!gap.declaring_module.is_empty());
+        assert!(!gap.service.is_empty());
+        assert!(!gap.operation_bare.is_empty());
+        assert!(
+            gap.operation_qualified == gap.operation_bare
+                || gap
+                    .operation_qualified
+                    .ends_with(&format!(".{}", gap.operation_bare)),
+            "qualified={} bare={}",
+            gap.operation_qualified,
+            gap.operation_bare
+        );
+        assert!(
+            STDERR_CAPTURE_POLICY_DROP_SOURCE.contains(&format!(
+                "data exclusion_drop_identity: String = \"{}\"",
+                gap.drop_identity
+            )),
+            "parse must agree with the included drop source"
         );
     }
 }
