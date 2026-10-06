@@ -248,13 +248,21 @@ fn vfp_matches_of_at(n: Node, depth: Int) -> List<Node> {
   }
 }
 
-fn vfp_arm_bodies_of(m: Node) -> List<Node> {
-  fold(m.children, init: Empty, f: fn(acc, e) {
-    match e.label {
-      StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => list_append(left: acc, right: Cons { head: e.target, tail: Empty })
-      _ => acc
-    }
-  })
+fn vfp_arm_bodies_of(m: Node) -> List<Node> { vfp_arm_bodies_of_at(m: m, depth: 24) }
+
+// The arm-body edges hang under the match's ARM nodes, not under the match itself, so the walk
+// descends and stays bound (a fixture has no nested matches; the bound guards a cyclic tree).
+fn vfp_arm_bodies_of_at(m: Node, depth: Int) -> List<Node> {
+  match depth <= 0 {
+    true => Empty
+    false =>
+      fold(m.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => list_append(left: acc, right: Cons { head: e.target, tail: vfp_arm_bodies_of_at(m: e.target, depth: depth - 1) })
+          _ => list_append(left: acc, right: vfp_arm_bodies_of_at(m: e.target, depth: depth - 1))
+        }
+      })
+  }
 }
 
 fn vfp_first_of(xs: List<Node>) -> Optional<Node> {
