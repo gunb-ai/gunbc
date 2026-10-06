@@ -3,6 +3,6 @@ module v2.test.claim.bootstrap
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn bootstrap_witness_keystone_holds() -> Bool {
+test fn bootstrap_witness_keystone_holds() -> Bool  {
   tools.bootstrap_witness_transport.run_bootstrap_witness()
 }

@@ -275,7 +275,7 @@ fn emit_loop_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn emit_host_loop_equals_eval_holds() -> Bool {
+test fn emit_host_loop_equals_eval_holds() -> Bool  {
   match emit_loop_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_loop_eval_verdict_is_pass(run: emit_loop_eval_run(tree: tree))
@@ -283,7 +283,7 @@ test fn emit_host_loop_equals_eval_holds() -> Bool {
   }
 }
 
-test fn emit_host_loop_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_loop_wrong_fixture_refuses_holds() -> Bool  {
   match emit_loop_eval_wrong_value_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_loop_eval_verdict_is_fail(run: emit_loop_eval_run(tree: tree))

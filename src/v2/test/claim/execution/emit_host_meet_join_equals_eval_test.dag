@@ -313,7 +313,7 @@ fn meet_join_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeVa
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn emit_host_meet_equals_eval_holds() -> Bool {
+test fn emit_host_meet_equals_eval_holds() -> Bool  {
   meet_join_eval_verdict_is_pass(
     run: meet_join_eval_run(
       root: dag_meet_arrow_with_body_fixture,
@@ -323,7 +323,7 @@ test fn emit_host_meet_equals_eval_holds() -> Bool {
   )
 }
 
-test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool  {
   meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
       root: dag_meet_arrow_with_body_swapped_arms_fixture,
@@ -333,7 +333,7 @@ test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool {
   )
 }
 
-test fn emit_host_join_equals_eval_holds() -> Bool {
+test fn emit_host_join_equals_eval_holds() -> Bool  {
   meet_join_eval_verdict_is_pass(
     run: meet_join_eval_run(
       root: dag_join_arrow_with_body_fixture,
@@ -343,7 +343,7 @@ test fn emit_host_join_equals_eval_holds() -> Bool {
   )
 }
 
-test fn emit_host_join_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_join_wrong_fixture_refuses_holds() -> Bool  {
   meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
       root: dag_join_arrow_with_body_swapped_arms_fixture,

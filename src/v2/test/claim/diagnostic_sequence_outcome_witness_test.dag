@@ -40,7 +40,7 @@ fn diagnostic_b() -> Diagnostic {
   }
 }
 
-test fn witness_sequence_outcome_empty_accepts() -> Bool {
+test fn witness_sequence_outcome_empty_accepts() -> Bool  {
   match sequence_outcome(xs: [], policy: short_circuit_policy) {
     Accepted { value: vs, diagnostics: None } => vs.length() == 0
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
@@ -48,7 +48,7 @@ test fn witness_sequence_outcome_empty_accepts() -> Bool {
   }
 }
 
-test fn witness_sequence_outcome_collects_values() -> Bool {
+test fn witness_sequence_outcome_collects_values() -> Bool  {
   match sequence_outcome(
     xs: [outcome_accepted(value: 1), outcome_accepted(value: 2)],
     policy: short_circuit_policy
@@ -60,7 +60,7 @@ test fn witness_sequence_outcome_collects_values() -> Bool {
   }
 }
 
-test fn witness_sequence_outcome_short_circuits_on_reject() -> Bool {
+test fn witness_sequence_outcome_short_circuits_on_reject() -> Bool  {
   match sequence_outcome(
     xs: [
       outcome_accepted(value: 1),
@@ -74,7 +74,7 @@ test fn witness_sequence_outcome_short_circuits_on_reject() -> Bool {
   }
 }
 
-test fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool {
+test fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool  {
   match sequence_outcome(
     xs: [outcome_accepted(value: 1), outcome_accepted(value: 2)],
     policy: accumulate_policy
@@ -86,7 +86,7 @@ test fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool {
   }
 }
 
-test fn witness_sequence_outcome_accumulate_merges_two_rejections() -> Bool {
+test fn witness_sequence_outcome_accumulate_merges_two_rejections() -> Bool  {
   match sequence_outcome(
     xs: [outcome_rejected(d: diagnostic_a()), outcome_rejected(d: diagnostic_b())],
     policy: accumulate_policy
@@ -96,7 +96,7 @@ test fn witness_sequence_outcome_accumulate_merges_two_rejections() -> Bool {
   }
 }
 
-test fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() -> Bool {
+test fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() -> Bool  {
   match sequence_outcome(
     xs: [outcome_rejected(d: diagnostic_a()), outcome_rejected(d: diagnostic_b())],
     policy: short_circuit_policy

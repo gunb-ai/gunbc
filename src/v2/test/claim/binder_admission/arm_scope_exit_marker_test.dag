@@ -82,14 +82,14 @@ fn asem_marked(bind: Node) -> Node {
   )
 }
 
-test fn an_unmarked_bind_resolves() -> Bool {
+test fn an_unmarked_bind_resolves() -> Bool  {
   match resolve_node_walk(ctx: asem_ctx(), n: asem_bind()) {
     ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
     ResolveWalkRefused { first: _, rest: _, observation: _ } => false
   }
 }
 
-test fn a_marked_bind_outside_a_match_arm_refuses_as_a_malformed_tree() -> Bool {
+test fn a_marked_bind_outside_a_match_arm_refuses_as_a_malformed_tree() -> Bool  {
   match resolve_node_walk(ctx: asem_ctx(), n: asem_marked(bind: asem_bind())) {
     ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => false
     ResolveWalkRefused { first: f, rest: _, observation: _ } => f.head.reason == ^resolve_reason_malformed_tree

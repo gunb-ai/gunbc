@@ -789,7 +789,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
   }
 }
 
-test fn witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict() -> Bool {
+test fn witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict() -> Bool  {
   match pijul_r0_typed_execution_read_back() {
     PijulR0LiveRefused { diagnostic: _ } => false
     PijulR0LiveVerified { receipt } =>

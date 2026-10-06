@@ -167,7 +167,7 @@ fn a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step() -> Boo
 // witness PANICKED rather than answering. That refusal is correct -- a mistyped root is a caller
 // defect and should stop the line -- but it means the below-floor arm's red is only authorable from
 // a directory that is present and contributes no modules. docs/ is that subject.
-test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
+test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool  {
   match corpus_gate(pool_roots: ["docs"], population_floor: 1) {
     CorpusPopulationBelowFloor { files: _, floor: _ } => true
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
@@ -232,7 +232,7 @@ fn is_coverage_surplus(d: CorpusGateDisposition) -> Bool {
 // subjects the population does not contain was accepted. A surplus identity is not a lesser
 // problem than a missing one -- it means the rows did not come from this population, so nothing
 // about them is a statement about it.
-test fn a_report_carrying_subjects_the_population_does_not_contain_refuses() -> Bool {
+test fn a_report_carrying_subjects_the_population_does_not_contain_refuses() -> Bool  {
   is_coverage_surplus(
     d: disposition_over(
       discovered: [planted_path],
@@ -250,7 +250,7 @@ test fn a_report_carrying_subjects_the_population_does_not_contain_refuses() -> 
 // run before the floor let the floor's own red control be defeated. It refuses now, and it refuses
 // as SURPLUS rather than as below-floor, because the accurate statement is that these rows are not
 // from this population at all.
-test fn an_empty_population_with_a_reported_row_refuses_rather_than_reading_clean() -> Bool {
+test fn an_empty_population_with_a_reported_row_refuses_rather_than_reading_clean() -> Bool  {
   is_coverage_surplus(
     d: disposition_over(
       discovered: Empty,
@@ -267,7 +267,7 @@ test fn an_empty_population_with_a_reported_row_refuses_rather_than_reading_clea
 // interpreter walk -- is not in this change. This witness is the truncated sweep: two subjects
 // discovered, one row reported, which is precisely what a death after the first subject leaves
 // behind.
-test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool {
+test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool  {
   is_coverage_incomplete(
     d: disposition_over(
       discovered: [planted_path, clean_path],
@@ -280,7 +280,7 @@ test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool 
 // discovered population, same NUMBER of rows, one subject analysed twice and the other never --
 // the shape a batched sweep produces when a batch is re-run after a death. A count comparison is
 // green here, which is why DESIGN section 5 says completeness is an identity join.
-test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bool {
+test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bool  {
   is_coverage_incomplete(
     d: disposition_over(
       discovered: [planted_path, clean_path],
@@ -297,7 +297,7 @@ test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bo
 // same population reaches the ordinary verdict, and the verdict it reaches is the suspect one,
 // because the planted subject is a suspect: so this control also proves coverage is decided BEFORE
 // the other arms rather than instead of them.
-test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict() -> Bool {
+test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict() -> Bool  {
   match disposition_over(
     discovered: [planted_path, clean_path],
     rows: [
@@ -325,7 +325,7 @@ fn unmeasured_row(path: String) -> CorpusFileRow {
 // real file is priced out of this lane; the join that decides "newly red" is not. Newly red is
 // scanned-suspect after AND scanned-zero before. Unmeasured is listed and is not red. A file
 // already red on main is not newly red.
-test fn a_file_red_only_after_the_repair_is_newly_red() -> Bool {
+test fn a_file_red_only_after_the_repair_is_newly_red() -> Bool  {
   match newly_red_difference(
     before: [scanned_row(path: planted_path, suspects: 0)],
     after: [scanned_row(path: planted_path, suspects: 1)]
@@ -339,7 +339,7 @@ test fn a_file_red_only_after_the_repair_is_newly_red() -> Bool {
   }
 }
 
-test fn a_file_already_red_on_main_is_not_newly_red() -> Bool {
+test fn a_file_already_red_on_main_is_not_newly_red() -> Bool  {
   match newly_red_difference(
     before: [scanned_row(path: planted_path, suspects: 1)],
     after: [scanned_row(path: planted_path, suspects: 3)]
@@ -352,7 +352,7 @@ test fn a_file_already_red_on_main_is_not_newly_red() -> Bool {
   }
 }
 
-test fn an_unmeasured_before_arm_is_not_newly_red() -> Bool {
+test fn an_unmeasured_before_arm_is_not_newly_red() -> Bool  {
   match newly_red_difference(
     before: [unmeasured_row(path: planted_path)],
     after: [scanned_row(path: planted_path, suspects: 1)]
@@ -366,7 +366,7 @@ test fn an_unmeasured_before_arm_is_not_newly_red() -> Bool {
   }
 }
 
-test fn a_path_identity_mismatch_refuses_rather_than_joining_by_position() -> Bool {
+test fn a_path_identity_mismatch_refuses_rather_than_joining_by_position() -> Bool  {
   match newly_red_difference(
     before: [scanned_row(path: planted_path, suspects: 0)],
     after: [scanned_row(path: clean_path, suspects: 1)]

@@ -52,7 +52,7 @@ fn lane_ok_migration(cause: Symbol) -> Bool {
   }
 }
 
-test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool {
+test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool  {
   lane_ok_this_lane(cause: ^fact_density_hollow_alias_locus)
     && lane_ok_shared(cause: ^resolve_reason_unbound_symbol)
     && lane_ok_migration(cause: ^resolve_ambiguous_export)
@@ -62,13 +62,13 @@ test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool {
 // ONE ROW PER CAUSE. The table is keyed by cause alone (advisories steps 3+4 deleted the grain), and
 // cause_ownership_lookup answers the FIRST matching row, so a second row for one cause would be
 // silently unreachable rather than refused. Every cause appears exactly once.
-test fn every_owned_cause_has_exactly_one_row() -> Bool {
+test fn every_owned_cause_has_exactly_one_row() -> Bool  {
   !any(xs: known_frontier_causes, predicate: fn(row) {
     length(xs: filter(xs: known_frontier_causes, predicate: fn(other) { other.cause == row.cause })) != 1
   })
 }
 
-test fn unknown_cause_is_fail_closed_unattributed() -> Bool {
+test fn unknown_cause_is_fail_closed_unattributed() -> Bool  {
   cause_is_attributed(cause: ^some_unmodeled_future_frontier_cause) == false
     && cause_is_attributed(cause: ^fact_density_hollow_alias_locus) == true
 }
@@ -80,14 +80,14 @@ test fn unknown_cause_is_fail_closed_unattributed() -> Bool {
 // empty diff produce no rows (never a fabricated whole-corpus widen — that lives in the
 // AffectedDiffRefused arm, exercised structurally by the door_ledger_over_affected_set resolve).
 
-test fn dag_module_paths_keeps_only_dag_modules() -> Bool {
+test fn dag_module_paths_keeps_only_dag_modules() -> Bool  {
   length(xs: dag_module_paths(paths: ["a.dag", "b.rs", "sub/c.dag", "d.yml", "e.dag"])) == 3
     && length(xs: dag_module_paths(paths: ["x.rs", "y.txt"])) == 0
     && length(xs: dag_module_paths(paths: [])) == 0
 }
 
 // Both arms of affected_ledger_from_diff proven by execution over synthetic diff data (no shell, no interpreted door): a diff-observation FAILURE refuses fail-closed carrying the observation's reason and NEVER reaches door_ledger (no whole-corpus widen — the §5 absorbing-fallback guard); a diff OK with only non-.dag changes filters to zero modules and ledgers empty. The live git-observation half is floor_diff_observe's own tested code; this pins the ledger's wiring logic, which is all the affected-set entry adds over the door_ledger histogram.
-test fn affected_set_diff_failure_refuses_fail_closed() -> Bool {
+test fn affected_set_diff_failure_refuses_fail_closed() -> Bool  {
   match affected_ledger_from_diff(
     diff: NameStatusDiffFail { reason: "invalid ref or not a git repository" },
     pool_roots: []
@@ -97,7 +97,7 @@ test fn affected_set_diff_failure_refuses_fail_closed() -> Bool {
   }
 }
 
-test fn affected_set_non_dag_changes_ledger_empty() -> Bool {
+test fn affected_set_non_dag_changes_ledger_empty() -> Bool  {
   match affected_ledger_from_diff(
     diff: NameStatusDiffOk {
       changed_paths: ["src/v1/stage0/src/cli_run.rs", "docs/plans/x.md"],

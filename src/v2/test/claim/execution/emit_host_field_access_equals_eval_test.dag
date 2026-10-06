@@ -364,7 +364,7 @@ fn emit_field_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn emit_host_field_access_equals_eval_holds() -> Bool {
+test fn emit_host_field_access_equals_eval_holds() -> Bool  {
   match emit_field_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_field_eval_verdict_is_pass(run: emit_field_eval_run(tree: tree))
@@ -377,7 +377,7 @@ test fn emit_host_field_access_equals_eval_holds() -> Bool {
   }
 }
 
-test fn emit_host_field_access_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_field_access_wrong_fixture_refuses_holds() -> Bool  {
   match emit_field_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_field_eval_verdict_is_semantic_mismatch(

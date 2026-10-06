@@ -95,7 +95,7 @@ fn lexical_value_reference_count(source: String) -> Int {
 // everything; the control's zero is what makes the two a measurement of THIS class rather than of
 // the parser's willingness to emit occurrences at all. A refusal to parse renders as -1 rather than
 // as 0, so a broken subject cannot pass as an empty one.
-test fn bare_nullary_variant_references_are_carried_by_the_parser_transport_holds() -> Bool {
+test fn bare_nullary_variant_references_are_carried_by_the_parser_transport_holds() -> Bool  {
   lexical_value_reference_count(source: subject_with_bare_variants) == 2
     && lexical_value_reference_count(source: subject_without_value_references) == 0
 }

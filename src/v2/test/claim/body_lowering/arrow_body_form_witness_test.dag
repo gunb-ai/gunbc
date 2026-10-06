@@ -140,7 +140,7 @@ fn abf_admitted_add_arrow_tree() -> Outcome<NormalizedTree> {
   admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: dag_add_arrow_with_body_node(), diagnostics: None)
 }
 
-test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
+test fn arrow_body_form_eval_value_vertical_holds() -> Bool  {
   let lm = dag_language_model()
   match arrow_body_form_zero_arrow_fixture() {
     Absent => false
@@ -168,7 +168,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
   }
 }
 
-test fn arrow_body_form_classify_direct_atom_holds() -> Bool {
+test fn arrow_body_form_classify_direct_atom_holds() -> Bool  {
   match classify_arrow_body_form(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
   ) {
@@ -177,7 +177,7 @@ test fn arrow_body_form_classify_direct_atom_holds() -> Bool {
   }
 }
 
-test fn arrow_body_form_classify_record_construct_holds() -> Bool {
+test fn arrow_body_form_classify_record_construct_holds() -> Bool  {
   match classify_arrow_body_form(
     target: node_synthetic(
       kind: TypeNode { connective: Conj },
@@ -194,7 +194,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
   }
 }
 
-test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
+test fn arrow_body_form_classify_computation_transform_holds() -> Bool  {
   match classify_arrow_body_form(
     target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
   ) {
@@ -212,14 +212,14 @@ fn arrow_body_form_fixture_function_value_body() -> Node {
   )
 }
 
-test fn arrow_body_form_classify_function_value_holds() -> Bool {
+test fn arrow_body_form_classify_function_value_holds() -> Bool  {
   match classify_arrow_body_form(target: arrow_body_form_fixture_function_value_body()) {
     FunctionValueBody => true
     _ => false
   }
 }
 
-test fn arrow_body_form_function_value_body_well_formed_holds() -> Bool {
+test fn arrow_body_form_function_value_body_well_formed_holds() -> Bool  {
   well_formed(n: arrow_body_form_fixture_arrow_with_body(body: arrow_body_form_fixture_function_value_body()))
     && well_formed(
       n: arrow_body_form_fixture_arrow_with_body(
@@ -228,7 +228,7 @@ test fn arrow_body_form_function_value_body_well_formed_holds() -> Bool {
     )
 }
 
-test fn arrow_body_form_ill_formed_inner_arrow_refused_well_formed_holds() -> Bool {
+test fn arrow_body_form_ill_formed_inner_arrow_refused_well_formed_holds() -> Bool  {
   !well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
       body: arrow_body_form_fixture_arrow_with_body(
@@ -238,27 +238,27 @@ test fn arrow_body_form_ill_formed_inner_arrow_refused_well_formed_holds() -> Bo
   )
 }
 
-test fn arrow_body_form_function_value_refused_eval_entry_holds() -> Bool {
+test fn arrow_body_form_function_value_refused_eval_entry_holds() -> Bool  {
   !arrow_body_admits_eval_entry(form: FunctionValueBody)
 }
 
 // THE MUTATION CONTROL: production admits a function-value body; the mirror with the
 // FunctionValueBody arm deleted refuses the same body.
-test fn arrow_body_form_function_value_body_admitted_structurally_holds() -> Bool {
+test fn arrow_body_form_function_value_body_admitted_structurally_holds() -> Bool  {
   arrow_body_form_admits_body_with_mirror(
     target: arrow_body_form_fixture_function_value_body(),
     mirror: ArrowBodyFormAdmissionProduction
   )
 }
 
-test fn arrow_body_form_RED_no_function_value_refuses_function_value_body_holds() -> Bool {
+test fn arrow_body_form_RED_no_function_value_refuses_function_value_body_holds() -> Bool  {
   !arrow_body_form_admits_body_with_mirror(
     target: arrow_body_form_fixture_function_value_body(),
     mirror: ArrowBodyFormAdmissionRedNoFunctionValueBody
   )
 }
 
-test fn arrow_body_form_classify_unsupported_holds() -> Bool {
+test fn arrow_body_form_classify_unsupported_holds() -> Bool  {
   match classify_arrow_body_form(
     target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
   ) {
@@ -267,7 +267,7 @@ test fn arrow_body_form_classify_unsupported_holds() -> Bool {
   }
 }
 
-test fn arrow_body_form_atom_arrow_well_formed_holds() -> Bool {
+test fn arrow_body_form_atom_arrow_well_formed_holds() -> Bool  {
   well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
       body: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
@@ -275,7 +275,7 @@ test fn arrow_body_form_atom_arrow_well_formed_holds() -> Bool {
   )
 }
 
-test fn arrow_body_form_unsupported_body_refused_well_formed_holds() -> Bool {
+test fn arrow_body_form_unsupported_body_refused_well_formed_holds() -> Bool  {
   !well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
       body: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
@@ -283,7 +283,7 @@ test fn arrow_body_form_unsupported_body_refused_well_formed_holds() -> Bool {
   )
 }
 
-test fn arrow_body_form_value_illegal_child_refused_well_formed_holds() -> Bool {
+test fn arrow_body_form_value_illegal_child_refused_well_formed_holds() -> Bool  {
   !well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
       body: node_synthetic(
@@ -294,61 +294,61 @@ test fn arrow_body_form_value_illegal_child_refused_well_formed_holds() -> Bool 
   )
 }
 
-test fn arrow_body_form_atom_body_admitted_structurally_holds() -> Bool {
+test fn arrow_body_form_atom_body_admitted_structurally_holds() -> Bool  {
   arrow_body_target_is_valid_realization(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
   )
 }
 
-test fn arrow_body_form_transform_body_admitted_structurally_holds() -> Bool {
+test fn arrow_body_form_transform_body_admitted_structurally_holds() -> Bool  {
   arrow_body_target_is_valid_realization(
     target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
   )
 }
 
-test fn arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds() -> Bool {
+test fn arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds() -> Bool  {
   !arrow_body_form_admits_body_with_mirror(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body),
     mirror: ArrowBodyFormAdmissionRedNoDirectAtom
   )
 }
 
-test fn arrow_body_form_RED_no_computation_refuses_transform_body_holds() -> Bool {
+test fn arrow_body_form_RED_no_computation_refuses_transform_body_holds() -> Bool  {
   !arrow_body_form_admits_body_with_mirror(
     target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: []),
     mirror: ArrowBodyFormAdmissionRedNoComputationBody
   )
 }
 
-test fn arrow_body_form_RED_no_computation_admits_atom_body_holds() -> Bool {
+test fn arrow_body_form_RED_no_computation_admits_atom_body_holds() -> Bool  {
   arrow_body_form_admits_body_with_mirror(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body),
     mirror: ArrowBodyFormAdmissionRedNoComputationBody
   )
 }
 
-test fn arrow_body_form_atom_admits_eval_entry_holds() -> Bool {
+test fn arrow_body_form_atom_admits_eval_entry_holds() -> Bool  {
   arrow_body_admits_eval_entry(form: DirectAtomBody)
 }
 
-test fn arrow_body_form_transform_admits_eval_entry_holds() -> Bool {
+test fn arrow_body_form_transform_admits_eval_entry_holds() -> Bool  {
   arrow_body_admits_eval_entry(form: ComputationBody { behavior: Transform })
 }
 
-test fn arrow_body_form_dispatch_behaviors_admit_eval_entry_holds() -> Bool {
+test fn arrow_body_form_dispatch_behaviors_admit_eval_entry_holds() -> Bool  {
   arrow_body_admits_eval_entry(form: ComputationBody { behavior: Branch })
     && arrow_body_admits_eval_entry(form: ComputationBody { behavior: Bind })
     && arrow_body_admits_eval_entry(form: ComputationBody { behavior: Loop })
 }
 
-test fn arrow_body_form_value_refused_eval_entry_holds() -> Bool {
+test fn arrow_body_form_value_refused_eval_entry_holds() -> Bool  {
   !arrow_body_admits_eval_entry(form: ComputationBody { behavior: Value })
     && !arrow_body_admits_eval_entry(form: ComputationBody { behavior: Match })
     && !arrow_body_admits_eval_entry(form: RecordConstructBody)
     && !arrow_body_admits_eval_entry(form: UnsupportedArrowBody)
 }
 
-test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool {
+test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool  {
   !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
     call: arrow_body_form_eval_nullary_call_node(
       callee: arrow_body_form_fixture_arrow_with_body(
@@ -358,7 +358,7 @@ test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool {
   )
 }
 
-test fn arrow_body_form_atom_body_admits_eval_through_call_holds() -> Bool {
+test fn arrow_body_form_atom_body_admits_eval_through_call_holds() -> Bool  {
   match arrow_body_form_eval_int_literal_optional(lexeme: "7") {
     Present { value: arg } =>
       arrow_body_form_eval_call_does_not_reject_unsupported_callee(
@@ -371,7 +371,7 @@ test fn arrow_body_form_atom_body_admits_eval_through_call_holds() -> Bool {
   }
 }
 
-test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool {
+test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool  {
   match arrow_body_form_eval_int_literal_optional(lexeme: "2") {
     Present { value: left } =>
       match arrow_body_form_eval_int_literal_optional(lexeme: "3") {
@@ -389,7 +389,7 @@ test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool 
   }
 }
 
-test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
+test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool  {
   match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
     Present { value: arg } =>
       !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
@@ -426,21 +426,21 @@ fn abf_reference_shaped_record() -> Node {
   )
 }
 
-test fn arrow_body_form_classify_declaration_reference_holds() -> Bool {
+test fn arrow_body_form_classify_declaration_reference_holds() -> Bool  {
   match classify_arrow_body_form(target: abf_declaration_reference()) {
     DeclarationReferenceBody => true
     _ => false
   }
 }
 
-test fn arrow_body_form_declaration_reference_arrow_well_formed_holds() -> Bool {
+test fn arrow_body_form_declaration_reference_arrow_well_formed_holds() -> Bool  {
   let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_declaration_reference())
   well_formed(n: arrow)
 }
 
 // THE MUTATION: the classifier with the arm deleted reads the reference as a record construct and
 // refuses it -- the fault the canary observed.
-test fn arrow_body_form_RED_no_declaration_reference_refuses_reference_body_holds() -> Bool {
+test fn arrow_body_form_RED_no_declaration_reference_refuses_reference_body_holds() -> Bool  {
   arrow_body_form_admits_body_with_mirror(
     target: abf_declaration_reference(),
     mirror: ArrowBodyFormAdmissionProduction
@@ -455,7 +455,7 @@ test fn arrow_body_form_RED_no_declaration_reference_refuses_reference_body_hold
 // a record construct whose first field does not target an Atom, and v2.std.node well_formed refuses
 // it itself -- so every gate that admits by well_formed refuses it, not only eval's (gunbc#12377
 // review 71638: with the label checked beside eval alone, the other gates admitted it).
-test fn arrow_body_form_reference_shape_without_marker_refused_holds() -> Bool {
+test fn arrow_body_form_reference_shape_without_marker_refused_holds() -> Bool  {
   let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record())
   (match classify_arrow_body_form(target: abf_reference_shaped_record()) {
     RecordConstructBody => true
@@ -470,7 +470,7 @@ fn abf_admitted_unmarked_reference_tree() -> Outcome<NormalizedTree> {
   admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record()), diagnostics: None)
 }
 
-test fn arrow_body_form_reference_shape_without_marker_refused_at_resolve_holds() -> Bool {
+test fn arrow_body_form_reference_shape_without_marker_refused_at_resolve_holds() -> Bool  {
   match abf_admitted_unmarked_reference_tree() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -481,6 +481,6 @@ test fn arrow_body_form_reference_shape_without_marker_refused_at_resolve_holds(
   }
 }
 
-test fn arrow_body_form_declaration_reference_not_an_eval_entry_holds() -> Bool {
+test fn arrow_body_form_declaration_reference_not_an_eval_entry_holds() -> Bool  {
   !arrow_body_admits_eval_entry(form: DeclarationReferenceBody)
 }

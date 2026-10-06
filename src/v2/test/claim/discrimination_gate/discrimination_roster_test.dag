@@ -91,7 +91,7 @@ data all_positive_control_unit: List<TestClaim> = [
   claim_within_structural_bound_passes
 ]
 
-test fn negative_control_correctly_rejected() -> Bool {
+test fn negative_control_correctly_rejected() -> Bool  {
   !unit_is_discriminating(unit: all_positive_control_unit)
 }
 
@@ -114,7 +114,7 @@ data non_perturbed_control_unit: List<TestClaim> = [
   non_perturbed_red_over_green_input
 ]
 
-test fn non_perturbed_control_correctly_rejected() -> Bool {
+test fn non_perturbed_control_correctly_rejected() -> Bool  {
   !unit_is_discriminating(unit: non_perturbed_control_unit)
 }
 
@@ -124,7 +124,7 @@ data mixed_input_non_perturbed_control_unit: List<TestClaim> = [
   non_perturbed_red_over_green_input
 ]
 
-test fn mixed_input_non_perturbed_control_correctly_rejected() -> Bool {
+test fn mixed_input_non_perturbed_control_correctly_rejected() -> Bool  {
   !unit_is_discriminating(unit: mixed_input_non_perturbed_control_unit)
 }
 

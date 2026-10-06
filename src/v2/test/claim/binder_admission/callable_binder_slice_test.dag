@@ -119,14 +119,14 @@ fn cbs_arrow_locals() -> Map<Symbol, Symbol> {
 
 // (1) THE ARROW PATH ADMITS BOTH BINDERS. So resolve's binder model is not the defect: a callable
 // whose domain carries Named binders opens a frame holding every one of them.
-test fn cbs_the_arrow_path_admits_both_binders_holds() -> Bool {
+test fn cbs_the_arrow_path_admits_both_binders_holds() -> Bool  {
   cbs_admits(locals: cbs_arrow_locals(), name: ^found)
     && cbs_admits(locals: cbs_arrow_locals(), name: ^e)
 }
 
 // (2) AND IT ADMITS ONLY WHAT THE DOMAIN DECLARES, so row (1) is not a function that answers true for
 // every name.
-test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
+test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool  {
   !cbs_admits(locals: cbs_arrow_locals(), name: ^unrelated)
 }
 
@@ -140,7 +140,7 @@ test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
 // THIS ROW FLIPS WHEN THE CONSOLIDATION LANDS: once the step lowers through the one callable Arrow
 // constructor and loop carriers go through the one binder-admission operation, the seam admits its
 // binders and this row must be rewritten to assert that, not deleted (DESIGN section 4b(4)).
-test fn cbs_the_fold_seam_admits_no_binder_today_holds() -> Bool {
+test fn cbs_the_fold_seam_admits_no_binder_today_holds() -> Bool  {
   let seam_locals = arrow_domain_frame_binders(
     n: cbs_carrier_loop(body: cbs_atom(id: ^step_body), carrier: ^found)
   ).locals
@@ -199,12 +199,12 @@ fn cbs_admitted_has(a: BinderAdmission, name: Symbol) -> Bool {
 
 // (4) A CARRIER IS ADMITTED. The positive control for the Loop repair: the name a fold seam carries
 // opens a frame instead of falling through to the global lookup.
-test fn cbs_a_loop_carrier_name_is_admitted_holds() -> Bool {
+test fn cbs_a_loop_carrier_name_is_admitted_holds() -> Bool  {
   cbs_admitted_has(a: admit_value_binders(names: [^found], outer: cbs_root_scope()), name: ^found)
 }
 
 // (5) SAME-FRAME DUPLICATES REFUSE.
-test fn cbs_a_same_frame_duplicate_refuses_holds() -> Bool {
+test fn cbs_a_same_frame_duplicate_refuses_holds() -> Bool  {
   match admit_value_binders(names: [^found, ^found], outer: cbs_root_scope()) {
     BinderDuplicateInFrame { binder: b } => b == ^found
     BindersAdmitted { locals: _ } => false
@@ -213,7 +213,7 @@ test fn cbs_a_same_frame_duplicate_refuses_holds() -> Bool {
 }
 
 // (6) A BINDER HIDING A VISIBLE VALUE BINDING REFUSES. `found` is already bound by an enclosing FRAME.
-test fn cbs_a_binder_hiding_an_enclosing_binder_refuses_holds() -> Bool {
+test fn cbs_a_binder_hiding_an_enclosing_binder_refuses_holds() -> Bool  {
   match admit_value_binders(names: [^found], outer: cbs_frame_binding(name: ^found)) {
     BinderHidesVisibleValue { binder: b } => b == ^found
     BindersAdmitted { locals: _ } => false
@@ -225,7 +225,7 @@ test fn cbs_a_binder_hiding_an_enclosing_binder_refuses_holds() -> Bool {
 // declarations elsewhere in the corpus from deciding whether a local binder is legal. This is the
 // discriminating negative for row (6): if the admission consulted the namespace rather than the lexical
 // frames, (6) and (7) would both refuse and the pair would establish nothing.
-test fn cbs_a_binder_spelled_like_a_root_declaration_is_admitted_holds() -> Bool {
+test fn cbs_a_binder_spelled_like_a_root_declaration_is_admitted_holds() -> Bool  {
   cbs_admitted_has(
     a: admit_value_binders(names: [^found], outer: cbs_root_scope_declaring(name: ^found)),
     name: ^found
@@ -278,7 +278,7 @@ fn cbs_walk_accepts(n: Node) -> Bool {
   }
 }
 
-test fn cbs_a_bare_loop_does_not_bind_its_carrier_holds() -> Bool {
+test fn cbs_a_bare_loop_does_not_bind_its_carrier_holds() -> Bool  {
   !cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found))
 }
 
@@ -294,7 +294,7 @@ test fn cbs_a_bare_loop_does_not_bind_its_carrier_holds() -> Bool {
 // Loop opens no frame" rather than "this Loop never resolves". That is the discriminating pair: the only
 // variable between them is whether something ABOVE the Loop binds the carrier, which is exactly what the
 // fold encoding's Bind now does.
-test fn cbs_a_loop_carrier_bound_above_resolves_holds() -> Bool {
+test fn cbs_a_loop_carrier_bound_above_resolves_holds() -> Bool  {
   match resolve_node_walk(
     ctx: cbs_ctx(scope: cbs_frame_binding(name: ^found)),
     n: cbs_carrier_loop(body: cbs_minted_atom(id: ^found), carrier: ^found)

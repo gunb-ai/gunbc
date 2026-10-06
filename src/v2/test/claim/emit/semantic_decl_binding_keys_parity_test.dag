@@ -35,7 +35,7 @@ fn binding_pair_matches(binding: Symbol) -> Bool {
   }
 }
 
-test fn all_bool_emit_bindings_match() -> Bool {
+test fn all_bool_emit_bindings_match() -> Bool  {
   binding_pair_matches(binding: ^rust_decl_derive_enum_copy_binding)
     && binding_pair_matches(binding: ^Bool)
     && binding_pair_matches(binding: ^True)

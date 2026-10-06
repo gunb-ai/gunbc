@@ -134,7 +134,7 @@ fn emc_text_matches(n: Int, golden: String) -> Bool {
   }
 }
 
-test fn emc_production_text_is_byte_identical_to_repeated_append_holds() -> Bool {
+test fn emc_production_text_is_byte_identical_to_repeated_append_holds() -> Bool  {
   emc_text_equals_reference(n: 0)
     && emc_text_equals_reference(n: 1)
     && emc_text_equals_reference(n: 2)
@@ -145,7 +145,7 @@ test fn emc_production_text_is_byte_identical_to_repeated_append_holds() -> Bool
 // the empty string (no leading or trailing separator), and a one-declaration module is the
 // declaration text followed by exactly one separator -- so a golden that adds or drops a separator
 // is refused. Without this, the equality specimen could be green over two identically-broken folds.
-test fn emc_separator_placement_discriminates_holds() -> Bool {
+test fn emc_separator_placement_discriminates_holds() -> Bool  {
   emc_text_matches(n: 0, golden: "")
     && !emc_text_matches(n: 0, golden: emit_module_decl_separator)
     && emc_text_matches(n: 1, golden: emc_expected_one())
@@ -203,7 +203,7 @@ fn emc_arm_count(n: Int, arm: String) -> Int {
 
 // A two-declaration module: one root composition plus one composition per declaration, one
 // authored separator per declaration, one unobserved emit fragment per declaration.
-test fn emc_all_three_arms_are_constructed_by_the_emitter_holds() -> Bool {
+test fn emc_all_three_arms_are_constructed_by_the_emitter_holds() -> Bool  {
   (emc_arm_count(n: 2, arm: emc_arm_composition) == 3)
     && (emc_arm_count(n: 2, arm: emc_arm_authored) == 2)
     && (emc_arm_count(n: 2, arm: emc_arm_unobserved) == 2)
@@ -227,7 +227,7 @@ fn emc_read_source_matches(n: Int) -> Bool {
   }
 }
 
-test fn emc_read_materializes_the_emitted_source_holds() -> Bool {
+test fn emc_read_materializes_the_emitted_source_holds() -> Bool  {
   emc_read_source_matches(n: 0)
     && emc_read_source_matches(n: 1)
     && emc_read_source_matches(n: 2)
@@ -280,7 +280,7 @@ fn emc_unobserved_producers(n: Int) -> Int {
 // The origin metadata is the point of the carrier, not decoration: a module whose declarations
 // were emitted through v2.compiler.emit reads back INCOMPLETE, naming that producer once per
 // declaration, while a module with no declarations observes its own root origin and nothing else.
-test fn emc_origins_locate_the_unobserved_producer_holds() -> Bool {
+test fn emc_origins_locate_the_unobserved_producer_holds() -> Bool  {
   emc_origins_are_incomplete(n: 2)
     && (emc_unobserved_producers(n: 2) == 2)
     && emc_origins_are_incomplete(n: 1)

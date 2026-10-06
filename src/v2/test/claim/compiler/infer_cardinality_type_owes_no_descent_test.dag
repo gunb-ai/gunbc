@@ -54,7 +54,7 @@ fn cod_loop(measure: Symbol) -> Node {
 
 // The control that must not move: a Loop whose measure carries no descent fact still refuses,
 // and refuses FOR descent.
-test fn infer_loop_without_descent_fact_still_refuses_for_descent_holds() -> Bool {
+test fn infer_loop_without_descent_fact_still_refuses_for_descent_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: cod_loop(measure: ^cod_unregistered_measure))) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>

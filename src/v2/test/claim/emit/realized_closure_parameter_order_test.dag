@@ -105,17 +105,17 @@ fn rcp_ordered(arrow: Node) -> Bool {
   }
 }
 
-test fn a_returned_closure_emits_its_parameters_in_declared_order() -> Bool {
+test fn a_returned_closure_emits_its_parameters_in_declared_order() -> Bool  {
   rcp_ordered(arrow: rcp_closure())
 }
 
-test fn a_domain_canonicalized_closure_emits_the_same_parameter_order() -> Bool {
+test fn a_domain_canonicalized_closure_emits_the_same_parameter_order() -> Bool  {
   rcp_ordered(arrow: rcp_canonical_domain(arrow: rcp_closure()))
 }
 
 // THE MUTATION THIS DISCRIMINATES: the stored-order fold over the canonical domain is NOT the declared
 // order, so a reader restoring it would fail the claim above.
-test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
+test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool  {
   !rcp_is_z_then_a(xs: arrow_domain_binder_names(arrow: rcp_canonical_domain(arrow: rcp_closure())))
 }
 
@@ -124,7 +124,7 @@ test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
 // arrow_signature_edges_conform), and the closure realization refuses with the malformed reason --
 // earlier than the order-ABSENT refusal it reached before A4. The claim pins the wall's answer and
 // the typed refusal, and still reds if the order-less closure is ever realized.
-test fn a_closure_with_named_parameters_and_no_order_refuses_typed() -> Bool {
+test fn a_closure_with_named_parameters_and_no_order_refuses_typed() -> Bool  {
   let stripped = rcp_without_order(arrow: rcp_closure())
   match arrow_declared_parameter_order(arrow: stripped) {
     ArrowParameterOrderMalformed =>

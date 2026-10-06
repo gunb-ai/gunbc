@@ -28,6 +28,6 @@ fn roadmap_launch_canary_sentinel_completed(value: String) -> Bool {
   value == roadmap_launch_canary_expected_sentinel()
 }
 
-test fn roadmap_launch_canary_oracle_completed() -> Bool {
+test fn roadmap_launch_canary_oracle_completed() -> Bool  {
   roadmap_launch_canary_sentinel_completed(value: roadmap_launch_canary_sentinel as String)
 }

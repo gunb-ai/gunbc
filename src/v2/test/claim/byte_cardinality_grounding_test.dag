@@ -34,10 +34,10 @@ fn is_rejected(o: Outcome<Byte>) -> Bool {
   }
 }
 
-test fn byte_grounding_accepts_8_bits() -> Bool {
+test fn byte_grounding_accepts_8_bits() -> Bool  {
   is_accepted(o: byte_from_bits(bits: eight_bits(), at: byte_locus()))
 }
 
-test fn byte_grounding_rejects_7_bits() -> Bool {
+test fn byte_grounding_rejects_7_bits() -> Bool  {
   is_rejected(o: byte_from_bits(bits: seven_bits(), at: byte_locus()))
 }

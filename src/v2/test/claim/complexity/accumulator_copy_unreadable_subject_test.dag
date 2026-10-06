@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // This witness fails on the pre-fix build with a runtime error rather than a false, which is the
 // discrimination: it cannot pass by accident, and it cannot pass while the read is untyped.
-test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool {
+test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool  {
   match file_gate_disposition(
     path: "src/v2/workflow/this_path_is_deliberately_absent.dag",
     refusal_ceiling: 0
@@ -62,7 +62,7 @@ test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool {
 // point a_readable_subject_still_reaches_the_lens in
 // v2.lens.complexity_accumulator_copy.corpus_census, priced with the rest of the ingest-bound
 // evidence and carrying the same trigger.
-test fn a_present_subject_is_read_rather_than_refused() -> Bool {
+test fn a_present_subject_is_read_rather_than_refused() -> Bool  {
   let read = Filesystem.Read(path: "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag")
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadSucceeded { content: _ } => true

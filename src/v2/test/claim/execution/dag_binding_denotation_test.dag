@@ -124,7 +124,7 @@ fn binding_denotation_census(inferred: InferredTree) -> BindingDenotationCensus 
   )
 }
 
-test fn dag_binding_denotation_derives_int_binding_atoms_holds() -> Bool {
+test fn dag_binding_denotation_derives_int_binding_atoms_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -133,7 +133,7 @@ test fn dag_binding_denotation_derives_int_binding_atoms_holds() -> Bool {
   }
 }
 
-test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds() -> Bool {
+test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds() -> Bool  {
   match dag_binding_denotation(sym: ^x) {
     Present { value: _ } => false
     Absent =>
@@ -144,7 +144,7 @@ test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds
   }
 }
 
-test fn dag_binding_denotation_rows_point_at_std_authorities_holds() -> Bool {
+test fn dag_binding_denotation_rows_point_at_std_authorities_holds() -> Bool  {
   (dag_binding_denotation(sym: dag_int_type_binding()) == Present { value: integer_int_type_node() })
     && (dag_binding_denotation(sym: ^bool_node_symbol) == Present { value: bool_node() })
 }

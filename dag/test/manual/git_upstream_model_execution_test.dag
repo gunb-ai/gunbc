@@ -686,7 +686,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
   }
 }
 
-test fn witness_git_cli_fixture_hashes_projects_and_independently_reads_back() -> Bool {
+test fn witness_git_cli_fixture_hashes_projects_and_independently_reads_back() -> Bool  {
   match git_r0_typed_execution_read_back() {
     GitR0LiveFixtureObserved {
       outcome: GitReadBackVerified { observation },

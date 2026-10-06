@@ -84,7 +84,7 @@ fn complement_family_test_store() -> ArtifactStore {
   }
 }
 
-test fn emit_on_demand_complement_grain_keys_differ_holds() -> Bool {
+test fn emit_on_demand_complement_grain_keys_differ_holds() -> Bool  {
   let digest = inferred_tree_digest(tree: complement_family_primary_tree())
   let source = emit_on_demand_key(
     closure_digest: digest,
@@ -101,7 +101,7 @@ test fn emit_on_demand_complement_grain_keys_differ_holds() -> Bool {
   (source == native) == false
 }
 
-test fn emit_on_demand_complement_materialize_recompute_on_miss_holds() -> Bool {
+test fn emit_on_demand_complement_materialize_recompute_on_miss_holds() -> Bool  {
   let lookup = emit_on_demand_lookup(
     store: complement_family_test_store(),
     key: complement_family_native_key_for(tree: complement_family_primary_tree())
@@ -112,11 +112,11 @@ test fn emit_on_demand_complement_materialize_recompute_on_miss_holds() -> Bool 
   }
 }
 
-test fn emit_on_demand_complement_interpreter_roles_bounded_holds() -> Bool {
+test fn emit_on_demand_complement_interpreter_roles_bounded_holds() -> Bool  {
   interpreter_surviving_roles_bounded()
 }
 
-test fn emit_on_demand_complement_schedule_refuses_unreadable_budget_holds() -> Bool {
+test fn emit_on_demand_complement_schedule_refuses_unreadable_budget_holds() -> Bool  {
   let tree = complement_family_primary_tree()
   match witness_family_realize_width(
     bound_bytes: byte_size(count: 25),
@@ -130,11 +130,11 @@ test fn emit_on_demand_complement_schedule_refuses_unreadable_budget_holds() -> 
   }
 }
 
-test fn emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds() -> Bool {
+test fn emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds() -> Bool  {
   (complement_family_native_key_for(tree: complement_family_primary_tree()) == complement_family_native_key_for(tree: complement_family_alt_tree())) == false
 }
 
-test fn emit_on_demand_complement_materialize_share_on_hit_holds() -> Bool {
+test fn emit_on_demand_complement_materialize_share_on_hit_holds() -> Bool  {
   let tree = complement_family_primary_tree()
   let key = complement_family_native_key_for(tree: tree)
   store_put_fold(

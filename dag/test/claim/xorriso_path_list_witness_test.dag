@@ -30,7 +30,7 @@ fn count_word(words: List<String>, w: String) -> Int {
   count(flat_map(words, x => if x == w { [x] } else { [] }))
 }
 
-test fn every_path_list_verb_ends_with_the_terminator() -> Bool {
+test fn every_path_list_verb_ends_with_the_terminator() -> Bool  {
   let chown = xorriso_path_list_words(command: XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: 0 }, first_path: "/a", more_paths: ["/b"] })
   let chgrp = xorriso_path_list_words(command: XorrisoPathListCommand { verb: XorrisoChgrpRecursive { gid: 0 }, first_path: "/a", more_paths: [] })
   let chmod = xorriso_path_list_words(command: XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: "0644" }, first_path: "/a", more_paths: ["/b", "/c"] })
@@ -40,7 +40,7 @@ test fn every_path_list_verb_ends_with_the_terminator() -> Bool {
 }
 
 // THE REPLAY WITH PINS: each pin closed, the date commands after the pins, -commit last.
-test fn the_replay_with_pins_keeps_commit_last_and_closes_every_pin() -> Bool {
+test fn the_replay_with_pins_keeps_commit_last_and_closes_every_pin() -> Bool  {
   let pins = [
     XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: 0 }, first_path: "/seed", more_paths: ["/boot/grub/grub.cfg"] },
     XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: "0755" }, first_path: "/seed", more_paths: [] },
@@ -56,13 +56,13 @@ test fn the_replay_with_pins_keeps_commit_last_and_closes_every_pin() -> Bool {
     && count_word(words: words, w: "-volume_date") == 2
 }
 
-test fn the_long_listing_is_closed_too() -> Bool {
+test fn the_long_listing_is_closed_too() -> Bool  {
   last_word(words: argv_words(command: xorriso_list_long_command(iso_path: "/s.iso", first_path: "/gunbc-census", more_paths: ["/boot/grub/grub.cfg"]))) == "--"
 }
 
 // THE CENSUS PINS NAME THE MAPPED MEMBERS: owner and group over the seed dir and grub.cfg, 0644 on each
 // seed file and grub.cfg, 0755 on the seed dir.
-test fn the_census_pins_cover_every_mapped_member() -> Bool {
+test fn the_census_pins_cover_every_mapped_member() -> Bool  {
   match mtcollins1_census_image {
     Mtcollins1CensusImageRefused { reason: _ } => false
     Mtcollins1CensusImageDerived { input: i } => {
@@ -79,7 +79,7 @@ test fn the_census_pins_cover_every_mapped_member() -> Bool {
 
 // A NESTED seed dir (srv3's nocloud/<host>): owner and group are pinned from the topmost level -map
 // creates (/nocloud, which would otherwise carry the build user), and every level gets a mode.
-test fn nested_seed_directories_pin_owner_from_the_top_and_mode_on_every_level() -> Bool {
+test fn nested_seed_directories_pin_owner_from_the_top_and_mode_on_every_level() -> Bool  {
   match mtcollins1_census_image {
     Mtcollins1CensusImageRefused { reason: _ } => false
     Mtcollins1CensusImageDerived { input: i } => {

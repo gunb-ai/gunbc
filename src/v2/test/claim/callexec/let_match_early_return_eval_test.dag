@@ -178,11 +178,11 @@ fn lmee_refused_at_infer_grounding(x: LmeeResult) -> Bool {
 }
 
 // FLIPS to lmee_both_execute_to(r: lmee_exit_path(), want: 7) when grounding is derived.
-test fn the_exit_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding() -> Bool {
+test fn the_exit_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding() -> Bool  {
   lmee_both_refuse_at_infer_grounding(r: lmee_exit_path())
 }
 
 // FLIPS to lmee_both_execute_to(r: lmee_binding_path(), want: 6) when grounding is derived.
-test fn the_binding_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding() -> Bool {
+test fn the_binding_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding() -> Bool  {
   lmee_both_refuse_at_infer_grounding(r: lmee_binding_path())
 }

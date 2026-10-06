@@ -176,7 +176,7 @@ fn operation_locus_is(
   }
 }
 
-test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier() -> Bool {
+test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier() -> Bool  {
   let plan = fail_fast_plan(
     steps: [
       Do { effect: test_path_invocation(operation: "IsExecutable", path: "/bin/sh") },
@@ -195,7 +195,7 @@ test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier
   )
 }
 
-test fn effect_plan_bash_host_env_executable_replaces_declaration_literal_argv0() -> Bool {
+test fn effect_plan_bash_host_env_executable_replaces_declaration_literal_argv0() -> Bool  {
   let plan = one_step_plan(
     inv: bash_bind_operation_invocation_host_env_executable(
       at: operation_ref(
@@ -218,7 +218,7 @@ test fn effect_plan_bash_host_env_executable_replaces_declaration_literal_argv0(
   )
 }
 
-test fn effect_plan_bash_operation_and_input_perturbations_change_emitted_bytes() -> Bool {
+test fn effect_plan_bash_operation_and_input_perturbations_change_emitted_bytes() -> Bool  {
   let uid = one_step_plan(inv: id_invocation(operation: "Uid"))
   let gid = one_step_plan(inv: id_invocation(operation: "Gid"))
   let different_ref = one_step_plan(inv: test_path_invocation(operation: "IsExecutable", path: "/bin/sh"))
@@ -245,7 +245,7 @@ test fn effect_plan_bash_operation_and_input_perturbations_change_emitted_bytes(
     )
 }
 
-test fn effect_plan_bash_metacharacters_and_newline_remain_one_quoted_word() -> Bool {
+test fn effect_plan_bash_metacharacters_and_newline_remain_one_quoted_word() -> Bool  {
   let metachar = one_step_plan(inv: test_path_invocation(
     operation: "IsFile",
     path: "/tmp/a;$(printf PWN)*'tail"
@@ -270,7 +270,7 @@ test fn effect_plan_bash_metacharacters_and_newline_remain_one_quoted_word() -> 
 // text, no longer matches this real NUL, and this witness reds. Rewriting the guard pattern to
 // from_code_point would make both sides share a constructor and remove this discrimination.
 
-test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
+test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool  {
   let nul = from_code_point(cp: 0)
   let third_argument = effect_plan_bash_materialize(plan: one_step_plan(inv: test_path_invocation(
     operation: "IsFile",
@@ -324,7 +324,7 @@ test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
   third_holds && second_holds && literal_escape_text_is_not_nul
 }
 
-test fn effect_plan_bash_RED_missing_operation_is_typed_and_located() -> Bool {
+test fn effect_plan_bash_RED_missing_operation_is_typed_and_located() -> Bool  {
   match effect_plan_bash_materialize(plan: one_step_plan(inv: invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.Id",
@@ -347,7 +347,7 @@ test fn effect_plan_bash_RED_missing_operation_is_typed_and_located() -> Bool {
   }
 }
 
-test fn effect_plan_bash_RED_reference_perturbation_refuses_instead_of_falling_back() -> Bool {
+test fn effect_plan_bash_RED_reference_perturbation_refuses_instead_of_falling_back() -> Bool  {
   match effect_plan_bash_materialize(plan: one_step_plan(inv: invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.WrongId",
@@ -370,7 +370,7 @@ test fn effect_plan_bash_RED_reference_perturbation_refuses_instead_of_falling_b
   }
 }
 
-test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminate() -> Bool {
+test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminate() -> Bool  {
   let undeclared = effect_plan_bash_materialize(plan: one_step_plan(inv: show_property_invocation(bindings: [
     operation_argv_bind_text(name: "unit", text: "gunbc.service"),
     operation_argv_bind_text(name: "property", text: "ActiveState"),
@@ -432,7 +432,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
   undeclared_holds && duplicate_holds && unbound_holds
 }
 
-test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_locus() -> Bool {
+test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_locus() -> Bool  {
   let plan = one_step_plan(inv: invocation(
     path: "dag/extdeps/git/git.dag",
     service: "git.Core",
@@ -462,7 +462,7 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
   }
 }
 
-test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool {
+test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool  {
   match effect_plan_bash_materialize(plan: EffectPlan {
     steps: [Do { effect: id_invocation(operation: "Uid") }],
     on_failure: Continue
@@ -500,7 +500,7 @@ fn unsupported_step_refuses(
 
 // For, While and Retry are the arms nothing demands; they keep refusing with their unchanged
 // causes, and this control pins that the If/Let/Call climb did not widen to them.
-test fn effect_plan_bash_RED_for_while_retry_still_refuse_with_unchanged_causes() -> Bool {
+test fn effect_plan_bash_RED_for_while_retry_still_refuse_with_unchanged_causes() -> Bool  {
   let predicate = StrEq { lhs: "a", rhs: "a" }
   unsupported_step_refuses(
     step: For { binder: ^item, over: ModeledList { items: Empty }, body: empty_plan() },
@@ -536,7 +536,7 @@ fn call_plan(callee: String, args: List<String>) -> EffectPlan<BashBoundOperatio
   fail_fast_plan(steps: [call_step(callee: callee, args: args)])
 }
 
-test fn effect_plan_bash_if_let_call_no_longer_refuse_as_unsupported() -> Bool {
+test fn effect_plan_bash_if_let_call_no_longer_refuse_as_unsupported() -> Bool  {
   step_materializes(
     step: If {
       cond: StrEq { lhs: "a", rhs: "a" },
@@ -564,7 +564,7 @@ fn refuses_at_step_with(
 
 // ---- Let ----
 
-test fn effect_plan_bash_let_lit_var_and_cmdsubst_emit_through_the_assign_rows() -> Bool {
+test fn effect_plan_bash_let_lit_var_and_cmdsubst_emit_through_the_assign_rows() -> Bool  {
   emitted_source_is(
     plan: fail_fast_plan(steps: [
       Let { name: "TOOL", value: ExprLit { spelling: "id" } },
@@ -575,7 +575,7 @@ test fn effect_plan_bash_let_lit_var_and_cmdsubst_emit_through_the_assign_rows()
   )
 }
 
-test fn effect_plan_bash_let_value_with_shell_metacharacters_round_trips_quoted() -> Bool {
+test fn effect_plan_bash_let_value_with_shell_metacharacters_round_trips_quoted() -> Bool  {
   emitted_source_is(
     plan: fail_fast_plan(steps: [
       Let { name: "V", value: ExprLit { spelling: "a'b; $(id) `id` \"x\" \\" } }
@@ -584,7 +584,7 @@ test fn effect_plan_bash_let_value_with_shell_metacharacters_round_trips_quoted(
   )
 }
 
-test fn effect_plan_bash_RED_let_name_that_is_not_a_shell_name_refuses() -> Bool {
+test fn effect_plan_bash_RED_let_name_that_is_not_a_shell_name_refuses() -> Bool  {
   refuses_at_step_with(
     plan: fail_fast_plan(steps: [
       Let { name: "X; id", value: ExprLit { spelling: "v" } }
@@ -623,7 +623,7 @@ test fn effect_plan_bash_RED_let_name_that_is_not_a_shell_name_refuses() -> Bool
     )
 }
 
-test fn effect_plan_bash_RED_let_value_with_nul_refuses_typed() -> Bool {
+test fn effect_plan_bash_RED_let_value_with_nul_refuses_typed() -> Bool  {
   refuses_at_step_with(
     plan: fail_fast_plan(steps: [
       Do { effect: id_invocation(operation: "Uid") },
@@ -653,21 +653,21 @@ test fn effect_plan_bash_RED_let_value_with_nul_refuses_typed() -> Bool {
 
 // ---- Call ----
 
-test fn effect_plan_bash_call_emits_the_command_row_with_every_arg_one_quoted_word() -> Bool {
+test fn effect_plan_bash_call_emits_the_command_row_with_every_arg_one_quoted_word() -> Bool  {
   emitted_source_is(
     plan: call_plan(callee: "run_one", args: ["dag/x.dag", "f g"]),
     expected: "'run_one' 'dag/x.dag' 'f g'"
   )
 }
 
-test fn effect_plan_bash_call_arg_with_shell_metacharacters_round_trips_quoted() -> Bool {
+test fn effect_plan_bash_call_arg_with_shell_metacharacters_round_trips_quoted() -> Bool  {
   emitted_source_is(
     plan: call_plan(callee: "printf", args: ["%s", "a; $(id) `id` | x > y"]),
     expected: "'printf' '%s' 'a; $(id) `id` | x > y'"
   )
 }
 
-test fn effect_plan_bash_RED_call_callee_is_a_name_never_a_command_line() -> Bool {
+test fn effect_plan_bash_RED_call_callee_is_a_name_never_a_command_line() -> Bool  {
   emitted_source_is(
     plan: call_plan(callee: "id -u; printf PWN", args: []),
     expected: "'id -u; printf PWN'"
@@ -704,7 +704,7 @@ fn else_plan() -> EffectPlan<BashBoundOperationInvocation> {
   call_plan(callee: "printf", args: ["else"])
 }
 
-test fn effect_plan_bash_if_comparison_predicates_emit_through_the_test_bracket_and_if_rows() -> Bool {
+test fn effect_plan_bash_if_comparison_predicates_emit_through_the_test_bracket_and_if_rows() -> Bool  {
   emitted_source_is(
     plan: fail_fast_plan(steps: [
       If { cond: StrEq { lhs: "a", rhs: "b" }, then_: then_plan(), else_: Absent }
@@ -731,7 +731,7 @@ test fn effect_plan_bash_if_comparison_predicates_emit_through_the_test_bracket_
     )
 }
 
-test fn effect_plan_bash_if_not_and_or_compose_through_the_grammar_operators() -> Bool {
+test fn effect_plan_bash_if_not_and_or_compose_through_the_grammar_operators() -> Bool  {
   emitted_source_is(
     plan: fail_fast_plan(steps: [
       If {
@@ -764,7 +764,7 @@ test fn effect_plan_bash_if_not_and_or_compose_through_the_grammar_operators() -
     )
 }
 
-test fn effect_plan_bash_if_branch_is_the_same_fail_fast_fold_and_sequences_with_neighbours() -> Bool {
+test fn effect_plan_bash_if_branch_is_the_same_fail_fast_fold_and_sequences_with_neighbours() -> Bool  {
   emitted_source_is(
     plan: fail_fast_plan(steps: [
       Let { name: "X", value: ExprLit { spelling: "1" } },
@@ -782,7 +782,7 @@ test fn effect_plan_bash_if_branch_is_the_same_fail_fast_fold_and_sequences_with
   )
 }
 
-test fn effect_plan_bash_if_operand_with_metacharacters_is_one_quoted_word() -> Bool {
+test fn effect_plan_bash_if_operand_with_metacharacters_is_one_quoted_word() -> Bool  {
   emitted_source_is(
     plan: fail_fast_plan(steps: [
       If {
@@ -795,7 +795,7 @@ test fn effect_plan_bash_if_operand_with_metacharacters_is_one_quoted_word() -> 
   )
 }
 
-test fn effect_plan_bash_RED_if_operand_carrying_shell_spelling_refuses_not_quotes() -> Bool {
+test fn effect_plan_bash_RED_if_operand_carrying_shell_spelling_refuses_not_quotes() -> Bool  {
   let then_ = then_plan()
   refuses_at_step_with(
     plan: fail_fast_plan(steps: [
@@ -848,7 +848,7 @@ test fn effect_plan_bash_RED_if_operand_carrying_shell_spelling_refuses_not_quot
     )
 }
 
-test fn effect_plan_bash_RED_int_ne_non_integer_literal_refuses() -> Bool {
+test fn effect_plan_bash_RED_int_ne_non_integer_literal_refuses() -> Bool  {
   refuses_at_step_with(
     plan: fail_fast_plan(steps: [
       If { cond: IntNe { lhs: "a", rhs: "1" }, then_: then_plan(), else_: Absent }
@@ -875,7 +875,7 @@ test fn effect_plan_bash_RED_int_ne_non_integer_literal_refuses() -> Bool {
     )
 }
 
-test fn effect_plan_bash_RED_exit_zero_and_log_matches_predicates_refuse_typed() -> Bool {
+test fn effect_plan_bash_RED_exit_zero_and_log_matches_predicates_refuse_typed() -> Bool  {
   refuses_at_step_with(
     plan: fail_fast_plan(steps: [
       If {
@@ -910,7 +910,7 @@ test fn effect_plan_bash_RED_exit_zero_and_log_matches_predicates_refuse_typed()
     )
 }
 
-test fn effect_plan_bash_RED_if_branches_refuse_when_empty_or_refused_inside() -> Bool {
+test fn effect_plan_bash_RED_if_branches_refuse_when_empty_or_refused_inside() -> Bool  {
   refuses_at_step_with(
     plan: fail_fast_plan(steps: [
       If { cond: StrEq { lhs: "a", rhs: "a" }, then_: empty_plan(), else_: Absent }
@@ -962,7 +962,7 @@ test fn effect_plan_bash_RED_if_branches_refuse_when_empty_or_refused_inside() -
     )
 }
 
-test fn effect_plan_bash_new_refusal_arms_render_totally() -> Bool {
+test fn effect_plan_bash_new_refusal_arms_render_totally() -> Bool  {
   match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [
     If {
       cond: StrEq { lhs: "a", rhs: "a" },
@@ -980,6 +980,6 @@ test fn effect_plan_bash_new_refusal_arms_render_totally() -> Bool {
   }
 }
 
-test fn effect_plan_bash_empty_fail_fast_plan_is_total() -> Bool {
+test fn effect_plan_bash_empty_fail_fast_plan_is_total() -> Bool  {
   emitted_source_is(plan: empty_plan(), expected: "")
 }

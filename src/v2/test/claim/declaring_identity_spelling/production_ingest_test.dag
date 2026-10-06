@@ -277,14 +277,14 @@ fn authored_is(census: DeclaringIdentitySpellingCensus, spelling: String) -> Boo
   )
 }
 
-test fn value_outside_call_ingests_holds() -> Bool {
+test fn value_outside_call_ingests_holds() -> Bool  {
   match census_of(path: value_outside_call_path, unit: ^xl3_value_outside_call) {
     Present { value: census } => census_unreadable_roots_empty(census: census)
     Absent => false
   }
 }
 
-test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool {
+test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool  {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
@@ -297,7 +297,7 @@ test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool {
 // CONTROL: the enrolled two-module provenance witness binds a same-module name
 // on resolve_reference_provenance. If this is green, IdentityUnbound on the
 // ingest census is not "v2 cannot compile a local name".
-test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool {
+test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool  {
   match resolve_reference_provenance(
     index: cfp_index,
     roster: cfp_roster,
@@ -342,7 +342,7 @@ fn marker_site_fill_lookup_is_present(roots: FreeMonoid<ModuleBindingSource>) ->
 // INDEX-PATH ONLY, not a fact about 03_resolve. Parser-keyed fill lookup at the
 // collector site's position. Green means fill never inserted `marker`; that is
 // the step that makes the census row IdentityUnbound.
-test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
+test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool  {
   match value_outside_call_roots() {
     Present { value: roots } => !marker_site_fill_lookup_is_present(roots: roots)
     Absent => false
@@ -352,7 +352,7 @@ test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
 // FLIPPED 2026-09-19 (DESIGN 4b(4)): `marker` is a data declaration of the same module;
 // while the graft Named only fn declarations its mention in `go()` stayed IdentityUnbound.
 // gunbc#11574 Names data declarations, so the mention binds. Permanent control.
-test fn a_bare_value_mention_outside_a_call_is_bound_holds() -> Bool {
+test fn a_bare_value_mention_outside_a_call_is_bound_holds() -> Bool  {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
@@ -366,7 +366,7 @@ test fn a_bare_value_mention_outside_a_call_is_bound_holds() -> Bool {
 
 // BARE type name in PARAMETER position (fixture 1: `x: Marker`). Reaches.
 // "Type position" is too coarse: a bare FIELD type does not reach.
-test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
+test fn a_user_type_position_name_reaches_the_census_today() -> Bool  {
   match census_of(
     path: shorter_path,
     unit: ^xl3_shorter
@@ -376,7 +376,7 @@ test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
   }
 }
 
-test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
+test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool  {
   match census_of(
     path: unresolvable_path,
     unit: ^xl3_unresolvable
@@ -387,7 +387,7 @@ test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
   }
 }
 
-test fn a_callee_name_reaches_the_census_holds() -> Bool {
+test fn a_callee_name_reaches_the_census_holds() -> Bool  {
   match census_of(
     path: call_only_path,
     unit: ^xl3_call_only
@@ -404,7 +404,7 @@ test fn a_callee_name_reaches_the_census_holds() -> Bool {
 // data declaration's own type position (`data marker: Int`) once gunbc#11574 Names the
 // data declaration at its content (the `: Int = 0` remainder). Before, the data shell was
 // not a graft member and its type annotation reached no collector. Permanent control.
-test fn a_kernel_type_position_name_reaches_the_census_holds() -> Bool {
+test fn a_kernel_type_position_name_reaches_the_census_holds() -> Bool  {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
@@ -426,14 +426,14 @@ fn matched_census() -> Optional<DeclaringIdentitySpellingCensus> {
 // Same module, no call. User type_only in PARAMETER position REACHES. Imported
 // Bool as a census-row spelling may still be absent here; that is not a collector
 // parameter-type miss and is not a reason to hold fixtures 1-3.
-test fn matched_value_only_mention_reaches_the_census_today() -> Bool {
+test fn matched_value_only_mention_reaches_the_census_today() -> Bool  {
   match matched_census() {
     Present { value: census } => authored_is(census: census, spelling: "value_only")
     Absent => false
   }
 }
 
-test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
+test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool  {
   match matched_census() {
     Present { value: census } => authored_is(census: census, spelling: "type_only")
     Absent => false
@@ -446,7 +446,7 @@ test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
 // Attributed (read from source, not bisected) to gunbc#12598, which reads the param binder role
 // through body lowering's readers, so a parameter type reaches the census by the route every other
 // type position takes. Permanent control: deleting that route makes it red.
-test fn matched_imported_kernel_type_position_reaches_the_census_holds() -> Bool {
+test fn matched_imported_kernel_type_position_reaches_the_census_holds() -> Bool  {
   match matched_census() {
     Present { value: census } =>
       authored_is(census: census, spelling: "value_only")
@@ -478,7 +478,7 @@ fn two_module_usable_class_probe(census: DeclaringIdentitySpellingCensus) -> Boo
 // and a data declaration is not yet grafted into the containment tree, so the
 // row today is UnresolvableSpelling / IdentityUnbound. That binding fact has
 // its own trigger (declaration grafting) and is not asserted either way here.
-test fn a_qualified_cross_module_mention_reaches_the_census_holds() -> Bool {
+test fn a_qualified_cross_module_mention_reaches_the_census_holds() -> Bool  {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
@@ -491,7 +491,7 @@ test fn a_qualified_cross_module_mention_reaches_the_census_holds() -> Bool {
 // row, and it flipped with it: a multi-segment qualified name in parameter
 // position now lowers to the same spine a body chain does. Bare LocalParam is
 // the control beside it.
-test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool {
+test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool  {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
@@ -511,7 +511,7 @@ test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool {
 // body_lower_type_expr_lowered_optional a parameter type is. So this is now a conserved control:
 // deleting that route makes it red. LocalParam is the positive control, as above; whether the
 // mention BINDS is the second fact the rows above leave to their own trigger.
-test fn a_qualified_field_type_mention_reaches_the_census_holds() -> Bool {
+test fn a_qualified_field_type_mention_reaches_the_census_holds() -> Bool  {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
@@ -529,7 +529,7 @@ fn field_vs_parameter_census() -> Optional<DeclaringIdentitySpellingCensus> {
 
 // SAME ingest, BARE names, no dots. Residual reconstruct keeps the field type
 // spelling in the census the way the tree keeps it.
-test fn a_bare_parameter_type_reaches_and_a_bare_field_type_does_too() -> Bool {
+test fn a_bare_parameter_type_reaches_and_a_bare_field_type_does_too() -> Bool  {
   match field_vs_parameter_census() {
     Present { value: census } =>
       census_unreadable_roots_empty(census: census)

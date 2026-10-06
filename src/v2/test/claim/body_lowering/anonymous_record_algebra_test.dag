@@ -9,6 +9,6 @@ import v2.std.algebra { length }
 // std.algebra, so if those rows did not elaborate -- no expectation through the alias, or a wrong
 // constructor -- the module refuses at prepare with that cause, and this claim is not green. The
 // counts are the rows each function authors, so a row lost in lowering also reds it.
-test fn std_algebra_list_rows_elaborate_on_the_native_route_holds() -> Bool {
+test fn std_algebra_list_rows_elaborate_on_the_native_route_holds() -> Bool  {
   (length(xs: ordered_ring_templates()) == 7) && (length(xs: free_monoid_scalar_templates()) == 19)
 }

@@ -74,19 +74,19 @@ fn emit_module_two_text_matches(golden: String) -> Bool {
   }
 }
 
-test fn emit_host_module_add_equals_eval_holds() -> Bool {
+test fn emit_host_module_add_equals_eval_holds() -> Bool  {
   emit_eval_verdict_is_pass(
     run: emit_module_run(cp: emit_eval_call_primitive_five, cp_identity: ^emit_eval_call_primitive_five)
   )
 }
 
-test fn emit_host_module_wrong_oracle_refuses_holds() -> Bool {
+test fn emit_host_module_wrong_oracle_refuses_holds() -> Bool  {
   emit_eval_verdict_is_semantic_mismatch(
     run: emit_module_run(cp: emit_eval_call_primitive_six, cp_identity: ^emit_eval_call_primitive_six)
   )
 }
 
-test fn emit_module_join_concatenates_two_decls() -> Bool {
+test fn emit_module_join_concatenates_two_decls() -> Bool  {
   emit_module_two_text_matches(golden: emit_module_expected_two_source())
     && !emit_module_two_text_matches(golden: emit_module_expected_single_source())
 }

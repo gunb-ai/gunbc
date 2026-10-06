@@ -159,7 +159,7 @@ fn blp_emits(bool_form: TargetBoolLiteralShape, golden: String) -> Bool {
   }
 }
 
-test fn bool_spelling_is_derived_from_projection() -> Bool {
+test fn bool_spelling_is_derived_from_projection() -> Bool  {
   blp_emits(bool_form: blp_lower_bool_form(), golden: bool_literal_true_lower_golden)
     && blp_emits(bool_form: blp_upper_bool_form(), golden: bool_literal_true_upper_golden)
     && !blp_emits(bool_form: blp_lower_bool_form(), golden: bool_literal_true_upper_golden)
@@ -178,7 +178,7 @@ fn blp_production_emits(
   }
 }
 
-test fn production_rust_bool_literal_declares_rust_spelling() -> Bool {
+test fn production_rust_bool_literal_declares_rust_spelling() -> Bool  {
   blp_production_emits(
     target: rust_target_model(),
     projection: rust_value_expression_projection(),
@@ -186,7 +186,7 @@ test fn production_rust_bool_literal_declares_rust_spelling() -> Bool {
   )
 }
 
-test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
+test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool  {
   blp_production_emits(
     target: ts_target_model(),
     projection: ts_value_expression_projection(),
@@ -194,7 +194,7 @@ test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
   )
 }
 
-test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() -> Bool {
+test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() -> Bool  {
   match c_bool_literal_emit_validity_under_declared_standard() {
     KnownInvalidUnderDeclaredStandard {
       standard_edition: CStage0EmitStandardC17,
@@ -214,7 +214,7 @@ test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() 
   }
 }
 
-test fn dag_source_bool_form_recognizes_dag_token() -> Bool {
+test fn dag_source_bool_form_recognizes_dag_token() -> Bool  {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
@@ -224,7 +224,7 @@ test fn dag_source_bool_form_recognizes_dag_token() -> Bool {
   }
 }
 
-test fn dag_token_unrecognized_without_source_projection() -> Bool {
+test fn dag_token_unrecognized_without_source_projection() -> Bool  {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: ^dag_token_kw_true,
     source_bool_form: blp_canonical_only_bool_form()
@@ -234,7 +234,7 @@ test fn dag_token_unrecognized_without_source_projection() -> Bool {
   }
 }
 
-test fn rust_spelling_token_is_not_dag_source_bool_literal() -> Bool {
+test fn rust_spelling_token_is_not_dag_source_bool_literal() -> Bool  {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: ^rust_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
@@ -244,7 +244,7 @@ test fn rust_spelling_token_is_not_dag_source_bool_literal() -> Bool {
   }
 }
 
-test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
+test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool  {
   match target_value_expr_project_pick_literal_atom_or(
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form(),

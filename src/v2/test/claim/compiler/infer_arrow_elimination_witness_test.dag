@@ -103,12 +103,12 @@ fn ae_accepted(o: Outcome<RuntimeValue>) -> Bool {
   }
 }
 
-test fn infer_bool_application_derives_bool_holds() -> Bool {
+test fn infer_bool_application_derives_bool_holds() -> Bool  {
   ae_application_derives(tree: ae_apply(returns: ^bool_node_symbol, body: ae_true()), expected: bool_node())
 }
 
 // The same rule, not a Bool case: the Int application derives the std.integer Int node.
-test fn infer_int_application_derives_int_holds() -> Bool {
+test fn infer_int_application_derives_int_holds() -> Bool  {
   ae_application_derives(
     tree: ae_apply(returns: ^dag_binding_type_int, body: dag_int_literal_fixture_one()),
     expected: integer_int_type_node()
@@ -117,29 +117,29 @@ test fn infer_int_application_derives_int_holds() -> Bool {
 
 // The evaluator's true value: f(1) evaluates to what the literal `true` does, and not to what
 // `false` does -- the result is the body's, not a constant the control could match by accident.
-test fn eval_bool_application_is_the_evaluators_true_holds() -> Bool {
+test fn eval_bool_application_is_the_evaluators_true_holds() -> Bool  {
   let applied = ae_eval(tree: ae_apply(returns: ^bool_node_symbol, body: ae_true()))
   ae_accepted(o: applied)
     && (applied == ae_eval(tree: ae_true()))
     && (applied != ae_eval(tree: ae_false()))
 }
 
-test fn infer_int_body_at_declared_bool_refuses_holds() -> Bool {
+test fn infer_int_body_at_declared_bool_refuses_holds() -> Bool  {
   ae_refuses_body_return(tree: ae_apply(returns: ^bool_node_symbol, body: dag_int_literal_fixture_one()))
 }
 
-test fn infer_bool_body_at_declared_int_refuses_holds() -> Bool {
+test fn infer_bool_body_at_declared_int_refuses_holds() -> Bool  {
   ae_refuses_body_return(tree: ae_apply(returns: ^dag_binding_type_int, body: ae_true()))
 }
 
 // The refusal belongs to arrow INTRODUCTION: the bare Arrow refuses with no application around it.
-test fn infer_bare_arrow_with_mismatched_body_refuses_holds() -> Bool {
+test fn infer_bare_arrow_with_mismatched_body_refuses_holds() -> Bool  {
   ae_refuses_body_return(tree: ae_arrow(returns: ^bool_node_symbol, body: dag_int_literal_fixture_one()))
 }
 
 // Frontier accounting stays counted: a return the language join does not denote derives nothing,
 // and the application is admitted on the frontier, never typed.
-test fn infer_undenoted_return_leaves_application_on_frontier_holds() -> Bool {
+test fn infer_undenoted_return_leaves_application_on_frontier_holds() -> Bool  {
   let tree = ae_apply(returns: ^ae_undenoted_type, body: ae_true())
   match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Rejected { diagnostics: _ } => false

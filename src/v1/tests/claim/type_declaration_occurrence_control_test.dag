@@ -119,7 +119,7 @@ fn type_reference_count(source: String) -> Int {
 // REFERENCES (`Int` in the data annotation and in the function signature). A transport carrying
 // references with an empty declaration side is precisely the state that made every type reference
 // in the corpus unbindable while every fixture stayed green.
-test fn production_parser_stamps_type_declarations_holds() -> Bool {
+test fn production_parser_stamps_type_declarations_holds() -> Bool  {
   type_declaration_count(source: subject_with_type_declarations) == 3
     && type_declaration_count(source: subject_without_type_declarations) == 0
     && type_reference_count(source: subject_without_type_declarations) > 0

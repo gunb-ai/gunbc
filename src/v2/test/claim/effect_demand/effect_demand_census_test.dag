@@ -139,7 +139,7 @@ data effect_demand_probe_roster: List<EffectDemandRow> = [
   }
 ]
 
-test fn effect_demand_witness_control_census_is_sound() -> Bool {
+test fn effect_demand_witness_control_census_is_sound() -> Bool  {
   effect_demand_census_total_holds(
     roster: effect_demand_probe_roster,
     observed: effect_demand_probe_observed,
@@ -147,7 +147,7 @@ test fn effect_demand_witness_control_census_is_sound() -> Bool {
   )
 }
 
-test fn effect_demand_witness_control_classifies_every_demand() -> Bool {
+test fn effect_demand_witness_control_classifies_every_demand() -> Bool  {
   let census = effect_demand_census(
     roster: effect_demand_probe_roster,
     observed: effect_demand_probe_observed,
@@ -164,7 +164,7 @@ test fn effect_demand_witness_control_classifies_every_demand() -> Bool {
 // observed population. Without this probe the stale refusal and the retirement arm are
 // indistinguishable, because a census that treated retirement as staleness would still pass the green
 // control if the control carried no retired row.
-test fn effect_demand_witness_retired_row_survives_absent_demand() -> Bool {
+test fn effect_demand_witness_retired_row_survives_absent_demand() -> Bool  {
   let census = effect_demand_census(
     roster: effect_demand_probe_roster,
     observed: effect_demand_probe_observed,
@@ -190,7 +190,7 @@ data effect_demand_probe_observed_with_unrostered: List<EffectDemandKey> = [
   effect_demand_probe_unrostered_key
 ]
 
-test fn effect_demand_witness_undispositioned_demand_refuses() -> Bool {
+test fn effect_demand_witness_undispositioned_demand_refuses() -> Bool  {
   let census = effect_demand_census(
     roster: effect_demand_probe_roster,
     observed: effect_demand_probe_observed_with_unrostered,
@@ -220,7 +220,7 @@ data effect_demand_probe_realized_with_shell: List<EffectRealizationKey> = [
   effect_demand_realization_key(operation: "shell_exec", mode: Wet, runtime_identity: "probe-runtime")
 ]
 
-test fn effect_demand_witness_stale_row_refuses() -> Bool {
+test fn effect_demand_witness_stale_row_refuses() -> Bool  {
   let census = effect_demand_census(
     roster: effect_demand_probe_roster_with_stale,
     observed: effect_demand_probe_observed,
@@ -245,7 +245,7 @@ data effect_demand_probe_realized_missing_process: List<EffectRealizationKey> = 
   effect_demand_realization_key(operation: "workspace_materialize", mode: Wet, runtime_identity: "probe-runtime")
 ]
 
-test fn effect_demand_witness_unproven_native_claim_refuses() -> Bool {
+test fn effect_demand_witness_unproven_native_claim_refuses() -> Bool  {
   let census = effect_demand_census(
     roster: effect_demand_probe_roster,
     observed: effect_demand_probe_observed,
@@ -265,7 +265,7 @@ test fn effect_demand_witness_unproven_native_claim_refuses() -> Bool {
 // difference observable. The control world is sound and carries one honest Unrealized debt: the census
 // holds, the acceptance bar does not. A single predicate conflating the two would make 'the instrument
 // works' unsayable while any debt stood, which is how a census gets read as broken and then ignored.
-test fn effect_demand_witness_acceptance_bar_is_unmet_while_debt_stands() -> Bool {
+test fn effect_demand_witness_acceptance_bar_is_unmet_while_debt_stands() -> Bool  {
   (length(xs: effect_demand_unrealized_rows(roster: effect_demand_probe_roster)) == 1)
     && effect_demand_census_total_holds(
       roster: effect_demand_probe_roster,
@@ -299,7 +299,7 @@ data effect_demand_probe_observed_mode_shifted: List<EffectDemandKey> = [
   effect_demand_probe_debt_key
 ]
 
-test fn effect_demand_witness_mode_discriminates_the_key() -> Bool {
+test fn effect_demand_witness_mode_discriminates_the_key() -> Bool  {
   let census = effect_demand_census(
     roster: effect_demand_probe_roster,
     observed: effect_demand_probe_observed_mode_shifted,
@@ -327,7 +327,7 @@ data effect_demand_probe_lower_bound: DemandPopulation = PopulationMeasuredLower
   missing_basis: "probe basis"
 }
 
-test fn effect_demand_witness_zero_rows_measured_and_unmeasured_differ() -> Bool {
+test fn effect_demand_witness_zero_rows_measured_and_unmeasured_differ() -> Bool  {
   (length(xs: effect_demand_population_rows(population: effect_demand_probe_measured_empty)) == 0)
     && (length(xs: effect_demand_population_rows(population: effect_demand_probe_unmeasured)) == 0)
     && match effect_demand_probe_measured_empty {
@@ -345,7 +345,7 @@ test fn effect_demand_witness_zero_rows_measured_and_unmeasured_differ() -> Bool
 // A lower bound is not a completeness claim, and it admits no promotion either -- its unmeasured
 // remainder is exactly where a refusing demand could sit. This is a separate probe from the pair above
 // because a carrier that collapsed lower-bound into complete would still pass that pair.
-test fn effect_demand_witness_lower_bound_admits_no_promotion() -> Bool {
+test fn effect_demand_witness_lower_bound_admits_no_promotion() -> Bool  {
   match effect_demand_probe_lower_bound {
     PopulationMeasuredComplete { rows, subject_roster_identities } => false,
     PopulationMeasuredLowerBound { rows, missing_basis } => true,
@@ -383,7 +383,7 @@ data effect_demand_probe_classifications: List<EffectOperationClassification> = 
   effect_demand_probe_bound_input
 ]
 
-test fn effect_demand_witness_unclassified_operation_blocks_implementation() -> Bool {
+test fn effect_demand_witness_unclassified_operation_blocks_implementation() -> Bool  {
   (length(xs: effect_demand_blocked_operations(classifications: [effect_demand_probe_unclassified])) == 1)
     && (length(xs: effect_demand_implementable_operations(classifications: [effect_demand_probe_unclassified])) == 0)
     && (length(xs: effect_demand_blocked_operations(classifications: [effect_demand_probe_classified])) == 0)
@@ -394,7 +394,7 @@ test fn effect_demand_witness_unclassified_operation_blocks_implementation() -> 
 // those two are different questions. Blocked means the classification is missing; not-implementable
 // means the classification says a transport is the wrong answer. A predicate that conflated them would
 // make bound-input operations look like open questions forever.
-test fn effect_demand_witness_bound_input_is_unblocked_but_not_implementable() -> Bool {
+test fn effect_demand_witness_bound_input_is_unblocked_but_not_implementable() -> Bool  {
   (length(xs: effect_demand_blocked_operations(classifications: [effect_demand_probe_bound_input])) == 0)
     && (length(xs: effect_demand_implementable_operations(classifications: [effect_demand_probe_bound_input])) == 0)
     && (length(xs: effect_demand_blocked_operations(classifications: effect_demand_probe_classifications)) == 1)
@@ -405,7 +405,7 @@ test fn effect_demand_witness_bound_input_is_unblocked_but_not_implementable() -
 // seven operations the occupancy census found, exactly one is implementable and six are blocked on the
 // corpus-snapshot question. It is deliberately an identity-free count over a roster this module owns,
 // and it moves the day an operation is reclassified -- which is the intended signal, not a fragility.
-test fn effect_demand_witness_live_classification_splits_one_and_six() -> Bool {
+test fn effect_demand_witness_live_classification_splits_one_and_six() -> Bool  {
   (effect_demand_implementable_operation_count() == 1)
     && (effect_demand_blocked_operation_count() == 6)
 }
@@ -427,7 +427,7 @@ data effect_demand_probe_modeled_extra: List<EffectDemandKey> = [
   effect_demand_probe_debt_key
 ]
 
-test fn effect_demand_witness_producers_agree_on_identical_populations() -> Bool {
+test fn effect_demand_witness_producers_agree_on_identical_populations() -> Bool  {
   effect_demand_producers_agree(
     modeled: effect_demand_probe_agreed_keys,
     realized_observed: effect_demand_probe_agreed_keys
@@ -438,7 +438,7 @@ test fn effect_demand_witness_producers_agree_on_identical_populations() -> Bool
     )
 }
 
-test fn effect_demand_witness_modeled_only_is_not_an_unmodeled_boundary() -> Bool {
+test fn effect_demand_witness_modeled_only_is_not_an_unmodeled_boundary() -> Bool  {
   let agreement = effect_demand_agreement(
     modeled: effect_demand_probe_modeled_extra,
     realized_observed: effect_demand_probe_agreed_keys
@@ -455,7 +455,7 @@ test fn effect_demand_witness_modeled_only_is_not_an_unmodeled_boundary() -> Boo
     )
 }
 
-test fn effect_demand_witness_realized_only_is_an_unmodeled_boundary() -> Bool {
+test fn effect_demand_witness_realized_only_is_an_unmodeled_boundary() -> Bool  {
   let agreement = effect_demand_agreement(
     modeled: effect_demand_probe_agreed_keys,
     realized_observed: effect_demand_probe_modeled_extra
@@ -545,7 +545,7 @@ data effect_demand_probe_receipt_short: DemandReceipt = effect_demand_probe_rece
   unresolved: Empty
 )
 
-test fn effect_demand_witness_receipt_count_is_derived_from_identities() -> Bool {
+test fn effect_demand_witness_receipt_count_is_derived_from_identities() -> Bool  {
   (effect_demand_receipt_member_count(receipt: effect_demand_probe_receipt_modeled) == 3)
     && effect_demand_receipts_agree_on_membership(
       left: effect_demand_probe_receipt_modeled,
@@ -572,7 +572,7 @@ test fn effect_demand_witness_receipt_count_is_derived_from_identities() -> Bool
 // nothing to do with the identity. A control that reds for a reason outside its own name cannot be
 // read, and the next person would have had to decide whether the module identity had regressed. The
 // population standing has its own control below; this one is now only about the name.
-test fn effect_demand_witness_compiler_entry_identity_is_the_declared_module() -> Bool {
+test fn effect_demand_witness_compiler_entry_identity_is_the_declared_module() -> Bool  {
   effect_demand_compiler_entry_module == "v2.compiler.compile"
 }
 
@@ -604,7 +604,7 @@ data effect_demand_probe_wet_native_roster: List<EffectDemandRow> = [
 
 data effect_demand_probe_wet_observed: List<EffectDemandKey> = [effect_demand_probe_wet_demand_key]
 
-test fn effect_demand_witness_hermetic_realization_cannot_prove_a_wet_demand() -> Bool {
+test fn effect_demand_witness_hermetic_realization_cannot_prove_a_wet_demand() -> Bool  {
   let hermetic = effect_demand_census(
     roster: effect_demand_probe_wet_native_roster,
     observed: effect_demand_probe_wet_observed,
@@ -629,7 +629,7 @@ data effect_demand_probe_other_runtime_realization: List<EffectRealizationKey> =
   effect_demand_realization_key(operation: "process_invoke", mode: Wet, runtime_identity: "a-different-runtime")
 ]
 
-test fn effect_demand_witness_a_foreign_runtime_cannot_prove_a_native_claim() -> Bool {
+test fn effect_demand_witness_a_foreign_runtime_cannot_prove_a_native_claim() -> Bool  {
   let foreign = effect_demand_census(
     roster: effect_demand_probe_wet_native_roster,
     observed: effect_demand_probe_wet_observed,
@@ -659,7 +659,7 @@ data effect_demand_probe_receipt_substituted: DemandReceipt = effect_demand_prob
   unresolved: Empty
 )
 
-test fn effect_demand_witness_equal_count_substitution_refuses() -> Bool {
+test fn effect_demand_witness_equal_count_substitution_refuses() -> Bool  {
   (effect_demand_receipt_member_count(receipt: effect_demand_probe_receipt_modeled)
      == effect_demand_receipt_member_count(receipt: effect_demand_probe_receipt_substituted))
     && !effect_demand_receipts_agree_on_membership(
@@ -705,7 +705,7 @@ data effect_demand_probe_receipt_unresolved_edges: DemandReceipt = effect_demand
   unresolved: ["dispatch_through_stored_callable"]
 )
 
-test fn effect_demand_witness_local_gate_admits_complete_evidence() -> Bool {
+test fn effect_demand_witness_local_gate_admits_complete_evidence() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_realized,
@@ -718,7 +718,7 @@ test fn effect_demand_witness_local_gate_admits_complete_evidence() -> Bool {
   }
 }
 
-test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool {
+test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_empty_roots,
@@ -746,7 +746,7 @@ data effect_demand_probe_receipt_modeled_empty_roots: DemandReceipt = effect_dem
   unresolved: Empty
 )
 
-test fn effect_demand_witness_local_gate_refuses_an_empty_left_root_set() -> Bool {
+test fn effect_demand_witness_local_gate_refuses_an_empty_left_root_set() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled_empty_roots,
     right: effect_demand_probe_receipt_realized,
@@ -759,7 +759,7 @@ test fn effect_demand_witness_local_gate_refuses_an_empty_left_root_set() -> Boo
   }
 }
 
-test fn effect_demand_witness_local_gate_refuses_the_modeled_producer_twice() -> Bool {
+test fn effect_demand_witness_local_gate_refuses_the_modeled_producer_twice() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_modeled,
@@ -772,7 +772,7 @@ test fn effect_demand_witness_local_gate_refuses_the_modeled_producer_twice() ->
   }
 }
 
-test fn effect_demand_witness_local_gate_refuses_unresolved_indirect_edges() -> Bool {
+test fn effect_demand_witness_local_gate_refuses_unresolved_indirect_edges() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_unresolved_edges,
@@ -785,7 +785,7 @@ test fn effect_demand_witness_local_gate_refuses_unresolved_indirect_edges() -> 
   }
 }
 
-test fn effect_demand_witness_local_gate_refuses_one_producer_twice() -> Bool {
+test fn effect_demand_witness_local_gate_refuses_one_producer_twice() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_realized,
     right: effect_demand_probe_receipt_realized,
@@ -798,7 +798,7 @@ test fn effect_demand_witness_local_gate_refuses_one_producer_twice() -> Bool {
   }
 }
 
-test fn effect_demand_witness_local_gate_refuses_an_incomplete_subject() -> Bool {
+test fn effect_demand_witness_local_gate_refuses_an_incomplete_subject() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_realized,
@@ -814,7 +814,7 @@ test fn effect_demand_witness_local_gate_refuses_an_incomplete_subject() -> Bool
 // The live compiler-origin standing must NOT be admissible at the local gate, and this asserts it as a
 // fact rather than leaving it to prose. Its population is a lower bound and its evidence is a single
 // realization-side producer, so the honest answer today is no.
-test fn effect_demand_witness_live_compiler_origin_is_not_promotable() -> Bool {
+test fn effect_demand_witness_live_compiler_origin_is_not_promotable() -> Bool  {
   match effect_demand_compiler_origin_population {
     PopulationMeasuredComplete { rows, subject_roster_identities } => false,
     PopulationMeasuredLowerBound { rows, missing_basis } => true,
@@ -828,7 +828,7 @@ test fn effect_demand_witness_live_compiler_origin_is_not_promotable() -> Bool {
     && (length(xs: effect_demand_population_rows(population: effect_demand_execute_origin_population)) == 2)
 }
 
-test fn effect_demand_witness_realization_keys_on_the_projected_primitive() -> Bool {
+test fn effect_demand_witness_realization_keys_on_the_projected_primitive() -> Bool  {
   match seam_realization_for(
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
     registry: [SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" }]
@@ -840,7 +840,7 @@ test fn effect_demand_witness_realization_keys_on_the_projected_primitive() -> B
   }
 }
 
-test fn effect_demand_witness_declaration_name_is_not_the_realization_key() -> Bool {
+test fn effect_demand_witness_declaration_name_is_not_the_realization_key() -> Bool  {
   match seam_realization_for(
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map_primitive_delegate") },
     registry: [SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" }]
@@ -852,7 +852,7 @@ test fn effect_demand_witness_declaration_name_is_not_the_realization_key() -> B
   }
 }
 
-test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() -> Bool {
+test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() -> Bool  {
   match seam_realization_for(
     projection: SeamUnrostered,
     registry: [SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" }]
@@ -864,7 +864,7 @@ test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() 
   }
 }
 
-test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool {
+test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool  {
   !any(
     xs: effect_demand_seam_roster,
     predicate: fn(seam) {
@@ -881,7 +881,7 @@ test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool {
   )
 }
 
-test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool {
+test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool  {
   !any(
     xs: effect_demand_seam_roster,
     predicate: fn(seam) {
@@ -898,7 +898,7 @@ test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool {
   )
 }
 
-test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() -> Bool {
+test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() -> Bool  {
   !any(
     xs: seam_unrealized_without_executed_evidence(roster: effect_demand_seam_roster, registry: effect_demand_seam_runtime_registry),
     predicate: fn(seam) {
@@ -921,7 +921,7 @@ test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() 
   )
 }
 
-test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> Bool {
+test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> Bool  {
   !any(
     xs: effect_demand_seam_roster,
     predicate: fn(seam) {
@@ -938,7 +938,7 @@ test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> B
   )
 }
 
-test fn effect_demand_witness_every_unrostered_row_is_reported_as_undisposed() -> Bool {
+test fn effect_demand_witness_every_unrostered_row_is_reported_as_undisposed() -> Bool  {
   !any(
     xs: seam_unrostered_rows(roster: effect_demand_seam_roster),
     predicate: fn(seam) {
@@ -950,7 +950,7 @@ test fn effect_demand_witness_every_unrostered_row_is_reported_as_undisposed() -
   )
 }
 
-test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bool {
+test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bool  {
   match seam_realization(
     seam: SeamStanding {
       declaration: "empty_map_primitive_delegate",
@@ -968,7 +968,7 @@ test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bo
   }
 }
 
-test fn effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bridge() -> Bool {
+test fn effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bridge() -> Bool  {
   !any(
     xs: [
       SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
@@ -986,7 +986,7 @@ test fn effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bri
   )
 }
 
-test fn effect_demand_witness_two_bridges_for_one_primitive_select_none() -> Bool {
+test fn effect_demand_witness_two_bridges_for_one_primitive_select_none() -> Bool  {
   match seam_realization_for(
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
     registry: [
@@ -1001,7 +1001,7 @@ test fn effect_demand_witness_two_bridges_for_one_primitive_select_none() -> Boo
   }
 }
 
-test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrealized() -> Bool {
+test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrealized() -> Bool  {
   !any(
     xs: [SeamStanding {
       declaration: "empty_map_primitive_delegate",
@@ -1024,7 +1024,7 @@ test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrea
   )
 }
 
-test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per_seam() -> Bool {
+test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per_seam() -> Bool  {
   !any(
     xs: effect_demand_seam_roster,
     predicate: fn(seam) {
@@ -1044,7 +1044,7 @@ test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per
 // single arm both of these were the same value, so either assertion alone would have been green
 // against the very defect. decl_facts is the live specimen for the first: it projects a primitive and
 // the authored registry binds only three, none of them this one.
-test fn effect_demand_witness_a_rostered_seam_with_no_bridge_is_not_reported_unrostered() -> Bool {
+test fn effect_demand_witness_a_rostered_seam_with_no_bridge_is_not_reported_unrostered() -> Bool  {
   match seam_realization_for(
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "decl_facts") },
     registry: effect_demand_seam_runtime_registry
@@ -1056,7 +1056,7 @@ test fn effect_demand_witness_a_rostered_seam_with_no_bridge_is_not_reported_unr
   }
 }
 
-test fn effect_demand_witness_an_unrostered_seam_is_not_reported_as_an_unbound_primitive() -> Bool {
+test fn effect_demand_witness_an_unrostered_seam_is_not_reported_as_an_unbound_primitive() -> Bool  {
   match seam_realization_for(
     projection: SeamUnrostered,
     registry: effect_demand_seam_runtime_registry
@@ -1072,7 +1072,7 @@ test fn effect_demand_witness_an_unrostered_seam_is_not_reported_as_an_unbound_p
 // projection arm each row carries, so a row cannot inhabit both lists and no literal is asserted here:
 // today the split is 6 unrostered and 5 rostered-but-unbound, and both numbers move as seams are
 // disposed or bridges are bound, which is exactly why the law is stated over identities instead.
-test fn effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_projection() -> Bool {
+test fn effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_projection() -> Bool  {
   !any(
     xs: seam_no_registry_binding_rows(roster: effect_demand_seam_roster, registry: effect_demand_seam_runtime_registry),
     predicate: fn(seam) {
@@ -1097,7 +1097,7 @@ test fn effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_pro
 // EVERY ROSTER ROW LANDS IN EXACTLY THE CLASS ITS PROJECTION DECIDES, over the live population rather
 // than over a fixture, so a roster row added with a projection that disagrees with its derivation
 // cannot pass quietly.
-test fn effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrostered_rows() -> Bool {
+test fn effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrostered_rows() -> Bool  {
   !any(
     xs: effect_demand_seam_roster,
     predicate: fn(seam) {
@@ -1119,7 +1119,7 @@ test fn effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrost
   )
 }
 
-test fn effect_demand_witness_admitted_standing_carries_the_agreed_revision() -> Bool {
+test fn effect_demand_witness_admitted_standing_carries_the_agreed_revision() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_realized,
@@ -1137,7 +1137,7 @@ test fn effect_demand_witness_admitted_standing_carries_the_agreed_revision() ->
 // case -- must be ADMITTED; the same two receipts over two trees from one commit must be REFUSED on
 // ^tree_mismatch. A gate that refused the first or admitted the second would be keyed on the wrong
 // identity, and the pair reads red in exactly one witness each.
-test fn effect_demand_witness_two_commits_over_one_tree_admit() -> Bool {
+test fn effect_demand_witness_two_commits_over_one_tree_admit() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_on(producer: ModeledCallReachability, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "commit-before-squash", tree: effect_demand_probe_tree_main),
     right: effect_demand_probe_receipt_on(producer: EmittedRealizationCensus, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "commit-after-squash", tree: effect_demand_probe_tree_main),
@@ -1150,7 +1150,7 @@ test fn effect_demand_witness_two_commits_over_one_tree_admit() -> Bool {
   }
 }
 
-test fn effect_demand_witness_one_commit_over_two_trees_refuses_on_the_tree() -> Bool {
+test fn effect_demand_witness_one_commit_over_two_trees_refuses_on_the_tree() -> Bool  {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_on(producer: ModeledCallReachability, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "one-commit", tree: effect_demand_probe_tree_main),
     right: effect_demand_probe_receipt_on(producer: EmittedRealizationCensus, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "one-commit", tree: effect_demand_probe_tree_other),

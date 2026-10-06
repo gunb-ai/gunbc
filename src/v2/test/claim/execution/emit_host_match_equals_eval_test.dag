@@ -403,7 +403,7 @@ fn emit_match_eval_unbuildable_run(tree: InferredTree) -> TestClaimRun<Node, Run
   )
 }
 
-test fn emit_host_match_run_reaches_semantics_holds() -> Bool {
+test fn emit_host_match_run_reaches_semantics_holds() -> Bool  {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_reached_semantics(run: emit_match_eval_run(tree: tree))
@@ -411,7 +411,7 @@ test fn emit_host_match_run_reaches_semantics_holds() -> Bool {
   }
 }
 
-test fn emit_host_match_unbuildable_source_does_not_reach_semantics_holds() -> Bool {
+test fn emit_host_match_unbuildable_source_does_not_reach_semantics_holds() -> Bool  {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_reached_semantics(
@@ -421,7 +421,7 @@ test fn emit_host_match_unbuildable_source_does_not_reach_semantics_holds() -> B
   }
 }
 
-test fn emit_host_match_equals_eval_holds() -> Bool {
+test fn emit_host_match_equals_eval_holds() -> Bool  {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree))
@@ -429,7 +429,7 @@ test fn emit_host_match_equals_eval_holds() -> Bool {
   }
 }
 
-test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool  {
   match emit_match_eval_swapped_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
@@ -437,7 +437,7 @@ test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_match_eval_only_accepts() -> Bool {
+test fn emit_host_match_eval_only_accepts() -> Bool  {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match eval(
@@ -452,7 +452,7 @@ test fn emit_host_match_eval_only_accepts() -> Bool {
   }
 }
 
-test fn emit_host_match_emit_only_accepts() -> Bool {
+test fn emit_host_match_emit_only_accepts() -> Bool  {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_execution_match_target()) {

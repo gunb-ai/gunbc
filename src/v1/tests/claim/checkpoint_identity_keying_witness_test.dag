@@ -39,14 +39,14 @@ data checkpoint_identity_keying_witness_note: String = "ON-DEMAND evidence for t
 // ---------------------------------------------------------------------------
 
 // A table-present name renders from the table.
-test fn table_present_name_renders_from_the_table() -> Bool {
+test fn table_present_name_renders_from_the_table() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Int", provenance: CorpusDeclared { decl_file: "dag/std/integer.dag" }))
     == Present { value: "i64" }
 }
 
 // A table-ABSENT name reaches the identity arm and realizes natively for the
 // std declaration.
-test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
+test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Nat", provenance: CorpusDeclared { decl_file: "dag/std/nat.dag" }))
     == Present { value: "i64" }
 }
@@ -55,14 +55,14 @@ test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
 // declaration is the Peano coproduct Zero|Succ and must NOT realize as a machine
 // integer. A rule keyed on the name alone cannot pass this and the previous row
 // together -- which is exactly what the deleted global corpus mode could not do.
-test fn same_spelling_different_declaration_does_not_realize_natively() -> Bool {
+test fn same_spelling_different_declaration_does_not_realize_natively() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Nat", provenance: CorpusDeclared { decl_file: "src/v2/std/nat.dag" }))
     == none
 }
 
 // Identity UNKNOWN at the site refuses rather than guessing. The empty decl_file
 // is not a third realization, it is the absence of the fact the decision needs.
-test fn unknown_declaration_identity_refuses_rather_than_guessing() -> Bool {
+test fn unknown_declaration_identity_refuses_rather_than_guessing() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Nat", provenance: DeclarationIdentityAbsent))
     == none
 }
@@ -75,7 +75,7 @@ test fn unknown_declaration_identity_refuses_rather_than_guessing() -> Bool {
 // is the dissolution signal, not a regression.
 // ---------------------------------------------------------------------------
 
-test fn residue_table_present_int_bypasses_identity() -> Bool {
+test fn residue_table_present_int_bypasses_identity() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Int", provenance: CorpusDeclared { decl_file: "src/v2/std/integer.dag" }))
     == Present { value: "i64" }
 }
@@ -118,12 +118,12 @@ test fn residue_table_present_int_bypasses_identity() -> Bool {
 // CLOSED under a wrong premise -- see RE-GROUNDING NOTE 2.
 // ---------------------------------------------------------------------------
 
-test fn table_present_hash_refuses_under_structural_declaration() -> Bool {
+test fn table_present_hash_refuses_under_structural_declaration() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Hash", provenance: CorpusDeclared { decl_file: "src/v2/std/node.dag" }))
     == none
 }
 
-test fn table_present_string_refuses_under_structural_declaration_text() -> Bool {
+test fn table_present_string_refuses_under_structural_declaration_text() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "src/v2/std/text.dag" }))
     == none
 }
@@ -134,7 +134,7 @@ test fn table_present_string_refuses_under_structural_declaration_text() -> Bool
 // the single authority), so no reference can resolve there and the roster row it exercised is gone.
 // The evidence that emitted Bool is correct is the positive control below plus the emitted-bytes
 // rows in test.claim.self_host_peano_literal_operator_realization_witness_test.
-test fn table_present_bool_renders_natively_for_the_corpus_prelude() -> Bool {
+test fn table_present_bool_renders_natively_for_the_corpus_prelude() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Bool", provenance: CorpusDeclared { decl_file: "dag/std/types.dag" }))
     == Present { value: "bool" }
 }
@@ -158,7 +158,7 @@ test fn table_present_bool_renders_natively_for_the_corpus_prelude() -> Bool {
 // structurally-enrolled name still answers Present. Without this a
 // literal_suffix that refused unconditionally would satisfy every refusal
 // row below vacuously.
-test fn literal_suffix_positive_control_symbol_not_enrolled() -> Bool {
+test fn literal_suffix_positive_control_symbol_not_enrolled() -> Bool  {
   literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "Symbol", provenance: DeclarationIdentityAbsent))
     == Present { value: ".to_string()" }
 }
@@ -166,7 +166,7 @@ test fn literal_suffix_positive_control_symbol_not_enrolled() -> Bool {
 // literal_suffix refuses for String under EITHER real structural declaration,
 // exactly like rust_scalar_checkpoint_reference_base above -- the same gate, a
 // different consumer, its own executed specimen per declaration identity.
-test fn literal_suffix_refuses_under_structural_declaration_text() -> Bool {
+test fn literal_suffix_refuses_under_structural_declaration_text() -> Bool  {
   literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "src/v2/std/text.dag" }))
     == none
 }
@@ -186,7 +186,7 @@ test fn literal_suffix_refuses_under_structural_declaration_text() -> Bool {
 // literal-position behavior is measured rather than assumed to track
 // type-position behavior now that the two are known to diverge in exactly
 // this way.
-test fn literal_suffix_production_call_site_never_threads_declaration_identity() -> Bool {
+test fn literal_suffix_production_call_site_never_threads_declaration_identity() -> Bool  {
   literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: DeclarationIdentityAbsent))
     == Present { value: ".to_string()" }
 }
@@ -252,12 +252,12 @@ test fn literal_suffix_production_call_site_never_threads_declaration_identity()
 // red, whichever field survives.
 // ---------------------------------------------------------------------------
 
-test fn reference_position_renders_the_bare_spelling() -> Bool {
+test fn reference_position_renders_the_bare_spelling() -> Bool  {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "dag/std/types.dag" }))
     == Present { value: "String" }
 }
 
-test fn declaration_position_renders_the_grounding_spelling() -> Bool {
+test fn declaration_position_renders_the_grounding_spelling() -> Bool  {
   rust_scalar_checkpoint_grounding_base(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "dag/std/types.dag" }))
     == Present { value: "std::string::String" }
 }
@@ -265,7 +265,7 @@ test fn declaration_position_renders_the_grounding_spelling() -> Bool {
 // The split does not fork the NUMERIC names: their grounding spelling is their
 // reference spelling, and stating that by execution keeps the new field from
 // being read as a second authority that could drift row by row.
-test fn numeric_name_grounds_in_its_own_reference_spelling() -> Bool {
+test fn numeric_name_grounds_in_its_own_reference_spelling() -> Bool  {
   rust_scalar_checkpoint_grounding_base(decision: type_realization_decision(target: Rust, dag_name: "Int", provenance: CorpusDeclared { decl_file: "dag/std/integer.dag" }))
     == Present { value: "i64" }
 }

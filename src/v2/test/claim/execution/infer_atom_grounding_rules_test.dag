@@ -109,7 +109,7 @@ fn atom_grounding_census_frontier(inferred: InferredTree) -> Int {
   )
 }
 
-test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
+test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -128,7 +128,7 @@ test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
   }
 }
 
-test fn no_node_derives_the_canonical_operations_roster_root_holds() -> Bool {
+test fn no_node_derives_the_canonical_operations_roster_root_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -141,7 +141,7 @@ test fn no_node_derives_the_canonical_operations_roster_root_holds() -> Bool {
   }
 }
 
-test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
+test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -173,7 +173,7 @@ fn is_operand_atom(n: Node) -> Bool {
   }
 }
 
-test fn binding_reference_derives_parameter_atoms_holds() -> Bool {
+test fn binding_reference_derives_parameter_atoms_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -191,7 +191,7 @@ test fn binding_reference_derives_parameter_atoms_holds() -> Bool {
   }
 }
 
-test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
+test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool  {
   let unbound = Node {
     kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
     children: [],
@@ -218,21 +218,21 @@ fn atom_grounding_standalone_evidence(n: Node) -> Optional<Node> {
   }
 }
 
-test fn declared_inhabitant_record_derives_type_denotation_kind_holds() -> Bool {
+test fn declared_inhabitant_record_derives_type_denotation_kind_holds() -> Bool  {
   match atom_grounding_standalone_evidence(n: dag_int_inhabitant_node()) {
     Absent => false
     Present { value: evidence } => evidence == kind_node(kind: TypeDenotationKind)
   }
 }
 
-test fn declared_inhabitant_fact_derives_type_fact_kind_holds() -> Bool {
+test fn declared_inhabitant_fact_derives_type_fact_kind_holds() -> Bool  {
   match atom_grounding_standalone_evidence(n: dag_inhabitant_atom(id: ^dag_surface_spelling_int)) {
     Absent => false
     Present { value: evidence } => evidence == kind_node(kind: TypeFactKind)
   }
 }
 
-test fn door_specimen_fully_derives_holds() -> Bool {
+test fn door_specimen_fully_derives_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -248,21 +248,21 @@ fn predicate_atom(id: Symbol) -> Node {
   }
 }
 
-test fn ordering_predicate_atom_derives_ordering_predicate_type_holds() -> Bool {
+test fn ordering_predicate_atom_derives_ordering_predicate_type_holds() -> Bool  {
   match atom_grounding_standalone_evidence(n: predicate_atom(id: ordering_predicate_wire_symbol(predicate: IsLess))) {
     Absent => false
     Present { value: evidence } => evidence == target_model_ordering_predicate_type_node()
   }
 }
 
-test fn equality_predicate_atom_derives_equality_predicate_type_holds() -> Bool {
+test fn equality_predicate_atom_derives_equality_predicate_type_holds() -> Bool  {
   match atom_grounding_standalone_evidence(n: predicate_atom(id: equality_predicate_wire_symbol(predicate: IsNotEqual))) {
     Absent => false
     Present { value: evidence } => evidence == target_model_equality_predicate_type_node()
   }
 }
 
-test fn undeclared_predicate_atom_stays_on_the_frontier_holds() -> Bool {
+test fn undeclared_predicate_atom_stays_on_the_frontier_holds() -> Bool  {
   let undeclared = predicate_atom(id: ^ordering_predicate_is_between)
   match infer(tree: claim_resolved_tree_without_declarations(root: undeclared)) {
     Rejected { diagnostics: _ } => false

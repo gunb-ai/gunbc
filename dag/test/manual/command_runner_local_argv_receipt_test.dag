@@ -34,7 +34,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 // execution trap. It therefore runs wet, by hand, and is excluded from the floor exactly as
 // test/manual/process_argv_expansion_receipt_test.dag is, for the same reason.
 
-test fn spaced_operand_survives_as_one_argument() -> Bool {
+test fn spaced_operand_survives_as_one_argument() -> Bool  {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
       command: printf_command(format: "%s|", values: ["a b"]),
@@ -46,7 +46,7 @@ test fn spaced_operand_survives_as_one_argument() -> Bool {
 // The RED half of the same observation, stated as its own assertion rather than left implicit in
 // the equality above: the shell-split rendering must NOT be what comes back. Written separately so
 // a future edit that weakens the positive into something like a nonempty check still trips here.
-test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
+test fn shell_split_rendering_is_not_what_comes_back() -> Bool  {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
       command: printf_command(format: "%s|", values: ["a b"]),
@@ -57,7 +57,7 @@ test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
 
 // Control that the runner works at all on the ordinary case, so a failure above is read as a
 // splitting regression rather than as the whole path being broken.
-test fn plain_operand_round_trips() -> Bool {
+test fn plain_operand_round_trips() -> Bool  {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
       command: printf_command(format: "%s|", values: ["plain"]),
@@ -82,7 +82,7 @@ test fn plain_operand_round_trips() -> Bool {
 // These two go red if ShellCaptureResult is restored, because then both arms are stdout == "" and
 // nothing in the value distinguishes them.
 
-test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
+test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool  {
   match run_shell_command_capture(
     command: posix_sh_program_command(script: "exit 3"),
     transport: LocalExec,
@@ -93,7 +93,7 @@ test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
   }
 }
 
-test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
+test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool  {
   match run_shell_command_capture(
     command: true_command(),
     transport: LocalExec,
@@ -169,7 +169,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 //
 // The positive arm, so a failure above reads as a lost distinction rather than as everything
 // collapsing into one variant.
-test fn zero_exit_with_output_is_present() -> Bool {
+test fn zero_exit_with_output_is_present() -> Bool  {
   match run_shell_command_capture(
     command: printf_command(format: "%s", values: ["value"]),
     transport: LocalExec,

@@ -27,7 +27,7 @@ fn first_symbol(path: SymbolPath) -> Symbol? {
   }
 }
 
-test fn generic_alias_coproduct_resolves() -> Bool {
+test fn generic_alias_coproduct_resolves() -> Bool  {
   symbol_path_len(path: symbol_path_of_three()) == 3
     && symbol_path_len(path: empty_symbol_path()) == 0
     && length(xs: symbol_path_of_three()) == 3

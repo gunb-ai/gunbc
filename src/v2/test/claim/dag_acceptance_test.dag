@@ -170,7 +170,7 @@ fn verdict_is_satisfied(receipt: DagAcceptanceReceipt) -> Bool {
   }
 }
 
-test fn acceptance_resolve_contract_accepts_a_resolvable_candidate() -> Bool {
+test fn acceptance_resolve_contract_accepts_a_resolvable_candidate() -> Bool  {
   verdict_is_satisfied(
     receipt: run_acceptance(
       contract: contract(name: ^resolve_only, head: ResolveStage, tail: [], costs: []),
@@ -180,7 +180,7 @@ test fn acceptance_resolve_contract_accepts_a_resolvable_candidate() -> Bool {
   )
 }
 
-test fn acceptance_locates_a_resolve_death_at_resolve() -> Bool {
+test fn acceptance_locates_a_resolve_death_at_resolve() -> Bool  {
   verdict_is_rejected_at(
     receipt: run_acceptance(
       contract: contract(name: ^resolve_only, head: ResolveStage, tail: [], costs: []),
@@ -191,7 +191,7 @@ test fn acceptance_locates_a_resolve_death_at_resolve() -> Bool {
   )
 }
 
-test fn acceptance_blocks_infer_behind_a_failed_resolve() -> Bool {
+test fn acceptance_blocks_infer_behind_a_failed_resolve() -> Bool  {
   let receipt = run_acceptance(
     contract: contract(name: ^through_infer, head: InferStage, tail: [], costs: []),
     candidate: candidate(source: candidate_dies_at_resolve_source),
@@ -201,7 +201,7 @@ test fn acceptance_blocks_infer_behind_a_failed_resolve() -> Bool {
     && verdict_is_rejected_at(receipt: receipt, label: ^obligation_resolve)
 }
 
-test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> Bool {
+test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> Bool  {
   match row_for(
     receipt: run_acceptance(
       contract: contract(name: ^tokenize_only, head: TokenizeStage, tail: [], costs: []),
@@ -225,7 +225,7 @@ test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> Bool {
 
 data budget_red_note: String = "THE VERIFIER-BUDGET RED. A harness that cannot afford to look must not report that it looked and disliked what it saw. This contract declares a cost the ledger cannot meet, and the assertion is TWO-SIDED: the rows say VerifierBudgetUnavailable, and the verdict is Incomplete rather than Rejected. Dropping the second half would let the very conflation this exists to prevent — a slow machine reading as a bad candidate — pass the test."
 
-test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> Bool {
+test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> Bool  {
   let receipt = run_acceptance(
     contract: contract(
       name: ^expensive_resolve,
@@ -260,7 +260,7 @@ fn rustc_target_compile_claim() -> TargetCompileClaim {
   }
 }
 
-test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> Bool {
+test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> Bool  {
   fold(
     obligation_prerequisites(
       obligation: TargetCompileStage { claim: rustc_target_compile_claim() }
@@ -291,7 +291,7 @@ fn observation_row_kind(observation: TargetCompileObservation) -> Symbol {
   row_kind(row: target_compile_row(claim: rustc_target_compile_claim(), observation: observation))
 }
 
-test fn acceptance_target_compile_observations_partition_by_subject() -> Bool {
+test fn acceptance_target_compile_observations_partition_by_subject() -> Bool  {
   (observation_row_kind(observation: TargetCompileDecided { verdict: TargetCompileAccepted }) == ^row_passed)
     && (observation_row_kind(
           observation: TargetCompileDecided {
@@ -306,7 +306,7 @@ test fn acceptance_target_compile_observations_partition_by_subject() -> Bool {
         ) == ^row_not_run)
 }
 
-test fn acceptance_infer_row_for_a_resolvable_candidate_is_determinate() -> Bool {
+test fn acceptance_infer_row_for_a_resolvable_candidate_is_determinate() -> Bool  {
   match row_for(
     receipt: run_acceptance(
       contract: contract(name: ^through_infer, head: InferStage, tail: [], costs: []),
@@ -323,7 +323,7 @@ test fn acceptance_infer_row_for_a_resolvable_candidate_is_determinate() -> Bool
   }
 }
 
-test fn acceptance_fail_fast_skip_is_not_a_block() -> Bool {
+test fn acceptance_fail_fast_skip_is_not_a_block() -> Bool  {
   let rejected_state = AcceptanceRunState {
     rows: [],
     resolved: optional_absent(),
@@ -356,7 +356,7 @@ fn skip_reason_is_decisive(contract: DagAcceptanceContract, state: AcceptanceRun
 
 data translate_row_note: String = "The sibling branch, exercised end to end through the real compiler rather than at the fold. What is asserted is that the row is DETERMINATE — passed or rejected, never missing and never a not-run standing in for an answer — because whether v2 can emit Rust for this candidate today is a fact the compiler states and this harness reports. The probe beside it records which of the two it currently is."
 
-test fn acceptance_translate_row_is_determinate() -> Bool {
+test fn acceptance_translate_row_is_determinate() -> Bool  {
   match row_for(
     receipt: run_acceptance(
       contract: contract(
@@ -394,7 +394,7 @@ fn frontier_diagnostics() -> Diagnostics {
   }
 }
 
-test fn acceptance_frontier_pass_is_not_a_clean_pass() -> Bool {
+test fn acceptance_frontier_pass_is_not_a_clean_pass() -> Bool  {
   let receipt = InferReceiptRow { node_count: 1 }
   (row_kind(row: passed_row(obligation: InferStage, receipt: receipt, diagnostics: None)) == ^row_passed)
     && (row_kind(

@@ -293,7 +293,7 @@ fn product_introduction_conj_names_step(inferred: InferredTree, acc: List<String
   }
 }
 
-test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
+test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -303,7 +303,7 @@ test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
   }
 }
 
-test fn product_introduction_composed_evidence_carries_child_groundings_holds() -> Bool {
+test fn product_introduction_composed_evidence_carries_child_groundings_holds() -> Bool  {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
@@ -311,7 +311,7 @@ test fn product_introduction_composed_evidence_carries_child_groundings_holds() 
   }
 }
 
-test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bool {
+test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bool  {
   let childless = Node {
     kind: TypeNode { connective: Conj },
     children: [],
@@ -346,7 +346,7 @@ fn product_introduction_hand_tree_grounding(tree: Node, n: Node) -> Int {
   }
 }
 
-test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_holds() -> Bool {
+test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_holds() -> Bool  {
   let frontier_child = Node {
     kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
     children: [],
@@ -392,12 +392,12 @@ fn ipi_add_fn_order_target() -> Optional<Node> {
 }
 
 // RED: a bare synthetic childless Conj is not a member of any closed-ingest-set roster.
-test fn a_bare_childless_conj_is_not_a_roster_member_holds() -> Bool {
+test fn a_bare_childless_conj_is_not_a_roster_member_holds() -> Bool  {
   ipi_is_roster_member(n: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }) == false
 }
 
 // RED: the add fn's declared-order label list is metadata, not a member.
-test fn the_declared_order_label_list_is_not_a_roster_member_holds() -> Bool {
+test fn the_declared_order_label_list_is_not_a_roster_member_holds() -> Bool  {
   match ipi_add_fn_order_target() {
     Absent => false
     Present { value: order } => ipi_is_roster_member(n: order) == false
@@ -405,13 +405,13 @@ test fn the_declared_order_label_list_is_not_a_roster_member_holds() -> Bool {
 }
 
 // CONTROL: a genuine roster member still derives its kind -- the add fn Arrow itself.
-test fn the_roster_add_fn_is_still_a_roster_member_holds() -> Bool {
+test fn the_roster_add_fn_is_still_a_roster_member_holds() -> Bool  {
   ipi_is_roster_member(n: dag_fixture_emitted_add_fn)
 }
 
 // CONTROL: a payload edge into the roster is still walked -- the add fn's domain, reached only
 // through the Arrow's value edge, is a member.
-test fn the_add_fn_domain_through_a_payload_edge_is_a_roster_member_holds() -> Bool {
+test fn the_add_fn_domain_through_a_payload_edge_is_a_roster_member_holds() -> Bool  {
   match list_at_optional(xs: dag_fixture_emitted_add_fn.children, index: 0) {
     Absent => false
     Present { value: domain_edge } =>

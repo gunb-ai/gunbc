@@ -59,7 +59,7 @@ fn slr_site(position: List<EdgeLabel>) -> ReferenceSite {
 }
 
 // Reader 1: v2.extdeps.languages.dag dag_surface_module_header_metadata_edge.
-test fn the_header_edges_are_metadata_and_their_spellings_are_not() -> Bool {
+test fn the_header_edges_are_metadata_and_their_spellings_are_not() -> Bool  {
   dag_surface_module_header_metadata_edge(e: dag_surface_edge(edge: ^dag_surface_module_header, target: slr_atom(id: ^h)))
     && dag_surface_module_header_metadata_edge(e: dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: slr_atom(id: ^q)))
     && !dag_surface_module_header_metadata_edge(e: slr_authored(name: ^dag_surface_module_header))
@@ -69,19 +69,19 @@ test fn the_header_edges_are_metadata_and_their_spellings_are_not() -> Bool {
 // Reader 2: the Absent-emission arm of dag_node_is_module_root_conj. The specimen the failure mode
 // recorded -- `fn f(dag_surface_module_header: Int)` gives a Conj a member edge named like the
 // header -- is the authored row.
-test fn a_member_spelled_like_the_header_does_not_make_a_module_root() -> Bool {
+test fn a_member_spelled_like_the_header_does_not_make_a_module_root() -> Bool  {
   dag_node_is_module_root_conj(n: slr_conj(children: [dag_surface_edge(edge: ^dag_surface_module_header, target: slr_atom(id: ^h))]))
     && !dag_node_is_module_root_conj(n: slr_conj(children: [slr_authored(name: ^dag_surface_module_header)]))
 }
 
 // Reader 3: v2.compiler.body_lowering_fold body_lower_edge_names_where_clause.
-test fn a_field_spelled_like_the_where_clause_is_not_one() -> Bool {
+test fn a_field_spelled_like_the_where_clause_is_not_one() -> Bool  {
   body_lower_edge_names_where_clause(e: dag_surface_edge(edge: ^dag_surface_where_refinement_clause, target: slr_atom(id: ^w)))
     && !body_lower_edge_names_where_clause(e: slr_authored(name: ^dag_surface_where_refinement_clause))
 }
 
 // Reader 4: v2.lens.module_graph site_is_import_syntax_mention over a ReferenceSite position.
-test fn a_scope_spelled_like_import_syntax_is_not_import_syntax() -> Bool {
+test fn a_scope_spelled_like_import_syntax_is_not_import_syntax() -> Bool  {
   site_is_import_syntax_mention(site: slr_site(position: [Authored { name: ^m }, dag_surface_edge_label(edge: ^dag_surface_import_decl)]))
     && site_is_import_syntax_mention(site: slr_site(position: [dag_surface_edge_label(edge: ^dag_surface_import_block)]))
     && site_is_import_syntax_mention(site: slr_site(position: [dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name)]))
@@ -92,7 +92,7 @@ test fn a_scope_spelled_like_import_syntax_is_not_import_syntax() -> Bool {
 
 // The core markers: an authored name spelled like a marker's canonical symbol is not that marker,
 // and a node may carry both without the label-distinctness rule treating them as one label.
-test fn an_authored_name_spelled_like_a_core_marker_is_not_the_marker() -> Bool {
+test fn an_authored_name_spelled_like_a_core_marker_is_not_the_marker() -> Bool  {
   edge_is_core(e: core_edge(marker: ArrowBodyEdge, target: slr_atom(id: ^b)), marker: ArrowBodyEdge)
     && !edge_is_core(e: slr_authored(name: ^arrow_body_edge), marker: ArrowBodyEdge)
     && !edge_is_core(e: slr_authored(name: ^loop_bound_edge), marker: LoopBoundEdge)

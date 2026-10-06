@@ -88,11 +88,11 @@ fn ace_conforms(extra: List<Edge>) -> Bool {
   arrow_signature_edges_conform(children: a.children) && type_binder_node_conforms(n: a)
 }
 
-test fn a_claim_free_operation_arrow_conforms() -> Bool {
+test fn a_claim_free_operation_arrow_conforms() -> Bool  {
   ace_conforms(extra: [])
 }
 
-test fn admitted_contract_edges_conform_and_are_not_counted_as_a_binder() -> Bool {
+test fn admitted_contract_edges_conform_and_are_not_counted_as_a_binder() -> Bool  {
   execution_mode_claims_label(mode: Hermetic, label: ace_hermetic())
     && ace_conforms(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])
     && ace_conforms(extra: [ace_mode(mode: ace_hermetic())])
@@ -102,7 +102,7 @@ test fn admitted_contract_edges_conform_and_are_not_counted_as_a_binder() -> Boo
 // Reds, in order: an EMPTY claims edge (the absent edge is the one form of no claims); a repeated
 // claim; two claims edges; an unknown claim; hermetic folded into the
 // effect claims; a claim Atom that is not its own label.
-test fn a_malformed_effect_claim_refuses() -> Bool {
+test fn a_malformed_effect_claim_refuses() -> Bool  {
   !ace_conforms(extra: [ace_claims(names: [])])
     && !ace_conforms(extra: [ace_claims(names: [ace_readonly(), ace_readonly()])])
     && !ace_conforms(extra: [ace_claims(names: [ace_readonly()]), ace_claims(names: [ace_idempotent()])])
@@ -113,7 +113,7 @@ test fn a_malformed_effect_claim_refuses() -> Bool {
 
 // Reds, in order: an empty Conj where the mode should be one Atom; an unknown mode; an effect claim on the mode edge; two mode edges; a mode that is
 // a Conj rather than one Atom.
-test fn a_malformed_execution_mode_claim_refuses() -> Bool {
+test fn a_malformed_execution_mode_claim_refuses() -> Bool  {
   !ace_conforms(extra: [core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_conj(children: []))])
     && !ace_conforms(extra: [ace_mode(mode: ^wet)])
     && !ace_conforms(extra: [ace_mode(mode: ace_readonly())])
@@ -123,7 +123,7 @@ test fn a_malformed_execution_mode_claim_refuses() -> Bool {
 
 // Canonical identity does not depend on the authored order of the claims or of the contract edges,
 // and a claim is part of identity (the claimed Arrow is not the claim-free one).
-test fn contract_edge_identity_is_order_independent() -> Bool {
+test fn contract_edge_identity_is_order_independent() -> Bool  {
   (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])) == content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_idempotent(), ace_readonly()])])))
     && (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly()]), ace_mode(mode: ace_hermetic())])) == content_hash(n: ace_arrow(extra: [ace_mode(mode: ace_hermetic()), ace_claims(names: [ace_readonly()])])))
     && (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly()])])) != content_hash(n: ace_arrow(extra: [])))

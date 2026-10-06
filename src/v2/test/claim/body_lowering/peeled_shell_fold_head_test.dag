@@ -82,7 +82,7 @@ fn psfh_any_shell_with_fold_head(node: Node) -> Bool {
     || fold(node.children, init: false, f: fn(acc, e) { acc || psfh_any_shell_with_fold_head(node: e.target) })
 }
 
-test fn peeled_shell_fold_head_route_reaches_shells_and_fold_heads() -> Bool {
+test fn peeled_shell_fold_head_route_reaches_shells_and_fold_heads() -> Bool  {
   match peeled_shell_fold_head_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -90,7 +90,7 @@ test fn peeled_shell_fold_head_route_reaches_shells_and_fold_heads() -> Bool {
   }
 }
 
-test fn peeled_shell_fold_head_no_pass_through_shell_carries_a_fold_head() -> Bool {
+test fn peeled_shell_fold_head_no_pass_through_shell_carries_a_fold_head() -> Bool  {
   match peeled_shell_fold_head_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>

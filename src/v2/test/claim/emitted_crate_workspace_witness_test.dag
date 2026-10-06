@@ -49,7 +49,7 @@ fn chain_edge_provenances() -> List<String> {
 // A crate's re-exports are its TRANSITIVE dependency packages plus the runtime; the top crate
 // therefore re-exports both crates below it, and the RED drops an IRREDUNDANT edge -- one no other
 // dependency re-exports by a second road.
-test fn the_chain_plans_three_crates_plus_the_runtime_with_transitive_reexports() -> Bool {
+test fn the_chain_plans_three_crates_plus_the_runtime_with_transitive_reexports() -> Bool  {
   match emitted_workspace_plan_over(
     module_dag: chain_dag(),
     emitted_basenames: chain_emitted_basenames(),
@@ -68,7 +68,7 @@ test fn the_chain_plans_three_crates_plus_the_runtime_with_transitive_reexports(
   }
 }
 
-test fn the_red_drops_an_edge_the_emitter_wrote_as_a_use_line() -> Bool {
+test fn the_red_drops_an_edge_the_emitter_wrote_as_a_use_line() -> Bool  {
   match emitted_workspace_plan_over(
     module_dag: chain_dag(),
     emitted_basenames: chain_emitted_basenames(),
@@ -88,7 +88,7 @@ test fn the_red_drops_an_edge_the_emitter_wrote_as_a_use_line() -> Bool {
 
 // One crate: nothing crosses a crate boundary, so no RED is authorable, and the plan refuses
 // rather than reporting a build it cannot discriminate.
-test fn a_single_crate_plan_refuses_for_want_of_a_discriminating_edge() -> Bool {
+test fn a_single_crate_plan_refuses_for_want_of_a_discriminating_edge() -> Bool  {
   match emitted_workspace_plan_over(
     module_dag: chain_dag(),
     emitted_basenames: chain_emitted_basenames(),
@@ -102,7 +102,7 @@ test fn a_single_crate_plan_refuses_for_want_of_a_discriminating_edge() -> Bool 
   }
 }
 
-test fn a_dag_module_the_emission_did_not_produce_refuses_by_name() -> Bool {
+test fn a_dag_module_the_emission_did_not_produce_refuses_by_name() -> Bool  {
   match emitted_workspace_plan_over(
     module_dag: chain_dag(),
     emitted_basenames: ["fx_a", "fx_b", "v1_rt"],
@@ -117,7 +117,7 @@ test fn a_dag_module_the_emission_did_not_produce_refuses_by_name() -> Bool {
   }
 }
 
-test fn an_emitted_module_outside_the_dag_refuses_by_name() -> Bool {
+test fn an_emitted_module_outside_the_dag_refuses_by_name() -> Bool  {
   match emitted_workspace_plan_over(
     module_dag: chain_dag(),
     emitted_basenames: ["fx_a", "fx_b", "fx_c", "v1_rt", "fx_stray"],

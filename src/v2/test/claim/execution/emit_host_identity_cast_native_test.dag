@@ -83,7 +83,7 @@ fn identity_cast_native_run_is(text: String, value: String, expect_skipped: Bool
 // share nothing but the artifact, so splitting them loses no coverage; within each pair the second
 // run must reuse the build the first found or made. Positive and negative in one pair, zero and a
 // value past 16 bits in the other.
-test fn the_emitted_identity_cast_preserves_a_positive_and_a_negative_argument_holds() -> Bool {
+test fn the_emitted_identity_cast_preserves_a_positive_and_a_negative_argument_holds() -> Bool  {
   match identity_cast_native_emitted() {
     Absent => false
     Present { value: text } =>
@@ -92,7 +92,7 @@ test fn the_emitted_identity_cast_preserves_a_positive_and_a_negative_argument_h
   }
 }
 
-test fn the_emitted_identity_cast_preserves_zero_and_a_wide_argument_holds() -> Bool {
+test fn the_emitted_identity_cast_preserves_zero_and_a_wide_argument_holds() -> Bool  {
   match identity_cast_native_emitted() {
     Absent => false
     Present { value: text } =>
@@ -129,7 +129,7 @@ fn identity_cast_native_run_fails_on_a_reused_build(text: String, value: String)
   }
 }
 
-test fn a_malformed_runtime_argument_fails_the_invocation_holds() -> Bool {
+test fn a_malformed_runtime_argument_fails_the_invocation_holds() -> Bool  {
   match identity_cast_native_emitted() {
     Absent => false
     Present { value: text } =>

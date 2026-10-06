@@ -101,7 +101,7 @@ fn wire_escaping_row() -> EmitHostRuntimeRow {
   }
 }
 
-test fn emit_host_transport_outside_grant_refuses_holds() -> Bool {
+test fn emit_host_transport_outside_grant_refuses_holds() -> Bool  {
   match run_host_process(
     row: wire_escaping_row(),
     target: rust_execution_unused_target(),
@@ -113,7 +113,7 @@ test fn emit_host_transport_outside_grant_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_transport_green_run_holds() -> Bool {
+test fn emit_host_transport_green_run_holds() -> Bool  {
   match run_emit_host(
     target: rust_execution_wire_target(),
     source: wire_source(),
@@ -133,7 +133,7 @@ test fn emit_host_transport_green_run_holds() -> Bool {
   }
 }
 
-test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
+test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool  {
   match run_host_process(
     row: wire_fixed_main_row(main_text: "fn main() { std::process::exit(3); }"),
     target: rust_execution_unused_target(),
@@ -149,7 +149,7 @@ test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
+test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool  {
   match run_host_process(
     row: wire_fixed_main_row(main_text: "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 4]); }"),
     target: rust_execution_wire_target(),
@@ -169,7 +169,7 @@ test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_row_bound_executable_identity_holds() -> Bool {
+test fn emit_host_row_bound_executable_identity_holds() -> Bool  {
   match emit_host_process_program_name(program: HostToolProgram { executable: "go" }) {
     Accepted { value: name, diagnostics: None } => name == "go"
     Rejected { diagnostics: _ } => false
@@ -177,7 +177,7 @@ test fn emit_host_row_bound_executable_identity_holds() -> Bool {
   }
 }
 
-test fn emit_host_row_bound_executable_identity_discriminates_holds() -> Bool {
+test fn emit_host_row_bound_executable_identity_discriminates_holds() -> Bool  {
   match emit_host_process_program_name(program: HostToolProgram { executable: "python3" }) {
     Accepted { value: name, diagnostics: None } => name == "python3"
     Rejected { diagnostics: _ } => false

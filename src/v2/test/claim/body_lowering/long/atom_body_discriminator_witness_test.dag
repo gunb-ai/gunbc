@@ -13,6 +13,6 @@ import v2.test.claim.body_lowering.atom_body_discriminator_helpers {
 // completed cost): the mechanism is the production frontend crossing, not a
 // synthetic fixture.
 
-test fn atom_body_discriminator_single_pass_receipt_holds() -> Bool {
+test fn atom_body_discriminator_single_pass_receipt_holds() -> Bool  {
   atom_body_discriminator_batched_receipt_holds()
 }

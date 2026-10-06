@@ -5,7 +5,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fold_locus() -> Locus { invariant_port_locus(port: ^cardinality_fold_propagation, invariant: ^cardinality_fold_propagation) }
 
-test fn cardinality_is_a_fold_homomorphism() -> Bool {
+test fn cardinality_is_a_fold_homomorphism() -> Bool  {
   let a = [1, 2, 3]
   let b = [4, 5]
   length(xs: list_append(left: a, right: b)) == (length(xs: a) + length(xs: b))
@@ -40,10 +40,10 @@ fn is_rejected(o: Outcome<Refined<Int>>) -> Bool {
   match o { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: _ } => true }
 }
 
-test fn fold_within_bound_accepts() -> Bool {
+test fn fold_within_bound_accepts() -> Bool  {
   is_accepted(o: checked_byte_sum(values: [100, 50, 50], at: fold_locus()))
 }
 
-test fn fold_overflow_rejects() -> Bool {
+test fn fold_overflow_rejects() -> Bool  {
   is_rejected(o: checked_byte_sum(values: [100, 100, 100], at: fold_locus()))
 }

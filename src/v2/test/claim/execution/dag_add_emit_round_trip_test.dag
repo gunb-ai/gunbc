@@ -170,7 +170,7 @@ fn dag_add_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn dag_add_emit_matches_serialize_holds() -> Bool {
+test fn dag_add_emit_matches_serialize_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: dag_add_target_model,
     emitted: dag_add_emitted_root
@@ -185,7 +185,7 @@ test fn dag_add_emit_matches_serialize_holds() -> Bool {
   }
 }
 
-test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
+test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool  {
   match coerce_grounded_node(
     source: dag_add_emitted_root,
     tree: dag_add_inferred_tree,
@@ -199,7 +199,7 @@ test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
   }
 }
 
-test fn dag_add_domain_coerce_accepts_holds() -> Bool {
+test fn dag_add_domain_coerce_accepts_holds() -> Bool  {
   match coerce_grounded_node(
     source: dag_arrow_domain_conj_node(),
     tree: dag_add_inferred_tree,
@@ -210,7 +210,7 @@ test fn dag_add_domain_coerce_accepts_holds() -> Bool {
   }
 }
 
-test fn dag_add_domain_translate_accepts_holds() -> Bool {
+test fn dag_add_domain_translate_accepts_holds() -> Bool  {
   match translate_emitted_node(
     tree: InferredTree {
       root: dag_arrow_domain_conj_node(),
@@ -223,7 +223,7 @@ test fn dag_add_domain_translate_accepts_holds() -> Bool {
   }
 }
 
-test fn dag_add_translate_accepts_holds() -> Bool {
+test fn dag_add_translate_accepts_holds() -> Bool  {
   match translate_emitted_node(tree: dag_add_inferred_tree, target: dag_add_target_model) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false

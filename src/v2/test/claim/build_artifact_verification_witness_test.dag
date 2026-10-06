@@ -52,7 +52,7 @@ fn stmt_text(s: Node) -> Bool {
   }
 }
 
-test fn witness_single_artifact_produces_two_checks() -> Bool {
+test fn witness_single_artifact_produces_two_checks() -> Bool  {
   let stmts = probe_stmts()
   stmts.length() == 2 && (match stmts.first() {
     Present { value: s } => witness_stmt_is_if(s: s)
@@ -60,14 +60,14 @@ test fn witness_single_artifact_produces_two_checks() -> Bool {
   })
 }
 
-test fn witness_existence_check_no_mtime() -> Bool {
+test fn witness_existence_check_no_mtime() -> Bool  {
   match probe_stmts().first() {
     Present { value: s } => stmt_text(s: s)
     Absent => false
   }
 }
 
-test fn witness_floor_covers_both_release_bins() -> Bool {
+test fn witness_floor_covers_both_release_bins() -> Bool  {
   let script = ci_floor_build_verify_script()
   string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "/target/release/claim_executor")

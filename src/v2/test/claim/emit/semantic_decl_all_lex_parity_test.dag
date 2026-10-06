@@ -30,7 +30,7 @@ fn lex_pair_matches(token_class: Symbol) -> Bool {
   }
 }
 
-test fn all_lex_rows_match() -> Bool {
+test fn all_lex_rows_match() -> Bool  {
   lex_pair_matches(token_class: ^rust_token_derive_struct)
     && lex_pair_matches(token_class: ^rust_token_derive_struct_copy)
     && lex_pair_matches(token_class: ^rust_token_derive_enum)

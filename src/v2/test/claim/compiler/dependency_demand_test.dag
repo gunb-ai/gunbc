@@ -41,12 +41,12 @@ fn is_network(d: DependencyDemand) -> Bool {
   demand_equal(left: d, right: DemandDerived { resources: resource_set_of(paths: [net()]) })
 }
 
-test fn an_operation_requiring_network_derives_network_holds() -> Bool {
+test fn an_operation_requiring_network_derives_network_holds() -> Bool  {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Http.Get"), q(dotted: "m.Clock.Now")])], operations: ops())
   is_network(d: demand_for(rows: rows, path: "m.f"))
 }
 
-test fn demand_flows_through_a_transparent_callee_holds() -> Bool {
+test fn demand_flows_through_a_transparent_callee_holds() -> Bool  {
   let rows = dependency_demand_of(
     functions: [plain(path: "m.outer", callees: [q(dotted: "m.inner")]), plain(path: "m.inner", callees: [q(dotted: "m.Http.Get")])],
     operations: ops()
@@ -54,7 +54,7 @@ test fn demand_flows_through_a_transparent_callee_holds() -> Bool {
   is_network(d: demand_for(rows: rows, path: "m.outer"))
 }
 
-test fn a_cycle_settles_on_the_union_holds() -> Bool {
+test fn a_cycle_settles_on_the_union_holds() -> Bool  {
   let rows = dependency_demand_of(
     functions: [plain(path: "m.a", callees: [q(dotted: "m.b")]), plain(path: "m.b", callees: [q(dotted: "m.a"), q(dotted: "m.Http.Get")])],
     operations: ops()
@@ -62,12 +62,12 @@ test fn a_cycle_settles_on_the_union_holds() -> Bool {
   is_network(d: demand_for(rows: rows, path: "m.a")) && is_network(d: demand_for(rows: rows, path: "m.b"))
 }
 
-test fn a_none_only_fn_derives_the_empty_demand_holds() -> Bool {
+test fn a_none_only_fn_derives_the_empty_demand_holds() -> Bool  {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Clock.Now")])], operations: ops())
   demand_equal(left: demand_for(rows: rows, path: "m.f"), right: DemandDerived { resources: resource_set_empty() })
 }
 
-test fn an_opaque_operation_is_undecided_by_its_cause_RED() -> Bool {
+test fn an_opaque_operation_is_undecided_by_its_cause_RED() -> Bool  {
   let rows = dependency_demand_of(functions: [plain(path: "m.outer", callees: [q(dotted: "m.inner")]), plain(path: "m.inner", callees: [q(dotted: "m.Shell.Exec"), q(dotted: "m.Http.Get")])], operations: ops())
   match demand_for(rows: rows, path: "m.outer") {
     DemandUndecided { cause: OpaqueOperationCalled { operation: o } } => o == q(dotted: "m.Shell.Exec")
@@ -76,7 +76,7 @@ test fn an_opaque_operation_is_undecided_by_its_cause_RED() -> Bool {
   }
 }
 
-test fn an_undeclared_operation_is_never_read_as_none_RED() -> Bool {
+test fn an_undeclared_operation_is_never_read_as_none_RED() -> Bool  {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Legacy.Call")])], operations: ops())
   match demand_for(rows: rows, path: "m.f") {
     DemandUndecided { cause: UndeclaredOperationCalled { operation: _ } } => true
@@ -85,7 +85,7 @@ test fn an_undeclared_operation_is_never_read_as_none_RED() -> Bool {
   }
 }
 
-test fn a_function_value_call_is_undecided_RED() -> Bool {
+test fn a_function_value_call_is_undecided_RED() -> Bool  {
   let rows = dependency_demand_of(functions: [FunctionFact { path: q(dotted: "m.f"), callees: [], calls_function_value: true }], operations: ops())
   match demand_for(rows: rows, path: "m.f") {
     DemandUndecided { cause: FunctionValueCalled { function: _ } } => true
@@ -94,7 +94,7 @@ test fn a_function_value_call_is_undecided_RED() -> Bool {
   }
 }
 
-test fn a_callee_outside_the_closure_is_undecided_RED() -> Bool {
+test fn a_callee_outside_the_closure_is_undecided_RED() -> Bool  {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "elsewhere.g")])], operations: ops())
   match demand_for(rows: rows, path: "m.f") {
     DemandUndecided { cause: CalleeOutsideClosure { callee: c } } => c == q(dotted: "elsewhere.g")
@@ -124,7 +124,7 @@ fn settles_on_oa(d: DependencyDemand) -> Bool {
   }
 }
 
-test fn a_competing_cause_cycle_settles_on_one_stable_cause_at_every_fn_RED() -> Bool {
+test fn a_competing_cause_cycle_settles_on_one_stable_cause_at_every_fn_RED() -> Bool  {
   let forward = dependency_demand_of(
     functions: [plain(path: "m.a", callees: [q(dotted: "m.b"), q(dotted: "m.Oa")]), plain(path: "m.b", callees: [q(dotted: "m.a"), q(dotted: "m.Ob")])],
     operations: competing_ops()
@@ -142,7 +142,7 @@ test fn a_competing_cause_cycle_settles_on_one_stable_cause_at_every_fn_RED() ->
 // THE FAIL-CLOSED ARM, AUTHORED RED. A chain three calls deep needs three rounds to carry Network to
 // its head; bounded to one round, the table has not settled and every fn reads DemandDidNotSettle
 // rather than the partial table.
-test fn a_table_that_does_not_settle_within_its_bound_refuses_at_every_fn_RED() -> Bool {
+test fn a_table_that_does_not_settle_within_its_bound_refuses_at_every_fn_RED() -> Bool  {
   let rows = dependency_demand_of_bounded(
     functions: [
       plain(path: "m.c1", callees: [q(dotted: "m.c2")]),

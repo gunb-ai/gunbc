@@ -74,7 +74,7 @@ fn meet_join_emit_discriminates(
   }
 }
 
-test fn rust_logic_meet_emit_holds() -> Bool {
+test fn rust_logic_meet_emit_holds() -> Bool  {
   meet_join_emit_source_equals(
     root: dag_meet_arrow_with_body_fixture,
     target: rust_logic_meet_target_model_staging(),
@@ -88,7 +88,7 @@ test fn rust_logic_meet_emit_holds() -> Bool {
     )
 }
 
-test fn rust_logic_join_emit_holds() -> Bool {
+test fn rust_logic_join_emit_holds() -> Bool  {
   meet_join_emit_source_equals(
     root: dag_join_arrow_with_body_fixture,
     target: rust_logic_join_target_model_staging(),

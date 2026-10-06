@@ -43,6 +43,6 @@ fn sdtr_unwired_target_refuses() -> Bool {
   }
 }
 
-test fn semantic_decl_unwired_target_refuses() -> Bool {
+test fn semantic_decl_unwired_target_refuses() -> Bool  {
   sdtr_unwired_target_refuses()
 }

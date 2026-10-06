@@ -34,10 +34,10 @@ fn nested_if_then_value() -> Int {
   }
 }
 
-test fn the_outer_else_of_an_if_nested_in_the_then_arm_is_the_value_holds() -> Bool {
+test fn the_outer_else_of_an_if_nested_in_the_then_arm_is_the_value_holds() -> Bool  {
   nested_if_else_value() == 3
 }
 
-test fn the_nested_else_inside_the_then_arm_is_the_value_control_holds() -> Bool {
+test fn the_nested_else_inside_the_then_arm_is_the_value_control_holds() -> Bool  {
   nested_if_then_value() == 2
 }
