@@ -3,7 +3,6 @@ module gunbc.spark.remote_leg_began
 import std.types { String, Bool, List }
 import std.algebra { trim }
 import v2.std.algebra { filter, length }
-import v2.std.optional { Present, Absent }
 
 // THE IN-BAND BEGAN-LINE, ONE PROTOCOL FOR EVERY PRIVILEGED SPARK LEG. extdeps.ssh.session
 // ssh_client_error_exit_status says why ssh's 255 alone does not establish that nothing ran, and
@@ -44,10 +43,9 @@ fn remote_leg_reported_began(stdout: String) -> Bool {
 // is normalized on its behalf.
 fn remote_leg_stdout_without_began(stdout: String) -> String {
   let lines = split(s: stdout, delimiter: "\n")
-  match first(filter(enumerate(lines), p => p.second == remote_leg_began_word)) {
-    Absent => stdout
-    Present { value: m } => join(map(filter(enumerate(lines), p => p.first != m.first), p => p.second), "\n")
-  }
+  let marker_at = fold(enumerate(lines), init: 0 - 1, f: (acc, p) => if acc < 0 && p.second == remote_leg_began_word { p.first } else { acc })
+  if marker_at < 0 { stdout }
+  else { join(map(filter(enumerate(lines), p => p.first != marker_at), p => p.second), "\n") }
 }
 
 // STDOUT READ AS ONE WORD: a state word, a path, a count, a single line. Surrounding whitespace,
