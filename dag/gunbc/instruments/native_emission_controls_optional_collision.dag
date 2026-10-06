@@ -1,0 +1,28 @@
+module gunbc.instruments.native_emission_controls_optional_collision
+
+import std.types { Int }
+
+// A NON-KERNEL COPRODUCT THAT HAPPENS TO BE NAMED Optional. The kernel Optional
+// (v2.std.optional, minted by v1.compiler.infer kernel_optional_type_node) stays in
+// every closure. Importing THIS declaration is the colliding import the resolver
+// refuses (ImportCollidesWithKernelName). The module itself is admitted: it declares
+// the name, it does not import it. Fixture named so #13454's collision carrier and
+// this wall share one declaration.
+type Optional
+  = CollisionWrapped { value: Int }
+  | CollisionEmpty
+
+data collision_wrapped_row: Optional = CollisionWrapped { value: 7 }
+
+data collision_empty_row: Optional = CollisionEmpty
+
+fn collision_row_value(o: Optional) -> Int {
+  match o {
+    CollisionWrapped { value: v } => v
+    CollisionEmpty => 0
+  }
+}
+
+fn collision_seven() -> Int {
+  collision_row_value(o: CollisionWrapped { value: 7 })
+}

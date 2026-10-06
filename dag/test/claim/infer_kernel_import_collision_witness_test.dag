@@ -1,0 +1,109 @@
+module test.claim.infer_kernel_import_collision_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE RULE: an authored import of a type that shares a kernel-mint spelling, and is not the
+// mint's own declaration, REFUSES at the import (v1.compiler.resolve
+// imported_type_collides_with_kernel_mint). Unifying the two lookups would still leave two
+// Optional types in the closure; the kernel overlay would keep winning by name and the
+// imported declaration would keep winning by interned identity. Refusal is the construction.
+//
+// THE RED IS native_emission_controls_optional_importer: it imports Optional from the
+// non-kernel collision module. THE POSITIVE CONTROL imports a non-kernel name from the same
+// module, and a second control imports the mint itself (v2.std.optional Optional).
+
+data collision_source: String = "module gunbc.instruments.native_emission_controls_optional_collision\n\ntype Optional\n  = CollisionWrapped \{ value: Int \}\n  | CollisionEmpty\n\nfn collision_row_value(o: Optional) -> Int \{\n  match o \{\n    CollisionWrapped \{ value: v \} => v\n    CollisionEmpty => 0\n  \}\n\}\n\nfn collision_seven() -> Int \{\n  collision_row_value(o: CollisionWrapped \{ value: 7 \})\n\}\n"
+
+data importer_source: String = "module gunbc.instruments.native_emission_controls_optional_importer\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ Optional \}\n\nfn imported_optional_value(o: Optional) -> Int \{\n  match o \{\n    CollisionWrapped \{ value: v \} => v\n    CollisionEmpty => 0\n  \}\n\}\n"
+
+data non_kernel_import_source: String = "module probe_kernel_import_ok\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_fn() -> Int \{\n  collision_seven()\n\}\n"
+
+data mint_import_source: String = "module probe_kernel_mint_import\n\nimport v2.std.optional \{ Optional \}\n\nfn uses_mint(o: Optional<Int>) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n"
+
+data mint_decl_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
+
+data collision_class: String = "ImportCollidesWithKernelName"
+
+fn collision_definer() -> FixtureSource {
+  fixture_source("gunbc/instruments/native_emission_controls_optional_collision.dag", collision_source)
+}
+
+fn compile_importer() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      collision_definer(),
+      fixture_source("gunbc/instruments/native_emission_controls_optional_importer.dag", importer_source)
+    ],
+    entry: "gunbc/instruments/native_emission_controls_optional_importer.dag"
+  })
+}
+
+fn compile_non_kernel_import() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      collision_definer(),
+      fixture_source("probe_kernel_import_ok.dag", non_kernel_import_source)
+    ],
+    entry: "probe_kernel_import_ok.dag"
+  })
+}
+
+fn compile_mint_import() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("v2/std/optional.dag", mint_decl_source),
+      fixture_source("probe_kernel_mint_import.dag", mint_import_source)
+    ],
+    entry: "probe_kernel_mint_import.dag"
+  })
+}
+
+fn outcome_rows(o: MultiModuleCompileFixtureOutcome) -> List<CompileDiagnosticCensusRow>? {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => Present { value: rows }
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => Present { value: rows }
+    FixtureInstrumentRefused { cause: _ } => none
+  }
+}
+
+fn outcome_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false,
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn importing_a_non_mint_optional_refuses_at_the_import() -> Bool {
+  match outcome_rows(o: compile_importer()) {
+    Absent => false
+    Present { value: rows } => fixture_has_class(rows: rows, wanted: collision_class)
+  }
+}
+
+test fn importing_a_non_kernel_name_from_the_same_module_is_accepted() -> Bool {
+  outcome_clean(o: compile_non_kernel_import())
+}
+
+test fn importing_the_kernel_mint_optional_is_accepted() -> Bool {
+  match outcome_rows(o: compile_mint_import()) {
+    Absent => false
+    Present { value: rows } => fixture_has_class(rows: rows, wanted: collision_class) == false
+  }
+}

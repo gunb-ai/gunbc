@@ -1,0 +1,13 @@
+module gunbc.instruments.native_emission_controls_optional_importer
+
+import std.types { Int }
+import gunbc.instruments.native_emission_controls_optional_collision { Optional }
+
+// THE DISCRIMINATING IMPORTER. Not ingested as corpus (fixtures/ is not a source root).
+// The enrolled consumer compiles these bytes and expects ImportCollidesWithKernelName.
+fn imported_optional_value(o: Optional) -> Int {
+  match o {
+    CollisionWrapped { value: v } => v
+    CollisionEmpty => 0
+  }
+}

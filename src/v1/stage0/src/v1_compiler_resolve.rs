@@ -370,6 +370,50 @@ pub struct ImportResolveResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+fn module_declares_type_named(
+    module: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    crate::v1_std_core::module_items(module).iter().any(|item| {
+        item.module_item_kind == crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration
+            && crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()) == name
+    })
+}
+
+fn imported_type_collides_with_kernel_mint(
+    name: String,
+    import_path: String,
+    target_module: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if !module_declares_type_named(target_module.clone(), name.clone(), source_indices) {
+        return None;
+    }
+    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+        crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows(),
+        name,
+    ))
+    .clone()
+    {
+        crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound {
+            declaration: d,
+        } => {
+            if d.module_path == import_path {
+                None
+            } else {
+                Some(d.module_path.clone())
+            }
+        }
+        crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
+            None
+        }
+        crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
+            ..
+        } => Some(import_path),
+    }
+}
+
 pub fn resolve_import(
     import: Rc<Node>,
     module_index: Rc<HashMap<String, Rc<Node>>>,
@@ -499,7 +543,75 @@ pub fn resolve_import(
                         ),
                         target_module: Some(target_mod.clone()),
                     }),
-                    diagnostics: v1_rt::concat(name_diags.clone(), shadow_diags.clone()),
+                    diagnostics: v1_rt::concat(
+                        v1_rt::concat(name_diags.clone(), shadow_diags.clone()),
+                        {
+                            let mut __result = Vec::new();
+                            if crate::v1_std_core::import_is_all(import.clone()) {
+                                for item in crate::v1_std_core::module_items(target_mod.clone())
+                                    .iter()
+                                    .cloned()
+                                {
+                                    if item.module_item_kind
+                                        == crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration
+                                    {
+                                        let name = crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        );
+                                        if let Some(kernel_mod) =
+                                            imported_type_collides_with_kernel_mint(
+                                                name.clone(),
+                                                import_path.clone(),
+                                                target_mod.clone(),
+                                                source_indices.clone(),
+                                            )
+                                        {
+                                            __result.push(crate::v1_std_core::make_error_node(
+                                                Rc::new(
+                                                    CompilerDiagnostic::ImportCollidesWithKernelName {
+                                                        name,
+                                                        module_path: import_path.clone(),
+                                                        importing_module: importing_module.clone(),
+                                                        kernel_declaration_module: kernel_mod,
+                                                        span: import.span.clone(),
+                                                    },
+                                                ),
+                                                importing_module.clone(),
+                                            ));
+                                        }
+                                    }
+                                }
+                            } else {
+                                for child in import.children.clone().iter().cloned() {
+                                    let name = crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        child.clone(),
+                                    );
+                                    if let Some(kernel_mod) = imported_type_collides_with_kernel_mint(
+                                        name.clone(),
+                                        import_path.clone(),
+                                        target_mod.clone(),
+                                        source_indices.clone(),
+                                    ) {
+                                        __result.push(crate::v1_std_core::make_error_node(
+                                            Rc::new(
+                                                CompilerDiagnostic::ImportCollidesWithKernelName {
+                                                    name,
+                                                    module_path: import_path.clone(),
+                                                    importing_module: importing_module.clone(),
+                                                    kernel_declaration_module: kernel_mod,
+                                                    span: child.span.clone(),
+                                                },
+                                            ),
+                                            importing_module.clone(),
+                                        ));
+                                    }
+                                }
+                            }
+                            Rc::new(__result)
+                        },
+                    ),
                 })
             }
         }
