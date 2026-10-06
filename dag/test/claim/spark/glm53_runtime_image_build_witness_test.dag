@@ -12,7 +12,7 @@ import gunbc.spark.vllm_image_identity {
 import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
 import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
 import product.host_identity { host_identity_eq, HostIdentity }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.group_image_produce { distribution_source_candidates }
 import gunbc.spark.glm53_kvplan_image { glm53_kvplan_produced_image_held }
 import extdeps.docker.cli { docker_image_save_command, docker_image_load_command }

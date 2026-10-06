@@ -30,7 +30,7 @@ import gunbc.target_binding {
   HeadsReadingDifferentialStanding,
   CompileCleanDiagnosticCensusStanding,
 }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 

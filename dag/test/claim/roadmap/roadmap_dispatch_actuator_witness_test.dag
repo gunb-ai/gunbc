@@ -5,7 +5,7 @@ import gunbc.roadmap_sizing {
 }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
 import v2.std.collection { List }
@@ -79,6 +79,7 @@ import gunbc.roadmap_dispatch_actuator {
   CursorProviderSpawnUnwired,
   CodexProviderExecutableAbsent,
   GunbcHarnessSpawnNeedsInstance,
+  ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
   CodexDispatchProvider,
   dispatch_tmux_session_name,
@@ -1109,6 +1110,7 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
     CursorProviderSpawnUnwired { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
+    ClaudeProviderCredentialUnbound { reason: r } => r as String
   }
 }
 

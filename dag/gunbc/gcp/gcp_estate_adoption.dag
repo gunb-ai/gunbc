@@ -1,7 +1,7 @@
 module gunbc.gcp_estate_adoption
 
 import std.types { String, NonEmptyStr, List, Bool }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.upsert_decision {
   UpsertClassification,
   Converged,

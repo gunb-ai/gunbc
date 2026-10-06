@@ -3,7 +3,7 @@ module gunbc.namespace_reference_derived_residency_qualification
 import std.types { Bool, List }
 import v2.std.node { Symbol }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 // THE EVIDENCE TYPE FOR THE CONSUMPTION SIDE of
 // gunbc.recurring_failure_mode.semantic_independence_consumed_as_resource_independence, which is the

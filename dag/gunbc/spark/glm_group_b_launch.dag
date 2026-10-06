@@ -16,7 +16,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch { ArmLaunchPlan, ArmLaunchRefused, plan_arm_launch_under_memory_fit, glm_native_arm_container }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // ── THE ONE CALL SITE THAT SAYS WHAT GROUP B LAUNCHES ─────────────────────────────────────────
 //

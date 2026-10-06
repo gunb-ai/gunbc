@@ -1,7 +1,7 @@
 module extdeps.vllm.kv_layout
 
 import std.types { Bool, String, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure {
   TokenCount, token_count, token_count_value,
   ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
