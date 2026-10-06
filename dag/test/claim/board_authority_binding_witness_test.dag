@@ -69,7 +69,9 @@ test fn w_an_unknown_board_refuses_unbound() -> Bool {
 test fn w_a_board_whose_fru_names_another_product_refuses() -> Bool {
   let wrong_product = BoardFruRead { fru: BoardFruIdentity { manufacturer: "FOXCONN", product: "Mt. Mitchell", part_number: none } }
   let wrong_maker = BoardFruRead { fru: BoardFruIdentity { manufacturer: "WIWYNN", product: "Mt. Collins", part_number: none } }
-  is_unbound(l: observed_board_authority(observation: wrong_product))
+  let jade_maker_other_product = BoardFruRead { fru: BoardFruIdentity { manufacturer: "WIWYNN", product: "SV328R", part_number: none } }
+  is_unbound(l: observed_board_authority(observation: jade_maker_other_product))
+    && is_unbound(l: observed_board_authority(observation: wrong_product))
     && is_unbound(l: observed_board_authority(observation: wrong_maker))
 }
 
