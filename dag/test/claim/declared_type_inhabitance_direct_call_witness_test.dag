@@ -670,3 +670,32 @@ test fn w_a_direct_call_refusal_does_not_satisfy_the_list_element_route() -> Boo
   violation_count(source: list_value_at_record_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
     && list_element_refusal_is_the_only_refusal(source: list_value_at_record_formal_source) == false
 }
+
+// SPECIMEN SHAPE FOR gunbc#13198. A generic record application CarrierClosed<T> (here Wrap<Payload>)
+// at a formal declared as T, where T is a coproduct. The product-vs-product arm already refuses a
+// wrapper at a RECORD payload; the coproduct payload is what made the relation abstain and fall
+// through to Inhabits. Asserting DeclaredTypeNotInhabited is the correct behaviour; the wall that
+// lands with this row is what makes it true.
+data generic_record_at_coproduct_payload_red_source: String = "module probe_generic_record_at_coproduct\nimport std.types { Int, String }\ntype Payload = Observed { n: Int } | Unobserved { reason: String }\ntype Wrap<T> { result: T, close: Int }\nfn takes_payload(x: Payload) -> Int { match x { Observed { n } => n Unobserved { reason: _ } => 0 } }\nfn make_wrap() -> Wrap<Payload> { Wrap { result: Observed { n: 1 }, close: 0 } }\nfn probe() -> Int { takes_payload(x: make_wrap()) }\n"
+
+test fn w_a_generic_record_application_at_its_coproduct_payload_formal_is_refused() -> Bool {
+  violation_count(source: generic_record_at_coproduct_payload_red_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE POSITIVE CONTROL. Same types, same call, the wrapper's payload field supplied. A compiler
+// that refused every argument would satisfy the red above; this row is what makes that
+// indistinguishable from a wall.
+data generic_record_at_coproduct_payload_control_source: String = "module probe_generic_record_at_coproduct_ok\nimport std.types { Int, String }\ntype Payload = Observed { n: Int } | Unobserved { reason: String }\ntype Wrap<T> { result: T, close: Int }\nfn takes_payload(x: Payload) -> Int { match x { Observed { n } => n Unobserved { reason: _ } => 0 } }\nfn make_wrap() -> Wrap<Payload> { Wrap { result: Observed { n: 1 }, close: 0 } }\nfn probe() -> Int { takes_payload(x: make_wrap().result) }\n"
+
+test fn w_the_payload_field_of_a_generic_record_at_that_formal_is_clean() -> Bool {
+  violation_count(source: generic_record_at_coproduct_payload_control_source, wanted: "DeclaredTypeNotInhabited") == 0
+    && violation_count(source: generic_record_at_coproduct_payload_control_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+}
+
+// NOT A GENERICITY HOLE: the same constructor identity, written without a type parameter, was
+// equally silent. A repair that only special-cased an applied generic would leave this red.
+data plain_record_at_coproduct_payload_red_source: String = "module probe_plain_record_at_coproduct\nimport std.types { Int, String }\ntype Payload = Observed { n: Int } | Unobserved { reason: String }\ntype Wrap { result: Payload, close: Int }\nfn takes_payload(x: Payload) -> Int { match x { Observed { n } => n Unobserved { reason: _ } => 0 } }\nfn make_wrap() -> Wrap { Wrap { result: Observed { n: 1 }, close: 0 } }\nfn probe() -> Int { takes_payload(x: make_wrap()) }\n"
+
+test fn w_a_plain_record_at_a_coproduct_formal_is_refused() -> Bool {
+  violation_count(source: plain_record_at_coproduct_payload_red_source, wanted: "DeclaredTypeNotInhabited") > 0
+}

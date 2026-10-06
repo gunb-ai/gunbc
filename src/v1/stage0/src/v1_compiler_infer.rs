@@ -6172,7 +6172,16 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
 })
                                                     } else {
-                                                        match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
+                                                        if record_at_coproduct_declared_type(
+                                                            declared.clone(),
+                                                            produced.clone(),
+                                                            scope.clone(),
+                                                        ) {
+                                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedDistinctProductConstructor,
+})
+                                                        } else {
+                                                            match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
     Some(RefinementInhabitance::RefinementWidensToDeclaredBase) => Rc::new(InhabitanceVerdict::Inhabits),
     Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
     reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
@@ -6199,6 +6208,7 @@ pub fn declared_type_inhabitance(
                                                             }
                                                         },
 }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -6427,6 +6437,64 @@ pub fn coproduct_at_record_declared_type(
             ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
                 produced_head.clone(),
             ))
+        }
+    }
+}
+
+pub fn record_at_coproduct_declared_type(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let produced_product = nominal_product_head_name(produced.clone(), scope.clone());
+        let declared_coproduct = established_coproduct_head_name(declared.clone(), scope.clone());
+        if ((produced_product.clone() == "".to_string())
+            || (declared_coproduct.clone() == "".to_string()))
+        {
+            false
+        } else {
+            if nominal_product_head_names_agree(
+                declared_coproduct.clone(),
+                produced_product.clone(),
+                scope.clone(),
+            ) {
+                false
+            } else {
+                true
+            }
+        }
+    }
+}
+
+pub fn established_coproduct_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (((((((name.clone() == "".to_string())
+            || (n.return_cardinality.clone() == Cardinality::CardOptional))
+            || type_node_is_callable(n.clone()))
+            || crate::std_types::is_kernel_type(name.clone()))
+            || (crate::v1_std_core::qualified_last_segment(name.clone())
+                == "Optional".to_string()))
+            || crate::v1_compiler_infer_types::node_is_element_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+        {
+            "".to_string()
+        } else {
+            if crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
+                expected_type_head_exposure(n.clone(), scope.clone()),
+            ) {
+                name.clone()
+            } else {
+                nominal_coproduct_application_head_name(n.clone(), scope.clone())
+            }
         }
     }
 }

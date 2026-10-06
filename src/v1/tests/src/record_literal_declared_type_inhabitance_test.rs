@@ -55,3 +55,56 @@ fn concrete_record_literal_identity_is_checked_at_declared_positions() {
         green.diagnostics
     );
 }
+
+#[test]
+fn generic_record_application_at_coproduct_payload_formal_is_refused() {
+    let red = compile(
+        "wrap_at_payload.dag",
+        "module wrap_at_payload\n\
+         type Payload = Observed { n: Int } | Unobserved { reason: String }\n\
+         type Wrap<T> { result: T, close: Int }\n\
+         fn takes_payload(x: Payload) -> Int { match x { Observed { n } => n Unobserved { reason: _ } => 0 } }\n\
+         fn make_wrap() -> Wrap<Payload> { Wrap { result: Observed { n: 1 }, close: 0 } }\n\
+         fn probe() -> Int { takes_payload(x: make_wrap()) }\n",
+    );
+    let refusals: Vec<_> = red
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                *d.diagnostic,
+                CompilerDiagnostic::DeclaredTypeNotInhabited { .. }
+            )
+        })
+        .collect();
+    assert!(
+        !refusals.is_empty(),
+        "Wrap<Payload> at a Payload formal must refuse inhabitance, got: {:?}",
+        red.diagnostics
+    );
+
+    let green = compile(
+        "wrap_payload_field.dag",
+        "module wrap_payload_field\n\
+         type Payload = Observed { n: Int } | Unobserved { reason: String }\n\
+         type Wrap<T> { result: T, close: Int }\n\
+         fn takes_payload(x: Payload) -> Int { match x { Observed { n } => n Unobserved { reason: _ } => 0 } }\n\
+         fn make_wrap() -> Wrap<Payload> { Wrap { result: Observed { n: 1 }, close: 0 } }\n\
+         fn probe() -> Int { takes_payload(x: make_wrap().result) }\n",
+    );
+    let green_refusals: Vec<_> = green
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                *d.diagnostic,
+                CompilerDiagnostic::DeclaredTypeNotInhabited { .. }
+            )
+        })
+        .collect();
+    assert!(
+        green_refusals.is_empty(),
+        "the payload field at that formal must stay clean, got: {:?}",
+        green.diagnostics
+    );
+}

@@ -4333,6 +4333,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if record_at_coproduct_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedDistinctProductConstructor }
   } else {
     match refinement_inhabitance(declared: declared, produced: produced, scope: scope) {
       Present { value: RefinementWidensToDeclaredBase } => Inhabits
@@ -4530,6 +4532,46 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
   } else {
     type_head_exposure_is_product(exposure: declared_head)
       && type_head_exposure_is_coproduct(exposure: produced_head)
+  }
+}
+
+// THE DUAL OF coproduct_at_record_declared_type, AND THE REASON IT IS NOT THAT FUNCTION WITH
+// THE SIDES SWAPPED. type_head_exposure_is_product answers only ProductHead. A generic record
+// application -- CarrierClosed<T> -- exposes ApplicationHead, so the dual written as a swap
+// would stay silent on the specimen that took down every srv2 belt tick (gunbc#13198:
+// CarrierClosed<RoadmapStandings> at a RoadmapStandings formal). nominal_product_head_name
+// already treats an ApplicationHead whose constructor is a declared product as a product
+// constructor; this arm consumes that, and the declared side's established coproduct head
+// (CoproductHead, or an application of a coproduct constructor). The product-vs-product
+// case is already refused by nominal_product_inhabitance_refusal; this arm exists because
+// that function ABSTAINS when the declared head is not a product, and the relation then
+// falls through to Inhabits. THAT ABSTENTION IS THE EARLIEST UNJUSTIFIED BOUNDARY.
+fn record_at_coproduct_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let produced_product = nominal_product_head_name(n: produced, scope: scope)
+  let declared_coproduct = established_coproduct_head_name(n: declared, scope: scope)
+  if produced_product == "" || declared_coproduct == "" {
+    false
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_coproduct, produced_name: produced_product, scope: scope) {
+    false
+  } else {
+    true
+  }
+}
+
+fn established_coproduct_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else if type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: n, scope: scope)) {
+    name
+  } else {
+    nominal_coproduct_application_head_name(n: n, scope: scope)
   }
 }
 

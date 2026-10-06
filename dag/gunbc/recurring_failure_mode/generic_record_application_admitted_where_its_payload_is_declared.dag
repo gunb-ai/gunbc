@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.generic_record_application_admitted_where_its_payload_is_declared
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_record_application_admitted_where_its_payload_is_declared: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_record_application_admitted_where_its_payload_is_declared" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a value whose type is a generic record application Wrap<T> (the specimen: CarrierClosed<RoadmapStandings>) is accepted at a position declared as T, with no diagnostic. The program is Accepted. At evaluation the callee matches T's coproduct arms and meets a Wrap record instead, and aborts with PatternMatchFailure.",
+
+    "HARM, gunbc#13198: that abort took down every srv2 belt tick. DESIGN section 4b names the class as below-baseline when it fails: values inhabit declared types. #13476 is the one-line wiring repair at the production site and does not touch the checker; this row is the acceptance hole that made the wiring writable.",
+
+    "THE CHAIN (DESIGN section 6b). Candidates ruled out at the earliest unjustified boundary, not at the symptom:",
+
+    "NOT generic instantiation treated as compatible with T. The inhabitance relation never peels Wrap<T> to T. CarrierClosed and RoadmapStandings are compared as two type nodes; there is no substitution that rewrites the wrapper to its argument.",
+
+    "NOT leaf-name or structural agreement where declaration identity should decide. type_name_compatible on CarrierClosed versus RoadmapStandings is false. The names disagree; the checker did not confuse them.",
+
+    "NOT named-argument call checking skipping the declared parameter type. direct_call_argument_inhabitance_diags does build a DeclaredTypeObligation at the named actual, with declared=RoadmapStandings and produced=CarrierClosed<RoadmapStandings>.",
+
+    "YES a known unify/hole that defaults to admit. declared_type_inhabitance reaches its terminal Inhabits by fallthrough. coproduct_at_record_declared_type refuses only a coproduct PRODUCED at a product DECLARED. nominal_product_inhabitance_refusal abstains unless BOTH heads are products. A coproduct formal therefore leaves the product constructor on the produced side uncompared. kernel_value_declared_type_mismatch also exits when the actual has children, so a generic application is invisible to that arm too. The earliest unjustified boundary is that abstention: a produced product constructor at an established coproduct formal is a decidable distinct-constructor pair, and the relation had no producer for it.",
+
+    "REPAIR: v1.compiler.infer record_at_coproduct_declared_type, the dual of coproduct_at_record_declared_type, consuming nominal_product_head_name so a generic record application (ApplicationHead of a declared product) is visible as a product constructor. Reason RefusedDistinctProductConstructor.",
+
+    "THE INSTRUMENT: test.claim.declared_type_inhabitance_direct_call_witness w_a_generic_record_application_at_its_coproduct_payload_formal_is_refused (discriminating RED), w_the_payload_field_of_a_generic_record_at_that_formal_is_clean (positive control), w_a_plain_record_at_a_coproduct_formal_is_refused (genericity is not the discriminator). Re-derive with gunbc run --claim-run on dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag. Counts are not transcribed here.",
+
+    "POPULATION ON LANDING. The wall newly refuses every produced product constructor at an established coproduct formal. The live production site of the specimen -- gunbc.roadmap.roadmap_served_observation served_observation_issue_query_surface passing roadmap_standings_read into issue_query_snapshot_for_projection's standings: RoadmapStandings -- is dispositioned in the same change by the unwrap served_standings_after_snapshot_close, the same producer the daily page already used. Other CarrierClosed producers in that family already travel through their after_snapshot_close folds. A search of functions returning CarrierClosed found no further call that hands the wrapper to a T formal.",
+
+    "RUNG FOUND AT: outside the ladder before the wall -- Accepted with no diagnostic. After the wall: 2, mechanically preventable, by the declared-type inhabitance relation at PositionDirectCallArgument (and every other position that relation serves). CEILING: 4, structurally impossible -- Wrap<T> and T are different constructors, decidable from the heads. NEXT TRIGGER: construction that makes a generic record application unwritable at a position declared as its type argument, rather than a relation that refuses after the fact.",
+
+    "RECOGNITION RULE: a runtime PatternMatchFailure whose scrutinee type is a wrapper record and whose arms are the payload coproduct, at a call the compiler reported clean. Read backwards: the actual's type is Wrap<T> and the formal is T.",
+  ],
+  evidence: [],
+}
