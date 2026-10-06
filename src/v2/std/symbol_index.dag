@@ -87,6 +87,7 @@ type SymbolIndex {
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
+  variant_alias_carriers: Map<QualifiedName, QualifiedName>
   declared_type_params: Map<QualifiedName, Node>
   declared_resources: Map<QualifiedName, ResourceDeclared>
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
@@ -143,6 +144,7 @@ fn empty_symbol_index() -> SymbolIndex {
     bound_declarings: empty_map(),
     declared_payloads: empty_map(),
     renaming_aliases: empty_map(),
+    variant_alias_carriers: empty_map(),
     declared_type_params: empty_map(),
     declared_resources: empty_map(),
     namespace_bodies: empty_map(),
@@ -223,6 +225,7 @@ fn symbol_index_track_global_bare(
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
               renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
@@ -244,6 +247,7 @@ fn symbol_index_track_global_bare(
                 bound_declarings: index.bound_declarings,
                 declared_payloads: index.declared_payloads,
                 renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
                 declared_type_params: index.declared_type_params,
                 declared_resources: index.declared_resources,
                 namespace_bodies: index.namespace_bodies,
@@ -261,6 +265,7 @@ fn symbol_index_track_global_bare(
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
               renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
@@ -293,6 +298,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       PureRenamingOf { head: head } => map_insert(m: index.renaming_aliases, key: qualified_path, value: head)
       NotARenaming => index.renaming_aliases
     },
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
@@ -324,6 +330,7 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     bound_declarings: index.bound_declarings,
     declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind),
     renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
@@ -356,6 +363,7 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
     namespace_bodies: index.namespace_bodies,
@@ -370,6 +378,7 @@ fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: Qualifie
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {}),
@@ -384,6 +393,7 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
@@ -410,6 +420,7 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
@@ -537,6 +548,7 @@ fn symbol_index_bind_at(
       ),
       declared_payloads: index.declared_payloads,
       renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
       declared_type_params: index.declared_type_params,
       declared_resources: index.declared_resources,
       namespace_bodies: index.namespace_bodies,
@@ -549,6 +561,7 @@ fn symbol_index_bind_at(
         bound_declarings: recorded.bound_declarings,
         declared_payloads: recorded.declared_payloads,
         renaming_aliases: recorded.renaming_aliases,
+        variant_alias_carriers: recorded.variant_alias_carriers,
         declared_type_params: recorded.declared_type_params,
         declared_resources: recorded.declared_resources,
         namespace_bodies: recorded.namespace_bodies,
@@ -697,3 +710,31 @@ fn symbol_index_lexical_lookup(
 }
 
 
+// THE CARRIER OF A UNIQUE VARIANT'S MODULE-LEVEL ALIAS. A bare variant spelling resolves through
+// the alias the fill inserts at the module's own path (`p.Boxed` for the one `Boxed` in module p),
+// so an alias path does not name the declaring coproduct; this row, minted by the same containment
+// walk that owns the variant's declared path, carries it. CONSUMER: v2.compiler.infer
+// infer_record_construct_read, which types a variant construction by its variant's declaring
+// coproduct.
+fn symbol_index_variant_alias_carrier(index: SymbolIndex, alias_path: QualifiedName) -> Optional<QualifiedName> {
+  map_lookup(m: index.variant_alias_carriers, key: alias_path)
+}
+
+fn symbol_index_mark_variant_alias_carrier(index: SymbolIndex, alias_path: QualifiedName, carrier: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: map_insert(
+      m: index.variant_alias_carriers,
+      key: alias_path,
+      value: carrier
+    ),
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots
+  }
+}

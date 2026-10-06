@@ -296,21 +296,19 @@ fn symbol_index_fill_containment_node(
             )
             if disj_variant_count_of(counts: counts, sym: sym) == 1 {
               let alias_path = qualified_name_snoc(qn: module_qn, segment: sym)
-              // THE ALIAS IS A BINDING TO ITS DECLARING PATH (the repair the receipt
-              // a_binding_position_recorded_as_a_declaring_identity names): a second ENTRY over
-              // the same arm node was the double-entry defect that row describes. Filing the
-              // binding makes symbol_index_declaring_path_of answer the variant's declaring path
-              // at the alias, so no parallel carrier map is needed beside it.
               symbol_index_fill_containment_node(
-                index: symbol_index_mark_declared_payload(
-                  index: symbol_index_bind_at(
-                    index: with_variant,
-                    binding_path: alias_path,
-                    declaring_path: variant_path,
-                    resolved: edge.target
+                index: symbol_index_mark_variant_alias_carrier(
+                  index: symbol_index_mark_declared_payload(
+                    index: symbol_index_insert(
+                      index: with_variant,
+                      qualified_path: alias_path,
+                      resolved: edge.target
+                    ),
+                    qualified_path: alias_path,
+                    kind: VariantArmPayload
                   ),
-                  qualified_path: alias_path,
-                  kind: VariantArmPayload
+                  alias_path: alias_path,
+                  carrier: variant_path
                 ),
                 path: variant_path,
                 node: edge.target,
