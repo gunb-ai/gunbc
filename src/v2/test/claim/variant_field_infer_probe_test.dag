@@ -233,12 +233,18 @@ type VfpArrowReading {
 }
 
 // PREORDER COLLECTORS over the resolved tree: all matches, and a match's arm bodies in order.
-fn vfp_matches_of(n: Node) -> List<Node> {
-  match n.kind {
-    ComputationNode { behavior: Match } =>
-      Cons { head: n, tail: fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of(n: e.target)) }) }
-    _ =>
-      fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of(n: e.target)) })
+fn vfp_matches_of(n: Node) -> List<Node> { vfp_matches_of_at(n: n, depth: 24) }
+
+fn vfp_matches_of_at(n: Node, depth: Int) -> List<Node> {
+  match depth <= 0 {
+    true => Empty
+    false =>
+      fold(n.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: Match } } => list_append(left: acc, right: Cons { head: e.target, tail: vfp_matches_of_at(n: e.target, depth: depth - 1) })
+          _ => list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1))
+        }
+      })
   }
 }
 
@@ -548,3 +554,21 @@ fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
 }
 
 fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
+
+// TEMPORARY FINDER INSTRUMENT -- prints which link of the subject chain is Absent on the arrow
+// fixture's resolved tree (the finder runs on the RESOLVED tree, independent of infer's outcome).
+// DELETED WITH THE RFM RETIREMENT RECEIPT.
+fn vfp_decode_finder() -> CliWireResponse {
+  match vfp_assemble(src: vfp_arrow_src) {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: "finder:resolve_refused:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match vfp_find_match(n: resolved.root) {
+        Absent => CliWirePrintable { bytes: "finder:no_match_node", exit: ExitSuccess }
+        Present { value: m } =>
+          match vfp_arm_bodies_of(n: m) {
+            Empty => CliWirePrintable { bytes: "finder:match_but_no_arm_bodies", exit: ExitSuccess }
+            Cons { head: _, tail: _ } => CliWirePrintable { bytes: "finder:match_and_arm_body", exit: ExitSuccess }
+          }
+      }
+  }
+}
