@@ -566,6 +566,33 @@ test fn a_retry_after_that_is_not_seconds_and_a_missing_hint_are_stated_not_gues
     })
 }
 
+// RED: delay-seconds is 1*DIGIT, and the integer parser would accept a sign, so a signed, fractional or
+// unit-suffixed value is carried as text and never read as a number of seconds.
+fn w_retry_after_of(value: String) -> OpenRouterRetryAfter? {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: join(["HTTP/2 429\r\nretry-after: ", value, "\r\n\r\n"], "")) {
+    Present { value: r } => Present { value: r.hints.retry_after }
+    Absent => none
+  }
+}
+
+fn w_is_unparsed(r: OpenRouterRetryAfter?) -> Bool {
+  match r {
+    Present { value: RetryAfterUnparsed { text: _ } } => true
+    Present { value: RetryAfterSeconds { seconds: _ } } => false
+    Present { value: RetryAfterAbsent } => false
+    Absent => false
+  }
+}
+
+test fn a_signed_fractional_or_suffixed_retry_after_is_not_read_as_seconds() -> Bool {
+  w_is_unparsed(r: w_retry_after_of(value: "+30"))
+    && w_is_unparsed(r: w_retry_after_of(value: "-0"))
+    && w_is_unparsed(r: w_retry_after_of(value: "-30"))
+    && w_is_unparsed(r: w_retry_after_of(value: "3.5"))
+    && w_is_unparsed(r: w_retry_after_of(value: "30s"))
+    && (match w_retry_after_of(value: "30") { Present { value: RetryAfterSeconds { seconds: n } } => n == 30  Present { value: _ } => false  Absent => false })
+}
+
 // RED: a 402, or any body that is not a 429, is NOT a rate-limit refusal -- it keeps its own typed error
 // (the 402 limit_source decode above), so a paid-model refusal is never read as a wait-and-retry.
 test fn only_a_429_is_a_rate_limit_refusal() -> Bool {

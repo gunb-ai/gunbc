@@ -470,7 +470,22 @@ fn openrouter_header_scan_line(acc: HeaderScan, line: String) -> HeaderScan {
   }
 }
 
+// HTTP delay-seconds IS 1*DIGIT (RFC 9110 section 10.2.3): no sign, no fraction, no unit. The integer parser
+// below accepts a leading '+' or '-' (so '+30' and '-0' would read as numbers), so the lexical shape is
+// checked first and a value that is not all ASCII digits is carried as the text it was.
+fn openrouter_is_ascii_digits(text: String) -> Bool {
+  length(text) > 0 && length(fold(nat_range_inclusive(lo: 0, hi: 9), init: text, f: (acc, i) => replace(acc, to_string(i), ""))) == 0
+}
+
 fn openrouter_retry_after_from_text(text: String) -> OpenRouterRetryAfter {
+  if !openrouter_is_ascii_digits(text: text) {
+    RetryAfterUnparsed { text: text }
+  } else {
+    openrouter_retry_after_from_digits(text: text)
+  }
+}
+
+fn openrouter_retry_after_from_digits(text: String) -> OpenRouterRetryAfter {
   match parse_int(s: text) {
     Absent => RetryAfterUnparsed { text: text }
     Present { value: n } =>
