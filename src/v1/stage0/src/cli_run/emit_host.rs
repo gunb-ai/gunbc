@@ -3226,44 +3226,128 @@ pub(crate) fn fixture_closure_union_emit_receipt(
     })
 }
 
-/// Deleting `dag/gunbc/rung_drop/fixture_closure_union_unmodeled_stderr_capture.dag` fails this
-/// compile. The exclusion keys are the typed `data …: String` fields on that module, not a
-/// second authored population (review 77110).
+/// Deleting either the drop row or its typed carrier fails this compile. The union compiles
+/// the carrier through `compile_to_resolved` and evaluates `exclusion` (review 77125).
+const STDERR_CAPTURE_GAP_CARRIER_SOURCE: &str =
+    include_str!("../../../../../dag/gunbc/stderr_capture_gap_exclusion.dag");
 const STDERR_CAPTURE_POLICY_DROP_SOURCE: &str = include_str!(
     "../../../../../dag/gunbc/rung_drop/fixture_closure_union_unmodeled_stderr_capture.dag"
 );
 
 struct CaptureGapExclusion {
-    drop_identity: &'static str,
-    declaring_module: &'static str,
-    service: &'static str,
-    operation_qualified: &'static str,
-    operation_bare: &'static str,
+    drop_identity: String,
+    declaring_module: String,
+    service: String,
+    operation_qualified: String,
+    operation_bare: String,
 }
 
-fn drop_row_string_data(name: &str) -> &'static str {
-    let prefix = format!("data {name}: String = \"");
-    let start = STDERR_CAPTURE_POLICY_DROP_SOURCE.find(&prefix).unwrap_or_else(|| {
-        panic!(
-            "rung-drop source missing `data {name}: String`; deleting or renaming the field refuses this exclusion"
+fn record_field_string(
+    ctx: &crate::v1_interpreter::InterpContext,
+    fields: &[(crate::v1_interpreter::Symbol, crate::v1_interpreter::Value)],
+    name: &str,
+) -> Result<String, String> {
+    use crate::v1_interpreter::Value;
+    match fields
+        .iter()
+        .find(|(sym, _)| ctx.sym_eq(*sym, name))
+        .map(|(_, v)| v)
+    {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        Some(other) => Err(format!(
+            "cause=CaptureGapExclusionFieldNotString field={name} value={other:?}"
+        )),
+        None => Err(format!(
+            "cause=CaptureGapExclusionFieldMissing field={name}"
+        )),
+    }
+}
+
+fn load_capture_gap_exclusion() -> Result<CaptureGapExclusion, String> {
+    let _drop_row_tether = STDERR_CAPTURE_POLICY_DROP_SOURCE;
+    let files = vec![Rc::new(v1_compiler_compile::SourceFile {
+        path: "dag/gunbc/stderr_capture_gap_exclusion.dag".to_string(),
+        content: STDERR_CAPTURE_GAP_CARRIER_SOURCE.to_string(),
+    })];
+    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+    let located = |d: &Rc<ErrorNode>| {
+        format!(
+            "module={} reason=`{}`",
+            d.module_name,
+            crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone())
         )
-    });
-    let value_start = start + prefix.len();
-    let rel_end = STDERR_CAPTURE_POLICY_DROP_SOURCE[value_start..]
-        .find('"')
-        .unwrap_or_else(|| panic!("rung-drop data {name} is not a closed string"));
-    &STDERR_CAPTURE_POLICY_DROP_SOURCE[value_start..value_start + rel_end]
+    };
+    if v1_compiler_compile::emittable_graph(resolved.clone()).is_none() {
+        let blocking: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            })
+            .map(located)
+            .collect();
+        return Err(format!(
+            "cause=CaptureGapExclusionUncompilable drop_row_bytes={} diagnostics={}",
+            _drop_row_tether.len(),
+            blocking.join(" | ")
+        ));
+    }
+    let Some(graph) = resolved.graph.clone() else {
+        return Err(format!(
+            "cause=CaptureGapExclusionUncompilable drop_row_bytes={} -- resolved graph is none",
+            _drop_row_tether.len()
+        ));
+    };
+    let ctx = make_eval_context(
+        &graph,
+        resolved.source_indices.clone(),
+        crate::v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let val = crate::v1_interpreter::with_active_context(&ctx, || {
+        match crate::v1_interpreter::eval_data_item_value(&ctx, "exclusion") {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => crate::v1_interpreter::eval_data_item_value(
+                &ctx,
+                "gunbc.stderr_capture_gap_exclusion.exclusion",
+            ),
+            Err(e) => Err(e),
+        }
+    })
+    .map_err(|e| format!("cause=CaptureGapExclusionEvalFailed error={e}"))?
+    .ok_or_else(|| "cause=CaptureGapExclusionDataMissing name=exclusion".to_string())?;
+    let crate::v1_interpreter::Value::Record {
+        ref fields,
+        type_name,
+    } = val
+    else {
+        return Err(format!("cause=CaptureGapExclusionNotRecord value={val:?}"));
+    };
+    if !ctx.sym_eq(type_name, "StderrCaptureGapExclusion")
+        && !ctx.sym_eq(
+            type_name,
+            "gunbc.stderr_capture_gap_exclusion.StderrCaptureGapExclusion",
+        )
+    {
+        return Err(format!(
+            "cause=CaptureGapExclusionUnexpectedType type={}",
+            ctx.resolve(type_name)
+        ));
+    }
+    Ok(CaptureGapExclusion {
+        drop_identity: record_field_string(&ctx, fields.as_slice(), "drop_identity")?,
+        declaring_module: record_field_string(&ctx, fields.as_slice(), "declaring_module")?,
+        service: record_field_string(&ctx, fields.as_slice(), "service")?,
+        operation_qualified: record_field_string(&ctx, fields.as_slice(), "operation_qualified")?,
+        operation_bare: record_field_string(&ctx, fields.as_slice(), "operation_bare")?,
+    })
 }
 
-fn capture_gap_exclusion() -> &'static CaptureGapExclusion {
-    static GAP: OnceLock<CaptureGapExclusion> = OnceLock::new();
-    GAP.get_or_init(|| CaptureGapExclusion {
-        drop_identity: drop_row_string_data("exclusion_drop_identity"),
-        declaring_module: drop_row_string_data("exclusion_declaring_module"),
-        service: drop_row_string_data("exclusion_service"),
-        operation_qualified: drop_row_string_data("exclusion_operation_qualified"),
-        operation_bare: drop_row_string_data("exclusion_operation_bare"),
-    })
+fn capture_gap_exclusion() -> Result<&'static CaptureGapExclusion, &'static str> {
+    static GAP: OnceLock<Result<CaptureGapExclusion, String>> = OnceLock::new();
+    match GAP.get_or_init(load_capture_gap_exclusion) {
+        Ok(gap) => Ok(gap),
+        Err(e) => Err(e.as_str()),
+    }
 }
 
 /// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
@@ -3303,6 +3387,9 @@ fn rust_stderr_capture_channel_not_realized_facts() -> &'static BTreeSet<String>
 /// `extdeps.gunbc` `WitnessBin.Run` whose fact equals a ShellChannelNotRealizedByTarget
 /// fact for an unrealized rust channel. Any other module, service, or operation stays rendered.
 fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    let Ok(gap) = capture_gap_exclusion() else {
+        return None;
+    };
     match &*d.diagnostic {
         crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
             transport_kind,
@@ -3314,8 +3401,8 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
             ..
         } if transport_kind == "shell"
             && target == "rust"
-            && declaring_module == capture_gap_exclusion().declaring_module
-            && service == capture_gap_exclusion().service
+            && declaring_module.as_str() == gap.declaring_module
+            && service.as_str() == gap.service
             && is_drop_run_operation(operation)
             && rust_stderr_capture_channel_not_realized_facts()
                 .contains(missing_realization_fact) =>
@@ -3327,7 +3414,9 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
 }
 
 fn is_drop_run_operation(operation: &str) -> bool {
-    let gap = capture_gap_exclusion();
+    let Ok(gap) = capture_gap_exclusion() else {
+        return false;
+    };
     operation == gap.operation_bare || operation == gap.operation_qualified
 }
 
@@ -3472,6 +3561,9 @@ fn union_emit_graph_excluding_unmodeled_stderr_capture(
     if excluded_keys.is_empty() {
         return (resolved, Vec::new());
     }
+    let Ok(gap) = capture_gap_exclusion() else {
+        return (resolved, Vec::new());
+    };
     let excluded: Vec<String> = excluded_keys
         .iter()
         .map(|(module, service)| {
@@ -3479,8 +3571,7 @@ fn union_emit_graph_excluding_unmodeled_stderr_capture(
                 "module={module} service={service} operation={} \
                  cause=ShellChannelNotRealizedByTarget \
                  fact=stderr_capture_policy_unrealized drop={}",
-                capture_gap_exclusion().operation_qualified,
-                capture_gap_exclusion().drop_identity,
+                gap.operation_qualified, gap.drop_identity,
             )
         })
         .collect();
@@ -3607,11 +3698,13 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
         ))
     })?;
     if !gunbc_observed.excluded.iter().any(|row| {
-        let gap = capture_gap_exclusion();
+        let Ok(gap) = capture_gap_exclusion() else {
+            return false;
+        };
         row.contains(&format!("module={}", gap.declaring_module))
             && row.contains(&format!("operation={}", gap.operation_qualified))
             && row.contains("cause=ShellChannelNotRealizedByTarget")
-            && row.contains(gap.drop_identity)
+            && row.contains(&gap.drop_identity)
     }) {
         return Err(refuse(format!(
             "a fixture whose closure reaches extdeps.gunbc was admitted without the typed exclusion: {gunbc_observed:?}"
@@ -3658,6 +3751,10 @@ mod fixture_closure_union_tests {
 
     /// The recorder and the union are process-wide; tests that touch them run one at a time.
     static UNION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn gap_excl() -> &'static CaptureGapExclusion {
+        capture_gap_exclusion().unwrap_or_else(|e| panic!("{e}"))
+    }
 
     /// An empty union is a bypassed recording seam and refuses (review 76399).
     #[test]
@@ -3769,7 +3866,7 @@ mod fixture_closure_union_tests {
         use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
         let span = crate::v1_std_core::kernel_span("probe".to_string());
         let mk = |fact: String| {
-            let gap = capture_gap_exclusion();
+            let gap = gap_excl();
             make_error_node(
                 Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
                     transport_kind: "shell".to_string(),
@@ -3808,8 +3905,8 @@ mod fixture_closure_union_tests {
         let other_module = make_error_node(
             Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
                 transport_kind: "shell".to_string(),
-                service: capture_gap_exclusion().service.to_string(),
-                operation: capture_gap_exclusion().operation_qualified.to_string(),
+                service: gap_excl().service.to_string(),
+                operation: gap_excl().operation_qualified.to_string(),
                 declaring_module: "extdeps.other".to_string(),
                 target: "rust".to_string(),
                 missing_realization_fact: gap,
@@ -3855,11 +3952,11 @@ mod fixture_closure_union_tests {
     #[test]
     fn selection_fold_allows_only_run_capture_rows_and_vetoes_mixed_refusal() {
         let gap = gap_fact();
-        let gap_row = capture_gap_exclusion();
+        let gap_row = gap_excl();
         let allowed = transport_row(
-            gap_row.declaring_module,
-            gap_row.service,
-            gap_row.operation_qualified,
+            &gap_row.declaring_module,
+            &gap_row.service,
+            &gap_row.operation_qualified,
             gap.clone(),
         );
         let selected = select_run_operations_excluded_for_stderr_capture_gap(&[allowed]);
@@ -3878,15 +3975,15 @@ mod fixture_closure_union_tests {
         ));
         let mixed = vec![
             transport_row(
-                gap_row.declaring_module,
-                gap_row.service,
-                gap_row.operation_qualified,
+                &gap_row.declaring_module,
+                &gap_row.service,
+                &gap_row.operation_qualified,
                 gap.clone(),
             ),
             transport_row(
-                gap_row.declaring_module,
-                gap_row.service,
-                gap_row.operation_qualified,
+                &gap_row.declaring_module,
+                &gap_row.service,
+                &gap_row.operation_qualified,
                 mixed_key,
             ),
         ];
@@ -3894,13 +3991,13 @@ mod fixture_closure_union_tests {
 
         let wrong_module = transport_row(
             "extdeps.other",
-            gap_row.service,
-            gap_row.operation_qualified,
+            &gap_row.service,
+            &gap_row.operation_qualified,
             gap.clone(),
         );
         assert!(select_run_operations_excluded_for_stderr_capture_gap(&[wrong_module]).is_empty());
 
-        let nonmember = transport_row(gap_row.declaring_module, gap_row.service, "Sibling", gap);
+        let nonmember = transport_row(&gap_row.declaring_module, &gap_row.service, "Sibling", gap);
         assert!(select_run_operations_excluded_for_stderr_capture_gap(&[nonmember]).is_empty());
     }
 
@@ -3927,9 +4024,9 @@ mod fixture_closure_union_tests {
         use crate::v1_std_core::ParsedModuleItemKind;
         let env = crate::v1_compiler_infer_env::empty_type_env();
         let cache = crate::v1_compiler_infer_env::empty_type_env_cache();
-        let gap = capture_gap_exclusion();
+        let gap = gap_excl();
         let run = kernel_named(
-            gap.operation_bare,
+            &gap.operation_bare,
             ParsedModuleItemKind::NotAModuleItem,
             im::vector![],
         );
@@ -3944,12 +4041,12 @@ mod fixture_closure_union_tests {
             im::vector![],
         );
         let service = kernel_named(
-            gap.service,
+            &gap.service,
             ParsedModuleItemKind::ModuleItemService,
             im::vector![run, sibling],
         );
         let module = kernel_named(
-            gap.declaring_module,
+            &gap.declaring_module,
             ParsedModuleItemKind::NotAModuleItem,
             im::vector![],
         );
@@ -3984,7 +4081,7 @@ mod fixture_closure_union_tests {
             progress: ModuleTypecheckProgress::ItemsChecked,
             type_env: env.clone(),
             type_env_cache: cache.clone(),
-            interface: interface(env.clone(), cache.clone(), gap.declaring_module),
+            interface: interface(env.clone(), cache.clone(), &gap.declaring_module),
             func_env: Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
                 name: gap.declaring_module.to_string(),
                 local: crate::v1_rt::rc_empty_map(),
@@ -4046,13 +4143,13 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn strip_removes_only_run_and_keeps_sibling_and_unrelated_items() {
-        let gap = capture_gap_exclusion();
+        let gap = gap_excl();
         let graph = supplied_graph_with_run_and_sibling();
         let mut excluded = BTreeSet::new();
         excluded.insert((gap.declaring_module.to_string(), gap.service.to_string()));
         let stripped = strip_excluded_run_operations(graph.clone(), &excluded);
         assert_eq!(
-            service_op_names(&stripped, gap.declaring_module, gap.service),
+            service_op_names(&stripped, &gap.declaring_module, &gap.service),
             vec!["Sibling".to_string()]
         );
         let env = crate::v1_compiler_infer_env::empty_type_env();
@@ -4075,14 +4172,14 @@ mod fixture_closure_union_tests {
         assert_eq!(stripped.modules.len(), 2, "unrelated module must remain");
         let empty = strip_excluded_run_operations(graph, &BTreeSet::new());
         assert_eq!(
-            service_op_names(&empty, gap.declaring_module, gap.service),
+            service_op_names(&empty, &gap.declaring_module, &gap.service),
             vec![gap.operation_bare.to_string(), "Sibling".to_string()]
         );
     }
 
     #[test]
     fn capture_gap_exclusion_reads_typed_fields_from_the_drop_module() {
-        let gap = capture_gap_exclusion();
+        let gap = gap_excl();
         assert!(!gap.drop_identity.is_empty());
         assert!(!gap.declaring_module.is_empty());
         assert!(!gap.service.is_empty());
@@ -4095,13 +4192,6 @@ mod fixture_closure_union_tests {
             "qualified={} bare={}",
             gap.operation_qualified,
             gap.operation_bare
-        );
-        assert!(
-            STDERR_CAPTURE_POLICY_DROP_SOURCE.contains(&format!(
-                "data exclusion_drop_identity: String = \"{}\"",
-                gap.drop_identity
-            )),
-            "parse must agree with the included drop source"
         );
     }
 }
