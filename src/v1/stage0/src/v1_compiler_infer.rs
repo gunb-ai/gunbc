@@ -6420,14 +6420,18 @@ pub fn coproduct_at_record_declared_type(
         )) {
             false
         } else {
-            let declared_product = nominal_product_head_name(declared.clone(), scope.clone());
-            let produced_product = nominal_product_head_name(produced.clone(), scope.clone());
-            let declared_coproduct = nominal_coproduct_head_name(declared.clone(), scope.clone());
-            let produced_coproduct = nominal_coproduct_head_name(produced.clone(), scope.clone());
-            ((declared_product.clone() != "".to_string())
-                && (produced_coproduct.clone() != "".to_string()))
-                || ((declared_coproduct.clone() != "".to_string())
-                    && (produced_product.clone() != "".to_string()))
+            {
+                let declared_product = nominal_product_head_name(declared.clone(), scope.clone());
+                let produced_product = nominal_product_head_name(produced.clone(), scope.clone());
+                let declared_coproduct =
+                    nominal_coproduct_head_name(declared.clone(), scope.clone());
+                let produced_coproduct =
+                    nominal_coproduct_head_name(produced.clone(), scope.clone());
+                (((declared_product.clone() != "".to_string())
+                    && (produced_coproduct.clone() != "".to_string()))
+                    || ((declared_coproduct.clone() != "".to_string())
+                        && (produced_product.clone() != "".to_string())))
+            }
         }
     }
 }
@@ -6631,9 +6635,7 @@ pub fn nominal_coproduct_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String
                 }
                 TypeHeadExposure::OpaqueTypeHead {
                     type_identity: _, ..
-                } => {
-                    nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
-                }
+                } => nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone()),
                 _ => "".to_string(),
             }
         }
