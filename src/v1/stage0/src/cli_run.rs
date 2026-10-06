@@ -10411,7 +10411,7 @@ fn extend_with_bare_reference_closure(
 /// true by construction rather than by two functions happening to hold identical
 /// loop bodies (the §2 duplicate that dissolving the §3 fork would otherwise
 /// have left behind).
-fn extend_sources_to_both_closure_fixpoint(
+pub(crate) fn extend_sources_to_both_closure_fixpoint(
     mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {

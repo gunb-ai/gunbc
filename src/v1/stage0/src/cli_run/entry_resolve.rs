@@ -204,7 +204,11 @@ pub(crate) fn build_module_index_primary_precedence(source_roots: &[String]) -> 
     try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
-pub(crate) fn import_closure_dag_files(
+/// Import-line BFS only. Kept as the discriminating mutant for
+/// [`import_closure_dag_files`]: a provider reached only by reference is not a
+/// member of this set. Production skip-set membership uses the one closure
+/// authority instead (DESIGN §3 — the same fork #13437 closed on the fixture walker).
+fn import_only_closure_dag_files(
     workspace: &Path,
     source_roots: &[PathBuf],
     seed_entries: &[&str],
@@ -216,7 +220,7 @@ pub(crate) fn import_closure_dag_files(
         let path = workspace.join(rel);
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
-        seen.insert(normalize_repo_path(rel));
+        seen.insert(file_key_in_workspace(workspace, rel));
         queue.push(content);
     }
     while let Some(content) = queue.pop() {
@@ -225,8 +229,7 @@ pub(crate) fn import_closure_dag_files(
                 continue;
             };
             for path in candidates {
-                let rel =
-                    normalize_repo_path(&workspace_relative_repo_path(&path.to_string_lossy()));
+                let rel = normalize_repo_path(&module_index_path_key(path));
                 if !seen.insert(rel) {
                     continue;
                 }
@@ -237,6 +240,195 @@ pub(crate) fn import_closure_dag_files(
         }
     }
     Ok(seen)
+}
+
+fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
+    normalize_repo_path(&module_index_path_key(&workspace.join(rel)))
+}
+
+/// The Class B gate skip-set: seed entries plus every module the one closure
+/// authority (`extend_sources_to_both_closure_fixpoint`) reaches from them —
+/// import edges, qualified references, and bare references, to a joint fixpoint.
+///
+/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at
+/// `import` lines, a second closure rule beside the one the gate, the witness
+/// loader and regen share. An `import` line, a qualified reference and a bare
+/// reference are the same dependency edge, so the import-only walk was not a
+/// narrower closure but a blind one: a Class B entry whose imports reached a
+/// module that names a provider only by reference would omit that provider from
+/// the skip set, and a change to the provider would skip the gate.
+pub(crate) fn import_closure_dag_files(
+    workspace: &Path,
+    source_roots: &[PathBuf],
+    seed_entries: &[&str],
+) -> Result<HashSet<String>, String> {
+    let index = dag_module_index(source_roots)?;
+    let mut by_rel: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new();
+    for rel in seed_entries {
+        let path = workspace.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
+        let key = file_key_in_workspace(workspace, rel);
+        by_rel.insert(
+            key.clone(),
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: key,
+                content: content.clone(),
+            }),
+        );
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(candidates) = index.get(&module_path) else {
+                continue;
+            };
+            for path in candidates {
+                let rel = normalize_repo_path(&module_index_path_key(path));
+                if by_rel.contains_key(&rel) {
+                    continue;
+                }
+                let file_content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                by_rel.insert(
+                    rel.clone(),
+                    Rc::new(v1_compiler_compile::SourceFile {
+                        path: rel,
+                        content: file_content.clone(),
+                    }),
+                );
+                queue.push(file_content);
+            }
+        }
+    }
+    let seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = by_rel.into_values().collect();
+    let root_strings: Vec<String> = source_roots
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let mei = try_index_for_run_or_owned_pool(&root_strings)?;
+    let closed = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+    Ok(closed
+        .into_iter()
+        .map(|source| normalize_repo_path(&module_index_path_key(Path::new(&source.path))))
+        .collect())
+}
+
+#[cfg(test)]
+mod import_closure_dag_files_controls {
+    use super::*;
+
+    const ENTRY: &str = "entry.dag";
+    const MID: &str = "mid.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module class.b.closure.entry\n\
+import class.b.closure.mid { mid_ok }\n\
+fn use_mid() -> Int { mid_ok() }\n";
+
+    const MID_SRC: &str = "module class.b.closure.mid\n\
+fn mid_ok() -> Int { 1 }\n\
+fn uses_provider() -> class.b.closure.provider.ProviderToken {\n\
+  class.b.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module class.b.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module class.b.closure.broken\n\
+import class.b.closure.mid { mid_ok }\n\
+fn broken() -> Int { no_such_function_anywhere() }\n";
+
+    fn fixture_tree() -> PathBuf {
+        let dir = process_workspace_root().join("target").join(format!(
+            "import_closure_dag_files_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+        std::fs::write(dir.join(MID), MID_SRC).unwrap();
+        std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+        std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+        dir
+    }
+
+    fn provider_key(dir: &Path) -> String {
+        file_key_in_workspace(dir, PROVIDER)
+    }
+
+    /// RED: an entry whose provider is reached only by qualified reference is closed.
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let closed = import_closure_dag_files(&dir, &roots, &[ENTRY]).expect("closure");
+        let provider = provider_key(&dir);
+        assert!(
+            closed.contains(&provider),
+            "provider {provider} missing from closed set {closed:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Mutant: the import-only walk fails that RED.
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let mutant = import_only_closure_dag_files(&dir, &roots, &[ENTRY]).expect("mutant");
+        let provider = provider_key(&dir);
+        assert!(
+            !mutant.contains(&provider),
+            "the import-only mutant must omit {provider}; got {mutant:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Positive control: a real error in the entry's own closure still refuses.
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let closed = import_closure_dag_files(&dir, &roots, &[BROKEN]).expect("closure");
+        let provider = provider_key(&dir);
+        assert!(
+            closed.contains(&provider),
+            "the broken entry must still close the reference-only provider"
+        );
+        let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = closed
+            .iter()
+            .map(|rel| {
+                let path = if Path::new(rel).is_absolute() {
+                    PathBuf::from(rel)
+                } else {
+                    process_workspace_root().join(rel)
+                };
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel.clone(),
+                    content: std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("read closed member {}: {e}", path.display())),
+                })
+            })
+            .collect();
+        let refusal = resolved_graph_from_sources(sources)
+            .expect_err("a call to a function nothing declares must refuse");
+        assert!(
+            refusal.contains("no_such_function_anywhere")
+                || refusal.contains("not found")
+                || refusal.contains("blocking_diagnostics"),
+            "refusal must name the real error, got: {refusal}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
