@@ -9,7 +9,7 @@
 #![allow(
     clippy::disallowed_macros,  // 10
     clippy::doc_lazy_continuation,  // 2
-    clippy::items_after_test_module,  // 1
+    clippy::items_after_test_module,  // 2
     clippy::redundant_closure,  // 1
     clippy::type_complexity,  // 8
     dead_code,  // 9
@@ -251,6 +251,22 @@ pub(crate) fn import_closure_dag_files(
         .collect())
 }
 
+/// Compile-subject closure of caller-supplied seed sources over an explicit pool.
+///
+/// `compiler_tests` `resolve_source_closure` used to BFS `import` lines from the seed
+/// pairs. Same class as #13437 / #13464: a provider reached only by reference was omitted.
+/// This is not a second walker — it calls `extend_sources_to_both_closure_fixpoint`.
+///
+/// SEED DELTA: production `resolve_source_closure` lost its import-line BFS. Net production
+/// seed is this wrapper. `seeded_compile_closure_controls` is `#[cfg(test)]` only.
+pub fn resolve_seeded_compile_closure(
+    seeds: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
+    extend_sources_to_both_closure_fixpoint(seeds, &mei)
+}
+
 #[cfg(test)]
 mod import_closure_dag_files_controls {
     use super::*;
@@ -391,6 +407,150 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
             })
             .collect();
         let refusal = resolved_graph_from_sources(sources)
+            .expect_err("a call to a function nothing declares must refuse");
+        assert!(
+            refusal.contains("no_such_function_anywhere")
+                || refusal.contains("not found")
+                || refusal.contains("blocking_diagnostics"),
+            "refusal must name the real error, got: {refusal}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod seeded_compile_closure_controls {
+    use super::*;
+
+    const ENTRY: &str = "entry.dag";
+    const MID: &str = "mid.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module compiler.tests.closure.entry\n\
+import compiler.tests.closure.mid { mid_ok }\n\
+fn use_mid() -> Int { mid_ok() }\n";
+
+    const MID_SRC: &str = "module compiler.tests.closure.mid\n\
+fn mid_ok() -> Int { 1 }\n\
+fn uses_provider() -> compiler.tests.closure.provider.ProviderToken {\n\
+  compiler.tests.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module compiler.tests.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module compiler.tests.closure.broken\n\
+import compiler.tests.closure.mid { mid_ok }\n\
+fn broken() -> Int { no_such_function_anywhere() }\n";
+
+    fn fixture_tree() -> PathBuf {
+        let dir = process_workspace_root().join("target").join(format!(
+            "seeded_compile_closure_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+        std::fs::write(dir.join(MID), MID_SRC).unwrap();
+        std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+        std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+        dir
+    }
+
+    fn provider_in(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> bool {
+        sources.iter().any(|s| {
+            s.content.contains("module compiler.tests.closure.provider")
+                || Path::new(&s.path)
+                    .file_name()
+                    .is_some_and(|n| n == PROVIDER)
+        })
+    }
+
+    fn seed(path: &str, content: &str) -> Rc<v1_compiler_compile::SourceFile> {
+        Rc::new(v1_compiler_compile::SourceFile {
+            path: path.to_string(),
+            content: content.to_string(),
+        })
+    }
+
+    /// Import-line BFS from the seed pairs only. THE MUTANT.
+    fn import_only_seeded_closure(
+        source_roots: &[PathBuf],
+        entry_pairs: Vec<(String, String)>,
+    ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+        let index = dag_module_index(source_roots)?;
+        let mut seen: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
+            std::collections::HashMap::new();
+        let mut queue: Vec<String> = Vec::new();
+        for (path, content) in entry_pairs {
+            seen.insert(path.clone(), seed(&path, &content));
+            queue.push(content);
+        }
+        while let Some(content) = queue.pop() {
+            for module_path in extract_import_paths(&content) {
+                let Some(candidates) = index.get(&module_path) else {
+                    continue;
+                };
+                for path in candidates {
+                    let rel = normalize_repo_path(&module_index_path_key(path));
+                    if seen.contains_key(&rel) {
+                        continue;
+                    }
+                    let file_content = std::fs::read_to_string(path)
+                        .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                    seen.insert(rel.clone(), seed(&rel, &file_content));
+                    queue.push(file_content);
+                }
+            }
+        }
+        Ok(seen.into_iter().map(|(_, v)| v).collect())
+    }
+
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let roots = [dir.to_string_lossy().into_owned()];
+        let closed =
+            resolve_seeded_compile_closure(vec![seed(ENTRY, ENTRY_SRC)], &roots).expect("closure");
+        assert!(
+            provider_in(&closed),
+            "provider missing from closed set {:?}",
+            closed.iter().map(|s| s.path.clone()).collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let mutant =
+            import_only_seeded_closure(&[dir.clone()], vec![(ENTRY.into(), ENTRY_SRC.into())])
+                .expect("mutant");
+        assert!(
+            !provider_in(&mutant),
+            "the import-only mutant must omit the provider; got {:?}",
+            mutant.iter().map(|s| s.path.clone()).collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let roots = [dir.to_string_lossy().into_owned()];
+        let closed = resolve_seeded_compile_closure(vec![seed(BROKEN, BROKEN_SRC)], &roots)
+            .expect("closure");
+        assert!(
+            provider_in(&closed),
+            "the broken entry must still close the reference-only provider"
+        );
+        let refusal = resolved_graph_from_sources(closed)
             .expect_err("a call to a function nothing declares must refuse");
         assert!(
             refusal.contains("no_such_function_anywhere")
