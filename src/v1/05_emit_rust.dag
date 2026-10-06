@@ -395,7 +395,7 @@ fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, s
 // documented unresolved-reference shape), so every identity-keyed arm ahead of this one answers
 // about the wrong declaration. Rendering the bare name can only bind where the emitted module
 // declares or imports that name, and for the String spelling neither holds: kernel names are never
-// overridden by imports (#9813, v1.compiler.infer overlay_skips_kernel_name), so the use-line that
+// overridden by imports (#9813, v1.compiler.infer_env overlay_skips_kernel_name), so the use-line that
 // would bind the alias is dropped by import_name_resolves_to_host_realized_kernel_scalar and the
 // bare token binds the prelude String -- while every value position renders the same carrier
 // Rc<Vec<i64>>. That is the v2_compiler_tokenize.rs E0308 family on the XL-N board (41 of 72),
