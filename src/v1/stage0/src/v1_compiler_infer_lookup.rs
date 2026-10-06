@@ -974,7 +974,7 @@ pub fn lookup_field_type_node(
                         field_name.clone(),
                         source_indices.clone(),
                     ) {
-                        Some(inner_result) => Some(crate::v1_std_core::wrap_optional_layer(
+                        Some(inner_result) => Some(crate::v1_std_core::with_optional_cardinality(
                             inner_result.clone(),
                         )),
                         std::option::Option::None => std::option::Option::None,

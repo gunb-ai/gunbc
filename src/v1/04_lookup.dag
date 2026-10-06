@@ -23,7 +23,7 @@ import v1.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_optional_cardinality, with_required_cardinality, wrap_optional_layer, node_is_optional_layer, preserve_outer_optional_cardinality,
+  with_optional_cardinality, with_required_cardinality, node_is_optional_layer, preserve_outer_optional_cardinality,
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
@@ -792,7 +792,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
       Present { value: inner }
     } else {
       match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
-        Present { value: inner_result } => Present { value: wrap_optional_layer(n: inner_result) }
+        Present { value: inner_result } => Present { value: with_optional_cardinality(n: inner_result) }
         Absent => none
       }
     }
