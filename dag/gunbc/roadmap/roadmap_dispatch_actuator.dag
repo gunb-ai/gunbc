@@ -1324,6 +1324,11 @@ fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr
 
 data gunbc_harness_auditor_function: String = "harness_auditor_cli"
 
+// Each launch writes its events to its OWN per-launch path (head-hash for the auditor, turn for
+// the supervisor): a path shared across launches let a later launch rewrite an earlier one's
+// stream, which erased that launch's token usage from the per-attempt metering — the metering
+// reader opens exactly these per-launch paths (roadmap_attempt_metering), so the writer and the
+// reader must name the same path expression, which the actuator witness pins on both sides.
 fn dispatch_audit_unit_command(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1353,7 +1358,7 @@ fn dispatch_audit_unit_command(
       "--arg", join(["brief=", brief], ""),
       "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
       "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+      "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
       "--arg", join(["verdict_dir=", dir], ""),
       "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
       "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
@@ -1416,7 +1421,7 @@ fn dispatch_supervisor_unit_command(
       "--arg", join(["brief=", brief], ""),
       "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
       "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+      "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
       "--arg", join(["verdict_dir=", dir], ""),
       "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
       "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
