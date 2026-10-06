@@ -5,6 +5,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
   dag_arrow_with_body_node,
+  dag_complement_arrow_with_body_fixture,
+  dag_complement_body_fixture,
   dag_match_arm_node,
   dag_match_body_from_arms,
   dag_type_atom_node
@@ -183,45 +185,13 @@ fn classical_not_int_match_arrow_fixture() -> Node {
   )
 }
 
-fn complement_unsupported_pattern_body() -> Node {
-  dag_match_body_from_arms(
-    scrutinee: dag_type_atom_node(identity: ^dag_binding_param_a),
-    true_arm: dag_match_arm_node(
-      pattern_lit: ^complement_unsupported_pattern_true,
-      body_lit: ^complement_unsupported_pattern_false
-    ),
-    false_arm: dag_match_arm_node(
-      pattern_lit: ^complement_unsupported_pattern_false,
-      body_lit: ^complement_unsupported_pattern_true
-    )
-  )
-}
+// complement infer accepts bool-literal arms on dag_token_kw_true/false
+// (infer_bool_literal_pattern_classify). Names match the Accept contract (review 77188).
 
-fn complement_unsupported_pattern_arrow() -> Node {
-  dag_arrow_with_body_node(
-    domain: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        binder_edge(
-          name: ^dag_binding_param_a,
-          type_node: dag_type_atom_node(identity: ^bool_node_symbol)
-        )
-      ],
-      occurrence_id: OccurrenceSynthetic
-    },
-    return_type_binding: ^bool_node_symbol,
-    body: complement_unsupported_pattern_body()
-  )
-}
-
-// These two claims keep an unsupported-pattern subject. They are not the emit
-// fixture (dag_complement_* now uses dag_token_kw_true/false). Do not retarget
-// them onto the Bool-native emit nodes.
-
-test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
-  match infer(tree: claim_resolved_tree_without_declarations(root: complement_unsupported_pattern_body())) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+test fn complement_body_real_infer_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dag_complement_body_fixture)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -270,9 +240,9 @@ test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
   }
 }
 
-test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
-  match infer(tree: claim_resolved_tree_without_declarations(root: complement_unsupported_pattern_arrow())) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+test fn complement_arrow_real_infer_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dag_complement_arrow_with_body_fixture)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
