@@ -110,10 +110,14 @@ type BillingConsequence
 // statically that the interlock is rostered against the site
 // (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
 // realization must take that hold before any write.
+// INTERLOCK IS PER EFFECT ARM, NOT PER GRANT. A standing ruling may cover several effects whose
+// holds differ. Absent means no consuming effect arm has named a hold yet -- not that coverage is
+// the hold. A census row that carries StandingRulingUnderInterlock with Absent is not owed a
+// rostered interlock until the arm lands with its hold.
 type StandingDestructiveAuthorization {
   ruling_text: NonEmptyStr
   effect_subject: NonEmptyStr
-  interlock: DeclarationRef
+  interlock: DeclarationRef?
 }
 
 type WitnessDischarge
@@ -549,11 +553,18 @@ fn minted_reach_text(m: MintedCredentialReach) -> String {
 
 // THE RULING IS QUOTED WITH ITS AUTHOR, DATE AND INTERLOCK, so a receipt minted under a standing
 // authorization is a different decision scope from one minted without it.
+fn standing_ruling_interlock_label(r: StandingDestructiveAuthorization) -> String {
+  match r.interlock {
+    Present { value: i } => declaration_ref_display_key(ref: i)
+    Absent => "no effect-arm interlock"
+  }
+}
+
 fn witness_discharge_text(d: WitnessDischarge) -> String {
   match d {
     NoWitnessDischarge => "NoWitnessDischarge"
     StandingRulingUnderInterlock { ruling: r } =>
-      join(["StandingRulingUnderInterlock: under ", declaration_ref_display_key(ref: r.interlock), "; ruling ", r.ruling_text as String], "")
+      join(["StandingRulingUnderInterlock: under ", standing_ruling_interlock_label(r: r), "; ruling ", r.ruling_text as String], "")
   }
 }
 

@@ -42,12 +42,19 @@ import gunbc.host_convergence_census {
 // independent readback does not ground. Incomplete is neither refused (the domain decided not to act,
 // or acting was refused before any effect) nor converged, and it never satisfies a precondition.
 //
+// WHAT THIS HOME CARRIES SINCE O1c-3, with BmcSecure as first gated consumer
+// (gunbc.machine_intake_arrival_converge): a step is Ungated or GatedOnAuthorization; a gated
+// instance whose receipt declares that authorization was required (the Apply arm) refuses without a
+// discharge for that (run, step, subject); Noop does not require one (parent D4). PrincipalRequired
+// is bound by the same discharge row; an unbound required principal refuses. Mutation lanes are
+// derived from StepMutatesSubject instances' subjects -- the executor that dispatches is not a lane
+// key. The pattern itself is selected before the fold (DESIGN §3d); the fold only checks discharge.
+//
 // WHAT IT STILL DOES NOT CARRY, because no consumer exercises it yet and a designed fixture is not an
-// inhabitant (DESIGN §3 pairing obligation): the authorization gate and its discharge, principals,
-// mutation lanes, pending with re-attach across runs, subject quantifiers (all-of / any-of over a
-// subject set), the domain-declared cheap readback, and order derived from preconditions alone where
-// no order authority exists. Each lands with its first real consumer: O1c-3 (BmcSecure and
-// ManagedHostAdmission), the Spark arm.
+// inhabitant (DESIGN §3 pairing obligation): pending with re-attach across runs, subject quantifiers
+// (all-of / any-of over a subject set), the domain-declared cheap readback, and order derived from
+// preconditions alone where no order authority exists. Each lands with its first real consumer: the
+// Spark arm.
 
 // A RUN AND A SUBJECT ARE THE CALLER'S IDENTITIES, BRANDED SO NEITHER IS READ AS THE OTHER. The
 // subject key is the domain's canonical spelling of what one step instance converges: for the arrival
@@ -96,10 +103,38 @@ fn precondition_key(p: StepPrecondition, key: StepInstanceKey) -> StepInstanceKe
 // A STEP: its census identity, the ONE member of the order authority it is bound to, and its
 // preconditions. The member type is the authority's own (for the arrival prefix
 // gunbc.machine_intake_phase IntakePhase); the fold reads it only through the authority's rank.
+// A STEP IS UNGATED, OR GATED ON AN AUTHORIZATION DISCHARGED FOR THAT INSTANCE. Selected before the
+// fold: the caller names which pattern discharged it. The fold never selects a pattern.
+type StepGate
+  = StepUngated
+  | StepGatedOnAuthorization
+
+type StepPrincipalNeed
+  = PrincipalNotRequired
+  | PrincipalRequired
+
+type StepHostMutation
+  = StepDoesNotMutate
+  | StepMutatesSubject
+
 type ConvergenceStep<M> {
   identity: DeclarationRef
   order_member: M
   preconditions: List<StepPrecondition>
+  gate: StepGate
+  principal: StepPrincipalNeed
+  mutation: StepHostMutation
+}
+
+fn ungated_readonly_step<M>(identity: DeclarationRef, order_member: M, preconditions: List<StepPrecondition>) -> ConvergenceStep<M> {
+  ConvergenceStep {
+    identity: identity,
+    order_member: order_member,
+    preconditions: preconditions,
+    gate: StepUngated,
+    principal: PrincipalNotRequired,
+    mutation: StepDoesNotMutate,
+  }
 }
 
 // THE ORDER AUTHORITY: which declaration owns the order, and its ranking. Absent is an unranked
@@ -309,17 +344,44 @@ fn step_outcome_incomplete<R, C, I>(outcome: StepOutcome<R, C, I>) -> I? {
 type ConvergenceReceiptProjection<R> sole_constructor {
   key_of: fn(R) -> StepInstanceKey
   consumed_of: fn(R) -> List<StepInstanceKey>
+  authorization_required_of: fn(R) -> Bool
 }
 
-fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_of: fn(R) -> List<StepInstanceKey>) -> ConvergenceReceiptProjection<R>
+fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_of: fn(R) -> List<StepInstanceKey>, authorization_required_of: fn(R) -> Bool) -> ConvergenceReceiptProjection<R>
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_receipt_projection"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_an_incomplete_instance_satisfies_no_dependent_and_the_run_is_incomplete"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
   ]
 {
-  ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of }
+  ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of, authorization_required_of: authorization_required_of }
+}
+
+// A DISCHARGE FOR ONE GATED INSTANCE, sealed: the domain verifies the selected pattern (operator
+// capability, standing grant coverage, or federated workload principal) and mints this row; the fold
+// only checks that a gated Apply has one for this key. Noop never requires it.
+type InstanceAuthorization sole_constructor {
+  key: StepInstanceKey
+  principal: NonEmptyStr
+}
+
+fn instance_authorization(key: StepInstanceKey, principal: NonEmptyStr) -> InstanceAuthorization
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "discharge_bmc_secure_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
+  ]
+{
+  InstanceAuthorization { key: key, principal: principal }
+}
+
+fn instance_authorization_for(discharges: List<InstanceAuthorization>, key: StepInstanceKey) -> InstanceAuthorization? {
+  discharges |> filter(d => step_instance_key_eq(a: d.key, b: key)) |> first()
 }
 
 type StepInstanceRefusal<C>
@@ -327,6 +389,8 @@ type StepInstanceRefusal<C>
   | StepOutcomeAbsent
   | PreconditionUnmet { precondition: StepInstanceKey, consumed: List<StepInstanceKey> }
   | ConsumedReceiptNotAPrecondition { consumed: StepInstanceKey }
+  | AuthorizationUndischarged
+  | PrincipalUnbound
 
 type StepInstanceStanding<R, C, I>
   = InstanceConverged { key: StepInstanceKey, receipt: R }
@@ -472,6 +536,7 @@ fn walk_instance<M, R, C, I>(
   subject: StepSubjectKey,
   outcomes: List<StepOutcome<R, C, I>>,
   projection: ConvergenceReceiptProjection<R>,
+  discharges: List<InstanceAuthorization>,
 ) -> LedgerWalk<R, C, I> {
   let key = step_instance_key(run: run, step: ranked.step.identity, subject: subject)
   match acc.line {
@@ -483,11 +548,49 @@ fn walk_instance<M, R, C, I>(
         Present { value: o } =>
           match o {
             StepRefused { key: _, cause: c } => InstanceRefused { key: key, cause: DomainRefused { cause: c } }
-            StepIncomplete { key: _, cause: i } => InstanceIncomplete { key: key, cause: i }
+            StepIncomplete { key: _, cause: i } =>
+              match ranked.step.gate {
+                StepUngated => InstanceIncomplete { key: key, cause: i }
+                StepGatedOnAuthorization =>
+                  match instance_authorization_for(discharges: discharges, key: key) {
+                    Absent => InstanceRefused { key: key, cause: AuthorizationUndischarged }
+                    Present { value: a } =>
+                      match ranked.step.principal {
+                        PrincipalNotRequired => InstanceIncomplete { key: key, cause: i }
+                        PrincipalRequired =>
+                          if (a.principal as String) == "" {
+                            InstanceRefused { key: key, cause: PrincipalUnbound }
+                          } else {
+                            InstanceIncomplete { key: key, cause: i }
+                          }
+                      }
+                  }
+              }
             StepEstablished { receipt: r } =>
               match precondition_refusal(step: ranked.step, key: key, consumed: projection.consumed_of(r), ledger: acc.instances) {
                 Present { value: why } => InstanceRefused { key: key, cause: why }
-                Absent => InstanceConverged { key: key, receipt: r }
+                Absent =>
+                  match ranked.step.gate {
+                    StepUngated => InstanceConverged { key: key, receipt: r }
+                    StepGatedOnAuthorization =>
+                      if projection.authorization_required_of(r) {
+                        match instance_authorization_for(discharges: discharges, key: key) {
+                          Absent => InstanceRefused { key: key, cause: AuthorizationUndischarged }
+                          Present { value: a } =>
+                            match ranked.step.principal {
+                              PrincipalNotRequired => InstanceConverged { key: key, receipt: r }
+                              PrincipalRequired =>
+                                if (a.principal as String) == "" {
+                                  InstanceRefused { key: key, cause: PrincipalUnbound }
+                                } else {
+                                  InstanceConverged { key: key, receipt: r }
+                                }
+                            }
+                        }
+                      } else {
+                        InstanceConverged { key: key, receipt: r }
+                      }
+                  }
               }
           }
       }
@@ -496,20 +599,19 @@ fn walk_instance<M, R, C, I>(
   }
 }
 
-// THE RUN FOLD: one ledger per run, each instance converged, refused, incomplete or not reached, in the admitted
-// order. The verdict is derived from the ledger and names the instance the line stopped at.
 fn fold_convergence_run<M, R, C, I>(
   plan: AdmittedConvergencePlan<M>,
   run: ConvergenceRunId,
   subject: StepSubjectKey,
   outcomes: List<StepOutcome<R, C, I>>,
   projection: ConvergenceReceiptProjection<R>,
+  discharges: List<InstanceAuthorization>,
 ) -> ConvergenceRunVerdict<R, C, I> {
   match first_outcome_refusal(run: run, subject: subject, plan: plan, keys: map(outcomes, o => outcome_key(outcome: o, projection: projection))) {
     Present { value: r } => RunOutcomesRefused { cause: r }
     Absent => {
       let walked = fold(plan.steps, init: LedgerWalk { line: LineOpen, instances: [] }, f: (acc, s) =>
-        walk_instance(acc: acc, ranked: s, run: run, subject: subject, outcomes: outcomes, projection: projection))
+        walk_instance(acc: acc, ranked: s, run: run, subject: subject, outcomes: outcomes, projection: projection, discharges: discharges))
       let ledger = ConvergenceRunLedger { run: run, subject: subject, order_authority: plan.authority, instances: walked.instances }
       match walked.line {
         LineOpen => RunConverged { run: ConvergedRun { ledger: ledger } }
@@ -517,6 +619,18 @@ fn fold_convergence_run<M, R, C, I>(
         LineIncompleteAt { at: k } => RunIncomplete { ledger: ledger, at: k }
       }
     }
+  }
+}
+
+type MutationLane {
+  mutated_subject: StepSubjectKey
+}
+
+fn mutation_lanes<M>(plan: AdmittedConvergencePlan<M>, subject: StepSubjectKey) -> List<MutationLane> {
+  if plan.steps |> any(s => match s.step.mutation { StepMutatesSubject => true  StepDoesNotMutate => false }) {
+    [MutationLane { mutated_subject: subject }]
+  } else {
+    []
   }
 }
 
