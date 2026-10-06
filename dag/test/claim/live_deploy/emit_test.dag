@@ -74,7 +74,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_fabric_storage_root,
 }
-import extdeps.version.semver { SemVerVersion }
+import extdeps.version.semver { semver_version_parse }
 import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
   ScopedRemovalUnobserved,
@@ -1109,17 +1109,21 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
   }
 }
 
+// The fixture's client version arrives through the parser like every other SemVerVersion
+// (review 77150): no hand-built record with raw fields.
 fn preserve_removal_client_target() -> DeploymentHostTarget {
   let t = deployment_srv1_target()
+  let client = match semver_version_parse(cps: chars(s: "1.40.0" as String)) {
+    Absent => ScopedRemovalUnobserved { reason: "the fixture client version label failed to parse — a defect in the fixture, not an observation gap" }
+    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+  }
   DeploymentHostTarget {
     host: t.host,
     ssh_host: t.ssh_host,
     tailscale_endpoint: t.tailscale_endpoint,
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
-    tailscale_client: tailscale_scoped_removal_capability(
-      observed: SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
-    ),
+    tailscale_client: client,
     ensured_directories: t.ensured_directories,
   }
 }

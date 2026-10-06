@@ -26,7 +26,10 @@ type SemVerConstraint = VersionConstraint
 // CONSTRUCTOR-CONFINED: the only admission is `semver_numeric_field`, which refuses an empty
 // sequence, anything outside ASCII digits 48..57, and a leading zero unless the sequence is
 // the single digit 0. Comparison and rendering project `.digits`; the parsed wire never
-// carries a bare list. The negative controls in the witness file pin the refusals.
+// carries a bare list. The emitter lowers this one-field record to a plain alias, so the
+// confinement's rung is BY-SOURCE (only this constructor produces field values; every
+// consumer derives through it or the parser) — the witness file states the rung honestly and
+// pins the refusals as executing negative controls.
 type SemVerNumericField {
   digits: List<Int>
 }

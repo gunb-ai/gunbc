@@ -7,54 +7,30 @@ fn semver_constraint_caret() -> SemVerConstraint { "^1.2" }
 fn semver_identity_1_0_0() -> SemVerIdentity { "1.0.0" }
 fn semver_constraint_one() -> SemVerConstraint { "1" }
 
-fn semver_1_0_0() -> SemVerVersion {
-  SemVerVersion {
-    major: [49],
-    minor: [48],
-    patch: [48],
-    pre_release: [],
-    build: []
-  }
+// Every version VALUE in this file arrives through the parser — the module's one admission
+// path (review 77150): no witness builds a SemVerVersion record by hand, and the one
+// identifier field a witness holds comes out of the confined semver_numeric_field
+// constructor (side chat review 5429823519). A helper whose label fails to parse yields
+// Absent, and every consumer turns Absent into a failed witness rather than a fabricated
+// order.
+fn semver_1_0_0() -> SemVerVersion? {
+  semver_version_parse(cps: chars(s: "1.0.0" as String))
 }
 
-fn semver_1_0_0_alpha() -> SemVerVersion {
-  SemVerVersion {
-    major: [49],
-    minor: [48],
-    patch: [48],
-    pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }],
-    build: []
-  }
+fn semver_1_0_0_alpha() -> SemVerVersion? {
+  semver_version_parse(cps: chars(s: "1.0.0-alpha" as String))
 }
 
-fn semver_1_0_0_alpha_1() -> SemVerVersion {
-  SemVerVersion {
-    major: [49],
-    minor: [48],
-    patch: [48],
-    pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { digits: [49] }],
-    build: []
-  }
+fn semver_1_0_0_alpha_1() -> SemVerVersion? {
+  semver_version_parse(cps: chars(s: "1.0.0-alpha.1" as String))
 }
 
-fn semver_1_0_0_alpha_0() -> SemVerVersion {
-  SemVerVersion {
-    major: [49],
-    minor: [48],
-    patch: [48],
-    pre_release: [SemVerNumericIdentifier { digits: [48] }, SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { digits: [49] }],
-    build: []
-  }
+fn semver_1_0_0_alpha_0() -> SemVerVersion? {
+  semver_version_parse(cps: chars(s: "1.0.0-0.alpha.1" as String))
 }
 
-fn semver_1_0_0_build_1() -> SemVerVersion {
-  SemVerVersion {
-    major: [49],
-    minor: [48],
-    patch: [48],
-    pre_release: [],
-    build: [SemVerNumericIdentifier { digits: [49] }]
-  }
+fn semver_1_0_0_build_1() -> SemVerVersion? {
+  semver_version_parse(cps: chars(s: "1.0.0+1" as String))
 }
 
 test fn w_semver_identity_inhabits_version_identity() -> Bool {
@@ -83,62 +59,107 @@ test fn w_semver_scheme_wire_label_ordering() -> Bool {
   }
 }
 
+// The identifier field arrives through the confined constructor: semver_numeric_field admits
+// "1" or refuses, and the admitted record is what the direct comparator consumes.
 test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
-  match semver_compare_identifier(
-    a: SemVerNumericIdentifier { digits: [49] },
-    b: SemVerAlphanumericIdentifier { label: "alpha" }
-  ) {
-    Less => true
-    _ => false
+  match semver_numeric_field(cps: chars(s: "1" as String)) {
+    Absent => false
+    Present { value: digits } =>
+      match semver_compare_identifier(
+        a: SemVerNumericIdentifier { digits: digits },
+        b: SemVerAlphanumericIdentifier { label: "alpha" }
+      ) {
+        Less => true
+        _ => false
+      }
   }
 }
 
 test fn w_semver_version_label_core() -> Bool {
-  semver_version_label(v: semver_1_0_0()) == "1.0.0"
+  match semver_1_0_0() {
+    Absent => false
+    Present { value: v } => semver_version_label(v: v) == "1.0.0"
+  }
 }
 
 test fn w_semver_version_label_pre_release() -> Bool {
-  semver_version_label(v: semver_1_0_0_alpha_0()) == "1.0.0-0.alpha.1"
+  match semver_1_0_0_alpha_0() {
+    Absent => false
+    Present { value: v } => semver_version_label(v: v) == "1.0.0-0.alpha.1"
+  }
 }
 
 test fn w_semver_version_label_build_ignored_in_compare() -> Bool {
-  semver_version_label(v: semver_1_0_0_build_1()) == "1.0.0+1"
-    && semver_compare(a: semver_1_0_0(), b: semver_1_0_0_build_1()) == std.algebra.Equal
+  match semver_1_0_0() {
+    Absent => false
+    Present { value: left } =>
+      match semver_1_0_0_build_1() {
+        Absent => false
+        Present { value: right } =>
+          semver_version_label(v: right) == "1.0.0+1"
+            && semver_compare(a: left, b: right) == std.algebra.Equal
+      }
+  }
 }
 
 test fn w_semver_compare_pre_release_less_than_release() -> Bool {
-  match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0()) {
-    Less => true
-    _ => false
+  match semver_1_0_0_alpha_1() {
+    Absent => false
+    Present { value: pre } =>
+      match semver_1_0_0() {
+        Absent => false
+        Present { value: rel } =>
+          match semver_compare(a: pre, b: rel) {
+            Less => true
+            _ => false
+          }
+      }
   }
 }
 
 test fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
-  match semver_compare(a: semver_1_0_0_alpha(), b: semver_1_0_0_alpha_1()) {
-    Less =>
-      match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0_alpha()) {
-        Greater => true
-        _ => false
+  match semver_1_0_0_alpha() {
+    Absent => false
+    Present { value: shorter } =>
+      match semver_1_0_0_alpha_1() {
+        Absent => false
+        Present { value: longer } =>
+          match semver_compare(a: shorter, b: longer) {
+            Less =>
+              match semver_compare(a: longer, b: shorter) {
+                Greater => true
+                _ => false
+              }
+            _ => false
+          }
       }
-    _ => false
   }
 }
 
 test fn w_semver_compare_major_minor_patch() -> Bool {
-  let older = SemVerVersion { major: [49], minor: [50], patch: [51], pre_release: [], build: [] }
-  let newer = SemVerVersion { major: [49], minor: [50], patch: [52], pre_release: [], build: [] }
-  match semver_compare(a: older, b: newer) {
-    Less =>
-      match semver_compare(a: newer, b: older) {
-        Greater => true
-        _ => false
+  match semver_version_parse(cps: chars(s: "1.2.3" as String)) {
+    Absent => false
+    Present { value: older } =>
+      match semver_version_parse(cps: chars(s: "1.2.4" as String)) {
+        Absent => false
+        Present { value: newer } =>
+          match semver_compare(a: older, b: newer) {
+            Less =>
+              match semver_compare(a: newer, b: older) {
+                Greater => true
+                _ => false
+              }
+            _ => false
+          }
       }
-    _ => false
   }
 }
 
 test fn w_semver_to_version_identity() -> Bool {
-  semver_to_version_identity(v: semver_1_0_0()) == "1.0.0"
+  match semver_1_0_0() {
+    Absent => false
+    Present { value: v } => semver_to_version_identity(v: v) == "1.0.0"
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +173,6 @@ test fn w_semver_to_version_identity() -> Bool {
 // lexically in ASCII sort order, and a larger identifier set ranks higher when
 // the shared prefix is equal; build metadata is ignored.
 // ---------------------------------------------------------------------------
-
 test fn w_semver_scheme_minor_numeric_not_lexical() -> Bool {
   match semver_scheme.compare("1.10.0", "1.9.0") {
     VersionCompared { ordering: v } => v == std.algebra.Greater
@@ -205,16 +225,24 @@ test fn w_semver_scheme_larger_pre_release_set_greater() -> Bool {
 // A label produced by the typed model's own serializer must order the way the typed compare
 // orders the version it labels.
 test fn w_semver_scheme_identity_round_trip_label() -> Bool {
-  match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0()) {
-    Less =>
-      match semver_scheme.compare(
-        semver_to_version_identity(v: semver_1_0_0_alpha_1()),
-        semver_to_version_identity(v: semver_1_0_0())
-      ) {
-        VersionCompared { ordering: v } => v == std.algebra.Less
-        VersionComparisonRefused { side: _, identity: _, cause: _ } => false
+  match semver_1_0_0_alpha_1() {
+    Absent => false
+    Present { value: pre } =>
+      match semver_1_0_0() {
+        Absent => false
+        Present { value: rel } =>
+          match semver_compare(a: pre, b: rel) {
+            Less =>
+              match semver_scheme.compare(
+                semver_to_version_identity(v: pre),
+                semver_to_version_identity(v: rel)
+              ) {
+                VersionCompared { ordering: v } => v == std.algebra.Less
+                VersionComparisonRefused { side: _, identity: _, cause: _ } => false
+              }
+            _ => false
+          }
       }
-    _ => false
   }
 }
 
@@ -274,16 +302,13 @@ test fn w_semver_core_refuses_trailing_delimiter_label() -> Bool {
   }
 }
 
-// A numeric field must refuse at the STEP that crosses the Int bound, through
-// std.checked_arithmetic's authority — not wrap first and hope the Nat check notices. The
-// old unchecked accumulation wrapped 20 nines into a small positive Int that passed
-// checked_int_to_nat and minted a wrong precedence (review 76945); under the repair this
-// label refuses, so no ordering can be fabricated from it.
 // A numeric component has NO size limit in section 2 or 9, so a 20-nines field is a valid
-// label, not an out-of-grammar one: it must compare by its digits, at any width (side chat
-// review 5427723272). The field arrives constructor-confined — semver_numeric_field admits
-// it or refuses — and precedence projects .digits: run length is the magnitude, then ASCII
-// digit order, so no machine-integer conversion can refuse or wrap it.
+// label, not an out-of-grammar or out-of-range one: it must compare by its digits, at any
+// width (side chat review 5427723272). The field arrives constructor-confined —
+// semver_numeric_field admits it or refuses — and precedence projects .digits: run length is
+// the magnitude, then ASCII digit order, so no machine-integer conversion can refuse or wrap
+// it (the old unchecked accumulation wrapped 20 nines into a small positive Int that minted a
+// wrong precedence — review 76945).
 test fn w_semver_core_wide_numeric_field_compares_numerically() -> Bool {
   match semver_scheme.compare("1.99999999999999999999.0", "1.2.0") {
     VersionCompared { ordering: Greater } => true
@@ -310,9 +335,13 @@ test fn w_build_wide_numeric_identifier_is_valid_and_ignored() -> Bool {
   }
 }
 
-// THE CONFINEMENT'S NEGATIVE CONTROLS. The only admission is semver_numeric_field: an empty
-// sequence, anything outside ASCII digits 48..57, and a leading zero (unless the single digit
-// 0) are refused, so a forged field can neither reach the comparator nor the renderer.
+// THE CONFINEMENT'S NEGATIVE CONTROLS, plus an honest statement of their rung. The confined
+// type is lowered to an alias by the emitter, so runtime typing alone cannot block a forged
+// list; the rung this file holds is BY-SOURCE confinement: semver_numeric_field is the only
+// producer of field values, and every consumer in this file and in the live modules derives
+// through it or through the parser (grep has no other SemVerVersion field literal). The
+// controls pin the constructor's own contract: an empty sequence, anything outside ASCII
+// digits 48..57, and a leading zero (unless the single digit 0) are refused.
 test fn w_numeric_field_constructor_refuses_forged_sequences() -> Bool {
   match semver_numeric_field(cps: []) {
     Absent => match semver_numeric_field(cps: chars(s: "A")) {
