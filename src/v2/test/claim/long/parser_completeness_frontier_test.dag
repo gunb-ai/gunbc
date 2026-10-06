@@ -69,60 +69,60 @@ data src_logic_inline_fn_multi_arm: String = "module parser_frontier_pilot\n\nty
 data src_logic_nested_rec_fn: String = "module parser_frontier_pilot\n\ntype T = A | B\ntype Inner { meet: T }\ntype Outer { inner: Inner, top: T }\ndata o: Outer = Outer { inner: Inner { meet: fn(a, b) { match a { A => b, B => A } } }, top: A }\n"
 data src_logic_untyped_single_param_fn: String = "module parser_frontier_pilot\n\ntype T = A | B\ntype Wrap { f: T }\ndata r: Wrap = Wrap { f: fn(a) { match a { A => A, B => B } } }\n"
 
-test fn parser_frontier_parse_module_header_holds() -> Bool {
+test fn parser_frontier_parse_module_header_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_module_header)
 }
 
-test fn parser_frontier_parse_type_decl_holds() -> Bool {
+test fn parser_frontier_parse_type_decl_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_type_decl)
 }
 
-test fn parser_frontier_parse_fn_simple_body_holds() -> Bool {
+test fn parser_frontier_parse_fn_simple_body_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_fn_simple_body)
 }
 
-test fn parser_frontier_parse_single_arm_match_holds() -> Bool {
+test fn parser_frontier_parse_single_arm_match_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_single_arm_match)
 }
 
-test fn parser_frontier_infer_single_arm_module_holds() -> Bool {
+test fn parser_frontier_infer_single_arm_module_holds() -> Bool  {
   parser_frontier_infer_accepts(src: src_single_arm_match)
 }
 
-test fn parser_frontier_parse_multi_arm_match_holds() -> Bool {
+test fn parser_frontier_parse_multi_arm_match_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_multi_arm_match)
     && parser_frontier_infer_accepts(src: src_multi_arm_match)
 }
 
-test fn parser_frontier_logic_empty_record_type_holds() -> Bool {
+test fn parser_frontier_logic_empty_record_type_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_empty_record_type)
 }
 
-test fn parser_frontier_logic_record_type_fields_holds() -> Bool {
+test fn parser_frontier_logic_record_type_fields_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_record_type_fields)
 }
 
-test fn parser_frontier_logic_data_nested_ctor_holds() -> Bool {
+test fn parser_frontier_logic_data_nested_ctor_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_data_nested_ctor)
 }
 
-test fn parser_frontier_logic_let_discard_holds() -> Bool {
+test fn parser_frontier_logic_let_discard_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_let_discard)
 }
 
-test fn parser_frontier_logic_generic_data_holds() -> Bool {
+test fn parser_frontier_logic_generic_data_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_generic_data)
 }
 
-test fn parser_frontier_logic_inline_fn_multi_arm_holds() -> Bool {
+test fn parser_frontier_logic_inline_fn_multi_arm_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_inline_fn_multi_arm)
 }
 
-test fn parser_frontier_logic_nested_rec_fn_holds() -> Bool {
+test fn parser_frontier_logic_nested_rec_fn_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_nested_rec_fn)
 }
 
-test fn parser_frontier_logic_untyped_single_param_fn_holds() -> Bool {
+test fn parser_frontier_logic_untyped_single_param_fn_holds() -> Bool  {
   parser_frontier_assemble_accepts(src: src_logic_untyped_single_param_fn)
 }
 

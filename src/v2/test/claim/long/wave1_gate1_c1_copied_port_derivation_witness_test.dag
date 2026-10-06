@@ -23,7 +23,7 @@ import v2.std.collection { Absent, Present }
 // CommitWitnessClaim ExecutionWitnessKind in gunbc.commit_workflow. Fast compile-gate receipts live
 // in self_host/wave1_gate1_c1_copied_port_derivation_witness_test.dag.
 
-test fn wave1_gate1_c1_derived_list_append_index_witness_holds() -> Bool {
+test fn wave1_gate1_c1_derived_list_append_index_witness_holds() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_append.arrow
   ) {
@@ -32,7 +32,7 @@ test fn wave1_gate1_c1_derived_list_append_index_witness_holds() -> Bool {
   }
 }
 
-test fn wave1_gate1_c1_derived_list_snoc_index_witness_holds() -> Bool {
+test fn wave1_gate1_c1_derived_list_snoc_index_witness_holds() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_snoc_item.arrow
   ) {
@@ -41,7 +41,7 @@ test fn wave1_gate1_c1_derived_list_snoc_index_witness_holds() -> Bool {
   }
 }
 
-test fn wave1_gate1_c1_derived_map_merge_index_witness_holds() -> Bool {
+test fn wave1_gate1_c1_derived_map_merge_index_witness_holds() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_map_merge.arrow
   ) {
@@ -50,16 +50,16 @@ test fn wave1_gate1_c1_derived_map_merge_index_witness_holds() -> Bool {
   }
 }
 
-test fn wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds() -> Bool {
+test fn wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds() -> Bool  {
   arrow_body_cost_domain_excluded_holds()
 }
 
-test fn wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds() -> Bool {
+test fn wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds() -> Bool  {
   wave1_gate1_c1_unpriceable_combiner_refuses_holds()
     && wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds()
 }
 
-test fn wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds() -> Bool {
+test fn wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: citation_arrow_multi_linear_ambiguous(
       left_sym: ^copied_port_derivation_test_multi_linear_left,
@@ -71,7 +71,7 @@ test fn wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds() -> Bool {
   }
 }
 
-test fn wave1_gate1_c1_derived_registry_execution_witness_holds() -> Bool {
+test fn wave1_gate1_c1_derived_registry_execution_witness_holds() -> Bool  {
   wave1_gate1_c1_derived_indices_match_retired_registry_holds()
     && wave1_gate1_c1_unpriceable_combiner_refuses_holds()
     && wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds()

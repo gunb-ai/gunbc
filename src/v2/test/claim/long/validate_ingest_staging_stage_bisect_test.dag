@@ -90,21 +90,21 @@ fn bisect_through_normalize() -> Outcome<NormalizedTree> {
   )
 }
 
-test fn bisect_tokenize_terminates() -> Bool {
+test fn bisect_tokenize_terminates() -> Bool  {
   match bisect_through_tokenize() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn bisect_parse_terminates() -> Bool {
+test fn bisect_parse_terminates() -> Bool  {
   match bisect_through_parse() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn bisect_normalize_terminates() -> Bool {
+test fn bisect_normalize_terminates() -> Bool  {
   match bisect_through_normalize() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
@@ -129,7 +129,7 @@ fn bisect_through_grammar_validate() -> Outcome<ValidatedGrammarRoot> {
   }
 }
 
-test fn bisect_grammar_validate_terminates() -> Bool {
+test fn bisect_grammar_validate_terminates() -> Bool  {
   match bisect_through_grammar_validate() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
@@ -232,7 +232,7 @@ fn bisect_parse_module_add_normalize_accepts() -> Bool {
   }
 }
 
-test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
+test fn witness_bisect_parse_module_add_correctness_holds() -> Bool  {
   bisect_parse_module_add_parse_accepts()
     && bisect_parse_module_add_normalize_accepts()
     && bisect_parse_module_add_well_formed_after_normalize()
@@ -275,10 +275,10 @@ fn bisect_resolve_accepts_text(text: String) -> Bool {
   }
 }
 
-test fn witness_bisect_unbound_reference_rejected() -> Bool {
+test fn witness_bisect_unbound_reference_rejected() -> Bool  {
   bisect_resolve_accepts_text(text: bisect_unbound_reference_source.carried) == false
 }
 
-test fn witness_bisect_unbound_reference_no_binding_rejected() -> Bool {
+test fn witness_bisect_unbound_reference_no_binding_rejected() -> Bool  {
   bisect_resolve_accepts_text(text: bisect_unbound_reference_no_binding_source.carried) == false
 }

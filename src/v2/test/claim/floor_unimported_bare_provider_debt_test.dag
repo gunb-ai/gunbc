@@ -56,25 +56,25 @@ fn refuses_exactly(refusals: List<String>, expected: String) -> Bool {
 }
 
 // The identity spelling is the roster's own, and keeps file and name apart.
-test fn the_identity_spelling_keeps_file_and_name_apart() -> Bool {
+test fn the_identity_spelling_keeps_file_and_name_apart() -> Bool  {
   a_active.identity == "dag/a.dag#f"
     && unimported_bare_provider_identity(file: "dag/a.dag", name: "g") != a_active.identity
 }
 
 // COHERENCE. Control: distinct identities. Reds: the same identity twice while active, and the same
 // identity active AND retired -- one standing per identity, so both are one duplicate.
-test fn coherence_admits_distinct_identities() -> Bool {
+test fn coherence_admits_distinct_identities() -> Bool  {
   length(unimported_bare_provider_roster_coherence(rows: [a_active, b_active])) == 0
 }
 
-test fn coherence_refuses_a_duplicate_active_identity() -> Bool {
+test fn coherence_refuses_a_duplicate_active_identity() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_coherence(rows: [a_active, b_active, a_active]),
     expected: "RosterDuplicateIdentity dag/a.dag#f",
   )
 }
 
-test fn coherence_refuses_an_identity_both_active_and_retired() -> Bool {
+test fn coherence_refuses_an_identity_both_active_and_retired() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_coherence(rows: [a_active, a_imports_fixed]),
     expected: "RosterDuplicateIdentity dag/a.dag#f",
@@ -82,13 +82,13 @@ test fn coherence_refuses_an_identity_both_active_and_retired() -> Bool {
 }
 
 // EDIT. Control: unchanged, ActiveDebt -> Retired, and a retirement carried unchanged all admit.
-test fn edit_admits_unchanged_retiring_and_a_carried_retirement() -> Bool {
+test fn edit_admits_unchanged_retiring_and_a_carried_retirement() -> Bool  {
   length(unimported_bare_provider_roster_edit(base: [a_active, b_active], head: [a_active, b_active])) == 0
     && length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_imports_fixed])) == 0
     && length(unimported_bare_provider_roster_edit(base: [a_file_deleted], head: [a_file_deleted])) == 0
 }
 
-test fn edit_refuses_a_gained_identity() -> Bool {
+test fn edit_refuses_a_gained_identity() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_edit(base: [a_active], head: [a_active, b_active]),
     expected: "RosterGainedIdentity dag/b.dag#g",
@@ -96,7 +96,7 @@ test fn edit_refuses_a_gained_identity() -> Bool {
 }
 
 // An existing retirement may not be erased: the row exists at base and is gone at head.
-test fn edit_refuses_an_erased_retirement() -> Bool {
+test fn edit_refuses_an_erased_retirement() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_edit(base: [a_imports_fixed, b_active], head: [b_active]),
     expected: "RosterRemovedIdentity dag/a.dag#f (was Retired ImportsFixed)",
@@ -105,7 +105,7 @@ test fn edit_refuses_an_erased_retirement() -> Bool {
 
 // A retirement's cause may not be rewritten, and a retirement may not revert to active debt; the
 // one admitted transition is a retirement whose file was later deleted becoming FileDeleted.
-test fn edit_refuses_a_rewritten_cause_and_a_reverted_retirement() -> Bool {
+test fn edit_refuses_a_rewritten_cause_and_a_reverted_retirement() -> Bool  {
   count(unimported_bare_provider_roster_edit(base: [a_imports_fixed], head: [a_file_deleted])) == 0
     && refuses_exactly(
     refusals: unimported_bare_provider_roster_edit(base: [a_file_deleted], head: [a_imports_fixed]),
@@ -119,7 +119,7 @@ test fn edit_refuses_a_rewritten_cause_and_a_reverted_retirement() -> Bool {
 
 // STANDING. Control: an active pair in a present file that still carries it, and a FileDeleted
 // retirement whose file is gone -- the proper disposition for a deleted debt-bearing file.
-test fn standing_admits_carried_debt_and_a_true_file_deleted() -> Bool {
+test fn standing_admits_carried_debt_and_a_true_file_deleted() -> Bool  {
   length(unimported_bare_provider_roster_standing(
     head: [a_active],
     present_files: ["dag/a.dag"],
@@ -137,7 +137,7 @@ test fn standing_admits_carried_debt_and_a_true_file_deleted() -> Bool {
 }
 
 // Deleting a debt-bearing file without retiring its rows refuses: FileDeleted is not voluntary.
-test fn standing_refuses_active_debt_on_a_deleted_file() -> Bool {
+test fn standing_refuses_active_debt_on_a_deleted_file() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_standing(
       head: [a_active],
@@ -151,7 +151,7 @@ test fn standing_refuses_active_debt_on_a_deleted_file() -> Bool {
 }
 
 // Each cause is held to its claim.
-test fn standing_refuses_a_false_cause() -> Bool {
+test fn standing_refuses_a_false_cause() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_standing(
       head: [a_file_deleted],
@@ -176,7 +176,7 @@ test fn standing_refuses_a_false_cause() -> Bool {
 
 // A checked file's active row it no longer carries is stale; a carried pair not on the roster as
 // active debt is unrostered.
-test fn standing_refuses_stale_debt_and_an_unrostered_pair() -> Bool {
+test fn standing_refuses_stale_debt_and_an_unrostered_pair() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_standing(
       head: [a_active],
@@ -201,7 +201,7 @@ test fn standing_refuses_stale_debt_and_an_unrostered_pair() -> Bool {
 
 // An ImportsFixed file is re-derived to hold its retirement true, not to hold an untouched file to
 // the rule: a new pair there is not unrostered unless the ROUTE carries it. Control and red.
-test fn standing_holds_only_the_route_to_the_unrostered_rule() -> Bool {
+test fn standing_holds_only_the_route_to_the_unrostered_rule() -> Bool  {
   length(unimported_bare_provider_roster_standing(
     head: [a_imports_fixed],
     present_files: ["dag/a.dag"],
@@ -223,7 +223,7 @@ test fn standing_holds_only_the_route_to_the_unrostered_rule() -> Bool {
 
 // A relocation out of the source roots is its own cause, not a deletion: the row names where the
 // file went. It is held to its claim the same way: the old path must be gone from the roots.
-test fn standing_refuses_a_relocation_that_did_not_happen() -> Bool {
+test fn standing_refuses_a_relocation_that_did_not_happen() -> Bool  {
   refuses_exactly(
     refusals: unimported_bare_provider_roster_standing(
       head: [a_relocated],
@@ -236,7 +236,7 @@ test fn standing_refuses_a_relocation_that_did_not_happen() -> Bool {
   )
 }
 
-test fn standing_admits_a_relocation_whose_source_path_is_gone() -> Bool {
+test fn standing_admits_a_relocation_whose_source_path_is_gone() -> Bool  {
   count(unimported_bare_provider_roster_standing(
     head: [a_relocated],
     present_files: [],
@@ -249,7 +249,7 @@ test fn standing_admits_a_relocation_whose_source_path_is_gone() -> Bool {
 
 // NotAReference is a retirement like the others: active debt may move to it, and it is held to its
 // claim on every run -- the file exists and still does not carry the pair. Control, then the two reds.
-test fn not_a_reference_retires_active_debt_and_is_held_to_its_claim() -> Bool {
+test fn not_a_reference_retires_active_debt_and_is_held_to_its_claim() -> Bool  {
   length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_not_a_reference])) == 0
     && length(unimported_bare_provider_roster_standing(
       head: [a_not_a_reference],
@@ -287,7 +287,7 @@ test fn not_a_reference_retires_active_debt_and_is_held_to_its_claim() -> Bool {
 // BindsWithoutDeclaration is a retirement like NotAReference: the reader changed, not the file, so
 // active debt may move to it and it is held to its claim on every run. Control, then the reds, then
 // an existing retirement may not be relabelled to it.
-test fn binds_without_declaration_retires_active_debt_and_is_held_to_its_claim() -> Bool {
+test fn binds_without_declaration_retires_active_debt_and_is_held_to_its_claim() -> Bool  {
   length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_binds_without_declaration])) == 0
     && length(unimported_bare_provider_roster_standing(
       head: [a_binds_without_declaration],
@@ -325,7 +325,7 @@ test fn binds_without_declaration_retires_active_debt_and_is_held_to_its_claim()
 // ResolvesInClosure removes a row that was never debt by a typed disposition, so the roster stays
 // monotone: active debt may move to it, and it is held to its claim on every run. Control, then the
 // reds, then an existing retirement may not be relabelled to it.
-test fn resolves_in_closure_retires_active_debt_and_is_held_to_its_claim() -> Bool {
+test fn resolves_in_closure_retires_active_debt_and_is_held_to_its_claim() -> Bool  {
   length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_resolves_in_closure])) == 0
     && length(unimported_bare_provider_roster_standing(
       head: [a_resolves_in_closure],

@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // NOTHING HERE THROWS. Both entries are total and same-typed, so this row is an OBSERVED semantic
 // verdict and never a no-verdict claim -- the displacement produces a plausible Int, which is
 // exactly what made the shipped defect invisible.
-test fn each_module_reaches_its_own_declaration_of_a_shared_bare_name() -> Bool {
+test fn each_module_reaches_its_own_declaration_of_a_shared_bare_name() -> Bool  {
   alpha_entry() == 100 && beta_entry() == 200
 }
 
@@ -54,7 +54,7 @@ test fn each_module_reaches_its_own_declaration_of_a_shared_bare_name() -> Bool 
 // permanently green by construction on that path, carrying no information, and worse than absent
 // because it would have been cited as coverage for the mechanism the floor had just proven
 // missing.
-test fn an_explicitly_imported_name_resolves_to_the_module_it_was_imported_from() -> Bool {
+test fn an_explicitly_imported_name_resolves_to_the_module_it_was_imported_from() -> Bool  {
   shared_anchor == 22 && via_alpha() == 11
 }
 
@@ -64,6 +64,6 @@ test fn an_explicitly_imported_name_resolves_to_the_module_it_was_imported_from(
 // most witnesses are written in. This module declares no `alpha_entry` and no `beta_entry`, so
 // both calls above are bare cross-module references that must keep resolving. If this row ever
 // reds, the repair narrowed resolution instead of ordering it.
-test fn bare_cross_module_reference_still_resolves_control() -> Bool {
+test fn bare_cross_module_reference_still_resolves_control() -> Bool  {
   alpha_entry() > 0 && beta_entry() > 0
 }

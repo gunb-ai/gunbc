@@ -99,7 +99,7 @@ fn derived_matches_legacy(standard_integer_type: StandardIntegerType, legacy: In
   )
 }
 
-test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool {
+test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool  {
   derived_matches_legacy(standard_integer_type: Int8, legacy: legacy_int8_spec)
     && derived_matches_legacy(standard_integer_type: Int16, legacy: legacy_int16_spec)
     && derived_matches_legacy(standard_integer_type: Int32, legacy: legacy_int32_spec)
@@ -117,11 +117,11 @@ data planted_wrong_int8_spec: IntegerIntervalSpec = integer_interval(
   inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] })
 )
 
-test fn derivation_discriminates_planted_off_by_one() -> Bool {
+test fn derivation_discriminates_planted_off_by_one() -> Bool  {
   !derived_matches_legacy(standard_integer_type: Int8, legacy: planted_wrong_int8_spec)
 }
 
-test fn pow2_digit_shapes_hold() -> Bool {
+test fn pow2_digit_shapes_hold() -> Bool  {
   let one = integer_pow2_magnitude(exponent: 0)
   let one_two_eight = integer_pow2_magnitude(exponent: 7)
   let two_pow_127 = integer_pow2_magnitude(exponent: 127)
@@ -133,7 +133,7 @@ test fn pow2_digit_shapes_hold() -> Bool {
     && (length(xs: two_pow_127.tail) == 38)
 }
 
-test fn interval_min_not_above_max_for_all_standard_types() -> Bool {
+test fn interval_min_not_above_max_for_all_standard_types() -> Bool  {
   fold_list(
     xs: integer_standard_integer_type_roster,
     empty: true,
@@ -165,7 +165,7 @@ fn standard_integer_type_eq(a: StandardIntegerType, b: StandardIntegerType) -> B
     && (integer_standard_integer_type_width_bits(standard_integer_type: a) == integer_standard_integer_type_width_bits(standard_integer_type: b))
 }
 
-test fn from_node_round_trips_all_standard_types() -> Bool {
+test fn from_node_round_trips_all_standard_types() -> Bool  {
   fold_list(
     xs: integer_standard_integer_type_roster,
     empty: true,

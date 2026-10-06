@@ -78,7 +78,7 @@ fn walk_extdeps_dir(path: String, lm: LanguageModel) -> CorpusScan {
   }
 }
 
-test fn mandatory_tag_extdeps_corpus_wall_holds() -> Bool {
+test fn mandatory_tag_extdeps_corpus_wall_holds() -> Bool  {
   let scan = walk_extdeps_dir(path: "dag/extdeps", lm: dag_language_model())
   scan.finding_count == 0
     && scan.stage_reject_count == 0
@@ -86,7 +86,7 @@ test fn mandatory_tag_extdeps_corpus_wall_holds() -> Bool {
     && scan.module_count > 150
 }
 
-test fn mandatory_tag_corpus_subdir_color_wall_holds() -> Bool {
+test fn mandatory_tag_corpus_subdir_color_wall_holds() -> Bool  {
   let scan = walk_extdeps_dir(path: "dag/extdeps/color", lm: dag_language_model())
   scan.finding_count == 0
     && scan.stage_reject_count == 0
@@ -94,7 +94,7 @@ test fn mandatory_tag_corpus_subdir_color_wall_holds() -> Bool {
     && scan.module_count == 3
 }
 
-test fn mandatory_tag_corpus_walker_refuses_missing_root() -> Bool {
+test fn mandatory_tag_corpus_walker_refuses_missing_root() -> Bool  {
   let scan = walk_extdeps_dir(path: "dag/extdeps_nonexistent_probe_root", lm: dag_language_model())
   scan.walk_failure_count == 1 && scan.module_count == 0
 }

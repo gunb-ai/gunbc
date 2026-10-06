@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag --function
 // realization_vocab_live_corpus_receipt_holds.
 
-test fn realization_vocab_live_corpus_receipt_holds() -> Bool {
+test fn realization_vocab_live_corpus_receipt_holds() -> Bool  {
   let facts = layer_import_facts_live(
     std_roots: realization_vocab_consumer_scan_roots,
     extdeps_roots: []

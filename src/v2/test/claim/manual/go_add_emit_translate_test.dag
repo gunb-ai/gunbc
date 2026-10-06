@@ -138,7 +138,7 @@ fn anchor_go_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium
 
 data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_serialize_rejects_missing_translation_rules()
 
-test fn go_add_serialize_reject_receipt_holds() -> Bool {
+test fn go_add_serialize_reject_receipt_holds() -> Bool  {
   match go_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d != None
@@ -307,7 +307,7 @@ fn anchor_go_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
 
 data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 
-test fn go_add_emit_add_fn_accepts_holds() -> Bool {
+test fn go_add_emit_add_fn_accepts_holds() -> Bool  {
   match go_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == go_source_text) && (d == None)
@@ -317,7 +317,7 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
 
 data go_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_go_add_compile_inferred_accepts()
 
-test fn go_add_compile_inferred_receipt_holds() -> Bool {
+test fn go_add_compile_inferred_receipt_holds() -> Bool  {
   match go_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false

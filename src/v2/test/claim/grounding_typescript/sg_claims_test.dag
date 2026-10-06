@@ -106,7 +106,7 @@ fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
   }
 }
 
-test fn ts_g2_sg1_atom_realizations_hold() -> Bool {
+test fn ts_g2_sg1_atom_realizations_hold() -> Bool  {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
     && ts_g2_sg1_bool_evidence_targets_canonical_carrier()
     && ts_g2_sg1_text_string_evidence_targets_canonical_carrier()
@@ -115,7 +115,7 @@ test fn ts_g2_sg1_atom_realizations_hold() -> Bool {
     && ts_g2_sg1_atom_lookup_accepts(source_carrier: ts_std_text_string_type_node())
 }
 
-test fn ts_g2_g14_fact_registry_accepts() -> Bool {
+test fn ts_g2_g14_fact_registry_accepts() -> Bool  {
   match ts_build_per_language_fact_bundle_registry() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -138,7 +138,7 @@ fn ts_g2_sg2_instantiation_projection_matches_golden() -> Bool {
     content_hash(n: ts_sg2_foobar_xy_emitted())
 }
 
-test fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
+test fn ts_g2_sg2_type_expression_projection_holds() -> Bool  {
   ts_g2_sg2_evidence_targets_canonical_carrier()
     && match target_bundle_child_optional_type_expr_projection(
       target: ts_sg2_type_expr_target_model()
@@ -150,7 +150,7 @@ test fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
     && ts_g2_sg2_instantiation_projection_matches_golden()
 }
 
-test fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
+test fn ts_g2_sg5_collection_realization_absence_holds() -> Bool  {
   ts_g2_sg5_set_absence_evidence_targets_canonical_carrier()
     && ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier()
     && match collection_realization_from_target(target: ts_sg2_type_expr_target_model()) {
@@ -165,6 +165,6 @@ test fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
     }
 }
 
-test fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
+test fn ts_g2_sg1_symbol_carrier_holds() -> Bool  {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
 }

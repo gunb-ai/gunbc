@@ -31,11 +31,11 @@ data observed_grown: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b"
 // implementation passes silently.
 data observed_swapped: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.d", tail: Empty {} } } }
 
-test fn unchanged_population_is_admitted() -> Bool {
+test fn unchanged_population_is_admitted() -> Bool  {
   non_verdict_admits(observed: observed_unchanged, roster: roster_fixture)
 }
 
-test fn repayment_that_leaves_the_row_behind_refuses_and_is_reported_per_identity() -> Bool {
+test fn repayment_that_leaves_the_row_behind_refuses_and_is_reported_per_identity() -> Bool  {
   !non_verdict_admits(observed: observed_repaid, roster: roster_fixture)
     && length(xs: non_verdict_repaid(observed: observed_repaid, roster: roster_fixture)) == 2
     && length(xs: non_verdict_added(observed: observed_repaid, roster: roster_fixture)) == 0
@@ -46,13 +46,13 @@ test fn repayment_that_leaves_the_row_behind_refuses_and_is_reported_per_identit
 // leaves both collections empty, and the same function that refuses the stale form admits this
 // one. Without this control the pair would not discriminate between "stale rows refuse" and
 // "repayment refuses", which are opposite rules.
-test fn repayment_with_the_row_deleted_is_admitted() -> Bool {
+test fn repayment_with_the_row_deleted_is_admitted() -> Bool  {
   non_verdict_admits(observed: observed_repaid, roster: observed_repaid)
     && length(xs: non_verdict_repaid(observed: observed_repaid, roster: observed_repaid)) == 0
     && length(xs: non_verdict_added(observed: observed_repaid, roster: observed_repaid)) == 0
 }
 
-test fn growth_refuses() -> Bool {
+test fn growth_refuses() -> Bool  {
   !non_verdict_admits(observed: observed_grown, roster: roster_fixture)
     && length(xs: non_verdict_added(observed: observed_grown, roster: roster_fixture)) == 1
 }
@@ -61,7 +61,7 @@ test fn growth_refuses() -> Bool {
 // population has the SAME LENGTH as the roster, so this assertion is the one a count-based
 // admission fails -- and the length equality is asserted here beside the refusal, so the
 // discrimination cannot be read as an artifact of the sizes differing.
-test fn a_swap_that_leaves_the_count_unmoved_still_refuses() -> Bool {
+test fn a_swap_that_leaves_the_count_unmoved_still_refuses() -> Bool  {
   length(xs: observed_swapped) == length(xs: roster_fixture)
     && !non_verdict_admits(observed: observed_swapped, roster: roster_fixture)
     && length(xs: non_verdict_added(observed: observed_swapped, roster: roster_fixture)) == 1

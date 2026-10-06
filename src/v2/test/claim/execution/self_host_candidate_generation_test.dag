@@ -212,34 +212,34 @@ fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
   }
 }
 
-test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
+test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool  {
   witness_translate_diagnostic_reason_symbol_inverse()
 }
 
-test fn candidate_generation_translate_self_emit_dag_add_slice_holds() -> Bool {
+test fn candidate_generation_translate_self_emit_dag_add_slice_holds() -> Bool  {
   candidate_generation_dag_add_slice_accepts()
 }
 
-test fn translate_error_profile_roster_nonempty_holds() -> Bool {
+test fn translate_error_profile_roster_nonempty_holds() -> Bool  {
   translate_error_profile_roster_nonempty()
 }
 
-test fn translate_error_profile_rust_add_malformed_bundle_classified() -> Bool {
+test fn translate_error_profile_rust_add_malformed_bundle_classified() -> Bool  {
   translate_error_profile_rust_add_malformed_bundle_known()
 }
 
-test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool {
+test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool  {
   translate_error_profile_sg2_projected_arrow_serialize_known()
 }
 
-test fn translate_error_profile_sg2_projected_conj_serialize_accepts() -> Bool {
+test fn translate_error_profile_sg2_projected_conj_serialize_accepts() -> Bool  {
   translate_error_profile_sg2_projected_conj_serialize_known()
 }
 
-test fn translate_error_profile_sg2_projected_instantiation_serialize_accepts() -> Bool {
+test fn translate_error_profile_sg2_projected_instantiation_serialize_accepts() -> Bool  {
   translate_error_profile_sg2_projected_instantiation_serialize_known()
 }
 
-test fn translate_error_profile_coproduct_mapping_perturb_red_holds() -> Bool {
+test fn translate_error_profile_coproduct_mapping_perturb_red_holds() -> Bool  {
   translate_error_profile_coproduct_swap_perturb_discriminates()
 }

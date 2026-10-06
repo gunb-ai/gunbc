@@ -133,7 +133,7 @@ fn unregistered_combiner_normalized() -> NormalizedProbe {
   normalized_of(source: unregistered_combiner_snippet)
 }
 
-test fn gate_red_quadratic_rejects() -> Bool {
+test fn gate_red_quadratic_rejects() -> Bool  {
   match quad_normalized() {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
@@ -145,7 +145,7 @@ test fn gate_red_quadratic_rejects() -> Bool {
   }
 }
 
-test fn gate_green_identity_accepts_clean() -> Bool {
+test fn gate_green_identity_accepts_clean() -> Bool  {
   match identity_normalized() {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
@@ -160,7 +160,7 @@ test fn gate_green_identity_accepts_clean() -> Bool {
   }
 }
 
-test fn gate_refusal_ledger_counted_not_gating() -> Bool {
+test fn gate_refusal_ledger_counted_not_gating() -> Bool  {
   match unregistered_combiner_normalized() {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
@@ -191,7 +191,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
 // validate_then_compile carrying its coverage receipt) is a declared frontier recorded in
 // v2.test.lens_application.required_lens_coverage_join, triggered by a route that reaches Accepted
 // through the door.
-test fn door_root_roster_accepts_clean_inferred_tree() -> Bool {
+test fn door_root_roster_accepts_clean_inferred_tree() -> Bool  {
   match infer_and_discharge(tree: fixture_add_resolved_tree()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>

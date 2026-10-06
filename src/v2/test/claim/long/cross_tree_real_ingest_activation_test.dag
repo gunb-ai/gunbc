@@ -83,7 +83,7 @@ fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {
   }
 }
 
-test fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
+test fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool  {
   match ct_real_edge_decision(ingest: ct_real_v2_to_dag_ingest) {
     EdgeCrossAdmitted => true
     EdgeCrossDenied => false
@@ -92,7 +92,7 @@ test fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
   }
 }
 
-test fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
+test fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool  {
   match ct_real_edge_decision(ingest: ct_real_dag_to_v2_ingest) {
     EdgeCrossDenied => true
     EdgeCrossAdmitted => false

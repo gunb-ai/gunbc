@@ -5,10 +5,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_language_decl: String = "rust_language"
 
-test fn corpus_rust_language_has_external_consumer() -> Bool {
+test fn corpus_rust_language_has_external_consumer() -> Bool  {
   languages_consumer_census_live_has_external_consumer(decl_name: rust_language_decl)
 }
 
-test fn corpus_rust_language_external_consumer_count_positive() -> Bool {
+test fn corpus_rust_language_external_consumer_count_positive() -> Bool  {
   languages_consumer_census_live_external_consumer_count(decl_name: rust_language_decl) > 0
 }

@@ -149,39 +149,39 @@ data witness_node_minimal_owed_bucket_count: Bool = witness_owed_bucket_count()
 
 data witness_node_minimal_migrated_bucket_count: Bool = witness_migrated_bucket_count()
 
-test fn node_minimal_expr_leaf_field_count_below_superset_holds() -> Bool {
+test fn node_minimal_expr_leaf_field_count_below_superset_holds() -> Bool  {
   witness_node_minimal_expr_leaf_field_count
 }
 
-test fn node_minimal_expr_leaf_drops_dead_fields_holds() -> Bool {
+test fn node_minimal_expr_leaf_drops_dead_fields_holds() -> Bool  {
   witness_node_minimal_expr_leaf_drops_dead_fields
 }
 
-test fn node_minimal_substrate_round_trips_v2_node_holds() -> Bool {
+test fn node_minimal_substrate_round_trips_v2_node_holds() -> Bool  {
   witness_node_minimal_substrate_round_trip
 }
 
-test fn node_minimal_substrate_has_no_superset_fields_holds() -> Bool {
+test fn node_minimal_substrate_has_no_superset_fields_holds() -> Bool  {
   witness_node_minimal_substrate_zero_superset
 }
 
-test fn node_minimal_kind_of_expr_leaf_holds() -> Bool {
+test fn node_minimal_kind_of_expr_leaf_holds() -> Bool  {
   witness_node_minimal_kind_of_expr_leaf
 }
 
-test fn witness_partition_covers_superset_holds() -> Bool {
+test fn witness_partition_covers_superset_holds() -> Bool  {
   witness_node_minimal_partition_covers_superset
 }
 
-test fn node_minimal_placed_bucket_count_holds() -> Bool {
+test fn node_minimal_placed_bucket_count_holds() -> Bool  {
   witness_node_minimal_placed_bucket_count
 }
 
-test fn node_minimal_owed_bucket_count_holds() -> Bool {
+test fn node_minimal_owed_bucket_count_holds() -> Bool  {
   witness_node_minimal_owed_bucket_count
 }
 
-test fn node_minimal_migrated_bucket_count_holds() -> Bool {
+test fn node_minimal_migrated_bucket_count_holds() -> Bool  {
   witness_node_minimal_migrated_bucket_count
 }
 

@@ -55,15 +55,15 @@ fn parse_table_memoize_fixture() -> ParseTable {
   }
 }
 
-test fn witness_materialization_gate_recompute_denies_store() -> Bool {
+test fn witness_materialization_gate_recompute_denies_store() -> Bool  {
   !materialization_allows_memo_store(m: Recompute)
 }
 
-test fn witness_recompute_fixture_carries_recompute_verdict() -> Bool {
+test fn witness_recompute_fixture_carries_recompute_verdict() -> Bool  {
   !materialization_allows_memo_store(m: parse_table_recompute_fixture().materialization)
 }
 
-test fn witness_door_insert_refused_for_recompute_table() -> Bool {
+test fn witness_door_insert_refused_for_recompute_table() -> Bool  {
   parse_table_memo_insert_refused(
     table: parse_table_recompute_fixture(),
     key: governed_witness_probe_key(),
@@ -71,7 +71,7 @@ test fn witness_door_insert_refused_for_recompute_table() -> Bool {
   )
 }
 
-test fn witness_door_lookup_refused_for_recompute_table() -> Bool {
+test fn witness_door_lookup_refused_for_recompute_table() -> Bool  {
   parse_table_memo_lookup_refuses_store(
     table: parse_table_recompute_fixture(),
     key: governed_witness_probe_key()
@@ -121,7 +121,7 @@ fn witness_bypass_store_reds_non_memoize_carrier() -> Bool {
   !parse_table_memo_store_well_formed_at(table: bypass, key: key)
 }
 
-test fn witness_memoize_carrier_allows_store() -> Bool {
+test fn witness_memoize_carrier_allows_store() -> Bool  {
   let table = parse_table_memoize_fixture()
   let key = governed_witness_probe_key()
   let after = parse_table_insert(
@@ -132,7 +132,7 @@ test fn witness_memoize_carrier_allows_store() -> Bool {
   parse_table_entries_contain_key(table: after, key: key)
 }
 
-test fn witness_content_key_subject_stable() -> Bool {
+test fn witness_content_key_subject_stable() -> Bool  {
   let table = parse_table_memoize_fixture()
   let key = governed_witness_probe_key()
   let a = parse_table_subject(table: table, key: key)
@@ -140,11 +140,11 @@ test fn witness_content_key_subject_stable() -> Bool {
   a == b
 }
 
-test fn parse_table_memo_bypass_store_reds() -> Bool {
+test fn parse_table_memo_bypass_store_reds() -> Bool  {
   witness_bypass_store_reds_non_memoize_carrier()
 }
 
-test fn parse_table_memo_warm_equals_cold_content_hash() -> Bool {
+test fn parse_table_memo_warm_equals_cold_content_hash() -> Bool  {
   witness_parse_table_memo_hit_path_content_hash_stable()
 }
 

@@ -219,30 +219,30 @@ fn ts_import_empty_names_carrier() -> Node {
   ts_import_carrier_node(segments: [^seg_v2, ^seg_std, ^seg_algebra], names: std.algebra.Empty)
 }
 
-test fn ts_import_emit_by_execution_exact_holds() -> Bool {
+test fn ts_import_emit_by_execution_exact_holds() -> Bool  {
   ts_import_emit_text(carrier: ts_import_canonical_carrier()) == ts_import_canonical_source_text
 }
 
-test fn ts_import_emit_swapped_names_discriminates_holds() -> Bool {
+test fn ts_import_emit_swapped_names_discriminates_holds() -> Bool  {
   (ts_import_emit_text(carrier: ts_import_canonical_carrier()) == ts_import_canonical_source_text)
     && (ts_import_emit_text(carrier: ts_import_swapped_names_carrier()) != ts_import_canonical_source_text)
     && (ts_import_emit_text(carrier: ts_import_swapped_names_carrier()) != "TS_IMPORT_EMIT_REJECTED")
 }
 
-test fn ts_import_emit_other_path_discriminates_holds() -> Bool {
+test fn ts_import_emit_other_path_discriminates_holds() -> Bool  {
   (ts_import_emit_text(carrier: ts_import_canonical_carrier()) == ts_import_canonical_source_text)
     && (ts_import_emit_text(carrier: ts_import_other_path_carrier()) != ts_import_canonical_source_text)
     && (ts_import_emit_text(carrier: ts_import_other_path_carrier()) != "TS_IMPORT_EMIT_REJECTED")
 }
 
-test fn ts_import_emit_missing_qn_fails_closed_holds() -> Bool {
+test fn ts_import_emit_missing_qn_fails_closed_holds() -> Bool  {
   match ts_emit_import_from_carrier(carrier: ts_import_missing_qn_carrier()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn ts_import_emit_empty_names_fails_closed_holds() -> Bool {
+test fn ts_import_emit_empty_names_fails_closed_holds() -> Bool  {
   match ts_emit_import_from_carrier(carrier: ts_import_empty_names_carrier()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

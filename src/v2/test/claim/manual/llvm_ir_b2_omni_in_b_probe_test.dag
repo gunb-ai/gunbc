@@ -83,7 +83,7 @@ data llvm_probe_function_body: FunctionBody = Defined {
   rest: [llvm_probe_left_block, llvm_probe_right_block, llvm_probe_merge_block]
 }
 
-test fn llvm_probe_receipt_holds() -> Bool {
+test fn llvm_probe_receipt_holds() -> Bool  {
   block_well_formed(b: llvm_probe_entry_block)
   && block_well_formed(b: llvm_probe_left_block)
   && block_well_formed(b: llvm_probe_right_block)

@@ -89,15 +89,15 @@ fn release_transport_drift_probe_catches() -> Bool {
     release_transport_wire_contract_drift_catches()
 }
 
-test fn release_complexity_claims_are_class_rejections() -> Bool {
+test fn release_complexity_claims_are_class_rejections() -> Bool  {
   release_complexity_claim_catches()
 }
 
-test fn release_idempotency_claims_are_class_rejections() -> Bool {
+test fn release_idempotency_claims_are_class_rejections() -> Bool  {
   release_idempotency_claim_catches()
 }
 
-test fn release_transport_claims_are_class_rejections() -> Bool {
+test fn release_transport_claims_are_class_rejections() -> Bool  {
   release_transport_drift_probe_catches()
 }
 

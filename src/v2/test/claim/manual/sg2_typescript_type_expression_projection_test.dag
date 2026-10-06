@@ -57,7 +57,7 @@ fn ts_sg2_project_instantiation_emitted() -> Node {
   }
 }
 
-test fn ts_sg2_projection_matches_golden() -> Bool {
+test fn ts_sg2_projection_matches_golden() -> Bool  {
   content_hash(n: ts_sg2_project_instantiation_emitted()) ==
     content_hash(n: ts_sg2_foobar_xy_emitted())
 }
@@ -95,7 +95,7 @@ fn ts_sg2_project_disj_emitted() -> Node {
   }
 }
 
-test fn ts_sg2_binary_fn_projection_accepts() -> Bool {
+test fn ts_sg2_binary_fn_projection_accepts() -> Bool  {
   match translate_type_expression_project(
     node: ts_sg2_binary_fn_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
@@ -106,7 +106,7 @@ test fn ts_sg2_binary_fn_projection_accepts() -> Bool {
   }
 }
 
-test fn ts_sg2_arrow_malformed_projection_rejects() -> Bool {
+test fn ts_sg2_arrow_malformed_projection_rejects() -> Bool  {
   match translate_type_expression_project(
     node: ts_sg2_arrow_malformed_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
@@ -137,36 +137,36 @@ fn ts_sg2_serialized_text(emitted: Node) -> String {
   }
 }
 
-test fn ts_sg2_serialize_matches_expected() -> Bool {
+test fn ts_sg2_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_foobar_xy_emitted()) == ts_sg2_expected_instantiation_text
 }
 
-test fn ts_sg2_arrow_serialize_matches_expected() -> Bool {
+test fn ts_sg2_arrow_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_arrow_xy_emitted()) == ts_sg2_expected_arrow_text
 }
 
-test fn ts_sg2_arrow_projected_serialize_matches_expected() -> Bool {
+test fn ts_sg2_arrow_projected_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_project_arrow_emitted()) == ts_sg2_expected_arrow_text
 }
 
-test fn ts_sg2_conj_projected_serialize_matches_expected() -> Bool {
+test fn ts_sg2_conj_projected_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_project_conj_emitted()) == ts_sg2_expected_conj_text
 }
 
-test fn ts_sg2_instantiation_projected_serialize_matches_expected() -> Bool {
+test fn ts_sg2_instantiation_projected_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_project_instantiation_emitted()) == ts_sg2_expected_instantiation_text
 }
 
-test fn ts_sg2_disj_projected_serialize_matches_expected() -> Bool {
+test fn ts_sg2_disj_projected_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_project_disj_emitted()) == ts_sg2_expected_disj_text
 }
 
-test fn ts_sg2_arrow_labeled_serialize_matches_expected() -> Bool {
+test fn ts_sg2_arrow_labeled_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_arrow_labeled_xy_emitted()) ==
     ts_sg2_expected_arrow_labeled_text
 }
 
-test fn ts_sg2_arrow_positional_wire_shape() -> Bool {
+test fn ts_sg2_arrow_positional_wire_shape() -> Bool  {
   match target_type_expr_arrow_wire_shape(node: ts_sg2_arrow_xy_emitted()) {
     Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } => true
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } => false
@@ -174,7 +174,7 @@ test fn ts_sg2_arrow_positional_wire_shape() -> Bool {
   }
 }
 
-test fn ts_sg2_arrow_labeled_wire_shape() -> Bool {
+test fn ts_sg2_arrow_labeled_wire_shape() -> Bool  {
   match target_type_expr_arrow_wire_shape(node: ts_sg2_arrow_labeled_xy_emitted()) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } => true
     Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } => false
@@ -182,14 +182,14 @@ test fn ts_sg2_arrow_labeled_wire_shape() -> Bool {
   }
 }
 
-test fn ts_sg2_arrow_mixed_wire_rejects() -> Bool {
+test fn ts_sg2_arrow_mixed_wire_rejects() -> Bool  {
   match target_type_expr_arrow_wire_shape(node: ts_sg2_arrow_mixed_wire_emitted()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn ts_sg2_arrow_mixed_wire_decode_rejects() -> Bool {
+test fn ts_sg2_arrow_mixed_wire_decode_rejects() -> Bool  {
   match target_type_expr_emitted_wire_decode(
     node: ts_sg2_arrow_mixed_wire_emitted(),
     projection: ts_type_expression_projection()
@@ -199,7 +199,7 @@ test fn ts_sg2_arrow_mixed_wire_decode_rejects() -> Bool {
   }
 }
 
-test fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> Bool {
+test fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> Bool  {
   match target_type_expr_arrow_labeled_codomain(node: ts_sg2_arrow_mixed_wire_emitted()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } =>
@@ -210,11 +210,11 @@ test fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> Bool {
   }
 }
 
-test fn ts_sg2_conj_serialize_matches_expected() -> Bool {
+test fn ts_sg2_conj_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_conj_xy_emitted()) == ts_sg2_expected_conj_text
 }
 
-test fn ts_sg2_disj_serialize_matches_expected() -> Bool {
+test fn ts_sg2_disj_serialize_matches_expected() -> Bool  {
   ts_sg2_serialized_text(emitted: ts_sg2_sum_xy_emitted()) == ts_sg2_expected_disj_text
 }
 
@@ -228,25 +228,25 @@ fn ts_sg2_wire_decode_accepts(emitted: Node) -> Bool {
   }
 }
 
-test fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool {
+test fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool  {
   let row = ts_type_expression_projection()
   row.instantiation_form.open == ^ts_token_lt &&
     row.instantiation_form.separator == ^ts_token_comma &&
     row.instantiation_form.close == ^ts_token_gt
 }
 
-test fn ts_sg2_arrow_projection_matches_golden() -> Bool {
+test fn ts_sg2_arrow_projection_matches_golden() -> Bool  {
   content_hash(n: ts_sg2_project_arrow_emitted()) == content_hash(n: ts_sg2_arrow_xy_emitted())
 }
 
-test fn ts_sg2_conj_projection_matches_golden() -> Bool {
+test fn ts_sg2_conj_projection_matches_golden() -> Bool  {
   content_hash(n: ts_sg2_project_conj_emitted()) == content_hash(n: ts_sg2_conj_xy_emitted())
 }
 
-test fn ts_sg2_disj_projection_matches_golden() -> Bool {
+test fn ts_sg2_disj_projection_matches_golden() -> Bool  {
   content_hash(n: ts_sg2_project_disj_emitted()) == content_hash(n: ts_sg2_sum_xy_emitted())
 }
 
-test fn ts_sg2_wire_decode_accepts_instantiation() -> Bool {
+test fn ts_sg2_wire_decode_accepts_instantiation() -> Bool  {
   ts_sg2_wire_decode_accepts(emitted: ts_sg2_foobar_xy_emitted())
 }

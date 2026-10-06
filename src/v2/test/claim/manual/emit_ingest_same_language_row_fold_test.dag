@@ -187,7 +187,7 @@ fn emit_ingest_fold_catches_perturbed_python_row_holds() -> Bool {
     )
 }
 
-test fn emit_ingest_same_language_row_fold_holds() -> Bool {
+test fn emit_ingest_same_language_row_fold_holds() -> Bool  {
   emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_dag_add_rules())
     && emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_python_add_rules())
     && emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_clean_two_row_rules())

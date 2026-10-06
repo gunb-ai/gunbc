@@ -18,15 +18,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (AnswersOnOpen / Refuses / ClassifierUnknown / CompletesClosedTotal / DeclaredInterim). Zero
 // production behavior change — register and route only.
 
-test fn fallback_arm_census_reconciliation_holds() -> Bool {
+test fn fallback_arm_census_reconciliation_holds() -> Bool  {
   fallback_arm_census_reconciliation_holds_live()
 }
 
-test fn fallback_arm_census_total_nonempty_holds() -> Bool {
+test fn fallback_arm_census_total_nonempty_holds() -> Bool  {
   fallback_arm_census_total_live() > 0
 }
 
-test fn fallback_arm_census_class_counts_nonnegative_holds() -> Bool {
+test fn fallback_arm_census_class_counts_nonnegative_holds() -> Bool  {
   fallback_arm_census_class_count_live(class: "refuses") >= 0
     && fallback_arm_census_class_count_live(class: "completes_closed_total") >= 0
     && fallback_arm_census_class_count_live(class: "declared_interim") >= 0
@@ -34,10 +34,10 @@ test fn fallback_arm_census_class_counts_nonnegative_holds() -> Bool {
     && fallback_arm_census_class_count_live(class: "unknown") >= 0
 }
 
-test fn fallback_arm_seed_inventory_count_holds() -> Bool {
+test fn fallback_arm_seed_inventory_count_holds() -> Bool  {
   fallback_arm_seed_inventory_count_is_24_holds()
 }
 
-test fn fallback_arm_census_self_applies_holds() -> Bool {
+test fn fallback_arm_census_self_applies_holds() -> Bool  {
   fallback_arm_census_lens_path_has_no_answers_on_open()
 }

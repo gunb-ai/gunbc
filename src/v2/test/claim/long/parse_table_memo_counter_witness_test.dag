@@ -45,14 +45,14 @@ fn parse_memo_counter_counters_consistent(stats: ParseMemoStats) -> Bool {
   stats.lookup_calls == (stats.hits + stats.misses)
 }
 
-test fn parse_memo_counter_lookup_calls_recorded_holds() -> Bool {
+test fn parse_memo_counter_lookup_calls_recorded_holds() -> Bool  {
   parse_memo_counter_fixture_stats().lookup_calls > 0
 }
 
-test fn parse_memo_counter_counters_consistent_holds() -> Bool {
+test fn parse_memo_counter_counters_consistent_holds() -> Bool  {
   parse_memo_counter_counters_consistent(stats: parse_memo_counter_fixture_stats())
 }
 
-test fn parse_memo_counter_misses_recorded_holds() -> Bool {
+test fn parse_memo_counter_misses_recorded_holds() -> Bool  {
   parse_memo_counter_fixture_stats().misses > 0
 }

@@ -40,7 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // point of the file rather than decoration: the same row is eligible for a capacity-bounded role
 // and refused for an exact-byte one, and the refusal names the unit.
 
-test fn witness_typed_module_cache_is_scope_released_with_entry_ceiling() -> Bool {
+test fn witness_typed_module_cache_is_scope_released_with_entry_ceiling() -> Bool  {
   let row = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
   let retention = typed_module_cache_facts.placement.retention
   let released_at_scope_exit = match retention.release_policy {
@@ -63,7 +63,7 @@ test fn witness_typed_module_cache_is_scope_released_with_entry_ceiling() -> Boo
     && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
 }
 
-test fn witness_provider_preserves_the_cited_retention() -> Bool {
+test fn witness_provider_preserves_the_cited_retention() -> Bool  {
   let prov = provider_from_catalog(
     facts: typed_module_cache_facts,
     scope: empty_frame_path,
@@ -72,7 +72,7 @@ test fn witness_provider_preserves_the_cited_retention() -> Bool {
   prov.retention == typed_module_cache_facts.placement.retention
 }
 
-test fn witness_entry_capped_row_is_eligible_for_a_capacity_bounded_role() -> Bool {
+test fn witness_entry_capped_row_is_eligible_for_a_capacity_bounded_role() -> Bool  {
   match provider_for_capacity_bounded_role(
     facts: typed_module_cache_facts,
     scope: empty_frame_path,
@@ -83,7 +83,7 @@ test fn witness_entry_capped_row_is_eligible_for_a_capacity_bounded_role() -> Bo
   }
 }
 
-test fn witness_entry_capped_row_is_refused_for_an_exact_byte_role_naming_the_unit() -> Bool {
+test fn witness_entry_capped_row_is_refused_for_an_exact_byte_role_naming_the_unit() -> Bool  {
   match provider_for_exact_byte_budget_role(
     facts: typed_module_cache_facts,
     scope: empty_frame_path,

@@ -369,7 +369,7 @@ fn loop_eval_divergent_body_step_loop_holds() -> Bool {
 // (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land
 // as test fns only when claim_batch shows Bool(true) on CI hardware.
 
-test fn loop_demand_driven_eval_keystone_holds() -> Bool {
+test fn loop_demand_driven_eval_keystone_holds() -> Bool  {
   loop_eval_divergent_body_step_loop_holds()
 }
 

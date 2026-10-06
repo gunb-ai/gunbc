@@ -155,7 +155,7 @@ fn terminal_matching() -> WetTerminalRow {
 // true and leave nothing proving the executor runs anything at all -- permanently green by
 // construction, which DESIGN 4b calls a decoration rather than a wall. This is the witness that
 // keeps every guard below non-vacuous, so it is asserted rather than assumed.
-test fn the_local_roster_is_not_empty() -> Bool {
+test fn the_local_roster_is_not_empty() -> Bool  {
   length(xs: local_repo_wet_schedule()) > 0
     && length(xs: local_repo_wet_scheduled_identities()) == length(xs: local_repo_wet_schedule())
 }
@@ -172,7 +172,7 @@ test fn the_local_roster_is_not_empty() -> Bool {
 // DERIVED from the identity, so both sides were the same computation and the check carried no
 // information. The duplication worth guarding is this one, and it is in the carrier rather than in
 // the derivation.
-test fn every_roster_row_spells_its_function_the_same_way_twice() -> Bool {
+test fn every_roster_row_spells_its_function_the_same_way_twice() -> Bool  {
   length(
     xs: filter(
       xs: local_repo_wet_schedule(),
@@ -184,7 +184,7 @@ test fn every_roster_row_spells_its_function_the_same_way_twice() -> Bool {
 // THIS ROUTE DERIVES A CO-RESIDENT REQUIREMENT AND NOTHING ELSE. The requirement is what carries the
 // candidate into the shared validator, so a route that derived the transported shape would compare
 // digests against a tree it never prepared.
-test fn the_local_requirement_binds_the_candidate_as_a_prepared_subject() -> Bool {
+test fn the_local_requirement_binds_the_candidate_as_a_prepared_subject() -> Bool  {
   match local_repo_wet_requirement(candidate: fixture_candidate) {
     LocalRepoCoResidentRequirement { prepared_subject: p } => p == fixture_candidate
     SelfHostTransportedRequirement { semantic_subject: _, executor_contract: _ } => false
@@ -194,7 +194,7 @@ test fn the_local_requirement_binds_the_candidate_as_a_prepared_subject() -> Boo
 // A TRANSPORTED RECEIPT IS NOT THIS TREE'S EVIDENCE AND DOES NOT COMPARE. It reaches the wrong arm
 // and answers false rather than comparing a digest, which is the state-space conflation an untyped
 // candidate string could not express.
-test fn a_transported_binding_never_binds_to_a_local_candidate() -> Bool {
+test fn a_transported_binding_never_binds_to_a_local_candidate() -> Bool  {
   local_repo_wet_terminal_binds_to(terminal: terminal_matching(), candidate: fixture_candidate)
     && !local_repo_wet_terminal_binds_to(terminal: terminal_matching(), candidate: fixture_other_candidate)
     && !local_repo_wet_terminal_binds_to(
@@ -226,7 +226,7 @@ fn finalize_refused_with_one(f: LocalRepoWetFinalization, p: fn(LocalRepoWetFina
 // THE DISCRIMINATING RED FOR THE DELETED INVOCATION. A schedule with members and no executor call
 // refuses BY NAME, naming how many members went unrun -- which the join alone cannot say, because
 // with nothing invoked there are no terminals and a join over zero terminals and zero members holds.
-test fn a_nonempty_schedule_with_no_executor_invocation_refuses_as_executor_absent() -> Bool {
+test fn a_nonempty_schedule_with_no_executor_invocation_refuses_as_executor_absent() -> Bool  {
   finalize_refused_with_one(f: finalize_of(execution: LocalRepoWetExecutorNotInvoked {}), p: fn(c) {
     match c {
       LocalRepoWetExecutorAbsent { scheduled: n } => n == 1
@@ -239,7 +239,7 @@ test fn a_nonempty_schedule_with_no_executor_invocation_refuses_as_executor_abse
 // THE OPPOSITE CELL OF THE SAME ARM: absence refuses BECAUSE members were scheduled, not because
 // absence is refused unconditionally. Without this the arm above would also pass an implementation
 // that refuses every not-invoked execution, including the vacuous one.
-test fn an_empty_schedule_with_no_executor_invocation_holds() -> Bool {
+test fn an_empty_schedule_with_no_executor_invocation_holds() -> Bool  {
   match local_repo_wet_finalize(
     scheduled: [], execution: LocalRepoWetExecutorNotInvoked {}, candidate: fixture_candidate
   ) {
@@ -250,7 +250,7 @@ test fn an_empty_schedule_with_no_executor_invocation_holds() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE WALL. A wall that refused here would be permanently red and equally
 // uninformative.
-test fn an_executor_that_ran_this_candidate_completely_holds() -> Bool {
+test fn an_executor_that_ran_this_candidate_completely_holds() -> Bool  {
   match finalize_of(execution: LocalRepoWetExecutorRan {
     candidate: fixture_candidate, terminals: [terminal_matching()]
   }) {
@@ -263,7 +263,7 @@ test fn an_executor_that_ran_this_candidate_completely_holds() -> Bool {
 // reader is sent to the receipt's provenance rather than to a roster that is not at fault. This is
 // the run-level fact; its per-terminal twin lives in the shared validator and the two are kept
 // apart deliberately.
-test fn an_executor_that_ran_another_candidate_refuses_as_foreign_candidate() -> Bool {
+test fn an_executor_that_ran_another_candidate_refuses_as_foreign_candidate() -> Bool  {
   finalize_refused_with_one(
     f: finalize_of(execution: LocalRepoWetExecutorRan {
       candidate: fixture_other_candidate, terminals: [terminal_matching()]
@@ -282,7 +282,7 @@ test fn an_executor_that_ran_another_candidate_refuses_as_foreign_candidate() ->
 // AN INVOKED EXECUTOR STILL ANSWERS TO THE JOIN. The wall is added BESIDE the completeness join,
 // never in front of it: an executor that ran and skipped a member reaches the same missing-terminal
 // cause it always did, now carried as a finalization cause wrapping the shared vocabulary.
-test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> Bool {
+test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> Bool  {
   finalize_refused_with_one(
     f: finalize_of(execution: LocalRepoWetExecutorRan {
       candidate: fixture_candidate, terminals: []
@@ -328,7 +328,7 @@ fn gate_admits(terminal: ClaimAttemptTerminal) -> Bool {
   )
 }
 
-test fn the_gate_predicate_admits_only_a_passing_disposition() -> Bool {
+test fn the_gate_predicate_admits_only_a_passing_disposition() -> Bool  {
   gate_admits(terminal: passed())
     && !gate_admits(terminal: failed())
     && !gate_admits(terminal: route_gapped())
@@ -339,7 +339,7 @@ test fn the_gate_predicate_admits_only_a_passing_disposition() -> Bool {
 // THE NARROW PER-IDENTITY PREDICATE THE GATE CONSULTS, discriminated on all three of its facts and
 // on cardinality. A duplicate is not admitted even when both copies pass: two receipts for one
 // identity means the lane cannot say which one it is reporting.
-test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool {
+test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool  {
   local_repo_wet_identity_passed_on_candidate(
     identity: "test.claim.x.w_holds", terminals: [terminal_matching()], candidate: fixture_candidate
   )

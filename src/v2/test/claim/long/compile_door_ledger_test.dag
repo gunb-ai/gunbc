@@ -39,7 +39,7 @@ fn affected_rows() -> List<DoorLedgerRow> {
   door_ledger(paths: affected_set_paths, pool_roots: ledger_pool_roots)
 }
 
-test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
+test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool  {
   let rows = affected_rows()
   ledger_refused_count(rows: rows) == 3
     && ledger_all_compiled(rows: rows) == false

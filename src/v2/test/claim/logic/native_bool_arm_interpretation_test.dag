@@ -19,12 +19,12 @@ fn negate_by_arms(b: Bool) -> Bool {
   }
 }
 
-test fn bool_arms_match_the_host_values() -> Bool {
+test fn bool_arms_match_the_host_values() -> Bool  {
   negate_by_arms(b: true) == false && negate_by_arms(b: false) == true
 }
 
 // THE IDENTITY CONTROL: a module-local coproduct whose arms are spelled True/False keeps being its
 // own coproduct in the interpreter -- constructed as its variant, matched as its variant.
-test fn a_local_coproduct_with_true_false_arms_stays_its_own_variants() -> Bool {
+test fn a_local_coproduct_with_true_false_arms_stays_its_own_variants() -> Bool  {
   verdict_is_top(v: verdict_top()) && !verdict_is_top(v: verdict_negate(v: verdict_top()))
 }

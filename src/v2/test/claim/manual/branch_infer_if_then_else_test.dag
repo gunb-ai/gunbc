@@ -34,7 +34,7 @@ fn branch_infer_arm_mismatch_body() -> Node {
   )
 }
 
-test fn branch_infer_bool_cond_accepts_holds() -> Bool {
+test fn branch_infer_bool_cond_accepts_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: dag_pick_if_body_fixture)) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -46,7 +46,7 @@ test fn branch_infer_bool_cond_accepts_holds() -> Bool {
 // refuse infer_grounding_not_derived before claiming a mismatch. The discriminating mismatch RED
 // remains covered by branch_infer_test using two genuinely derived operand types.
 
-test fn branch_infer_underived_arm_refuses_before_mismatch_holds() -> Bool {
+test fn branch_infer_underived_arm_refuses_before_mismatch_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: branch_infer_arm_mismatch_body())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived

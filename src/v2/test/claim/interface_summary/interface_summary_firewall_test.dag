@@ -85,22 +85,22 @@ fn signature_edit_changes_export_fingerprint() -> Bool {
   }
 }
 
-test fn interface_summary_firewall_body_only_edit_is_green() -> Bool {
+test fn interface_summary_firewall_body_only_edit_is_green() -> Bool  {
   body_only_edit_preserves_export_fingerprint()
 }
 
-test fn interface_summary_firewall_signature_edit_is_red() -> Bool {
+test fn interface_summary_firewall_signature_edit_is_red() -> Bool  {
   signature_edit_changes_export_fingerprint()
 }
 
-test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> Bool {
+test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> Bool  {
   match export_signature_facts_host_scaffold_dissolution_trigger {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
 
-test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
+test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool  {
   let edges = [
     ImportResolutionFact {
       path: "src/mod.dag",
@@ -133,7 +133,7 @@ fn firewall_ordered_fact(facts: List<DeclFact>) -> DeclFact? {
   })
 }
 
-test fn exported_signature_carries_named_binders_and_declared_order() -> Bool {
+test fn exported_signature_carries_named_binders_and_declared_order() -> Bool  {
   match export_signature_declared_facts(pool_roots: firewall_order_roots) {
     Rejected { diagnostics: _ } => false
     Accepted { value: facts, diagnostics: _ } =>
@@ -156,7 +156,7 @@ test fn exported_signature_carries_named_binders_and_declared_order() -> Bool {
 // and carries no order edge is ill formed, so the declared-order read answers Malformed for the raw
 // host Arrow (it answered Absent before): that is why the raw seam value is consumed ONLY through
 // export_signature_declared_facts, whose lift is the one constructor that makes it well formed.
-test fn export_signature_host_seam_mints_no_order_edge() -> Bool {
+test fn export_signature_host_seam_mints_no_order_edge() -> Bool  {
   match firewall_ordered_fact(facts: export_signature_facts(pool_roots: firewall_order_roots)) {
     Absent => false
     Present { value: fact } =>
@@ -170,7 +170,7 @@ test fn export_signature_host_seam_mints_no_order_edge() -> Bool {
 
 // A HOST ARROW IN THE RETIRED POSITIONAL-TYPES SHAPE [Int, Int] REFUSES: its first positional child is
 // a type, not a Conj of named binders, so it never reaches a fingerprint.
-test fn export_signature_positional_types_arrow_refuses() -> Bool {
+test fn export_signature_positional_types_arrow_refuses() -> Bool  {
   let int_atom = Node { kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: "Int") } }, children: [], occurrence_id: OccurrenceSynthetic }
   let positional = Node {
     kind: TypeNode { connective: Arrow },
@@ -199,7 +199,7 @@ fn export_signature_host_named_domain() -> Node {
 
 // POSITIVE CONTROL: the same two outer edges on an Arrow are accepted, so the two refusals below
 // discriminate the connective and the extra edge rather than refusing everything.
-test fn export_signature_well_shaped_host_arrow_accepts() -> Bool {
+test fn export_signature_well_shaped_host_arrow_accepts() -> Bool  {
   let arrow = Node {
     kind: TypeNode { connective: Arrow },
     children: [Edge { label: Positional, target: export_signature_host_named_domain() }, Edge { label: Positional, target: export_signature_host_int_atom() }],
@@ -212,7 +212,7 @@ test fn export_signature_well_shaped_host_arrow_accepts() -> Bool {
 }
 
 // A NODE OF ANOTHER CONNECTIVE carrying [named domain, return] is never relabelled an Arrow.
-test fn export_signature_wrong_connective_refuses() -> Bool {
+test fn export_signature_wrong_connective_refuses() -> Bool  {
   let not_arrow = Node {
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: export_signature_host_named_domain() }, Edge { label: Positional, target: export_signature_host_int_atom() }],
@@ -225,7 +225,7 @@ test fn export_signature_wrong_connective_refuses() -> Bool {
 }
 
 // AN EXTRA NAMED OUTER EDGE beside [named domain, return] refuses rather than being dropped.
-test fn export_signature_extra_named_outer_edge_refuses() -> Bool {
+test fn export_signature_extra_named_outer_edge_refuses() -> Bool  {
   let arrow = Node {
     kind: TypeNode { connective: Arrow },
     children: [

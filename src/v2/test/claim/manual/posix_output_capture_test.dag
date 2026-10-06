@@ -9,10 +9,10 @@ data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
   stderr: Empty
 }
 
-test fn witness_captured_pipes_stdout_is_empty() -> Bool {
+test fn witness_captured_pipes_stdout_is_empty() -> Bool  {
   is_empty(xs: empty_captured_pipes.stdout)
 }
 
-test fn witness_captured_pipes_stderr_is_empty() -> Bool {
+test fn witness_captured_pipes_stderr_is_empty() -> Bool  {
   is_empty(xs: empty_captured_pipes.stderr)
 }

@@ -17,7 +17,7 @@ import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
 import v2.std.grammar { ModeledGrammar, ParseTree }
 
-test fn python_grammar_validates_fixture() -> Bool {
+test fn python_grammar_validates_fixture() -> Bool  {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^python_grammar_claim_test_grammar_contract)
   match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
@@ -25,7 +25,7 @@ test fn python_grammar_validates_fixture() -> Bool {
   }
 }
 
-test fn python_grammar_parse_accepts() -> Bool {
+test fn python_grammar_parse_accepts() -> Bool  {
   match python_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -81,14 +81,14 @@ fn python_fn_def_parse(text: String) -> Outcome<ParseTree> {
   }
 }
 
-test fn python_multi_statement_suite_parses() -> Bool {
+test fn python_multi_statement_suite_parses() -> Bool  {
   match python_fn_def_parse(text: python_multi_statement_suite_text) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn python_empty_suite_refuses() -> Bool {
+test fn python_empty_suite_refuses() -> Bool  {
   match python_fn_def_parse(text: python_empty_suite_text) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -98,6 +98,6 @@ test fn python_empty_suite_refuses() -> Bool {
 // The family's discriminating control: the suite was python's one choice-overlap row
 // (count 1 as `stmt suite | stmt`); restructured, the roster is empty. The parse controls above
 // hold on both shapes because the language did not change -- this claim is what goes red.
-test fn python_grammar_has_no_choice_overlap() -> Bool {
+test fn python_grammar_has_no_choice_overlap() -> Bool  {
   grammar_choice_ambiguity_count(root: python_grammar_root()) == 0
 }

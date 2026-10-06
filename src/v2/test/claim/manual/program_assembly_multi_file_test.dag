@@ -205,7 +205,7 @@ fn pa_cross_file_admission() -> Admission {
   }
 }
 
-test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
+test fn program_assembly_cross_file_import_assembles_holds() -> Bool  {
   match pa_cross_file_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
@@ -220,7 +220,7 @@ test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
   }
 }
 
-test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
+test fn program_assembly_duplicate_module_roots_rejects() -> Bool  {
   match pa_duplicate_module_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
@@ -267,7 +267,7 @@ data pa_ingest_non_source_ingest: SourceRootIngest = Cons {
   tail: Empty
 }
 
-test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
+test fn program_assembly_ingest_non_source_file_rejects() -> Bool  {
   match assemble_program_from_ingest(
     ingest: pa_ingest_non_source_ingest,
     admission: Admission {

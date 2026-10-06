@@ -99,7 +99,7 @@ fn refuses_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
 // the identical labeled call with no local binding compiles CLEAN, because it is then a
 // declaration call and declaration calls keep their labels. Without it the first conjunct would be
 // satisfied by a compiler that refused every labeled call.
-test fn the_shape_tier_reads_the_shadowing_local_as_a_function_value() -> Bool {
+test fn the_shape_tier_reads_the_shadowing_local_as_a_function_value() -> Bool  {
   refuses_with_class(shadow_compile(entry_local_labeled), "CallNamedArgOnFunctionValue")
     && compiles_clean(shadow_compile(entry_declaration_labeled))
 }
@@ -107,6 +107,6 @@ test fn the_shape_tier_reads_the_shadowing_local_as_a_function_value() -> Bool {
 // AND THE POSITIONAL FORM IS ADMITTED, which is the precondition for the dispatch half to be
 // measurable at all: the sibling witness asserts that this exact program evaluates to the LOCAL's
 // answer, and an assertion about a program the compiler refuses would be no verdict.
-test fn the_positional_form_of_the_shadowed_call_compiles_clean() -> Bool {
+test fn the_positional_form_of_the_shadowed_call_compiles_clean() -> Bool  {
   compiles_clean(shadow_compile(entry_local_positional))
 }

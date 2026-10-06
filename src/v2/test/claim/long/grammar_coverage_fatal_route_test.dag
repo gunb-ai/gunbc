@@ -15,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // It lives in the long home because one real front-end run exceeds the new-witness CPU margin.
 data grammar_coverage_fatal_route_source: String = "module m.gc\n\ndata x: Int = 1 2\n"
 
-test fn real_parse_refusal_is_classified_by_its_fatal_cause_holds() -> Bool {
+test fn real_parse_refusal_is_classified_by_its_fatal_cause_holds() -> Bool  {
   grammar_coverage_ingest_source_text(
     source_text: grammar_coverage_fatal_route_source,
     file: symbol_intern_lexeme(lexeme: "grammar_coverage_fatal_route.dag")

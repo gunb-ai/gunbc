@@ -6,7 +6,7 @@ type CaretProbeShape
   = CaretAlpha { x: Int }
   | CaretBeta { y: Int }
 
-test fn caret_sigil_surface_witness_holds() -> Bool {
+test fn caret_sigil_surface_witness_holds() -> Bool  {
   let opaque_tag = ^caret_opaque_tag
   let spelling_is_opaque = opaque_tag == ^caret_opaque_tag
 

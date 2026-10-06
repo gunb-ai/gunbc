@@ -124,7 +124,7 @@ fn pattern_named_applied_under_another_name() -> Bool {
 // argument 'proto'`, measured against std.layout). A refusal is a thrown claim, which produces no
 // verdict at all, so expressing that face as a witness row would enrol exactly the non-verdict
 // debt this fixture's lane exists to reduce. It is recorded above instead.
-test fn local_named_function_binding_is_what_the_call_reaches() -> Bool {
+test fn local_named_function_binding_is_what_the_call_reaches() -> Bool  {
   !let_named()
     && !param_named(shadow_pred: strictly_positive)
     && !pattern_named()
@@ -132,7 +132,7 @@ test fn local_named_function_binding_is_what_the_call_reaches() -> Bool {
 
 // GREEN CONTROLS. They pass today and locate the boundary: the defect is the VALUE, not the
 // binding form, and not the act of binding locally at all.
-test fn lambda_binding_is_unaffected_control() -> Bool {
+test fn lambda_binding_is_unaffected_control() -> Bool  {
   !let_lambda()
     && !param_named(shadow_pred: fn(n) { n > 0 })
     && !pattern_lambda()
@@ -141,7 +141,7 @@ test fn lambda_binding_is_unaffected_control() -> Bool {
 // GREEN CONTROL for the call-site half: the same named-fn value, applied through a parameter
 // spelled differently, reaches the local. This is what makes the law narrow enough to imply its
 // own workaround.
-test fn named_binding_applied_under_another_name_is_unaffected_control() -> Bool {
+test fn named_binding_applied_under_another_name_is_unaffected_control() -> Bool  {
   !let_named_applied_under_another_name()
     && !pattern_named_applied_under_another_name()
 }
@@ -150,7 +150,7 @@ test fn named_binding_applied_under_another_name_is_unaffected_control() -> Bool
 // the same named function, bound to a local whose name NOTHING shadows, called at that local's own
 // spelling -- the exact shape that reds above -- reaches the local. So the wrong arms differ from
 // this one in one variable only, the existence of a same-named free function.
-test fn uncollided_named_binding_is_unaffected_control() -> Bool {
+test fn uncollided_named_binding_is_unaffected_control() -> Bool  {
   !let_uncollided_named()
 }
 
@@ -217,7 +217,7 @@ fn no_local_binding_reaches_the_shadowed_module_function() -> Int {
 // dispatch sees the same function value and calls the local. Before the repair those two tiers
 // disagreed about the same binding, which is what let a labeled call be silently accepted by the
 // free function while the shape check was already calling it a function value.
-test fn local_callable_wins_over_the_same_named_module_function() -> Bool {
+test fn local_callable_wins_over_the_same_named_module_function() -> Bool  {
   let_sentinel_positional() == 2
     && param_sentinel(shadow_sentinel: local_sentinel) == 2
     && pattern_sentinel() == 2
@@ -228,7 +228,7 @@ test fn local_callable_wins_over_the_same_named_module_function() -> Bool {
 // module function is still what the call reaches: 700 from a name nothing shadows, and 900 from
 // the very name the arm above displaces. The second conjunct is the load-bearing one -- it proves
 // the free-function tier was narrowed rather than removed.
-test fn a_module_function_is_still_callable_with_no_local_binding() -> Bool {
+test fn a_module_function_is_still_callable_with_no_local_binding() -> Bool  {
   no_local_binding_reaches_the_module_function() == 700
     && no_local_binding_reaches_the_shadowed_module_function() == 900
 }
@@ -238,7 +238,7 @@ test fn a_module_function_is_still_callable_with_no_local_binding() -> Bool {
 // unrelated to which function ran: this one asserts the free function's answer is ABSENT from the
 // shadowed positions and the local's answer is ABSENT from the unshadowed one, so each result is
 // evidence about a producer rather than a coincidence of arithmetic.
-test fn each_sentinel_is_absent_from_the_other_positions() -> Bool {
+test fn each_sentinel_is_absent_from_the_other_positions() -> Bool  {
   let_sentinel_positional() != 900
     && pattern_sentinel() != 900
     && no_local_binding_reaches_the_shadowed_module_function() != 2
@@ -275,6 +275,6 @@ fn noncallable_local_shadow() -> Int {
   shadow_sentinel(1)
 }
 
-test fn a_noncallable_local_binding_does_not_fall_through_to_the_module_function() -> Bool {
+test fn a_noncallable_local_binding_does_not_fall_through_to_the_module_function() -> Bool  {
   noncallable_local_shadow() != 900
 }

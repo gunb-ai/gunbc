@@ -240,10 +240,10 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
   ]
 }
 
-test fn pending_non_tautological_generator_count_is_three() -> Bool {
+test fn pending_non_tautological_generator_count_is_three() -> Bool  {
   length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
 }
 
-test fn dispatched_non_tautological_generator_count_is_four() -> Bool {
+test fn dispatched_non_tautological_generator_count_is_four() -> Bool  {
   length(xs: testgen_dispatched_non_tautological_generators()) == 4
 }

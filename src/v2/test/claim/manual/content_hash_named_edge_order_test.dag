@@ -53,7 +53,7 @@ fn content_hash_order_conj_ba() -> Node {
 }
 }
 
-test fn content_hash_named_edge_order_holds() -> Bool {
+test fn content_hash_named_edge_order_holds() -> Bool  {
   content_hash(n: content_hash_order_conj_ab()) ==
     content_hash(n: content_hash_order_conj_ba())
 }
@@ -84,7 +84,7 @@ fn content_hash_nested_conj_ba() -> Node {
 }
 }
 
-test fn content_hash_nested_named_edge_order_holds() -> Bool {
+test fn content_hash_nested_named_edge_order_holds() -> Bool  {
   content_hash(n: content_hash_nested_conj_ab()) ==
     content_hash(n: content_hash_nested_conj_ba())
 }

@@ -94,12 +94,12 @@ fn derisk_emit_accepts(src: String) -> Bool {
   }
 }
 
-test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
+test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool  {
   derisk_emit_accepts(src: src_single_arm_match)
     && derisk_infer_accepts(src: src_single_arm_match)
 }
 
-test fn self_host_frontier_emit_two_user_types_accepts() -> Bool {
+test fn self_host_frontier_emit_two_user_types_accepts() -> Bool  {
   derisk_emit_accepts(src: src_two_user_types)
     && derisk_infer_accepts(src: src_two_user_types)
 }
@@ -111,27 +111,27 @@ data src_single_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off
 data src_two_user_types: String = "module derisk_pilot\n\ntype Flag = On | Off\n\ntype Mode = A | B\n\nfn pick(f: Flag, m: Mode) -> Flag { f }\n"
 data src_multi_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
 
-test fn self_host_frontier_parse_module_header_holds() -> Bool {
+test fn self_host_frontier_parse_module_header_holds() -> Bool  {
   derisk_assemble_accepts(src: src_module_header)
 }
 
-test fn self_host_frontier_parse_type_decl_holds() -> Bool {
+test fn self_host_frontier_parse_type_decl_holds() -> Bool  {
   derisk_assemble_accepts(src: src_type_decl)
 }
 
-test fn self_host_frontier_parse_fn_simple_body_holds() -> Bool {
+test fn self_host_frontier_parse_fn_simple_body_holds() -> Bool  {
   derisk_assemble_accepts(src: src_fn_simple_body)
 }
 
-test fn self_host_frontier_parse_single_arm_match_holds() -> Bool {
+test fn self_host_frontier_parse_single_arm_match_holds() -> Bool  {
   derisk_assemble_accepts(src: src_single_arm_match)
 }
 
-test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
+test fn self_host_frontier_infer_single_arm_module_holds() -> Bool  {
   derisk_infer_accepts(src: src_single_arm_match)
 }
 
-test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool {
+test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool  {
   derisk_assemble_accepts(src: src_multi_arm_match)
     && derisk_infer_accepts(src: src_multi_arm_match)
 }

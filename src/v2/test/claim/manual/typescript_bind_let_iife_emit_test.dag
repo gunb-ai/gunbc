@@ -73,11 +73,11 @@ fn ts_bind_let_emit_value_producing() -> String {
   }
 }
 
-test fn ts_bind_let_iife_emit_exact_holds() -> Bool {
+test fn ts_bind_let_iife_emit_exact_holds() -> Bool  {
   ts_bind_let_emit_statement_sequenced() == "(function () { let k =v;return b; })()"
 }
 
-test fn ts_bind_let_mode_perturbation_flips_holds() -> Bool {
+test fn ts_bind_let_mode_perturbation_flips_holds() -> Bool  {
   (ts_bind_let_emit_statement_sequenced() == "(function () { let k =v;return b; })()")
     && (ts_bind_let_emit_statement_sequenced() != ts_bind_let_emit_value_producing())
     && (ts_bind_let_emit_statement_sequenced() != "BIND_LET_EMIT_REJECTED")
@@ -89,7 +89,7 @@ fn block_construct_loop_expr() -> TargetValueExpression {
   )
 }
 
-test fn ts_loop_statement_sequenced_fails_closed_holds() -> Bool {
+test fn ts_loop_statement_sequenced_fails_closed_holds() -> Bool  {
   match target_value_expression_to_concrete_tokens(
     expr: block_construct_loop_expr(),
     projection: ts_value_expression_projection(),
@@ -100,7 +100,7 @@ test fn ts_loop_statement_sequenced_fails_closed_holds() -> Bool {
   }
 }
 
-test fn dag_loop_value_producing_emits_holds() -> Bool {
+test fn dag_loop_value_producing_emits_holds() -> Bool  {
   match target_value_expression_to_concrete_tokens(
     expr: block_construct_loop_expr(),
     projection: dag_value_expression_projection(),
@@ -118,7 +118,7 @@ fn block_construct_closure_expr() -> TargetValueExpression {
   )
 }
 
-test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
+test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool  {
   match target_value_expression_to_concrete_tokens(
     expr: block_construct_closure_expr(),
     projection: ts_value_expression_projection(),
@@ -129,7 +129,7 @@ test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
   }
 }
 
-test fn dag_closure_value_producing_emits_holds() -> Bool {
+test fn dag_closure_value_producing_emits_holds() -> Bool  {
   match target_value_expression_to_concrete_tokens(
     expr: block_construct_closure_expr(),
     projection: dag_value_expression_projection(),

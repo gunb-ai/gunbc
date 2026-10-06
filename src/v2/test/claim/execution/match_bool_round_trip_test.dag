@@ -170,7 +170,7 @@ fn match_bool_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn match_bool_emit_matches_serialize_holds() -> Bool {
+test fn match_bool_emit_matches_serialize_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: match_bool_target_model,
     emitted: match_bool_emitted_root
@@ -185,7 +185,7 @@ test fn match_bool_emit_matches_serialize_holds() -> Bool {
   }
 }
 
-test fn match_bool_ingest_via_coerce_matches_canonical() -> Bool {
+test fn match_bool_ingest_via_coerce_matches_canonical() -> Bool  {
   match coerce_grounded_node(
     source: match_bool_emitted_root,
     tree: match_bool_inferred_tree,

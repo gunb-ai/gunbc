@@ -189,7 +189,7 @@ fn loop_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn loop_emit_matches_serialize_holds() -> Bool {
+test fn loop_emit_matches_serialize_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: loop_target_model,
     emitted: loop_emitted_root
@@ -204,7 +204,7 @@ test fn loop_emit_matches_serialize_holds() -> Bool {
   }
 }
 
-test fn loop_ingest_via_coerce_matches_canonical() -> Bool {
+test fn loop_ingest_via_coerce_matches_canonical() -> Bool  {
   match coerce_grounded_node(
     source: loop_emitted_root,
     tree: loop_inferred_tree,

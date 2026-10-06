@@ -78,14 +78,14 @@ data carrier_unbounded_wrong_arity: Node = conj_carrier(
   ]
 )
 
-test fn well_formed_unbounded_carrier_still_decodes() -> Bool {
+test fn well_formed_unbounded_carrier_still_decodes() -> Bool  {
   match integer_value_set_from_node(value_set: integer_unbounded_value_set_node()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn decode_refusals_carry_distinct_reason_symbols() -> Bool {
+test fn decode_refusals_carry_distinct_reason_symbols() -> Bool  {
   let missing_kind = decode_reason(value_set: carrier_missing_kind_field)
   let unrecognized_kind = decode_reason(value_set: carrier_unrecognized_kind)
   let interval_missing = decode_reason(value_set: carrier_interval_field_missing)
@@ -102,7 +102,7 @@ test fn decode_refusals_carry_distinct_reason_symbols() -> Bool {
     && (interval_malformed != unbounded_arity)
 }
 
-test fn producer_fault_refusals_retain_the_lookup_cause() -> Bool {
+test fn producer_fault_refusals_retain_the_lookup_cause() -> Bool  {
   (decode_cause_count(value_set: carrier_missing_kind_field) == 1)
     && (decode_cause_count(value_set: carrier_interval_field_missing) == 1)
     && (decode_cause_count(value_set: carrier_interval_spec_malformed) == 0)

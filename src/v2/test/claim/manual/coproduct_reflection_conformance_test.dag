@@ -91,7 +91,7 @@ fn imported_derive_trait_discriminants(
   )
 }
 
-test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool {
+test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool  {
   match nullary_reflection_through_generic_wrapper(
     type_name: reflect_imported_derive_trait_type,
     discriminant_of: imported_derive_trait_discriminant
@@ -121,7 +121,7 @@ fn nullary_reflection_context_b_outcome_is_rejected(
   }
 }
 
-test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool {
+test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool  {
   nullary_reflection_context_b_outcome_is_rejected(
     result: coproduct_nullary_inhabitants(
       type_name: ^NullaryReflectionRequestedA,
@@ -130,7 +130,7 @@ test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool 
   )
 }
 
-test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
+test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool  {
   !bag_eq(
     xs: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_connective_type)),
     ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type)),
@@ -159,7 +159,7 @@ fn all_inhabitant_discriminants_are_reflected_arms(
   })
 }
 
-test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
+test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool  {
   match coproduct_nullary_inhabitants(
     type_name: reflect_behavior_type,
     discriminant_of: behavior_discriminant
@@ -178,7 +178,7 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
   }
 }
 
-test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
+test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool  {
   match coproduct_nullary_inhabitants(
     type_name: reflect_connective_type,
     discriminant_of: connective_discriminant
@@ -217,7 +217,7 @@ fn uri_scheme_roster_discriminants(inhabitants: List<UriScheme>) -> List<Symbol>
   )
 }
 
-test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool {
+test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool  {
   bag_eq(
     xs: uri_scheme_roster_discriminants(inhabitants: uri_scheme_inhabitants()),
     ys: conformance_arm_keys_or_empty(
@@ -233,7 +233,7 @@ test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool 
 // THE NON-VACUITY CONTROL FOR THE ROW ABOVE. bag_eq over two empty lists is true, so a
 // reflection call that silently returned nothing -- the empty-observation narrow -- would
 // green the wall while checking nothing at all.
-test fn witness_uri_scheme_reflected_arm_keys_are_non_empty() -> Bool {
+test fn witness_uri_scheme_reflected_arm_keys_are_non_empty() -> Bool  {
   length(
     xs: conformance_arm_keys_or_empty(
       o: coproduct_arm_keys_at(

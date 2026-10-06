@@ -22,7 +22,7 @@ data synthetic_unified_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
   content_hash: "7e31b580ce38306e"
 }
 
-test fn synthetic_unified_green_holds() -> Bool {
+test fn synthetic_unified_green_holds() -> Bool  {
   fact_cardinality_cross_tree_coexistence(
     left: synthetic_unified_dag,
     right: synthetic_unified_v2

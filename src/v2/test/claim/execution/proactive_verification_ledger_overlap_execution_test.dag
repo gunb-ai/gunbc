@@ -9,6 +9,6 @@ import tools.proactive_verification_ledger_transport { run_executable_ledger_row
 // (test/claim/execution/ grain — IsExecutable is a wet host effect). Dissolve-on: ci_floor_cutover
 // enrolls family execution on the scheduled wet/falsifier lane when native routing lands.
 
-test fn proactive_verification_ledger_overlap_execution_holds() -> Bool {
+test fn proactive_verification_ledger_overlap_execution_holds() -> Bool  {
   run_executable_ledger_rows()
 }

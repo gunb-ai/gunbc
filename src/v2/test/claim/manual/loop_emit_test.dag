@@ -100,7 +100,7 @@ fn loop_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<Medium<St
   )
 }
 
-test fn loop_emit_holds() -> Bool {
+test fn loop_emit_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: dag_loop_target_model(),
     emitted: dag_fixture_emitted_loop_fn
@@ -115,7 +115,7 @@ test fn loop_emit_holds() -> Bool {
   }
 }
 
-test fn loop_emit_wrong_value_discriminates() -> Bool {
+test fn loop_emit_wrong_value_discriminates() -> Bool  {
   match loop_emit_from_producer(target: dag_loop_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match loop_emit_wrong_value_from_producer(target: dag_loop_target_model()) {

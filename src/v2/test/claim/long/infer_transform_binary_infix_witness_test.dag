@@ -14,6 +14,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // union (not falsifier_substrate_long_lane_rows). Fast subtract dispatch-gate control stays per-PR
 // in body_lowering/infer_transform_binary_infix_witness_test.dag.
 
-test fn infer_transform_add_vertical_witness_holds() -> Bool {
+test fn infer_transform_add_vertical_witness_holds() -> Bool  {
   infer_transform_add_vertical_discriminating_holds()
 }

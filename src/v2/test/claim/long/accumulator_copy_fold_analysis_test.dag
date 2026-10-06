@@ -111,21 +111,21 @@ fn is_empty_findings(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> B
   }
 }
 
-test fn quadratic_fold_has_suspect() -> Bool {
+test fn quadratic_fold_has_suspect() -> Bool  {
   match findings_of(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
   }
 }
 
-test fn real_branch_body_quadratic_is_caught() -> Bool {
+test fn real_branch_body_quadratic_is_caught() -> Bool  {
   match findings_of(source_text: real_branch_body_snippet, file: ^rs_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
   }
 }
 
-test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool {
+test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool  {
   match findings_of(source_text: noncarrier_name_snippet, file: ^lin_file) {
     Absent => false
     Present { value: fs } =>
@@ -137,7 +137,7 @@ test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool {
   }
 }
 
-test fn let_alias_is_proven_suspect() -> Bool {
+test fn let_alias_is_proven_suspect() -> Bool  {
   match findings_of(source_text: let_alias_snippet, file: ^alias_file) {
     Absent => false
     Present { value: fs } =>
@@ -146,7 +146,7 @@ test fn let_alias_is_proven_suspect() -> Bool {
   }
 }
 
-test fn let_transitive_alias_is_proven_suspect() -> Bool {
+test fn let_transitive_alias_is_proven_suspect() -> Bool  {
   match findings_of(source_text: let_transitive_alias_snippet, file: ^transalias_file) {
     Absent => false
     Present { value: fs } =>
@@ -155,14 +155,14 @@ test fn let_transitive_alias_is_proven_suspect() -> Bool {
   }
 }
 
-test fn let_fresh_binding_is_provably_clean() -> Bool {
+test fn let_fresh_binding_is_provably_clean() -> Bool  {
   match findings_of(source_text: let_fresh_snippet, file: ^freshlet_file) {
     Absent => false
     Present { value: fs } => is_empty_findings(fs: fs)
   }
 }
 
-test fn let_unknown_alias_still_refuses_may_alias() -> Bool {
+test fn let_unknown_alias_still_refuses_may_alias() -> Bool  {
   match findings_of(source_text: let_unknown_alias_snippet, file: ^unknownalias_file) {
     Absent => false
     Present { value: fs } =>
@@ -194,7 +194,7 @@ test fn let_unknown_alias_still_refuses_may_alias() -> Bool {
 // decoration). Every other fixture here is a single-identifier or single-call value -- the shapes
 // where search and the spine walk AGREE -- so without this cell, reverting arg_value_mentions to
 // search leaves this whole file green and the silent fail-open restored.
-test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
+test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool  {
   match findings_of(source_text: nested_call_snippet, file: ^nested_file) {
     Absent => false
     Present { value: fs } =>
@@ -208,7 +208,7 @@ test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
     }
 }
 
-test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
+test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool  {
   match findings_of(source_text: unregistered_combiner_snippet, file: ^unreg_file) {
     Absent => false
     Present { value: fs } =>
@@ -216,7 +216,7 @@ test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
   }
 }
 
-test fn carrier_inside_computed_argument_to_unregistered_combiner_refuses() -> Bool {
+test fn carrier_inside_computed_argument_to_unregistered_combiner_refuses() -> Bool  {
   match findings_of(source_text: carrier_in_computed_arg_snippet, file: ^hiddencarrier_file) {
     Absent => false
     Present { value: fs } =>
@@ -224,14 +224,14 @@ test fn carrier_inside_computed_argument_to_unregistered_combiner_refuses() -> B
   }
 }
 
-test fn item_inside_computed_argument_stays_clean() -> Bool {
+test fn item_inside_computed_argument_stays_clean() -> Bool  {
   match findings_of(source_text: item_in_computed_arg_snippet, file: ^hiddenitem_file) {
     Absent => false
     Present { value: fs } => is_empty_findings(fs: fs)
   }
 }
 
-test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool {
+test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool  {
   match findings_of(source_text: computed_let_mention_snippet, file: ^hiddenlet_file) {
     Absent => false
     Present { value: fs } =>
@@ -288,7 +288,7 @@ fn break_mystery_head(n: Node) -> Node {
   }
 }
 
-test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
+test fn unreadable_call_head_with_carrier_port_refuses() -> Bool  {
   match ingest(source_text: unregistered_combiner_snippet, file: ^brokenhead_file) {
     Absent => false
     Present { value: tree } =>
@@ -299,7 +299,7 @@ test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
   }
 }
 
-test fn named_step_fold_refuses_accumulator_unread() -> Bool {
+test fn named_step_fold_refuses_accumulator_unread() -> Bool  {
   match findings_of(source_text: named_step_snippet, file: ^namedstep_file) {
     Absent => false
     Present { value: fs } =>
@@ -309,7 +309,7 @@ test fn named_step_fold_refuses_accumulator_unread() -> Bool {
 
 // RED, rostered at gunbc.explicit_witness_admission: the planted copy after a `let` is admitted in
 // silence. Greens with no edit when the fold site reaches the lens at this position.
-test fn let_prefixed_fold_copy_is_caught() -> Bool {
+test fn let_prefixed_fold_copy_is_caught() -> Bool  {
   match findings_of(source_text: let_prefixed_planted_snippet, file: ^letplanted_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
@@ -317,7 +317,7 @@ test fn let_prefixed_fold_copy_is_caught() -> Bool {
 }
 
 // RED, rostered at gunbc.explicit_witness_admission: the same planted copy in a match arm.
-test fn match_arm_fold_copy_is_caught() -> Bool {
+test fn match_arm_fold_copy_is_caught() -> Bool  {
   match findings_of(source_text: match_arm_planted_snippet, file: ^matchplanted_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
@@ -328,7 +328,7 @@ test fn match_arm_fold_copy_is_caught() -> Bool {
 // the CAPABILITY witness for the by-name half of fold_shape_visible_to_no_lens, stronger than
 // named_step_fold_refuses_accumulator_unread: a declared step with a planted copy must mint a
 // suspect, not merely a refusal, once the site is visible and the step is resolved.
-test fn declared_named_step_fold_copy_is_caught() -> Bool {
+test fn declared_named_step_fold_copy_is_caught() -> Bool  {
   match findings_of(source_text: declared_named_step_planted_snippet, file: ^declstep_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
@@ -387,7 +387,7 @@ fn an_inline_step_beside_a_decoy_lambda_is_still_caught() -> Bool {
   }
 }
 
-test fn multiline_unregistered_combiner_refuses() -> Bool {
+test fn multiline_unregistered_combiner_refuses() -> Bool  {
   match findings_of(source_text: multiline_unregistered_snippet, file: ^unreg_file) {
     Absent => false
     Present { value: fs } =>
@@ -395,7 +395,7 @@ test fn multiline_unregistered_combiner_refuses() -> Bool {
   }
 }
 
-test fn projection_call_carrier_is_classified() -> Bool {
+test fn projection_call_carrier_is_classified() -> Bool  {
   match findings_of(source_text: projection_call_carrier_snippet, file: ^projcar_file) {
     Absent => false
     Present { value: fs } =>
@@ -407,35 +407,35 @@ test fn projection_call_carrier_is_classified() -> Bool {
   }
 }
 
-test fn quadratic_ingest_has_lowered_loop() -> Bool {
+test fn quadratic_ingest_has_lowered_loop() -> Bool  {
   match ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } => v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
   }
 }
 
-test fn quadratic_ingest_has_no_surface_fold_call() -> Bool {
+test fn quadratic_ingest_has_no_surface_fold_call() -> Bool  {
   match ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } => !v2.lens.complexity_accumulator_copy.analyze.tree_contains_surface_fold_call(root: tree)
   }
 }
 
-test fn identity_fold_has_no_finding() -> Bool {
+test fn identity_fold_has_no_finding() -> Bool  {
   match findings_of(source_text: identity_snippet, file: ^ident_file) {
     Absent => false
     Present { value: fs } => is_empty_findings(fs: fs)
   }
 }
 
-test fn out_of_iteration_append_is_out_of_domain() -> Bool {
+test fn out_of_iteration_append_is_out_of_domain() -> Bool  {
   match findings_of(source_text: out_of_iteration_snippet, file: ^once_file) {
     Absent => false
     Present { value: fs } => is_empty_findings(fs: fs)
   }
 }
 
-test fn report_counters_state_the_domain() -> Bool {
+test fn report_counters_state_the_domain() -> Bool  {
   match ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } =>

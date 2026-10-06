@@ -45,7 +45,7 @@ fn sg1b_fc_non_conj_catalog() -> Node {
 }
 }
 
-test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
+test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool  {
   match target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_with_children(),
     source_carrier: sg1b_fc_probe_node()
@@ -55,7 +55,7 @@ test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
   }
 }
 
-test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool {
+test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool  {
   match target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_nullary(),
     source_carrier: sg1b_fc_probe_node()
@@ -65,7 +65,7 @@ test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool {
   }
 }
 
-test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
+test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool  {
   match target_atom_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
@@ -76,7 +76,7 @@ test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
   }
 }
 
-test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
+test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool  {
   match target_function_signature_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),

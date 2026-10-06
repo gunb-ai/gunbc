@@ -138,7 +138,7 @@ fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> Outcome<Medi
 
 data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
 
-test fn rust_add_serialize_reject_receipt_holds() -> Bool {
+test fn rust_add_serialize_reject_receipt_holds() -> Bool  {
   match rust_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d != None
@@ -339,7 +339,7 @@ fn anchor_rust_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
 
 data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accepts()
 
-test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
+test fn rust_add_emit_add_fn_accepts_holds() -> Bool  {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == None)
@@ -349,7 +349,7 @@ test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
 
 data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add_compile_inferred_accepts()
 
-test fn rust_add_compile_inferred_receipt_holds() -> Bool {
+test fn rust_add_compile_inferred_receipt_holds() -> Bool  {
   match rust_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false

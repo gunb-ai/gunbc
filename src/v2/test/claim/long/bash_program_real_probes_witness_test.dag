@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // test/claim/long/ — local recipe, not per-PR floor. Dissolve-on: measured under fast-lane budget
 // and re-enroll per-PR, or delete if goldens are superseded.
 
-test fn bash_program_real_witness_matches_golden_holds() -> Bool {
+test fn bash_program_real_witness_matches_golden_holds() -> Bool  {
   bash_emit_program_matches_golden(
     statements: bash_program_fixture_witness_bin_specials(
       var_name: "V1_DAG_PARSE",
@@ -29,7 +29,7 @@ test fn bash_program_real_witness_matches_golden_holds() -> Bool {
   )
 }
 
-test fn bash_program_real_claims_matches_golden_holds() -> Bool {
+test fn bash_program_real_claims_matches_golden_holds() -> Bool  {
   bash_emit_program_matches_golden(
     statements: bash_program_fixture_gunbc_claims_specials(),
     set_e: true,

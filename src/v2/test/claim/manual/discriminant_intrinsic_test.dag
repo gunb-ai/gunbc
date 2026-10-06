@@ -7,7 +7,7 @@ type DiscriminantProbeShape
   = ProbeAlpha { x: Int }
   | ProbeBeta { y: Int }
 
-test fn discriminant_intrinsic_is_payload_blind_and_arm_sharp() -> Bool {
+test fn discriminant_intrinsic_is_payload_blind_and_arm_sharp() -> Bool  {
   let alpha_one = ProbeAlpha { x: 1 }
   let alpha_two = ProbeAlpha { x: 99 }
   let beta_one = ProbeBeta { y: 1 }

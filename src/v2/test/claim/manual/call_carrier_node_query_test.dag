@@ -81,13 +81,13 @@ fn call_carrier_is_application(r: ApplicationRead) -> Bool {
   }
 }
 
-test fn call_carrier_call_recognized() -> Bool {
+test fn call_carrier_call_recognized() -> Bool  {
   call_carrier_is_application(r: application_read(site: call_carrier_call_node()))
 }
 
 // A Transform whose head is not a callee is REFUSED, located at the head -- not "not a call".
 // node_is_call answered false here, which is what let a malformed call drop out of every lens.
-test fn call_carrier_callee_free_not_call() -> Bool {
+test fn call_carrier_callee_free_not_call() -> Bool  {
   match application_read(site: call_carrier_callee_free_transform()) {
     ApplicationRefused { diagnostics: d } =>
       diagnostics_fatal_reason(d: d) == ^body_view_transform_head_not_callee
@@ -96,7 +96,7 @@ test fn call_carrier_callee_free_not_call() -> Bool {
   }
 }
 
-test fn call_carrier_callee_is_reference() -> Bool {
+test fn call_carrier_callee_is_reference() -> Bool  {
   match application_read(site: call_carrier_call_node()) {
     Application { view: v } =>
       match v.head_identity {
@@ -108,7 +108,7 @@ test fn call_carrier_callee_is_reference() -> Bool {
   }
 }
 
-test fn call_carrier_value_not_callee_reference() -> Bool {
+test fn call_carrier_value_not_callee_reference() -> Bool  {
   match application_read(site: call_carrier_value_node()) {
     NotApplication => true
     Application { view: _ } => false
@@ -116,7 +116,7 @@ test fn call_carrier_value_not_callee_reference() -> Bool {
   }
 }
 
-test fn call_carrier_callee_target_matches() -> Bool {
+test fn call_carrier_callee_target_matches() -> Bool  {
   match application_read(site: call_carrier_call_node()) {
     Application { view: v } => v.head == call_carrier_callee_ref()
     NotApplication => false
@@ -124,11 +124,11 @@ test fn call_carrier_callee_target_matches() -> Bool {
   }
 }
 
-test fn call_carrier_callee_target_rejects_non_call() -> Bool {
+test fn call_carrier_callee_target_rejects_non_call() -> Bool  {
   !call_carrier_is_application(r: application_read(site: call_carrier_callee_free_transform()))
 }
 
-test fn call_carrier_arguments_match() -> Bool {
+test fn call_carrier_arguments_match() -> Bool  {
   match application_read(site: call_carrier_call_node()) {
     Application { view: v } =>
       let args = v.operands

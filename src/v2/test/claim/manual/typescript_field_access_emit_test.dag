@@ -77,7 +77,7 @@ fn ts_field_access_emit_source() -> String {
   }
 }
 
-test fn ts_field_access_emit_source_holds() -> Bool {
+test fn ts_field_access_emit_source_holds() -> Bool  {
   ts_field_access_emit_source() == "o.x"
 }
 
@@ -88,6 +88,6 @@ fn ts_add_emit_source() -> String {
   }
 }
 
-test fn ts_add_emit_source_holds() -> Bool {
+test fn ts_add_emit_source_holds() -> Bool  {
   ts_add_emit_source() == "function add(x: number, y: number): number { return x + y; }"
 }

@@ -11,6 +11,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (Transform/Branch/Bind/Loop/Match). Ingested bind/loop execution+RED:
 // execution/long/{bind,loop}_eval_by_execution_test.dag (census_ingested_*).
 
-test fn wave1_gate1_d_census_subsumption_witness_holds() -> Bool {
+test fn wave1_gate1_d_census_subsumption_witness_holds() -> Bool  {
   wave1_gate1_d_census_subsumption_holds()
 }

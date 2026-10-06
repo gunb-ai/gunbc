@@ -59,7 +59,7 @@ fn fresh_emit_source() -> String {
   }
 }
 
-test fn emit_source_store_cold_then_warm_holds() -> Bool {
+test fn emit_source_store_cold_then_warm_holds() -> Bool  {
   let key = p3_key(emitter: "v2.compiler.emit")
   let source = fresh_emit_source()
   let emitted_nonempty = (source == "") == false
@@ -76,7 +76,7 @@ test fn emit_source_store_cold_then_warm_holds() -> Bool {
   emitted_nonempty && put_ok && served == source && served == fresh_emit_source()
 }
 
-test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
+test fn emit_source_store_mutated_emitter_misses_holds() -> Bool  {
   let key = p3_key(emitter: "v2.compiler.emit")
   let put_ok = match artifact_fs_put(store_root: emit_store_root, key: key, payload: fresh_emit_source()) {
     ArtifactFsPutOk => true
@@ -92,7 +92,7 @@ test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
   put_ok && miss && (key == mutated) == false
 }
 
-test fn emit_source_store_provider_gate_holds() -> Bool {
+test fn emit_source_store_provider_gate_holds() -> Bool  {
   match store_over_provider(provider: p3_provider) {
     StoreReady { store: _ } => true
     StoreRefusedRetention { provider_id: _, declared: _ } => false

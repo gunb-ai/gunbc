@@ -19,11 +19,11 @@ fn ts_program_emit_add_source() -> String {
   }
 }
 
-test fn ts_program_emit_add_source_holds() -> Bool {
+test fn ts_program_emit_add_source_holds() -> Bool  {
   ts_program_emit_add_source() == "function add(x: number, y: number): number { return x + y; }"
 }
 
-test fn ts_atom_catalog_realizes_char_to_string_holds() -> Bool {
+test fn ts_atom_catalog_realizes_char_to_string_holds() -> Bool  {
   match target_atom_realization_lookup_in_catalog(
     catalog: ts_target_atom_realization_catalog,
     source_carrier: char_kernel_type_node()

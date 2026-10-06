@@ -56,13 +56,13 @@ fn gha_fold_fold_matches_oracle(job: Job) -> Bool {
   }
 }
 
-test fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
+test fn gha_fold_pilot_job_byte_identical_holds() -> Bool  {
   gha_fold_prod_kind_sentinel == from_code_point(cp: 2)
     && gha_fold_scalar_kind_sentinel == from_code_point(cp: 0)
     && gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
 }
 
-test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
+test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool  {
   let oracle = gha_fold_oracle_job(job: gha_fold_pilot_job)
   match gha_fold_job_wrong_production_target_model_witness(source_text: oracle) {
     Holds { value: target } =>
@@ -77,7 +77,7 @@ test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
   }
 }
 
-test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
+test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool  {
   let oracle = gha_fold_oracle_job(job: gha_fold_pilot_job)
   match gha_fold_flat_steps_wrong_target_model_witness(source_text: oracle) {
     Holds { value: target } =>

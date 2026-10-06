@@ -60,14 +60,14 @@ fn a4_opacity_accepts(source: Medium<String>) -> Bool {
   }
 }
 
-test fn a4_opacity_charoffset_for_byteoffset_rejects() -> Bool {
+test fn a4_opacity_charoffset_for_byteoffset_rejects() -> Bool  {
   a4_opacity_rejects(source: a4_opacity_charoffset_for_byteoffset_source)
 }
 
-test fn a4_opacity_byteoffset_for_charoffset_rejects() -> Bool {
+test fn a4_opacity_byteoffset_for_charoffset_rejects() -> Bool  {
   a4_opacity_rejects(source: a4_opacity_byteoffset_for_charoffset_source)
 }
 
-test fn a4_opacity_same_brand_accepts() -> Bool {
+test fn a4_opacity_same_brand_accepts() -> Bool  {
   a4_opacity_accepts(source: a4_opacity_same_brand_source)
 }

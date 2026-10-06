@@ -81,7 +81,7 @@ data msb_ingest: SourceRootIngest = [msb_read, msb_other_read]
 data msb_duplicate_ingest: SourceRootIngest = [msb_read, msb_duplicate_read]
 data msb_unparseable_ingest: SourceRootIngest = [msb_unparseable_read]
 
-test fn module_storage_binding_derived_from_parse_holds() -> Bool {
+test fn module_storage_binding_derived_from_parse_holds() -> Bool  {
   match module_storage_bindings_from_ingest(ingest: msb_ingest) {
     Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
@@ -93,7 +93,7 @@ test fn module_storage_binding_derived_from_parse_holds() -> Bool {
   }
 }
 
-test fn module_storage_path_projection_holds() -> Bool {
+test fn module_storage_path_projection_holds() -> Bool  {
   match module_storage_bindings_from_ingest(ingest: msb_ingest) {
     Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
@@ -107,14 +107,14 @@ test fn module_storage_path_projection_holds() -> Bool {
   }
 }
 
-test fn module_storage_duplicate_module_refuses() -> Bool {
+test fn module_storage_duplicate_module_refuses() -> Bool  {
   match module_storage_bindings_from_ingest(ingest: msb_duplicate_ingest) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn module_storage_underivable_module_name_refuses() -> Bool {
+test fn module_storage_underivable_module_name_refuses() -> Bool  {
   match module_storage_bindings_from_ingest(ingest: msb_unparseable_ingest) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false

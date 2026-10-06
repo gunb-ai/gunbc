@@ -28,25 +28,25 @@ data linear_chain_b: List<Node> = [
   conj2(a: atom(id: ^check), b: conj2(a: atom(id: ^wrap), b: atom(id: ^t2)))
 ]
 
-test fn unroll_detected_by_registry() -> Bool {
+test fn unroll_detected_by_registry() -> Bool  {
   chain_is_redundant(steps: red_chain)
 }
-test fn residual_is_n_minus_one() -> Bool {
+test fn residual_is_n_minus_one() -> Bool  {
   chain_residual(steps: red_chain) == 2
 }
-test fn minimal_chain_has_zero_residual() -> Bool {
+test fn minimal_chain_has_zero_residual() -> Bool  {
   chain_residual(steps: linear_chain_a) == 0
 }
 
 data nonlinear_body: List<List<Node>> = [ red_chain, red_chain ]
-test fn body_with_unroll_is_not_linear() -> Bool {
+test fn body_with_unroll_is_not_linear() -> Bool  {
   !body_is_linear(levels: nonlinear_body)
 }
 data linear_body: List<List<Node>> = [ linear_chain_a, linear_chain_b ]
-test fn all_minimal_body_is_linear() -> Bool {
+test fn all_minimal_body_is_linear() -> Bool  {
   body_is_linear(levels: linear_body)
 }
-test fn single_minimal_level_is_linear() -> Bool {
+test fn single_minimal_level_is_linear() -> Bool  {
   level_is_linear(level: linear_chain_b)
 }
 
@@ -54,9 +54,9 @@ data dup_type_pair: List<Node> = [
   conj2(a: atom(id: ^x86), b: atom(id: ^arm)),
   conj2(a: atom(id: ^x86), b: atom(id: ^arm))
 ]
-test fn dup_type_decls_redundant_through_registry() -> Bool {
+test fn dup_type_decls_redundant_through_registry() -> Bool  {
   forest_is_redundant(decls: dup_type_pair)
 }
-test fn dup_type_pair_not_flagged_by_term_binder() -> Bool {
+test fn dup_type_pair_not_flagged_by_term_binder() -> Bool  {
   !chain_is_redundant(steps: dup_type_pair)
 }

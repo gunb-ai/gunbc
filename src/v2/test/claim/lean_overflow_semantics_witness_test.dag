@@ -39,20 +39,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ReturnWrapping. Typed let initializers stay single-line per
 // lean_overflow_parse_continuation_note.
 
-test fn overflow_semantics_three_arms_distinguishable() -> Bool {
+test fn overflow_semantics_three_arms_distinguishable() -> Bool  {
   let returns: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
   let raises: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
   let undefined: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowUndefined
   lean_overflow_semantics_arm_tag(semantics: returns) == ^lean_overflow_arm_returns && lean_overflow_semantics_arm_tag(semantics: raises) == ^lean_overflow_arm_raises && lean_overflow_semantics_arm_tag(semantics: undefined) == ^lean_overflow_arm_undefined && lean_overflow_semantics_arm_tag(semantics: returns) != lean_overflow_semantics_arm_tag(semantics: raises) && lean_overflow_semantics_arm_tag(semantics: raises) != lean_overflow_semantics_arm_tag(semantics: undefined)
 }
 
-test fn lean_panic_and_trap_project_different_overflow_semantics_nodes() -> Bool {
+test fn lean_panic_and_trap_project_different_overflow_semantics_nodes() -> Bool  {
   let raises_panic: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
   let raises_trap: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowTraps }
   content_hash(n: lean_overflow_semantics_node(semantics: raises_panic)) != content_hash(n: lean_overflow_semantics_node(semantics: raises_trap))
 }
 
-test fn lean_admit_refuses_trap_same_reason_as_panic_for_fixed_width_catalog() -> Bool {
+test fn lean_admit_refuses_trap_same_reason_as_panic_for_fixed_width_catalog() -> Bool  {
   let raises_trap: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowTraps }
   match lean_admit_fixed_width_overflow_semantics(semantics: raises_trap) {
     LeanOverflowRefused { observed: _, reason: reason } =>
@@ -61,7 +61,7 @@ test fn lean_admit_refuses_trap_same_reason_as_panic_for_fixed_width_catalog() -
   }
 }
 
-test fn lean_admit_accepts_catalog_wrapping_returns() -> Bool {
+test fn lean_admit_accepts_catalog_wrapping_returns() -> Bool  {
   match lean_admit_fixed_width_overflow_semantics(semantics: lean_catalog_fixed_width_overflow) {
     LeanOverflowAccepted { semantics: admitted } =>
       match admitted.semantics {
@@ -74,7 +74,7 @@ test fn lean_admit_accepts_catalog_wrapping_returns() -> Bool {
   }
 }
 
-test fn lean_admit_refuses_undefined_for_fixed_width_catalog() -> Bool {
+test fn lean_admit_refuses_undefined_for_fixed_width_catalog() -> Bool  {
   let undefined: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowUndefined
   match lean_admit_fixed_width_overflow_semantics(semantics: undefined) {
     LeanOverflowRefused { observed: _, reason: reason } =>
@@ -83,7 +83,7 @@ test fn lean_admit_refuses_undefined_for_fixed_width_catalog() -> Bool {
   }
 }
 
-test fn lean_admit_refuses_raises_panic_for_fixed_width_catalog() -> Bool {
+test fn lean_admit_refuses_raises_panic_for_fixed_width_catalog() -> Bool  {
   let raises_panic: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
   match lean_admit_fixed_width_overflow_semantics(semantics: raises_panic) {
     LeanOverflowRefused { observed: _, reason: reason } =>
@@ -92,7 +92,7 @@ test fn lean_admit_refuses_raises_panic_for_fixed_width_catalog() -> Bool {
   }
 }
 
-test fn lean_catalog_int32_carries_wrapping_not_raises() -> Bool {
+test fn lean_catalog_int32_carries_wrapping_not_raises() -> Bool  {
   match lean_facts_int32().scalar {
     LeanIntegerScalar { overflow: admitted, signedness: _, width: _ } =>
       match admitted.semantics {
