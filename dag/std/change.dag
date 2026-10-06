@@ -439,10 +439,10 @@ fn keyed_three_way_row_patch<K, V>(
   )
   match verdict {
     KeyedUnchanged => keyed_three_way_patch_empty()
-    _ =>
-      keyed_three_way_patch_singleton(
-        entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict },
-      )
+    KeyedConflict => keyed_three_way_patch_singleton(entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict })
+    KeyedApplyHunk { from: _, to: _ } => keyed_three_way_patch_singleton(entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict })
+    KeyedVerdictAdded { value: _ } => keyed_three_way_patch_singleton(entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict })
+    KeyedVerdictRemoved { value: _ } => keyed_three_way_patch_singleton(entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict })
   }
 }
 

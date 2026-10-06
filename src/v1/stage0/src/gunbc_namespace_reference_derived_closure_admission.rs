@@ -145,267 +145,77 @@ pub fn assess_reference_binding_observation(
     observation: Rc<ReferenceBindingObservation>,
 ) -> Rc<ReferenceDerivedClosureAdmission> {
     match (*observation.clone()).clone() {
-        ReferenceBindingObservation::SameFileNeighbourProductionRefused { gap: _, .. } => refused(
-            ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
-            ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing,
-        ),
-        ReferenceBindingObservation::SameFileNeighbourObservation {
-            neighbour,
-            resolution,
-            ..
-        } => {
-            match binding_outcome_from_resolution(resolution.clone()) {
-                std::option::Option::None => refused(
-                    ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
-                    ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing,
-                ),
-                Some(binding_outcome) => {
-                    match (*binding_outcome.clone()).clone() {
-                        OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-                            ref result,
-                            ..
-                        } if matches!(
-                            result.as_ref(),
-                            OccurrenceBindingResult::OccurrenceBound { .. }
-                        ) =>
-                        {
-                            let OccurrenceBindingResult::OccurrenceBound {
-                                binding: binding, ..
-                            } = result.as_ref()
-                            else {
-                                unreachable!()
-                            };
-                            if (binding
-                                .candidate
-                                .clone()
-                                .containment
-                                .clone()
-                                .terminal
-                                .clone()
-                                .value
-                                .clone()
-                                == neighbour.value.clone())
-                            {
-                                established(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible)
-                            } else {
-                                refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing)
-                            }
-                        }
-                        _ => refused(
-                            ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
-                            ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing,
-                        ),
-                    }
-                }
-            }
-        }
-        ReferenceBindingObservation::SiblingBranchProductionRefused { gap: _, .. } => refused(
-            ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
-            ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked,
-        ),
-        ReferenceBindingObservation::SiblingBranchObservation {
-            own_branch_declaration,
-            sibling_branch_declaration,
-            resolution,
-            ..
-        } => {
-            match binding_outcome_from_resolution(resolution.clone()) {
-                std::option::Option::None => refused(
-                    ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
-                    ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked,
-                ),
-                Some(binding_outcome) => {
-                    match (*binding_outcome.clone()).clone() {
-                        OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-                            ref result,
-                            ..
-                        } if matches!(
-                            result.as_ref(),
-                            OccurrenceBindingResult::OccurrenceBound { .. }
-                        ) =>
-                        {
-                            let OccurrenceBindingResult::OccurrenceBound {
-                                binding: binding, ..
-                            } = result.as_ref()
-                            else {
-                                unreachable!()
-                            };
-                            if ((binding
-                                .candidate
-                                .clone()
-                                .containment
-                                .clone()
-                                .terminal
-                                .clone()
-                                .value
-                                .clone()
-                                == own_branch_declaration.value.clone())
-                                && (binding
-                                    .candidate
-                                    .clone()
-                                    .containment
-                                    .clone()
-                                    .terminal
-                                    .clone()
-                                    .value
-                                    .clone()
-                                    != sibling_branch_declaration.value.clone()))
-                            {
-                                established(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded)
-                            } else {
-                                refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked)
-                            }
-                        }
-                        _ => refused(
-                            ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
-                            ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked,
-                        ),
-                    }
-                }
-            }
-        }
-        ReferenceBindingObservation::LaterDeclarationProductionRefused { gap: _, .. } => refused(
-            ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
-            ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked,
-        ),
-        ReferenceBindingObservation::LaterDeclarationObservation { resolution, .. } => {
-            match binding_outcome_from_resolution(resolution.clone()) {
-                std::option::Option::None => refused(
-                    ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
-                    ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked,
-                ),
-                Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
-                    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-                        ref result,
-                        ..
-                    } if matches!(
-                        result.as_ref(),
-                        OccurrenceBindingResult::OccurrenceUnbound { .. }
-                    ) =>
-                    {
-                        let OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } =
-                            result.as_ref()
-                        else {
-                            unreachable!()
-                        };
-                        established(ReferenceDerivedClosureCapability::LaterDeclarationExcluded)
-                    }
-                    _ => refused(
-                        ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
-                        ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked,
-                    ),
-                },
-            }
-        }
-        ReferenceBindingObservation::DistinctHomonymProductionRefused { gap: _, .. } => refused(
-            ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved,
-            ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed,
-        ),
-        ReferenceBindingObservation::DistinctHomonymObservation {
-            first_declaration,
-            second_declaration,
-            resolution,
-            ..
-        } => match binding_outcome_from_resolution(resolution.clone()) {
-            std::option::Option::None => refused(
-                ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved,
-                ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed,
-            ),
-            Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
-                OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-                    ref result,
-                    ..
-                } if matches!(
-                    result.as_ref(),
-                    OccurrenceBindingResult::OccurrenceAmbiguous { .. }
-                ) =>
-                {
-                    let OccurrenceBindingResult::OccurrenceAmbiguous {
-                        candidates: candidates,
-                        ..
-                    } = result.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    if ((({
-                        let __fm = candidates.rest.clone();
-                        if __fm.is_empty() {
-                            true
-                        } else {
-                            false
-                        }
-                    } && (first_declaration.value.clone()
-                        != second_declaration.value.clone()))
-                        && (candidates
-                            .first
-                            .clone()
-                            .containment
-                            .clone()
-                            .terminal
-                            .clone()
-                            .value
-                            .clone()
-                            == first_declaration.value.clone()))
-                        && (candidates
-                            .second
-                            .clone()
-                            .containment
-                            .clone()
-                            .terminal
-                            .clone()
-                            .value
-                            .clone()
-                            == second_declaration.value.clone()))
-                    {
-                        established(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved)
-                    } else {
-                        refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed)
-                    }
-                }
-                _ => refused(
-                    ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved,
-                    ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed,
-                ),
-            },
-        },
-        ReferenceBindingObservation::RepeatedMentionDependencyObservation {
-            provider_file,
-            projected_dependencies,
-            ..
-        } => {
-            if (((projected_dependencies.clone().len() as i64) == 1)
-                && file_present(projected_dependencies.clone(), provider_file.clone()))
-            {
-                established(ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency)
-            } else {
-                refused(
-                    ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
-                    ReferenceDerivedClosureScenarioFailure::RepeatedMentionDuplicatedDependency,
-                )
-            }
-        }
-        ReferenceBindingObservation::UnrelatedLoadedFileObservation {
-            provider_file,
-            unrelated_loaded_file,
-            projected_dependencies,
-            ..
-        } => {
-            if ((((projected_dependencies.clone().len() as i64) == 1)
-                && file_present(projected_dependencies.clone(), provider_file.clone()))
-                && !file_present(
-                    projected_dependencies.clone(),
-                    unrelated_loaded_file.clone(),
-                ))
-            {
-                established(ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded)
-            } else {
-                refused(
-                    ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
-                    ReferenceDerivedClosureScenarioFailure::UnrelatedLoadedFileDependencyLeaked,
-                )
-            }
-        }
-    }
+    ReferenceBindingObservation::SameFileNeighbourProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
+    ReferenceBindingObservation::SameFileNeighbourObservation { neighbour, resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
+    std::option::Option::None => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
+    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
+    OccurrenceBindingResult::OccurrenceBound { binding: binding, .. } => if (binding.candidate.clone().containment.clone().terminal.clone().value.clone() == neighbour.value.clone()) {
+        established(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible)
+    } else {
+        refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing)
+    },
+    OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
+    OccurrenceBindingResult::OccurrenceAmbiguous { .. } => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
+} },
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused { refusal: _, .. } => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
+},
+},
+    ReferenceBindingObservation::SiblingBranchProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
+    ReferenceBindingObservation::SiblingBranchObservation { own_branch_declaration, sibling_branch_declaration, resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
+    std::option::Option::None => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
+    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
+    OccurrenceBindingResult::OccurrenceBound { binding: binding, .. } => if ((binding.candidate.clone().containment.clone().terminal.clone().value.clone() == own_branch_declaration.value.clone()) && (binding.candidate.clone().containment.clone().terminal.clone().value.clone() != sibling_branch_declaration.value.clone())) {
+        established(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded)
+    } else {
+        refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked)
+    },
+    OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
+    OccurrenceBindingResult::OccurrenceAmbiguous { .. } => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
+} },
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused { refusal: _, .. } => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
+},
+},
+    ReferenceBindingObservation::LaterDeclarationProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
+    ReferenceBindingObservation::LaterDeclarationObservation { resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
+    std::option::Option::None => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
+    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
+    OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => established(ReferenceDerivedClosureCapability::LaterDeclarationExcluded),
+    OccurrenceBindingResult::OccurrenceBound { binding: _, .. } => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
+    OccurrenceBindingResult::OccurrenceAmbiguous { .. } => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
+} },
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused { refusal: _, .. } => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
+},
+},
+    ReferenceBindingObservation::DistinctHomonymProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
+    ReferenceBindingObservation::DistinctHomonymObservation { first_declaration, second_declaration, resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
+    std::option::Option::None => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
+    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
+    OccurrenceBindingResult::OccurrenceAmbiguous { candidates: candidates, .. } => if ((({ let __fm = candidates.rest.clone(); if __fm.is_empty() { true } else { false } } && (first_declaration.value.clone() != second_declaration.value.clone())) && (candidates.first.clone().containment.clone().terminal.clone().value.clone() == first_declaration.value.clone())) && (candidates.second.clone().containment.clone().terminal.clone().value.clone() == second_declaration.value.clone())) {
+        established(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved)
+    } else {
+        refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed)
+    },
+    OccurrenceBindingResult::OccurrenceBound { binding: _, .. } => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
+    OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
+} },
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused { refusal: _, .. } => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
+},
+},
+    ReferenceBindingObservation::RepeatedMentionDependencyObservation { provider_file, projected_dependencies, .. } => if (((projected_dependencies.clone().len() as i64) == 1) && file_present(projected_dependencies.clone(), provider_file.clone())) {
+        established(ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency)
+    } else {
+        refused(ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency, ReferenceDerivedClosureScenarioFailure::RepeatedMentionDuplicatedDependency)
+    },
+    ReferenceBindingObservation::UnrelatedLoadedFileObservation { provider_file, unrelated_loaded_file, projected_dependencies, .. } => if ((((projected_dependencies.clone().len() as i64) == 1) && file_present(projected_dependencies.clone(), provider_file.clone())) && !file_present(projected_dependencies.clone(), unrelated_loaded_file.clone())) {
+        established(ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded)
+    } else {
+        refused(ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded, ReferenceDerivedClosureScenarioFailure::UnrelatedLoadedFileDependencyLeaked)
+    },
+}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
