@@ -33,7 +33,7 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStat
 // THE PUT REPLACES THE BUCKET'S WHOLE RULE SET: the body is the complete list, so a caller converges
 // the set, never one rule. Two Age transitions are modeled, deleteObjectsTransition and
 // abortMultipartUploadsTransition (the second is how Cloudflare's default rule on a new bucket is
-// written), with a prefix or bucket-wide conditions. A rule carrying both or neither, a Date
+// written), scoped to a prefix or to the whole bucket. A rule carrying both or neither, a Date
 // condition or storageClassTransitions is read back as a rule this model does not describe, and a
 // converge comparing against it refuses rather than overwriting it unread.
 // The cf-r2-jurisdiction header is not carried, so both operations address the default
@@ -74,12 +74,19 @@ type R2LifecycleTransition
   = R2DeleteObjectsAfterAge { max_age_seconds: Int }
   | R2AbortMultipartUploadsAfterAge { max_age_seconds: Int }
 
-// `prefix` is Absent when the rule's conditions object carries no prefix: the rule then applies to
-// the whole bucket, which is how Cloudflare's own default rule is written.
+// A RULE'S SCOPE, BY MEANING RATHER THAN BY SPELLING. The UPDATE reference declares
+// `conditions.prefix: string` and says an empty prefix scopes the rule to every object; the live GET
+// answered Cloudflare's own default with `conditions: {}`. Both spellings are R2BucketWide, so a rule
+// read back in either form compares equal to the one this model writes, which is the documented
+// `prefix: ""`. A non-empty prefix is R2Prefix.
+type R2LifecycleScope
+  = R2BucketWide
+  | R2Prefix { prefix: NonEmptyStr }
+
 type R2LifecycleRule {
   id: NonEmptyStr
   enabled: Bool
-  prefix: String?
+  scope: R2LifecycleScope
   transition: R2LifecycleTransition
 }
 
@@ -149,10 +156,10 @@ fn r2_lifecycle_rule_json(rule: R2LifecycleRule) -> JsonValue {
   json_object(members: [
     json_kv(key: "id", value: json_string(s: rule.id as String)),
     json_kv(key: "enabled", value: json_bool(b: rule.enabled)),
-    json_kv(key: "conditions", value: json_object(members: match rule.prefix {
-      Present { value: p } => [json_kv(key: "prefix", value: json_string(s: p))]
-      Absent => []
-    })),
+    json_kv(key: "conditions", value: json_object(members: [json_kv(key: "prefix", value: json_string(s: match rule.scope {
+      R2BucketWide => ""
+      R2Prefix { prefix: p } => p as String
+    }))])),
     json_kv(key: r2_lifecycle_transition_key(t: rule.transition), value: json_object(members: [
       json_kv(key: "condition", value: json_object(members: [
         json_kv(key: "type", value: json_string(s: "Age")),
@@ -186,7 +193,7 @@ fn r2_lifecycle_rule_line(rule: R2LifecycleRule) -> String {
   join([
     rule.id as String,
     if rule.enabled { "enabled" } else { "disabled" },
-    match rule.prefix { Present { value: p } => concat("prefix=", p) Absent => "bucket-wide" },
+    match rule.scope { R2Prefix { prefix: p } => concat("prefix=", p as String) R2BucketWide => "bucket-wide" },
     r2_lifecycle_transition_key(t: rule.transition),
     concat("max_age=", to_string(r2_lifecycle_transition_age(t: rule.transition))),
   ], " ")
@@ -315,30 +322,31 @@ fn lifecycle_transition(rule: JsonValue) -> R2LifecycleTransition? {
   }
 }
 
-// THE PREFIX IS THREE-VALUED ON THE WIRE: absent means bucket-wide, a string is a prefix, and any
-// other value is unreadable, so the rule is not modeled.
-type LifecyclePrefixRead
-  = LifecyclePrefixBucketWide
-  | LifecyclePrefixNamed { prefix: String }
-  | LifecyclePrefixUnreadable
+// READING THE SCOPE: an absent prefix and an empty one are both R2BucketWide; a non-empty string is
+// R2Prefix; any other value (a non-string, a duplicated member) is unreadable, and the rule is not
+// modeled.
+type LifecycleScopeRead
+  = LifecycleScopeRead { scope: R2LifecycleScope }
+  | LifecycleScopeUnreadable
 
-fn lifecycle_prefix(conditions: JsonValue) -> LifecyclePrefixRead {
+fn lifecycle_scope(conditions: JsonValue) -> LifecycleScopeRead {
   if lifecycle_member_absent(v: conditions, key: "prefix") {
-    LifecyclePrefixBucketWide
+    LifecycleScopeRead { scope: R2BucketWide }
   } else {
     match lifecycle_string(v: lifecycle_member(v: conditions, key: "prefix")) {
-      Present { value: p } => LifecyclePrefixNamed { prefix: p }
-      Absent => LifecyclePrefixUnreadable
+      Present { value: p } =>
+        if p == "" { LifecycleScopeRead { scope: R2BucketWide } } else { LifecycleScopeRead { scope: R2Prefix { prefix: p as NonEmptyStr } } }
+      Absent => LifecycleScopeUnreadable
     }
   }
 }
 
-fn lifecycle_rule_with(id: String, enabled: Bool, prefix: String?, rule: JsonValue) -> R2LifecycleRule? {
+fn lifecycle_rule_with(id: String, enabled: Bool, scope: R2LifecycleScope, rule: JsonValue) -> R2LifecycleRule? {
   match lifecycle_transition(rule: rule) {
     Absent => none
     Present { value: t } =>
       if id == "" { none } else {
-        Present { value: R2LifecycleRule { id: id as NonEmptyStr, enabled: enabled, prefix: prefix, transition: t } }
+        Present { value: R2LifecycleRule { id: id as NonEmptyStr, enabled: enabled, scope: scope, transition: t } }
       }
   }
 }
@@ -356,10 +364,9 @@ fn lifecycle_rule_of(rule: JsonValue) -> R2LifecycleRule? {
             match lifecycle_member(v: rule, key: "conditions") {
               Absent => none
               Present { value: conditions } =>
-                match lifecycle_prefix(conditions: conditions) {
-                  LifecyclePrefixUnreadable => none
-                  LifecyclePrefixBucketWide => lifecycle_rule_with(id: id, enabled: enabled, prefix: none, rule: rule)
-                  LifecyclePrefixNamed { prefix: p } => lifecycle_rule_with(id: id, enabled: enabled, prefix: Present { value: p }, rule: rule)
+                match lifecycle_scope(conditions: conditions) {
+                  LifecycleScopeUnreadable => none
+                  LifecycleScopeRead { scope: sc } => lifecycle_rule_with(id: id, enabled: enabled, scope: sc, rule: rule)
                 }
             }
         }

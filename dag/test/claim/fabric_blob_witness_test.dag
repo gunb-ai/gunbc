@@ -185,3 +185,32 @@ test fn the_desired_rule_set_round_trips_through_its_wire_form() -> Bool {
     _ => false
   }
 }
+
+// THE TWO BUCKET-WIDE SPELLINGS ARE ONE SCOPE. The live GET answered Cloudflare's default with
+// `conditions: {}`; the UPDATE reference writes bucket-wide as `prefix: ""`. Both must decode to the
+// same default rule, or a bucket whose readback normalizes to `""` would stay drifted forever.
+data lifecycle_empty_prefix_default_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"Default Multipart Abort Rule\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
+
+test fn an_absent_and_an_empty_prefix_decode_to_the_same_bucket_wide_rule() -> Bool {
+  let absent = match r2_lifecycle_read_body(body: lifecycle_new_bucket_body) {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs)
+    _ => "unread"
+  }
+  let empty = match r2_lifecycle_read_body(body: lifecycle_empty_prefix_default_body) {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs)
+    _ => "unread"
+  }
+  absent == empty && absent == r2_lifecycle_rules_canonical(rules: [r2_default_multipart_abort_rule()])
+}
+
+// THE PUT WRITES BUCKET-WIDE IN THE DOCUMENTED FORM, and that form reads back converged.
+test fn the_put_writes_bucket_wide_as_an_empty_prefix_and_reads_back_converged() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let wire = r2_lifecycle_rules_wire(rules: desired)
+  let body = concat(concat("{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":", wire), "}}")
+  let converged = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: body)).decision {
+    Noop => true
+    _ => false
+  }
+  string_contains(s: wire, pattern: "\"conditions\":{\"prefix\":\"\"}") && converged
+}
