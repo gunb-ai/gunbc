@@ -2,7 +2,7 @@ module tools.self_host_behavioral_equivalence_take
 
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import std.process { ExitSuccess, ExitFailure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,

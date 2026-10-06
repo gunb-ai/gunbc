@@ -33,7 +33,7 @@ import v2.std.node {
   node_synthetic
 }
 import std.algebra { list_append }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the

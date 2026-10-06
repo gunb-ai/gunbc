@@ -16,7 +16,7 @@ import v2.lens.cost {
   PolyLogCost,
   PolynomialCost
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

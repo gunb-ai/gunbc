@@ -32,7 +32,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list, length }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 import extdeps.communication.medium { Lossless, Medium }
 

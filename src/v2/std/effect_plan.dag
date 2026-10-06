@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.std.text { String }
 import v2.std.algebra { FreeMonoid }
-import v2.std.optional {
+import std.optional {
   Optional
 }
 import v2.std.diagnostic { EmitDirective }

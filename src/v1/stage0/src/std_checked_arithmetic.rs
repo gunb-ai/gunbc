@@ -6,6 +6,7 @@ use self::CheckedIntOperands::*;
 use self::CheckedNat::*;
 use self::IntegerArithmeticOperation::*;
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

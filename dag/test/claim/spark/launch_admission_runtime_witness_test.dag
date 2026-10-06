@@ -2,7 +2,7 @@ module test.claim.spark.launch_admission_runtime_witness_test
 
 import std.types { Bool, NonEmptyStr }
 import std.measure { token_count, basis_point }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted, IndexerKvDtypeOmitted,
   VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted,

@@ -63,7 +63,7 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_node, qualified_name_spine_shape_present }
 import std.constructors { Cardinality, Required }
-import v2.std.optional { Optional, optional_absent, optional_present }
+import std.optional { Optional, optional_absent, optional_present }
 
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
   fold(
@@ -199,7 +199,7 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // in the return -- and this module resolves.
 //
 // WHAT IS TRUE IS A STANDING THREE-WAY FORK ON THE NAME `Optional`, and `.dag` resolves variant
-// names CORPUS-WIDE. Three authorities: the generic v2.std.optional Optional; the Cardinality arm
+// names CORPUS-WIDE. Three authorities: the generic std.optional Optional; the Cardinality arm
 // of std.constructors; and the GrammarExpr arm `Optional { element: GrammarExpr }` in
 // v2.std.grammar. The last two collide, so ANY module reachable to both refuses --
 // `variant 'Optional' appears in both 'Cardinality' and 'GrammarExpr'`. This is not a fact about

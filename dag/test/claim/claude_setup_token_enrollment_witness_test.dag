@@ -2,7 +2,7 @@ module test.claim.claude_setup_token_enrollment_witness
 
 import std.types { Bool, NonEmptyStr, List, list_length, RenderedTerminalText }
 import std.measure { character_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.llm.claude_setup_token_cli {
   SetupTokenFormatMeasured,
   SetupTokenFormatUnobserved,
