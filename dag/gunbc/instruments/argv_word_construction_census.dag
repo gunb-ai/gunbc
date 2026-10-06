@@ -151,7 +151,15 @@ fn fixture_facts_write(root: Node) -> ProcessExit {
 }
 
 fn fixture_fact_row(f: ArgvWordsFact) -> String {
-  concat(f.decl, concat("\t", concat(fact_kind_word(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.candidates)), concat("\t", concat(join(f.candidates, ";"), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.flag_words)), concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(integer_int_to_decimal_string(value: f.list_string_params), concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
+  let kind = fact_kind_word(k: f.decl_kind)
+  let counted = bool_word(b: f.counted)
+  let n_cand = integer_int_to_decimal_string(value: length(xs: f.candidates))
+  let cands = join(f.candidates, ";")
+  let n_flags = integer_int_to_decimal_string(value: length(xs: f.flag_words))
+  let returns = bool_word(b: f.returns_argv_words)
+  let n_params = integer_int_to_decimal_string(value: f.list_string_params)
+  let data = bool_word(b: f.list_string_data)
+  join([f.decl, kind, counted, n_cand, cands, n_flags, returns, n_params, data], "\t")
 }
 
 fn fact_kind_word(k: ArgvWordsDeclKind) -> String {
