@@ -24,8 +24,6 @@ import std.types { NonEmptyStr, List }
 //     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
 //   - `floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows`: the python->typescript
 //     compile inhabitance claim (`python_to_typescript_compile_inhabitance_off_the_required_gate`);
-//   - `floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows`: the identity-cast
-//     closure-door inhabitance (`identity_cast_closure_inhabitance_off_the_required_gate`);
 //   - `floor_eval_step_cost_drop_boot_matrix_rows`: the mtcollins1 boot acceptance matrix
 //     (`mtcollins1_boot_matrix_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_dark_install_render_rows`: the first reader of the broker dark-install
@@ -247,25 +245,6 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
   },
 ]
 
-data floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows: List<EvalStepCostDropMeasurement> = [
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.the_emitted_identity_cast_preserves_a_positive_and_a_negative_argument_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is that same emit_closure_from_ingest_located producer (identity_cast_route_verdict), plus the host build of the emitted text" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.the_emitted_identity_cast_preserves_zero_and_a_wide_argument_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is that same emit_closure_from_ingest_located producer (identity_cast_route_verdict), plus the host build of the emitted text" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.a_malformed_runtime_argument_fails_the_invocation_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is that same emit_closure_from_ingest_located producer (identity_cast_route_verdict), plus the host build of the emitted text" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.a_cast_with_no_witness_is_refused_on_the_closure_route_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is refused_cast_route_verdict, the same door over the Int-as-Bool source" as NonEmptyStr,
-  },
-]
-
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
 // `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Each member runs the real boot entry end to
 // end over the dry operation realization, which is the subject #12423 requires: rows from
@@ -441,7 +420,7 @@ data floor_eval_step_cost_drop_dag_text_round_trip_rows: List<EvalStepCostDropMe
 ]
 
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

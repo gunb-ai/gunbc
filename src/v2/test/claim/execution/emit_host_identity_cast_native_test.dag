@@ -37,9 +37,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.workflow.floor_changed_witness) -- on a change that touches this module or its closure -- and
 // nothing re-runs it between such changes. It is change-time native evidence, not standing
 // regression enforcement. Its admission partner, v2.test.claim.coercion.identity_cast_emission_route,
-// IS a gate row and runs on every required run (the coercion interface, not the door). The door's
-// merge-time absence is gunbc.rung_drop identity_cast_closure_inhabitance_off_the_required_gate.
-// It is not a member of
+// IS a gate row and runs on every required run. It is not a member of
 // gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population and does
 // not discharge that stall.
 //
