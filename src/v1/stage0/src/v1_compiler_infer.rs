@@ -3121,7 +3121,9 @@ pub fn produced_is_unsolved_generic_at_conformance(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        Some(InferredNode::TypeVariable { id, .. }) => {
+            id.clone() == "empty_list_element".to_string()
+        }
         Some(InferredNode::Resolved { node: inner, .. }) => {
             produced_is_unsolved_generic_at_conformance(inner.clone(), source_indices.clone())
         }

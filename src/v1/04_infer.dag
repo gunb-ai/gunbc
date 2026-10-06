@@ -2132,16 +2132,16 @@ fn empty_list_expected_is_unbound_generic_name(
 // AN UNINFORMATIVE PLACEHOLDER AT A GROUND DECLARED TYPE IS A SILENT ACCEPT if we only
 // skip it in unify (declared_type_conformance_diags_core `!both_ground` returns []).
 // Identity-cons fold_list binds A to List<empty_list_element>; that is uninformative, and
-// a declared String must TypeMismatch. A callee type parameter that is still a bare name
+// a declared String must TypeMismatch. A callee type parameter that is still a TypeVariable
 // (`fold_node` → R, `measure_count` → M) is the unjudged remainder — treating every
-// lookup miss as unsolved refused those correct sites on the floor. The call-argument
+// TypeVariable as unsolved refused those correct sites on the floor. The call-argument
 // grain (p7b) is still piece 3.
 fn produced_is_unsolved_generic_at_conformance(
   n: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   match n.inferred {
-    Present { value: TypeVariable { id: _ } } => true
+    Present { value: TypeVariable { id: id } } => id == "empty_list_element"
     Present { value: Resolved { node: inner } } =>
       produced_is_unsolved_generic_at_conformance(n: inner, source_indices: source_indices)
     _ =>
