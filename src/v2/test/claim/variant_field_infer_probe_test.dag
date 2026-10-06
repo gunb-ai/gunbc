@@ -30,7 +30,8 @@ import v2.std.node {
   Node,
   StructuralLabel,
   Symbol,
-  TypeNode
+  TypeNode,
+  symbol_lexeme
 }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.node_query { construct_tag_optional }
@@ -38,6 +39,8 @@ import v2.std.qualified_name { qualified_name_init }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import v2.std.collection { List }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ProcessExit, ExitSuccess }
 
 data vfp_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -347,3 +350,184 @@ test fn vfp_the_arrow_arm_binder_still_rides_the_formal_pending_deep_instantiati
 test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
   vfp_partial_reading().construct_read == ^Boxed
 }
+
+// TEMPORARY DECODE INSTRUMENTS -- diagnosis for the floor's 7 unexpected probe failures
+// (CI run 37420288796). The claims above compare fixed expectations; these print the ACTUAL
+// reading fields through `gunbc run --function` so the values are readable, not guessed.
+// DELETED WITH THE RFM RETIREMENT RECEIPT.
+fn vfp_decode_round_trip_arm_body() -> CliWireResponse {
+  CliWirePrintable { bytes: "rt_arm=" + symbol_lexeme(sym: vfp_round_trip_reading().arm_body_fact), exit: ExitSuccess }
+}
+
+fn vfp_decode_round_trip_match_fact() -> CliWireResponse {
+  CliWirePrintable { bytes: "rt_match=" + symbol_lexeme(sym: vfp_round_trip_reading().match_fact), exit: ExitSuccess }
+}
+
+fn vfp_decode_round_trip_construction_fact() -> CliWireResponse {
+  CliWirePrintable { bytes: "rt_constr=" + symbol_lexeme(sym: vfp_round_trip_reading().construction_fact), exit: ExitSuccess }
+}
+
+fn vfp_decode_round_trip_construct_read() -> CliWireResponse {
+  CliWirePrintable { bytes: "rt_read=" + symbol_lexeme(sym: vfp_round_trip_reading().construct_read) + " carrier=" + symbol_lexeme(sym: vfp_round_trip_reading().construct_read_carrier), exit: ExitSuccess }
+}
+
+fn vfp_decode_round_trip_reasons() -> CliWireResponse {
+  CliWirePrintable { bytes: "rt_reasons=" + fold(vfp_round_trip_reading().reasons, init: "", f: fn(acc, s) { acc + "/" + symbol_lexeme(sym: s) }), exit: ExitSuccess }
+}
+
+fn vfp_decode_generic_arm_body() -> CliWireResponse {
+  CliWirePrintable { bytes: "gen_arm=" + symbol_lexeme(sym: vfp_reading(src: vfp_generic_src).arm_body_fact), exit: ExitSuccess }
+}
+
+fn vfp_decode_compound_arm_body() -> CliWireResponse {
+  CliWirePrintable { bytes: "comp_arm=" + symbol_lexeme(sym: vfp_reading(src: vfp_generic_compound_src).arm_body_fact), exit: ExitSuccess }
+}
+
+fn vfp_decode_arrow_arm_body() -> CliWireResponse {
+  CliWirePrintable { bytes: "arr_arm=" + symbol_lexeme(sym: vfp_reading(src: vfp_generic_arrow_src).arm_body_fact), exit: ExitSuccess }
+}
+
+// GROUNDED FIXTURES -- the fixtures above use bare Int in a one-module program with no
+// imports, so Int never grounds and poisons every Int-typed declaration's facts. These name
+// only locally declared types. Same shapes, self-contained.
+data vfp_grounded_rt_src: String = "module p\n\ntype N = Zero | Mk(N)\n\ntype Seal = Boxed(N) | Held { value: N }\n\nfn make_boxed() -> Seal {\n  Boxed(Zero)\n}\n\nfn seal_unbox(s: Seal) -> N {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}"
+data vfp_grounded_compound_src: String = "module p\n\ntype A = MkA\n\ntype Wrap<T> = Wrapped { inner: T }\n\ntype Hold<T> = Keep { boxed: Wrap<T> } | Drop\n\nfn unkeep(k: Hold<A>) -> A {\n  match k {\n    Keep { boxed: b } => b.inner\n    Drop => MkA\n  }\n}"
+data vfp_grounded_arrow_src: String = "module p\n\ntype A = MkA\n\ntype Apply = Mk { f: fn(A) -> A }\n\nfn useit(a: Apply, x: A) -> A {\n  match a {\n    Mk { f: g } => g(x)\n  }\n}"
+data vfp_grounded_generic_src: String = "module p\n\ntype A = MkA\n\ntype Diagnostics { head: A }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: Diagnostics }\n\nfn pick(o: Outcome<A>) -> A {\n  match o {\n    Accepted { value: v } => v\n    Rejected { diagnostics: d } => d.head\n  }\n}"
+
+fn vfp_last_arm_body_of(m: Node) -> Optional<Node> {
+  fold(m.children, init: Absent, f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => Present { value: e.target }
+      _ => acc
+    }
+  })
+}
+
+fn vfp_decode_grounded_rt() -> CliWireResponse {
+  match vfp_assemble(src: vfp_grounded_rt_src) {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: "grt:resolve:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => CliWirePrintable { bytes: "grt:infer_last:" + symbol_lexeme(sym: vfp_last(xs: vfp_reasons(r: r))), exit: ExitSuccess }
+        Accepted { value: inferred, diagnostics: _ } =>
+          match vfp_find_match(n: resolved.root) {
+            Absent => CliWirePrintable { bytes: "grt:accepted:no_match_node", exit: ExitSuccess }
+            Present { value: m } =>
+              match vfp_first_arm_body_of(m: m) {
+                Absent => CliWirePrintable { bytes: "grt:accepted:no_arm_body", exit: ExitSuccess }
+                Present { value: b } => CliWirePrintable { bytes: "grt:accepted:arm=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: b })), exit: ExitSuccess }
+              }
+          }
+      }
+  }
+}
+
+fn vfp_decode_grounded_compound() -> CliWireResponse {
+  match vfp_assemble(src: vfp_grounded_compound_src) {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: "gcomp:resolve:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => CliWirePrintable { bytes: "gcomp:infer_last:" + symbol_lexeme(sym: vfp_last(xs: vfp_reasons(r: r))), exit: ExitSuccess }
+        Accepted { value: inferred, diagnostics: _ } =>
+          match vfp_find_match(n: resolved.root) {
+            Absent => CliWirePrintable { bytes: "gcomp:accepted:no_match_node", exit: ExitSuccess }
+            Present { value: m } =>
+              match vfp_first_arm_body_of(m: m) {
+                Absent => CliWirePrintable { bytes: "gcomp:accepted:no_arm_body", exit: ExitSuccess }
+                Present { value: b } => CliWirePrintable { bytes: "gcomp:accepted:arm=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: b })), exit: ExitSuccess }
+              }
+          }
+      }
+  }
+}
+
+fn vfp_decode_grounded_arrow() -> CliWireResponse {
+  match vfp_assemble(src: vfp_grounded_arrow_src) {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: "garr:resolve:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => CliWirePrintable { bytes: "garr:infer_last:" + symbol_lexeme(sym: vfp_last(xs: vfp_reasons(r: r))), exit: ExitSuccess }
+        Accepted { value: inferred, diagnostics: _ } =>
+          match vfp_find_match(n: resolved.root) {
+            Absent => CliWirePrintable { bytes: "garr:accepted:no_match_node", exit: ExitSuccess }
+            Present { value: m } =>
+              match vfp_first_arm_body_of(m: m) {
+                Absent => CliWirePrintable { bytes: "garr:accepted:no_arm_body", exit: ExitSuccess }
+                Present { value: b } => CliWirePrintable { bytes: "garr:accepted:arm=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: b })), exit: ExitSuccess }
+              }
+          }
+      }
+  }
+}
+
+fn vfp_decode_grounded_generic() -> CliWireResponse {
+  match vfp_assemble(src: vfp_grounded_generic_src) {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: "ggen:resolve:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => CliWirePrintable { bytes: "ggen:infer_last:" + symbol_lexeme(sym: vfp_last(xs: vfp_reasons(r: r))), exit: ExitSuccess }
+        Accepted { value: inferred, diagnostics: _ } =>
+          match vfp_find_match(n: resolved.root) {
+            Absent => CliWirePrintable { bytes: "ggen:accepted:no_match_node", exit: ExitSuccess }
+            Present { value: m } =>
+              match vfp_first_arm_body_of(m: m) {
+                Absent => CliWirePrintable { bytes: "ggen:accepted:no_first_arm", exit: ExitSuccess }
+                Present { value: b } =>
+                  match vfp_last_arm_body_of(m: m) {
+                    Absent => CliWirePrintable { bytes: "ggen:accepted:no_last_arm", exit: ExitSuccess }
+                    Present { value: l } => CliWirePrintable { bytes: "ggen:accepted:first=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: b })) + " last=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: l })), exit: ExitSuccess }
+                  }
+              }
+          }
+      }
+  }
+}
+
+
+data vfp_fx1_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a.seed\n}"
+
+data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a\n}"
+
+data vfp_fx3_src: String = "module p\n\ntype N = Wrap { seed: N }\n\ntype Seal = Boxed(N) | Held { value: N }\n\nfn make(n: N) -> Seal {\n  Boxed(n)\n}\n\nfn unbox(s: Seal) -> N {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}"
+
+data vfp_fx4_src: String = "module p\n\ntype N = Wrap { seed: N }\n\ntype Apply = Mk { f: fn(N) -> N }\n\nfn useit(a: Apply, n: N) -> N {\n  match a {\n    Mk { f: g } => g(n)\n  }\n}"
+
+data vfp_fx5_src: String = "module p\n\ntype N = Wrap { seed: N }\n\ntype Diagnostics { head: N }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: Diagnostics }\n\nfn pick(o: Outcome<N>) -> N {\n  match o {\n    Accepted { value: v } => v\n    Rejected { diagnostics: d } => d.head\n  }\n}"
+
+data vfp_fx6_src: String = "module p\n\ntype N = Wrap { seed: N }\n\ntype Box<T> = Wrapped { inner: T }\n\ntype Hold<T> = Keep { boxed: Box<T> } | Dropped\n\nfn unkeep_inner(k: Hold<Box<N>>, n: N) -> N {\n  match k {\n    Keep { boxed: b } => b.inner\n    Dropped => n\n  }\n}"
+
+
+// MINIMAL FIXTURE BISECT (temporary; deleted with the RFM retirement receipt): one question per
+// fixture, so an unbound symbol or an undecidable inhabitance has exactly one suspect.
+fn vfp_decode_fx(src: String, tag: String) -> CliWireResponse {
+  match vfp_assemble(src: src) {
+    Rejected { diagnostics: r } => CliWirePrintable { bytes: tag + ":resolve:" + symbol_lexeme(sym: r.head.reason), exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => CliWirePrintable { bytes: tag + ":infer_last:" + symbol_lexeme(sym: vfp_last(xs: vfp_reasons(r: r))) + " all=" + fold(vfp_reasons(r: r), init: "", f: fn(acc, s) { acc + "/" + symbol_lexeme(sym: s) }), exit: ExitSuccess }
+        Accepted { value: inferred, diagnostics: _ } =>
+          match vfp_find_match(n: resolved.root) {
+            Absent => CliWirePrintable { bytes: tag + ":accepted:no_match read=" + symbol_lexeme(sym: vfp_construct_read_decode(resolved: resolved)) + " carr=" + symbol_lexeme(sym: vfp_construct_read_carrier_decode(resolved: resolved)), exit: ExitSuccess }
+            Present { value: m } =>
+              match vfp_first_arm_body_of(m: m) {
+                Absent => CliWirePrintable { bytes: tag + ":accepted:no_arm_body read=" + symbol_lexeme(sym: vfp_construct_read_decode(resolved: resolved)), exit: ExitSuccess }
+                Present { value: b } => CliWirePrintable { bytes: tag + ":accepted:arm=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: b })) + " match=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: Present { value: m })) + " constr=" + symbol_lexeme(sym: vfp_fact_in(inferred: inferred, subject: vfp_find_construction(n: resolved.root))) + " read=" + symbol_lexeme(sym: vfp_construct_read_decode(resolved: resolved)) + " carr=" + symbol_lexeme(sym: vfp_construct_read_carrier_decode(resolved: resolved)), exit: ExitSuccess }
+              }
+          }
+      }
+  }
+}
+
+
+fn vfp_decode_fx1() -> CliWireResponse { vfp_decode_fx(src: vfp_fx1_src, tag: "fx1:nullary_expr") }
+
+fn vfp_decode_fx2() -> CliWireResponse { vfp_decode_fx(src: vfp_fx2_src, tag: "fx2:param_sanity") }
+
+fn vfp_decode_fx3() -> CliWireResponse { vfp_decode_fx(src: vfp_fx3_src, tag: "fx3:rt") }
+
+fn vfp_decode_fx4() -> CliWireResponse { vfp_decode_fx(src: vfp_fx4_src, tag: "fx4:arrow") }
+
+fn vfp_decode_fx5() -> CliWireResponse { vfp_decode_fx(src: vfp_fx5_src, tag: "fx5:generic") }
+
+fn vfp_decode_fx6() -> CliWireResponse { vfp_decode_fx(src: vfp_fx6_src, tag: "fx6:compound") }
