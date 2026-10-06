@@ -1,0 +1,59 @@
+module test.claim.mtjade1_rmedia_residue_witness
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.machine_intake_mtjade1_access_observation {
+  AuthoredByThisLane,
+  FactoryEmpty,
+  PutAcknowledgedNotApplied,
+  PutApplyUnread,
+  RmediaGeneralResidueObserved,
+  RmediaGeneralResidueRefused,
+  ResidueDigestMismatch,
+  decode_rmedia_general_get,
+  read_mtjade1_media_general_put_standing,
+  read_mtjade1_rmedia_general_residue,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE REAL PATH: the committed restore GET is hashed, decoded, and classified as this lane's
+// residue on mtjade1, not factory empty. A wrong digest or empty-path GET reds through a typed gap.
+test fn w_mtjade1_rmedia_general_residue_is_this_lane_not_factory() -> Bool {
+  match read_mtjade1_rmedia_general_residue() {
+    RmediaGeneralResidueRefused { gap: _ } => false
+    RmediaGeneralResidueObserved { residue: r } =>
+      (r.subject as String) == "mtjade1"
+        && (r.server_address as String) == "192.168.1.188"
+        && (r.source_path as String) == "/srv/bmc"
+        && (r.share_type as String) == "nfs"
+        && r.mount_cd == 0
+        && r.remote_media_support == 0
+        && match r.origin {
+          AuthoredByThisLane { date: d, lane: l } => (d as String) == "2026-10-06" && (l as String) == "gentle-carp-328"
+          FactoryEmpty => false
+        }
+  }
+}
+
+test fn w_a_digest_mismatch_on_the_restore_get_refuses_the_residue() -> Bool {
+  match decode_rmedia_general_get(content: "{}", expected_sha256: "not-the-digest") {
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueDigestMismatch { expected: _, observed: _ } => true
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueFieldUnread { field: _, cause: _ } => false
+    }
+    RmediaGeneralResidueObserved { residue: _ } => false
+  }
+}
+
+// THE SAME RESTORE PUT: HTTP 200 echoed empty; GET still .188. That pairing is 2.11.104000
+// media/general behavior, not an attach receipt.
+test fn w_media_general_put_on_2_11_104000_acknowledged_and_did_not_apply() -> Bool {
+  match read_mtjade1_media_general_put_standing() {
+    PutApplyUnread { gap: _ } => false
+    PutAcknowledgedNotApplied { firmware_wire: fw, request_path: _, request_sha256: _, response_path: _, response_sha256: _, get_path: _, get_sha256: _ } =>
+      (fw as String) == "2.11.104000"
+  }
+}
