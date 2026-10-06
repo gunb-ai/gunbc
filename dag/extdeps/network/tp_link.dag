@@ -7,7 +7,7 @@ import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup }
 import extdeps.vendor.tp_link { tp_link }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Present }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

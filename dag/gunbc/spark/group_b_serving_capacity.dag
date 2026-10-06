@@ -3,7 +3,7 @@ module gunbc.spark.group_b_serving_capacity
 import std.types { NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, BasisPoint, basis_point }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingExplicit, VllmKvCacheDtypeRequest, KvFp8,
   VllmEngramConfigRequest, EngramConfigOmitted,

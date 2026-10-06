@@ -5,7 +5,7 @@ import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
 import v2.compiler.target_carriers { bundle_fidelity_quotient_optional, fidelity_quotient_decode_fidelity }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Edge, Authored, Positional, Atom, TypeNode, ComputationNode, Conj, Value, Symbol, node_synthetic }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // THE 07_target_carriers ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
 // v2.compiler.target_carriers fidelity_quotient_decode_fidelity folds a target's fidelity quotient

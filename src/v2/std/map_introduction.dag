@@ -3,7 +3,7 @@ module v2.std.map_introduction
 import std.algebra { list_snoc_item }
 import std.types { List, Map, String }
 import v2.std.collection { empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Optional, Present, optional_absent }
+import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.integer { Int }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.node { Authored, ComputationNode, Edge, MapLiteralEntriesEdge, Node, Positional, Symbol, Transform, node_with_occurrence_id }

@@ -10,7 +10,7 @@ import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGran
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import std.types { String, Bool, List, NonEmptyStr, GitRef, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
 import std.measure { Kibibyte, kibibyte, basis_point_count, BasisPoint }
 import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash, content_hash_atom }

@@ -16,7 +16,7 @@ import product.rack_power {
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

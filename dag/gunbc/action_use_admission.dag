@@ -3,7 +3,7 @@ module gunbc.action_use_admission
 import std.types { Bool, Int, List, NonEmptyStr, String, commit_sha_text_holds }
 import extdeps.github.expressions { Expression, ExpressionContext, Github, Inputs, ContextAccess, LogicalOr, LogicalAnd, interpolate, serialize_expression }
 import extdeps.external_authority { ExternalAuthority }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping, yaml_lookup, YamlKeyPresent, YamlKeyAbsent }
 import extdeps.github.actions { Workflow, Job, Step, UsesStep, RunStep }
