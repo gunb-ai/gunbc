@@ -15,13 +15,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type VersionIdentity = NonEmptyStr where brand("VersionIdentity")
 
 // A scheme's precedence is defined over the identity grammar the scheme names. A pair the
-// grammar does not cover is a LOCATED refusal: the carrier names the side whose label failed,
-// the label itself, and the cause — never a fabricated order, and never a bare Absent that a
-// caller cannot distinguish from a caller error (DESIGN section 5: a failure arm must refuse,
-// never widen — every degradation a typed, located, countable diagnostic).
+// grammar does not cover is a LOCATED refusal: the carrier names the side whose label failed
+// (a closed coproduct — a misspelled side is unwritable), the label itself, and the cause —
+// never a fabricated order, and never a bare Absent that a caller cannot distinguish from a
+// caller error (DESIGN section 5: a failure arm must refuse, never widen — every degradation a
+// typed, located, countable diagnostic).
+type ComparisonSide = LeftOperand | RightOperand
+
 type VersionComparison
   = VersionCompared { ordering: Ordering }
-  | VersionComparisonRefused { side: String, identity: String, cause: String }
+  | VersionComparisonRefused { side: ComparisonSide, identity: String, cause: String }
 
 type VersionScheme {
   compare: fn(VersionIdentity, VersionIdentity) -> VersionComparison

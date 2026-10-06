@@ -87,7 +87,7 @@ test fn w_git_release_version_scheme_orders_minor_numerically() -> Bool {
 // the failing side, the label, and the cause — never a fabricated order.
 test fn w_git_release_version_scheme_refuses_out_of_grammar_label() -> Bool {
   match git_release_version_scheme.compare(a: "not-a-version", b: "2.0.0") {
-    VersionComparisonRefused { side: s, identity: i, cause: _ } => s == "a" && i == "not-a-version"
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "not-a-version"
     VersionCompared { ordering: _ } => false
   }
 }

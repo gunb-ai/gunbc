@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import std.nat { nat_compare }
-import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
 import extdeps.version.semver { semver_core_parse }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -67,13 +67,6 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
 // ---- identity compare -----------------------------------------------------------------------
 // The label is a VersionScheme's only handle, so the comparison parses the label back into the
 // typed form and routes through git_release_version_compare — the ONE implementation of the cited
-// numeric rule. A label that is not a bare MAJOR.MINOR.PATCH triple (three dot-separated digit
-// runs, no leading zeroes) is outside the grammar this scheme covers, so the compare yields none:
-// a typed refusal of the precedence question, never a fabricated order.
-
-// ---- identity compare -----------------------------------------------------------------------
-// The label is a VersionScheme's only handle, so the comparison parses the label back into the
-// typed form and routes through git_release_version_compare — the ONE implementation of the cited
 // numeric rule for this scheme. The LABEL GRAMMAR is not re-invented here: a git release version
 // is a bare MAJOR.MINOR.PATCH triple, which is exactly the SemVer 2.0.0 core, so the parse
 // consumes extdeps.version.semver's core parse (three dot-separated digit runs, no leading
@@ -90,10 +83,10 @@ fn git_release_identity_parse(identity: VersionIdentity) -> GitReleaseVersion? {
 
 fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
   match git_release_identity_parse(identity: a) {
-    Absent => VersionComparisonRefused { side: "a", identity: a as String, cause: "label is not a git release version: a bare MAJOR.MINOR.PATCH triple of digit runs without leading zeroes is required" }
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label is not a git release version: a bare MAJOR.MINOR.PATCH triple of digit runs without leading zeroes is required" }
     Present { value: va } =>
       match git_release_identity_parse(identity: b) {
-        Absent => VersionComparisonRefused { side: "b", identity: b as String, cause: "label is not a git release version: a bare MAJOR.MINOR.PATCH triple of digit runs without leading zeroes is required" }
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label is not a git release version: a bare MAJOR.MINOR.PATCH triple of digit runs without leading zeroes is required" }
         Present { value: vb } => VersionCompared { ordering: git_release_version_compare(a: va, b: vb) }
       }
   }

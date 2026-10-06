@@ -1,6 +1,6 @@
 module extdeps.version.semver
 
-import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -147,9 +147,9 @@ fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> VersionCom
     Present { value: av } =>
       match semver_identity_parse(label: b) {
         Present { value: bv } => VersionCompared { ordering: semver_compare(a: av, b: bv) }
-        Absent => VersionComparisonRefused { side: "b", identity: b as String, cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it" }
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it" }
       }
-    Absent => VersionComparisonRefused { side: "a", identity: a as String, cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it" }
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it" }
   }
 }
 

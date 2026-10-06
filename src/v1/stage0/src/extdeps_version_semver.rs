@@ -5,9 +5,10 @@ use self::SemVerIdentifier::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+use crate::extdeps_version::ComparisonSide::{LeftOperand, RightOperand};
 use crate::extdeps_version::VersionComparison::{VersionCompared, VersionComparisonRefused};
 pub use crate::extdeps_version::{
-    VersionComparison, VersionConstraint, VersionIdentity, VersionScheme,
+    ComparisonSide, VersionComparison, VersionConstraint, VersionIdentity, VersionScheme,
 };
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
@@ -238,15 +239,15 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComp
     ordering: semver_compare(av.clone(), bv.clone()),
 }),
     std::option::Option::None => Rc::new(VersionComparison::VersionComparisonRefused {
-    side: "b".to_string(),
+    side: ComparisonSide::RightOperand,
     identity: b.clone(),
-    cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it".to_string(),
+    cause: "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it".to_string(),
 }),
 },
     std::option::Option::None => Rc::new(VersionComparison::VersionComparisonRefused {
-    side: "a".to_string(),
+    side: ComparisonSide::LeftOperand,
     identity: a.clone(),
-    cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it".to_string(),
+    cause: "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it".to_string(),
 }),
 }
 }

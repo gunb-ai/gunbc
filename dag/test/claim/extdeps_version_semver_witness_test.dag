@@ -223,7 +223,7 @@ test fn w_semver_scheme_identity_round_trip_label() -> Bool {
 // pinned: the scheme must not fabricate an order for a pair the grammar does not cover.
 test fn w_semver_scheme_out_of_grammar_label_refuses_precedence() -> Bool {
   match semver_scheme.compare("1.02.3", "1.2.3") {
-    VersionComparisonRefused { side: s, identity: i, cause: _ } => s == "a" && i == "1.02.3"
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "1.02.3"
     VersionCompared { ordering: _ } => false
   }
 }
@@ -235,7 +235,18 @@ test fn w_semver_scheme_out_of_grammar_label_refuses_precedence() -> Bool {
 // never rank lexically under the numeric-identifier-vs-alphanumeric rule of §11.
 test fn w_semver_pre_release_leading_zero_numeric_label_refuses() -> Bool {
   match semver_scheme.compare("1.0.0-01", "1.0.0-1") {
-    VersionComparisonRefused { side: _, identity: _, cause: _ } => true
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "1.0.0-01"
+    VersionCompared { ordering: _ } => false
+  }
+}
+
+// The refusal's cause is HONEST: it names the grammar, not a specific defect the label may not
+// have ("1.02.3" fails on the core minor field, not on a pre-release identifier — a cause
+// claiming a leading-zero pre-release identifier would be fabricated).
+test fn w_semver_refusal_cause_names_the_grammar_not_a_specific_defect() -> Bool {
+  match semver_scheme.compare("1.02.3", "1.2.3") {
+    VersionComparisonRefused { side: _, identity: _, cause: c } =>
+      c == "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it"
     VersionCompared { ordering: _ } => false
   }
 }

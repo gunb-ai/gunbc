@@ -2,7 +2,7 @@ module extdeps.languages.go.module
 
 import std.types { NonEmptyStr, brand }
 import std.algebra { Ordering, Less, Equal, Greater }
-import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, ComparisonSide, LeftOperand, RightOperand }
 import extdeps.version.semver { semver_compare, semver_version_parse }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -64,10 +64,10 @@ fn go_module_semver_identity_parse(identity: VersionIdentity) -> SemVerVersion? 
 
 fn go_module_compare_identity(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
   match go_module_semver_identity_parse(identity: a) {
-    Absent => VersionComparisonRefused { side: "a", identity: a as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
     Present { value: va } =>
       match go_module_semver_identity_parse(identity: b) {
-        Absent => VersionComparisonRefused { side: "b", identity: b as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
         Present { value: vb } => VersionCompared { ordering: semver_compare(a: va, b: vb) }
       }
   }

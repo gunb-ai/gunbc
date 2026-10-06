@@ -159,7 +159,7 @@ test fn w_go_module_version_scheme_orders_patch_numerically() -> Bool {
 // order.
 test fn w_go_module_version_scheme_refuses_unparsable_label() -> Bool {
   match go_module_version_scheme.compare(a: "not-a-go-version", b: "v1.2.3") {
-    VersionComparisonRefused { side: s, identity: i, cause: _ } => s == "a" && i == "not-a-go-version"
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "not-a-go-version"
     VersionCompared { ordering: _ } => false
   }
 }
@@ -168,7 +168,7 @@ test fn w_go_module_version_scheme_refuses_unparsable_label() -> Bool {
 // outside the grammar even when the remainder is a valid SemVer version.
 test fn w_go_module_version_scheme_refuses_label_without_v_prefix() -> Bool {
   match go_module_version_scheme.compare(a: "1.0.0", b: "v1.0.0") {
-    VersionComparisonRefused { side: s, identity: i, cause: _ } => s == "a" && i == "1.0.0"
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "1.0.0"
     VersionCompared { ordering: _ } => false
   }
 }
@@ -177,7 +177,7 @@ test fn w_go_module_version_scheme_refuses_label_without_v_prefix() -> Bool {
 // all-digit pre-release identifier refuses instead of ranking.
 test fn w_go_module_version_scheme_refuses_leading_zero_pre_release() -> Bool {
   match go_module_version_scheme.compare(a: "v1.0.0-01", b: "v1.0.0-1") {
-    VersionComparisonRefused { side: s, identity: i, cause: _ } => s == "a" && i == "v1.0.0-01"
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "v1.0.0-01"
     VersionCompared { ordering: _ } => false
   }
 }
