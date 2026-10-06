@@ -24,14 +24,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CLOSURE DOOR'S REPORT SHAPE FOR AN IDENTITY CAST, AND THE INTERFACES THE FLOOR ROWS INSPECT.
 // identity_cast_route_verdict runs v2.compiler.self_host.closure_emission
 // emit_closure_from_ingest_located under the production Rust model (the door v2.cli.compile_cli
-// drives). That call is ingest, resolve, infer, discharge and emit, and it is several times a
-// new-witness budget on its own -- the floor's 657428 eval-step refusal of
-// an_admitted_identity_cast_emits_through_the_closure_route_holds on gunbc#13480 run 37486290875
-// (job 112347032560). The required-floor rows therefore discriminate at ONE INTERFACE over SUPPLIED
-// values (DESIGN section 3): coercion_cast_crossing of supplied Int/Bool atoms. The inhabitance claim that the real door emits the admitted shape -- and
-// refuses the witness-less one at find_witness_reason_no_candidate -- is
-// v2.test.execution.emit_host_identity_cast_native, which reads identity_cast_route_verdict and
-// refused_cast_route_verdict; deleting those reads must make those native controls fail.
+// drives). That call is ingest, resolve, infer, discharge and emit. Two rows discriminate at
+// coercion_cast_crossing over supplied Int/Bool atoms (DESIGN section 3). The inhabitance that the
+// real door still emits `fn f(x: i32) -> i32` — and refuses Int-as-Bool at
+// find_witness_reason_no_candidate — stays on this module, on the required gate, under
+// gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost. Relocating that inhabitance off
+// the gate does not retire that drop (DESIGN section 4b: a drop is retired by its trigger and by
+// nothing else). The native partner builds and runs the emitted text; it is not the last execution
+// of the door.
 data identity_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Int { x as Int }\n"
 
 data refused_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Bool { x as Bool }\n"
@@ -114,10 +114,8 @@ fn identity_cast_supplied_crossing(target: Node) -> Outcome<CoercionResult> {
 }
 
 // The admitted identity cast, at coercion's interface over SUPPLIED Int atoms: the crossing is
-// Identity. A Exact/Widened admission, or a refusal, is false. Inhabitance of the closure door
-// (source text through emit_closure_from_ingest_located, `fn f(x: i32) -> i32`) is
-// identity_cast_route_admitted_holds on identity_cast_route_verdict in the native partner, under
-// gunbc.rung_drop identity_cast_closure_inhabitance_off_the_required_gate.
+// Identity. A Exact/Widened admission, or a refusal, is false. The closure door for the same
+// subject is an_admitted_identity_cast_emits_through_the_closure_route_holds on this module.
 test fn an_int_identity_cast_is_an_identity_crossing_holds() -> Bool {
   match identity_cast_supplied_crossing(target: identity_cast_supplied_int()) {
     Accepted { value: r, diagnostics: _ } =>
@@ -131,12 +129,21 @@ test fn an_int_identity_cast_is_an_identity_crossing_holds() -> Bool {
 
 // The same crossing to Bool -- a kernel type Int has no structural witness into -- is refused by
 // coercion's mismatch at v2.std.coercion, not by a parse, resolve or emission failure. Asserting
-// NoTargetCandidate is what makes this a control of admission. Inhabitance on the closure door is
-// identity_cast_route_refused_holds on refused_cast_route_verdict in the native partner, under
-// gunbc.rung_drop identity_cast_closure_inhabitance_off_the_required_gate.
+// NoTargetCandidate is what makes this a control of admission. The door's refusal inhabitance is
+// a_cast_with_no_witness_refuses_before_realization_holds on this module.
 test fn an_int_to_bool_cast_has_no_witness_holds() -> Bool {
   match identity_cast_supplied_crossing(target: identity_cast_supplied_bool()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == discriminant(v: NoTargetCandidate)
   }
+}
+
+// INHABITANCE OF THE CLOSURE DOOR, ON THE REQUIRED GATE. Deleting this claim, supplying its
+// emission, or moving it off the gate does not retire identity_cast_route_new_witness_eval_step_cost.
+test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Bool {
+  identity_cast_route_admitted_holds(v: identity_cast_route_verdict())
+}
+
+test fn a_cast_with_no_witness_refuses_before_realization_holds() -> Bool {
+  identity_cast_route_refused_holds(v: refused_cast_route_verdict())
 }

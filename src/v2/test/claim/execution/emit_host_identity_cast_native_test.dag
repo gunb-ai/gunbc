@@ -20,16 +20,11 @@ import v2.test.claim.coercion.identity_cast_emission_route {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMITTED IDENTITY CAST, BUILT AND RUN -- AND THE INHABITANCE OF THE ROUTE MODULE'S SUPPLIED
-// VERDICTS. v2.test.claim.coercion.identity_cast_emission_route judges IdentityCastRouteVerdict over
-// supplied values so those rows fit the new-witness budget; this module is the pairing inhabitance
-// (DESIGN section 3). identity_cast_route_verdict is the real door; identity_cast_native_emitted
-// requires identity_cast_route_admitted_holds on that verdict, and
-// a_cast_with_no_witness_is_refused_on_the_closure_route_holds requires
-// identity_cast_route_refused_holds on refused_cast_route_verdict. The text under test is the entry
-// member that route emits -- never a hand-written `f` -- and the host row
-// (v2.extdeps.languages.rust_test rust_identity_cast_target_model) only reads the value from argv,
-// calls it and frames the return value.
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. identity_cast_route_verdict is the real door; this
+// module reads the same verdict the required-gate inhabitance already asserted, then builds and
+// runs it. The last merge-time execution of the door is
+// v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds,
+// under gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost — not this module.
 //
 // STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
 // (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every
@@ -37,9 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.workflow.floor_changed_witness) -- on a change that touches this module or its closure -- and
 // nothing re-runs it between such changes. It is change-time native evidence, not standing
 // regression enforcement. Its admission partner, v2.test.claim.coercion.identity_cast_emission_route,
-// IS a gate row and runs on every required run (the coercion interface, not the door). The door's
-// merge-time absence is gunbc.rung_drop identity_cast_closure_inhabitance_off_the_required_gate.
-// It is not a member of
+// IS a gate row and runs on every required run. It is not a member of
 // gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population and does
 // not discharge that stall.
 //
@@ -70,9 +63,9 @@ fn identity_cast_native_emitted() -> Optional<String> {
   }
 }
 
-// INHABITANCE OF THE SUPPLIED REFUSAL VERDICT: the real door refuses Int-as-Bool at the entry
-// member with coercion's mismatch. The required-floor row supplies that shape; this is the last
-// execution of the real path for it.
+// The real door's Int-as-Bool refusal, also asserted on the required gate by
+// a_cast_with_no_witness_refuses_before_realization_holds. This row is the native partner, not the
+// last merge-time execution.
 test fn a_cast_with_no_witness_is_refused_on_the_closure_route_holds() -> Bool {
   identity_cast_route_refused_holds(v: refused_cast_route_verdict())
 }

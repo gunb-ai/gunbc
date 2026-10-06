@@ -24,11 +24,6 @@ import std.types { NonEmptyStr, List }
 //     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
 //   - `floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows`: the python->typescript
 //     compile inhabitance claim (`python_to_typescript_compile_inhabitance_off_the_required_gate`);
-//   - `floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows`: identities of the
-//     identity-cast closure door whose own floor eval_steps exceed the new-witness budget
-//     (`identity_cast_closure_inhabitance_off_the_required_gate` authors its safety population
-//     separately — the pairing obligations — and cites this list only as why restoration is
-//     unavailable);
 //   - `floor_eval_step_cost_drop_boot_matrix_rows`: the mtcollins1 boot acceptance matrix
 //     (`mtcollins1_boot_matrix_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_dark_install_render_rows`: the first reader of the broker dark-install
@@ -43,12 +38,13 @@ import std.types { NonEmptyStr, List }
 //     of the dag target (`dag_text_round_trip_nested_bind_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`: the three coproduct type-declaration
 //     fragment-lowering claims (`coproduct_fragment_normalize_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_identity_cast_route_rows`: the one real-route claim of the admitted
+//     identity cast (`identity_cast_route_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
-// `v2.workflow.required_floor` decides with it. A drop may derive its safety population from ITS
-// list; `identity_cast_closure_inhabitance_off_the_required_gate` does not — its population is the
-// pairing obligations. The seed runner MIRRORS the union via `floor_eval_step_cost_drop_members`.
+// `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
+// ITS list; the seed runner MIRRORS the union via `floor_eval_step_cost_drop_members`.
 // Growing a drop's own list is a new drop, never a row on the other drop's list.
 //
 // IT IS NOT A THIRD TIER AND IT IS NOT COST-DEBT. Members are planned, executed and measured on
@@ -253,25 +249,6 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
   },
 ]
 
-data floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows: List<EvalStepCostDropMeasurement> = [
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.the_emitted_identity_cast_preserves_a_positive_and_a_negative_argument_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is that same emit_closure_from_ingest_located producer (identity_cast_route_verdict), plus the host build of the emitted text" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.the_emitted_identity_cast_preserves_zero_and_a_wide_argument_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is that same emit_closure_from_ingest_located producer (identity_cast_route_verdict), plus the host build of the emitted text" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.a_malformed_runtime_argument_fails_the_invocation_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is that same emit_closure_from_ingest_located producer (identity_cast_route_verdict), plus the host build of the emitted text" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.emit_host_identity_cast_native.a_cast_with_no_witness_is_refused_on_the_closure_route_holds" as NonEmptyStr,
-    measured_by: "gunbc#13480 required floor run 37486290875, COMPLETED-OVER-COST-REQUIREMENT on the then-gated identity v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds at 657428 eval steps against the 72300 new-witness budget (cpu_ms=1835). The billed work here is refused_cast_route_verdict, the same door over the Int-as-Bool source" as NonEmptyStr,
-  },
-]
-
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
 // `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Each member runs the real boot entry end to
 // end over the dry operation realization, which is the subject #12423 requires: rows from
@@ -467,8 +444,20 @@ data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepC
   },
 ]
 
+// THE ADMITTED IDENTITY CAST'S REAL-ROUTE CLAIM (`gunbc.rung_drop`
+// `identity_cast_route_new_witness_eval_step_cost`). It was carried by a single-claim fill-debt row
+// until gunbc#13388 retired that row as BecameSharedByDemand: its fixture producer is now demanded by
+// several claims, so no single-claim identity remained to bill, and the claim fell to the new-witness
+// budget on every run (its module is a required_gate_authored_modules member).
+data floor_eval_step_cost_drop_identity_cast_route_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds" as NonEmptyStr,
+    measured_by: "required floor runs 37486290875 (branch fix/claude-code-std-optional at 675c2c68c2) and 37493248052 (gunbc#13487 at cb21745), both main a453be995a plus the v2.std.optional repoint: COMPLETED-OVER-COST-REQUIREMENT for this identity, verdict holds, 657,428 eval steps against the new-witness budget of 72,300; re-derived by the required floor on any pull request, since its module is a required_gate_authored_modules member. The billed work is the one real emission of the admitted identity cast through the closure route, which this claim is the only execution of" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_coproduct_fragment_normalize_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_coproduct_fragment_normalize_rows), floor_eval_step_cost_drop_identity_cast_route_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

@@ -850,17 +850,15 @@ fn required_gate_prefixes() -> List<String> {
 // declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
 // its identity-grained disposition.
 //
-// THE EIGHTH ROW IS THE IDENTITY-CAST COERCION CLAIMS (gunbc#12443; operator escalation
-// msg_a5787a77; reshape gunbc#13489). They judge an Int identity crossing and a witness-less
-// Int-to-Bool refusal at coercion_cast_crossing over supplied atoms (DESIGN section 3). Driving
-// emit_closure_from_ingest_located inside the claim billed 657428 eval steps against the
-// new-witness budget of 72300 on gunbc#13480 run 37486290875 (job 112347032560). The real door
-// remains identity_cast_route_verdict / refused_cast_route_verdict; inhabitance is
-// v2.test.execution.emit_host_identity_cast_native, which is deliberately NOT a row: every one of
-// its runs either emits the closure or spawns the host build tool, so it executes only as a
-// changed witness, as that module states, under the declared drop `gunbc.rung_drop`
-// `identity_cast_closure_inhabitance_off_the_required_gate`. The module declares
-// SubstrateInputsOnly.
+// THE EIGHTH ROW IS THE IDENTITY-CAST ROUTE'S CLAIMS (gunbc#12443; operator escalation
+// msg_a5787a77; gunbc#13489). Two rows judge an Int identity crossing and a witness-less Int-to-Bool
+// refusal at coercion_cast_crossing over supplied atoms. Two inhabitance rows still drive
+// emit_closure_from_ingest_located on every required run: the admitted identity stays under
+// gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost (measured at that identity on
+// required floor runs 37486290875 and 37493248052). Relocating those inhabitance rows off the gate
+// does not retire that drop. The native partner is deliberately NOT a gate row: every one of its
+// runs spawns the host build tool, so it executes only as a changed witness, as that module states.
+// The module declares SubstrateInputsOnly.
 // THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
