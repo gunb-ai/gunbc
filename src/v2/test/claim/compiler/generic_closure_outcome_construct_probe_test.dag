@@ -20,9 +20,10 @@ import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, Some, diagnostics_fatal_reason }
 import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import std.optional { Absent, Present }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
@@ -37,8 +38,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A generic-variant construct inside bind_outcome's continuation was refusing
 // record_field_value_does_not_inhabit because a field declared Int (kernel atom
 // dag_binding_type_int) was judged against a produced Int (the corpus alias
-// type Int = GroupCompletion<Nat>). The join recognizes both names as integer_int_type_node
-// before alias unfold.
+// type Int = GroupCompletion<Nat>). The join keys the kernel declaration roster (full path)
+// and dag_binding_denotation, not a last-segment Int spelling.
 //
 // SUPPLIED claims judge that join at its own interface. ONE claim runs the real
 // ingest→resolve→infer route on the bind_outcome-shaped fixture.
@@ -84,8 +85,26 @@ fn gbo_is_kernel_int(t: Node) -> Bool {
   }
 }
 
-test fn gbo_an_int_name_atom_is_the_kernel_int_holds() -> Bool {
-  gbo_is_kernel_int(t: gbo_atom(id: ^Int))
+test fn gbo_an_int_spelling_atom_is_not_the_kernel_int_holds() -> Bool {
+  !gbo_is_kernel_int(t: gbo_atom(id: ^Int))
+}
+
+test fn gbo_a_module_int_declaration_is_not_the_kernel_int_holds() -> Bool {
+  !gbo_is_kernel_int(
+    t: declaration_reference_node(
+      qn: qualified_name_from_dotted_string(dotted: "v2.test.gbo_shadow.Int"),
+      occurrence_id: OccurrenceSynthetic
+    )
+  )
+}
+
+test fn gbo_the_integer_int_declaration_is_the_kernel_int_holds() -> Bool {
+  gbo_is_kernel_int(
+    t: declaration_reference_node(
+      qn: qualified_name_from_dotted_string(dotted: "v2.std.integer.Int"),
+      occurrence_id: OccurrenceSynthetic
+    )
+  )
 }
 
 test fn gbo_a_kernel_int_atom_is_the_kernel_int_holds() -> Bool {

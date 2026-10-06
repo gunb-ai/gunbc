@@ -40,6 +40,7 @@ import v2.extdeps.languages.dag {
   DagCanonicalStringLiteral,
   DagCanonicalLiteral,
   dag_binding_denotation,
+  dag_kernel_type_declaration_binding_optional,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
   dag_declared_inhabitants_subject_field,
@@ -3569,48 +3570,33 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
 // reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
 // all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
 // refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
-// THE KERNEL VALUE TYPE AND THE CORPUS NAME ARE ONE TYPE. `type Int = GroupCompletion<Nat>`
-// (v2.std.integer) and the kernel atom `dag_binding_type_int` (integer_int_type_node) answer the
-// same value-type question. Alias-normalizing first unfolds Int to GroupCompletion<Nat> and then
-// the judge compares that product to the kernel atom -- record_field_value_does_not_inhabit for
-// `n: 0` at a field declared Int (the N7 bind_outcome reconstruct). The kernel spelling is
-// recognized BEFORE unfold, on both sides, so a produced `Int` inhabits a declared kernel Int
-// (and the converse). Bool is the same join infer_established_value_type_optional already owns.
+// THE KERNEL VALUE TYPE AND THE CORPUS DECLARATION ARE ONE TYPE. `v2.std.integer.Int`
+// (`type Int = GroupCompletion<Nat>`) and the kernel atom `dag_binding_type_int`
+// (integer_int_type_node) answer the same value-type question. Alias-normalizing first unfolds
+// that alias to GroupCompletion<Nat> and then the judge compares that product to the kernel atom.
+// Recognition is BY AUTHORITY, NOT BY SPELLING: a declaration reference joins only when
+// dag_kernel_type_declaration_binding_optional admits the FULL path (the same roster resolve
+// uses). A last-segment `Int` would recapture a module's own `type Int = | Mine` and admit
+// `let y: Int = 1` (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration;
+// review 77259). An atom joins only through dag_binding_denotation (binding -> value type).
 fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
   if infer_type_equal_ignoring_provenance(a: t, b: integer_int_type_node()) {
     optional_present(value: integer_int_type_node())
   } else if infer_type_equal_ignoring_provenance(a: t, b: bool_node()) {
     optional_present(value: bool_node())
   } else {
-    match infer_kernel_value_type_from_name(id: infer_type_name_symbol(t: t)) {
-      Present { value: k } => optional_present(value: k)
+    match declaration_reference_path_optional(node: t) {
+      Present { value: path } =>
+        match dag_kernel_type_declaration_binding_optional(path: path) {
+          Present { value: binding } => dag_binding_denotation(sym: binding)
+          Absent => optional_absent()
+        }
       Absent =>
         match node_atom_identity_optional(node: t) {
           Present { value: id } => dag_binding_denotation(sym: id)
           Absent => optional_absent()
         }
     }
-  }
-}
-
-fn infer_type_name_symbol(t: Node) -> Optional<Symbol> {
-  match declaration_reference_path_optional(node: t) {
-    Present { value: path } => qualified_name_last_segment(qn: path)
-    Absent => node_atom_identity_optional(node: t)
-  }
-}
-
-fn infer_kernel_value_type_from_name(id: Optional<Symbol>) -> Optional<Node> {
-  match id {
-    Absent => optional_absent()
-    Present { value: s } =>
-      if (s == ^dag_binding_type_int) || (s == ^Int) {
-        optional_present(value: integer_int_type_node())
-      } else if (s == ^bool_node_symbol) || (s == ^Bool) {
-        optional_present(value: bool_node())
-      } else {
-        optional_absent()
-      }
   }
 }
 
