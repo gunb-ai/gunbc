@@ -3228,6 +3228,9 @@ pub(crate) fn fixture_closure_union_emit_receipt(
 
 const STDERR_CAPTURE_POLICY_DROP: &str =
     "gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture";
+const STDERR_CAPTURE_POLICY_GAP_MODULE: &str = "extdeps.gunbc";
+const STDERR_CAPTURE_POLICY_GAP_SERVICE: &str = "WitnessBin";
+const STDERR_CAPTURE_POLICY_GAP_OPERATION: &str = "Run";
 
 /// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
 /// `ShellChannelNotRealizedByTarget` on every `ShellResultChannel` rust does not realize.
@@ -3267,19 +3270,24 @@ fn rust_shell_channel_not_realized_facts() -> &'static BTreeSet<String> {
     })
 }
 
-/// A rust shell TransportEmissionNotModeled whose missing_realization_fact is exactly a
-/// ShellChannelNotRealizedByTarget fact for an unrealized rust channel.
+/// The drop population: rust shell TransportEmissionNotModeled on exactly
+/// `extdeps.gunbc` `WitnessBin.Run` whose fact equals a ShellChannelNotRealizedByTarget
+/// fact for an unrealized rust channel. Any other module, service, or operation stays rendered.
 fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
     match &*d.diagnostic {
         crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
             transport_kind,
             service,
+            operation,
             declaring_module,
             target,
             missing_realization_fact,
             ..
         } if transport_kind == "shell"
             && target == "rust"
+            && declaring_module == STDERR_CAPTURE_POLICY_GAP_MODULE
+            && service == STDERR_CAPTURE_POLICY_GAP_SERVICE
+            && operation == STDERR_CAPTURE_POLICY_GAP_OPERATION
             && rust_shell_channel_not_realized_facts().contains(missing_realization_fact) =>
         {
             Some((declaring_module.clone(), service.clone()))
@@ -3299,8 +3307,9 @@ fn transport_emission_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
     }
 }
 
-/// Services whose *only* unmodeled-transport refusals are the rust stderr-capture gap.
-/// A sibling unmodeled key or another transport on the same service stays in the render set.
+/// The drop population: `extdeps.gunbc` `WitnessBin` when its *only* unmodeled-transport
+/// refusals are the rust stderr-capture gap on `Run`. A sibling unmodeled key, another
+/// transport, or the same fact on another service stays in the render set.
 fn services_excluded_for_stderr_capture_gap(
     typed: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
 ) -> BTreeSet<(String, String)> {
@@ -3388,8 +3397,9 @@ fn strip_excluded_services(
     })
 }
 
-/// Compile stays the full closure. Emit strips only services whose rust refusal is the
-/// declared capture-policy gap, each named as a typed exclusion under the rung drop.
+/// Compile stays the full closure. Emit strips only the drop population
+/// (`extdeps.gunbc` `WitnessBin` whose rust refusals are solely the capture-policy gap),
+/// each named as a typed exclusion under the rung drop. Any other emit refusal stays.
 fn union_emit_graph_excluding_unmodeled_stderr_capture(
     resolved: Rc<v1_compiler_compile::ResolvedPipelineResult>,
 ) -> (Rc<v1_compiler_compile::ResolvedPipelineResult>, Vec<String>) {
@@ -3717,9 +3727,22 @@ mod fixture_closure_union_tests {
             }));
         let substring_poison =
             "unmodeled key 'not_a_channel' implements no stderr capture policy".to_string();
-        assert!(stderr_capture_policy_gap_service(&mk(gap)).is_some());
+        assert!(stderr_capture_policy_gap_service(&mk(gap.clone())).is_some());
         assert!(stderr_capture_policy_gap_service(&mk(unmodeled_key)).is_none());
         assert!(stderr_capture_policy_gap_service(&mk(substring_poison)).is_none());
+        let other_module = make_error_node(
+            Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                transport_kind: "shell".to_string(),
+                service: "WitnessBin".to_string(),
+                operation: "Run".to_string(),
+                declaring_module: "extdeps.other".to_string(),
+                target: "rust".to_string(),
+                missing_realization_fact: gap,
+                span: span.clone(),
+            }),
+            "extdeps.other".to_string(),
+        );
+        assert!(stderr_capture_policy_gap_service(&other_module).is_none());
     }
 
     #[test]

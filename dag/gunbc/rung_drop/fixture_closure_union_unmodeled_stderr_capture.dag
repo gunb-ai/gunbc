@@ -37,8 +37,7 @@ data fixture_closure_union_unmodeled_stderr_capture: RungDrop = RungDrop {
     reason: ReplacementStaged { replacement: "the rust emitted realization implementing the declared WitnessStderrCapturePolicy, the same next-rung trigger v1.compiler.emit shell_channel_realized_by_target already names" },
 
     population: [
-      "gunbc.WitnessBin.Run in extdeps.gunbc: output channels stderr_truncated, stderr_total_bytes, stderr_retained_bytes, each a TransportEmissionNotModeled ShellChannelNotRealizedByTarget for target rust",
-      "any later shell operation whose rust emit refuses solely because the emitted realization implements no stderr capture policy -- the exclusion is keyed on that missing_realization_fact, not on a path list",
+      "exactly gunbc.WitnessBin.Run in extdeps.gunbc: output channels stderr_truncated, stderr_total_bytes, stderr_retained_bytes, each a TransportEmissionNotModeled ShellChannelNotRealizedByTarget for target rust. A later shell operation with the same capture-gap fact is NOT a member: the union still renders it and still refuses",
     ],
 
     restoration_trigger: "THE CAPABILITY: the rust emitted shell realization implements the operation's declared WitnessStderrCapturePolicy, sufficient for v1.compiler.emit shell_channel_realized_by_target to return true for ShellChanStderrTruncated, ShellChanStderrTotalBytes and ShellChanStderrRetainedBytes. WHAT THAT MUST BE SUFFICIENT FOR: those operations emit for rust without TransportEmissionNotModeled, this exclusion has an empty population and this row and the union's strip of those services delete together. Answering the channels as untruncated whole-stream lengths does NOT discharge it. Deleting the channels from the interface does NOT discharge it. Silently omitting the module from the union without naming this cause does NOT discharge it.",
