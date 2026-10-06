@@ -4,6 +4,7 @@ import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.compile_diagnostic_census { census_blocking_rows, CensusObserved, CensusNotRunnable }
+import gunbc.compile_census_probe { blocking_class_count_for }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -30,11 +31,10 @@ data green_one_branch_typed_source: String = "module probe_empty_list_typed_arm\
 data fold_list_empty_accumulator_source: String = "module probe_nl_fold\ntype UMod { module: String }\nfn nl_ms() -> List<UMod> { [UMod { module: \"a\" }] }\nfn nl_fold_list<T, A>(xs: List<T>, empty: A, cons: fn(A, T) -> A) -> A {\n  match xs |> first {\n    Present { value: h } => nl_fold_list(xs: xs |> skip(1), empty: cons(empty, h), cons: cons)\n    Absent => empty\n  }\n}\nfn caller_nl_fold() -> String {\n  let modules = nl_fold_list(xs: nl_ms(), empty: [], cons: fn(acc, m) { list_push(xs: acc, item: m) })\n  match modules |> first {\n    Present { value: m } => m.module\n    Absent => \"\"\n  }\n}\n"
 
 // EVERY ACTUAL THAT COULD BIND A IS UNINFORMATIVE: empty is [], cons is identity. The skip of an
-// uninformative actual must not default A to Unit or accept the fold as a String. Today this
-// lands as a blocking field-access refusal on the unsolved accumulator (not Unit, not silent).
-// A call-site cannot-infer wall is piece 3; it is not installed here because it also refused
-// list_snoc_item(xs: acc, item: e) when acc was seeded from [].
-data fold_list_uninformed_accumulator_source: String = "module probe_nl_fold_uninformed\ntype UMod { module: String }\nfn nl_ms() -> List<UMod> { [UMod { module: \"a\" }] }\nfn nl_fold_list<T, A>(xs: List<T>, empty: A, cons: fn(A, T) -> A) -> A {\n  match xs |> first {\n    Present { value: h } => nl_fold_list(xs: xs |> skip(1), empty: cons(empty, h), cons: cons)\n    Absent => empty\n  }\n}\nfn uninformed() -> String {\n  nl_fold_list(xs: nl_ms(), empty: [], cons: fn(acc, m) { acc }).module\n}\n"
+// uninformative actual must not default A to Unit or accept the fold as a String. The body is
+// the identity-cons call itself at a declared String return — no incidental `.module` — so the
+// enrolled red is the declared-return TypeMismatch, not a field-access refuse and not Unit.
+data fold_list_uninformed_accumulator_source: String = "module probe_nl_fold_uninformed\ntype UMod { module: String }\nfn nl_ms() -> List<UMod> { [UMod { module: \"a\" }] }\nfn nl_fold_list<T, A>(xs: List<T>, empty: A, cons: fn(A, T) -> A) -> A {\n  match xs |> first {\n    Present { value: h } => nl_fold_list(xs: xs |> skip(1), empty: cons(empty, h), cons: cons)\n    Absent => empty\n  }\n}\nfn uninformed() -> String {\n  nl_fold_list(xs: nl_ms(), empty: [], cons: fn(acc, m) { acc })\n}\n"
 
 fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
   match compile_dag_diagnostic_census(source) {
@@ -56,5 +56,7 @@ test fn fold_list_empty_accumulator_does_not_read_back_as_unit() -> Bool {
 }
 
 test fn uninformed_fold_list_accumulator_does_not_silently_typecheck() -> Bool {
-  !compiles_with_no_blocking_diagnostic(source: fold_list_uninformed_accumulator_source)
+  (blocking_class_count_for(source: fold_list_uninformed_accumulator_source, wanted_class: "TypeMismatch") >= 1)
+    && (blocking_class_count_for(source: fold_list_uninformed_accumulator_source, wanted_class: "InternalError") == 0)
+    && (blocking_class_count_for(source: fold_list_uninformed_accumulator_source, wanted_class: "FieldNotFound") == 0)
 }

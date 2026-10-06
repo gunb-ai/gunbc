@@ -2427,6 +2427,26 @@ pub fn declared_type_conformance_diags_core(
                                             scope.module_name.clone(),
                                         )])
                                     } else {
+                                        if (conformance_ground_type(declared.clone(), si.clone())
+                                            && produced_is_unsolved_generic_at_conformance(
+                                                produced.clone(),
+                                                si.clone(),
+                                                scope.type_env.clone(),
+                                            ))
+                                        {
+                                            Rc::new(vec![type_mismatch_error(
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    declared.clone(),
+                                                    si.clone(),
+                                                ),
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    produced.clone(),
+                                                    si.clone(),
+                                                ),
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )])
+                                        } else {
                                         if !both_ground.clone() {
                                             Rc::new(vec![])
                                         } else {
@@ -2453,6 +2473,7 @@ pub fn declared_type_conformance_diags_core(
                                                     scope.module_name.clone(),
                                                 )])
                                             }
+                                        }
                                         }
                                     }
                                 }
@@ -3075,6 +3096,44 @@ pub fn empty_list_expected_element_is_unknown(
         expected.clone(),
         source_indices.clone(),
     ) && !conformance_ground_type(expected.clone(), source_indices.clone()))
+}
+
+pub fn produced_is_unsolved_generic_at_conformance(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        Some(InferredNode::Resolved { node: inner, .. }) => {
+            produced_is_unsolved_generic_at_conformance(
+                inner.clone(),
+                source_indices.clone(),
+                env.clone(),
+            )
+        }
+        _ => {
+            let label = type_node_label(n.clone(), source_indices.clone());
+            if (label.clone() == "empty_list_element".to_string()
+                || unify_binding_is_uninformative(n.clone()))
+            {
+                true
+            } else {
+                if ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && !conformance_ground_type(n.clone(), source_indices.clone()))
+                    && (label.clone() != "".to_string())
+                {
+                    match lookup_type_by_name(env.clone(), label.clone()) {
+                        std::option::Option::None => true,
+                        Some(_) => false,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
 }
 
 pub fn declared_callable_list_element(
