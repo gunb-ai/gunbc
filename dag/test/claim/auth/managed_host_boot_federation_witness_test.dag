@@ -1,0 +1,156 @@
+module test.claim.managed_host_boot_federation_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.managed_host { managed_host_fixture, managed_hosts }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.managed_host_boot_federation {
+  ManagedHostBootFederation, ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationUnprovisioned,
+  BootFederationHostNotManaged, BootFederationHostUnbound, BootFederationNoPolicy,
+  admit_boot_federation, boot_federation_for, provisioned_boot_federations,
+  boot_federation_claims_admitted, boot_federation_attribute_condition, boot_federation_principal_set,
+  boot_federation_provider_resource, boot_federation_service_account_member,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ADMITTED FEDERATION FOR ONE HOST, or nothing: every claim below reads the real admission.
+fn admitted(s: ManagedHostBootFederationStanding) -> ManagedHostBootFederation? {
+  match s {
+    BootFederationProvisioned { federation: f } => Present { value: f }
+    BootFederationUnprovisioned { host: _, cause: _ } => none
+  }
+}
+
+fn mtcollins1_federation() -> ManagedHostBootFederation? {
+  admitted(s: boot_federation_for(host: operator_host_mtcollins1))
+}
+
+// THE INHABITANCE CLAIM, AND RULING (b)'S BYTES. mtcollins1 is the one provisioned pair; it is
+// admitted through its ManagedHost row and carries the LIVE names unchanged -- pool, provider,
+// account, environment and the provider resource the workflow's WIF step names. A renamed id is a
+// different GCP or GitHub object, so each is compared to the live spelling, not to the module.
+test fn w_mtcollins1_is_the_one_provisioned_pair_under_its_live_names() -> Bool {
+  (provisioned_boot_federations() |> count) == 1
+    && match mtcollins1_federation() {
+      Absent => false
+      Present { value: f } =>
+      (f.host as String) == (operator_host_mtcollins1 as String)
+        && (f.names.pool_id as String) == "github-mtcollins1-boot"
+        && (f.names.provider_id as String) == "github-mtcollins1-boot-oidc"
+        && (f.names.service_account_id as String) == "mtcollins1-boot"
+        && (f.names.service_account as String) == "mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com"
+        && (f.names.environment as String) == "mtcollins1-boot"
+        && boot_federation_provider_resource(f: f) == "projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc"
+        && boot_federation_service_account_member(f: f) == "serviceAccount:mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com"
+    }
+}
+
+// ── The federation: only this workflow, at main, dispatched, in the boot environment ───────────
+fn with_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr, value: String) -> List<OidcClaimPin> {
+  concat(filter(claims, c => (c.claim as String) != (claim as String)), [OidcClaimPin { claim: claim, value: value }])
+}
+
+fn without_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr) -> List<OidcClaimPin> {
+  filter(claims, c => (c.claim as String) != (claim as String))
+}
+
+// THE CONTROL: the boot job's own token is admitted. THE REDS: another workflow file, another ref,
+// a pull_request event, another environment, and a job with no environment (every other job in
+// fleet-converge.yml) are each refused -- one claim changed at a time, so each red is attributable.
+test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> Bool {
+  match mtcollins1_federation() {
+    Absent => false
+    Present { value: f } => {
+    let c = f.claim_pins
+    boot_federation_claims_admitted(f: f, claims: c)
+      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
+      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "ref", value: "refs/heads/feature"))
+      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
+      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "event_name", value: "pull_request"))
+      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "environment", value: "production"))
+      && !boot_federation_claims_admitted(f: f, claims: without_claim(claims: c, claim: "environment"))
+  }
+  }
+}
+
+// THE PROVISIONED CONDITION IS THE ADMISSION'S OWN PINS: every pin appears in the CEL string GCP
+// stores, so the refusal above is the provider's, not a second description of it.
+test fn the_provider_condition_carries_every_pin() -> Bool {
+  match mtcollins1_federation() {
+    Absent => false
+    Present { value: f } => {
+    let cond = boot_federation_attribute_condition(f: f)
+    all(f.claim_pins, p => string_contains(s: cond, pattern: join(["assertion.", p.claim as String, " == '", p.value, "'"], "")))
+      && string_contains(s: cond, pattern: "fleet-converge.yml@refs/heads/main")
+      && string_contains(s: cond, pattern: "assertion.environment == 'mtcollins1-boot'")
+  }
+  }
+}
+
+// EXACTLY TWO CELLS, EACH ON ONE PINNED VERSION, UNDER THE PROVISIONED TITLES, AND THE IMPERSONATION
+// MEMBER IS THE DEDICATED POOL, never the repository pool. The BMC cell is the row's secured
+// credential version; the titles and description are the strings the cells were provisioned with.
+fn grant_is_version_pinned(g: SecretAccessGrant) -> Bool {
+  match g.condition {
+    Present { value: c } => string_contains(s: c.expression, pattern: join(["/secrets/", g.target.secret as String, "/versions/", g.target.version as String, "\""], ""))
+      && (match c.description { Present { value: d } => d == "gunbc.auth.mtcollins1_boot_federation: the one version the mtcollins1 boot job reads"  Absent => false })
+    Absent => false
+  }
+}
+
+fn grant_titled(g: SecretAccessGrant, title: String) -> Bool {
+  match g.condition {
+    Present { value: c } => c.title == title
+    Absent => false
+  }
+}
+
+test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_pool() -> Bool {
+  match mtcollins1_federation() {
+    Absent => false
+    Present { value: f } => {
+    let gs = f.secret_grants
+    (gs |> count) == 2
+      && all(gs, g => grant_is_version_pinned(g: g))
+      && any(gs, g => grant_titled(g: g, title: "mtcollins1-boot pinned bmc-mtcollins1-gunbc v2"))
+      && any(gs, g => grant_titled(g: g, title: "mtcollins1-boot pinned fleet-automation-ssh-key v1"))
+      && !any(gs, g => (g.target.secret as String) == "approval-submission-mac-key")
+      && string_contains(s: boot_federation_principal_set(f: f), pattern: "/workloadIdentityPools/github-mtcollins1-boot/*")
+      && !string_contains(s: boot_federation_principal_set(f: f), pattern: "/workloadIdentityPools/github-actions/")
+  }
+  }
+}
+
+// RED, SAME PATH: A MANAGED HOST WITH NO BOOT POLICY. The real row's standings are kept under a host
+// name the binding table has no names for; it binds, so admission reaches the policy lookup and
+// refuses it there as unprovisioned. A consumer reading this standing gets no federation to use.
+test fn w_a_bound_host_with_no_boot_policy_is_unprovisioned() -> Bool {
+  managed_hosts() |> all(h => {
+    let renamed = managed_host_fixture(host: "fixture-unprovisioned-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    match admit_boot_federation(host: renamed) {
+      BootFederationUnprovisioned { host: x, cause: c } => (x as String) == "fixture-unprovisioned-host" && match c {
+        BootFederationNoPolicy => true
+        BootFederationHostNotManaged => false
+        BootFederationHostUnbound { standing: _ } => false
+      }
+      BootFederationProvisioned { federation: _ } => false
+    }
+  }) && (managed_hosts() |> count) == 1
+}
+
+// RED: A HOST THAT IS NOT A MANAGED HOST. srv1 is an executor fleet host with no controller row, so
+// it is unprovisioned by that cause, never booted with defaults.
+test fn w_a_host_that_is_not_managed_is_unprovisioned() -> Bool {
+  match boot_federation_for(host: operator_host_srv1) {
+    BootFederationUnprovisioned { host: x, cause: c } => (x as String) == (operator_host_srv1 as String) && match c {
+      BootFederationHostNotManaged => true
+      BootFederationNoPolicy => false
+      BootFederationHostUnbound { standing: _ } => false
+    }
+    BootFederationProvisioned { federation: _ } => false
+  }
+}

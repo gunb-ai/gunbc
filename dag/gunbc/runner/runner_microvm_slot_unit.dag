@@ -1,17 +1,23 @@
 module gunbc.runner_microvm_slot_unit
 
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, identity_is_workspace_execution_member }
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_credential_id, workspace_commissioning_submitter_credential_prefix }
+
+import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SliceUnitFile, SystemdServiceDirective,
   Description, After, Wants,
   ServiceType, ExecMode,
-  ServiceUser, ServiceSlice, WorkingDirectory, Environment, ExecStart, Restart, TimeoutStopSec,
+  ServiceUser, ServiceSlice, WorkingDirectory, Environment, LoadCredential, ExecStart, Restart, TimeoutStopSec,
   ServiceExitType, ServiceKillMode,
   Installable, NotInstallable, WantedBy,
   slice_memory_max, slice_memory_high, slice_memory_swap_max,
   systemd_instance_name_specifier,
   serialize_systemd_unit_file,
+  RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner_slot_allocation { microvm_controller_slice_memory_max }
@@ -73,9 +79,6 @@ fn microvm_slot_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", microvm_slot_unit_template_name as String], "") as NonEmptyStr
 }
 
-fn microvm_slot_unit_instance_name(slot_instance: String) -> NonEmptyStr {
-  join(["gunbc-microvm-slot@", slot_instance, ".service"], "") as NonEmptyStr
-}
 
 // THE RELEASE LOCUS IS THE live_deploy ONE, PARAMETERIZED BY OWNER (parent ruling on this lane,
 // 2026-09-21): releases/<sha>/ under this root holds the gunbc binary, the .dag corpus, the v2
@@ -275,6 +278,8 @@ fn microvm_slot_unit_file(release_dir: String, timeout_stop_sec: String) -> Syst
         WorkingDirectory { path: release_dir as NonEmptyStr },
         Environment { assignment: join([microvm_slot_env_name, "=", systemd_instance_name_specifier], "") as NonEmptyStr },
         Environment { assignment: join([microvm_release_dir_env_name, "=", release_dir], "") as NonEmptyStr },
+        LoadCredential { identifier: workspace_launch_credential_id, source: join([workspace_launch_credential_prefix, systemd_instance_name_specifier], "") as NonEmptyStr },
+        LoadCredential { identifier: workspace_commissioning_submitter_credential_id, source: join([workspace_commissioning_submitter_credential_prefix, systemd_instance_name_specifier], "") as NonEmptyStr },
         ExecStart { command: microvm_slot_unit_execstart(release_dir: release_dir) },
         Restart { policy: "no" as NonEmptyStr },
       ],
@@ -301,11 +306,46 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
       fold(directives, init: false, f: (acc, d) => acc || match d {
         ExecStart { command: c } =>
           string_contains(s: c as String, pattern: join(["--function ", microvm_slot_controller_entry_function], ""))
-        _ => false
+        RuntimeMaxSec { duration: _ } => false
+        ServiceType { mode: _ } => false
+        RemainAfterExit { active: _ } => false
+        ExecStartPre { command: _ } => false
+        ExecStartPost { command: _ } => false
+        ExecStop { command: _ } => false
+        ExecStopPost { command: _ } => false
+        ExecStopPostIgnoringFailure { command: _ } => false
+        ServiceStandardOutput { stream: _ } => false
+        ServiceStandardError { stream: _ } => false
+        Restart { policy: _ } => false
+        Environment { assignment: _ } => false
+        LoadCredential { identifier: _, source: _ } => false
+        EnvironmentFile { path: _ } => false
+        EnvironmentFileIfPresent { path: _ } => false
+        WorkingDirectory { path: _ } => false
+        ServiceUser { name: _ } => false
+        ServiceGroup { name: _ } => false
+        ServiceSlice { name: _ } => false
+        ServiceNice { priority: _ } => false
+        ServiceIoSchedulingClass { scheduling_class: _ } => false
+        TimeoutStartSec { duration: _ } => false
+        ServiceExitType { exit_type: _ } => false
+        ServiceKillMode { mode: _ } => false
+        RestartSec { duration: _ } => false
+        ServiceTasksMax { count: _ } => false
+        TimeoutStopSec { duration: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
     SliceUnitFile { unit: _, slice: _, install: _ } => false
   }
+}
+
+// A nonabsolute credential identifier uses systemd's credstore search and is optional when absent.
+// The manager snapshots JSON data per invocation; it never evaluates it as process environment.
+data workspace_launch_credential_id: NonEmptyStr = "workspace-launch"
+data workspace_launch_credential_prefix: String = "gunbc-workspace-"
+
+fn workspace_launch_credential_source_path(instance: String) -> String {
+  join(["/etc/credstore/", workspace_launch_credential_prefix, instance], "")
 }
 
 // THE SHAKEDOWN CELL'S BROKER UNIT: THE ROOT PROCESS THAT RESERVES THE CELL THE CONTROLLER LATER
@@ -380,4 +420,10 @@ fn microvm_slot_reserve_unit_file(release_dir: String) -> SystemdUnitFile {
     ],
     install: NotInstallable,
   }
+}
+
+// Installation must not recreate the CI reservation source after the shared purpose authority
+// transfers its dedicated slot to workspace use. Existing installed residue needs retirement.
+fn microvm_controller_requires_ci_reservation_unit() -> Bool {
+  !identity_is_workspace_execution_member(identity: srv1_microvm_shakedown_slot())
 }

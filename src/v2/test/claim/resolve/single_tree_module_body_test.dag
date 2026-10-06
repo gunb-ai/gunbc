@@ -9,9 +9,8 @@ import v2.std.collection { map_lookup }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_spine_node }
 import v2.std.node_query { binder_edge }
 

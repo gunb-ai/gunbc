@@ -1,7 +1,7 @@
 module gunbc.spark.vllm_observed
 
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   json_object_unique_member,
@@ -11,9 +11,9 @@ import extdeps.languages.json.number {
   JsonNumberValueRead, JsonValueIsNotANumber, read_json_number_value,
   json_number_fragment_refusal_text,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
-import gunbc.fleet_intent_network { operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv6 }
 import extdeps.vllm.server {
   VllmRoute,
   VllmRoutePopulation,
@@ -533,7 +533,11 @@ fn vllm_models_entry_id(entry: JsonValue) -> VllmModelsEntryIdReading {
     JsonMemberFound { value: idv } =>
       match idv {
         JsonString { value: sv } => EntryIdRead { id: sv }
-        _ => EntryIdUnreadable
+        JsonNull => EntryIdUnreadable
+        JsonBool { value: _ } => EntryIdUnreadable
+        JsonNumber { lexeme: _ } => EntryIdUnreadable
+        JsonArray { elements: _ } => EntryIdUnreadable
+        JsonObject { members: _ } => EntryIdUnreadable
       }
     JsonMemberAbsent => EntryIdUnreadable
     JsonMemberDuplicated { count: _ } => EntryIdUnreadable
@@ -554,7 +558,11 @@ fn vllm_models_data_standing(doc: JsonValue) -> VllmModelsDataStanding {
     JsonMemberFound { value: d } =>
       match d {
         JsonArray { elements: els } => ModelsDataEntries { entries: els }
-        _ => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonNull => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonBool { value: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonNumber { lexeme: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonString { value: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonObject { members: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
       }
     JsonMemberAbsent => ModelsDataUnreadable { cause: "the document carries no data member" as NonEmptyStr }
     JsonMemberDuplicated { count: n } =>
@@ -701,7 +709,31 @@ fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonE
                   }
               }
           }
-        _ =>
+        JsonNull =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonBool { value: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonNumber { lexeme: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonArray { elements: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonObject { members: _ } =>
           ModelsRouteFieldUnreadable {
             served_model_id: served_model_id,
             field: "root" as NonEmptyStr,

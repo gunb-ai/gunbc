@@ -1,0 +1,38 @@
+module gunbc.fabric_storage_state_auth_io
+
+import std.types { String, Timestamp, NonEmptyStr }
+import extdeps.shell
+import gunbc.auth.mac_keyring { read_mac_keyring, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRead, ApprovalKeyFileUnreadable }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fabric_storage_state_auth { fabric_state_key_path, fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestReading, FabricStateRequestRefused }
+
+// Deployment-owned configuration permits isolated served tests without touching host credentials.
+// An invalid configured path refuses; it never falls back to the installed credential.
+fn fabric_state_keyring() -> ApprovalKeyringRead {
+  match shell.Env.Get(name: "GUNBC_FABRIC_STATE_KEY_FILE").value {
+    Absent => read_mac_keyring(path: fabric_state_key_path, key_id: fabric_state_key_id)
+    Present { value: path } => if !starts_with(s: path, prefix: "/") {
+      ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: fabric_state_key_path, error: "configured state credential path must be absolute" } }
+    } else { read_mac_keyring(path: path as NonEmptyStr, key_id: fabric_state_key_id) }
+  }
+}
+
+fn fabric_state_signed_request(operation: String, request: String) -> String? {
+  match fabric_state_keyring() {
+    ApprovalKeyringRefused { cause: _ } => none
+    ApprovalKeyLoaded { key } => match clock_now_probed_at() {
+      Absent => none
+      Present { value: now } => fabric_state_sign(key: key, operation: operation, request: request, issued_at: now as Timestamp)
+    }
+  }
+}
+
+fn fabric_state_verified_request(body: String) -> FabricStateRequestReading {
+  match fabric_state_keyring() {
+    ApprovalKeyringRefused { cause: _ } => FabricStateRequestRefused
+    ApprovalKeyLoaded { key } => match clock_now_probed_at() {
+      Absent => FabricStateRequestRefused
+      Present { value: now } => fabric_state_verify(key: key, body: body, now: now as Timestamp)
+    }
+  }
+}

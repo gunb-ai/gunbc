@@ -11,9 +11,15 @@ type ReduceVerdict
 fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   match a {
     Unknown { missing: ma } => Unknown { missing: ma }
-    _ => match b {
+    Reduced { last_parts: _ } => match b {
       Unknown { missing: mb } => Unknown { missing: mb }
-      _ => b
+      Reduced { last_parts: _ } => b
+      Irreducible { witness: _ } => b
+    }
+    Irreducible { witness: _ } => match b {
+      Unknown { missing: mb } => Unknown { missing: mb }
+      Reduced { last_parts: _ } => b
+      Irreducible { witness: _ } => b
     }
   }
 }
@@ -51,11 +57,8 @@ fn fold_located_verdict(acc: LocatedVerdictFoldAcc, next: ReduceVerdict) -> Loca
   if acc.started {
     match acc.verdict {
       Unknown { missing: _ } => acc
-      _ =>
-        LocatedVerdictFoldAcc {
-          started: true,
-          verdict: reduce_verdict_combine(a: acc.verdict, b: next)
-        }
+      Reduced { last_parts: _ } => LocatedVerdictFoldAcc { started: true, verdict: reduce_verdict_combine(a: acc.verdict, b: next) }
+      Irreducible { witness: _ } => LocatedVerdictFoldAcc { started: true, verdict: reduce_verdict_combine(a: acc.verdict, b: next) }
     }
   } else {
     LocatedVerdictFoldAcc { started: true, verdict: next }

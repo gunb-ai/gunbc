@@ -32,6 +32,7 @@ import gunbc.scm.object_table_json { encode_object_table }
 import gunbc.scm.repository_convert {
   RepositoryConvertWritePlan,
   RepositoryConvertNoOpPlan,
+  RepositoryConvertShardedPlan,
   RepositoryConvertRefusePlan,
   RepositoryConvertReadVersionUnreadable,
   RepositoryConvertReadVersionRefused,
@@ -42,6 +43,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   encode_repository,
   encode_repository_v7,
+  encode_repository_v8,
   encode_optional_reference,
   encode_optional_manifest_reference,
   repository_envelope_format_tag,
@@ -67,14 +69,27 @@ fn convert_scene_repository(build: MbBuild) -> RepositoryEnvelope? {
   }
 }
 
-// THE v7 PLANT IS THE INDEX DOCUMENT THE SHARDED WRITER EMITS. A second conversion wake-up over it
+// THE v8 PLANT IS THE INDEX DOCUMENT THE SHARDED WRITER EMITS. A second conversion wake-up over it
 // must plan no write -- the typed no-op that makes the entry idempotent.
-test fn a_v7_index_plans_no_write() -> Bool {
+test fn a_v8_index_plans_no_write() -> Bool {
+  match convert_scene_repository(build: convert_scene()) {
+    Absent => false
+    Present { value: repo } =>
+      match repository_convert_plan(v: encode_repository_v8(repo: repo)) {
+        RepositoryConvertNoOpPlan => true
+        _ => false
+      }
+  }
+}
+
+// THE v7 PLANT HAS NO OBJECT ROSTER, so it plans the sharded migration naming the tag it found: the
+// shell then loads it whole once and re-saves it as v8 (the plan is pure, so the load is the shell's).
+test fn a_v7_index_plans_the_roster_migration() -> Bool {
   match convert_scene_repository(build: convert_scene()) {
     Absent => false
     Present { value: repo } =>
       match repository_convert_plan(v: encode_repository_v7(repo: repo)) {
-        RepositoryConvertNoOpPlan => true
+        RepositoryConvertShardedPlan { from_format } => from_format == "gunbc-scm-repository-v7"
         _ => false
       }
   }
@@ -241,10 +256,10 @@ test fn a_retired_v3_document_is_version_refused_with_its_tag() -> Bool {
 // observed tag is the honest whole answer.
 test fn an_unknown_format_is_version_refused_with_the_tag_it_found() -> Bool {
   match repository_convert_plan(v: json_object(members: [
-    json_kv(key: "format", value: json_string(s: "gunbc-scm-repository-v9")),
+    json_kv(key: "format", value: json_string(s: "gunbc-scm-repository-v99")),
   ])) {
     RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found } } =>
-      found == "gunbc-scm-repository-v9"
+      found == "gunbc-scm-repository-v99"
     _ => false
   }
 }

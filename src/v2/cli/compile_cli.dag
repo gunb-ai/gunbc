@@ -12,6 +12,13 @@ import v2.compiler.self_host.closure_emission {
   emit_closure_from_ingest_located
 }
 import v2.compiler.source_authority { SourceRootIngest, source_root_ingest_from_files }
+import v2.cli.if_arm_reader_differential {
+  IardCensus,
+  IardCensusTaken,
+  IardGrammarUnprepared,
+  if_arm_reader_differential,
+  if_arm_reader_differential_text
+}
 import gunbc.source_root_read { source_root_read, SourceRootFilesRead, SourceRootFilesRefused }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -26,7 +33,7 @@ import v2.std.lens_verdict {
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
 
@@ -135,6 +142,7 @@ fn cli_emit_target_roster_text() -> String {
 
 type CliVerb
   = CliEmitClosure { entry: String, source_roots: FreeMonoid<String>, target: CliEmitTarget }
+  | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
 
 // A PLAN IS PARSED OR IT IS REFUSED, and the refusal carries its own reason symbol rather than a
 // rendered sentence, so the host renders it once and a witness can discriminate on the CAUSE. A
@@ -156,6 +164,8 @@ type CliParseState
   | CliParseSeekRootValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekEntryValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekTargetValue { entry: String, roots: FreeMonoid<String> }
+  | CliParseSeekDifferentialOption { roots: FreeMonoid<String> }
+  | CliParseSeekDifferentialRootValue { roots: FreeMonoid<String> }
   | CliParseFailed { reason: Symbol, detail: String }
 
 data cli_option_source_root: String = "--source-root"
@@ -166,7 +176,14 @@ data cli_option_target: String = "--target"
 
 data cli_verb_emit: String = "emit"
 
+// THE NESTED-IF ARM-READER DIFFERENTIAL (v2.cli.if_arm_reader_differential). Named for exactly what
+// it measures so it does not read as the general census, which lives on the native driver
+// (v2.compiler.compile). It takes source roots only, and is deleted with its module.
+data cli_verb_if_arm_reader_differential: String = "if-arm-reader-differential"
+
 data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]"
+
+data cli_differential_usage: String = "usage: <binary> if-arm-reader-differential --source-root <dir> [--source-root <dir>]..."
 
 fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
   match state {
@@ -175,11 +192,31 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
     CliParseSeekVerb =>
       if arg == cli_verb_emit {
         CliParseSeekOption { entry: "", roots: Empty, target: cli_default_emit_target }
+      } else if arg == cli_verb_if_arm_reader_differential {
+        CliParseSeekDifferentialOption { roots: Empty }
       } else {
         CliParseFailed {
           reason: ^cli_unknown_verb,
           detail: concat(concat("unknown verb ", arg), concat(" -- ", cli_usage))
         }
+      }
+    CliParseSeekDifferentialOption { roots: roots } =>
+      if arg == cli_option_source_root {
+        CliParseSeekDifferentialRootValue { roots: roots }
+      } else {
+        CliParseFailed {
+          reason: ^cli_unknown_option,
+          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_differential_usage))
+        }
+      }
+    CliParseSeekDifferentialRootValue { roots: roots } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_source_root_missing_value,
+          detail: concat(cli_option_source_root, " takes a directory, and an option followed it")
+        }
+      } else {
+        CliParseSeekDifferentialOption { roots: Cons { head: arg, tail: roots } }
       }
     CliParseSeekRootValue { entry: entry, roots: roots, target: target } =>
       if cli_arg_is_option(arg: arg) {
@@ -263,6 +300,20 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
       }
+    CliParseSeekDifferentialRootValue { roots: _ } =>
+      CliPlanRefused {
+        reason: ^cli_source_root_missing_value,
+        detail: concat(cli_option_source_root, " takes a directory, and none followed it")
+      }
+    CliParseSeekDifferentialOption { roots: roots } =>
+      if length(xs: roots) == 0 {
+        CliPlanRefused {
+          reason: ^cli_no_source_root,
+          detail: concat("if-arm-reader-differential needs at least one source root -- ", cli_differential_usage)
+        }
+      } else {
+        CliPlanParsed { verb: CliIfArmReaderDifferential { source_roots: list_reverse(xs: roots) } }
+      }
     CliParseSeekOption { entry: entry, roots: roots, target: target } =>
       if length(xs: roots) == 0 {
         CliPlanRefused {
@@ -300,6 +351,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
     CliPlanParsed { verb: verb } =>
       match verb {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
+        CliIfArmReaderDifferential { source_roots: roots } => roots
       }
   }
 }
@@ -309,6 +361,7 @@ type CliRunOutcome
   | CliRunRefused { reason: Symbol, detail: String }
   | CliCensusRefused { reason: Symbol, detail: String, text: String }
   | CliUsageRefused { reason: Symbol, detail: String }
+  | CliDifferentialReported { text: String, observed: Bool, detail: String }
 
 // THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
 // CARRIED `d.head.reason` (now the FATAL reason -- the head was the first advisory that happened
@@ -349,6 +402,15 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
       CliUsageRefused { reason: reason, detail: detail }
     CliPlanParsed { verb: verb } =>
       match verb {
+        CliIfArmReaderDifferential { source_roots: _ } =>
+          if length(xs: ingest) == 0 {
+            CliRunRefused {
+              reason: ^cli_empty_ingest,
+              detail: "the source roots walked to zero .dag files; a census over nothing is not a census of zero"
+            }
+          } else {
+            cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
+          }
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
           if length(xs: ingest) == 0 {
             CliRunRefused {
@@ -389,6 +451,27 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                 }
             }
           }
+      }
+  }
+}
+
+// THE DIFFERENTIAL'S STATUS IS WHETHER THE POPULATION WAS WHOLLY OBSERVED, NEVER HOW MANY SITES
+// DIFFER: the differing sites are the finding, not a failure. A file the census could not parse, or a
+// grammar that did not prepare, leaves the population incomplete, and that fails the process so a
+// partial count cannot be read as the whole one.
+fn cli_if_arm_reader_differential_outcome(census: IardCensus) -> CliRunOutcome {
+  match census {
+    IardGrammarUnprepared { reason: _ } =>
+      CliDifferentialReported {
+        text: if_arm_reader_differential_text(c: census),
+        observed: false,
+        detail: "the grammar did not prepare; no site was observed"
+      }
+    IardCensusTaken { tally: t } =>
+      CliDifferentialReported {
+        text: if_arm_reader_differential_text(c: census),
+        observed: t.files_refused == 0,
+        detail: "some files did not parse; their sites are unobserved (see file_refused rows)"
       }
   }
 }
@@ -437,6 +520,8 @@ fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
     CliCensusRefused { reason: _, detail: detail, text: _ } => exit_failure(reason: detail)
     CliUsageRefused { reason: _, detail: detail } =>
       ExitFailure { code: exit_code_misuse, reason: detail }
+    CliDifferentialReported { text: _, observed: observed, detail: detail } =>
+      if observed { ExitSuccess } else { exit_failure(reason: detail) }
   }
 }
 
@@ -446,6 +531,7 @@ fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
     CliRunRefused { reason: _, detail: _ } => ""
     CliCensusRefused { reason: _, detail: _, text: text } => text
     CliUsageRefused { reason: _, detail: _ } => ""
+    CliDifferentialReported { text: text, observed: _, detail: _ } => text
   }
 }
 

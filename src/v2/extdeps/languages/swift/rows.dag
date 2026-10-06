@@ -2,14 +2,14 @@ module v2.extdeps.languages.swift.rows
 
 import std.types { String, List, Bool, Int }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.algebra { list_append, length }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
 import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar {
   FormalProduction, FormalGrammarSymbol,
@@ -408,7 +408,7 @@ fn swift_rows_emit_source_file(f: SwiftSourceFile) -> SwiftRowEmission {
     Holds { value: row } =>
       match target_serialize_derived_row_bounded(remaining: 4096, target: swift_row_target_model(row: row), row: row) {
         Accepted { value: text, diagnostics: _ } => SwiftRowEmitted { source: render_target_text(t: text) }
-        Rejected { diagnostics: d } => SwiftRowEmissionRefused { reason: d.head.reason }
+        Rejected { diagnostics: d } => SwiftRowEmissionRefused { reason: diagnostics_fatal_reason(d: d) }
       }
     Violates { diagnostic: d } => SwiftRowEmissionRefused { reason: d.reason }
   }
@@ -727,10 +727,15 @@ fn swl_pattern(p: SwiftPattern) -> Node {
 fn swl_stmt_has_block(s: SwiftStmt) -> Bool {
   match s {
     SwiftExpressionStmt { expr: _ } => false
+    SwiftDeclarationStmt { decl: d } => swl_decl_has_body(d: d)
     SwiftReturnStmt { value: _ } => false
     SwiftThrowStmt { value: _ } => false
-    SwiftDeclarationStmt { decl: d } => swl_decl_has_body(d: d)
-    _ => true
+    SwiftIfStmt { conditions: _, statements: _, else_clause: _ } => true
+    SwiftGuardStmt { conditions: _, else_statements: _ } => true
+    SwiftForInStmt { pattern: _, sequence: _, statements: _ } => true
+    SwiftSwitchStmt { subject: _, cases: _ } => true
+    SwiftDoStmt { statements: _, catches: _ } => true
+    SwiftCommentedStmt { comments: _, stmt: _ } => true
   }
 }
 
@@ -822,17 +827,31 @@ fn swl_decl_has_body(d: SwiftDecl) -> Bool {
   match d {
     SwiftImportDecl { attributes: _, module_name: _ } => false
     SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: _ } => false
+    SwiftComputedPropertyDecl { attributes: _, modifiers: _, name: _, property_type: _, getter: _ } => true
+    SwiftFunctionDecl { attributes: _, modifiers: _, name: _, parameters: _, is_async: _, throws: _, result: _, body: _ } => true
+    SwiftInitializerDecl { modifiers: _, parameters: _, throws: _, body: _ } => true
+    SwiftStructDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => true
+    SwiftClassDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => true
+    SwiftEnumDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => true
     SwiftEnumCaseDecl { elements: _ } => false
+    SwiftExtensionDecl { extended: _, inherits: _, members: _ } => true
     SwiftCommentedDecl { comments: _, decl: x } => swl_decl_has_body(d: x)
-    _ => true
   }
 }
 
 fn swl_decl_is_import(d: SwiftDecl) -> Bool {
   match d {
     SwiftImportDecl { attributes: _, module_name: _ } => true
+    SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: _ } => false
+    SwiftComputedPropertyDecl { attributes: _, modifiers: _, name: _, property_type: _, getter: _ } => false
+    SwiftFunctionDecl { attributes: _, modifiers: _, name: _, parameters: _, is_async: _, throws: _, result: _, body: _ } => false
+    SwiftInitializerDecl { modifiers: _, parameters: _, throws: _, body: _ } => false
+    SwiftStructDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => false
+    SwiftClassDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => false
+    SwiftEnumDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => false
+    SwiftEnumCaseDecl { elements: _ } => false
+    SwiftExtensionDecl { extended: _, inherits: _, members: _ } => false
     SwiftCommentedDecl { comments: _, decl: x } => swl_decl_is_import(d: x)
-    _ => false
   }
 }
 

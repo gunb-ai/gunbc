@@ -5,9 +5,8 @@ import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Disj, Authored, Node, Positional, Symbol, TypeNode, node_subtree_nodes, StructuralLabel }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.witness { Holds, Violates }
 import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }

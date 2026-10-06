@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
 import std.integer { UInt8, qualified_octet_members }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_decode_lower }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }

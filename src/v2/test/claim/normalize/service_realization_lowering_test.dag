@@ -14,10 +14,9 @@ import v2.std.service_realization_labels {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.collection { List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.text { String }
 import v2.std.node { Ambiguous, Found, Node, Symbol, named_edge_target_lookup, symbol_intern_lexeme }

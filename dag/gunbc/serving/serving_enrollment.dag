@@ -2,11 +2,11 @@ module gunbc.serving.serving_enrollment
 
 import std.types { String, NonEmptyStr, List, Port }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
-import gunbc.spark.group_b_serving_capacity { group_b_route_offer }
+import gunbc.spark.group_b_serving_capacity { group_b_route_offer, group_b_restoration_serve_port }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.fabric_serving_assignment {
@@ -173,12 +173,12 @@ fn serving_route_head(group: FabricGroup) -> FabricServingHead {
 }
 
 // BOTH ROUTES HAND BACK A Port READ FROM THE SIDE THAT LAUNCHES THEM: group A from the observed pair
-// launch, group B from the profile of the arm converged on it, which is the value its launch argv
+// launch, group B from the capacity module's port row, which the executable profile it launches
 // renders as --port.
 fn serving_route_port(group: FabricGroup) -> Port {
   match group {
     FabricGroupA => spark_pair_serve_port
-    FabricGroupB => glm_group_b_serving_assignment.profile.serve_port
+    FabricGroupB => group_b_restoration_serve_port
   }
 }
 

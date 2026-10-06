@@ -1,15 +1,15 @@
 module v2.std.timeseries_signal
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.optional {
+import std.optional {
   Optional,
   Absent,
   Present
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, invariant_port_locus }
 import v2.std.integer { Int, int_add, int_div, int_mul }
-import v2.std.logic { Bool }
 import std.measure {
   Measure,
   Capacitance,

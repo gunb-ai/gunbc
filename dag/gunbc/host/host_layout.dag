@@ -1,17 +1,13 @@
 module gunbc.host_layout
 
 import std.types { String, NonEmptyStr, FilePath }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
+import gunbc.managed_directory { ManagedDirectory, attempt_state_directory_at }
 import gunbc.provider_account {
   codex_account_state_root,
   codex_roadmap_account_selection,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.codex_runtime_paths {
   srv1_codex_runtime_release_root,
   codex_bundled_executable_at_current_link,
@@ -91,6 +87,13 @@ data srv1_dispatch_worktree_root: FilePath = "/opt/gunbc/dispatch-worktrees" as 
 data operator_home_root: FilePath = "/home/briansrls" as FilePath
 
 data srv1_dispatch_attempt_state_root: FilePath = "/opt/gunbc/attempt-state" as FilePath
+
+// SRV1'S PLACEMENT OF THE ATTEMPT-STATE DIRECTORY ROW: what the directory requires is stated once,
+// in gunbc.managed_directory attempt_state_directory_at; only its location is srv1's, and that is
+// this module's fact.
+fn srv1_attempt_state_directory() -> ManagedDirectory {
+  attempt_state_directory_at(path: srv1_dispatch_attempt_state_root)
+}
 
 // THE BUILD SERVICE'S HOST ROOT JOINS THIS AUTHORITY BEFORE ITS FIRST CONSUMER EXISTS, which is the
 // whole point of the ordering. srv1_dispatch_attempt_state_root joined it AFTER an incident

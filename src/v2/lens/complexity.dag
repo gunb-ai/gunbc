@@ -1,4 +1,5 @@
 module v2.lens.complexity
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -32,7 +33,6 @@ import v2.lens.cost {
   cost_lens
 }
 import std.algebra { Empty }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   AmbiguousIntent,
@@ -201,7 +201,47 @@ fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityAssessment {
   match cost {
     UnknownCost { diagnostic: d } =>
       incomplete_complexity_with_diagnostic(diagnostic: d)
-    _ =>
+    ConstantCost { value: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    LinearCost { variable: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    LogCost { variable: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    PolynomialCost { variable: _, degree: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    PolyLogCost { variable: _, exponent: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    ExponentialCost { variable: _, base: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    FactorialCost { variable: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    SumCost { lhs: _, rhs: _ } =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+    ProductCost { lhs: _, rhs: _ } =>
       complexity_bound_from_sized_class(
         class: asymptotic_class_of_cost(cost: cost),
         variables: complexity_variables_from_cost(cost: cost)
@@ -269,7 +309,7 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
     ConstantComplexity =>
       match b {
         ConstantComplexity => true
-        _ => false
+        SizedComplexity { class: _, variables: _ } => false
       }
     SizedComplexity { class: ac, variables: av } =>
       match b {

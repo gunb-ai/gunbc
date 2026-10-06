@@ -13,7 +13,6 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.compiler.emit_produced { emit_produced_decl }
 import v2.compiler.infer { infer }
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
@@ -46,8 +45,9 @@ import v2.std.node {
   core_edge_label,
 }
 import v2.std.text { String }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.type_binder {
+  type_binder_set_children,
   OpaqueTypeDecl,
   TypeAlias,
   GenericTypeDecl,
@@ -265,7 +265,7 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
         label: core_edge_label(marker: TypeParamsEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
-          children: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) })
+          children: type_binder_set_children(binders: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) }), source: node_synthetic(kind: TypeNode { connective: Conj }, children: []))
         )
       },
       Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one() }
@@ -379,7 +379,7 @@ fn tpb_with_type_param(decl: Node) -> Node {
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
             label: core_edge_label(marker: TypeParamsEdge),
-            target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+            target: tpb_t_binders()
           }])
         )
       }])
@@ -522,7 +522,7 @@ fn tpb_box_disj() -> Node {
 }
 
 fn tpb_t_binders() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+  node_synthetic(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: [tpb_binder_edge(name: ^T)], source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])))
 }
 
 // The declaration target the real lowering writes (v2.std.type_binder type_decl_wrapper) for a
@@ -802,9 +802,9 @@ fn tpb_index_descends(target: Node) -> Bool {
 // wrapper, which keeps the binders -- and does descend into a member wrapper's member
 // (v2.compiler.symbol_index_fill symbol_index_declared), over supplied wrappers.
 test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
-  let alias = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
-  !tpb_index_descends(target: alias)
-    && (symbol_index_declared(target: alias).bound == alias)
+  let alias_value = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
+  !tpb_index_descends(target: alias_value)
+    && (symbol_index_declared(target: alias_value).bound == alias_value)
     && !tpb_index_descends(target: type_opaque_wrapper(binders: tpb_t_binders()))
     && tpb_index_descends(target: tpb_box_member(with_params: true))
 }
@@ -848,3 +848,5 @@ test fn tpb_generic_nullary_coproduct_classifies_as_nullary() -> Bool {
   count(tpb_generic_member(o: tpb_type_decl_nullary_tag())) == 1
     && fold(tpb_generic_member(o: tpb_type_decl_nullary_tag()), init: true, f: fn(acc, m) { acc && tpb_member_is_nullary_enum(m: m) })
 }
+
+

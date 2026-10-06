@@ -1,5 +1,6 @@
 module v2.test.execution.infer_product_introduction
 
+import std.types { List }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -19,11 +20,10 @@ import v2.extdeps.languages.dag {
   dag_int_inhabitant_node
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.std.node {
   StructuralLabel,
@@ -42,7 +42,7 @@ import v2.std.node {
 }
 import v2.std.text { String }
 import std.algebra { list_snoc_item }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.node_query { BinderParts, binder_node_parts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,7 +1,7 @@
 module v2.workflow.claim_cost_observation
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.text { String }
 // THE CLOCK QUANTITIES ARE `Millisecond`, NOT `Int`, AND THIS AUTHORITY MAY NOT BE THE WEAKER

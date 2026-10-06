@@ -1,10 +1,15 @@
 module gunbc.spark.pair_serving_d0_door
 
-import gunbc.auth.standing_operator_grant { standing_grant_authorization }
+import std.content_hash { serialize_content_hash }
+import gunbc.auth.standing_operator_grant { standing_grant_authorization, StandingOperatorGrant }
+import extdeps.git
+import gunbc.output_policy { ExpectSuccess }
 
-import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, GitRef, FilePath }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { Second, second, second_count, Minute, minute }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
@@ -15,20 +20,21 @@ import gunbc.auth.approval_gate {
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name, read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import extdeps.git
 import extdeps.git.inspect
+import extdeps.git.plumbing
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
-  d0_standing_grant_for,
+  d0_standing_grant_for, D0AuthorizationBasis, D0BasisBroker, D0BasisStandingGrant, d0_dispatch_with, D0GrantRowProof, D0GrantRowUnproven, D0GrantRowApproved, d0_freeze_filing_with, parse_d0_frozen_filing, sha256_of_text,
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_dispatch, d0_store_write_wall_standing,
   d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
   d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
-  d0_read_claim, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
+  d0_read_claim, D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
 }
 import gunbc.spark.pair_serving_d0_authorization {
   D0RequestFor, D0RequestUnestablished, D0RequestRefused, d0_authorization_request, d0_request_intent_text,
@@ -111,6 +117,19 @@ type D0RunKind
   | D0RunRefused { reason: String }
 
 fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr, execution_revision: NonEmptyStr) -> D0RunKind {
+  d0_run_kind_with(store: store, g: g, escalation_id: escalation_id, transaction: transaction, execution_revision: execution_revision, fresh_proof: D0GrantRowUnproven)
+}
+
+// A FRESH START FREEZES THE GRANT-ROW PROOF it was admitted with, and only for a request the grant covers;
+// every other filing is frozen exactly as before.
+fn d0_fresh_proof_for(request: AuthorizationRequest<D0Subject>, fresh_proof: D0GrantRowProof) -> D0GrantRowProof {
+  match d0_standing_grant_for(request: request) {
+    Absent => D0GrantRowUnproven
+    Present { value: _ } => fresh_proof
+  }
+}
+
+fn d0_run_kind_with(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr, execution_revision: NonEmptyStr, fresh_proof: D0GrantRowProof) -> D0RunKind {
   match d0_read_filing(store: store, escalation_id: escalation_id) {
     D0FilingUnreadable { reason: r } => D0RunRefused { reason: join(["the filing under this escalation could not be read: ", r as String], "") }
     D0FilingAt { text: t } =>
@@ -126,7 +145,7 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
           match d0_request_intent_text(request: request, group: g, transaction: transaction) {
             Absent => D0RunRefused { reason: "the consent's scope has no wire, so no intent can be stated over it (std.scoped_authorization intent_frame_head refused)" }
             Present { value: intent_text } =>
-          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: intent_text, execution_revision: execution_revision) {
+          match d0_freeze_filing_with(store: store, escalation_id: escalation_id, intent_text: intent_text, execution_revision: execution_revision, proof: d0_fresh_proof_for(request: request, fresh_proof: fresh_proof)) {
             D0FilingFreezeRefused { reason: r } => D0RunRefused { reason: r as String }
             D0FilingFrozen => D0FirstRun { request: request }
             D0FilingAlreadyHeld { text: t } =>
@@ -147,12 +166,12 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
 // run's (still pending: wait; not filed: the intent was frozen but the broker never reached, so the
 // frozen request is filed now); any other holder or state refuses.
 type D0DoorGate
-  = D0DoorAdmitted { authorization: ScopedAuthorization<D0Subject> }
+  = D0DoorAdmitted { authorization: ScopedAuthorization<D0Subject>, basis: D0AuthorizationBasis }
   | D0DoorRefused { reason: String }
 
 fn d0_door_gate_of(gate: ApprovalGate<D0Subject>) -> D0DoorGate {
   match gate {
-    GateAdmitted { authorization: scoped } => D0DoorAdmitted { authorization: scoped }
+    GateAdmitted { authorization: scoped } => D0DoorAdmitted { authorization: scoped, basis: D0BasisBroker }
     GateRefused { cause: c } => D0DoorRefused { reason: join(["the consent was not admitted: ", approval_refusal_text(cause: c)], "") }
   }
 }
@@ -181,18 +200,156 @@ fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationReques
 // THE STANDING-GRANT ROSTER AND ITS COVERAGE LIVE IN gunbc.spark.pair_serving_d0 (d0_standing_grants,
 // d0_standing_grant_for), because the authorization binding there must name the grant's lifecycle.
 
-fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
+// THE STANDING GRANT IS HONORED ONLY AS THE OPERATOR MERGED IT (review 74677; rulings of valiant-crab-775,
+// 2026-10-03). DESIGN §5: approval is external to the diff, and the external act is the operator's merge of
+// the grant row to main. That is a FRESH-START admission fact (side-chat review of #13102): the first run reads
+// the grant's carrier file it executes and `git show origin/main:` of the same path, and only when they are
+// byte-identical does it freeze the row's digest into the filing (D0GrantRowApproved). Before main has the
+// row, or when a branch has edited it, or when either read fails, nothing is frozen and the request takes the
+// broker path, which refuses unless the broker answers.
+// A RERUN NEVER CONSULTS CURRENT MAIN. It resumes from the frozen proof: the grant is honored only when the
+// row this run executes digests to the frozen digest. So a later change to the row on main -- even an
+// unrelated edit -- cannot strand a lifecycle that has claimed, written its pending state, or released; and a
+// rerun whose branch edited the row after the approval is refused the grant.
+// THE ACCEPTED RESIDUAL RISK, stated plainly: branch code still INTERPRETS the approved row (the coverage
+// fold and this gate run from the dispatched revision). In this dev environment, under the operator's blanket
+// Group A permission, that is accepted; the row's content is what the operator approved.
+type StandingGrantRowStanding
+  = StandingGrantRowOnMain
+  | StandingGrantRowNotOnMain { cause: String }
+
+data standing_grant_row_path: String = "dag/gunbc/auth/standing_operator_grant.dag"
+data standing_grant_main_ref: String = "origin/main"
+
+fn standing_grant_row_judged(executed: String, executed_read: Bool, on_main: String, main_read: Bool, main_stderr: String) -> StandingGrantRowStanding {
+  if !executed_read {
+    StandingGrantRowNotOnMain { cause: join(["the grant row this run executes could not be read at ", standing_grant_row_path], "") }
+  } else if !main_read {
+    StandingGrantRowNotOnMain { cause: join([standing_grant_main_ref, " holds no ", standing_grant_row_path, " (", main_stderr, "): the operator has not merged the grant, so it is not honored"], "") }
+  } else if executed != on_main {
+    StandingGrantRowNotOnMain { cause: join(["the grant row this run executes differs from ", standing_grant_main_ref, "'s: only the operator-merged row is honored"], "") }
+  } else {
+    StandingGrantRowOnMain
+  }
+}
+
+// THE ROW THIS RUN EXECUTES, read once and digested once: the fresh proof and the rerun's check both use it.
+type ExecutedGrantRow
+  = ExecutedGrantRowRead { content: String, digest: NonEmptyStr }
+  | ExecutedGrantRowUnread { cause: String }
+
+fn executed_grant_row() -> ExecutedGrantRow {
+  let mine = Filesystem.Read(path: standing_grant_row_path)
+  if !mine.success {
+    ExecutedGrantRowUnread { cause: join(["the grant row this run executes could not be read at ", standing_grant_row_path, ": ", mine.error], "") }
+  } else {
+    match sha256_of_text(text: mine.content) {
+      Absent => ExecutedGrantRowUnread { cause: "the grant row this run executes could not be digested" }
+      Present { value: h } => ExecutedGrantRowRead { content: mine.content, digest: serialize_content_hash(hash: h) as NonEmptyStr }
+    }
+  }
+}
+
+// THE ROW'S STANDING, judged over the ROW THIS RUN CAPTURED (ExecutedGrantRow), never a second read of
+// the path. The comparison is of git blob ids (fp8-8 launch run 37161565980: comparing captured `git show`
+// text normalized the trailing newline and refused an identical row): the id of the CAPTURED bytes, hashed
+// from the caller-held value with git.Plumbing HashObjectStdinNoWrite, against `git rev-parse
+// origin/main:<path>`. One authorization fact, one read: the digest the proof freezes and the blob
+// admitted against main describe the same bytes, whatever happens to the working file afterwards
+// (side-chat rejection of #13176 at c58fce17: the earlier shape hashed the working file again).
+fn grant_row_blob(target: String) -> GrantRowBlob {
+  let r = git.Core.RevParseInRepo(repo: "." as FilePath, target: join([target, ":", standing_grant_row_path], "") as GitRef)
+  if r.exit_code != 0 { GrantRowBlobUnread { cause: join(["git rev-parse ", target, ":", standing_grant_row_path, " exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") } }
+  else { GrantRowBlobRead { blob: trim(s: r.revision) } }
+}
+
+type GrantRowBlob
+  = GrantRowBlobRead { blob: String }
+  | GrantRowBlobUnread { cause: String }
+
+fn captured_grant_row_blob(content: String) -> GrantRowBlob {
+  let r = git.Plumbing.HashObjectStdinNoWrite(content: content)
+  if r.exit_code != 0 { GrantRowBlobUnread { cause: join(["git hash-object --stdin over the captured row exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") } }
+  else { GrantRowBlobRead { blob: trim(s: r.oid) } }
+}
+
+// THE JUDGMENT, with the two blob producers supplied: production passes captured_grant_row_blob and
+// grant_row_blob(origin/main); a witness supplies both and drives the captured-row route directly.
+fn grant_row_standing_over(executed: ExecutedGrantRow, blob_of: fn(String) -> GrantRowBlob, on_main: GrantRowBlob) -> StandingGrantRowStanding {
+  match executed {
+    ExecutedGrantRowUnread { cause: c } => StandingGrantRowNotOnMain { cause: c }
+    ExecutedGrantRowRead { content: content, digest: _ } =>
+      match blob_of(content) {
+        GrantRowBlobUnread { cause: c } => StandingGrantRowNotOnMain { cause: join(["the grant row this run executes could not be identified: ", c], "") }
+        GrantRowBlobRead { blob: mine } =>
+          match on_main {
+            GrantRowBlobUnread { cause: c } => standing_grant_row_judged(executed: mine, executed_read: true, on_main: "", main_read: false, main_stderr: c)
+            GrantRowBlobRead { blob: theirs } => standing_grant_row_judged(executed: mine, executed_read: true, on_main: theirs, main_read: true, main_stderr: "")
+          }
+      }
+  }
+}
+
+fn fresh_grant_row_standing(executed: ExecutedGrantRow) -> StandingGrantRowStanding {
+  grant_row_standing_over(executed: executed, blob_of: fn(c) { captured_grant_row_blob(content: c) }, on_main: grant_row_blob(target: standing_grant_main_ref))
+}
+
+// THE FRESH-START PROOF over a supplied judgment of the SAME captured row: the frozen digest is that
+// row's digest, admitted only when that row's blob is main's.
+fn grant_row_proof_over(executed: ExecutedGrantRow, standing: StandingGrantRowStanding) -> D0GrantRowProof {
+  match executed {
+    ExecutedGrantRowUnread { cause: _ } => D0GrantRowUnproven
+    ExecutedGrantRowRead { content: _, digest: d } =>
+      match standing {
+        StandingGrantRowNotOnMain { cause: _ } => D0GrantRowUnproven
+        StandingGrantRowOnMain => D0GrantRowApproved { row_digest: d }
+      }
+  }
+}
+
+fn fresh_grant_row_proof(executed: ExecutedGrantRow) -> D0GrantRowProof {
+  grant_row_proof_over(executed: executed, standing: fresh_grant_row_standing(executed: executed))
+}
+
+// THE PROOF THE LIFECYCLE WAS FROZEN WITH, read back from its filing.
+fn d0_filed_grant_proof(store: FabricStorageBinding, escalation_id: NonEmptyStr) -> D0GrantRowProof {
+  match d0_read_filing(store: store, escalation_id: escalation_id) {
+    D0FilingAt { text: t } =>
+      match parse_d0_frozen_filing(text: t) {
+        Present { value: f } => f.grant_proof
+        Absent => D0GrantRowUnproven
+      }
+    D0FilingAbsent => D0GrantRowUnproven
+    D0FilingUnreadable { reason: _ } => D0GrantRowUnproven
+  }
+}
+
+// HONORED EXACTLY WHEN the lifecycle's frozen proof names a digest and the row this run executes has that
+// digest, and the grant covers the request. Current main is not an input.
+fn d0_honored_standing_grant(request: AuthorizationRequest<D0Subject>, frozen: D0GrantRowProof, executed: ExecutedGrantRow) -> StandingOperatorGrant? {
+  match frozen {
+    D0GrantRowUnproven => none
+    D0GrantRowApproved { row_digest: d } =>
+      match executed {
+        ExecutedGrantRowUnread { cause: _ } => none
+        ExecutedGrantRowRead { content: _, digest: mine } =>
+          if (mine as String) == (d as String) { d0_standing_grant_for(request: request) } else { none }
+      }
+  }
+}
+
+fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp, frozen: D0GrantRowProof, executed: ExecutedGrantRow) -> D0DoorGate
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
     D0FirstRun { request: request } =>
-      match d0_standing_grant_for(request: request) {
-        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
+      match d0_honored_standing_grant(request: request, frozen: frozen, executed: executed) {
+        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires), basis: D0BasisStandingGrant { identity: g.identity } }
         Absent => d0_file_and_poll(request: request, issued: issued, expires: expires)
       }
     D0Rerun { request: request } =>
-      match d0_standing_grant_for(request: request) {
-        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
+      match d0_honored_standing_grant(request: request, frozen: frozen, executed: executed) {
+        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires), basis: D0BasisStandingGrant { identity: g.identity } }
         Absent => d0_gate_rerun_by_broker(store: store, request: request, transaction: transaction, expires: expires, issued: issued)
       }
   }
@@ -209,17 +366,23 @@ fn d0_gate_rerun_by_broker(store: FabricStorageBinding, request: AuthorizationRe
             D0AbsentClaimEnterPoll => d0_poll(request: request, expires: expires)
             D0AbsentClaimDecided { gate: g } => d0_door_gate_of(gate: g)
           }
-        _ =>
-          match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
-            StandingReadAt { standing: standing, observed_at: _ } =>
-              match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
-                D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a }
-                D0NotRecorded { cause: c } => D0DoorRefused { reason: join(["the consent's recorded decision does not resume this run: ", approval_refusal_text(cause: c)], "") }
-                D0NotClaimedHere { reason: r } => D0DoorRefused { reason: join(["the consent cannot be resumed by this run: ", r as String], "") }
-              }
-          }
+        D0ClaimAt { state: _, generation: _ } => d0_resume_claimed(claim: claim, transaction: transaction, expires: expires, request: request)
+        D0ClaimUnreadable { reason: _ } => d0_resume_claimed(claim: claim, transaction: transaction, expires: expires, request: request)
       }
+}
+
+// A claim that was read (at a state, or unreadable) resumes only through the recorded decision.
+fn d0_resume_claimed(claim: D0ClaimReading, transaction: NonEmptyStr, expires: Timestamp, request: AuthorizationRequest<D0Subject>) -> D0DoorGate
+{
+  match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
+    StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
+    StandingReadAt { standing: standing, observed_at: _ } =>
+      match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
+        D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a, basis: D0BasisBroker }
+        D0NotRecorded { cause: c } => D0DoorRefused { reason: join(["the consent's recorded decision does not resume this run: ", approval_refusal_text(cause: c)], "") }
+        D0NotClaimedHere { reason: r } => D0DoorRefused { reason: join(["the consent cannot be resumed by this run: ", r as String], "") }
+      }
+  }
 }
 
 fn d0_poll(request: AuthorizationRequest<D0Subject>, expires: Timestamp) -> D0DoorGate
@@ -258,20 +421,23 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
         HostStoreResolved { store: store, executor: _ } =>
       match approval_instant_now() {
         Absent => refuse(reason: "clock unreadable; cannot mint an approval window")
-        Present { value: issued } =>
-          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
+        Present { value: issued } => {
+          let executed_row = executed_grant_row()
+          let run_kind = d0_run_kind_with(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr, fresh_proof: fresh_grant_row_proof(executed: executed_row))
+          match d0_gate(store: store, kind: run_kind, transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued, frozen: d0_filed_grant_proof(store: store, escalation_id: authorization as NonEmptyStr), executed: executed_row) {
             D0DoorRefused { reason: r } => refuse(reason: r)
-            D0DoorAdmitted { authorization: scoped } =>
+            D0DoorAdmitted { authorization: scoped, basis: basis } =>
               match approval_instant_now() {
                 Absent => refuse(reason: "clock unreadable at the claim; the consent is admitted but no instant can authorize or stamp the claim")
                 Present { value: now } =>
                   match now_epoch_seconds() {
                     Absent => refuse(reason: "the clock could not be read as epoch seconds")
                     Present { value: at } =>
-                      d0_dispatch(store: store, g: g, group: group, current_hosts: fabric_group_hosts(g: g), scoped: scoped, tx: transaction as NonEmptyStr, esc: authorization as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now, current: current_pair_serving_authority(store: store, group: g, at: at))
+                      d0_dispatch_with(basis: basis, store: store, g: g, group: group, current_hosts: fabric_group_hosts(g: g), scoped: scoped, tx: transaction as NonEmptyStr, esc: authorization as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now, current: current_pair_serving_authority(store: store, group: g, at: at))
                   }
               }
           }
+        }
       }
       }
       }

@@ -29,8 +29,8 @@ import gunbc.runner_lifecycle {
   DiskHeadroomUnobserved,
 }
 import gunbc.host_disk_observation { host_disk_observation }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import product.host_identity { HostIdentity }
 
 // PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight +
 // ADD-only dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return
@@ -86,7 +86,7 @@ fn disk_preflight_refusal(host: HostIdentity, requested_width: Int) -> String? {
 fn disk_preflight_refusal_for_host_plan(host_plan: RunnerCapacityHostPlan) -> String? {
   match host_plan.admission {
     WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
-    _ => none
+    WidthRefused { requested: _, cause: _ } => none
   }
 }
 
@@ -130,7 +130,9 @@ fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
     f: (n, a) =>
       match a {
         RunnerSlotAdd { to: _ } => n + 1
-        _ => n
+        RunnerSlotChange { from: _, to: _ } => n
+        RunnerSlotRemove { from: _ } => n
+        RunnerIncarnationReplace { slot: _, cause: _ } => n
       },
   )
 }

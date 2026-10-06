@@ -1,6 +1,5 @@
 module v2.std.refinement
 
-import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Diagnostic,
   Locus,

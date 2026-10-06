@@ -35,6 +35,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
+import v2.std.anonymous_binder { is_anonymous_param_label }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.algebra { any, fold_list, length, skip }
 import v2.std.collection {
@@ -46,7 +47,8 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import v2.std.optional {
+import v2.std.grammar { node_atom_identity_optional }
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -71,9 +73,12 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   diagnostics_singleton,
   bind_outcome,
-  rejected_with_pending
+  rejected_with_pending,
+  ExternalContractUnknown,
+  Rejected,
+  outcome_with_diagnostics
 }
-import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
+import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -96,6 +101,7 @@ import v2.std.resolution_policy {
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
 import v2.std.symbol_index {
+  symbol_index_entry_at,
   LexicalAmbiguous,
   LexicalBindingCandidate,
   LexicalHit,
@@ -113,10 +119,13 @@ import v2.std.symbol_index {
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
+  symbol_index_declared_binders_at,
   symbol_index_lookup,
   symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  BinderTypeEdge,
+  core_edge,
   Cardinality,
   MapLiteralEntriesEdge,
   labeled_core_is,
@@ -126,6 +135,11 @@ import v2.std.node {
   Arrow,
   Atom,
   Bind,
+  Branch,
+  Cardinality,
+  Instantiation,
+  Loop,
+  Value,
   ComputationNode,
   Conj,
   Disj,
@@ -164,6 +178,7 @@ import v2.std.node {
   LoopRealizedDeclaration,
   loop_edge_role,
   MatchArmPatternEdge,
+  MatchArmScopeExitEdge,
   ArrowSignatureOrderEdge,
   edge_is_core,
   StructuralLabel,
@@ -173,11 +188,11 @@ import v2.std.node {
   ArrowBodyEdge,
   BinderDefaultEdge,
 }
-import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
-  binder_node_edge,
   field_projection_edge_field_optional,
   field_projection_optional,
+  binder_node_edge,
   binder_node_parts,
   declared_field_from_edge,
   member_edge_type_node,
@@ -198,7 +213,7 @@ import v2.std.node_query {
   pattern_wildcard_name,
   find_core_child,
 }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction {
   MapIntroductionEntryNodes,
@@ -212,6 +227,7 @@ import v2.std.map_introduction {
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
 }
+import std.types { List }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -241,6 +257,44 @@ type ResolvedTree {
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
+  unavailable_providers: List<ClosureProviderRefusal>
+}
+
+// A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
+// resolves every root in the closure to fill the index inference reads; a root that refuses contributes no
+// declarations, and until this carrier that absence was SILENT -- a receiver typed by one of its records
+// refused as a bare lookup miss (infer_reason_projection_receiver_declaration_unavailable) with nothing to
+// say the provider never resolved, so the provider's real defect never ranked (DESIGN section 5, the
+// absorbing fallback's signal loss). The roster rides on the tree so every lookup miss can name its cause.
+type ClosureProviderRefusal {
+  module: QualifiedName
+  refusal: NonEmptyDiagnostics
+}
+
+// THE ONE READ every closure-index miss consults: the refused provider whose module path is a prefix of
+// the missed declaration's path, if any. A miss with no refused provider over it stays the bare miss.
+fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  fold(tree.unavailable_providers, init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if qualified_name_is_proper_prefix(prefix: p.module, path: path) { optional_present(value: p) } else { acc }
+    }
+  })
+}
+
+fn qualified_name_is_proper_prefix(prefix: QualifiedName, path: QualifiedName) -> Bool {
+  match prefix {
+    Empty =>
+      match path {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+    Cons { head: ph, tail: pt } =>
+      match path {
+        Empty => false
+        Cons { head: h, tail: t } => ph == h && qualified_name_is_proper_prefix(prefix: pt, path: t)
+      }
+  }
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -273,13 +327,15 @@ fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
+  unavailable_providers: List<ClosureProviderRefusal>,
   lexical: List<LexicalBindingEntry>
 ) -> ResolvedTree {
   ResolvedTree {
     root: root,
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
-    lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) })
+    lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
+    unavailable_providers: unavailable_providers
   }
 }
 
@@ -477,7 +533,20 @@ fn admit_value_binders(names: List<Symbol>, outer: Scope) -> BinderAdmission {
   })
 }
 
+// AN ANONYMOUS SLOT HIDES NOTHING. Hiding is the risk that a body reference silently rebinds to the
+// inner binder; an anonymous slot's label is unauthorable (v2.std.anonymous_binder), so no reference
+// can name it. Its label is its position in its OWN list (ruled there), so nested Arrows each mint
+// `<anonymous-parameter-1>`: `fn(Int) -> fn(Int) -> Int` was refused as hiding. It still enters the
+// frame, so the duplicate-in-frame check above applies to it.
 fn admit_one_value_binder(locals: Map<Symbol, Symbol>, name: Symbol, outer: Scope) -> BinderAdmission {
+  if is_anonymous_param_label(sym: name) {
+    BindersAdmitted { locals: map_insert(locals, name, name) }
+  } else {
+    admit_one_named_value_binder(locals: locals, name: name, outer: outer)
+  }
+}
+
+fn admit_one_named_value_binder(locals: Map<Symbol, Symbol>, name: Symbol, outer: Scope) -> BinderAdmission {
   match lookup_chain(s: outer, name: name) {
     Rejected { diagnostics: _ } => BindersAdmitted { locals: map_insert(locals, name, name) }
     Accepted { value: bound, diagnostics: _ } =>
@@ -633,7 +702,17 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
           Absent => a
         }
       })
-    _ => acc
+    TypeNode { connective: Atom { identity: _ } } => acc
+    TypeNode { connective: Disj } => acc
+    TypeNode { connective: Arrow } => acc
+    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Instantiation } => acc
+    ComputationNode { behavior: Value } => acc
+    ComputationNode { behavior: Transform } => acc
+    ComputationNode { behavior: Branch } => acc
+    ComputationNode { behavior: Loop } => acc
+    ComputationNode { behavior: Bind } => acc
+    ComputationNode { behavior: Match } => acc
   }
 }
 
@@ -646,11 +725,22 @@ data resolve_variant_visibility_disposition: Disposition = Scaffold {
   }
 }
 
+// THE ONE ANSWER TO "WHAT DOES THIS MODULE'S ROOT BIND", for every door that builds a Namespace. A module
+// root's own declarations live under its grafted body, not as direct children of the root, so the harvest
+// reads both: the root's direct named members and, where the graft collected one, the body's. Two doors
+// built a Namespace -- build_program_namespace grafted the body, v2.compiler.name_resolve
+// admitted_subject_from_bindings did not -- so on the admission route a module's own `data` value was
+// absent from the scope chain and `cfg.field` answered ScopeUnbound. One harvest here is what keeps the two
+// from disagreeing again.
 fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_module_root_named_bindings(root: root, acc: bindings)
+  let root_bindings = harvest_module_root_named_bindings(root: root, acc: bindings)
+  match namespace_graft_module_body_optional(root: root) {
+    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
+    Absent => root_bindings
+  }
 }
 
 // A MODULE ROOT'S BARE BINDINGS OMIT ITS SERVICE NAMESPACES (the operator's nesting ban; XL-2 service
@@ -786,14 +876,10 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
 // the index each resolves through -- one authority, not a second table beside it.
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   let declared_in = namespace_tree_module_qn(tree: tree)
-  let root_bindings = namespace_bindings_augment_from_module_atoms(
+  let bindings = namespace_bindings_augment_from_module_atoms(
     root: tree.root,
     bindings: empty_map()
   )
-  let bindings = match namespace_graft_module_body_optional(root: tree.root) {
-    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
-    Absent => root_bindings
-  }
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
@@ -1031,6 +1117,42 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   }
 }
 
+// THE RESOLVE STAGE'S FATAL REFUSAL-REASON VOCABULARY, CLOSED (v2.std.parse_refusal_reason's shape,
+// homed in the stage that refuses). A reason is FATAL when it can stand last in a rejection -- the
+// cause that refused; the advisories that ride in front of one (declared elsewhere, the ambiguity
+// class, the competing declarations) are not members. The type is the roster the frontier
+// ownership join reflects (gunbc.refusal_reason_ownership_join), so a resolve refusal that no
+// variant names is not producible by that join's reckoning. The producers still spell the Symbol
+// directly; each moves onto this vocabulary in the stage's replacement cut, which deletes the
+// literal in the same change.
+type ResolveRefusalReason
+  = ResolveMalformedTree
+  | ResolveUnboundSymbol
+  | ResolveAnonymousParameterReferenced
+  | ResolveTypeParameterInValuePosition
+  | ResolveFloatLiteralNotLowered
+  | ResolveAmbiguousSymbol
+  | ResolveTestCodeReferenced
+  | ResolveKernelTypeSpellingNamesAForeignDeclaration
+  | ResolveObservationIncomplete
+  | ResolveTypeParameterShadowsVisibleName
+
+// The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
+fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
+  match reason {
+    ResolveMalformedTree => ^resolve_reason_malformed_tree
+    ResolveUnboundSymbol => ^resolve_reason_unbound_symbol
+    ResolveAnonymousParameterReferenced => ^resolve_reason_anonymous_parameter_referenced
+    ResolveTypeParameterInValuePosition => ^resolve_reason_type_parameter_in_value_position
+    ResolveFloatLiteralNotLowered => ^float_literal_not_lowered
+    ResolveAmbiguousSymbol => ^resolve_reason_ambiguous_symbol
+    ResolveTestCodeReferenced => ^resolve_reason_test_code_referenced
+    ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
+    ResolveObservationIncomplete => ^resolve_reason_observation_incomplete
+    ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
+  }
+}
+
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_reason_malformed_tree,
@@ -1093,7 +1215,9 @@ fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name:
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
-    _ => optional_absent()
+    Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -1425,7 +1549,7 @@ fn resolve_bound_head_projection(
   ctx: ResolveContext,
   n: Node,
   pending: Diagnostics
-) -> Outcome<Node> {
+) -> Outcome<ResolvedAtom> {
   match qualified_name_spine_segment_nodes(root: n) {
     Absent =>
       Rejected {
@@ -1456,13 +1580,16 @@ fn resolve_bound_head_projection(
               Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) }
             Present { value: Accepted { value: base, diagnostics: _ } } =>
               outcome_with_diagnostics(
-                value: fold_list(
-                  xs: field_segments,
-                  empty: base,
-                  cons: fn(acc, field_segment) {
-                    field_projection_node(base: acc, field: field_segment, source: n)
-                  }
-                ),
+                value: ResolvedAtom {
+                  node: fold_list(
+                    xs: field_segments,
+                    empty: base.node,
+                    cons: fn(acc, field_segment) {
+                      field_projection_node(base: acc, field: field_segment, source: n)
+                    }
+                  ),
+                  lexical: base.lexical
+                },
                 diagnostics: pending
               )
           }
@@ -1486,43 +1613,38 @@ fn resolve_bound_head_projection(
 // deletion is therefore a correctness repair on this function's own contract, claiming nothing about the
 // eight.
 //
-// A NAMED FN'S PARAMETER AS THE HEAD IS THE SAME PATH-KEYED REFERENCE IT IS ANYWHERE ELSE. A ParameterFrame
-// answers through resolve_frame_bound_reference, the one route that mints parameter_reference_node, so infer
-// grounds the receiver through the resolved declarations exactly as it grounds a bare use of that parameter
-// (v2.compiler.infer infer_parameter_reference_facts). A bare atom here was typed only by the scope search
-// that main deleted, so it would leave every such receiver underived. A Lexical or type-parameter head stays
-// the canonical atom: minting a lexical reference here would need its binding recorded, and this Outcome<Node>
-// route carries no lexical entries, so it would refuse as unrecorded at infer. DECLARED FRONTIER, TRIGGER
-// NAMING THE CAPABILITY: the projection route carries LexicalBindingEntry beside its node, SUFFICIENT FOR a
-// let, match-arm or lambda binder to be a typed projection receiver.
-fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Outcome<Node>> {
+// EVERY FRAME-BOUND HEAD IS THE SAME REFERENCE A BARE USE OF THAT BINDER IS, because it is minted by the
+// same producer: resolve_frame_bound_reference, by the frame's own kind. A ParameterFrame head is the
+// path-keyed parameter_reference_node infer grounds through the resolved declarations
+// (v2.compiler.infer infer_parameter_reference_facts); a LexicalFrame head -- a let, match-arm or lambda
+// binder -- is the lexical_reference_node whose binding is recorded by its occurrence, carried out of this
+// route as ResolvedAtom.lexical so the walk records it exactly as it records a bare use; a type-parameter
+// head stays the canonical atom that frame mints for any use. The Lexical arm was the canonical atom while
+// this route carried no lexical entries, and a projection off a lambda binder (`fn(found, e) { e.target }`)
+// then reached infer as a bare atom nothing had typed -- the receiver landed in the non-refusing
+// ReceiverTypeUnderived arm, so the binder's declared type never reached the field it was projected through.
+fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Outcome<ResolvedAtom>> {
   match head_segment.kind {
     TypeNode { connective: Atom { identity: name } } =>
       match lookup_chain(s: ctx.scope, name: name) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: found, diagnostics: _ } =>
           match found {
-            BoundInFrame { canonical: canonical, kind: ParameterFrame { arrow_path: arrow_path } } =>
-              optional_present(value: match resolve_frame_bound_reference(
+            BoundInFrame { canonical: canonical, kind: kind } =>
+              optional_present(value: resolve_frame_bound_reference(
                 ctx: ctx,
                 n: head_segment,
                 canonical: canonical,
-                kind: ParameterFrame { arrow_path: arrow_path },
+                kind: kind,
                 pending: None
-              ) {
-                Accepted { value: atom, diagnostics: d } => Accepted { value: atom.node, diagnostics: d }
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              })
-            BoundInFrame { canonical: canonical, kind: _ } =>
-              optional_present(value: Accepted {
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
-                diagnostics: None
-              })
+              ))
             BoundAtRoot { canonical: canonical } =>
-              optional_present(value: Accepted {
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
-                diagnostics: None
-              })
+              optional_present(value: resolved_atom_plain(o: resolve_atom_bound(
+                ctx: ctx,
+                n: head_segment,
+                path: root_binding_declaration_path(namespace: ctx.namespace, name: canonical),
+                pending: None
+              )))
             ScopeUnbound => optional_absent()
           }
       }
@@ -1546,7 +1668,7 @@ fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<
 // SO THIS IS NOT A REFUSAL BEING RELAXED. The state the refusal forbade -- the absolute read winning
 // over a binder the source spelled -- is still forbidden; it is now answered correctly instead of
 // refused, which is the climb the interim arm was waiting for.
-fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Outcome<Node>> {
+fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Outcome<ResolvedAtom>> {
   match qualified_name_from_node(root: n) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: path, diagnostics: pending } =>
@@ -1583,37 +1705,63 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 // ScopeUnbound IS THE DECLARATION PATH, with no fallback: there is no value to project from, so an
 // undeclared path is an unbound name and says so.
 //
-// BoundAtRoot READS AS A DECLARATION PATH, which is the arm that previously had no decision at all. A name
-// bound at the module root is a declaration or a namespace segment, so a path THROUGH it is a qualified
-// name; when the corpus declares no such name the answer is an unbound symbol with its own locus, and NOT a
-// re-reading of the path as a projection -- see resolve_declared_path_reading for why that fallback is
-// forbidden.
-//
-// A ROOT-BOUND VALUE PROJECTED THROUGH IS A REAL FORM THIS DOES NOT YET SERVE. `data cfg: Config = ...`
-// followed by `cfg.field` is legitimate source, and the fail-closed cut above does not legislate that
-// module-level values may never be projected -- it declines to guess which reading a path takes when the
-// declaration reading fails. That frontier is held by
-// v2.test.claim.field_projection.field_projection_stages
-// fps_a_root_bound_data_value_is_not_yet_projectable, written AT THE REFUSAL so it flips the moment the form
-// is served; its head is not in the scope chain at all, so closing it means making module-level value
-// bindings answerable there rather than adding an arm here.
+// BoundAtRoot DEPENDS ON WHAT THE ROOT NAME DECLARES. A name bound at the module root is a declaration or a
+// namespace segment, and a path THROUGH a type or a namespace is a qualified name; when the corpus declares
+// no such name the answer is an unbound symbol with its own locus, and NOT a re-reading of the path as a
+// projection -- see resolve_declared_path_reading for why that fallback is forbidden. A root name whose
+// declaration is a VALUE (`data cfg: Config = ...`, realized as an Arrow; root_binding_names_value) is the
+// head of a projection, exactly as a frame binder is: `cfg.field` projects. That is decided up front from
+// the declaration the binding names, not tried after the declaration reading fails, so it is a reading and
+// not a fallback. Held by v2.test.claim.field_projection.field_projection_stages
+// fps_a_root_bound_data_value_projects (the value projects) and
+// fps_a_root_bound_type_projected_as_value_refuses (a type still does not).
 //
 // FIELD INFERENCE IS NOT RELAXED BY ANY OF THIS. Committing to the projection reading commits to the SHAPE
 // only; whether the field exists on the receiver's type is still refused later by the stage that can see
 // the type, exactly as resolve_bound_head_projection's own header says. A path admitted here as a
 // projection off a fieldless receiver still refuses at infer -- this change moves which paths are READ as
 // projections, and changes nothing about what a projection must satisfy.
+// A ROOT BINDING NAMES A VALUE EXACTLY WHEN THE DECLARATION IT NAMES IS AN ARROW. Body lowering realizes a
+// `data` item as the nullary function that returns it (v2.compiler.body_lowering_fold
+// body_lower_data_decl_to_member), so a module-level value is an Arrow declaration, while a type or a
+// namespace is not. The kind is READ OFF THE DECLARATION the binding already names -- the same declaring path
+// resolve_atom_bound mints from -- and is not stored beside the binding, so the two cannot drift. A root head
+// whose path has no indexed declaration names no value and keeps the declaration reading.
+fn root_binding_names_value(namespace: Namespace, canonical: Symbol) -> Bool {
+  match symbol_index_entry_at(
+    index: namespace.symbol_index,
+    qualified_path: root_binding_declaration_path(namespace: namespace, name: canonical)
+  ) {
+    Absent => false
+    Present { value: decl } =>
+      match decl.kind {
+        TypeNode { connective: Arrow } => true
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
+      }
+  }
+}
+
+fn root_binding_declaration_path(namespace: Namespace, name: Symbol) -> QualifiedName {
+  qualified_name_snoc(qn: root_binding_origin(namespace: namespace, name: name), segment: name)
+}
+
 fn resolve_dotted_path_reading(
   ctx: ResolveContext,
   n: Node,
   path: QualifiedName,
   head_binding: ScopeBinding,
   pending: Diagnostics
-) -> Outcome<Node> {
+) -> Outcome<ResolvedAtom> {
   match head_binding {
     BoundInFrame { canonical: _, kind: _ } => resolve_bound_head_projection(ctx: ctx, n: n, pending: pending)
-    BoundAtRoot { canonical: _ } => resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending)
-    ScopeUnbound => resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending)
+    BoundAtRoot { canonical: canonical } =>
+      if root_binding_names_value(namespace: ctx.namespace, canonical: canonical) {
+        resolve_bound_head_projection(ctx: ctx, n: n, pending: pending)
+      } else {
+        resolved_atom_plain(o: resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending))
+      }
+    ScopeUnbound => resolved_atom_plain(o: resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending))
   }
 }
 
@@ -1997,7 +2145,12 @@ fn resolved_atom_plain(o: Outcome<Node>) -> Outcome<ResolvedAtom> {
 // type-parameter lookups (whose scope carries no value binder) and a construct tag (which refuses a
 // non-constructor). The walk reads resolve_atom_answer and keeps the binding.
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
-  match resolve_atom_answer(ctx: ctx, n: n, identity: identity) {
+  resolved_atom_node(o: resolve_atom_answer(ctx: ctx, n: n, identity: identity))
+}
+
+// An atom's answer with its binding dropped, for a caller that places no value reference into the tree.
+fn resolved_atom_node(o: Outcome<ResolvedAtom>) -> Outcome<Node> {
+  match o {
     Accepted { value: a, diagnostics: d } => Accepted { value: a.node, diagnostics: d }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -2052,7 +2205,10 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
   }
 }
 
-// A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then unbound.
+// A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then a primitive-call
+// row of the one collection roster (v2.compiler.fold_lowering collection_roster_rows: concat), then unbound.
+// The roster is asked LAST, so any declaration that claims the name -- a local, an import, an indexed
+// declaration -- takes precedence and the row never shadows the corpus.
 fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
     SymbolIndexAtomHit { path: path } =>
@@ -2071,7 +2227,11 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
     SymbolIndexAtomUnbound =>
       match resolve_kernel_type_atom_optional(n: n, identity: identity) {
         Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-        Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+        Absent =>
+          match collection_roster_primitive_call_row_optional(head: identity) {
+            Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
+            Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+          }
       }
   }
 }
@@ -2194,12 +2354,13 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
-  closure_declarations: SymbolIndex
+  closure_declarations: SymbolIndex,
+  unavailable_providers: List<ClosureProviderRefusal>
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -2506,8 +2667,8 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
     Absent => acc
     Present { value: _ } =>
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } =>
+        match node_atom_identity_optional(node: e.target) {
+          Present { value: id } =>
             if is_wildcard_pattern(pattern: e.target) {
               m
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
@@ -2518,7 +2679,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
                 declared: optional_absent()
               })
             }
-          _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
       })
   }
@@ -3094,7 +3255,7 @@ fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: Q
       resolve_atom(ctx: ctx, n: reference, identity: only)
     Cons { head: _, tail: Cons { head: _, tail: _ } } =>
       match try_resolve_qualified_name_node(ctx: ctx, n: reference) {
-        Present { value: outcome } => outcome
+        Present { value: outcome } => resolved_atom_node(o: outcome)
         Absent => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
       }
     Empty => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
@@ -3149,11 +3310,59 @@ fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node) -> Reso
       e: e,
       r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
         resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+      } else if bind_carries_arm_scope_exit(n: e.target) {
+        resolve_arm_scope_exit_bind(arm_ctx: arm_ctx, outer_ctx: ctx, n: e.target)
       } else {
         resolve_node_walk(ctx: arm_ctx, n: e.target)
       }
     )
   }))
+}
+
+// A MATCH ARM'S BINDERS END AT ITS LET'S BODY (v2.std.node MatchArmScopeExitEdge). The arm's body is
+// a Bind lowered from `let x = match s { .. }` heading a spine
+// (v2.compiler.body_lowering_fold body_lower_let_match_binding_arm_continued): its VALUE resolves in
+// the arm's scope and sees the pattern's binders, and its BINDER and BODY -- the rest of the spine --
+// resolve in the scope enclosing the match, exactly the scopes the source wrote. Both admissions are
+// judged against those authored scopes: the pattern by resolve_match_arm_walk against the enclosing
+// scope as for every arm, and the let's binder here against that same enclosing scope. The marker
+// edge itself is a declaration about scope, not a value, and is carried unwalked.
+fn bind_carries_arm_scope_exit(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold(n.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: MatchArmScopeExitEdge) })
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  if positional_child_count(children: n.children) == 3 {
+    match gate_value_binders(names: bind_binder_name_list(n: n), outer: outer_ctx.scope, at: n) {
+      BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+      BinderGateAdmitted =>
+        child_walk_node(n: n, w: fold(
+          named_edges(children: n.children),
+          init: resolve_bind_positional_edges(
+            ctx: arm_ctx,
+            edges: positional_edges(children: n.children),
+            scope_outer: arm_ctx.scope,
+            scope_inner: lexical_frame(fb: bind_frame_binders(n: n), outer: outer_ctx.scope)
+          ),
+          f: fn(acc, e) {
+            if edge_is_core(e: e, marker: MatchArmScopeExitEdge) {
+              child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+            } else if edge_is_type_annotation(e: e) {
+              child_walk_step(w: acc, e: e, r: resolve_type_role_target(ctx: outer_ctx, target: e.target))
+            } else {
+              child_walk_step(w: acc, e: e, r: resolve_node_walk(ctx: arm_ctx, n: e.target))
+            }
+          }
+        ))
+    }
+  } else {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
+  }
 }
 
 // children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
@@ -3228,16 +3437,179 @@ fn resolve_node_walk_entered(
               Present { value: _ } => resolve_value_projection_walk(ctx: ctx, n: n)
               Absent =>
                 match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-                  Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
+                  Present { value: outcome } => resolve_walk_of_atom(o: outcome)
                   Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
                 }
             }
         }
       }
+    TypeNode { connective: Instantiation } =>
+      resolve_type_application(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
+  }
+}
+
+// A TYPE APPLICATION BINDS ITS DECLARATION'S TYPE PARAMETERS IN EXACT BIJECTION, AND EACH ARGUMENT
+// INHABITS ITS PARAMETER'S KIND. Checked here, at the head->declaration join, once the head and
+// arguments have resolved: the head names a corpus declaration by path, the index carries that
+// declaration's binders (v2.std.symbol_index symbol_index_declared_binders_at), and the verdict is
+// v2.std.type_binder type_application_conformance's -- the one authority. A refusal is located at the
+// application for arity and at the argument for kind, as v1 04_resolve type_param_kind_diagnostics
+// locates it.
+//
+// POPULATION, STATED. A head that is not a corpus declaration reference -- a kernel canonical atom, or a
+// type parameter applied as a head -- has no indexed binders, so it is outside this check rather than
+// passed by it; a head whose path the index does not hold is contested, and resolve refuses that
+// ambiguity where the head resolved.
+fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNodeWalk {
+  match walked {
+    ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+      match resolve_type_application_refusal_optional(ctx: ctx, n: resolved) {
+        Absent => walked
+        Present { value: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+      }
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+  }
+}
+
+fn resolve_type_application_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
+  match node_positional_child_targets(node: n) {
+    Empty => optional_absent()
+    Cons { head: head, tail: arguments } =>
+      match declaration_reference_path_optional(node: head) {
+        Absent => optional_absent()
+        Present { value: path } =>
+          match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+            Absent => optional_absent()
+            Present { value: _ } =>
+              resolve_type_application_verdict(
+                n: n,
+                verdict: type_application_conformance(
+                  binders: resolve_declared_binders_or_none(ctx: ctx, path: path, at: n),
+                  arguments: arguments,
+                  inhabits: fn(argument, kind) { resolve_kind_inhabitance(ctx: ctx, declaration: path, argument: argument, kind: kind) }
+                )
+              )
+          }
+      }
+  }
+}
+
+// A declaration that binds no type parameters is applied to none: its binders are the empty Conj.
+fn resolve_declared_binders_or_none(ctx: ResolveContext, path: QualifiedName, at: Node) -> Node {
+  match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: b } => b
+    Absent => node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: [], occurrence_id: at.occurrence_id)
+  }
+}
+
+fn resolve_type_application_verdict(n: Node, verdict: TypeApplicationConformance) -> Optional<Diagnostic> {
+  match verdict {
+    TypeApplicationConforms => optional_absent()
+    TypeApplicationArityMismatch { declared: _, supplied: _ } =>
+      optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n))
+    TypeApplicationKindNotInhabited { argument: a, kind: _ } =>
+      optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_type_argument_kind_not_inhabited, at: a))
+    TypeApplicationKindUnresolved { argument: a, kind: _ } =>
+      optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_type_parameter_kind_unresolved, at: a))
+    TypeApplicationBinderOrderMalformed =>
+      optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_type_parameter_order_malformed, at: n))
+  }
+}
+
+fn resolve_type_application_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
+  Diagnostic { reason: reason, at: node_locus(node: at), correction: Unavailable { reason: UserInputBoundary } }
+}
+
+// WHETHER A RESOLVED ARGUMENT INHABITS A KIND AS AUTHORED ON `declaration`'s BINDER. The kind is the
+// lowered binder's own node, so its name resolves from the DECLARATION's position, never the use's;
+// it must name a coproduct, and an argument inhabits it exactly when the argument resolves to one of
+// that coproduct's variants -- by the DECLARATION the index holds, never by leaf spelling. A unique
+// variant referenced bare resolves to its module-level path (p.Pointer), which
+// v2.compiler.symbol_index_fill symbol_index_fill_unique_variant_aliases files as a second ENTRY over
+// the same arm node rather than as a binding to p.Resolution.Pointer, so
+// symbol_index_declaring_path_of cannot relate the two paths; the arm node they share can. A Nat literal and a type
+// parameter of an enclosing declaration are not judged (v2.std.type_binder KindInhabitance).
+fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, argument: Node, kind: Node) -> KindInhabitance {
+  if dag_node_is_int_literal_atom(node: argument) {
+    ArgumentLiteralUnjudged
+  } else if resolve_argument_is_type_parameter(ctx: ctx, argument: argument) {
+    ArgumentTypeParameterUnjudged
+  } else {
+    match resolve_kind_variant_paths_optional(ctx: ctx, declaration: declaration, kind: kind) {
+      Absent => KindUnresolved
+      Present { value: variants } =>
+        match declaration_reference_path_optional(node: argument) {
+          Absent => ArgumentOutsideKind
+          Present { value: arg_path } =>
+            match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arg_path) {
+              Absent => ArgumentOutsideKind
+              Present { value: arg_decl } =>
+                if any(xs: variants, predicate: fn(v) { resolve_path_declares_node(ctx: ctx, path: v, declared: arg_decl) }) { ArgumentInhabitsKind } else { ArgumentOutsideKind }
+            }
+        }
+    }
+  }
+}
+
+fn resolve_argument_is_type_parameter(ctx: ResolveContext, argument: Node) -> Bool {
+  match type_binder_atom_identity_optional(n: argument) {
+    Absent => false
+    Present { value: id } =>
+      resolve_scope_binds_type_parameter(s: ctx.type_scope, name: id) || resolve_scope_binds_type_parameter(s: ctx.scope, name: id)
+  }
+}
+
+fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
+  match lookup_chain(s: s, name: name) {
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        BoundInFrame { canonical: _, kind: k } =>
+          match k {
+            TypeParameterFrame => true
+            ParameterFrame { arrow_path: _ } => false
+            LexicalFrame { binders: _ } => false
+          }
+        BoundAtRoot { canonical: _ } => false
+        ScopeUnbound => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn resolve_path_declares_node(ctx: ResolveContext, path: QualifiedName, declared: Node) -> Bool {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: n } => n == declared
+    Absent => false
+  }
+}
+
+// The variant paths of the coproduct a kind atom names, looked up lexically from the declaration.
+fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: QualifiedName, kind: Node) -> Optional<List<QualifiedName>> {
+  match type_binder_atom_identity_optional(n: kind) {
+    Absent => optional_absent()
+    Present { value: kind_name } =>
+      match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: declaration, name: kind_name) {
+        LexicalHit { node: kind_decl, path: kind_binding } =>
+          let kind_path = symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding)
+          match kind_decl.kind {
+            TypeNode { connective: Disj } =>
+              optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
+                match e.label {
+                  Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
+                  StructuralLabel { label: _ } => acc
+                  Positional => acc
+                }
+              }))
+            TypeNode { connective: _ } => optional_absent()
+            ComputationNode { behavior: _ } => optional_absent()
+          }
+        LexicalAmbiguous { candidates: _ } => optional_absent()
+        LexicalUnbound => optional_absent()
+      }
   }
 }
 
@@ -3625,25 +3997,55 @@ fn type_param_shadows_visible_name_diagnostic(binder: Node) -> Diagnostic {
 // A binder is admitted exactly when its spelling, looked up from the declaration's own scope,
 // is unbound. Any other answer -- a binding, an ambiguity, a test-code wall -- is a visible name.
 fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWalk {
-  match binder.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: binder) {
+    Present { value: id } =>
       match resolve_atom(ctx: ctx, n: binder, identity: id) {
         Rejected { diagnostics: d } =>
           if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
-            ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: binder.occurrence_id), diagnostics: None, lexical: [] }
+            resolve_type_param_binder_kind(ctx: ctx, binder: binder, identity: id)
           } else {
             resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
           }
         Accepted { value: _, diagnostics: _ } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
       }
-    _ => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
+    Absent => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
   }
 }
 
+// AN ADMITTED BINDER KEEPS ITS KIND, RESOLVED. The kind is an ordinary type expression in the
+// declaration's scope (v2.std.type_binder type_param_kind_optional), so it resolves as any type
+// position does and a kind that names nothing refuses here, at the kind.
+fn resolve_type_param_binder_kind(ctx: ResolveContext, binder: Node, identity: Symbol) -> ResolveNodeWalk {
+  match type_param_kind_optional(binder: binder) {
+    Absent =>
+      ResolveWalkAccepted { value: canonical_atom(identity: identity, occurrence_id: binder.occurrence_id), diagnostics: None, lexical: [] }
+    Present { value: kind } =>
+      match resolve_node_walk(ctx: ctx, n: kind) {
+        ResolveWalkAccepted { value: resolved_kind, diagnostics: d, lexical: l } =>
+          ResolveWalkAccepted {
+            value: node_with_occurrence_id(
+              kind: TypeNode { connective: Atom { identity: identity } },
+              children: [core_edge(marker: BinderTypeEdge, target: resolved_kind)],
+              occurrence_id: binder.occurrence_id
+            ),
+            diagnostics: d,
+            lexical: l
+          }
+        ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+      }
+  }
+}
+
+// The set's declared-order edge is label metadata (v2.std.node type_binder_conj_conforms), not a
+// binder: it is carried through unchanged, never resolved as one.
 fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk {
   child_walk_node(n: conj, w: fold(conj.children, init: child_walk_init(), f: fn(acc, e) {
-    child_walk_step(w: acc, e: e, r: resolve_type_param_binder(ctx: ctx, binder: e.target))
+    if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+      child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+    } else {
+      child_walk_step(w: acc, e: e, r: resolve_type_param_binder(ctx: ctx, binder: e.target))
+    }
   }))
 }
 
@@ -3955,11 +4357,16 @@ fn resolve_bind_edges(
   )
 }
 
+// A Bind carrying MatchArmScopeExitEdge is admitted only as a match arm's body
+// (resolve_match_arm_admitted); reached anywhere else its scope claim has no arm to exit, so it is a
+// malformed tree rather than an ordinary let.
 fn resolve_bind_node(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  if positional_child_count(children: n.children) == 3 {
+  if bind_carries_arm_scope_exit(n: n) {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
+  } else if positional_child_count(children: n.children) == 3 {
     match gate_value_binders(names: bind_binder_name_list(n: n), outer: ctx.scope, at: n) {
       BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
       BinderGateAdmitted =>
@@ -4010,7 +4417,8 @@ fn resolve_with_namespace_policy(
       policy: policy
     ),
     symbol_index: namespace.symbol_index,
-    closure_declarations: empty_symbol_index()
+    closure_declarations: empty_symbol_index(),
+    unavailable_providers: []
   )
 }
 

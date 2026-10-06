@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.measure { ByteSize, byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.gnu_coreutils { od_hex_span_command }
@@ -110,7 +110,7 @@ fn v41_od_hex(stdout: String) -> String {
 
 fn v41_read_sample(ctx: SparkMaterializeContext, r: V41HostRegion) -> V41SampleRead {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: od_hex_span_command(path: r.path, offset: r.offset, length: r.length))) {
-    RemoteUnreachable { cause: c } => V41SampleReadFailed { region: r, cause: join(["the od leg did not run: ", c], "") as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => V41SampleReadFailed { region: r, cause: join(["the od leg did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: o, stderr: err } =>
       if code != 0 { V41SampleReadFailed { region: r, cause: join(["od exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
         V41SampleReadOk { region: r, hex: v41_od_hex(stdout: o) }

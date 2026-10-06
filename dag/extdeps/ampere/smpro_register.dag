@@ -2,12 +2,13 @@ module extdeps.ampere.smpro_register
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.ampere.scp_diagnostic {
   AmpereBootStage, Smpro, Pmpro, AtfBl1, DdrInitialization, DdrTraining, AtfBl2, AtfBl31, AtfBl32, Uefi, OperatingSystem,
   AmpereBootStatus, NotStarted, Started, Completed, Failed,
+  ampere_smpro_sysfs_abi,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,13 +22,6 @@ data smpro_misc_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/torvalds/linux/blob/995832b2cebe6969d1b42635db698803ee31294d/drivers/misc/smpro-misc.c"
-  }
-}
-
-data smpro_boot_progress_abi_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "github.com/torvalds/linux/blob/995832b2cebe6969d1b42635db698803ee31294d/Documentation/ABI/testing/sysfs-bus-platform-devices-ampere-smpro"
   }
 }
 
@@ -47,7 +41,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [smpro_misc_authority, smpro_boot_progress_abi_authority, smpro_errmon_authority]
+  further_citations: [smpro_misc_authority, ampere_smpro_sysfs_abi, smpro_errmon_authority]
 }
 
 // THE SUBJECT IS THE AMPERE SMpro's I2C REGISTER INTERFACE as Ampere's own Linux drivers use it:

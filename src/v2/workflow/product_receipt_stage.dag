@@ -10,6 +10,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
+  filesystem_established_absence_detail,
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.git
@@ -36,11 +37,10 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { Empty, fold_list, length }
-import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.optional { Absent, Present }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.workflow.body_lowering_retention_census {
   EvidenceNotApplicable,
   B4EvidenceOutcome,
@@ -73,7 +73,9 @@ import v2.workflow.product_receipt {
   CargoBuild,
   CargoBuildFailed,
   CargoManifestWriteFailed,
-  EmittedCargoManifestUnreadable,
+  EmittedCargoManifestAbsent,
+  EmittedCargoManifestNotUsable,
+  EmittedCargoManifestUnobservable,
   ClosureCandidateEmitted,
   EmittedHardRefusalsPresent,
   DiagnosticCauseTally,
@@ -104,7 +106,9 @@ import v2.workflow.product_receipt {
 import tools.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   HarnessManifestDerived,
-  EmittedManifestUnreadable,
+  EmittedManifestNotUsable,
+  EmittedManifestAbsent,
+  EmittedManifestUnobservable,
   HarnessManifestWriteFailed,
   ProbeLibTarget,
   SeedLinked
@@ -285,10 +289,12 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
     ManifestCoverageIncomplete => false
     ManifestPopulationPartial => false
     PopulationDigestMismatch => false
-    EmitterRejected { causes: _ } => false
+    EmitterRejected { causes: _, advisories: _ } => false
     EmittedHardRefusalsPresent { count: _ } => false
     AssemblyRefused => false
-    EmittedCargoManifestUnreadable => false
+    EmittedCargoManifestAbsent { detail: _ } => false
+    EmittedCargoManifestNotUsable => false
+    EmittedCargoManifestUnobservable { cause: _ } => false
     CargoManifestWriteFailed => false
     CargoBuildFailed => false
   }
@@ -346,16 +352,30 @@ fn stage_completed(
 // realization of it unchanged. Stated because the receipt would otherwise
 // look portable across realizations when one of its fields is not.
 fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
+  diagnostic_tally_bump(tally: Empty, reason: symbol_lexeme(sym: diagnostics_fatal_reason(d: ds)))
+}
+
+// THE ADVISORIES ARE EVERY ELEMENT BUT THE LAST, counted by reason and kept apart from the cause:
+// the chain is its prepended advisories followed by its fatal element, so tallying the whole chain
+// as causes counted the grammar overlap residue once per row it carried and as often as the cause.
+fn emitter_diagnostic_advisories(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
   fold_list(
     xs: ds.tail,
-    empty: diagnostic_tally_bump(
-      tally: Empty,
-      reason: symbol_lexeme(sym: ds.head.reason)
-    ),
+    empty: EmitterAdvisoryWalk { pending: ds.head, tally: Empty },
     cons: fn(acc, d) {
-      diagnostic_tally_bump(tally: acc, reason: symbol_lexeme(sym: d.reason))
+      EmitterAdvisoryWalk {
+        pending: d,
+        tally: diagnostic_tally_bump(tally: acc.tally, reason: symbol_lexeme(sym: acc.pending.reason))
+      }
     }
-  )
+  ).tally
+}
+
+// The walk holds one element back: each step tallies the element before it, so the last element
+// (the fatal cause) is never tallied as an advisory.
+type EmitterAdvisoryWalk {
+  pending: Diagnostic
+  tally: List<DiagnosticCauseTally>
 }
 
 type ProductReceiptCandidate {
@@ -412,7 +432,7 @@ fn product_receipt_candidate_refused(
   ProductReceiptCandidate {
     observation: stage_refused(
       boundary: ClosureCandidateEmitted,
-      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
+      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds), advisories: emitter_diagnostic_advisories(ds: ds) },
       consumed: population_digest
     ),
     emitted_source: "",
@@ -459,7 +479,7 @@ fn product_receipt_candidate_materialize(
       ProductReceiptCandidate {
         observation: stage_refused(
           boundary: ClosureCandidateEmitted,
-          cause: EmitterRejected { causes: Empty },
+          cause: EmitterRejected { causes: Empty, advisories: Empty },
           consumed: population_digest
         ),
         emitted_source: emitted_source,
@@ -511,8 +531,16 @@ fn product_receipt_cargo_tail(
     target: ProbeLibTarget,
     linkage: SeedLinked { root: root }
   ) {
-    EmittedManifestUnreadable { path: _ } =>
-      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestUnreadable)
+    EmittedManifestNotUsable { path: _ } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestNotUsable)
+    EmittedManifestAbsent { path: _, established: e } => {
+      let cause = EmittedCargoManifestAbsent { detail: filesystem_established_absence_detail(absence: e) }
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: cause)
+    }
+    EmittedManifestUnobservable { path: _, cause: cause } => {
+      let refusal = EmittedCargoManifestUnobservable { cause: cause }
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: refusal)
+    }
     HarnessManifestWriteFailed { path: _ } =>
       product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: CargoManifestWriteFailed)
     HarnessManifestDerived { content: cargo_manifest_text } => {

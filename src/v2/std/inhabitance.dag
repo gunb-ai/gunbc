@@ -10,7 +10,8 @@ import v2.std.diagnostic {
   Rejected,
   Suggested,
   Unavailable,
-  node_locus
+  node_locus,
+  diagnostics_fatal_reason
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -32,7 +33,7 @@ import v2.std.node {
   node_synthetic
 }
 import std.algebra { list_append }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
@@ -56,7 +57,12 @@ fn inhabitance_formal_declaration(declared: Node, type_params: List<Symbol>) -> 
       } else {
         DeclaredType { declared: declared }
       }
-    _ => DeclaredType { declared: declared }
+    TypeNode { connective: Conj } => DeclaredType { declared: declared }
+    TypeNode { connective: Disj } => DeclaredType { declared: declared }
+    TypeNode { connective: Arrow } => DeclaredType { declared: declared }
+    TypeNode { connective: Cardinality } => DeclaredType { declared: declared }
+    TypeNode { connective: Instantiation } => DeclaredType { declared: declared }
+    ComputationNode { behavior: _ } => DeclaredType { declared: declared }
   }
 }
 
@@ -322,7 +328,7 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
         Rejected { diagnostics: r } =>
           declared_type_inhabitance_declared_carrier(
             obligation: obligation,
-            exact_refusal: InhabitanceRefused { find_witness_reason: r.head.reason }
+            exact_refusal: InhabitanceRefused { find_witness_reason: diagnostics_fatal_reason(d: r) }
           )
       }
   }

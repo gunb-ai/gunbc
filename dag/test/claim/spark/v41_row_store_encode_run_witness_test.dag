@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.v41_row_store_encode { V41StoreEncodeArgs }
 import gunbc.spark.v41_row_store_encode_run {
   V41StoreRun, V41StorePresent, V41StoreEncoded, V41StoreDigestUnread, V41StoreEncodeFailed, V41StorePresenceFailed,

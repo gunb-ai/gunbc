@@ -1,0 +1,87 @@
+module gunbc.workspace_gateway_observer
+
+import extdeps.network.endpoint { render_network_host }
+
+import std.types { String, NonEmptyStr }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_gateway_store { WorkspaceGatewayRead, WorkspaceGatewayEvidenceUnavailable, workspace_publish_gateway_evidence, workspace_publish_gateway_refusal }
+import std.measure { second }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.gnu_coreutils { timeout_command }
+import extdeps.ssh.client_options { BatchMode, ConnectTimeout, ExitOnForwardFailure, openssh_exact_agent_credential_options, openssh_suppress_ambient_configuration_options }
+import extdeps.ssh.openssh_port_forwarding { ForwardingAdmissionSubject, ssh_stdio_forward_command }
+import gunbc.fleet_known_hosts_anchor { FleetOpenSshTrustPolicy, fleet_openssh_trust_options, fleet_openssh_known_host_line }
+import extdeps.ssh { ssh_public_key_line }
+import gunbc.fleet_ssh_access { operator_ssh_principal }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_subject, workspace_gateway_evidence }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.command_runner { run_shell_command_observe }
+
+// Execute in the existing operator context with its explicitly selected agent. The selector is
+// PUBLIC key material. No private key is copied, and the root controller never invokes this path.
+// Its caller publishes the returned observation into the protected state store for the runtime.
+type WorkspaceGatewayObservation
+  = WorkspaceGatewayObserved { evidence: WorkspaceGatewayEvidence }
+  | WorkspaceGatewayUnobserved { reason: NonEmptyStr }
+
+fn workspace_observe_gateway_wet(slot: RunnerSlotIdentity, trust: FleetOpenSshTrustPolicy, agent_socket: NonEmptyStr) -> WorkspaceGatewayObservation {
+  match workspace_gateway_subject(slot: slot) {
+    Absent => WorkspaceGatewayUnobserved { reason: "fleet gateway subject is unresolved" }
+    Present { value: subject } => match render_network_host(host: subject.relay) {
+      Absent => WorkspaceGatewayUnobserved { reason: "gateway relay has no concrete name" }
+      Present { value: relay_name } => match fleet_openssh_known_host_line(policy: trust, host: relay_name) {
+        Absent => WorkspaceGatewayUnobserved { reason: "gateway FQDN has no uniquely enrolled public host-key row" }
+        Present { value: enrolled_host_key } => workspace_observe_gateway_subject_wet(
+          subject: subject, enrolled_host_key: enrolled_host_key, trust: trust, agent_socket: agent_socket)
+      }
+    }
+  }
+}
+
+// Repeated refreshes own and remove their temporary public selector. Neither a failed mktemp
+// nor a failed cleanup is hidden behind an apparently successful access observation.
+fn workspace_observe_gateway_subject_wet(subject: ForwardingAdmissionSubject,
+  enrolled_host_key: NonEmptyStr, trust: FleetOpenSshTrustPolicy, agent_socket: NonEmptyStr) -> WorkspaceGatewayObservation {
+  let scratch = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_workspace_gateway.XXXXXX")
+  if !scratch.success { WorkspaceGatewayUnobserved { reason: "gateway selector directory could not be created" } }
+  else {
+    let selector = join([scratch.path as String, "/operator.pub"], "") as NonEmptyStr
+    let written = Filesystem.WriteCreateNew(path: selector as String, content: ssh_public_key_line(k: operator_ssh_principal.public_key) as String)
+    let result = if !written.success { WorkspaceGatewayUnobserved { reason: "operator public-key selector could not be materialized" } }
+    else {
+      let options = concat(openssh_suppress_ambient_configuration_options(),
+        concat(fleet_openssh_trust_options(policy: trust), concat(openssh_exact_agent_credential_options(agent_socket: agent_socket, public_selector_file: selector),
+          [BatchMode { enabled: true }, ConnectTimeout { seconds: second(count: 5) }, ExitOnForwardFailure { enabled: true }])))
+      match ssh_stdio_forward_command(subject: subject, options: options) {
+        Absent => WorkspaceGatewayUnobserved { reason: "forwarding command cannot represent this subject" }
+        Present { value: command } => {
+          let observed = run_shell_command_observe(command: timeout_command(duration: second(count: 5), kill_after: second(count: 1), command: command), transport: LocalExec)
+          match clock_now_probed_at() {
+            Absent => WorkspaceGatewayUnobserved { reason: "gateway observation clock unavailable" }
+            Present { value: observed_time } => WorkspaceGatewayObserved { evidence: workspace_gateway_evidence(subject: subject,
+              known_host: enrolled_host_key, observation: observed, observed_at: observed_time as String) }
+          }
+        }
+      }
+    }
+    let removed = shell.Remove.RecursiveForce(path: scratch.path)
+    if !removed.success { WorkspaceGatewayUnobserved { reason: "gateway public selector cleanup failed" } }
+    else { result }
+  }
+}
+
+
+fn workspace_refresh_gateway_wet(store: FabricStorageBinding, slot: RunnerSlotIdentity,
+  trust: FleetOpenSshTrustPolicy, agent_socket: NonEmptyStr) -> WorkspaceGatewayRead {
+  match workspace_observe_gateway_wet(slot: slot, trust: trust, agent_socket: agent_socket) {
+    WorkspaceGatewayUnobserved { reason: detail } => match clock_now_probed_at() {
+      Absent => WorkspaceGatewayEvidenceUnavailable { reason: "gateway refresh failed and refusal clock is unavailable" }
+      Present { value: now } => workspace_publish_gateway_refusal(store: store, slot: slot, reason: detail, observed_at: now)
+    }
+    WorkspaceGatewayObserved { evidence: observed } => workspace_publish_gateway_evidence(store: store, slot: slot, evidence: observed)
+  }
+}

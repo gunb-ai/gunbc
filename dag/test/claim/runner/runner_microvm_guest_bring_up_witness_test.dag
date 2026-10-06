@@ -1,10 +1,12 @@
 module test.claim.runner.runner_microvm_guest_bring_up_witness_test
 
+import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
 import gunbc.runner_microvm_lifecycle {
@@ -41,9 +43,9 @@ fn witness_identity() -> AttemptIdentity? {
           attempt: a,
           allocation_generation: 1,
           invocation_id: "inv-1" as NonEmptyStr,
-          jit_registration_id: "reg-1" as NonEmptyStr,
+          workload: GitHubRunnerWorkload { registration_id: "reg-1" as NonEmptyStr },
           credential_device_path: "/srv/jail/attempt/jit.env",
-          guest_image: gunbc_runner_guest_image,
+
         }
       }
     MicroVmAttemptRefused { refusal: _ } => none

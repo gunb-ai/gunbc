@@ -1,5 +1,6 @@
 module v2.test.long.pick_ingested_structural_lowering
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.eval {
@@ -23,11 +24,10 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -49,7 +49,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.node {
   Arrow,

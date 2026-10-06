@@ -6,7 +6,7 @@ import extdeps.posix.test_utility { test_exists_command }
 import std.measure { ByteSize, byte_size }
 import std.algebra { Cons, Empty, list_append, trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.exec.command { ArgvCommand, env_prefixed_command_in, env_cleared_command_in }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -58,7 +58,7 @@ import gunbc.host_effect_realize {
   Srv3HostPredicate, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved,
   srv3_ensure_apt, AptPresenceSubject, AptBinaryOnPath, AptPackageInstalled,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
@@ -83,7 +83,7 @@ import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
 import v2.extdeps.languages.bash_build { bash_build_pipe, bash_build_with_redir_to_file, bash_build_word_lit }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
-// CONSUMER READS IT FROM. gunbc.machine_intake_mtcollins1_kvm_still drives the MegaRAC KVM viewer
+// CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
 // in headless Chromium through Playwright; until this module nothing put that toolchain on a runner,
 // and the only proposal was a boot-step `npm install` -- an undeclared toolchain on a fleet host
 // (DESIGN 3: interface in extdeps, realization bound to it; DESIGN 6: a hand-authored provisioning
@@ -776,7 +776,7 @@ data runner_browser_toolchain_probe_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script, browser_toolchain_package_version_script and browser_toolchain_decoy_index -- JavaScript held as strings (two run by node -e, one written as the decoy module node would load). RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
+data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script, browser_toolchain_package_version_script and browser_toolchain_decoy_index -- JavaScript held as strings (two run by node -e, one written as the decoy module node would load). RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_megarac_kvm_still megarac_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
 // headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page and the

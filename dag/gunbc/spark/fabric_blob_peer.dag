@@ -3,8 +3,8 @@ module gunbc.spark.fabric_blob_peer
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import extdeps.tools.rsync {
   RsyncReadOnlyModule, rsyncd_conf_text, rsync_daemon_foreground_argv, rsync_daemon_url,
   rsync_pull_file_argv, rsync_daemon_default_port,
@@ -94,7 +94,7 @@ fn fabric_blob_serve(ctx: SparkMaterializeContext) -> FabricBlobServe {
     Absent => fabric_blob_serve_refused(ctx: ctx, step: "serve-rail-address", cause: join(["the holder ", ctx.host as String, " has no fabric rail address, so it cannot serve over the rail"], ""))
     Present { value: rail } =>
       match spark_remote_run(ctx: ctx, argv: ["systemctl", "is-active", fabric_blob_serve_unit as String]) {
-        RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-state", cause: c)
+        RemoteUnreachable { cause: c, reach: _ } => fabric_blob_serve_refused(ctx: ctx, step: "serve-state", cause: c)
         RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
           if trim(s: state) == "active" {
             FabricBlobServing { serving: FabricBlobHolder { holder: ctx.host, rail_address: rail as NonEmptyStr } }
@@ -109,11 +109,11 @@ fn fabric_blob_serve(ctx: SparkMaterializeContext) -> FabricBlobServe {
 // the script, so its newlines and `=` reach the file exactly as rsyncd_conf_text rendered them.
 fn fabric_blob_serve_start(ctx: SparkMaterializeContext, rail: NonEmptyStr) -> FabricBlobServe {
   match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", fabric_blob_root as String, fabric_blob_staging_directory as String]) {
-    RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-root", cause: c)
+    RemoteUnreachable { cause: c, reach: _ } => fabric_blob_serve_refused(ctx: ctx, step: "serve-root", cause: c)
     RemoteRan { exit_code: e, stdout: _, stderr: err } =>
       if e != 0 { fabric_blob_serve_refused(ctx: ctx, step: "serve-root", cause: join(["mkdir exited ", to_string(e), ": ", err], "")) } else {
         match spark_remote_run(ctx: ctx, argv: ["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", rsyncd_conf_text(module: fabric_blob_rsync_module), fabric_blob_rsyncd_conf_path as String]) {
-          RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-config", cause: c)
+          RemoteUnreachable { cause: c, reach: _ } => fabric_blob_serve_refused(ctx: ctx, step: "serve-config", cause: c)
           RemoteRan { exit_code: e2, stdout: _, stderr: err2 } =>
             if e2 != 0 { fabric_blob_serve_refused(ctx: ctx, step: "serve-config", cause: join(["writing the daemon configuration exited ", to_string(e2), ": ", err2], "")) } else {
               let cleared = spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", fabric_blob_serve_unit as String])
@@ -121,7 +121,7 @@ fn fabric_blob_serve_start(ctx: SparkMaterializeContext, rail: NonEmptyStr) -> F
                 ["systemd-run", join(["--unit=", fabric_blob_serve_unit as String], ""), "--description=gunbc fabric blob serve (read-only rsync daemon on the rail)", "--"],
                 rsync_daemon_foreground_argv(address: rail, port: rsync_daemon_default_port, config_path: fabric_blob_rsyncd_conf_path),
               )) {
-                RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-start", cause: c)
+                RemoteUnreachable { cause: c, reach: _ } => fabric_blob_serve_refused(ctx: ctx, step: "serve-start", cause: c)
                 RemoteRan { exit_code: e3, stdout: _, stderr: err3 } =>
                   if e3 != 0 { fabric_blob_serve_refused(ctx: ctx, step: "serve-start", cause: join(["systemd-run exited ", to_string(e3), ": ", err3], "")) } else {
                     FabricBlobServing { serving: FabricBlobHolder { holder: ctx.host, rail_address: rail } }
@@ -136,7 +136,7 @@ fn fabric_blob_serve_start(ctx: SparkMaterializeContext, rail: NonEmptyStr) -> F
 // STOPPING IS BEST-EFFORT AND SAYS SO IN ITS TYPE: a daemon that is already gone is the ordinary case.
 fn fabric_blob_serve_stop(ctx: SparkMaterializeContext) -> Bool {
   match spark_remote_run(ctx: ctx, argv: ["systemctl", "stop", fabric_blob_serve_unit as String]) {
-    RemoteUnreachable { cause: _ } => false
+    RemoteUnreachable { cause: _, reach: _ } => false
     RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
   }
 }

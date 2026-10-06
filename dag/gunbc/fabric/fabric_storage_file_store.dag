@@ -2,7 +2,7 @@ module gunbc.fabric_storage_file_store
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import extdeps.shell
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasExpectation, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
@@ -19,7 +19,7 @@ import std.fabric_storage {
   FabricObjectGet, FabricObjectFetched, FabricObjectGetRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   observe_cas_slot_state, file_compare_and_set, DefaultAccessCreateOnly, DeclaredModeCreateOnly, CasGenerationPublication, cas_key_is_slot_addressable,
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
@@ -196,7 +196,7 @@ fn fabric_storage_file_head(root: FabricStorageFileRoot, name: NonEmptyStr) -> F
   if !fabric_storage_head_name_admitted(name: name) {
     FabricHeadReadRefused { fault: FabricHeadNameRefused { name: name } }
   } else {
-    match observe_cas_slot_state(root: root.heads, key: name, retention: KeepAllGenerations) {
+    match observe_cas_slot_state(root: root.heads, key: name) {
       CasObservedUnreadable { cause: c } => FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: c } } }
       CasObservedReadable { readable: r } =>
         match r {
@@ -238,7 +238,7 @@ fn fabric_storage_file_advance(root: FabricStorageFileRoot, name: NonEmptyStr, e
             match admit_cas_attempt_for_derived_payload(key: name, expected: fabric_storage_cas_expectation(reading: observed), proposed: fabric_object_ref_wire(object: target)) {
               DerivedPayloadKeyNotSlotAddressable { key: k } => FabricHeadAdvanceRefused { fault: FabricHeadNameRefused { name: k } }
               DerivedPayloadAdmitted { verified: v } =>
-                match file_compare_and_set(root: root.heads, publication: fabric_storage_head_publication(root: root), retention: KeepAllGenerations, verified: v).outcome {
+                match file_compare_and_set(root: root.heads, publication: fabric_storage_head_publication(root: root), verified: v) {
                   CasCommitted { committed: c } => FabricHeadAdvanced { object: target, generation: c.generation }
                   CasStoreRefused { cause: c } => FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: c } }
                   CasPreconditionFailed { expected: _, observed: _ } =>
@@ -293,12 +293,22 @@ fn closure_step(root: FabricStorageFileRoot, st: ClosureState) -> ClosureState {
   }
 }
 
+// Stop when the observed closure ends, not after allocating the full configured upper bound.
+// Each advancing step consumes one unit exactly as the former bounded fold did.
+fn closure_pump(root: FabricStorageFileRoot, st: ClosureState, steps: Nat, bound: Nat) -> ClosureState {
+  if steps >= bound || st.pending.count() == 0 { st }
+  else { match st.refused {
+    Present { value: _ } => st
+    Absent => closure_pump(root: root, st: closure_step(root: root, st: st), steps: steps + 1, bound: bound)
+  } }
+}
+
 fn fabric_storage_file_closure(root: FabricStorageFileRoot, name: NonEmptyStr, bound: Nat) -> FabricClosureRead {
   match fabric_storage_file_head(root: root, name: name) {
     FabricHeadReadRefused { fault: f } => FabricClosureRefused { fault: f }
     FabricHeadObserved { reading: FabricHeadAbsent } => FabricClosureRead { reading: FabricHeadAbsent, newest_first: [] }
     FabricHeadObserved { reading: FabricHeadAt { object: h, generation: g } } => {
-      let st = fold(nat_range_inclusive(lo: 1, hi: bound), init: ClosureState { pending: [h], newest_first: [], seen: empty_set(), refused: none }, f: (acc, _i) => closure_step(root: root, st: acc))
+      let st = closure_pump(root: root, st: ClosureState { pending: [h], newest_first: [], seen: empty_set(), refused: none }, steps: 0, bound: bound)
       match st.refused {
         Present { value: f } => FabricClosureRefused { fault: f }
         Absent =>

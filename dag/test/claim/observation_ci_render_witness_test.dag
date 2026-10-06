@@ -85,10 +85,13 @@ import gunbc.observation_ci_render {
   ci_run_summary_line,
   ci_refusal_restate_line,
   ci_witness_claim_result_text,
+  ci_witness_runtime_error_detail_text,
+  CiRaiseFrame,
   ci_witness_runtime_cause_token,
   ci_witness_bazel_target_label,
   ci_shared_fill_row_text,
   ci_shared_fill_total_text,
+  ci_shared_fill_unattributed_text, UnattributedHitOutsideFold, UnattributedHitInClaimWithoutFill,
   ci_human_elapsed,
   HeartbeatSample,
   FloorRunSummary,
@@ -706,6 +709,58 @@ test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool {
     && !string_contains(s: wrong_type, pattern: "cause=no-such-variable")
 }
 
+// THE THROW IS LOCATED. The detail line names the innermost declaration that was running, the call
+// path out to the claim, and the message, each by key. The literal is the seed mirror's literal
+// too (`render_witness_runtime_error_detail_text_mirror`'s test), so the two cannot drift apart
+// silently.
+test fn w_runtime_error_detail_names_the_raising_declaration() -> Bool {
+  let text = ci_witness_runtime_error_detail_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    frames: [
+      CiRaiseFrame { decl: "inner", file: "dag/test/claim/foo.dag", start: 120 },
+      CiRaiseFrame { decl: "w_bar", file: "dag/test/claim/foo.dag", start: 40 }
+    ],
+    elided: 0,
+    message: "type error: expected Int\ngot Str"
+  )
+  text == "//test/claim/foo:w_bar error-at raised_in=inner@dag/test/claim/foo.dag:120 call_path=inner@dag/test/claim/foo.dag:120<-w_bar@dag/test/claim/foo.dag:40 message=type error: expected Int\\ngot Str"
+}
+
+// THE DISCRIMINATING HALF: the same throw raised in a different declaration must render a
+// different `raised_in=`, so the field is a function of the frames and not decoration.
+test fn w_RED_runtime_error_detail_follows_the_innermost_frame() -> Bool {
+  let in_inner = ci_witness_runtime_error_detail_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    frames: [CiRaiseFrame { decl: "inner", file: "f.dag", start: 1 }],
+    elided: 0,
+    message: "m"
+  )
+  let in_other = ci_witness_runtime_error_detail_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    frames: [CiRaiseFrame { decl: "other", file: "f.dag", start: 9 }],
+    elided: 0,
+    message: "m"
+  )
+  in_inner != in_other
+    && string_contains(s: in_other, pattern: "raised_in=other@f.dag:9 ")
+    && !string_contains(s: in_other, pattern: "raised_in=inner")
+}
+
+// NO FRAMES IS SAID, NOT LEFT BLANK: an empty `raised_in=` would read as a location.
+test fn w_RED_runtime_error_detail_without_frames_says_unrecorded() -> Bool {
+  let text = ci_witness_runtime_error_detail_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    frames: [],
+    elided: 3,
+    message: "m"
+  )
+  text == "//test/claim/foo:w_bar error-at raised_in=unrecorded call_path=unrecorded elided=3 message=m"
+}
+
 // A CAUSE BELONGS TO A THROW AND TO NOTHING ELSE. Carried as the arm's payload this is nearly
 // tautological -- no other arm has a field to hold one -- but the RENDERER could still have
 // appended something, and a PASSED row that grew a trailing field would break every consumer
@@ -750,6 +805,14 @@ test fn w_measured_population_causes_are_four_distinct_tokens() -> Bool {
   let c = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchFunction)
   let d = ci_witness_runtime_cause_token(cause: WitnessCauseCallContractMismatch)
   a != b && a != c && a != d && b != c && b != d && c != d
+}
+
+// A HOST WRITE THAT FAILED IS NOT A TYPE ERROR. The emit_host_identity_cast_native rows reported a
+// permission-denied cache write as `cause=type-error`; the effect failure has its own token.
+test fn w_RED_host_io_failure_is_not_a_type_error() -> Bool {
+  ci_witness_runtime_cause_token(cause: WitnessCauseHostIoFailed) == "host-io-failed"
+    && ci_witness_runtime_cause_token(cause: WitnessCauseHostIoFailed)
+      != ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
 }
 
 test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
@@ -810,6 +873,25 @@ test fn w_shared_fill_total_line_holds() -> Bool {
     shared_fill: millisecond(count: 42000),
     unattributed_hits: 0
   ) == "[floor-shared-fill] TOTAL fills=9 fill_ms=60000 shared_fill_ms=42000 unattributed_hits=0"
+}
+
+// THE PER-KEY UNATTRIBUTED LINE, both frames: the pair varies only the frame, so a renderer that
+// collapsed them back into one aggregate reds here.
+test fn w_shared_fill_unattributed_line_names_frame_phase_and_key() -> Bool {
+  ci_shared_fill_unattributed_text(
+    frame: UnattributedHitOutsideFold,
+    phase: "cross-claim-share-derivation",
+    cache: "cross_claim_pure_share",
+    key: "rust_target_model_staging",
+    hits: 3
+  ) == "[floor-shared-fill-unattributed] frame=outside-fold phase=cross-claim-share-derivation cache=cross_claim_pure_share key=rust_target_model_staging hits=3"
+    && ci_shared_fill_unattributed_text(
+      frame: UnattributedHitInClaimWithoutFill,
+      phase: "claim",
+      cache: "cross_claim_pure_share",
+      key: "prepare_grammar",
+      hits: 40
+    ) == "[floor-shared-fill-unattributed] frame=in-claim-without-fill phase=claim cache=cross_claim_pure_share key=prepare_grammar hits=40"
 }
 
 // THE DISCRIMINATING HALF. The line above would read identically for a fill whose cost really is

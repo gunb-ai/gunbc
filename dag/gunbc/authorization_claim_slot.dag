@@ -11,7 +11,7 @@ import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration,
   CasCommitted, CasPreconditionFailed, CasStoreRefused,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set, authorization_claim_store_root,
   CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
 }
@@ -41,7 +41,7 @@ fn claim_authorization_slot(
     CasAttemptAdmitted { verified: v } =>
       authorization_claim_outcome(
         proposed: proposed,
-        outcome: file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, retention: KeepAllGenerations, verified: v).outcome,
+        outcome: file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v),
       )
     CasAttemptDigestMismatch { claimed: _, actual: _ } =>
       ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
@@ -79,7 +79,7 @@ fn settle_authorization_claim(
     ),
   ) {
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+      match file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => outcome
         CasPreconditionFailed { expected: _, observed: _ } =>
           unterminated_claim_exit(label: label, outcome: outcome, detail: "claim slot moved under us")

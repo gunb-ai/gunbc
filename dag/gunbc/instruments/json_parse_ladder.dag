@@ -70,7 +70,14 @@ fn weight_map_members(text: String) -> Int {
     JsonDocumentParsed { value: v } =>
       match json_object_unique_member(v: v, key: "weight_map") {
         JsonMemberFound { value: JsonObject { members: ms } } => count(ms)
-        _ => 0 - 2
+        JsonMemberFound { value: JsonNull } => 0 - 2
+        JsonMemberFound { value: JsonBool { value: _ } } => 0 - 2
+        JsonMemberFound { value: JsonNumber { lexeme: _ } } => 0 - 2
+        JsonMemberFound { value: JsonString { value: _ } } => 0 - 2
+        JsonMemberFound { value: JsonArray { elements: _ } } => 0 - 2
+        JsonMemberAbsent => 0 - 2
+        JsonMemberDuplicated { count: _ } => 0 - 2
+        JsonMemberNotAnObject => 0 - 2
       }
   }
 }

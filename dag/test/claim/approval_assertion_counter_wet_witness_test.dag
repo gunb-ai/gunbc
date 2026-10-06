@@ -6,7 +6,7 @@ import std.types { String, NonEmptyStr, Int }
 import std.durable_compare_and_set { ExpectSlotGeneration, cas_attempt, CasPreconditionFailed, CasReadablePresent }
 import std.content_hash { content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_create_new }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path,
   CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation,
 }
@@ -158,7 +158,7 @@ test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writ
     attempt: stale_attempt,
     target: 6,
     created: filesystem_create_new(path: stale_write.path, success: stale_write.success, error: stale_write.error, error_kind: stale_write.error_kind),
-    post: observe_cas_slot_state(root: root as NonEmptyStr, key: key, retention: KeepAllGenerations),
+    post: observe_cas_slot_state(root: root as NonEmptyStr, key: key),
   )
   let refused_as_race = match classified {
     CasPreconditionFailed { expected: _, observed: o } => match o {

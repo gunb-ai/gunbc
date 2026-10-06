@@ -1,4 +1,5 @@
 module v2.lens.effect
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.common.algebraic_composition { EffectClassification, effect_classifier }
 import std.disposition { SingleAuthority }
@@ -7,10 +8,9 @@ import v2.compiler.infer { InferredFacts, InferredTree, infer_facts_lookup_miss_
 import v2.std.algebra { bag_eq, non_empty }
 import std.algebra { list_snoc_item }
 import v2.std.collection {
-  List,
   optional_present_witness
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   optional_absent,
   optional_prefer_first_present,
@@ -29,7 +29,6 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 

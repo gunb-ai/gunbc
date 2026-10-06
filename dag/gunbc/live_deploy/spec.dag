@@ -16,6 +16,7 @@ import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
   tailscale_serve_unix_target,
+  tailscale_serve_unix_target_path,
   TailscaleServeEndpoint,
   TailscaleServeMount,
   ServeRootMount,
@@ -30,8 +31,8 @@ import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
-  operator_host_srv1,
 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import std.materialization_store_grant { materialization_store_durable_root_path }
 import gunbc.host_layout {
@@ -50,6 +51,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_compute_root,
   dashboard_instance_provider_state_root,
+  dashboard_instance_tailnet_door_socket,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
@@ -107,6 +109,7 @@ type OwnedArtifactKind =
   | FabricStorageServeUnit
   | FabricStorageServeMapping
   | ApprovalBrokerFrontDoor
+  | TailnetDoorServeUnit
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -213,6 +216,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     FabricStorageServeUnit => TeardownActs
     FabricStorageServeMapping => TeardownActs
     ApprovalBrokerFrontDoor => TeardownActs
+    TailnetDoorServeUnit => TeardownActs
   }
 }
 
@@ -655,6 +659,35 @@ fn deployment_fabric_storage_serve_endpoint() -> TailscaleServeEndpoint {
   }
 }
 
+// THE TAILNET DOOR'S UNIT. A deployment whose serve route targets a unix socket runs a second
+// `gunbc serve` on that socket beside its loopback one: the loopback listener keeps serving the
+// host's own readers (the healthz and digest readbacks, the belt), and the door is what tailscale
+// serve proxies to, so a request through it carries a kernel-attested peer. The socket is the
+// route's own backend, read back out of the endpoint, so the unit and the mapping cannot name two
+// sockets. A deployment whose route targets a port has no door and no door unit.
+fn deployment_tailnet_door_socket(names: DeploymentNames) -> NonEmptyStr? {
+  tailscale_serve_unix_target_path(endpoint: names.tailscale_serve_endpoint)
+}
+
+fn deployment_tailnet_door_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-tailnet-door.service"], "") as NonEmptyStr
+}
+
+fn deployment_tailnet_door_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_tailnet_door_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// The door's served entry is the loopback entry's name with this suffix, so each instance's door
+// is selected by its launch argument exactly as its loopback entry is.
+data deployment_tailnet_door_function_suffix: String = "_door"
+
+fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  match deployment_tailnet_door_socket(names: names) {
+    Absent => []
+    Present { value: _ } => [DeploymentArtifactStep { kind: TailnetDoorServeUnit, path: deployment_tailnet_door_unit_path(names: names) }]
+  }
+}
+
 fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.service"], "") as NonEmptyStr
 }
@@ -860,11 +893,12 @@ data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 //
 // The root mount is therefore a DECLARED PLACEMENT for production and
 // derived for everyone else — the identical shape, and the identical stop, as
-// gunbc-roadmap.service.\n\nThe backend is NOT transcribed. It reads the instance's listen_port, so
-// this row states only what genuinely differs from the derivation (the mount) and inherits
-// everything else; a literal 8080 here would be a live-state transcription of the kind swept in
-// #7464. That is why this became a function of the instance rather than staying a nullary data
-// row.\n\nWHAT DOES CHANGE ON THE WIRE: the emitted command gains an explicit --https=443 where it
+// gunbc-roadmap.service.\n\nTHE BACKEND IS THE INSTANCE'S TAILNET DOOR SOCKET, not its loopback
+// port. A port backend is reachable by every account on the host, each able to present a forged
+// Tailscale-User-Login, so a request arriving on it cannot be told apart from a proxied one; the
+// door's peer is kernel-attested (gunbc.auth.request_authentication RequestIngress). The path is
+// projected from the instance (dashboard_instance_tailnet_door_socket), never
+// transcribed.\n\nWHAT DOES CHANGE ON THE WIRE: the emitted command gains an explicit --https=443 where it
 // previously passed the port alone. That is not byte-preservation and is not claimed as such. It is
 // required, because the upstream `off` form demands every original flag, so a mapping applied
 // without the listener flag cannot state the listener flag when removing itself. 443 is the
@@ -881,7 +915,7 @@ fn srv1_live_deployment_names(instance: HostDashboardInstance) -> DeploymentName
     tailscale_serve_endpoint: TailscaleServeEndpoint {
       https_port: tailscale_default_https_port,
       mount: ServeRootMount,
-      backend: to_string(instance.listen_port) as NonEmptyStr,
+      backend: tailscale_serve_unix_target(path: dashboard_instance_tailnet_door_socket(instance: instance)),
     },
     tree_sync_unit_name: gunbc_tree_sync_unit_name,
     tree_sync_env_path: gunbc_tree_sync_env_path,
@@ -1034,6 +1068,7 @@ fn deployment_owned_steps(
       path: deployment_publication_timer_unit_path(names: names),
     },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
+  ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
@@ -1041,7 +1076,7 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(instance: instance, names: names),
     deployment_approval_broker_front_door_steps(instance: instance),
-  ))
+  ))))
 }
 
 // THE BROKER'S TAILNET EXPOSURE IS ONE OWNED MEMBER OF THE DEPLOYMENT THAT OWNS THE BROKER, and its
@@ -1143,6 +1178,14 @@ fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
 // from gunbc_service_user at the shared 0755 -- which is what refused fleet-converge run
 // 36139624393's claim permission_denied. install -d re-applies owner, group and mode to a directory
 // that already exists, so the next apply repairs the areas #12126 created.
+//
+// THE MATERIALIZATION STORE'S DURABLE ROOT (the MaterializationStoreDirectory row). It discharges
+// std.materialization_store_grant's trigger, "the runner attempt launch attaches the persistent host
+// volume", for this host: the directory the store opens at materialization_store_durable_root_path
+// exists and belongs to the user that runs compute (the dispatch workers and the belt run as the service
+// user). The store writes its marker on first open and refuses when this root is absent; the path is the
+// grant's datum, never re-spelled here. The volume must hold gunbc.materialization_store_budgets
+// materialization_store_host_ceiling_bytes plus headroom.
 fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> {
   concat([
     DeploymentDependencyStep {
@@ -1156,13 +1199,6 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
       kind: FabricStorageStoreDirectory,
       subject: EnsuredManagedHostDirectory { admission: a },
     }), [
-    // THE MATERIALIZATION STORE'S DURABLE ROOT. This row discharges std.materialization_store_grant's
-    // trigger, "the runner attempt launch attaches the persistent host volume", for this host: the
-    // directory the store opens at materialization_store_durable_root_path exists and belongs to the
-    // user that runs compute (the dispatch workers and the belt run as the service user). The store
-    // itself writes its marker on first open and refuses when this root is absent; the path is the
-    // grant's datum, never re-spelled here. The volume must hold
-    // extdeps.realization.materialization_store_local local_store_host_ceiling_bytes plus headroom.
     DeploymentDependencyStep {
       kind: MaterializationStoreDirectory,
       subject: EnsuredHostDirectory {

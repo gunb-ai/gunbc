@@ -9,6 +9,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
   FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused
 }
+import std.optional { Absent, Present }
 
 // Compiler policy over the existing file transport. A failed listing is never an empty
 // directory. Only the host's NotADirectory observation admits a candidate as a file; every

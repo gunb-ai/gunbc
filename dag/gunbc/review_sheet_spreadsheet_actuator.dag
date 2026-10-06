@@ -4,14 +4,16 @@ import std.types { NonEmptyStr, String, Bool }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestReadExchange,
   RestMutationExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.drive
 import extdeps.google.drive { google_sheet_mime_type }
@@ -76,28 +78,29 @@ fn read_spreadsheet(
   drive_id: NonEmptyStr,
   marker_value: NonEmptyStr,
 ) -> ReviewSpreadsheetObservation {
-  let read = drive.Files.ListFiles(
+  match drive.Files.ListFiles(
     drive_id: drive_id as String,
     query: review_sheet_search_query(marker_value: marker_value),
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => spreadsheet_from_file_list(list: read.list)
-    RestExchangeStatusRefused { status, body } =>
-      SheetSearchUnreadable {
-        reason: join(["files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      SheetSearchUnreadable {
-        reason: join(["files.list never reached Drive: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      SheetSearchUnreadable {
-        reason: join(["files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      SheetSearchUnreadable {
-        reason: join(["files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
-      }
+  ) {
+    RestAnswered { answer: read } => spreadsheet_from_file_list(list: read.list)
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 
@@ -145,37 +148,38 @@ fn verify_created_spreadsheet(
 fn perform_spreadsheet_create(
   plan: SpreadsheetCreatePlan,
 ) -> SpreadsheetConvergeOutcome {
-  let created = drive.Files.CreateFile(
+  match drive.Files.CreateFile(
     name: plan.name as String,
     mime_type: google_sheet_mime_type as String,
     parent_id: plan.drive_id as String,
     marker_property_value: plan.marker_property_value as String,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: created } =>
       verify_created_spreadsheet(
         drive_id: plan.drive_id,
         marker_value: plan.marker_property_value,
         create_detail: "files.create answered success" as NonEmptyStr,
       )
-    RestExchangeCommitAmbiguous { detail } =>
-      verify_created_spreadsheet(
-        drive_id: plan.drive_id,
-        marker_value: plan.marker_property_value,
-        create_detail: join(["files.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
-      )
-    RestExchangeStatusRefused { status, body } =>
-      SpreadsheetConvergeRefused {
-        cause: join(["files.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      SpreadsheetConvergeRefused {
-        cause: join(["files.create never reached Drive: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      SpreadsheetConvergeRefused {
-        cause: join(["files.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+      RestExchangeCommitAmbiguous { detail } =>
+        verify_created_spreadsheet(
+          drive_id: plan.drive_id,
+          marker_value: plan.marker_property_value,
+          create_detail: join(["files.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+        )
+      RestExchangeStatusRefused { status, body } =>
+        SpreadsheetConvergeRefused {
+          cause: join(["files.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        SpreadsheetConvergeRefused {
+          cause: join(["files.create never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        SpreadsheetConvergeRefused {
+          cause: join(["files.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+    }
   }
 }
 

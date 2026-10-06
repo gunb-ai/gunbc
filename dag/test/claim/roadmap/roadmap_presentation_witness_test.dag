@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_alignment {
 import gunbc.roadmap_page {
   IssueBreadcrumbPath, IssueBreadcrumbRefused,
   IssueBreadcrumbProject, IssueBreadcrumbTask,
-  issue_breadcrumb_of, issue_alignment_breadcrumb_node,
+  issue_breadcrumb_of, issue_alignment_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
   project_suite_headline, project_suite_rows, project_suite_row_node,
 }
 import gunbc.roadmap_workflow_stage {
@@ -91,7 +91,7 @@ import gunbc.roadmap_presentation {
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
   IssueLinkView, IssueLinkPanel, issue_link_panel, issue_work_history_rounds,
-  issue_explanation, issue_first_open_kind, issue_wait_state_label,
+  issue_status_label, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, NodeOpen, NodeInProgress, EventPrincipalAuthenticated,
@@ -1700,27 +1700,27 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
     assignment: none,
-    standing: none,
+    standing: Present { value: NodeOpen },
     attempt_stale: false,
     profiles: [],
   }
 }
 
-test fn witness_issue_explanation_present_tense_cases() -> Bool {
-  issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: NoActiveWork)) == "open — ready to dispatch"
-    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapDependencies { blockers: ["a", "b"] }] }, activity: NoActiveWork)) == "open — not ready: missing dependencies (a, b) (prerequisites not closed: a, b)"
-    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapCentering] }, activity: NoActiveWork)) == "open — not ready: missing centering (no centering plan: the row supplies no plan for a worker)"
-    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingDone, activity: NoActiveWork)) == "delivered — its evidence is under review"
-    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActivityUnobservable { reason: "attempts ledger refused" })) == "attempt unobservable: attempts ledger refused"
-    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: CompletedWork { outcome: "All obligations complete", evidence: [], obligations: [] })) == "All obligations complete"
-    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActiveWork {
+test fn witness_issue_status_label_present_tense_cases() -> Bool {
+  issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: NoActiveWork)) == "Ready"
+    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapDependencies { blockers: ["a", "b"] }] }, activity: NoActiveWork)) == "Blocked"
+    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapCentering] }, activity: NoActiveWork)) == "Blocked"
+    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingDone, activity: NoActiveWork)) == "Review"
+    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActivityUnobservable { reason: "attempts ledger refused" })) == "Unknown"
+    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: CompletedWork { outcome: "All obligations complete", evidence: [], obligations: [] })) == "Ready"
+    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActiveWork {
          summary: "Agent working",
          obligations: [],
          remaining_obligation_count: 0,
          current_activity: "",
          attention: ActivityRoutine,
          evidence: [],
-       })) == "Agent working"
+       })) == "Active"
 }
 
 // A pending stage NAMES what it waits on (never a bare "pending"), and settled states keep their
@@ -1859,7 +1859,8 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool
         && string_contains(s: h, pattern: "Root headline")
         && string_contains(s: h, pattern: "Mid headline")
         && string_contains(s: h, pattern: "Task headline")
-        && string_contains(s: h, pattern: " › ")
+        && string_contains(s: h, pattern: "issue-path-tree")
+        && string_contains(s: h, pattern: "aria-current=\"page\"")
         && string_contains(s: h, pattern: "title=\"Root boundary\"")
         && !string_contains(s: h, pattern: "href=\"/issue/")
         && !string_contains(s: h, pattern: "principles")
@@ -1998,3 +1999,29 @@ test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
     && row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: fx_specimen_activity(), node_id: "vis-live-leaf"), memberships: memberships)
 }
 
+
+// Compact display preserves full authoritative path data and never repeats a lone ancestor.
+test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool {
+  issue_breadcrumb_short_label(label: "Short title") == "Short title"
+    && issue_breadcrumb_short_label(label: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == "abcdefghijklmnopqrstuvwxyzA…MNOPQRSTUVWXYZ"
+    && issue_breadcrumb_compact_labels(crumbs: []) == []
+    && issue_breadcrumb_compact_labels(crumbs: [
+      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
+      IssueBreadcrumbProject { node_id: "mid", purpose: "Middle", boundary: "" },
+      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
+      IssueBreadcrumbTask { node_id: "task", purpose: "Current title", boundary: "" }
+    ]) == ["Root", "› … 1 ›", "Parent"]
+    && issue_breadcrumb_compact_labels(crumbs: [
+      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
+      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
+      IssueBreadcrumbTask { node_id: "task", purpose: "Task", boundary: "" }
+    ]) == ["Root", "›", "Parent"]
+    && issue_breadcrumb_compact_labels(crumbs: [
+      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
+      IssueBreadcrumbProject { node_id: "a", purpose: "A", boundary: "" },
+      IssueBreadcrumbProject { node_id: "b", purpose: "B", boundary: "" },
+      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
+      IssueBreadcrumbTask { node_id: "task", purpose: "Task", boundary: "" }
+    ]) == ["Root", "› … 2 ›", "Parent"]
+    && issue_breadcrumb_compact_labels(crumbs: [IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" }]) == ["Root"]
+}

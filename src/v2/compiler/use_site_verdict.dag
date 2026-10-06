@@ -1,7 +1,7 @@
 module v2.compiler.use_site_verdict
 
+import std.types { List }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.node {
   Absent,
   Ambiguous,
@@ -63,7 +63,12 @@ fn use_site_verdict_move_field_of(children: List<Edge>) -> UseSiteVerdict {
     Found { target: field_node } =>
       match field_node.kind {
         TypeNode { connective: Atom { identity: f } } => MoveField { field: f }
-        _ => Unclassified
+        TypeNode { connective: Conj } => Unclassified
+        TypeNode { connective: Disj } => Unclassified
+        TypeNode { connective: Arrow } => Unclassified
+        TypeNode { connective: Cardinality } => Unclassified
+        TypeNode { connective: Instantiation } => Unclassified
+        ComputationNode { behavior: _ } => Unclassified
       }
     Absent => Unclassified
     Ambiguous => Unclassified
@@ -84,7 +89,12 @@ fn use_site_verdict_of_node(target: Node) -> UseSiteVerdict {
       } else {
         Unclassified
       }
-    _ => Unclassified
+    TypeNode { connective: Conj } => Unclassified
+    TypeNode { connective: Disj } => Unclassified
+    TypeNode { connective: Arrow } => Unclassified
+    TypeNode { connective: Cardinality } => Unclassified
+    TypeNode { connective: Instantiation } => Unclassified
+    ComputationNode { behavior: _ } => Unclassified
   }
 }
 

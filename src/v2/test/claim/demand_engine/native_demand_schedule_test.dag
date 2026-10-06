@@ -1,7 +1,6 @@
 module v2.test.demand_engine.native_demand_schedule
 
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.demand_engine {
   DemandEngine,
   BlockedByRefusedPrerequisite,
@@ -16,8 +15,7 @@ import v2.std.demand_engine {
   demand_identity_key
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import std.algebra { Cons, Empty }
 import v2.std.text { String }
 import v2.compiler.compile {
@@ -44,7 +42,7 @@ import v2.compiler.compile {
 }
 import std.content_hash { Fnv1a64Structural }
 import std.judgment_contract { DeclaredInput }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -199,9 +199,8 @@ fn evaluate_plan(
     edge_provenances: &[String],
 ) -> Result<PlanRows, String> {
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, PLAN_MODULE)
-            .map_err(|e| refusal("PlanModuleUnresolved", format!("{PLAN_MODULE}: {e}")))?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, PLAN_MODULE)
+        .map_err(|e| refusal("PlanModuleUnresolved", format!("{PLAN_MODULE}: {e}")))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Wet);
     let args = vec![
         (

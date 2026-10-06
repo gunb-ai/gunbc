@@ -20,7 +20,6 @@ import v2.std.compilers.target_model {
   target_layer_transition_is_deliverable,
   target_reference_layer_facts
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Executing controls for target_layer_transition, R1's next rung over wrap_decision_flow_gate. The

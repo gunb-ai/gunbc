@@ -3,22 +3,26 @@ module gunbc.spark.glm_serving_load
 import std.types { NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { token_count }
-import v2.std.optional { Present }
-import std.process { ProcessExit }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, exit_failure }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_backend_route,
 }
 import extdeps.vllm.server { vllm_route_path }
 import extdeps.vllm.engine_args { SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished }
-import gunbc.fleet_intent_network { operator_host_srv9, srv9_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv9_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4, glm_native_concurrent_profile, glm53_native_fp8_row, glm53_derived_row, runtime_artifact_wire,
+  glm53_native_fp8_row, runtime_artifact_wire, serving_runtime_row,
 }
+import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_profile, group_b_restoration_serve_port, group_b_restoration_served_alias }
 import gunbc.spark.serving_arm_launch { glm_native_container_name, glm_native_weights_container_dir }
 import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
 import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, ServingPerformanceSubjectStanding,
+  ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding,
 }
 import gunbc.spark.glm_group_b_relaunch_cli { with_group_b_access, rank_context }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
@@ -81,7 +85,7 @@ data glm_native_bench_seed: Nat = 20260918
 
 // The loopback base URL both the bench client and the metrics scrape address, from the profile's port.
 fn glm_native_serve_base_url() -> NonEmptyStr {
-  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port)], "") as NonEmptyStr
+  join(["http://127.0.0.1:", to_string(group_b_restoration_serve_port)], "") as NonEmptyStr
 }
 
 // The live probe's protocol: 256-in/128-out, SendAllImmediately, c=2. SendAllImmediately is wiring,
@@ -90,7 +94,7 @@ fn glm_native_serve_base_url() -> NonEmptyStr {
 data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
   base_url: glm_native_serve_base_url(),
-  model: glm_native_concurrent_profile.served_alias,
+  model: group_b_restoration_served_alias,
   tokenizer: glm_native_engine_tokenizer_path,
   dataset: glm_native_sweep_dataset,
   num_prompts: 4,
@@ -100,51 +104,73 @@ data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request
   seed: glm_native_bench_seed,
 )
 
-// max_num_seqs and the other launch figures are read from glm_native_concurrent_profile, the one row that owns them.
-// Runtime is glm53_derived_row (GunbcGlm53DerivedGb10); checkpoint revision is the native Flash row.
-data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
-  checkpoint: Glm53NativeFp8,
-  checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
-  runtime: GunbcGlm53DerivedGb10,
-  runtime_image_reference: runtime_artifact_wire(a: glm53_derived_row.artifact),
-  topology: Present { value: FourSparkTp4 },
-  rank_population: Present { value: 4 },
-  context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
-  max_num_batched_tokens: glm_native_concurrent_profile.max_num_batched_tokens,
-  max_num_seqs: Present { value: glm_native_concurrent_profile.max_num_seqs },
-  kv_cache_dtype: none,
-  speculative: Present { value: SpeculativeDecodingOff },
-  collective_transport: none,
-)
-
-fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
-  serving_subject_standing(
-    subject: glm_native_live_subject,
-    believed: "collective transport was unread; the KV cache dtype is unread because glm_native_concurrent_profile declares kv_cache_dtype_wire auto while the running group B unit was launched from a different plan; the runtime is glm53_derived_row and the checkpoint revision is glm53_native_fp8_row.revision" as NonEmptyStr,
-    would_settle: "read the running launch's NCCL transport announcement and its --kv-cache-dtype on this incarnation" as NonEmptyStr,
-  )
+// THE LIVE SUBJECT IS THE LAUNCH'S, DERIVED. It was a hand-built row reading glm_native_concurrent_profile
+// -- sixteen sequences -- while the arm launches group_b_restoration_profile, so the subject described a
+// configuration that never ran, and named the base derived runtime while the group serves KvplanV2.
+// Now checkpoint, runtime and topology are the fabric assignment's (the planner's own input) and every
+// launch axis is read off the executable profile the launch renders, through
+// gunbc.spark.serving_performance_subject serving_subject_for_launch -- the same constructor the
+// DeepSeek V4.1 subject uses. Absent means the capacity intent refused, so there is no launch to
+// describe and the load run refuses with it.
+fn glm_native_live_subject() -> ServingPerformanceSubject? {
+  let a = glm_group_b_serving_assignment
+  match group_b_restoration_profile() {
+    Absent => none
+    Present { value: p } =>
+      match serving_runtime_row(r: a.runtime) {
+        Absent => none
+        Present { value: rrow } => Present { value: serving_subject_for_launch(
+          checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
+          runtime: a.runtime,
+          runtime_image_reference: runtime_artifact_wire(a: rrow.artifact),
+          topology: a.topology,
+          profile: p,
+          deployment_env: glm_group_b_deployment_env(),
+          collective_transport: none,
+        ) }
+      }
+  }
 }
 
-data glm_native_protected_subject: ProtectedSubjectField = protected_subject_field(
-  subject: glm_native_live_subject,
-  served_alias: glm_native_concurrent_profile.served_alias,
-  route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
-)
+fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding? {
+  match glm_native_live_subject() {
+    Absent => none
+    Present { value: subject } => Present { value: serving_subject_standing(
+      subject: subject,
+      believed: "the launch axes are the executable profile's as rendered; collective transport is unread on this incarnation" as NonEmptyStr,
+      would_settle: "read the running launch's NCCL transport announcement on this incarnation" as NonEmptyStr,
+    ) }
+  }
+}
 
-fn glm_native_serving_load_subject() -> ServingLoadSubject {
-  ServingLoadSubject {
-    host: operator_host_srv9,
-    host_address: srv9_host_lan_endpoint.address,
-    group: FabricGroupB,
-    container: glm_native_container_name,
-    base_url: glm_native_serve_base_url(),
-    served_alias: glm_native_concurrent_profile.served_alias,
-    standing: glm_native_live_subject_standing(),
-    admission: glm_native_workload_admission,
-    qualification_frontier: glm_native_qualification_frontier,
-    principal: "group-B administrator" as NonEmptyStr,
-    receipt_heading: "glm native serving-load wet" as NonEmptyStr,
-    receipt_path: glm_native_serving_load_receipt_path,
+fn glm_native_protected_subject() -> ProtectedSubjectField? {
+  match glm_native_live_subject() {
+    Absent => none
+    Present { value: subject } => Present { value: protected_subject_field(
+      subject: subject,
+      served_alias: group_b_restoration_served_alias,
+      route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
+    ) }
+  }
+}
+
+fn glm_native_serving_load_subject() -> ServingLoadSubject? {
+  match glm_native_live_subject_standing() {
+    Absent => none
+    Present { value: standing } => Present { value: ServingLoadSubject {
+      host: operator_host_srv9,
+      host_address: srv9_host_lan_endpoint.address,
+      group: FabricGroupB,
+      container: glm_native_container_name,
+      base_url: glm_native_serve_base_url(),
+      served_alias: group_b_restoration_served_alias,
+      standing: standing,
+      admission: glm_native_workload_admission,
+      qualification_frontier: glm_native_qualification_frontier,
+      principal: "group-B administrator" as NonEmptyStr,
+      receipt_heading: "glm native serving-load wet" as NonEmptyStr,
+      receipt_path: glm_native_serving_load_receipt_path,
+    } }
   }
 }
 
@@ -152,6 +178,9 @@ fn glm_native_serving_load_wet() -> ProcessExit
 {
   with_group_b_access(use: fn(trust, path, administrator, file) {
     let ctx = rank_context(host: operator_host_srv9, trust: trust, path: path, administrator: administrator, credential_file: file)
-    serving_load_run(ctx: ctx, subject: glm_native_serving_load_subject(), steps: [glm_native_smoke_protocol])
+    match glm_native_serving_load_subject() {
+      Absent => exit_failure(reason: "the Group B restoration capacity intent refused, so no launched profile exists to measure")
+      Present { value: subject } => serving_load_run(ctx: ctx, subject: subject, steps: [glm_native_smoke_protocol])
+    }
   }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)
 }

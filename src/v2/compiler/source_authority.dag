@@ -1,5 +1,6 @@
 module v2.compiler.source_authority
 
+import std.types { List, NonEmptyStr }
 import gunbc.source_root_read { SourceRootFile }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -47,15 +48,14 @@ import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_in
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
   optional_absent,
   optional_present
 }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
+import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet, DagTree, V2Tree }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
@@ -72,7 +72,8 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_eq_structural,
   content_hash_of_value,
-  serialize_content_hash
+  serialize_content_hash,
+  Fnv1a64
 }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.text { String, string_is_empty }
@@ -504,7 +505,8 @@ fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
   let hashes_match =
     match compare_content_hash(left: left.content_hash, right: right.content_hash) {
       ContentHashEqual => true
-      _ => false
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
     }
   paths_match && roots_match && hashes_match
 }
@@ -708,7 +710,17 @@ fn source_ir_artifact_provenance_from_model(
           )
         }
       )
-    _ =>
+    GeneratedSource =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle =>
       outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
@@ -806,10 +818,18 @@ fn module_storage_binding_from_read_prepared(
           )
         }
       )
-    _ =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+    GeneratedSource =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 

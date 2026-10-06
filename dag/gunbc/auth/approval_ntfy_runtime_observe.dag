@@ -22,10 +22,10 @@ import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_
 import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_one_per_line_command, timeout_command }
 import extdeps.tools.stat { stat_dereferenced_inode_command }
 import extdeps.linux.procfs { procfs_pid_file_path }
-import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable }
 
 // THE CONTRACT OF THE NTFY RUNTIME-OBSERVATION HELPER, and only the contract. The enrolment-code
-// verb (gunbc.auth.approval_device_routes issue_device_enrolment_code, #12077) must join its ACL
+// verb (gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, #12077) must join its ACL
 // readback to the LIVE ntfy process: its actual environment, its exe, and its open fds (the auth
 // file and the 127.0.0.1:2586 listening socket). Those are /proc/<MainPID> reads that only the
 // process's own uid (gunbc-ntfy) or root can make. The verb runs as the operator's account, so it
@@ -449,7 +449,9 @@ fn ntfy_unit_main_pid(text: String) -> NtfyUnitPid {
 fn ntfy_start_ticks(text: String) -> Int? {
   match proc_pid_stat_start_time(content: text) {
     StartTimeObserved { ticks_since_boot: t } => Present { value: t }
-    _ => none
+    StartTimeCommUnterminated => none
+    StartTimeFieldAbsent { fields_after_comm: _ } => none
+    StartTimeUnparseable { field: _ } => none
   }
 }
 
@@ -539,6 +541,10 @@ fn ntfy_observe_fd(pid: String, n: String) -> NtfyFdObserved
   }
 }
 
+fn ntfy_fds_read(observed: List<NtfyFdObserved>) -> NtfyFdsObserved {
+  NtfyFdsRead { fds: flat_map(observed, o => match o { NtfyFdRead { fd: fd } => [fd]  NtfyFdRefused { read: _, cause: _ } => [] }) }
+}
+
 fn ntfy_observe_fds(pid: String) -> NtfyFdsObserved
   uses net: Network
 {
@@ -548,7 +554,8 @@ fn ntfy_observe_fds(pid: String) -> NtfyFdsObserved
       let observed = map(filter(split(s: listing, delimiter: "\n"), l => l != ""), n => ntfy_observe_fd(pid: pid, n: n))
       match first(filter(observed, o => match o { NtfyFdRefused { read: _, cause: _ } => true  NtfyFdRead { fd: _ } => false })) {
         Present { value: NtfyFdRefused { read: r, cause: c } } => NtfyFdsRefused { read: r, cause: c }
-        _ => NtfyFdsRead { fds: flat_map(observed, o => match o { NtfyFdRead { fd: fd } => [fd]  NtfyFdRefused { read: _, cause: _ } => [] }) }
+        Present { value: NtfyFdRead { fd: _ } } => ntfy_fds_read(observed: observed)
+        Absent => ntfy_fds_read(observed: observed)
       }
     }
   }

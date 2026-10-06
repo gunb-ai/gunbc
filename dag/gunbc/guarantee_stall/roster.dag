@@ -46,6 +46,7 @@ import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_mo
 import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
+import gunbc.guarantee_stall.self_host_program_assembly_contract_floor_enrollment_stall { self_host_program_assembly_contract_floor_enrollment_stall }
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
 import gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall { trigger_capability_referent_free_by_construction_stall }
 import gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall { axis_list_re_enumerates_its_variant_type_stall }
@@ -53,6 +54,8 @@ import gunbc.runner_service_activation { runner_activation_reachability_stall, r
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
 import gunbc.guarantee_stall.complexity_incomplete_assessment_stall { complexity_incomplete_assessment_stall }
+import gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall { accumulator_copy_untyped_combiner_refusals_stall }
+import gunbc.guarantee_stall.keyed_apply_patch_rebuilds_rows_per_hunk_stall { keyed_apply_patch_rebuilds_rows_per_hunk_stall }
 import gunbc.guarantee_stall.grounding_extract_closed_set_stall { grounding_extract_closed_set_stall }
 import gunbc.guarantee_stall.grounding_ledger_residue_uninhabited_stall { grounding_ledger_residue_uninhabited_stall }
 import gunbc.guarantee_stall.unit_modeling_carrier_totality_stall { unit_modeling_carrier_totality_stall }
@@ -71,6 +74,7 @@ import gunbc.guarantee_stall.coercion_two_algebras_answer_one_question_stall { c
 import gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall { text_carrier_render_not_keyed_on_identity_stall }
 import gunbc.guarantee_stall.free_semigroup_text_crossing_decided_by_spelling_stall { free_semigroup_text_crossing_decided_by_spelling_stall }
 import gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall { emitted_inline_crate_path_edges_unreturned_stall }
+import gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall { compile_pool_provision_wired_but_unreachable_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -205,6 +209,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
   roster_re_enumerates_its_own_rows_stall,
+  self_host_program_assembly_contract_floor_enrollment_stall,
   self_host_wet_route_receipt_lifetime_stall,
   trigger_capability_referent_free_by_construction_stall,
   runner_activation_reachability_stall,
@@ -237,6 +242,9 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   free_semigroup_text_crossing_decided_by_spelling_stall,
   emitted_inline_crate_path_edges_unreturned_stall,
   test_reference_ledger_typed_census_stall,
+  compile_pool_provision_wired_but_unreachable_stall,
+  accumulator_copy_untyped_combiner_refusals_stall,
+  keyed_apply_patch_rebuilds_rows_per_hunk_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

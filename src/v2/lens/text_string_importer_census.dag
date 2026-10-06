@@ -24,18 +24,17 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
 import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.algebra { contains, fold_list, length, list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
-import v2.std.logic { Bool }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.bytes { bytes_octets, utf8_encode_bytes }
+import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import std.primitives {
   primitive_contract_roster,
   PrimitiveContract,
@@ -2040,19 +2039,10 @@ fn literal_modules(walks: FreeMonoid<PathWalk>) -> FreeMonoid<String> {
   })
 }
 
-// LINE AND COLUMN from the byte offset: one sweep over the UTF-8 octets collects the newline
-// offsets, and one merge over those and the sites (both ascending: the walk visits atoms in source
-// order) assigns each site its line. Column is the 1-based BYTE column.
-fn newline_offsets(text: String) -> FreeMonoid<Int> {
-  list_reverse(xs: fold_list(xs: bytes_octets(b: utf8_encode_bytes(s: text)), empty: OctetScan { index: 0, found: Empty }, cons: fn(acc, o) {
-    OctetScan { index: acc.index + 1, found: if o == 10 { Cons { head: acc.index, tail: acc.found } } else { acc.found } }
-  }).found)
-}
-
-type OctetScan {
-  index: Int
-  found: FreeMonoid<Int>
-}
+// LINE AND COLUMN from the byte offset: the newline offsets come from the one authority,
+// v2.std.source_position source_newline_byte_offsets (a sweep over the UTF-8 octets), and one
+// merge over those and the sites (both ascending: the walk visits atoms in source order) assigns
+// each site its line. Column is the 1-based BYTE column.
 
 // Where a site sits in its source. A site with no position on the production route is a typed
 // arm and is COUNTED in its module's C row, never rendered as a plausible place.
@@ -2108,7 +2098,7 @@ fn place_before(sweep: PlacingSweep, limit: Int) -> PlacingSweep {
 }
 
 fn placed_sites(sites: FreeMonoid<LiteralSite>, text: String) -> FreeMonoid<PlacedSite> {
-  let swept = fold_list(xs: newline_offsets(text: text), empty: PlacingSweep { line: 1, line_start: 0, pending: sites, placed: Empty }, cons: fn(acc, nl) {
+  let swept = fold_list(xs: source_newline_byte_offsets(text: text), empty: PlacingSweep { line: 1, line_start: 0, pending: sites, placed: Empty }, cons: fn(acc, nl) {
     let here = place_before(sweep: acc, limit: nl)
     PlacingSweep { line: here.line + 1, line_start: nl + 1, pending: here.pending, placed: here.placed }
   })

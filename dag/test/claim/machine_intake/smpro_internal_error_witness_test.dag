@@ -3,7 +3,7 @@ module test.claim.machine_intake.smpro_internal_error_witness_test
 import v2.std.algebra { any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproNamedCode, SmproCodeDefined, SmproCodeUndefined,
   SmproRecordKind, SmproErrorWithData, SmproErrorWithoutData, SmproWarning, SmproEnter, SmproExit,
@@ -19,11 +19,35 @@ import gunbc.machine_intake_mtcollins1_smpro_error_reading {
   SmproErrorWindow,
   mtcollins1_smpro_error_windows, mtcollins1_smpro_error_reads_20261003,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
-  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
+import gunbc.machine_intake_ampere_smpro_observation {
+  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_dossier_text,
+  SmproPassObservation, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture,
+}
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence,
+  HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  SmproRecordStated, PendingErrorRecord, RecordUngated, UngatedRecordUnexplained,
+  mtcollins1_power_on_account, mtcollins1_power_on_account_notes,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED OUTCOMES, RENDERED AGAINST mtcollins1's REAL ADMITTED SITE. A refused site yields no
+// observation: the account then sees no pass and the dossier the marker, so claims expecting a
+// record fail rather than pass on an empty fold.
+fn observed(outcomes: List<SmproProbeOutcome>) -> SmproPassObservation? {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => Present { value: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: outcomes) }
+    SmproSiteRefused { cause: _ } => none
+  }
+}
+
+fn dossier_of(outcomes: List<SmproProbeOutcome>) -> String {
+  match observed(outcomes: outcomes) { Present { value: o } => smpro_pass_dossier_text(obs: o) Absent => "FIXTURE SITE REFUSED" }
+}
 
 // ── field predicates ────────────────────────────────────────────────────────────────────────────
 
@@ -226,20 +250,46 @@ fn pmpro_words(socket: Int, info_hi: String) -> List<SmproProbeOutcome> {
   ]
 }
 
-test fn a_pending_pmpro_record_is_a_finding_naming_the_decode() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(pmpro_words(socket: 1, info_hi: "22 44"), [read_ok(socket: 1, reg: smpro_gpi_ras_err_reg, stdout: "00 02")]))
-  any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro error: ERR_CCIX_RCA_LINKUP_FAIL (116) at CCIX initialization (68), ENTER"))
+// WHAT A RECORD MEANS FOR THE ATTEMPT is the power-on account's (gunbc.machine_intake_mtcollins1_power_on_account):
+// a gated, pending record is a stated error and a degradation; an ungated one is an anomaly and an
+// open question, never an error (docs/plans/power-on-sequence-model.md, law 8).
+fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {
+  mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: AttemptConfigurationReceipt {
+      subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
+      requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
+      cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
+    },
+    handoff: HandoffPoweredOn, smpro: match observed(outcomes: outcomes) { Present { value: o } => [SmproPassEvidence { label: "pass", observation: o }] Absent => [] },
+    console: ConsoleNotRead, sel: SelEventsNotRead, watchdog: WatchdogUnobserved { reason: "witness" },
+    bmc_anomalies: [], census_ended: false, coverage: [],
+  })
 }
 
-test fn red_without_a_gpi_read_the_finding_says_ungated() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
-  any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro UNGATED (GPI_RAS_ERR not read in this window) error: ERR_CCIX_RCA_LINKUP_FAIL (116)"))
-    && !any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro error:"))
+data ccix_decode: String = "ERR_CCIX_RCA_LINKUP_FAIL (116) at CCIX initialization (68), ENTER"
+
+test fn a_pending_pmpro_record_is_a_stated_error_naming_the_decode() -> Bool {
+  let a = account_of(outcomes: concat(pmpro_words(socket: 1, info_hi: "22 44"), [read_ok(socket: 1, reg: smpro_gpi_ras_err_reg, stdout: "00 02")]))
+  any(a.errors, x => match x.error { SmproRecordStated { socket: k, processor: _, pass: _, record: r } => k == 1 && contains(smpro_internal_record_text(r: r), ccix_decode) _ => false })
+    && any(a.degradations, d => match d { PendingErrorRecord { socket: k, processor: _, record: _ } => k == 1 _ => false })
+    && any(mtcollins1_power_on_account_notes(a: a), l => contains(l, ccix_decode))
+}
+
+test fn red_without_a_gpi_read_the_record_is_ungated_not_stated() -> Bool {
+  let a = account_of(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+  !any(a.errors, x => match x.error { SmproRecordStated { socket: _, processor: _, pass: _, record: _ } => true _ => false })
+    && !any(a.degradations, d => match d { PendingErrorRecord { socket: _, processor: _, record: _ } => true _ => false })
+}
+
+test fn red_an_ungated_record_is_an_anomaly_and_an_open_question() -> Bool {
+  let a = account_of(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+  any(a.anomalies, x => match x { RecordUngated { socket: k, processor: _, pass: _, gate: _ } => k == 1 _ => false })
+    && any(a.open, q => match q.question { UngatedRecordUnexplained { socket: k } => k == 1 _ => false })
 }
 
 test fn red_a_missing_info_word_decodes_nothing_and_says_why() -> Bool {
   let os = pmpro_words(socket: 1, info_hi: "22 44")
   let without_hi = concat(os.take(n: 3), os.skip(n: 4))
-  !any(mtcollins1_smpro_findings(outcomes: without_hi), x => contains(x, "ERR_CCIX"))
-    && contains(mtcollins1_smpro_dossier_text(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
+  !any(mtcollins1_power_on_account_notes(a: account_of(outcomes: without_hi)), x => contains(x, "ERR_CCIX"))
+    && contains(dossier_of(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
 }

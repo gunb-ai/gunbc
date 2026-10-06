@@ -24,7 +24,7 @@ import v2.std.collection {
   Map,
   empty_map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -46,7 +46,6 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Conj,

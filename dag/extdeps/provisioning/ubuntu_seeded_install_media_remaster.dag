@@ -15,7 +15,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.host_command_binding {
   CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
   host_command, host_command_outcome_text, host_run, host_transport_kind,
@@ -269,7 +269,9 @@ fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> String
         Absent => none
         Present { value: d } => Present { value: d.hex as String }
       }
-    _ => none
+    HostCommandFailed { exit_code: _, stderr: _ } => none
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => none
+    HostCommandNotDispatched { reason: _ } => none
   }
 }
 

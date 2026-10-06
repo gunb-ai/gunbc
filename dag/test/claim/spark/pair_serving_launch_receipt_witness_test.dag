@@ -1,7 +1,7 @@
 module test.claim.spark.pair_serving_launch_receipt_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }

@@ -1,0 +1,124 @@
+module gunbc.workspace_request_consumer
+
+import std.types { String, NonEmptyStr, Timestamp, List }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation_store {
+  WorkspaceAllocation, WorkspaceStoreRead, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
+  WorkspaceRetired, WorkspaceReleased, workspace_read_owner,
+  WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused,
+  workspace_settle_unplanned_retirement,
+}
+import gunbc.workspace_allocation_lease {
+  workspace_lease_standing, WorkspaceLeaseUnreadable, WorkspaceLeaseExpired, WorkspaceLeaseLive,
+  workspace_record_expiry,
+}
+
+// Discovery is independent of offer availability. Reconciliation may settle only an unplanned
+// retirement; Route and Prepare carry remaining obligations, not claims that those effects ran.
+type WorkspaceConsumerNext
+  = WorkspaceConsumerIdle
+  | WorkspaceConsumerRefused { reason: String }
+  | WorkspaceConsumerRetire { allocation: WorkspaceAllocation }
+  | WorkspaceConsumerPrepare { allocation: WorkspaceAllocation }
+  | WorkspaceConsumerRoute { allocation: WorkspaceAllocation }
+  | WorkspaceConsumerSettled { allocation: WorkspaceAllocation }
+  | WorkspaceConsumerRetry
+
+fn workspace_consumer_select(read: WorkspaceStoreRead, observed_at: Timestamp) -> WorkspaceConsumerNext {
+  match read {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceConsumerRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: snapshot } => {
+      let outstanding = filter(snapshot.allocations, allocation => allocation.phase != WorkspaceReleased)
+      if count(outstanding) > 1 {
+        WorkspaceConsumerRefused { reason: "owner ledger has multiple outstanding allocations" }
+      } else { match outstanding.first() {
+        Absent => WorkspaceConsumerIdle
+        Present { value: allocation } => if (allocation.desired == WorkspaceRetired) {
+          WorkspaceConsumerRetire { allocation: allocation }
+        } else { match workspace_lease_standing(expires_at: allocation.request.expires_at, observed_at: observed_at) {
+          WorkspaceLeaseUnreadable => WorkspaceConsumerRefused { reason: "allocation lease or consumer clock is unreadable" }
+          WorkspaceLeaseExpired => WorkspaceConsumerRetire { allocation: allocation }
+          WorkspaceLeaseLive { remaining: _ } => match allocation.plan {
+            Absent => WorkspaceConsumerPrepare { allocation: allocation }
+            Present { value: _ } => WorkspaceConsumerRoute { allocation: allocation }
+          }
+        } }
+      } }
+    }
+  }
+}
+
+// Restart discovery rereads the admitted owner's protected ledger. Notifications are optional;
+// no process-local queue or HTTP request identity is required to recover the obligation.
+fn workspace_consumer_discover(store: FabricStorageBinding, owner: PrincipalRef,
+  observed_at: Timestamp) -> WorkspaceConsumerNext {
+  workspace_consumer_select(read: workspace_read_owner(store: store, owner: owner), observed_at: observed_at)
+}
+
+fn workspace_consumer_settlement_result(result: WorkspaceStoreWrite) -> WorkspaceConsumerNext {
+  match result {
+    WorkspaceStoreConflict => WorkspaceConsumerRetry
+    WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
+    WorkspaceStoreWritten { allocation: allocation } => if (allocation.phase == WorkspaceReleased) {
+      WorkspaceConsumerSettled { allocation: allocation }
+    } else { WorkspaceConsumerRefused { reason: "unplanned retirement returned an unsettled allocation" } }
+  }
+}
+
+// Always reread before deciding whether local settlement is allowed. Once a plan exists, route
+// to its selected host; neither this coordinator nor a free-hold reading can discharge it.
+fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
+  idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceConsumerNext {
+  match workspace_read_owner(store: store, owner: owner) {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceConsumerRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations,
+      allocation => allocation.request.idempotency_key == idempotency_key).first() {
+      Absent => WorkspaceConsumerRefused { reason: "retirement request is absent from its owner ledger" }
+      Present { value: allocation } => if (allocation.phase == WorkspaceReleased) {
+        WorkspaceConsumerSettled { allocation: allocation }
+      } else if (allocation.desired == WorkspaceRetired) {
+        match allocation.plan {
+          Present { value: _ } => WorkspaceConsumerRoute { allocation: allocation }
+          Absent => workspace_consumer_settlement_result(result: workspace_settle_unplanned_retirement(
+            store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at))
+        }
+      } else { match workspace_record_expiry(store: store, owner: owner,
+        idempotency_key: idempotency_key, observed_at: observed_at) {
+        WorkspaceStoreConflict => WorkspaceConsumerRetry
+        WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
+        WorkspaceStoreWritten { allocation: current } => if (current.desired != WorkspaceRetired) {
+          WorkspaceConsumerRetry
+        } else { match current.plan {
+          Present { value: _ } => WorkspaceConsumerRoute { allocation: current }
+          Absent => workspace_consumer_settlement_result(result: workspace_settle_unplanned_retirement(
+            store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at))
+        } }
+      } }
+    }
+  }
+}
+
+// One bounded pass consumes retirement immediately, before any caller may ask for supply.
+// A CAS conflict yields to a later pass; no unbounded retry hides contention or extends a lease.
+fn workspace_consumer_reconcile_owner(store: FabricStorageBinding, owner: PrincipalRef,
+  observed_at: Timestamp) -> WorkspaceConsumerNext {
+  match workspace_consumer_discover(store: store, owner: owner, observed_at: observed_at) {
+    WorkspaceConsumerRetire { allocation: allocation } => workspace_consumer_retire(store: store,
+      owner: owner, idempotency_key: allocation.request.idempotency_key, observed_at: observed_at)
+    other => other
+  }
+}
+
+// One pass over the enrolled roster in policy order: the first owner whose ledger carries an
+// obligation (or refuses) decides the pass, and later owners wait for the next pass. An unreadable
+// ledger stops the pass rather than being skipped, so no owner's obligation is silently starved.
+fn workspace_consumer_reconcile_enrolled(store: FabricStorageBinding, owners: List<PrincipalRef>,
+  observed_at: Timestamp) -> WorkspaceConsumerNext {
+  fold(owners, init: WorkspaceConsumerIdle, f: fn(acc, owner) {
+    match acc {
+      WorkspaceConsumerIdle => workspace_consumer_reconcile_owner(store: store, owner: owner, observed_at: observed_at)
+      other => other
+    }
+  })
+}

@@ -1,0 +1,249 @@
+module extdeps.vllm.kv_dtype_capability
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
+import extdeps.vllm.engine_args {
+  VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp8E4m3, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
+  VllmIndexerKvDtype, VllmIndexerKvDtypeRequest, IndexerKvDtypeOmitted, IndexerKvDtypeExplicit,
+  IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4, vllm_indexer_kv_dtype_wire,
+}
+
+// ── WHICH KV DTYPES A (BACKEND, DEVICE MAJOR) PAIR ADMITS -- ONE TABLE, BOTH CACHES ─────────────────
+//
+// WHY THIS IS ONE MODULE. Before it, the same question had two shapes: the DeepSeek V4.1 sparse MLA
+// backend's admitted dtypes were wire-string lists in extdeps.vllm.deepseek_v4_1_sm12, and the GLM
+// arm's were a match function per engine build in gunbc.spark.serving_arm. Neither could answer for
+// the other model, and neither spoke the request type a launch actually renders. Here a row is
+// (backend, device major) -> the main-KV requests it admits, typed over
+// extdeps.vllm.engine_args VllmKvCacheDtypeRequest, and the sparse indexer's K cache is a separate
+// row family over its own dtype, because the two caches are two allocations with two dtypes.
+//
+// THE BASIS TRAVELS WITH EVERY ANSWER. A row read from upstream source cites its revision and file;
+// a row established by launching something is an observation and belongs to the layer that observed
+// it (DESIGN section 3: observations are receipts downstream, never properties authored inside an
+// upstream module) -- this module defines the basis vocabulary for both, and the gunbc join supplies
+// its own observed rows beside these.
+//
+// ABSENCE IS NOT ADMISSION. A (backend, major) with no row is Unanswered with an obligation, never a
+// default pass; a dtype outside a row's admitted list is Refused, citing the row.
+
+type VllmKvBackend
+  = DeepseekV4FlashInferMlaSparse
+  | FlashInferMlaSparseSm120
+
+fn vllm_kv_backend_wire(b: VllmKvBackend) -> NonEmptyStr {
+  match b {
+    DeepseekV4FlashInferMlaSparse => "vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse.DeepseekV4FlashInferMLASparseBackend" as NonEmptyStr
+    FlashInferMlaSparseSm120 => "FLASHINFER_MLA_SPARSE_SM120" as NonEmptyStr
+  }
+}
+
+type VllmIndexerKind = | DsaSparseIndexer
+
+// THE RUNTIME A ROW AND A SUBJECT ARE ABOUT (review on #12976): an upstream row answers for one source
+// revision, an observed row for one built image, and a subject names the image it asks about together
+// with the source that image was built from. A row answers only for its own runtime -- a fact read at
+// one revision, or observed on one build, says nothing about another.
+type KvRuntime sole_constructor {
+  image: NonEmptyStr?
+  source: VllmSourceRevision
+}
+
+fn kv_runtime(image: NonEmptyStr?, source: VllmSourceRevision) -> KvRuntime {
+  KvRuntime { image: image, source: source }
+}
+
+type KvRowRuntime
+  = RowAtSourceRevision { revision: VllmSourceRevision }
+  | RowOnBuild { image: NonEmptyStr }
+
+fn kv_same_revision(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
+  (a.repository as String) == (b.repository as String) && (a.full_revision as String) == (b.full_revision as String)
+}
+
+fn kv_row_applies(row: KvRowRuntime, runtime: KvRuntime) -> Bool {
+  match row {
+    RowAtSourceRevision { revision: r } => kv_same_revision(a: r, b: runtime.source)
+    RowOnBuild { image: i } => match runtime.image {
+      Absent => false
+      Present { value: mine } => (mine as String) == (i as String)
+    }
+  }
+}
+
+type KvCapabilityBasis
+  = KvBasisUpstreamSource { revision: VllmSourceRevision, locator: NonEmptyStr }
+  | KvBasisObservedOnBuild { build: NonEmptyStr, observation: NonEmptyStr }
+
+type KvMainDtypeRow sole_constructor {
+  backend: VllmKvBackend
+  runtime: KvRowRuntime
+  device_major: Nat
+  admitted: List<VllmKvCacheDtypeRequest>
+  basis: KvCapabilityBasis
+}
+
+fn kv_main_dtype_row(backend: VllmKvBackend, runtime: KvRowRuntime, device_major: Nat, admitted: List<VllmKvCacheDtypeRequest>, basis: KvCapabilityBasis) -> KvMainDtypeRow {
+  KvMainDtypeRow { backend: backend, runtime: runtime, device_major: device_major, admitted: admitted, basis: basis }
+}
+
+// ── THE UPSTREAM ROWS ───────────────────────────────────────────────────────────────────────────
+//
+// DeepseekV4FlashInferMLASparseBackend.supports_combination at 07b75534651a0dd584c6f3be75d8c62fb8426397
+// (vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py): on device major 12 a kv_cache_dtype outside
+// {fp8, fp8_e4m3, fp8_ds_mla} is refused with "kv_cache_dtype not supported" before FlashInfer is
+// consulted; on major 10 the admitted set is {auto, bfloat16, fp8, fp8_e4m3} and fp8_ds_mla is
+// explicitly rejected ("SM10x uses the plain per-tensor FP8 KV layout"). The two majors disagree in
+// both directions, which is why the major is part of the row's key and not a footnote.
+data v41_flashinfer_sparse_locator: NonEmptyStr = "vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py DeepseekV4FlashInferMLASparseBackend.supports_combination" as NonEmptyStr
+
+data deepseek_v4_sparse_mla_sm12_row: KvMainDtypeRow = kv_main_dtype_row(
+  backend: DeepseekV4FlashInferMlaSparse,
+  runtime: RowAtSourceRevision { revision: vllm_deepseek_v4_1_sm12_revision },
+  device_major: 12,
+  admitted: [KvFp8, KvFp8E4m3, KvFp8DsMla],
+  basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
+)
+
+data deepseek_v4_sparse_mla_sm10_row: KvMainDtypeRow = kv_main_dtype_row(
+  backend: DeepseekV4FlashInferMlaSparse,
+  runtime: RowAtSourceRevision { revision: vllm_deepseek_v4_1_sm12_revision },
+  device_major: 10,
+  admitted: [KvAuto, KvBf16, KvFp8, KvFp8E4m3],
+  basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
+)
+
+data upstream_kv_main_dtype_rows: List<KvMainDtypeRow> = [deepseek_v4_sparse_mla_sm12_row, deepseek_v4_sparse_mla_sm10_row]
+
+// THE DSA SPARSE INDEXER'S K CACHE, read at 8d09804c877c48165c6ba69bc9dc02d09bae0b83
+// (vllm/v1/attention/backends/mla/indexer.py dsa_indexer_uses_fp4): DSA_INDEXER_KV_DTYPES =
+// ("fp8", "mxfp4"); "auto" resolves to fp8; anything else raises "is not supported by the DeepSeek
+// sparse indexer"; and mxfp4 raises unless current_platform.is_device_capability_family(100) --
+// "sm_120 (consumer Blackwell) and earlier architectures are not supported". A GB10 is major 12, so
+// its indexer K cache is fp8 whatever is requested.
+data dsa_indexer_basis: KvCapabilityBasis = KvBasisUpstreamSource {
+  revision: vllm_source_revision_read,
+  locator: "vllm/v1/attention/backends/mla/indexer.py dsa_indexer_uses_fp4" as NonEmptyStr,
+}
+
+// ── THE VERDICT ─────────────────────────────────────────────────────────────────────────────────
+type KvCapabilitySubject {
+  backend: VllmKvBackend
+  runtime: KvRuntime
+  device_major: Nat
+  main: VllmKvCacheDtypeRequest
+  indexer_kind: VllmIndexerKind?
+  indexer: VllmIndexerKvDtypeRequest
+}
+
+type KvCapabilityVerdict
+  = KvCombinationAdmitted { bases: List<KvCapabilityBasis> }
+  | KvCombinationRefused { cause: NonEmptyStr, basis: KvCapabilityBasis }
+  | KvCombinationUnanswered { obligation: NonEmptyStr }
+
+fn kv_request_in(admitted: List<VllmKvCacheDtypeRequest>, r: VllmKvCacheDtypeRequest) -> Bool {
+  fold(admitted, init: false, f: (acc, a) => acc || (vllm_kv_cache_dtype_wire(request: a) as String) == (vllm_kv_cache_dtype_wire(request: r) as String))
+}
+
+// ONE ROW PER KEY. Two rows for one (backend, major) is two authorities for one fact, and answering
+// from the first would hide the second; the join refuses to answer instead.
+fn main_dtype_rows_for(rows: List<KvMainDtypeRow>, backend: VllmKvBackend, runtime: KvRuntime, device_major: Nat) -> List<KvMainDtypeRow> {
+  fold(rows, init: [] as List<KvMainDtypeRow>, f: (acc, r) =>
+    if (vllm_kv_backend_wire(b: r.backend) as String) == (vllm_kv_backend_wire(b: backend) as String) && r.device_major == device_major && kv_row_applies(row: r.runtime, runtime: runtime) { append(acc, r) } else { acc })
+}
+
+fn indexer_verdict(kind: VllmIndexerKind?, indexer: VllmIndexerKvDtypeRequest, runtime: KvRuntime, device_major: Nat) -> KvCapabilityVerdict {
+  match kind {
+    Absent =>
+      match indexer {
+        IndexerKvDtypeOmitted => KvCombinationAdmitted { bases: [] }
+        IndexerKvDtypeExplicit { dtype: d } => KvCombinationRefused {
+          cause: join(["an indexer KV dtype (", vllm_indexer_kv_dtype_wire(d: d) as String, ") is requested for a backend with no sparse indexer"], "") as NonEmptyStr,
+          basis: dsa_indexer_basis,
+        }
+      }
+    Present { value: k } =>
+      match k {
+        DsaSparseIndexer =>
+          if !kv_same_revision(a: vllm_source_revision_read, b: runtime.source) {
+            KvCombinationUnanswered { obligation: join(["the DSA indexer rule was read at ", vllm_source_revision_read.full_revision as String, " and this runtime is built from ", runtime.source.full_revision as String, ": read dsa_indexer_uses_fp4 at that revision"], "") as NonEmptyStr }
+          } else {
+            match indexer {
+              IndexerKvDtypeOmitted => KvCombinationAdmitted { bases: [dsa_indexer_basis] }
+              IndexerKvDtypeExplicit { dtype: d } => dsa_indexer_dtype_verdict(d: d, device_major: device_major)
+            }
+          }
+      }
+  }
+}
+
+fn dsa_indexer_dtype_verdict(d: VllmIndexerKvDtype, device_major: Nat) -> KvCapabilityVerdict {
+  match d {
+    IndexerKvAuto => KvCombinationAdmitted { bases: [dsa_indexer_basis] }
+    IndexerKvFp8 => KvCombinationAdmitted { bases: [dsa_indexer_basis] }
+    IndexerKvMxfp4 =>
+      if device_major == 10 {
+        KvCombinationAdmitted { bases: [dsa_indexer_basis] }
+      } else {
+        KvCombinationRefused {
+          cause: join(["indexer_kv_dtype='mxfp4' requires device capability family 100; this device is major ", to_string(device_major)], "") as NonEmptyStr,
+          basis: dsa_indexer_basis,
+        }
+      }
+    IndexerKvBf16 => dsa_indexer_outside_set(d: d)
+    IndexerKvNvfp4 => dsa_indexer_outside_set(d: d)
+  }
+}
+
+fn dsa_indexer_outside_set(d: VllmIndexerKvDtype) -> KvCapabilityVerdict {
+  KvCombinationRefused {
+    cause: join(["indexer_kv_dtype=", vllm_indexer_kv_dtype_wire(d: d) as String, " is not among the DeepSeek sparse indexer's (fp8, mxfp4)"], "") as NonEmptyStr,
+    basis: dsa_indexer_basis,
+  }
+}
+
+// THE JOIN. `rows` is the caller's full roster: the upstream rows above plus whatever the observing
+// layer has established for the builds it runs, so one function answers for every model.
+fn kv_capability_verdict(subject: KvCapabilitySubject, rows: List<KvMainDtypeRow>) -> KvCapabilityVerdict {
+  let matches = main_dtype_rows_for(rows: rows, backend: subject.backend, runtime: subject.runtime, device_major: subject.device_major)
+  if count(matches) == 0 {
+    KvCombinationUnanswered { obligation: join([
+      "no row states which KV dtypes ", vllm_kv_backend_wire(b: subject.backend) as String,
+      " admits on device major ", to_string(subject.device_major), " for runtime ", subject.runtime.source.full_revision as String,
+      ": read the backend's supports_combination at that revision, or observe a launch on that build",
+    ], "") as NonEmptyStr }
+  } else if count(matches) > 1 {
+    KvCombinationUnanswered { obligation: join([
+      to_string(count(matches)), " rows answer for ", vllm_kv_backend_wire(b: subject.backend) as String,
+      " on device major ", to_string(subject.device_major), ": one fact has one row, so the roster must be reconciled before it answers",
+    ], "") as NonEmptyStr }
+  } else {
+    match matches.first() {
+      Absent => KvCombinationUnanswered { obligation: "the single matching row could not be read back" as NonEmptyStr }
+      Present { value: row } =>
+        if !kv_request_in(admitted: row.admitted, r: subject.main) {
+          KvCombinationRefused {
+            cause: join([
+              "kv_cache_dtype ", vllm_kv_cache_dtype_wire(request: subject.main) as String, " is not admitted by ",
+              vllm_kv_backend_wire(b: subject.backend) as String, " on device major ", to_string(subject.device_major),
+              " (admitted: ", join(map(row.admitted, a => vllm_kv_cache_dtype_wire(request: a) as String), ", "), ")",
+            ], "") as NonEmptyStr,
+            basis: row.basis,
+          }
+        } else {
+          match indexer_verdict(kind: subject.indexer_kind, indexer: subject.indexer, runtime: subject.runtime, device_major: subject.device_major) {
+            KvCombinationAdmitted { bases: bs } => KvCombinationAdmitted { bases: concat([row.basis], bs) }
+            KvCombinationRefused { cause: c, basis: b } => KvCombinationRefused { cause: c, basis: b }
+            KvCombinationUnanswered { obligation: o } => KvCombinationUnanswered { obligation: o }
+          }
+        }
+    }
+  }
+}
+
+fn kv_main_row_admitted_wires(row: KvMainDtypeRow) -> List<NonEmptyStr> {
+  map(row.admitted, a => vllm_kv_cache_dtype_wire(request: a))
+}

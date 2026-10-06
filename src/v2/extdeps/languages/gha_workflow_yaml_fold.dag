@@ -1,5 +1,6 @@
 module v2.extdeps.languages.gha_workflow_yaml_fold
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.languages.yaml.emit { emit_inline_scalar_text }
 import extdeps.github.action_release { action_release_uses_text }
@@ -22,7 +23,6 @@ import v2.extdeps.languages.bash {
 import std.algebra { list_append }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,

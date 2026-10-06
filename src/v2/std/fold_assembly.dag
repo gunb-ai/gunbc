@@ -14,7 +14,6 @@ import v2.std.diagnostic {
   Diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown,
   node_locus, outcome_accepted, outcome_rejected
 }
-import v2.std.logic { Bool }
 
 data fold_template_edge: Symbol = ^fold_template
 data fold_elements_edge: Symbol = ^fold_elements
@@ -107,7 +106,12 @@ fn decode_node_list(node: Node) -> Outcome<FreeMonoid<Node>> {
         head: named_edge_target_lookup(children: node.children, name: ^fold_list_node_head),
         tail: named_edge_target_lookup(children: node.children, name: ^fold_list_node_tail)
       )
-    _ => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    TypeNode { connective: Atom { identity: _ } } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    TypeNode { connective: Disj } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    TypeNode { connective: Arrow } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    TypeNode { connective: Cardinality } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    TypeNode { connective: Instantiation } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    ComputationNode { behavior: _ } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
   }
 }
 

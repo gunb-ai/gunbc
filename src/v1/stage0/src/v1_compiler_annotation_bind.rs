@@ -13,7 +13,6 @@ pub use crate::std_source_annotation::{
     AnnotationSubject, KeyedAnnotationRow, NormalizedAnnotationCapture, SourceAnnotationDebt,
     SourceAnnotationGraph, UnboundAnnotationCapture,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -192,7 +191,7 @@ pub fn annotation_subjects(
             __sorted.sort_by(|a: &i64, b: &i64| {
                 let __ka = (|start: i64| start.clone())(a.clone());
                 let __kb = (|start: i64| start.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         });

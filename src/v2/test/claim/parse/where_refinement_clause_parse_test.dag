@@ -12,10 +12,9 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is,
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Edge, Authored, Node, Positional, symbol_lexeme, StructuralLabel }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

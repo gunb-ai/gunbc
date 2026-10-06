@@ -3,8 +3,8 @@ module test.claim.spark.v41_serving_load_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { microsecond, microsecond_count, millisecond, millisecond_count, token_count_value }
-import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest }
 import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable }
 import extdeps.linux.diskstats { DiskstatsReading, DiskstatsDeviceRead, DiskstatsDeviceAbsent, DiskstatsUnparseable, DiskstatsRow }
@@ -90,7 +90,10 @@ test fn an_unread_rank_unprojects_the_step_and_names_it() -> Bool {
 test fn every_staircase_step_addresses_the_v41_subject() -> Bool {
   let steps = v41_serving_load_steps()
   length(steps) == length(v41_staircase_concurrencies)
-    && all(steps, s => match step_subject_mismatch(subject: v41_serving_load_subject(), req: s) { Absent => true  Present { value: _ } => false })
+    && (match v41_serving_load_subject() {
+      Absent => false
+      Present { value: subj } => all(steps, s => match step_subject_mismatch(subject: subj, req: s) { Absent => true  Present { value: _ } => false })
+    })
     && all(steps, s => match s.max_concurrency { Present { value: c } => s.num_prompts == 2 * c  Absent => false })
 }
 

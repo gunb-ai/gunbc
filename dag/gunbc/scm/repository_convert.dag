@@ -49,6 +49,23 @@ module gunbc.scm.repository_convert
 // damaged-read refusal are witnessable on planted documents at the hermetic boundary, where the
 // effectful shell is not (the SCM witnesses are SubstrateInputsOnly). The shell composes read, plan,
 // and write; every decision a witness asserts lives in the plan.
+//
+// v7 -> v8, THE OBJECT-ROSTER MIGRATION (2026-10-03, the affected-set capture). A v7 index names its
+// shards but not which object each holds, so the belt's indexed load refuses it
+// (gunbc.scm.repository_load load_repository_indexed, RepositoryIndexHasNoObjectRoster) and the roster
+// can only be derived by decoding every shard ONCE. This entry is that once: a v7 envelope plans
+// RepositoryConvertShardedPlan, the shell loads it whole through load_repository (every shard read and
+// assembled, the full census run), and the same guarded sharded writer re-saves it in the rostered
+// layout (v9 since the typed intake record: v8's index plus each commit's intake, which a v7
+// repository's commits carry as unrecorded) -- manifests split into their own shards, every object
+// rostered. The writer's order is the migration's safety:
+// new shards first (the v7 shards are never touched or deleted), the roster's shard coverage
+// confirmed by a fresh listing, and the index -- the envelope pointer -- moved last under the
+// generation guard, so an interrupted run leaves the v7 index and every shard it rosters intact and
+// loadable. A v8 or v9 envelope is the typed no-op, so a re-run writes nothing: the two share the
+// rostered layout and differ only inside a commit record, which the indexed reader takes as it is. It is run outside a belt
+// tick: `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/repository_convert.dag
+// --function scm_convert_repository_cli --arg path=<envelope> --arg receipt_path=<receipt>`.
 
 import std.types { String, Int }
 import std.measure { ByteSize, byte_size_count }
@@ -62,17 +79,28 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
 }
 import extdeps.languages.json.emit {
-  serialize_json, JsonValue, json_object, json_kv, json_string, json_int,
+  serialize_json, JsonValue, json_object, json_kv, json_string, json_int, json_array,
 }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, JsonDocumentGap,
 }
 import gunbc.scm.json_member { read_string_member, MemberString, MemberArray, MemberObject, MemberFailed }
 import gunbc.scm.object_shard_json { shard_roster_of }
+import gunbc.scm.object_store { store_rostered_shards, store_rostered_rows, store_object_count }
+import gunbc.scm.repository_load {
+  load_repository, load_repository_indexed, materialize_objects, ObjectsMaterialized, ObjectMaterializationRefused,
+  RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal,
+  RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused,
+}
 import gunbc.scm.repository_envelope {
+  commit_at_reference,
+  repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal,
   RepositoryEnvelope,
   RepositoryDecodeRefusal,
   repository_format_of,
+  RepositoryFormatV9,
+  RepositoryFormatV8,
   RepositoryFormatV7,
   RepositoryFormatV6,
   RepositoryFormatV5,
@@ -150,6 +178,7 @@ type RepositoryConvertRefusal
 type RepositoryConvertPlan
   = RepositoryConvertWritePlan { from_format: String, envelope: RepositoryEnvelope }
   | RepositoryConvertNoOpPlan
+  | RepositoryConvertShardedPlan { from_format: String }
   | RepositoryConvertRefusePlan { cause: RepositoryConvertReadRefusal }
 
 // THE READ-SIDE REFUSAL VOCABULARY, PATH-FREE FOR THE REASON THE PLAN'S HEADER GIVES, and named
@@ -171,7 +200,9 @@ type RepositoryConvertReadRefusal
 // tags itself.
 fn repository_convert_format_plan(tag: String, v: JsonValue) -> RepositoryConvertPlan {
   match repository_format_of(tag: tag) {
-    RepositoryFormatV7 => RepositoryConvertNoOpPlan
+    RepositoryFormatV9 => RepositoryConvertNoOpPlan
+    RepositoryFormatV8 => RepositoryConvertNoOpPlan
+    RepositoryFormatV7 => RepositoryConvertShardedPlan { from_format: tag }
     RepositoryFormatV6 =>
       repository_convert_decode_plan(from_format: tag, v: v)
     RepositoryFormatV5 =>
@@ -221,6 +252,12 @@ fn convert_repository_to_sharded(path: String) -> RepositoryConvert {
           match repository_convert_plan(v: v) {
             RepositoryConvertNoOpPlan =>
               RepositoryConvertNoOp { path: path }
+            RepositoryConvertShardedPlan { from_format } =>
+              match load_repository(path: path) {
+                RepositoryLoadRefused { cause } => RepositoryConvertRefused { cause: repository_convert_load_refusal(path: path, cause: cause) }
+                RepositoryLoaded { path: _, envelope, generation } =>
+                  repository_convert_write(path: path, from_format: from_format, envelope: envelope, expected: GenerationExpected(generation))
+              }
             RepositoryConvertRefusePlan { cause } =>
               RepositoryConvertRefused { cause: repository_convert_read_refusal_located(path: path, cause: cause) }
             RepositoryConvertWritePlan { from_format, envelope } =>
@@ -237,6 +274,14 @@ fn convert_repository_to_sharded(path: String) -> RepositoryConvert {
 
 // LOCATING A READ REFUSAL IS THE SHELL'S ACT. The plan's causes are path-free; the outcome's carry
 // the path the shell read, one match per arm, with nothing merged.
+fn repository_convert_load_refusal(path: String, cause: RepositoryLoadRefusal) -> RepositoryConvertRefusal {
+  match cause {
+    RepositoryFileUnreadable { path: p, error } => RepositoryConvertFileUnreadable { path: p, error: error }
+    RepositoryDocumentUnparseable { path: p, gap } => RepositoryConvertDocumentUnparseable { path: p, gap: gap }
+    RepositoryDocumentRefused { path: _, cause: c } => RepositoryConvertDamaged { path: path, cause: c }
+  }
+}
+
 fn repository_convert_read_refusal_located(path: String, cause: RepositoryConvertReadRefusal) -> RepositoryConvertRefusal {
   match cause {
     RepositoryConvertReadVersionUnreadable =>
@@ -411,6 +456,8 @@ fn repository_convert_version_refused_detail(path: String, found: String) -> Str
   match repository_format_of(tag: found) {
     RepositoryFormatV4 =>
       join(["the envelope declares format ", found, ", which this build reads but does not convert (the conversion admits v5 and v6 monoliths): ", path], "")
+    RepositoryFormatV9 => repository_convert_unread_format_detail(path: path, found: found)
+    RepositoryFormatV8 => repository_convert_unread_format_detail(path: path, found: found)
     RepositoryFormatV7 => repository_convert_unread_format_detail(path: path, found: found)
     RepositoryFormatV6 => repository_convert_unread_format_detail(path: path, found: found)
     RepositoryFormatV5 => repository_convert_unread_format_detail(path: path, found: found)
@@ -431,6 +478,97 @@ fn scm_convert_repository_cli(path: String, receipt_path: String) -> ProcessExit
   let w = Filesystem.Write(path: receipt_path, content: document)
   if !w.success {
     exit_failure(reason: join(["scm_convert_repository_cli: receipt could not be written: ", w.error, "; result was ", document], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
+
+// THE CAPTURE-DEMAND INSTRUMENT (2026-10-03). It runs exactly the reads a belt capture makes before
+// it touches the worktree -- the indexed load of the envelope, then the checked-out head's manifest
+// materialized from its shard -- and writes a receipt naming what was read: the shard population the
+// repository holds, the objects its roster names, and the shards this demand read (by digest). Run
+// it over a copy of a production projects store, under `/usr/bin/time -v` for wall time and peak
+// RSS, before and after a capture grows the store: the read population must stay one manifest
+// shard while the repository grows. The invocation is
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/repository_convert.dag
+// --function scm_capture_demand_cli --arg path=<envelope> --arg receipt_path=<receipt>`.
+data repository_capture_demand_receipt_schema: String = "gunbc-scm-capture-demand/v1"
+
+fn repository_capture_demand_json(path: String) -> JsonValue {
+  match load_repository_indexed(path: path) {
+    RepositoryLoadRefused { cause } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_capture_demand_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "detail", value: json_string(s: repository_convert_refusal_detail_of_load(path: path, cause: cause))),
+      ])
+    RepositoryLoaded { path: _, envelope, generation: _ } =>
+      match envelope.checked_out {
+        Absent =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: repository_capture_demand_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "refused")),
+            json_kv(key: "path", value: json_string(s: path)),
+            json_kv(key: "detail", value: json_string(s: "the envelope selects no head, so there is no base manifest to demand")),
+          ])
+        Present { value: head } =>
+          match commit_at_reference(commits: envelope.commits, reference: head) {
+            Absent =>
+              json_object(members: [
+                json_kv(key: "schema", value: json_string(s: repository_capture_demand_receipt_schema)),
+                json_kv(key: "status", value: json_string(s: "refused")),
+                json_kv(key: "path", value: json_string(s: path)),
+                json_kv(key: "detail", value: json_string(s: "the head is not a commit of its own envelope")),
+              ])
+            Present { value: head_commit } =>
+              match materialize_objects(envelope_path: path, store: envelope.store, identities: [head_commit.root.locator]) {
+                ObjectMaterializationRefused { detail } =>
+                  json_object(members: [
+                    json_kv(key: "schema", value: json_string(s: repository_capture_demand_receipt_schema)),
+                    json_kv(key: "status", value: json_string(s: "refused")),
+                    json_kv(key: "path", value: json_string(s: path)),
+                    json_kv(key: "detail", value: json_string(s: detail)),
+                  ])
+                ObjectsMaterialized { store, read_shards } =>
+                  json_object(members: [
+                    json_kv(key: "schema", value: json_string(s: repository_capture_demand_receipt_schema)),
+                    json_kv(key: "status", value: json_string(s: "measured")),
+                    json_kv(key: "path", value: json_string(s: path)),
+                    json_kv(key: "commits", value: json_int(n: count(envelope.commits))),
+                    json_kv(key: "repository_shards", value: json_int(n: count(store_rostered_shards(store: store)))),
+                    json_kv(key: "repository_objects", value: json_int(n: count(store_rostered_rows(store: store)))),
+                    json_kv(key: "read_shards", value: json_array(elements: map(read_shards, d => json_string(s: d)))),
+                    json_kv(key: "resident_objects", value: json_int(n: store_object_count(store: store))),
+                  ])
+              }
+          }
+      }
+  }
+}
+
+fn repository_convert_refusal_detail_of_load(path: String, cause: RepositoryLoadRefusal) -> String {
+  match cause {
+    RepositoryFileUnreadable { path: p, error } => join(["the envelope could not be read: ", p, " (", error, ")"], "")
+    RepositoryDocumentUnparseable { path: p, gap: _ } => concat("the envelope document is not valid JSON: ", p)
+    RepositoryDocumentRefused { path: p, cause: c } =>
+      match repository_document_protocol(cause: c) {
+        RepositoryProtocolIndexHasNoObjectRoster { found } =>
+          join(["the envelope is ", found, ", which carries no object roster; convert it first (scm_convert_repository_cli): ", p], "")
+        RepositoryProtocolRetiredFormat { found } => join(["the envelope declares retired format ", found, ": ", p], "")
+        RepositoryProtocolUnrecognizedFormat { found } => join(["the envelope declares unrecognized format ", found, ": ", p], "")
+        RepositoryProtocolUnrecognizedIdentityRule { found } => join(["the envelope declares unrecognized identity rule ", found, ": ", p], "")
+        RepositoryProtocolNotAProtocolRefusal => concat("the envelope document is refused by the repository schema: ", p)
+      }
+  }
+}
+
+fn scm_capture_demand_cli(path: String, receipt_path: String) -> ProcessExit {
+  let document = serialize_json(v: repository_capture_demand_json(path: path))
+  let w = Filesystem.Write(path: receipt_path, content: document)
+  if !w.success {
+    exit_failure(reason: join(["scm_capture_demand_cli: receipt could not be written: ", w.error, "; result was ", document], ""))
   } else {
     ExitSuccess
   }

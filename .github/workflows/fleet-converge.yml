@@ -11,14 +11,39 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; runner_browser_toolchain_converge installs the declared Playwright/Chromium toolchain (apt host libraries as the administrator, digest-pinned node, Playwright and Chromium archives into the job user's root) on the selected host, which must be in the pool that runs the floor job, and refuses unless every digest, version and host library reads back and headless Chromium renders a local page; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); microvm_network_apply stages the slot and host network files the model renders at the named expected_revision as root:root 0600 in a root-only directory over the fleet SSH edge as the host's ADMINISTRATOR, installs them with the modeled operations, reloads networkd, systemd-sysctl and the nft loader unit, and reads the ruleset back -- the job user is granted none of it, because install plus systemctl over content that principal can write is arbitrary root for any pull request; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; spark_wireless_link_converge reads the selected Spark's Wi-Fi power save (runtime via iw, persisted via the NetworkManager profile), link and kernel disconnect count, sets whichever realization differs from the declared intent, and refuses unless the readback decides Noop; spark_v41_checkpoint_materialize fetches the admitted published DeepSeek V4.1 files onto the selected Group A Spark (about 510 GB; spark_v41_row_store_encode encodes the eight Engram row stores from the verified shards on the selected Group A Spark and reads each store's sha256; spark_v41_row_store_readback reads those stores back at their header, first and last record and every rank seam, with the published source rows at the same rows, and writes nothing; spark_v41_engram_differential compares upstream's Engram lookup kernel with the design-B file-backed lookup over sampled real rows of every row store, byte for byte, and writes nothing; it states the requirement and refuses before fetching when the disk cannot hold it), publishes each only after its sha256 matches the manifest, leaves a present file with the right digest alone and refuses one with the wrong digest, and reads the storage-backed Engram spans from the verified shards; a transfer runs detached and a rerun reattaches; spark_v41_runtime_image_build PRODUCES the DeepSeek V4.1 image on the selected Spark -- it verifies the candidate's three FlashInfer wheels against the digests the candidate keys, converges the patched source tree, builds from it, reads the produced configuration digest back from inside the image through the probe route, and admits that digest against the candidate's own recipe, refusing a digest that does not recompute from it -- and it is a separate mode from the probe because it occupies one host for hours where the probe occupies it for minutes; spark_v41_runtime_image_distribute moves that produced image, named by the configuration digest its production receipt read back, from the host that receipt names to the selected Group A Spark -- save into its fabric blob root, pulled by the target straight over the fabric rail, load -- after stating its size against every filesystem a copy lands on, leaves a target already holding the digest untouched, refuses a target holding a different image under the tag, and refuses unless the target's image inspect Id reads back as that digest; spark_v41_group_a_launch reads the production image back under its tag on every Group A host, reads its registry inside its digest and every host's occupancy, and only when Group A is suspended for this candidate with every host held and vacant stages the Engram manifest and applies the V4.1 four-rank arm as one transaction at the capacity measurement's shape -- the target names only the session host; spark_v41_serving_load runs the shared serving-load runner against the V4.1 head (target must be srv6): one vllm bench serve step per capacity-measurement concurrency, metrics scraped around each, host pressure read on every Group A rank, and the staircase stop rules applied over the worst rank; it changes no unit and writes only its receipt; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; microvm_controller_install writes the microVM slot controller's root-owned release locus (gunbc + sources + Firecracker + jailer) and the gunbc-microvm-slot@ template unit and the gunbc-microvm-slot-reserve broker unit on srv1 and starts neither; microvm_slot_reserve starts that broker unit once on srv1, which reserves the shakedown cell through the fabric broker route from inside the root process (slot, demand and offer derived from the model, never inputs), and uploads that invocation's reservation receipt, failing unless the reservation committed; microvm_slot_start starts the shakedown slot's controller unit once on srv1 (the instance is derived from the model, never an input), waits for it bounded by the unit's own stop timeout, and uploads that invocation's controller receipt; microvm_runner_group_ensure (srv1 only) reads the organization's runner groups and, only when the microvm-shakedown group is absent, files ONE operator approval, creates it restricted to the shakedown workflow on the default branch, and refuses unless the readback holds that restriction; mtcollins1_census_qemu_host_observe reads the selected host's KVM device and, under the job user's census QEMU root, the qemu-system-aarch64 build, its ldd libraries and the AAVMF images against their pins, and writes nothing; mtcollins1_census_qemu_toolchain_converge places that root as the job user (digest-pinned noble .debs unpacked with dpkg-deb -x, no apt, no Recommends) and refuses unless the same observe reads it ready"
+        description: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; runner_browser_toolchain_converge installs the declared Playwright/Chromium toolchain (apt host libraries as the administrator, digest-pinned node, Playwright and Chromium archives into the job user's root) on the selected host, which must be in the pool that runs the floor job, and refuses unless every digest, version and host library reads back and headless Chromium renders a local page; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); microvm_network_apply stages the slot and host network files the model renders at the named expected_revision as root:root 0600 in a root-only directory over the fleet SSH edge as the host's ADMINISTRATOR, installs them with the modeled operations, reloads networkd, systemd-sysctl and the nft loader unit, and reads the ruleset back -- the job user is granted none of it, because install plus systemctl over content that principal can write is arbitrary root for any pull request; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; spark_wireless_link_converge reads the selected Spark's Wi-Fi power save (runtime via iw, persisted via the NetworkManager profile), link and kernel disconnect count, sets whichever realization differs from the declared intent, and refuses unless the readback decides Noop; spark_grants_observe reads every procured Spark's sudo grant listing as gunbc-automation and the bootstrap principal, and its sudoers drop-in shape, and writes nothing; spark_v41_checkpoint_materialize fetches the admitted published DeepSeek V4.1 files onto the selected Group A Spark (about 510 GB; spark_v41_row_store_encode encodes the eight Engram row stores from the verified shards on the selected Group A Spark and reads each store's sha256; spark_v41_row_store_readback reads those stores back at their header, first and last record and every rank seam, with the published source rows at the same rows, and writes nothing; spark_v41_engram_differential compares upstream's Engram lookup kernel with the design-B file-backed lookup over sampled real rows of every row store, byte for byte, and writes nothing; it states the requirement and refuses before fetching when the disk cannot hold it), publishes each only after its sha256 matches the manifest, leaves a present file with the right digest alone and refuses one with the wrong digest, and reads the storage-backed Engram spans from the verified shards; a transfer runs detached and a rerun reattaches; spark_v41_runtime_image_build PRODUCES the DeepSeek V4.1 image on the selected Spark -- it verifies the candidate's three FlashInfer wheels against the digests the candidate keys, converges the patched source tree, builds from it, reads the produced configuration digest back from inside the image through the probe route, and admits that digest against the candidate's own recipe, refusing a digest that does not recompute from it -- and it is a separate mode from the probe because it occupies one host for hours where the probe occupies it for minutes; spark_v41_runtime_image_distribute moves that produced image, named by the configuration digest its production receipt read back, from the host that receipt names to the selected Group A Spark -- save into its fabric blob root, pulled by the target straight over the fabric rail, load -- after stating its size against every filesystem a copy lands on, leaves a target already holding the digest untouched, refuses a target holding a different image under the tag, and refuses unless the target's image inspect Id reads back as that digest; spark_v41_group_a_launch reads the production image back under its tag on every Group A host, reads its registry inside its digest and every host's occupancy, and only when Group A is suspended for this candidate with every host held and vacant stages the Engram manifest and applies the V4.1 four-rank arm as one transaction at the capacity measurement's shape -- the target names only the session host; spark_v41_serving_load runs the shared serving-load runner against the V4.1 head (target must be srv6): one vllm bench serve step per capacity-measurement concurrency, metrics scraped around each, host pressure read on every Group A rank, and the staircase stop rules applied over the worst rank; it changes no unit and writes only its receipt; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; microvm_controller_install writes the microVM slot controller's root-owned release locus (gunbc + sources + Firecracker + jailer) and the gunbc-microvm-slot@ template unit and the gunbc-microvm-slot-reserve broker unit on srv1 and starts neither; microvm_slot_reserve starts that broker unit once on srv1, which reserves the shakedown cell through the fabric broker route from inside the root process (slot, demand and offer derived from the model, never inputs), and uploads that invocation's reservation receipt, failing unless the reservation committed; microvm_slot_start starts the shakedown slot's controller unit once on srv1 (the instance is derived from the model, never an input), waits for it bounded by the unit's own stop timeout, and uploads that invocation's controller receipt; microvm_runner_group_ensure (srv1 only) reads the organization's runner groups and, only when the microvm-shakedown group is absent, files ONE operator approval, creates it restricted to the shakedown workflow on the default branch, and refuses unless the readback holds that restriction; mtcollins1_census_qemu_host_observe reads the selected host's KVM device and, under the job user's census QEMU root, the qemu-system-aarch64 build, its ldd libraries and the AAVMF images against their pins, and writes nothing; mtcollins1_census_qemu_toolchain_converge places that root as the job user (digest-pinned noble .debs unpacked with dpkg-deb -x, no apt, no Recommends) and refuses unless the same observe reads it ready; workspace_source_pack (host=srv1) enumerates the operator workspace as the job user, drops every path the credential exclusion row names and every build output, tars exactly the remainder, reads the archive back and refuses if any member is excluded, and puts it into the workspace bucket under its SHA-256, refusing by name when the runner cannot read a source root; workspace_checkpoint_measure (host=srv3, workspace_source_object = that SHA-256) refuses unless the job user's home is on btrfs, then times a read-only subvolume snapshot, a pinned kopia scan of it, the content-addressed chunk upload and the gated revision commit, and receipts every time with the 10 s / 60 s / 10 GB draft verdicts; workspace_checkpoint_restore (host=srv3) commits a small authored workspace, puts one chunk with no head advance, destroys the directory, restores it from the head closure and requires byte-equality with the uncommitted chunk absent -- both srv3 modes refuse their commit while the R2 head's CAS ground is uncited"
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_native_serving_apply, spark_runtime_image_probe, spark_wireless_link_converge, spark_v41_checkpoint_materialize, spark_v41_row_store_encode, spark_v41_row_store_readback, spark_v41_engram_differential, spark_v41_runtime_image_build, spark_v41_runtime_image_distribute, spark_v41_group_a_launch, spark_v41_serving_load, dashboard_deploy, approval_broker_dark_install, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, approval_device_enrolment_code_issue, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_ui_bundle_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, fabric_writer_identity_observe, pair_serving_d0, microvm_runner_group_ensure, gcp_iam_converge, namecheap_observe]
+        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_native_serving_apply, spark_runtime_image_probe, spark_wireless_link_converge, spark_grants_observe, spark_v41_checkpoint_materialize, spark_v41_row_store_encode, spark_v41_row_store_readback, spark_v41_engram_differential, spark_runtime_image_produce, spark_runtime_image_distribute, spark_arm_group_load, spark_arm_checkpoint_materialize, spark_arm_group_observe, spark_arm_group_launch_plan, spark_arm_group_launch, spark_v41_serving_load, dashboard_deploy, approval_broker_dark_install, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, approval_device_enrolment_code_issue, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_ui_bundle_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, fabric_writer_identity_observe, pair_serving_d0, microvm_runner_group_ensure, gcp_iam_converge, namecheap_observe]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
         required: false
         options: [srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12]
+        type: choice
+      runtime_image:
+        description: "spark_runtime_image_produce / spark_runtime_image_distribute only: which runtime image to produce on, or distribute to, the target Spark (gunbc.spark.runtime_image_produce_dispatch). A closed choice"
+        required: false
+        options: [v41-dsv41-gb10, glm53-kvplan-v2-gb10]
+        type: choice
+      checkpoint:
+        description: "spark_arm_checkpoint_materialize only: which checkpoint of the arm to acquire on the target Spark (gunbc.spark.arm_group_launch_dispatch). A closed choice"
+        required: false
+        options: [glm53-native-fp8, glm53-flash-nvidia-nvfp4]
+        type: choice
+      arm:
+        description: "spark_arm_group_launch / spark_arm_group_launch_plan only: which arm on which fabric group (gunbc.spark.arm_group_launch_dispatch). A closed choice; each arm's own inputs are its module's"
+        required: false
+        options: [v41-group-a, glm53-group-a]
+        type: choice
+      staircase_step:
+        description: "spark_arm_group_launch(_plan) with arm glm53-group-a only: the staircase step (gunbc.spark.glm53_arm_staircase), checkpoint and sequence ceiling over the cold 8 x 262144 floor. A closed choice; a step outside the staircase has no spelling. Must be empty for v41-group-a"
+        required: false
+        options: [fp8-8, fp8-12, fp8-16, fp8-24, fp8-32, fp8-64, fp8-128, nvfp4-8, nvfp4-16, nvfp4-24, nvfp4-32]
+        type: choice
+      incumbent:
+        description: "spark_arm_group_launch(_plan) with arm glm53-group-a only: the serve this step supersedes, as a DECLARED unit roster (never discovered): previous-step (this arm's own units from the step before) or none. Must be empty for v41-group-a"
+        required: false
+        options: [previous-step, none]
         type: choice
       reset_observer:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
@@ -28,7 +53,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, claude_code_oauth_harness_token]
         type: choice
       d0_consent:
         description: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent"
@@ -66,14 +91,23 @@ on:
         description: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links"
         required: false
         type: string
+      workspace_source_object:
+        description: "workspace_checkpoint_measure only: the lower-hex SHA-256 the workspace_source_pack receipt printed as address= (the archive's own digest; the fetched bytes must hash to it)"
+        required: false
+        type: string
       transaction_nonce:
-        description: Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step
+        description: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only"
+        required: false
+        type: string
+      attempt_receipt:
+        description: "mtcollins1_boot only: a committed artifacts/receipts/*.json naming this attempt's plan and the operator's inspection (gunbc.host_boot_attempt_admission). Empty records the configuration as not recorded; a named receipt that fails any check refuses the boot before power-on. Requires transaction_nonce"
         required: false
         type: string
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 95
+    if: github.event.inputs.mode != 'mtcollins1_boot'
     permissions:
       contents: read
       actions: read
@@ -126,6 +160,90 @@ jobs:
       - name: Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)
         id: release_bins_key
         run: |
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ]; then
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
+          '[' '-z' "$DIRTY" ']' || ('echo' '::error title=release-bins SourceTreeDirty::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key'; exit 1)
+          'env' '-0' > "$RUNNER_TEMP"'/env.nul'
+          if 'grep' '-zqE' '^(CARGO|RUST|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|TARGET_CC|HOST_CC)[A-Za-z0-9_]*(TOKEN|CREDENTIAL|SECRET|PASSWORD|PASSWD|AUTH)[A-Za-z0-9_]*=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins CredentialInBuildEnvironment::a registry or toolchain credential is present in the build environment; credentials are not build inputs and must not reach a key or a published preimage, so the build is refused'; exit 1); fi
+          if 'grep' '-zqE' '^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins BuildOverrideNotAdmitted::the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly'; exit 1); fi
+          'sed' '-z' '-nE' '/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p' "$RUNNER_TEMP"'/env.nul' > "$RUNNER_TEMP"'/env-keyed.nul'
+          'sed' '-z' '-E' '/^(CARGO_HOME|RUSTUP_HOME|CARGO_BIN|CARGO_TERM_COLOR|CARGO_BUILD_JOBS|RUSTC_WRAPPER)=/d' "$RUNNER_TEMP"'/env-keyed.nul' > "$RUNNER_TEMP"'/env-kept.nul'
+          'sort' '-z' "$RUNNER_TEMP"'/env-kept.nul' > "$RUNNER_TEMP"'/env-sorted.nul'
+          'sha256sum' "$RUNNER_TEMP"'/env-sorted.nul' > "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out'
+          AXIS_ENVIRONMENT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out')
+          ANCESTOR_0="$ROOT"
+          ANCESTOR_CONFIG=''
+          ANCESTOR_1=$('dirname' "$ANCESTOR_0")
+          ('[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_1"
+          ANCESTOR_2=$('dirname' "$ANCESTOR_1")
+          ('[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_2"
+          ANCESTOR_3=$('dirname' "$ANCESTOR_2")
+          ('[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_3"
+          ANCESTOR_4=$('dirname' "$ANCESTOR_3")
+          ('[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_4"
+          ANCESTOR_5=$('dirname' "$ANCESTOR_4")
+          ('[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_5"
+          ANCESTOR_6=$('dirname' "$ANCESTOR_5")
+          ('[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_6"
+          ANCESTOR_7=$('dirname' "$ANCESTOR_6")
+          ('[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_7"
+          ANCESTOR_8=$('dirname' "$ANCESTOR_7")
+          ('[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_8"
+          ANCESTOR_9=$('dirname' "$ANCESTOR_8")
+          ('[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_9"
+          ANCESTOR_10=$('dirname' "$ANCESTOR_9")
+          ('[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_10"
+          ANCESTOR_11=$('dirname' "$ANCESTOR_10")
+          ('[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_11"
+          ANCESTOR_12=$('dirname' "$ANCESTOR_11")
+          ('[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_12"
+          ANCESTOR_13=$('dirname' "$ANCESTOR_12")
+          ('[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_13"
+          ANCESTOR_14=$('dirname' "$ANCESTOR_13")
+          ('[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_14"
+          ANCESTOR_15=$('dirname' "$ANCESTOR_14")
+          ('[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_15"
+          ANCESTOR_16=$('dirname' "$ANCESTOR_15")
+          ('[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_16"
+          if '[' '-n' "$ANCESTOR_CONFIG" ']'; then 'echo' 'release-bins: Cargo config found above the checkout in '"$ANCESTOR_CONFIG"; ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1); fi
+          '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          AXIS_PRODUCER=$("$CARGO_BIN" '-V')
+          '[' '-n' "$AXIS_PRODUCER" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_PRODUCER read back empty, so the key would not name the build; refusing to key'; exit 1)
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-host.out'
+          AXIS_HOST=$('sed' '-n' 's/^host: //p' "$RUNNER_TEMP"'/rustc-host.out')
+          'cc' '--version' > "$RUNNER_TEMP"'/AXIS_CC.out'
+          AXIS_CC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_CC.out')
+          'ld' '--version' > "$RUNNER_TEMP"'/AXIS_LD.out'
+          AXIS_LD=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LD.out')
+          'ldd' '--version' > "$RUNNER_TEMP"'/AXIS_LIBC.out'
+          AXIS_LIBC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LIBC.out')
+          '[' '-n' "$AXIS_HOST" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_HOST read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_CC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_CC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LD" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LD read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LIBC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LIBC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
+          AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
+          '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
+          ('printf' 'kind=%s\n' 'gunbc.compiler_pair_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc' "$SOURCE_CLOSURE" 'sha256:'"$AXIS_ENVIRONMENT_DIGEST" 'claim_executor gunbc'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
+          'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
+          PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
+          KEY='release-bins-'"$PREIMAGE_DIGEST"
+          'rm' '-rf' "$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$ROOT"'/.release-bins-staging'
+          'echo' 'release-bins request key '"$KEY"' over preimage:'
+          'cat' "$EXPECTED"
+          'echo' 'key='"$KEY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'GUNBC_MATERIALIZED_TREE_IDENTITY='"$SOURCE_CLOSURE" | 'tee' '-a' "$GITHUB_ENV" > '/dev/null'
+
+          else
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
@@ -207,6 +325,10 @@ jobs:
           'cat' "$EXPECTED"
           'echo' 'key='"$KEY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
           'echo' 'GUNBC_MATERIALIZED_TREE_IDENTITY='"$SOURCE_CLOSURE" | 'tee' '-a' "$GITHUB_ENV" > '/dev/null'
+
+          fi
+        env:
+          FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         timeout-minutes: 5
       - name: Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)
         id: release_bins_lookup
@@ -244,6 +366,50 @@ jobs:
       - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs
         id: release_bins_outcome
         run: |
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ]; then
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          if '[' "$LOOKUP_STANDING" '=' 'present' ']' && '[' "$CACHE_HIT" '=' 'true' ']'; then ':' 'no-op'; else if '[' "$LOOKUP_STANDING" '=' 'present' ']' && '[' "$CACHE_HIT" '!=' 'true' ']'; then ('echo' '::error title=release-bins StoreTransportDisagreePresentMiss::the cache API holds an exact admitted entry for this key but the transport did not restore it exactly; refusing rather than rebuilding over a present entry'; exit 1); else if '[' "$LOOKUP_STANDING" '=' 'absent' ']' && '[' "$CACHE_HIT" '=' 'true' ']'; then ('echo' '::error title=release-bins StoreTransportDisagreeAbsentHit::the cache API holds no exact admitted entry for this key but the transport reported an exact hit; the store and its transport disagree'; exit 1); else if '[' "$LOOKUP_STANDING" '=' 'absent' ']' && '[' "$CACHE_HIT" '!=' 'true' ']'; then 'rm' '-rf' "$STAGE"; 'mkdir' '-p' "$STAGE"; 'echo' 'outcome=build' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; else ('echo' '::error title=release-bins OutcomeInputsMissing::the lookup standing or the transport exactness is missing, so no outcome can be decided'; exit 1); fi; fi; fi; fi
+          '[' '-f' "$STAGE"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.preimage is missing'; exit 1)
+          '[' '-f' "$STAGE"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.manifest is missing'; exit 1)
+          '[' '-f' "$STAGE"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.tgz is missing'; exit 1)
+          'cmp' '-s' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ('diff' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ':' 'no-op'; ('echo' '::error title=release-bins StoredPreimageDiffers::the stored preimage differs from this run'\''s independently derived preimage'; exit 1))
+          'sha256sum' "$STAGE"'/release-bins.preimage' > "$RUNNER_TEMP"'/STORED_DIGEST.out'
+          STORED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/STORED_DIGEST.out')
+          '[' 'release-bins-'"$STORED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins StoredPreimageKeyMismatch::the stored preimage does not hash to the probed key'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          build_diagnostics
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$STAGE"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the stored pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$STAGE"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the stored manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$STAGE"'/unpacked'
+          'mkdir' '-p' "$STAGE"'/unpacked'
+          'tar' '-xzf' "$STAGE"'/release-bins.tgz' '-C' "$STAGE"'/unpacked' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$STAGE"'/unpacked' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the stored pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$STAGE"'/unpacked' && 'find' 'claim_executor' 'gunbc' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the stored pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--strict' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the stored member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
+          ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          'rm' '-rf' "$STAGE"'/unpacked'
+          'echo' 'release-bins: stored pack verified and promoted'
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
+          'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
+          'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+
+          else
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
@@ -300,7 +466,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$STAGE"'/unpacked' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the stored pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$STAGE"'/unpacked' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$STAGE"'/unpacked' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the stored pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--strict' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the stored member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -312,11 +478,14 @@ jobs:
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
           'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+
+          fi
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
           LOOKUP_STANDING: ${{ steps.release_bins_lookup.outputs.standing }}
           LOOKUP_ENTRY: ${{ steps.release_bins_lookup.outputs.entry }}
           CACHE_HIT: ${{ steps.release_bins_cache.outputs.cache-hit }}
+          FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         timeout-minutes: 5
       - name: Cache Cargo
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
@@ -330,9 +499,12 @@ jobs:
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
         if: steps.release_bins_outcome.outputs.outcome != 'reuse'
-      - name: Build release bins (claim_executor + gunbc)
+      - name: Build release bins (the dispatched mode's product)
         id: release_build
         run: |
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ]; then
+          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+          else
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           set -o pipefail
           BUILD_LOG=$(mktemp)
@@ -347,6 +519,10 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
           'sccache' '--show-stats' 2>/dev/null || 'true'
+
+          fi
+        env:
+          FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         if: steps.release_bins_outcome.outputs.outcome != 'reuse'
         timeout-minutes: 45
       - name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled"
@@ -361,6 +537,21 @@ jobs:
         timeout-minutes: 5
       - name: Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)
         run: |
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ]; then
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$STAGE"
+          '[' '-s' "$ROOT"'/gunbc-floor-cmd.log' ']' || ('echo' '::error title=release-bins BuildDiagnosticsMissing::the product requires the build log gunbc-floor-cmd.log as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller'; exit 1)
+          'cp' "$ROOT"'/gunbc-floor-cmd.log' "$ROOT"'/target/release/build_diagnostics'
+          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics') > "$STAGE"'/release-bins.manifest'
+          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics'
+          'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
+          'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
+
+          else
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
@@ -371,8 +562,11 @@ jobs:
           'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
+
+          fi
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+          FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         if: steps.release_bins_outcome.outputs.outcome != 'reuse'
         timeout-minutes: 5
       - name: Upload release-bins artifact
@@ -397,7 +591,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_row_store_encode' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_row_store_readback' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_engram_differential' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_runtime_image_build' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_runtime_image_distribute' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_group_a_launch' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_serving_load' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_row_store_encode' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_row_store_readback' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_engram_differential' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_runtime_image_produce' && format('gunbc-host-mutation-{0}', github.event.inputs.target) || github.event.inputs.mode == 'spark_runtime_image_distribute' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_arm_group_load' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_arm_checkpoint_materialize' && format('gunbc-host-mutation-{0}', github.event.inputs.target) || github.event.inputs.mode == 'spark_arm_group_observe' && format('gunbc-read-only-{0}', github.run_id) || github.event.inputs.mode == 'spark_arm_group_launch' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_serving_load' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -414,6 +608,49 @@ jobs:
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ]; then
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          build_diagnostics
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc'
+
+          else
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
@@ -473,7 +710,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -481,8 +718,11 @@ jobs:
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
+
+          fi
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
+          FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         timeout-minutes: 5
       - name: "Pair-serving D0 admission (credential-free): the executor is srv1, the consent and the expected revision are named"
         id: pair_serving_d0_admit
@@ -531,7 +771,7 @@ jobs:
           echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' || github.event.inputs.mode == 'spark_v41_row_store_encode' || github.event.inputs.mode == 'spark_v41_row_store_readback' || github.event.inputs.mode == 'spark_v41_engram_differential' || github.event.inputs.mode == 'spark_v41_runtime_image_build' || github.event.inputs.mode == 'spark_v41_runtime_image_distribute' || github.event.inputs.mode == 'spark_v41_group_a_launch' || github.event.inputs.mode == 'spark_v41_serving_load' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'pair_serving_d0'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' || github.event.inputs.mode == 'spark_v41_row_store_encode' || github.event.inputs.mode == 'spark_v41_row_store_readback' || github.event.inputs.mode == 'spark_v41_engram_differential' || github.event.inputs.mode == 'spark_runtime_image_produce' || github.event.inputs.mode == 'spark_runtime_image_distribute' || github.event.inputs.mode == 'spark_arm_group_load' || github.event.inputs.mode == 'spark_arm_checkpoint_materialize' || github.event.inputs.mode == 'spark_arm_group_observe' || github.event.inputs.mode == 'spark_arm_group_launch_plan' || github.event.inputs.mode == 'spark_arm_group_launch' || github.event.inputs.mode == 'spark_v41_serving_load' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'pair_serving_d0'
         timeout-minutes: 5
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
@@ -560,6 +800,16 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_allocation_store_plan_wet
         if: github.event.inputs.mode == 'allocation_store_plan'
         timeout-minutes: 5
+      - name: Fleet workspace slot commissioning plan
+        id: workspace_commissioning_plan
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_workspace_commissioning_plan_wet
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+        if: github.event.inputs.mode == 'workspace_commissioning_plan'
+        timeout-minutes: 15
       - name: Upload fleet converge plan artifact
         id: plan_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -569,7 +819,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan'
         timeout-minutes: 10
       - name: Download fleet converge plan artifact
         id: plan_download
@@ -1127,6 +1377,108 @@ jobs:
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_object_write_mint'
         timeout-minutes: 10
+      - name: R2 workspace object-read token mint (AccountTokens.Create + Secret Manager custody)
+        id: r2_workspace_object_read_mint
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function run_workspace_object_read
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'r2_workspace_object_read_mint'
+        timeout-minutes: 5
+      - name: Upload R2 workspace object-read mint receipt (token id + custody version resource; no secret)
+        id: r2_workspace_object_read_mint_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: r2-workspace-object-read-mint-receipt
+          path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-read-mint-receipt.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'r2_workspace_object_read_mint'
+        timeout-minutes: 10
+      - name: R2 workspace object-write token mint (AccountTokens.Create + Secret Manager custody)
+        id: r2_workspace_object_write_mint
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function run_workspace_object_write
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'r2_workspace_object_write_mint'
+        timeout-minutes: 5
+      - name: Upload R2 workspace object-write mint receipt (token id + custody version resource; no secret)
+        id: r2_workspace_object_write_mint_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: r2-workspace-object-write-mint-receipt
+          path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-write-mint-receipt.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'r2_workspace_object_write_mint'
+        timeout-minutes: 10
+      - name: "Workspace source pack: the operator workspace minus credentials and build output, into the workspace bucket by its SHA-256"
+        id: workspace_source_pack
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fabric/workspace_source.dag --function workspace_source_pack_wet
+          cat "$ROOT/target/workspace-source-pack-receipt.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'workspace_source_pack'
+        timeout-minutes: 120
+      - name: Upload workspace source pack receipt
+        id: workspace_source_pack_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: workspace-source-pack
+          path: target/workspace-source-pack-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always() && github.event.inputs.mode == 'workspace_source_pack'
+        timeout-minutes: 10
+      - name: "Workspace checkpoint stage 0: btrfs snapshot vs kopia scan vs chunk upload and gated commit, timed"
+        id: workspace_checkpoint_measure
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fabric/workspace_checkpoint_instrument.dag --function workspace_checkpoint_measure_wet
+          cat "$ROOT/target/workspace-checkpoint-measure-receipt.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          WORKSPACE_SOURCE_OBJECT: ${{ github.event.inputs.workspace_source_object }}
+        if: github.event.inputs.mode == 'workspace_checkpoint_measure'
+        timeout-minutes: 120
+      - name: Upload workspace checkpoint stage-0 receipt
+        id: workspace_checkpoint_measure_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: workspace-checkpoint-measure
+          path: target/workspace-checkpoint-measure-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always() && github.event.inputs.mode == 'workspace_checkpoint_measure'
+        timeout-minutes: 10
+      - name: "Workspace checkpoint stage 1: barrier, uncommitted chunk, destroy, restore from the head closure, byte-equality"
+        id: workspace_checkpoint_restore
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fabric/workspace_checkpoint_instrument.dag --function workspace_checkpoint_restore_wet
+          cat "$ROOT/target/workspace-checkpoint-restore-receipt.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'workspace_checkpoint_restore'
+        timeout-minutes: 120
+      - name: Upload workspace checkpoint stage-1 receipt
+        id: workspace_checkpoint_restore_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: workspace-checkpoint-restore
+          path: target/workspace-checkpoint-restore-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always() && github.event.inputs.mode == 'workspace_checkpoint_restore'
+        timeout-minutes: 10
       - name: Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)
         id: approval_keyring_converge
         run: |-
@@ -1550,6 +1902,14 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'spark_wireless_link_converge'
         timeout-minutes: 60
+      - name: Spark grant observe (every procured Spark's sudo grant listing and sudoers drop-in shape, read-only)
+        id: spark_grants_observe
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_multi_principal_probe.dag --function spark_exact_grant_probe_ci_wet
+          cat "$ROOT/target/spark-exact-grant-probe-receipt.txt"
+        if: github.event.inputs.mode == 'spark_grants_observe'
+        timeout-minutes: 60
       - name: Spark V4.1 checkpoint materialize (fetch the admitted published files onto the selected Group A Spark, verify each sha256 before publishing, read the storage-backed Engram spans)
         id: spark_v41_checkpoint_materialize
         run: |-
@@ -1695,8 +2055,8 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'spark_v41_engram_differential'
         timeout-minutes: 60
-      - name: Spark V4.1 runtime image build (verify the candidate's kernel wheels, converge the patched source, build the image on the selected Spark, read the produced digest back from inside it and admit it against the candidate)
-        id: spark_v41_runtime_image_build
+      - name: "Spark runtime image produce (the image named by the closed runtime_image input, gunbc.spark.runtime_image_produce_dispatch: built on the selected Group A Spark, read back by digest and probed inside that digest)"
+        id: spark_runtime_image_produce
         run: |-
           set -euo pipefail
           umask 077
@@ -1717,15 +2077,16 @@ jobs:
           export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
           echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/v41_runtime_image_converge.dag --function v41_runtime_image_produce_ci_wet
-          cat "$ROOT/target/v41-runtime-image-produce-receipt.txt"
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/runtime_image_produce_dispatch.dag --function runtime_image_produce_ci_wet
+          cat "$ROOT/target/runtime-image-produce-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'spark_v41_runtime_image_build'
+          GUNBC_RUNTIME_IMAGE: ${{ github.event.inputs.runtime_image }}
+        if: github.event.inputs.mode == 'spark_runtime_image_produce'
         timeout-minutes: 180
-      - name: Spark V4.1 runtime image distribute (move the produced image, named by its configuration digest, from the host its production receipt names to the selected Group A Spark, and read the digest back there)
-        id: spark_v41_runtime_image_distribute
+      - name: Spark runtime image distribute (the produced image named by the closed runtime_image input, by its configuration digest, from the host its production receipt names to the selected Spark of its group, read back there)
+        id: spark_runtime_image_distribute
         run: |-
           set -euo pipefail
           umask 077
@@ -1746,15 +2107,16 @@ jobs:
           export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
           echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/v41_runtime_image_converge.dag --function v41_runtime_image_distribute_ci_wet
-          cat "$ROOT/target/v41-runtime-image-distribute-receipt.txt"
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/runtime_image_produce_dispatch.dag --function runtime_image_distribute_ci_wet
+          cat "$ROOT/target/runtime-image-distribute-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'spark_v41_runtime_image_distribute'
+          GUNBC_RUNTIME_IMAGE: ${{ github.event.inputs.runtime_image }}
+        if: github.event.inputs.mode == 'spark_runtime_image_distribute'
         timeout-minutes: 120
-      - name: Spark V4.1 Group A launch (the production image read back on srv5-8, its registry read inside its digest, occupancy read, then on admission the Engram manifest staged and the four-rank arm applied as one transaction at the capacity measurement's shape)
-        id: spark_v41_group_a_launch
+      - name: Spark arm checkpoint materialize (the checkpoint named by the closed checkpoint input, adopted or fetched into the target Spark's Hub cache and verified)
+        id: spark_arm_checkpoint_materialize
         run: |-
           set -euo pipefail
           umask 077
@@ -1775,12 +2137,145 @@ jobs:
           export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
           echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/v41_group_a_launch.dag --function v41_group_a_launch_ci_wet
-          cat "$ROOT/target/v41-group-a-launch-receipt.txt"
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/arm_group_launch_dispatch.dag --function arm_checkpoint_materialize_ci
+          cat "$ROOT/target/arm-checkpoint-materialize-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'spark_v41_group_a_launch'
+          GUNBC_ARM_LAUNCH: ${{ github.event.inputs.arm }}
+          GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
+          GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
+          GUNBC_ARM_CHECKPOINT: ${{ github.event.inputs.checkpoint }}
+          GUNBC_RUNTIME_IMAGE: ${{ github.event.inputs.runtime_image }}
+        if: github.event.inputs.mode == 'spark_arm_checkpoint_materialize'
+        timeout-minutes: 180
+      - name: "Spark arm group OBSERVE (read-only: every host's running units, containers and GPU processes with their owning cgroups; nothing is changed)"
+        id: spark_arm_group_observe
+        run: |-
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/arm_group_launch_dispatch.dag --function arm_group_observe_ci
+          cat "$ROOT/target/arm-group-observe-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_ARM_LAUNCH: ${{ github.event.inputs.arm }}
+          GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
+          GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
+        if: github.event.inputs.mode == 'spark_arm_group_observe'
+        timeout-minutes: 60
+      - name: Spark arm group launch PLAN (the chosen arm's plan, units, scripts, declared incumbent and admission verdict; no host is touched)
+        id: spark_arm_group_launch_plan
+        run: |-
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/arm_group_launch_dispatch.dag --function arm_group_launch_plan_ci
+          cat "$ROOT/target/arm-group-launch-plan.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_ARM_LAUNCH: ${{ github.event.inputs.arm }}
+          GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
+          GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
+        if: github.event.inputs.mode == 'spark_arm_group_launch_plan'
+        timeout-minutes: 60
+      - name: Spark arm group launch (the chosen arm's reads and admission, its pre-apply, the declared incumbent stopped and the hosts re-read vacant, then the arm applied as one transaction; the incumbent restored on anything but a commit)
+        id: spark_arm_group_launch
+        run: |-
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/arm_group_launch_dispatch.dag --function arm_group_launch_ci_wet
+          cat "$ROOT/target/arm-group-launch-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_ARM_LAUNCH: ${{ github.event.inputs.arm }}
+          GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
+          GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
+        if: github.event.inputs.mode == 'spark_arm_group_launch'
+        timeout-minutes: 110
+      - name: Spark arm group load (the staircase step named by the closed inputs, loaded at its cold floor and its ceiling from its head; stop rules judged; calibration receipt folded)
+        id: spark_arm_group_load
+        run: |-
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/arm_group_launch_dispatch.dag --function arm_group_load_ci
+          cat "$ROOT/target/arm-group-load-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_ARM_LAUNCH: ${{ github.event.inputs.arm }}
+          GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
+          GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
+        if: github.event.inputs.mode == 'spark_arm_group_load'
         timeout-minutes: 60
       - name: "Spark V4.1 serving-load staircase (shared serving-load runner: per concurrency scrape, vllm bench serve, scrape, with rank pressure on srv5-8; the staircase's stop rules over the worst rank)"
         id: spark_v41_serving_load
@@ -1940,7 +2435,6 @@ jobs:
         timeout-minutes: 5
   mtcollins1-boot:
     runs-on: [self-hosted, linux, arm64, srv1]
-    needs: [build]
     environment: mtcollins1-boot
     timeout-minutes: 184
     if: github.event.inputs.mode == 'mtcollins1_boot'
@@ -1957,85 +2451,49 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
-      - name: Download release-bins artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+      - name: Isolate toolchain dirs
+        run: |-
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+          echo "MAKEFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=6" >> "$GITHUB_ENV"
+          if sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          printf '%s\n' "CiSccacheProviderReceipt: provider=bound catalog=sccache_local"
+          else
+          printf '%s\n' "CiSccacheProviderReceipt: provider=SKIPPED catalog=sccache_local host=$(hostname) cause=daemon-unavailable; the release build runs UNCACHED — a counted degradation, not a supported mode (host_build_cache_provision P1b should have converged this host)"
+          fi
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
-          name: release-bins
-          path: ${{ runner.temp }}/release-bins-download
-        timeout-minutes: 10
-      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
-        id: release_bins
-        run: |
-          set -e
-          ROOT=$('git' 'rev-parse' '--show-toplevel')
-          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
-          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
-          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
-          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
-          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
-          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
-          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
-          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
-          'printf' '%s' 'claim_executor
-          gunbc
-          discover_source_root_ingest
-          claim_batch
-          interp_recorded_fixture_witness
-          v1_src_dag_parse
-          auth_declared_but_unwired_witness
-          bootstrap_witness
-          dag_collect_fingerprint_witness
-          diagnostics_witness
-          effects_rest_transport_witness
-          infer_semantics_witness
-          parse_witness
-          cssl_assemble
-          namespace_structural_root_exposure_generated_witness
-          codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
-          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
-          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
-          'printf' '%s' 'claim_executor:regular file:1
-          gunbc:regular file:1
-          discover_source_root_ingest:regular file:1
-          claim_batch:regular file:1
-          interp_recorded_fixture_witness:regular file:1
-          v1_src_dag_parse:regular file:1
-          auth_declared_but_unwired_witness:regular file:1
-          bootstrap_witness:regular file:1
-          dag_collect_fingerprint_witness:regular file:1
-          diagnostics_witness:regular file:1
-          effects_rest_transport_witness:regular file:1
-          infer_semantics_witness:regular file:1
-          parse_witness:regular file:1
-          cssl_assemble:regular file:1
-          namespace_structural_root_exposure_generated_witness:regular file:1
-          codex_app_server_stdio_session:regular file:1
-          ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
-          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
-          'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
-          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
-          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          components: rustfmt
+          cache: false
+          rustflags: -D warnings
         env:
-          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
-        timeout-minutes: 5
+          HOME: ${{ runner.temp }}
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |-
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |-
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Build the compiler pair this boot runs (claim_executor + gunbc)
+        id: pair_build
+        run: |
+          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+        timeout-minutes: 45
       - name: "Mt. Collins boot admission (credential-free): the dispatch names the unit hold store host"
         id: mtcollins1_boot_admit
         run: |-
@@ -2171,6 +2629,8 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
+          GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'mtcollins1_boot'
         timeout-minutes: 134
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
@@ -2270,7 +2730,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -2383,7 +2843,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -2517,7 +2977,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -2616,7 +3076,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -2719,7 +3179,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -2909,7 +3369,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
@@ -3052,7 +3512,7 @@ jobs:
           ' > "$RUNNER_TEMP"'/member-types.expected'
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'

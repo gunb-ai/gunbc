@@ -59,7 +59,13 @@ data fixture_const_and_const_fn: String = "pub const LIMIT: u32 = 4;\n\npub cons
 // consumed the continuation from one that swallowed the rest of the file.
 data fixture_wrapped_use_and_derive: String = "use std::collections::{\n    HashMap, HashSet,\n};\n\n#[derive(\n    Debug, Clone, PartialEq,\n)]\npub struct Wrapped {\n    field: u32,\n}\n\npub fn after_the_wrapping() -> u32 {\n    1\n}\n"
 
-data fixture_macro_block: String = "use std::cell::RefCell;\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n\npub fn after_the_macro() -> u32 {\n    1\n}\n"
+data fixture_macro_block: String = "use std::fmt;\n\nmacro_rules! counter {\n    () => { 0 };\n}\n\npub fn after_the_macro() -> u32 {\n    1\n}\n"
+
+data fixture_thread_local_block: String = "use std::cell::RefCell;\n\nmod probe_inner {\n    thread_local! {\n        #[allow(dead_code)]\n        pub static COUNTER: RefCell<u32> = RefCell::new(0);\n        static BIG: RefCell<Vec<u32>> = RefCell::new(vec![\n            1, 2,\n        ]);\n    }\n}\n\npub fn after_the_thread_local() -> u32 {\n    1\n}\n"
+
+data fixture_thread_local_non_static: String = "thread_local! {\n    fn not_a_static() -> u32 {\n        1\n    }\n}\n"
+
+data fixture_thread_local_one_line: String = "thread_local!(static ONE: u32 = 1);\n"
 
 fn ordinary_scan_keys() -> List<String> {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_ordinary_source) {
@@ -119,12 +125,12 @@ test fn a_wrapped_use_list_and_derive_attribute_do_not_hide_the_following_item()
   }
 }
 
-// A MACRO BLOCK IS AN EXTENT WITH NO ITEM AND A CHANGE INSIDE IT IS NOT FILE-LEVEL. Three facts are
-// required together and each is a different way to get this wrong: the file must scan (refusing it
-// would put cli_run.rs, which carries a thread_local! block, permanently out of the census); the
+// AN UNMODELED MACRO BLOCK IS AN EXTENT WITH NO ITEM AND A CHANGE INSIDE IT IS NOT FILE-LEVEL. Three
+// facts are required together and each is a different way to get this wrong: the file must scan
+// (refusing it would put every file carrying a macro_rules! permanently out of the census); the
 // macro must mint no item (the grammar authority has no macro item form, and inventing one here
 // would be the second roster this reader exists not to author); and a line inside it must NOT come
-// back file-level, because a static added inside thread_local! is hand-Rust growth and file-level is
+// back file-level, because an arm added inside macro_rules! is hand-Rust growth and file-level is
 // the answer that would admit it silently.
 test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed() -> Bool {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_macro_block) {
@@ -132,7 +138,7 @@ test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed()
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
       let keys = scan_item_keys(items: items)
       key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_macro")
-        && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::static::COUNTER")
+        && length(xs: items) == 1
         && length(xs: macro_regions) == 1
         && match attribute_scanned_line(
           items: items,
@@ -140,12 +146,68 @@ test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed()
           line_count: line_count,
           line: 4
         ) {
-          AttributedToUnnamedMacroBlock { macro_name: name, line: _ } => name == "thread_local"
+          AttributedToUnnamedMacroBlock { macro_name: name, line: _ } => name == "macro_rules"
           AttributedToFileLevel => false
           AttributedToItem { item_key: _ } => false
           AttributionOutOfRange { line: _, line_count: _ } => false
         }
     }
+  }
+}
+
+// thread_local! IS THE ONE MACRO WHOSE BODY IS NAMED, BECAUSE UPSTREAM NAMES IT. std documents its
+// body as "any number of static declarations", each with optional attributes and visibility
+// (extdeps.rust.std_thread_local, cited at the pinned 1.93.0 docs). So each static is an item of the
+// ENCLOSING module -- here an inline module, so the key carries its path -- the attribute above a
+// static belongs to that static's extent, a multi-line initializer closes at its own bracket, no
+// macro region is recorded, and the item after the block is still found. A changed line inside a
+// static attributes to that static BY NAME, which is the fact gunbc#12886's census could not report.
+test fn a_thread_local_static_is_an_item_of_the_enclosing_module_and_its_lines_attribute_to_it() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_thread_local_block) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let keys = scan_item_keys(items: items)
+      key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::static::probe_inner.COUNTER")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::static::probe_inner.BIG")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::mod::probe_inner")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_thread_local")
+        && length(xs: items) == 4
+        && length(xs: macro_regions) == 0
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 5,
+          key: "src/v1/stage0/src/probe.rs::static::probe_inner.COUNTER"
+        )
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 8,
+          key: "src/v1/stage0/src/probe.rs::static::probe_inner.BIG"
+        )
+    }
+  }
+}
+
+// THE CITATION ADMITS STATICS AND NOTHING ELSE. A thread_local! body line that is not a static, an
+// attribute or a comment is not something the upstream grammar describes, so it refuses rather than
+// being read as an item of whatever keyword it happens to start with.
+test fn a_non_static_line_inside_thread_local_refuses() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_thread_local_non_static) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 2
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
+  }
+}
+
+// A ONE-LINE thread_local! DECLARES A STATIC THIS READER CANNOT SPLIT OUT WITHOUT A LEXER. Reading it
+// as a file-level line -- which every other one-line macro invocation is -- would admit an added
+// static silently, so it refuses.
+test fn a_one_line_thread_local_refuses_rather_than_reading_file_level() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_thread_local_one_line) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 1
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
   }
 }
 

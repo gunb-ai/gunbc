@@ -41,6 +41,7 @@ import v2.std.diagnostic {
   diagnostics_singleton, invariant_port_locus,
 }
 import v2.std.node { Symbol }
+import std.optional { Present, Absent }
 
 data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; .dag authority for parse_table_lookup/insert and cached_stage_governed; discriminating corpus: parse_table_memo_governed_witness_test.dag + compiler_materialization_witness_test.dag."

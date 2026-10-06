@@ -20,8 +20,8 @@ pub use crate::extdeps_languages_rust_derive_contracts::{
     rust_vec_freemonoid_supplemental_generic_bound_rows,
 };
 pub use crate::extdeps_languages_rust_emit::{
-    rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
-    rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
+    rust_supplemental_impls_group_completion, rust_trait_derive_attr_from_traits,
+    rust_trait_derive_spelling,
 };
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -33,7 +33,6 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
 };
 pub use crate::std_trait_derive_shape::{
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
-    repr_grounding_supplemental_bool_host_bridge_target,
 };
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -41,6 +40,13 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
 pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
+use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{
+    TypeDeclKernelSpellingUndecided, TypeDeclLeafAmbiguous, TypeDeclNotDeclared, TypeDeclResolved,
+};
+pub use crate::v1_compiler_infer_emit_info::{
+    resolve_type_decl_leaf, resolve_type_decl_reference, type_decl_identities_of_leaf,
+};
+pub use crate::v1_compiler_infer_emit_info::{TypeDeclIndex, TypeDeclResolution};
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -278,18 +284,17 @@ pub fn v1_type_expr_is_keyed_map(
     }
 }
 
-pub fn v1_map_key_head_names_in_type_expr(
+pub fn v1_map_key_head_type_exprs(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let own = match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
             .clone()
         {
             KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
-                Some(key_child) => Rc::new(vec![crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    crate::v1_compiler_infer_types::child_type_node(key_child.clone()),
+                Some(key_child) => Rc::new(vec![crate::v1_compiler_infer_types::child_type_node(
+                    key_child.clone(),
                 )]),
                 std::option::Option::None => Rc::new(vec![]),
             },
@@ -302,7 +307,7 @@ pub fn v1_map_key_head_names_in_type_expr(
                 let mut __result = Vec::new();
                 for ch in type_expr.children.clone().iter().cloned() {
                     __result.extend(
-                        (*v1_map_key_head_names_in_type_expr(
+                        (*v1_map_key_head_type_exprs(
                             crate::v1_compiler_infer_types::child_type_node(ch.clone()),
                             source_indices.clone(),
                         ))
@@ -316,22 +321,92 @@ pub fn v1_map_key_head_names_in_type_expr(
     })
 }
 
-pub fn v1_type_expr_head_names(
+pub fn v1_map_key_head_names_in_type_expr(
     type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for key in v1_map_key_head_type_exprs(type_expr.clone(), source_indices.clone())
+            .iter()
+            .cloned()
+        {
+            __result.push(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                key.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn v1_type_expr_declared_identity(
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+        type_decl_items.clone(),
+        type_expr.clone(),
+        source_indices.clone(),
+    ))
+    .clone()
+    {
+        TypeDeclResolution::TypeDeclResolved { identity, .. } => identity.clone(),
+        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => "".to_string(),
+        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => "".to_string(),
+        TypeDeclResolution::TypeDeclNotDeclared => "".to_string(),
+    }
+}
+
+pub fn v1_type_expr_map_key_declared_identities(
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+        type_decl_items.clone(),
+        type_expr.clone(),
+        source_indices.clone(),
+    ))
+    .clone()
+    {
+        TypeDeclResolution::TypeDeclResolved { identity, .. } => Rc::new(vec![identity.clone()]),
+        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => {
+            crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+                type_decl_items.clone(),
+                leaf.clone(),
+            )
+        }
+        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf, .. } => {
+            crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+                type_decl_items.clone(),
+                leaf.clone(),
+            )
+        }
+        TypeDeclResolution::TypeDeclNotDeclared => Rc::new(vec![]),
+    }
+}
+
+pub fn v1_type_expr_head_declared_identities(
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         v1_rt::concat(
-            Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
+            v1_type_expr_map_key_declared_identities(
                 type_expr.clone(),
-            )]),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            ),
             Rc::new({
                 let mut __result = Vec::new();
                 for ch in type_expr.children.clone().iter().cloned() {
                     __result.extend(
-                        (*v1_type_expr_head_names(
+                        (*v1_type_expr_head_declared_identities(
                             crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            type_decl_items.clone(),
                             source_indices.clone(),
                         ))
                         .iter()
@@ -386,7 +461,7 @@ pub fn map_key_alias_hop_reconciliation_note() -> String {
 pub fn v1_map_key_propagate_round(
     round: Rc<MapKeyRequirementRound>,
     declared_type_names: Rc<Vec<String>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<MapKeyRequirementRound> {
     declared_type_names.iter().cloned().fold(
@@ -395,29 +470,26 @@ pub fn v1_map_key_propagate_round(
             if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
                 acc.clone()
             } else {
-                match v1_rt::map_get(&type_decl_items, type_name.clone()) {
+                match v1_rt::map_get(&type_decl_items.by_identity.clone(), type_name.clone()) {
                     Some(item) => v1_item_field_type_exprs(item.clone(), source_indices.clone())
                         .iter()
                         .cloned()
                         .fold(
                             acc.clone(),
                             |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                                v1_type_expr_head_names(te.clone(), source_indices.clone())
-                                    .iter()
-                                    .cloned()
-                                    .fold(
-                                        inner,
-                                        |deep: Rc<MapKeyRequirementRound>, head: String| {
-                                            if map_has_declared_type(
-                                                type_decl_items.clone(),
-                                                head.clone(),
-                                            ) {
-                                                v1_map_key_round_add(deep.clone(), head.clone())
-                                            } else {
-                                                deep.clone()
-                                            }
-                                        },
-                                    )
+                                v1_type_expr_head_declared_identities(
+                                    te.clone(),
+                                    type_decl_items.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                .fold(
+                                    inner,
+                                    |deep: Rc<MapKeyRequirementRound>, head: String| {
+                                        v1_map_key_round_add(deep, head.clone())
+                                    },
+                                )
                             },
                         ),
                     std::option::Option::None => acc.clone(),
@@ -427,17 +499,10 @@ pub fn v1_map_key_propagate_round(
     )
 }
 
-pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, name: String) -> bool {
-    match v1_rt::map_get(&type_decl_items, name.clone()) {
-        Some(_) => true,
-        std::option::Option::None => false,
-    }
-}
-
 pub fn v1_map_key_fixpoint_loop(
     mut __tco_loop_round: Rc<MapKeyRequirementRound>,
     mut __tco_loop_declared_type_names: Rc<Vec<String>>,
-    mut __tco_loop_type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut __tco_loop_type_decl_items: Rc<TypeDeclIndex>,
     mut __tco_loop_remaining: i64,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
@@ -488,39 +553,78 @@ pub fn v1_map_key_fixpoint_loop(
 pub fn v1_map_key_required_type_names(
     seed_type_exprs: Rc<Vec<Rc<Node>>>,
     extra_seed_names: Rc<Vec<String>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     {
-        let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items));
+        let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items.by_identity.clone()));
         let scanned = seed_type_exprs.iter().cloned().fold(
             Rc::new(MapKeyRequirementRound {
                 names: v1_rt::rc_empty_set::<String>(),
                 added: 0,
             }),
             |acc: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                v1_map_key_head_names_in_type_expr(te.clone(), source_indices.clone())
+                v1_map_key_head_type_exprs(te.clone(), source_indices.clone())
                     .iter()
                     .cloned()
-                    .fold(
-                        acc,
-                        |inner: Rc<MapKeyRequirementRound>, key_name: String| {
-                            if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
-                                v1_map_key_round_add(inner.clone(), key_name.clone())
-                            } else {
-                                inner.clone()
-                            }
-                        },
-                    )
+                    .fold(acc, |inner: Rc<MapKeyRequirementRound>, key: Rc<Node>| {
+                        v1_type_expr_map_key_declared_identities(
+                            key.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        .fold(
+                            inner,
+                            |deep: Rc<MapKeyRequirementRound>, identity: String| {
+                                v1_map_key_round_add(deep, identity.clone())
+                            },
+                        )
+                    })
             },
         );
         let seeded = extra_seed_names.iter().cloned().fold(
             scanned.clone(),
             |acc: Rc<MapKeyRequirementRound>, key_name: String| {
-                if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
-                    v1_map_key_round_add(acc.clone(), key_name.clone())
-                } else {
-                    acc.clone()
+                match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_leaf(
+                    type_decl_items.clone(),
+                    key_name.clone(),
+                ))
+                .clone()
+                {
+                    TypeDeclResolution::TypeDeclResolved { identity, .. } => {
+                        v1_map_key_round_add(acc.clone(), identity.clone())
+                    }
+                    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => {
+                        crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+                            type_decl_items.clone(),
+                            leaf.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |inner: Rc<MapKeyRequirementRound>, identity: String| {
+                                v1_map_key_round_add(inner, identity.clone())
+                            },
+                        )
+                    }
+                    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf, .. } => {
+                        crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+                            type_decl_items.clone(),
+                            leaf.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |inner: Rc<MapKeyRequirementRound>, identity: String| {
+                                v1_map_key_round_add(inner, identity.clone())
+                            },
+                        )
+                    }
+                    TypeDeclResolution::TypeDeclNotDeclared => acc.clone(),
                 }
             },
         );
@@ -716,8 +820,29 @@ pub fn v1_freemonoid_supplemental_bound_spelling() -> String {
     .join(&" + ".to_string())
 }
 
+pub fn v1_item_header_bound_spellings(
+    param_name: String,
+    header_clone_param_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    if {
+        let mut __found = false;
+        for h in header_clone_param_names.iter().cloned() {
+            if (h.clone() == param_name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        Rc::new(vec!["Clone".to_string()])
+    } else {
+        Rc::new(vec![])
+    }
+}
+
 pub fn v1_freemonoid_impl_type_params(
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
     structural_spelling: String,
@@ -732,6 +857,10 @@ pub fn v1_freemonoid_impl_type_params(
                 for p in generic_param_names.iter().cloned() {
                     __result.push({
                         let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                        let header = v1_item_header_bound_spellings(
+                            p.clone(),
+                            header_clone_param_names.clone(),
+                        );
                         let supplemental = if {
                             let mut __found = false;
                             for f in fm_params.iter().cloned() {
@@ -755,7 +884,11 @@ pub fn v1_freemonoid_impl_type_params(
                         } else {
                             Rc::new(vec![])
                         };
-                        let parts = v1_rt::concat(supplemental.clone(), structural.clone());
+                        let parts =
+                            crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
+                                header.clone(),
+                                v1_rt::concat(supplemental.clone(), structural.clone()),
+                            ));
                         if ((parts.clone().len() as i64) == 0) {
                             pascal.clone()
                         } else {
@@ -1158,6 +1291,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
 pub fn v1_freemonoid_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1166,6 +1300,7 @@ pub fn v1_freemonoid_struct_debug_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -1201,6 +1336,7 @@ pub fn v1_freemonoid_struct_debug_impl(
 pub fn v1_freemonoid_struct_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1209,6 +1345,7 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -1276,6 +1413,7 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
 pub fn v1_freemonoid_enum_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1284,6 +1422,7 @@ pub fn v1_freemonoid_enum_debug_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -1382,6 +1521,7 @@ pub fn v1_freemonoid_enum_debug_impl(
 pub fn v1_freemonoid_enum_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1390,6 +1530,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -1556,6 +1697,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
 
 pub fn v1_set_impl_type_params(
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
     structural_spelling: String,
@@ -1571,6 +1713,10 @@ pub fn v1_set_impl_type_params(
                 for p in generic_param_names.iter().cloned() {
                     __result.push({
                         let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                        let header = v1_item_header_bound_spellings(
+                            p.clone(),
+                            header_clone_param_names.clone(),
+                        );
                         let supplemental = if {
                             let mut __found = false;
                             for f in set_params.iter().cloned() {
@@ -1596,7 +1742,11 @@ pub fn v1_set_impl_type_params(
                         } else {
                             Rc::new(vec![])
                         };
-                        let parts = v1_rt::concat(supplemental.clone(), structural.clone());
+                        let parts =
+                            crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
+                                header.clone(),
+                                v1_rt::concat(supplemental.clone(), structural.clone()),
+                            ));
                         if ((parts.clone().len() as i64) == 0) {
                             pascal.clone()
                         } else {
@@ -1620,6 +1770,7 @@ pub fn v1_set_impl_type_params(
 pub fn v1_set_enum_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1628,6 +1779,7 @@ pub fn v1_set_enum_debug_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -1727,6 +1879,7 @@ pub fn v1_set_enum_debug_impl(
 pub fn v1_set_enum_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1735,6 +1888,7 @@ pub fn v1_set_enum_partial_eq_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -1980,29 +2134,33 @@ pub fn v1_ord_propagated_zip_loop(
 pub fn v1_field_type_expr_ord_propagated_for_param(
     param_name: String,
     type_expr: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+        type_decl_items.clone(),
+        type_expr.clone(),
+        source_indices.clone(),
+    ))
+    .clone()
     {
-        let decl_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
-        match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
-            std::option::Option::None => false,
-            Some(decl) => v1_ord_propagated_zip_loop(
-                param_name.clone(),
-                decl.params.clone(),
-                type_expr.children.clone(),
-                v1_item_own_set_affected_param_names(decl.clone(), source_indices.clone()),
-                source_indices.clone(),
-            ),
-        }
+        TypeDeclResolution::TypeDeclNotDeclared => false,
+        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => false,
+        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => false,
+        TypeDeclResolution::TypeDeclResolved { decl, .. } => v1_ord_propagated_zip_loop(
+            param_name.clone(),
+            decl.params.clone(),
+            type_expr.children.clone(),
+            v1_item_own_set_affected_param_names(decl.clone(), source_indices.clone()),
+            source_indices.clone(),
+        ),
     }
 }
 
 pub fn v1_item_ord_propagated_param_names(
     generic_param_names: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -2030,9 +2188,75 @@ pub fn v1_item_ord_propagated_param_names(
     })
 }
 
+pub fn v1_set_element_bound_spellings() -> Rc<Vec<String>> {
+    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for row in rust_btree_set_supplemental_generic_bound_rows()
+            .iter()
+            .cloned()
+        {
+            __result.push(
+                crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(
+                    row.required.clone(),
+                ),
+            );
+        }
+        __result
+    }))
+}
+
+pub fn v1_fn_signature_set_element_param_names(
+    signature_type_exprs: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let direct = v1_set_element_params(
+            generic_param_names.clone(),
+            signature_type_exprs.clone(),
+            source_indices.clone(),
+        );
+        let propagated = v1_item_ord_propagated_param_names(
+            generic_param_names.clone(),
+            signature_type_exprs.clone(),
+            type_decl_items.clone(),
+            source_indices.clone(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.iter().cloned() {
+                if ({
+                    let mut __found = false;
+                    for d in direct.iter().cloned() {
+                        if (d.clone() == g.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } || {
+                    let mut __found = false;
+                    for d in propagated.iter().cloned() {
+                        if (d.clone() == g.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) {
+                    __result.push(g);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn v1_set_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -2041,6 +2265,7 @@ pub fn v1_set_struct_debug_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -2077,6 +2302,7 @@ pub fn v1_set_struct_debug_impl(
 pub fn v1_set_struct_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -2085,6 +2311,7 @@ pub fn v1_set_struct_partial_eq_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -2381,7 +2608,7 @@ pub fn v1_generic_param_used_as_collection_element(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -2444,7 +2671,7 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -2466,7 +2693,7 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
 }
 
 pub fn v1_item_phantom_only_param_names(
-    item_name: String,
+    item_identity: String,
     item: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2486,7 +2713,7 @@ pub fn v1_item_phantom_only_param_names(
         .iter()
         .cloned()
         {
-            if match v1_rt::map_get(&bounds, item_name.clone()) {
+            if match v1_rt::map_get(&bounds, item_identity.clone()) {
                 Some(s) => !v1_rt::set_contains(&s, p.clone()),
                 std::option::Option::None => true,
             } {
@@ -2516,7 +2743,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
     type_args: Rc<Vec<Rc<Node>>>,
     phantom_slot_names: Rc<Vec<String>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -2581,7 +2808,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom(
     decl: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     v1_declared_type_app_mentions_param_non_phantom_loop(
@@ -2604,7 +2831,7 @@ pub fn v1_type_expr_mentions_param_non_phantom(
     param_name: String,
     type_expr: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -2636,17 +2863,57 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                 }) {
                     true
                 } else {
-                    match v1_rt::map_get(&type_decl_items, name.clone()) {
-                        Some(decl) => v1_declared_type_app_mentions_param_non_phantom(
-                            param_name.clone(),
-                            name.clone(),
-                            decl.clone(),
-                            type_expr.children.clone(),
-                            bounds.clone(),
-                            type_decl_items.clone(),
-                            source_indices.clone(),
-                        ),
-                        std::option::Option::None => {
+                    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                        type_decl_items.clone(),
+                        type_expr.clone(),
+                        source_indices.clone(),
+                    ))
+                    .clone()
+                    {
+                        TypeDeclResolution::TypeDeclResolved { identity, decl, .. } => {
+                            v1_declared_type_app_mentions_param_non_phantom(
+                                param_name.clone(),
+                                identity.clone(),
+                                decl.clone(),
+                                type_expr.children.clone(),
+                                bounds.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            )
+                        }
+                        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
+                            let mut __found = false;
+                            for c in type_expr.children.clone().iter().cloned() {
+                                if v1_type_expr_mentions_param_non_phantom(
+                                    param_name.clone(),
+                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                    bounds.clone(),
+                                    type_decl_items.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }
+                        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                            let mut __found = false;
+                            for c in type_expr.children.clone().iter().cloned() {
+                                if v1_type_expr_mentions_param_non_phantom(
+                                    param_name.clone(),
+                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                    bounds.clone(),
+                                    type_decl_items.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }
+                        TypeDeclResolution::TypeDeclNotDeclared => {
                             let mut __found = false;
                             for c in type_expr.children.clone().iter().cloned() {
                                 if v1_type_expr_mentions_param_non_phantom(
@@ -2674,7 +2941,7 @@ pub fn v1_fn_phantom_only_generic_param_names(
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -2710,13 +2977,17 @@ pub fn v1_fn_phantom_only_generic_param_names(
 }
 
 pub fn v1_type_expr_mentions_type_head(
-    type_name: String,
+    type_identity: String,
     type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
-            == type_name.clone())
+        if (v1_type_expr_declared_identity(
+            type_expr.clone(),
+            type_decl_items.clone(),
+            source_indices.clone(),
+        ) == type_identity.clone())
         {
             true
         } else {
@@ -2724,8 +2995,9 @@ pub fn v1_type_expr_mentions_type_head(
                 let mut __found = false;
                 for c in type_expr.children.clone().iter().cloned() {
                     if v1_type_expr_mentions_type_head(
-                        type_name.clone(),
-                        c.clone(),
+                        type_identity.clone(),
+                        v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                        type_decl_items.clone(),
                         source_indices.clone(),
                     ) {
                         __found = true;
@@ -2741,14 +3013,17 @@ pub fn v1_type_expr_mentions_type_head(
 pub fn v1_fn_generic_clone_bound_via_referenced_decl(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
-        for decl_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
-            if match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
+        for decl_name in Rc::new(v1_rt::map_keys(&type_decl_items.by_identity.clone()))
+            .iter()
+            .cloned()
+        {
+            if match v1_rt::map_get(&type_decl_items.by_identity.clone(), decl_name.clone()) {
                 Some(decl) => {
                     let decl_generics = Rc::new({
                         let mut __result = Vec::new();
@@ -2785,6 +3060,7 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
                                                 crate::v1_std_core::param_node_type_expr(
                                                     vp.clone(),
                                                 ),
+                                                type_decl_items.clone(),
                                                 source_indices.clone(),
                                             ) {
                                                 __found = true;
@@ -2813,6 +3089,7 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
     clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -2827,9 +3104,10 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
                     let mut __found = false;
                     for c in te.children.clone().iter().cloned() {
                         if {
-                            let head = crate::v1_std_core::authored_name_at(
+                            let head = v1_type_expr_declared_identity(
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                type_decl_items.clone(),
                                 source_indices.clone(),
-                                c.clone(),
                             );
                             match v1_rt::map_get(&clone_bounds, head.clone()) {
                                 Some(bounded) => v1_rt::set_contains(&bounded, param_name.clone()),
@@ -2858,7 +3136,7 @@ pub fn v1_type_param_needs_clone_bound(
     body_is_param_ref: bool,
     value_params: Rc<Vec<Rc<Node>>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -2891,7 +3169,7 @@ pub fn v1_fn_param_type_needs_clone_bound(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -2925,6 +3203,7 @@ pub fn v1_fn_param_type_needs_clone_bound(
                     param_name.clone(),
                     value_params.clone(),
                     bounds.clone(),
+                    type_decl_items.clone(),
                     source_indices.clone(),
                 ))
             } {
@@ -2944,7 +3223,7 @@ pub fn v1_generic_params_needing_clone_bound(
     body_is_param_ref: bool,
     ret: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
@@ -3169,10 +3448,23 @@ pub fn v1_type_expr_is_bare_param(
 
 pub fn v1_type_expr_head_is_known(
     name: String,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::std_types::is_container_type(name.clone())
-        || (v1_rt::map_get(&type_decl_items, name.clone()) != std::option::Option::None))
+        || match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+            type_decl_items.clone(),
+            type_expr.clone(),
+            source_indices.clone(),
+        ))
+        .clone()
+        {
+            TypeDeclResolution::TypeDeclResolved { .. } => true,
+            TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => false,
+            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => false,
+            TypeDeclResolution::TypeDeclNotDeclared => false,
+        })
 }
 
 pub fn v1_item_generic_param_name_set(
@@ -3192,7 +3484,7 @@ pub fn v1_item_generic_param_name_set(
 
 pub fn v1_type_expr_clone_undecided_head(
     type_expr: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     item_generic_params: Rc<BTreeSet<String>>,
 ) -> String {
@@ -3203,8 +3495,12 @@ pub fn v1_type_expr_clone_undecided_head(
         if ((type_expr.children.clone().len() as i64) == 0) {
             "".to_string()
         } else {
-            if (v1_type_expr_head_is_known(name.clone(), type_decl_items.clone())
-                || v1_rt::set_contains(&item_generic_params, name.clone()))
+            if (v1_type_expr_head_is_known(
+                name.clone(),
+                type_expr.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            ) || v1_rt::set_contains(&item_generic_params, name.clone()))
             {
                 type_expr.children.clone().iter().cloned().fold(
                     "".to_string(),
@@ -3232,11 +3528,10 @@ pub fn v1_type_expr_clone_impl_needs_param(
     param_name: String,
     type_expr: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
         if v1_type_expr_is_bare_param(
             param_name.clone(),
             type_expr.clone(),
@@ -3247,17 +3542,57 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                match v1_rt::map_get(&type_decl_items, name.clone()) {
-                    Some(decl) => v1_declared_type_app_clone_impl_needs_param(
-                        param_name.clone(),
-                        name.clone(),
-                        decl.clone(),
-                        type_expr.children.clone(),
-                        bounds.clone(),
-                        type_decl_items.clone(),
-                        source_indices.clone(),
-                    ),
-                    std::option::Option::None => {
+                match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                    type_decl_items.clone(),
+                    type_expr.clone(),
+                    source_indices.clone(),
+                ))
+                .clone()
+                {
+                    TypeDeclResolution::TypeDeclResolved { identity, decl, .. } => {
+                        v1_declared_type_app_clone_impl_needs_param(
+                            param_name.clone(),
+                            identity.clone(),
+                            decl.clone(),
+                            type_expr.children.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_clone_impl_needs_param(
+                                param_name.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                bounds.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }
+                    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_clone_impl_needs_param(
+                                param_name.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                bounds.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }
+                    TypeDeclResolution::TypeDeclNotDeclared => {
                         let mut __found = false;
                         for c in type_expr.children.clone().iter().cloned() {
                             if v1_type_expr_clone_impl_needs_param(
@@ -3285,7 +3620,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
     type_args: Rc<Vec<Rc<Node>>>,
     phantom_slot_names: Rc<Vec<String>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -3350,7 +3685,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param(
     decl: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     v1_declared_type_app_clone_impl_needs_param_loop(
@@ -3375,7 +3710,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
     type_args: Rc<Vec<Rc<Node>>>,
     bound_params: Rc<BTreeSet<String>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -3453,13 +3788,10 @@ pub fn v1_type_expr_wf_needs_clone_param(
     param_name: String,
     type_expr: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone()),
-        );
         if ((type_expr.children.clone().len() as i64) == 0) {
             false
         } else {
@@ -3480,9 +3812,15 @@ pub fn v1_type_expr_wf_needs_clone_param(
                     }
                     __found
                 };
-                match v1_rt::map_get(&type_decl_items, name.clone()) {
-                    Some(decl) => {
-                        let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
+                match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                    type_decl_items.clone(),
+                    type_expr.clone(),
+                    source_indices.clone(),
+                ))
+                .clone()
+                {
+                    TypeDeclResolution::TypeDeclResolved { identity, decl, .. } => {
+                        let bound_params = match v1_rt::map_get(&bounds, identity.clone()) {
                             Some(s) => s.clone(),
                             std::option::Option::None => v1_rt::rc_empty_set::<String>(),
                         };
@@ -3497,7 +3835,11 @@ pub fn v1_type_expr_wf_needs_clone_param(
                                 source_indices.clone(),
                             ))
                     }
-                    std::option::Option::None => nested.clone(),
+                    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => nested.clone(),
+                    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                        nested.clone()
+                    }
+                    TypeDeclResolution::TypeDeclNotDeclared => nested.clone(),
                 }
             }
         }
@@ -3577,7 +3919,7 @@ pub fn v1_item_field_type_expr_wf_needs_clone_param(
     param_name: String,
     type_expr: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -3615,7 +3957,7 @@ pub fn v1_item_param_wf_needs_clone(
     param_name: String,
     item: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -3644,7 +3986,7 @@ pub fn v1_fn_param_wf_needs_clone(
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ({
@@ -3671,9 +4013,99 @@ pub fn v1_fn_param_wf_needs_clone(
     ))
 }
 
+pub fn v1_type_expr_ambiguous_declared_head(
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+        type_decl_items.clone(),
+        type_expr.clone(),
+        source_indices.clone(),
+    ))
+    .clone()
+    {
+        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => leaf.clone(),
+        TypeDeclResolution::TypeDeclResolved { .. } => {
+            v1_type_expr_components_ambiguous_declared_head(
+                type_expr.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )
+        }
+        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+            v1_type_expr_components_ambiguous_declared_head(
+                type_expr.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )
+        }
+        TypeDeclResolution::TypeDeclNotDeclared => v1_type_expr_components_ambiguous_declared_head(
+            type_expr.clone(),
+            type_decl_items.clone(),
+            source_indices.clone(),
+        ),
+    }
+}
+
+pub fn v1_type_expr_components_ambiguous_declared_head(
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_rt::concat(
+        Rc::new({
+            let mut __result = Vec::new();
+            for c in type_expr.children.clone().iter().cloned() {
+                __result.push(v1_wf_child_type_node(c.clone(), source_indices.clone()));
+            }
+            __result
+        }),
+        v1_callable_type_expr_component_type_exprs(type_expr.clone()),
+    )
+    .iter()
+    .cloned()
+    .fold("".to_string(), |acc: String, component: Rc<Node>| {
+        if (acc.clone() != "".to_string()) {
+            acc.clone()
+        } else {
+            v1_type_expr_ambiguous_declared_head(
+                component.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )
+        }
+    })
+}
+
+pub fn v1_type_exprs_ambiguous_declared_head(
+    type_exprs: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    type_exprs
+        .iter()
+        .cloned()
+        .fold("".to_string(), |acc: String, te: Rc<Node>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                v1_type_expr_ambiguous_declared_head(
+                    te.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
+            }
+        })
+}
+
+pub fn v1_ambiguous_declared_head_refusal(subject: String, leaf: String) -> String {
+    v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: ".to_string(), subject.clone()), " references type '".to_string()), leaf.clone()), "', which more than one module of this closure declares, and the reference carries no declaration identity (Node.declaration) -- the declaration it names is not decided here, so no bound is derived from either".to_string()))
+}
+
 pub fn v1_item_clone_undecided_head(
     item: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -3732,7 +4164,7 @@ pub fn v1_clone_bound_round_for_item(
     round: Rc<CloneBoundRound>,
     type_name: String,
     item: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
     item.params.clone().iter().cloned().fold(
@@ -3790,7 +4222,7 @@ pub fn v1_clone_bound_seed_for_item(
 
 pub fn v1_clone_bound_fixpoint_loop(
     mut __tco_loop_generic_type_names: Rc<Vec<String>>,
-    mut __tco_loop_type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut __tco_loop_type_decl_items: Rc<TypeDeclIndex>,
     mut __tco_loop_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     mut __tco_loop_remaining: i64,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3815,7 +4247,7 @@ pub fn v1_clone_bound_fixpoint_loop(
                     added: 0,
                 }),
                 |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
-                    &type_decl_items,
+                    &type_decl_items.by_identity.clone(),
                     type_name.clone(),
                 ) {
                     Some(item) => v1_clone_bound_round_for_item(
@@ -3849,13 +4281,14 @@ pub fn v1_clone_bound_fixpoint_loop(
     }
 }
 
-pub fn v1_generic_declared_type_names(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<Vec<String>> {
+pub fn v1_generic_declared_type_names(type_decl_items: Rc<TypeDeclIndex>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
-            if match v1_rt::map_get(&type_decl_items, n.clone()) {
+        for n in Rc::new(v1_rt::map_keys(&type_decl_items.by_identity.clone()))
+            .iter()
+            .cloned()
+        {
+            if match v1_rt::map_get(&type_decl_items.by_identity.clone(), n.clone()) {
                 Some(item) => ((item.params.clone().len() as i64) > 0),
                 std::option::Option::None => false,
             } {
@@ -3867,7 +4300,7 @@ pub fn v1_generic_declared_type_names(
 }
 
 pub fn v1_clone_bounded_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
@@ -3878,7 +4311,7 @@ pub fn v1_clone_bounded_type_params(
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
-                &type_decl_items,
+                &type_decl_items.by_identity.clone(),
                 type_name.clone(),
             ) {
                 Some(item) => v1_clone_bound_seed_for_item(
@@ -3937,7 +4370,7 @@ pub fn v1_clone_impl_seed_for_item(
 }
 
 pub fn v1_clone_impl_required_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
@@ -3948,7 +4381,7 @@ pub fn v1_clone_impl_required_type_params(
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
-                &type_decl_items,
+                &type_decl_items.by_identity.clone(),
                 type_name.clone(),
             ) {
                 Some(item) => v1_clone_impl_seed_for_item(
@@ -3971,11 +4404,11 @@ pub fn v1_clone_impl_required_type_params(
 }
 
 pub fn v1_item_clone_bounded_param_names(
-    item_name: String,
+    item_identity: String,
     generic_param_names: Rc<Vec<String>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<Vec<String>> {
-    match v1_rt::map_get(&bounds, item_name.clone()) {
+    match v1_rt::map_get(&bounds, item_identity.clone()) {
         Some(s) => Rc::new({
             let mut __result = Vec::new();
             for g in generic_param_names.iter().cloned() {
@@ -4033,17 +4466,17 @@ pub fn v1_emit_type_params_with_bounds(
 }
 
 pub fn v1_item_wf_propagated_clone_bounded_param_names(
-    item_name: String,
+    item_identity: String,
     item: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for g in v1_item_clone_bounded_param_names(
-            item_name.clone(),
+            item_identity.clone(),
             generic_param_names.clone(),
             bounds.clone(),
         )
@@ -4090,9 +4523,9 @@ pub fn v1_emit_struct_from_capability_table(
     map_key_required: bool,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    carrier_param_needs_clone: bool,
+    header_clone_param_names: Rc<Vec<String>>,
     deserialize_forbidden: bool,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
 ) -> Rc<StructCapabilityEmit> {
     {
         let field_type_exprs = Rc::new({
@@ -4145,6 +4578,7 @@ pub fn v1_emit_struct_from_capability_table(
                             v1_freemonoid_struct_debug_impl(
                                 name.clone(),
                                 generic_param_names.clone(),
+                                header_clone_param_names.clone(),
                                 fm_params.clone(),
                                 children.clone(),
                                 field_type_exprs.clone(),
@@ -4156,6 +4590,7 @@ pub fn v1_emit_struct_from_capability_table(
                     v1_freemonoid_struct_partial_eq_impl(
                         name.clone(),
                         generic_param_names.clone(),
+                        header_clone_param_names.clone(),
                         fm_params.clone(),
                         children.clone(),
                         field_type_exprs.clone(),
@@ -4209,6 +4644,7 @@ pub fn v1_emit_struct_from_capability_table(
                                     v1_set_struct_debug_impl(
                                         name.clone(),
                                         generic_param_names.clone(),
+                                        header_clone_param_names.clone(),
                                         ord_propagated_params.clone(),
                                         children.clone(),
                                         field_type_exprs.clone(),
@@ -4220,6 +4656,7 @@ pub fn v1_emit_struct_from_capability_table(
                             v1_set_struct_partial_eq_impl(
                                 name.clone(),
                                 generic_param_names.clone(),
+                                header_clone_param_names.clone(),
                                 ord_propagated_params.clone(),
                                 children.clone(),
                                 field_type_exprs.clone(),
@@ -4243,7 +4680,7 @@ pub fn v1_emit_struct_from_capability_table(
                             source_indices.clone(),
                         );
                         let impl_bodies = if (crate::std_trait_derive_shape::repr_grounding_group_completion_carrier(module_path.clone(), name.clone()) && crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::kernel_int_arithmetic_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt)) {
-                            crate::extdeps_languages_rust_emit::rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
+                            crate::extdeps_languages_rust_emit::rust_supplemental_impls_group_completion(((header_clone_param_names.clone().len() as i64) > 0))
                         } else {
                             "".to_string()
                         };
@@ -4283,6 +4720,7 @@ pub fn v1_emit_enum_supplemental_impls(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4305,6 +4743,7 @@ pub fn v1_emit_enum_supplemental_impls(
                         v1_freemonoid_enum_debug_impl(
                             name.clone(),
                             generic_param_names.clone(),
+                            header_clone_param_names.clone(),
                             fm_params.clone(),
                             children.clone(),
                             field_type_exprs.clone(),
@@ -4316,6 +4755,7 @@ pub fn v1_emit_enum_supplemental_impls(
                 v1_freemonoid_enum_partial_eq_impl(
                     name.clone(),
                     generic_param_names.clone(),
+                    header_clone_param_names.clone(),
                     fm_params.clone(),
                     children.clone(),
                     field_type_exprs.clone(),
@@ -4331,6 +4771,7 @@ pub fn v1_emit_enum_supplemental_impls(
                             v1_set_enum_debug_impl(
                                 name.clone(),
                                 generic_param_names.clone(),
+                                header_clone_param_names.clone(),
                                 set_params.clone(),
                                 children.clone(),
                                 field_type_exprs.clone(),
@@ -4342,6 +4783,7 @@ pub fn v1_emit_enum_supplemental_impls(
                     v1_set_enum_partial_eq_impl(
                         name.clone(),
                         generic_param_names.clone(),
+                        header_clone_param_names.clone(),
                         set_params.clone(),
                         children.clone(),
                         field_type_exprs.clone(),
@@ -4349,23 +4791,10 @@ pub fn v1_emit_enum_supplemental_impls(
                     ),
                 )
             } else {
-                if (crate::std_trait_derive_shape::repr_grounding_supplemental_bool_host_bridge_target(module_path.clone(), name.clone()) && crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy)) {
-                    crate::extdeps_languages_rust_emit::rust_supplemental_impls_bool_coproduct()
-                } else {
-                    "".to_string()
-                }
+                "".to_string()
             }
         }
     }
-}
-
-pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> Rc<DissolutionCondition> {
-    thread_local! {
-        static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an e".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on(

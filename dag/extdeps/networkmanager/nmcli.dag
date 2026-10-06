@@ -1,9 +1,9 @@
 module extdeps.networkmanager.nmcli
 
-import std.types { NonEmptyStr, String, List, Int }
+import std.types { NonEmptyStr, String, List, Int, Bool }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
-import v2.std.algebra { filter }
+import std.optional { Present, Absent }
+import v2.std.algebra { filter, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -103,4 +103,158 @@ fn nmcli_wireless_powersave_modify_argv(connection: NonEmptyStr, value: NmWirele
     nmcli_binary_name as String, "connection", "modify", connection as String,
     nm_wireless_powersave_property as String, to_string(nm_wireless_powersave_numeric(v: value)),
   ]
+}
+
+// TWO PROPERTIES, ONE ENCODING. nm-settings-nmcli(5), connection setting
+// (networkmanager.dev/docs/api/latest/nm-settings-nmcli.html, read 2026-10-04):
+//   auth-retries -- "The number of retries for the authentication. Zero means to try indefinitely;
+//     -1 means to use a global default. If the global default is not set, the authentication
+//     retries for 3 times before failing the connection. Connections using a pre-shared key to
+//     authenticate will only prompt for a new key during the last authentication attempt."
+//   autoconnect-retries -- "The number of times a connection should be tried when autoactivating
+//     before giving up. Zero means forever, -1 means the global default (4 times if not
+//     overridden). Setting this to 1 means to try activation only once before blocking
+//     autoconnect. Note that after a timeout, NetworkManager will try to autoconnect again."
+// Both are one Int read the same way (-1 global default, 0 without limit, n > 0 a count), so the
+// decoding is one type and each property is a row naming it.
+data nm_connection_auth_retries_property: NonEmptyStr = "connection.auth-retries" as NonEmptyStr
+data nm_connection_autoconnect_retries_property: NonEmptyStr = "connection.autoconnect-retries" as NonEmptyStr
+
+type NmRetryBudget
+  = NmRetryGlobalDefault
+  | NmRetryIndefinitely
+  | NmRetryCount { count: Int }
+
+fn nm_retry_budget_numeric(v: NmRetryBudget) -> Int {
+  match v {
+    NmRetryGlobalDefault => -1
+    NmRetryIndefinitely => 0
+    NmRetryCount { count: n } => n
+  }
+}
+
+type NmRetryBudgetRead
+  = NmRetryBudgetReadValue { value: NmRetryBudget }
+  | NmRetryBudgetUnreadable { text: String }
+
+// The getter prints the integer (`nmcli -g connection.auth-retries connection show <id>` and
+// `... connection.autoconnect-retries ...` both answered "-1" on spark-2196 2026-10-04 ~03:20Z, read
+// by valiant-crab-775). Anything not an integer >= -1 is unreadable, never a default.
+fn nm_retry_budget_of_getter(stdout: String) -> NmRetryBudgetRead {
+  let t = trim(s: stdout)
+  match parse_int(s: t) {
+    Absent => NmRetryBudgetUnreadable { text: t }
+    Present { value: n } =>
+      if n == -1 { NmRetryBudgetReadValue { value: NmRetryGlobalDefault } }
+      else if n == 0 { NmRetryBudgetReadValue { value: NmRetryIndefinitely } }
+      else if n > 0 { NmRetryBudgetReadValue { value: NmRetryCount { count: n } } }
+      else { NmRetryBudgetUnreadable { text: t } }
+  }
+}
+
+fn nmcli_retry_budget_modify_argv(connection: NonEmptyStr, property: NonEmptyStr, value: NmRetryBudget) -> List<String> {
+  [
+    nmcli_binary_name as String, "connection", "modify", connection as String,
+    property as String, to_string(nm_retry_budget_numeric(v: value)),
+  ]
+}
+
+// WHICH PROFILE GOVERNS AN INTERFACE IS READ FROM THE DEVICE, NOT ASSUMED FROM A NAME. nmcli(1):
+// `connection show --active` lists "only the active profiles"; `-t` is terse output with fields
+// separated by ':' (a ':' inside a value is escaped as '\:'), `-f` selects fields. UUID and DEVICE
+// carry no ':', so they lead and NAME takes the rest of the line.
+fn nmcli_active_connections_argv() -> List<String> {
+  [nmcli_binary_name as String, "-t", "-f", "UUID,DEVICE,NAME", "connection", "show", "--active"]
+}
+
+type NmActiveConnection {
+  uuid: NonEmptyStr
+  name: String
+}
+
+type NmActiveConnectionRead
+  = NmActiveConnectionOn { connection: NmActiveConnection }
+  | NmNoActiveConnection
+  | NmActiveConnectionUnreadable { text: String }
+
+// One terse line as (uuid, device, name), or absent if it does not have the three fields.
+type NmActiveLine {
+  uuid: String
+  device: String
+  name: String
+}
+
+fn nm_active_line(line: String) -> NmActiveLine? {
+  match list_head(split(s: line, delimiter: ":")) {
+    HeadAbsent => none
+    HeadFound { value: u } =>
+      match list_tail(split(s: line, delimiter: ":")) {
+        TailAbsent => none
+        TailFound { tail: rest } =>
+          match list_head(rest) {
+            HeadAbsent => none
+            HeadFound { value: d } =>
+              match list_tail(rest) {
+                TailAbsent => none
+                TailFound { tail: name_parts } =>
+                  Present { value: NmActiveLine { uuid: u, device: d, name: replace(s: join(name_parts, ":"), from: "\\:", to: ":") } }
+              }
+          }
+      }
+  }
+}
+
+// One active profile on the interface is the answer; none is NoActive; two, or a line that is not
+// three fields, is unreadable (NM activates one profile per device, so two lines is a reading this
+// parser does not understand).
+fn nm_active_connection_on(interface: NonEmptyStr, stdout: String) -> NmActiveConnectionRead {
+  let lines = filter(split(s: trim(s: stdout), delimiter: "\n"), l => trim(s: l) != "")
+  let parsed = map(lines, l => nm_active_line(line: l))
+  let no_flags: List<Bool> = []
+  let malformed = flat_map(parsed, x => match x {
+    Present { value: _ } => no_flags
+    Absent => [true]
+  })
+  let none_found: List<NmActiveLine> = []
+  let on_device = flat_map(parsed, x => match x {
+    Present { value: r } => if r.device == (interface as String) { [r] } else { none_found }
+    Absent => none_found
+  })
+  if length(malformed) > 0 { NmActiveConnectionUnreadable { text: trim(s: stdout) } }
+  else if length(on_device) > 1 { NmActiveConnectionUnreadable { text: join(["more than one active profile on ", interface as String], "") } }
+  else {
+    match first(on_device) {
+      Absent => NmNoActiveConnection
+      Present { value: r } =>
+        if r.uuid == "" { NmActiveConnectionUnreadable { text: trim(s: stdout) } }
+        else { NmActiveConnectionOn { connection: NmActiveConnection { uuid: r.uuid as NonEmptyStr, name: r.name } } }
+    }
+  }
+}
+
+// nmcli(1): `device show <ifname>` prints GENERAL.STATE as "<code> (<name>)"; NetworkManager's
+// NMDeviceState gives 100 activated, 30 disconnected, 20 unavailable. The getter keeps the code.
+fn nmcli_device_state_get_argv(interface: NonEmptyStr) -> List<String> {
+  [nmcli_binary_name as String, "-g", "GENERAL.STATE", "device", "show", interface as String]
+}
+
+type NmDeviceStateRead
+  = NmDeviceActivated
+  | NmDeviceDisconnected
+  | NmDeviceOtherState { code: Int }
+  | NmDeviceStateUnreadable { text: String }
+
+fn nm_device_state_of_getter(stdout: String) -> NmDeviceStateRead {
+  let t = trim(s: stdout)
+  match first(split(s: t, delimiter: " ")) {
+    Absent => NmDeviceStateUnreadable { text: t }
+    Present { value: head } =>
+      match parse_int(s: head) {
+        Absent => NmDeviceStateUnreadable { text: t }
+        Present { value: code } =>
+          if code == 100 { NmDeviceActivated }
+          else if code == 30 { NmDeviceDisconnected }
+          else { NmDeviceOtherState { code: code } }
+      }
+  }
 }

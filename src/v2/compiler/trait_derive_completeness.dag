@@ -1,5 +1,6 @@
 module v2.compiler.trait_derive_completeness
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.trait_derive_shape {
   ReprDeriveElemKernelBool,
@@ -37,23 +38,27 @@ import v2.std.algebra {
   Cons,
   Empty
 }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
   optional_absent,
   optional_present
 }
-import v2.std.logic {
-  Bool
-}
 import v2.std.node {
   Atom,
   Conj,
   Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Match,
+  ComputationNode,
   Edge,
   Node,
   TypeNode,
@@ -140,7 +145,16 @@ fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape 
           }
         }
       }
-    _ => ReprDeriveElemUnknown
+    TypeNode { connective: Conj } => ReprDeriveElemUnknown
+    TypeNode { connective: Arrow } => ReprDeriveElemUnknown
+    TypeNode { connective: Cardinality } => ReprDeriveElemUnknown
+    TypeNode { connective: Instantiation } => ReprDeriveElemUnknown
+    ComputationNode { behavior: Value } => ReprDeriveElemUnknown
+    ComputationNode { behavior: Transform } => ReprDeriveElemUnknown
+    ComputationNode { behavior: Branch } => ReprDeriveElemUnknown
+    ComputationNode { behavior: Loop } => ReprDeriveElemUnknown
+    ComputationNode { behavior: Bind } => ReprDeriveElemUnknown
+    ComputationNode { behavior: Match } => ReprDeriveElemUnknown
   }
 }
 

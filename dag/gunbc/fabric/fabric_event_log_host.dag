@@ -3,11 +3,11 @@ module gunbc.fabric_event_log_host
 import std.types { String, NonEmptyStr, FilePath, EpochSecs }
 import std.algebra { trim }
 import extdeps.clock { Clock }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
 import gunbc.fabric_event_log { event_log_binding_for }
 import gunbc.fabric_storage_client { FabricStorageBinding }
-import v2.std.optional { Present }
+import std.optional { Present }
 
 // WHERE THE EVENT LOG IS FROM THE EXECUTING HOST'S POINT OF VIEW: the dashboard instance declared
 // for the host supplies the identity the fabric DB binding is derived against -- in process on the

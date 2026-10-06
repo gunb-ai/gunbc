@@ -1543,10 +1543,13 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // ITS REPLACEMENT IS BUILT IN SHADOW (§3's staged form for a gap-intolerant boundary; neat-boar-16,
 // 2026-09-29). Resolve records identity on Node.declaration (v1.compiler.infer_resolve
 // field_inferred_with_declaration), a separate slot from `inferred`, because consumers read
-// `inferred` as resolved structure. NOTHING HERE OR IN ANY PRODUCTION READER CONSUMES
-// Node.declaration YET, so a live consumer never has two sources for one fact. Its one consumer is
-// the recorded_declaration column of v1.tests.claim.carrier_realization_census, so it is a declared
-// frontier, not dangling (§3c).
+// `inferred` as resolved structure. NO READER IN THIS MODULE CONSUMES Node.declaration YET, so the
+// type-identity readings below never have two sources for one fact. Its production readers are in
+// the Rust emitter: v1.compiler.infer_emit_info resolve_type_decl_routed, which keys the
+// type-declaration index and the Clone-bound and map-key fixpoints of v1.compiler.trait_derive_emit
+// on it, and v1.compiler.emit_rust expr_realizes_as_refusing_int. The census
+// (v1.tests.claim.carrier_realization_census) reads it in the recorded_declaration column and
+// records, in emitter_decl_route, which emitter resolutions still fall past it.
 // THE TRANSITION TRIGGER IS MEASURED. On that census, over the self-host and dag closures, the
 // recorded_declaration column must name a declaration at every position this reading identifies,
 // at identity grain. Type-variable binders (cause 3) are excluded by type, not by count. Then ONE
@@ -1876,6 +1879,42 @@ fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
 // refusing them refused thousands of correct host-text sites; that population is a declared drop
 // (gunbc.rung_drop text_boundary_identity_wall) whose trigger is the resolver recording declaration
 // identity on every type reference.
+// HOST TEXT AT A STRUCTURAL SEQUENCE OF ANY ELEMENT. text_crossing_by_identity judges two TEXT
+// readings, and a FreeMonoid<T> whose element is an unbound type variable is not text by that reading
+// (its element is not std.types Char), so the crossing never registered -- and the direct-call check
+// stops judging a formal that carries an unbound variable before it would ask. But host text is not a
+// FreeMonoid at all: whatever T becomes, a kernel String handed to a std.algebra FreeMonoid formal is a
+// representation crossing with no implicit route, so it is refused whatever the element (reported by
+// neat-boar-16: std.effect_grant passed a host String to v2.std.algebra length and only rustc caught
+// it). The declaration read is the same one text_representation_by_identity uses, so an alias of
+// FreeMonoid is judged through its declaration, never its spelling. The argument is HOST TEXT only when
+// its peeled type reads as host AND its unpeeled type does not read as a code-point sequence: peeling a
+// qualified v2.std.text String alias yields a node that reads as host, while an unpeeled kernel String
+// reference reads as nothing at all, so each reading alone is wrong in one direction (measured at
+// target_model apply_emit_spelling_escapes, refused falsely when peeled alone, and at the fixture
+// r_host_string_into_generic_free_monoid_formal_refuses, admitted when unpeeled alone). The caller
+// also skips callable formals: a callable's return carrier is not the formal.
+fn host_text_into_structural_sequence(formal: Node, actual: Node, unpeeled_actual: Node, env: TypeEnv) -> Bool {
+  let unpeeled_is_structural = match text_representation_by_identity(n: unpeeled_actual, env: env) {
+    CodePointSequence => true
+    HostText => false
+    NotText => false
+    TextRepresentationUnidentified => false
+  }
+  if unpeeled_is_structural {
+    false
+  } else {
+    match text_representation_by_identity(n: actual, env: env) {
+      HostText =>
+        match type_reference_declaration_reading(n: formal, source_indices: env.source_indices, env: env) {
+          TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid())
+          _ => false
+        }
+      _ => false
+    }
+  }
+}
+
 fn text_crossing_by_identity(left: Node, right: Node, env: TypeEnv) -> Bool {
   text_representations_cross(a: text_representation_by_identity(n: left, env: env), b: text_representation_by_identity(n: right, env: env))
 }

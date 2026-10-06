@@ -81,6 +81,7 @@
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
 // src/std_operator_realization.rs
+// src/std_optional.rs
 // src/std_primitive_projection.rs
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
@@ -153,6 +154,7 @@
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_generic_identity_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs

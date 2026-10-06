@@ -1,8 +1,9 @@
 module gunbc.clock_read
 
-import std.types { String, NonEmptyStr }
-import extdeps.clock { Clock }
-import v2.std.optional { Present }
+import std.types { Bool, EpochMs, String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import extdeps.clock { Clock, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
+import std.optional { Present }
 
 fn clock_now_probed_at() -> NonEmptyStr? {
   let result = Clock.Now()
@@ -33,4 +34,58 @@ fn probed_at_word(reading: NonEmptyStr?) -> NonEmptyStr {
 
 fn clock_now_probed_at_or_unknown() -> NonEmptyStr {
   probed_at_word(reading: clock_now_probed_at())
+}
+
+// THE OBSERVER CLOCK AS AN ORDERING CARRIER (docs/plans/managed-host-untangle.md, cut O1b, "Receipts
+// and clock"). A bare EpochMs on an ordering field admits any instant from any clock, so a reading a
+// controller reported about itself -- mtjade1's BMC clock reads the year 2000 -- can be spelled into a
+// field that orders a rotation against its readback, and no comment can stop it. This record is
+// sealed and its producers live here, so an ordering field typed ObserverClockInstant can only hold an
+// instant this repository's own observer produced. A controller's clock stays representable as an
+// observation of the controller (gunbc.machine_intake_bmc_secure ControllerClockReading); it has no
+// route into this type.
+//
+// Two producers and their sources, neither a default. ObserverClockReadAtRun is the live read through
+// extdeps.clock clock_unix_millis_read, which already refuses a non-integer or negative reading.
+// ObserverClockModeled is the clock of a dry realization: its instants are the realization's own
+// schedule, admitted only to the realization and its witness, and the source travels with every
+// instant so a modeled instant is never read as a measured one. Transcribing an instant recorded in a
+// committed artifact is NOT a producer yet: its first consumer is the held mtcollins1 transition
+// (gunbc.machine_intake_bmc_secure bmc_secure_state_cutover_frontier), and it lands with it.
+type ObserverInstantSource
+  = ObserverClockReadAtRun
+  | ObserverClockModeled { realization: NonEmptyStr }
+
+type ObserverClockInstant sole_constructor {
+  millis: EpochMs
+  source: ObserverInstantSource
+}
+
+type ObserverClockRead
+  = ObserverClockObserved { instant: ObserverClockInstant }
+  | ObserverClockUnreadable { detail: String }
+
+fn observer_clock_read() -> ObserverClockRead {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => ObserverClockUnreadable { detail: d }
+    ClockUnixMillisObserved { millis: ms } =>
+      ObserverClockObserved { instant: ObserverClockInstant { millis: ms, source: ObserverClockReadAtRun } }
+  }
+}
+
+fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> ObserverClockInstant
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_bmc_account_instant"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "observer_at"),
+  ]
+{
+  ObserverClockInstant { millis: millis, source: ObserverClockModeled { realization: realization } }
+}
+
+fn observer_instant_millis(instant: ObserverClockInstant) -> EpochMs {
+  instant.millis
+}
+
+fn observer_instant_precedes(earlier: ObserverClockInstant, later: ObserverClockInstant) -> Bool {
+  earlier.millis < later.millis
 }

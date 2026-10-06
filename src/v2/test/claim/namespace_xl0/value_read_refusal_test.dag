@@ -9,9 +9,8 @@ import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,7 +49,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it (parse_grammar_choice_overlap_residue), so no source text can drive the navigation arm from
 // this route, and a control that cannot go red on this route would be a decoration (DESIGN section
 // 4b). The navigation refusal survives only for a parse tree whose arm has no pattern or no `=>`.
-data vrr_header: String = "module mq.vrr\n\nimport v2.std.logic { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
+data vrr_header: String = "module mq.vrr\n\nimport std.types { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
 
 data vrr_arm_body_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  match v {\n    true => fn(y) { fn(z) { y } }\n    false => v\n  }\n}\n"
 

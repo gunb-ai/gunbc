@@ -18,15 +18,15 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
 import v2.std.map_introduction { MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, map_introduction_duplicate_key, map_introduction_head_path }
 import v2.std.algebra { length }
 import v2.std.text { String }
-import v2.std.collection { List, list_at_optional }
+import std.types { List }
+import v2.std.collection { list_at_optional }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -122,8 +122,8 @@ data ml_mixed_ingest: SourceRootIngest = [
 ]
 
 // THE FRONT END RUNS ONCE, NOT ONCE PER CLAIM. The fixture ingest and each subject's resolve are
-// nullary pure producers, served across witnesses from v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm (the rows beside #12740's anonymous_record producers); every
+// nullary pure producers, served across witnesses by v2.workflow.floor_pure_producer_share
+// derive_cross_claim_share (as #12740's anonymous_record producers are); every
 // claim below only inspects a produced value (DESIGN section 3: a witness discriminates at one
 // interface, and the front end is not its subject).
 fn ml_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {

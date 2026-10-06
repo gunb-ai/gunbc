@@ -28,7 +28,6 @@ import v2.std.compilers.target_model {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
@@ -38,7 +37,7 @@ import v2.std.node {
   TypeNode,
   node_subtree_nodes
 }
-import v2.std.optional { Absent, optional_present, Present }
+import std.optional { Absent, optional_present, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -2,15 +2,11 @@ module test.claim.spark.spark_host_commitment_witness
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.algebra { FreeSemigroup, FreeMonoid, Empty, Cons }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.pair_serving_authority_log { HostEffectRecord }
-import gunbc.fleet_intent_network {
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
-  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-  operator_host_srv1, operator_host_srv2,
-}
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv1, operator_host_srv2 }
 import gunbc.spark.cell_role {
   SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell, spark_cell_role_assignments,
 }

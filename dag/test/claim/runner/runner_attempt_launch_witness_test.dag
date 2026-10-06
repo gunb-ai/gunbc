@@ -1,7 +1,9 @@
 module test.claim.runner_attempt_launch_witness
 
+import gunbc.runner_attempt_launch { GitHubLaunchPayload, launch_payload_device }
+
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import std.measure { byte_size, byte_size_count }
 import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -19,7 +21,7 @@ import product.fabric.grant_issue { GrantCommitted, GrantRefused }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.budget { MoneyAccount }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
   runner_microvm_attempt_jail_base,
@@ -37,7 +39,7 @@ import gunbc.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied,
   JitDeviceRefusal, JitMintNotReceived, JitCredentialNotDelivered,
   JitCredentialBoundToDifferentAttempt, JitCredentialBelowFloor, JitCredentialAboveCeiling,
-  jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep, JitDeviceStagingOutcome,
+  bootstrap_device_readback, BootstrapDeviceStagingRefused, BootstrapDeviceReadbackStep, BootstrapDeviceStagingOutcome,
   JailMaterialStaging, JailMaterialStanding, JailMaterialReady, JailMaterialStepFailed,
   JailMaterialMissing, JailMaterialUnobservable, jail_material_step_label, StagingRefusedJailMaterial,
   plan_attempt_launch, planned_jailer_launches,
@@ -47,19 +49,20 @@ import gunbc.runner_attempt_launch {
   host_boot_cutover_frontier,
   jail_workspace_path, jail_jit_path,
   WorkspaceStagingObservation, WorkspaceSuperblockRead, WorkspaceReadbackFailed,
-  AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedWorkspace, StagingNotAuthorized,
+  AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedWorkspace, StagingNotAuthorized, StagingRefusedVmConfiguration,
   AttemptStagingReceipt,
   WorkspaceStanding, WorkspaceReady, WorkspaceCreateFailed, WorkspaceFormatFailed,
   WorkspaceNotExtFilesystem, WorkspaceSizeMismatch, WorkspaceUnreadable, WorkspaceReadbackOfDifferentImage,
   attempt_staging_verdict, runner_attempt_workspace_bytes,
-  StagingRefusedJitDevice, StagingRefusedForeignJitDevice,
-  JitDeviceStaged, JitDeviceStagingOutcome, JitDeviceStagingRefused, JitDeviceCreateStep,
+  StagingRefusedBootstrapDevice, StagingRefusedForeignBootstrapDevice,
+  BootstrapDeviceStaged, BootstrapDeviceStagingOutcome, BootstrapDeviceStagingRefused, BootstrapDeviceCreateStep,
   workspace_readback_command,
 }
 import extdeps.github.actions_jit_runner {
   EncodedJitConfig, JitConfigMinted, jit_config_mint_outcome,
 }
 import extdeps.transports.rest { RestExchangeCommitAmbiguous }
+import gunbc.runner_jit_mint { MicroVmJitSlot }
 import gunbc.runner.runner_jit_perform {
   JitCredentialBoundToAttempt, JitCredentialMintNotCreated,
 }
@@ -136,7 +139,7 @@ fn received_for(attempt: MicroVmAttempt, encoded: String) -> JitMintPerformance 
   match minted_credential(encoded: encoded) {
     Cons { head: c, tail: _ } =>
       JitMintReceived {
-        delivery: JitCredentialBoundToAttempt { attempt: attempt, credential: c, runner_id: registration_fixture_id },
+        delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: attempt }, credential: c, runner_id: registration_fixture_id },
       }
     Empty {} => JitMintAppJwtUnsigned { detail: "fixture: credential fixture did not mint" }
   }
@@ -275,7 +278,7 @@ test fn a_credential_bound_to_another_attempt_stages_no_device() -> Bool {
               let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: b), ground: GroundClear)
               no_device_no_vmm(plan: plan)
                 && match refusal_of(plan: plan) {
-                  Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == b
+                  Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == MicroVmJitSlot { attempt: b }
                   _ => false
                 }
             }
@@ -380,9 +383,9 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
             && match plan {
               LaunchAuthorized {
                 authorization: _,
-                jit_runner_name: name,
-                jit_registration_id: reg,
-                jit_device: device,
+                payload: GitHubLaunchPayload { runner_name: name, registration_id: reg, device: device },
+                workspace_grant: _,
+                runtime_properties: _, lease_expires_unix: _,
                 tap_device: tap,
                 guest_ip_boot_arg: ip,
                 slice: _,
@@ -458,9 +461,9 @@ fn only_newlines_from(s: String, i: Int) -> Bool {
   if i >= string_length(s) { true } else if char_at(s, i) != "\n" { false } else { only_newlines_from(s: s, i: i + 1) }
 }
 
-fn readback_refused(r: JitDeviceStagingOutcome?) -> Bool {
+fn readback_refused(r: BootstrapDeviceStagingOutcome?) -> Bool {
   match r {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: _ } } => true
+    Present { value: BootstrapDeviceStagingRefused { step: BootstrapDeviceReadbackStep, detail: _ } } => true
     _ => false
   }
 }
@@ -472,14 +475,14 @@ fn readback_refused(r: JitDeviceStagingOutcome?) -> Bool {
 test fn staging_readback_refuses_each_wrong_fact_and_admits_the_right_one() -> Bool {
   let content = jit_drive_content(encoded_jit_config: doubled(s: "A", k: 10) as NonEmptyStr)
   let size = to_string(byte_size_count(b: jit_drive_utf8_size(text: content)))
-  readback_refused(r: jit_device_readback(uid: StatFieldRead { value: "0" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content))
-    && readback_refused(r: jit_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "440" }, size: StatFieldRead { value: size }, content: content))
-    && readback_refused(r: jit_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: "65536" }, content: content))
-    && match jit_device_readback(uid: StatFieldUnread { detail: "stat exit 1: No such file" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content) {
-      Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: d } } => starts_with(s: d, prefix: "owner uid unread")
+  readback_refused(r: bootstrap_device_readback(uid: StatFieldRead { value: "0" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content))
+    && readback_refused(r: bootstrap_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "440" }, size: StatFieldRead { value: size }, content: content))
+    && readback_refused(r: bootstrap_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: "65536" }, content: content))
+    && match bootstrap_device_readback(uid: StatFieldUnread { detail: "stat exit 1: No such file" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content) {
+      Present { value: BootstrapDeviceStagingRefused { step: BootstrapDeviceReadbackStep, detail: d } } => starts_with(s: d, prefix: "owner uid unread")
       _ => false
     }
-    && match jit_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content) {
+    && match bootstrap_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content) {
       Absent => true
       Present { value: _ } => false
     }
@@ -507,8 +510,9 @@ fn staging_label(v: AttemptStagingVerdict) -> String {
   match v {
     StagingAdmitsJailer { receipt: _ } => "admit"
     StagingNotAuthorized => "unauthorized"
-    StagingRefusedJitDevice { outcome: _ } => "jit-device"
-    StagingRefusedForeignJitDevice { staged_path: _, planned_path: _ } => "foreign-jit-device"
+    StagingRefusedVmConfiguration { detail: _ } => "vm-config"
+    StagingRefusedBootstrapDevice { outcome: _ } => "jit-device"
+    StagingRefusedForeignBootstrapDevice { staged_path: _, planned_path: _ } => "foreign-jit-device"
     StagingRefusedJailMaterial { standing: m } => match m {
       JailMaterialReady => "ready-refused-jail"
       JailMaterialStepFailed { step: st, exit: _ } => join(["step-failed:", jail_material_step_label(step: st)], "")
@@ -529,19 +533,19 @@ fn staging_label(v: AttemptStagingVerdict) -> String {
 
 // THE STAGED DEVICE THIS ATTEMPT'S OWN PLAN NAMES, so the workspace cases below vary only the
 // workspace and the gate's other input is the honest one.
-fn staged_device_of(plan: AttemptLaunchPlan) -> JitDeviceStagingOutcome {
+fn staged_device_of(plan: AttemptLaunchPlan) -> BootstrapDeviceStagingOutcome {
   match plan {
     LaunchAuthorized {
-      authorization: _, jit_runner_name: _, jit_registration_id: _, jit_device: device,
+      authorization: _, payload: payload, workspace_grant: _, runtime_properties: _, lease_expires_unix: _,
       tap_device: _, guest_ip_boot_arg: _, slice: _, jail_root: _, stage_jail_root: _,
       stage_kernel: _, stage_rootfs: _, workspace_path: _, workspace_create: _,
       workspace_format: _, kvm_device: _, vm_config: _, jailer: _,
-    } => JitDeviceStaged { host_path: device.host_path }
-    _ => JitDeviceStagingRefused { step: JitDeviceCreateStep, detail: "fixture: plan is not authorized" }
+    } => BootstrapDeviceStaged { host_path: launch_payload_device(payload: payload).host_path }
+    _ => BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: "fixture: plan is not authorized" }
   }
 }
 
-fn staging_with(jit_of: Bool, obs: WorkspaceStagingObservation, ground: AttemptGround, jit: JitDeviceStagingOutcome) -> String {
+fn staging_with(jit_of: Bool, obs: WorkspaceStagingObservation, ground: AttemptGround, jit: BootstrapDeviceStagingOutcome) -> String {
   match issued_pairs() {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 2, id: "ws1") {
@@ -615,7 +619,7 @@ fn staging_for(obs: WorkspaceStagingObservation, ground: AttemptGround) -> Strin
     jit_of: true,
     obs: obs,
     ground: ground,
-    jit: JitDeviceStagingRefused { step: JitDeviceCreateStep, detail: "unused" },
+    jit: BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: "unused" },
   )
 }
 
@@ -628,13 +632,13 @@ test fn a_ready_workspace_does_not_admit_a_failed_or_foreign_jit_device() -> Boo
     jit_of: false,
     obs: good_workspace(),
     ground: GroundClear,
-    jit: JitDeviceStagingRefused { step: JitDeviceCreateStep, detail: "install exited 1" },
+    jit: BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: "install exited 1" },
   ) == "jit-device"
     && staging_with(
       jit_of: false,
       obs: good_workspace(),
       ground: GroundClear,
-      jit: JitDeviceStaged { host_path: "/srv/jailer/firecracker/other-attempt/root/jit.bin" },
+      jit: BootstrapDeviceStaged { host_path: "/srv/jailer/firecracker/other-attempt/root/jit.bin" },
     ) == "foreign-jit-device"
     && staging_for(obs: good_workspace(), ground: GroundClear) == "admit"
     && admitted_receipt_names_this_attempts_paths()
@@ -651,7 +655,7 @@ fn admitted_receipt_names_this_attempts_paths() -> Bool {
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
           match attempt_staging_verdict(plan: plan, jail: staged_jail_material(), jit: staged_device_of(plan: plan), workspace: good_workspace()) {
             StagingAdmitsJailer { receipt: r } =>
-              r.jit_device_path == concat(attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker"), jail_jit_path as String)
+              r.bootstrap_device_path == concat(attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker"), jail_jit_path as String)
                 && r.workspace_path == planned_ws_path()
                 && string_contains(s: join(argv_words(command: r.jailer), " "), pattern: "--exec-file")
             _ => false
@@ -698,7 +702,7 @@ test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
 // THE FRONTIER HALF OF THIS CLAIM IS GONE BECAUSE THE FRONTIER IS. workspace_staging_consumer_frontier
 // asserted that its own row still stood, and that row named this file's staging step as its consumer
 // with the trigger "that step executes workspace_create and workspace_format, executes
-// stage_jit_device and reaches the jailer only through attempt_staging_verdict". gunbc.runner_microvm
+// stage_bootstrap_device and reaches the jailer only through attempt_staging_verdict". gunbc.runner_microvm
 // _lifecycle_realize stage_attempt is that step and does exactly those three things, so the row is
 // discharged and deleted in the same change (review 69117: a row whose trigger the author says is met,
 // kept standing, is the roster ceasing to mean what it says). What retires with it is the assertion

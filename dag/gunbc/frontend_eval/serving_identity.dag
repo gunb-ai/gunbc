@@ -2,7 +2,7 @@ module gunbc.frontend_eval.serving_identity
 
 import std.types { String, Bool, Int, NonEmptyStr, Port }
 import std.decl_ref { DeclarationRef }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadback, VllmModelsEntryCreated, VllmSelfReportedVersion }
 
 // THE SERVING REALIZATION THAT ANSWERED IS NOT THE MODEL SNAPSHOT. Reasoning-token accounting, tool-call

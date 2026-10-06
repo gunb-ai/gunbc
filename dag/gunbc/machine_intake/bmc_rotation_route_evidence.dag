@@ -1,0 +1,172 @@
+module gunbc.machine_intake_bmc_rotation_route_evidence
+
+import std.types { Int, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.content_hash { Sha256Hash }
+import std.content_hash { sha256_hex_digest }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { SurfaceManagerIdentity }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake_bmc_firmware_family_discriminator { discriminate_family, family_standing_from_discrimination }
+import gunbc.machine_intake_mtjade1_factory_network {
+  ObservedBmcNetwork, BmcNetworkObservedStatic, BmcNetworkObservedDhcpLease, BmcNetworkUnobserved,
+}
+import gunbc.machine_intake_mtjade1_access_observation {
+  RecordedManagerIdentityObservation, RecordedManagerDecoded, RecordedManagerRefused,
+  read_mtjade1_recorded_manager_identity,
+}
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
+import extdeps.bmc.ipmi_channel { IpmiPrivilegeAdministrator, ipmi_user_channel_access, extdeps_external_authority_anchor }
+import extdeps.ampere.mt_collins_firmware_release { mt_collins_bmc_0_45_3_hpm }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead,
+  PublicStandardOperation, EffectObserved, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
+}
+
+// THE ROTATION ROUTE STANDING OF EACH CONTROLLER THIS FLEET HAS EVIDENCE FOR, derived from that
+// evidence and nothing wider (docs/plans/managed-host-untangle.md, cut O1a). One function per unit,
+// each reading only its own unit's committed receipts. A unit with no row has no route standing.
+
+// MTCOLLINS1 (192.168.1.228, AMI MegaRAC 0.32): GROUNDED BY AN EXECUTED REQUEST. Step (c) of the
+// committed transcript set user 3's password with the IPMI Set User Password command, after the
+// store round-trip, and the controller answered "Set User Password command successful"; step (d)
+// then authenticated as that user over IPMI and the web API at the same address. The request and
+// its response are both recorded in that one transcript, so both receipts name it: the transcript
+// is the request receipt and the response receipt, at its committed digest. THE EFFECT WAS OBSERVED:
+// the value set was a newly minted secret the account did not hold before (steps b and c), and step (d)
+// then authenticated with it over IPMI and the web API, so the before and after readings differ. It is consumed for the
+// same rotation by gunbc.machine_intake_mtcollins1_bmc_secure_observation as RotationApplied.
+fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
+  rotation_route_from_committed_execution(
+    endpoint: mtcollins1_endpoint,
+    firmware: mtcollins1_firmware,
+    request: IpmiSetUserPassword { user: 3 },
+    request_receipt: mtcollins1_user3_route_evidence,
+    response_receipt: mtcollins1_user3_route_evidence,
+    effect: EffectObserved,
+  )
+}
+
+// MTCOLLINS1'S CHANNEL-ACCESS ROUTE (cut O1a-2): A CANDIDATE, NOT GROUNDED. The BmcSecure conjunction
+// needs the published account refused on every LAN census member, and a password write cannot set a
+// channel privilege limit to NO ACCESS; Set User Access can. No execution of it on this controller is
+// committed, so the standing is a qualification candidate and nothing more.
+//
+// THE CONTROLLER AND BUILD ARE THE CURRENT ONES. The endpoint is the unit's controller address. The
+// build is BMC 0.45.3, the release extdeps.ampere.mt_collins_firmware_release mt_collins_bmc_0_45_3_hpm
+// installed on 2026-10-02 (gunbc.fleet.mtcollins_firmware_converge credential_effect_of records that
+// reflash), so it is NOT mtcollins1_firmware (0.32), and the executed password route on 0.32 does not
+// carry over to it (admit_rotation_apply refuses another build). The raw string is the release's own
+// version; no post-reflash version readback is committed (see the evidence note below).
+//
+// THE QUALIFYING REQUEST IS CHOSEN TO BE NON-DESTRUCTIVE. It re-asserts the MANAGED account's own
+// ADMINISTRATOR limit on LAN channel 1 -- user 3, the gunbc account's IPMI id before the reflash -- rather
+// than closing the factory administrator. It is safe because the pre-write admission
+// (admit_privilege_limit_route_qualification) requires a same-run Get User Access readback, on this
+// controller and build, showing that user ALREADY at ADMINISTRATOR on channel 1 as the unique row for
+// the pair: so the write sets exactly the value just read, changes no access, and still exercises the
+// command and its readback. If the post-reflash managed id or channel differs, that readback refuses
+// and nothing is written.
+//
+// WHAT THIS QUALIFICATION CAN AND CANNOT GROUND, stated because the first wording of this paragraph got
+// it wrong (review 76375). Because the write sets the value already read, its before and after readings
+// match, so a live run of it grounds the operation as AcceptedEffectUnobserved: the controller accepts
+// the privilege-limit request, and nothing more. admit_rotation_apply refuses every privilege-LOWERING
+// Apply over such a route (RotationApplyRouteEffectUnobserved). Closing the factory administrator (user
+// 2 to NO ACCESS on the channels the operator reports it still holds, eager-gull-22 2026-10-04) is
+// therefore NOT reachable from this candidate. It needs a second, effect-observing qualification
+// (mtcollins1_channel_close_effect_qualification_frontier).
+//
+// EVIDENCE IS THE PUBLIC STANDARD ONLY. The IPMI v2.0 specification defines Set User Access
+// (extdeps.bmc.ipmi_channel's cited authority). NO post-reflash channel-access observation is
+// committed, so none is cited. The read-only observations missing, each to be committed as a
+// content-addressed receipt from the controller at its current address: Get Channel Info for every
+// channel 0h-Fh (the post-reflash channel census), Get User Access for the published user on every
+// channel that census returns, and a version readback (Get Device ID / mc info) naming the installed
+// BMC build.
+data mtcollins1_channel_close_effect_qualification_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a channel-access qualification on mtcollins1's current controller and build grounds the privilege-limit operation with EffectObserved: a request that is both non-destructive and discriminating, whose ESTABLISHED pre-write reading differs from the requested value and whose post-write readback matches it -- for example a spare user slot that a committed post-reflash Get User Access observation shows disabled or unused on a channel, changed, read back, then restored and read back -- so that admit_rotation_apply can admit the factory administrator's close; NOT satisfied by the idempotent re-assertion candidate above (accept-only by construction), by a modeled run, or by a slot chosen without a committed observation identifying it" as NonEmptyStr,
+)
+
+fn mtcollins1_current_bmc_firmware() -> BmcFirmwareReleaseIdentity {
+  let v = mt_collins_bmc_0_45_3_hpm.version
+  bmc_firmware_release_identity_of_wire(
+    family: AmiMegaRac,
+    wire: join([to_string(v.major as Int), ".", to_string(v.minor as Int), ".", to_string(v.patch as Int)], "") as NonEmptyStr,
+  )
+}
+
+fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
+  rotation_route_candidate(
+    endpoint: mtcollins1_endpoint,
+    firmware: mtcollins1_current_bmc_firmware(),
+    request: IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator) },
+    evidence: PublicStandardOperation { authority: extdeps_external_authority_anchor },
+  )
+}
+
+// MTJADE1: A HISTORICAL OBSERVATION, NOT A STANDING. The committed Redfish GET
+// /redfish/v1/Managers/Self was read on 2026-10-03 at the controller's FACTORY address 10.0.7.2; the
+// controller has since been moved to DHCP, so that address is not its current endpoint and a standing
+// keyed on it would describe a controller nobody can reach there. The read proves a Redfish Manager
+// surface at the build it reports, and proves no AccountService write and no IPMI user-management
+// request. So this module states only what the capture is entitled to: a historical route
+// observation naming the observed surface, the address and build it was read at, and the Redfish
+// account write that makes it worth qualifying. mtjade1's CURRENT standing is not minted here: the
+// AccessDiscover step of gunbc.machine_intake_arrival_converge (cut O1c-1) mints it, inside the step,
+// from the 2026-10-04 read at the controller's current endpoint, joined to this unit by its observed
+// BMC link. A capture that does not decode, does not bind to this unit's observed link, or does not
+// discriminate a family yields no observation rather than a stand-in.
+fn mtjade1_observed_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {
+  match network {
+    BmcNetworkObservedStatic { address: a, prefix: _, gateway: _, link: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
+    BmcNetworkObservedDhcpLease { address: a, prefix: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
+    BmcNetworkUnobserved { discriminator: _ } => none
+  }
+}
+
+fn manager_read_receipt(read: RecordedManagerIdentityObservation) -> EvidenceRef? {
+  match sha256_hex_digest(hex: read.capture_sha256 as String) {
+    Absent => none
+    Present { value: d } => Present { value: EvidenceRef { label: read.capture_path, digest: Sha256Hash(d) } }
+  }
+}
+
+fn historical_route_observation_from_manager_read(read: RecordedManagerIdentityObservation) -> HistoricalRotationRouteObservation? {
+  match read.decoded {
+    RecordedManagerRefused { gap: _ } => none
+    RecordedManagerDecoded { observation: o } =>
+      match family_standing_from_discrimination(discrimination: discriminate_family(observation: o)) {
+        FamilyUnobserved { discriminator: _ } => none
+        FamilyObserved { family: f } =>
+          if length(o.firmware_version) == 0 {
+            none
+          } else {
+            match mtjade1_observed_endpoint(network: read.endpoint) {
+              Absent => none
+              Present { value: endpoint } =>
+                match manager_read_receipt(read: read) {
+                  Absent => none
+                  Present { value: receipt } =>
+                    Present {
+                      value: HistoricalRotationRouteObservation {
+                        observed_endpoint: endpoint,
+                        firmware: bmc_firmware_release_identity_of_wire(family: f, wire: o.firmware_version as NonEmptyStr),
+                        request: redfish_account_password_write(),
+                        evidence: ObservedSurfaceRead { surface: SurfaceManagerIdentity, receipt: receipt },
+                      },
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn mtjade1_historical_rotation_route_observation() -> HistoricalRotationRouteObservation? uses fs: std.resources.Filesystem {
+  historical_route_observation_from_manager_read(read: read_mtjade1_recorded_manager_identity())
+}

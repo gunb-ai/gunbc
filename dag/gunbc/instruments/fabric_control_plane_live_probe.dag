@@ -79,7 +79,7 @@ import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   observe_cas_slot_state, DefaultAccessCreateOnly,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set,
@@ -129,7 +129,7 @@ import gunbc.fabric_witness_run {
   required_witnesses_build_work, verify_git_commit_tree,
 }
 import extdeps.git.object_store { git_sha1_object_id }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.ownership { Owned, Ensured }
 import tools.fabric_ci_evidence {
   FabricCiEvidenceDecode, FabricCiEvidenceDecoded, FabricCiEvidenceUndecodable,
@@ -506,7 +506,7 @@ fn fci1_live_replace_held(root: NonEmptyStr) -> Fci1HeldGenerationMutation {
         DerivedPayloadKeyNotSlotAddressable { key: _ } =>
           Fci1HeldGenerationMutationRefused { detail: "allocation key is not slot-addressable" }
         DerivedPayloadAdmitted { verified: v } =>
-          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
             CasCommitted { committed: c } => Fci1HeldGenerationReplaced { slot_key: slot_key, generation: c.generation }
             CasPreconditionFailed { expected: _, observed: _ } =>
               Fci1HeldGenerationMutationRefused { detail: "the held slot moved between observation and mutation" }
@@ -606,7 +606,10 @@ fn fci1_assert_replace_held(
   let observed = fci1_allocation_slot_observation(root: root)
   let expected_generation = match observed {
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation + 1
-    _ => -1
+    Fci1SlotAbsent { path: _ } => -1
+    Fci1SlotFree { path: _, generation: _, released_by: _, payload: _, content: _ } => -1
+    Fci1SlotUnreadable { path: _ } => -1
+    Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => -1
   }
   if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
   else { let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
@@ -783,7 +786,7 @@ fn fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit
 }
 
 fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationSlotPrestate {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot()), retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
     CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: root }
     CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
@@ -817,7 +820,7 @@ type Fci1AllocationSlotObservation
   | Fci1SlotUndecodable { path: NonEmptyStr, generation: Int, payload: NonEmptyStr, content: NonEmptyStr }
 
 fn fci1_allocation_slot_observation(root: NonEmptyStr) -> Fci1AllocationSlotObservation {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot()), retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
     CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: root }
     CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => {
@@ -1081,7 +1084,11 @@ fn fci1_canonical_cleanup_disposition(
                 }
                 AllocationStoreRestorationRefused { path: _ } => CanonicalCleanupRefused { prestate: prestate, observed: post }
               } }
-              _ => CanonicalCleanupRefused { prestate: prestate, observed: post }
+              HoldEndBudgetRefused { slot_key: _, refusal: _ } => CanonicalCleanupRefused { prestate: prestate, observed: post }
+              HoldEndSlotNotHeld { slot_key: _, detail: _ } => CanonicalCleanupRefused { prestate: prestate, observed: post }
+              HoldEndLost { slot_key: _ } => CanonicalCleanupRefused { prestate: prestate, observed: post }
+              HoldEndStoreUnavailable { slot_key: _, cause: _ } => CanonicalCleanupRefused { prestate: prestate, observed: post }
+              HoldEndAttemptRefused { slot_key: _, detail: _ } => CanonicalCleanupRefused { prestate: prestate, observed: post }
             }
           } else { CanonicalCleanupRefused { prestate: prestate, observed: observed } }
         Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: prestate, observed: observed }
@@ -1107,7 +1114,9 @@ fn fci1_canonical_cleanup_disposition(
             Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed }
             Fci1ReservationCleanupAuthorityObservationUnmodeled => CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed }
           }
-        _ => initial_disposition
+        NoCanonicalCommit { prestate: _, poststate: _ } => initial_disposition
+        ExpectedCanonicalHoldingReleased { prestate: _, authority: _, held: _, release_outcome: _, poststate: _, restoration: _ } => initial_disposition
+        CanonicalAlreadyExactFree { prestate: _, authority: _, poststate: _, restoration: _ } => initial_disposition
       }
     }
   }
@@ -1153,9 +1162,16 @@ fn fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: Stri
                 if released_generation == generation + 1 && post_generation == generation + 1
                   && fci1_authority_matches_exact_free(authority: authority, observed: post) { ExitSuccess }
                 else { exit_failure(reason: "disposable release did not reach exact next Free generation") }
-              _ => exit_failure(reason: "disposable release terminal state was not Free")
+              Fci1SlotAbsent { path: _ } => exit_failure(reason: "disposable release terminal state was not Free")
+              Fci1SlotHeld { path: _, generation: _, reservation_identity: _, payload: _, content: _ } => exit_failure(reason: "disposable release terminal state was not Free")
+              Fci1SlotUnreadable { path: _ } => exit_failure(reason: "disposable release terminal state was not Free")
+              Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => exit_failure(reason: "disposable release terminal state was not Free")
             }
-            _ => exit_failure(reason: "disposable release refused")
+            HoldEndBudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: "disposable release refused")
+            HoldEndSlotNotHeld { slot_key: _, detail: _ } => exit_failure(reason: "disposable release refused")
+            HoldEndLost { slot_key: _ } => exit_failure(reason: "disposable release refused")
+            HoldEndStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "disposable release refused")
+            HoldEndAttemptRefused { slot_key: _, detail: _ } => exit_failure(reason: "disposable release refused")
           } }
         }
       } } else { exit_failure(reason: "disposable held an unexpected generation") }
@@ -1221,7 +1237,9 @@ fn fci1_grade_and_write_allocation_receipt(
 fn fci1_assert_slot_absent_admitted() -> ProcessExit {
   match fci1_allocation_slot_admission(prestate: AllocationSlotAbsent { path: "/run/fci1-control" }) {
     AllocationSlotAdmitted { path: _ } => ExitSuccess
-    _ => exit_failure(reason: "FCI-1 absent slot was not admitted")
+    AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 absent slot was not admitted")
+    AllocationSlotRefusedUnreadable { path: _ } => exit_failure(reason: "FCI-1 absent slot was not admitted")
+    AllocationSlotRefusedUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 absent slot was not admitted")
   }
 }
 
@@ -1230,7 +1248,9 @@ fn fci1_assert_slot_absent_admitted() -> ProcessExit {
 fn fci1_assert_unreadable_slot_refused() -> ProcessExit {
   match fci1_allocation_slot_admission(prestate: AllocationSlotUnreadable { path: "/run/fci1-control" }) {
     AllocationSlotRefusedUnreadable { path: _ } => ExitSuccess
-    _ => exit_failure(reason: "FCI-1 unreadable slot was admitted")
+    AllocationSlotAdmitted { path: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted")
+    AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted")
+    AllocationSlotRefusedUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted")
   }
 }
 
@@ -1241,7 +1261,8 @@ fn fci1_assert_exact_absent_to_free_control() -> ProcessExit {
     poststate: AllocationSlotFree { path: "/run/fci1-control", generation: 2 },
   ) {
     AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => ExitSuccess
-    _ => exit_failure(reason: "FCI-1 exact absent-slot lifecycle refused")
+    AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => exit_failure(reason: "FCI-1 exact absent-slot lifecycle refused")
+    AllocationStoreRestorationRefused { path: _ } => exit_failure(reason: "FCI-1 exact absent-slot lifecycle refused")
   }
 }
 
@@ -1252,7 +1273,8 @@ fn fci1_assert_exact_free_to_free_control() -> ProcessExit {
     poststate: AllocationSlotFree { path: "/run/fci1-control", generation: 9 },
   ) {
     AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => ExitSuccess
-    _ => exit_failure(reason: "FCI-1 exact free-slot lifecycle refused")
+    AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => exit_failure(reason: "FCI-1 exact free-slot lifecycle refused")
+    AllocationStoreRestorationRefused { path: _ } => exit_failure(reason: "FCI-1 exact free-slot lifecycle refused")
   }
 }
 
@@ -1263,7 +1285,8 @@ fn fci1_assert_extra_generation_refused_control() -> ProcessExit {
     poststate: AllocationSlotFree { path: "/run/fci1-control", generation: 10 },
   ) {
     AllocationStoreRestorationRefused { path: _ } => ExitSuccess
-    _ => exit_failure(reason: "FCI-1 unexpected extra generation was admitted")
+    AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => exit_failure(reason: "FCI-1 unexpected extra generation was admitted")
+    AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => exit_failure(reason: "FCI-1 unexpected extra generation was admitted")
   }
 }
 
@@ -1292,7 +1315,11 @@ fn fci1_invalid_before_wire_refuses() -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: "/fci1-invalid-wire-must-not-be-read", before_wire: "srv3-06\n1")
   match verdict {
     RequiredBuildCellObservationRefused => ExitSuccess
-    _ => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    RequiredBuildCellLifetimeHeld { snapshot: _ } => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationLifetimeDependentOnSubmitter { slot_key: _ } => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationGenerationChanged { expected_generation: _, observed_generation: _ } => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationContentChanged { slot_key: _ } => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    CellSubstrateChanged { cell: _ } => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
   }
 }
 
@@ -1303,7 +1330,11 @@ fn fci1_assert_lifetime_held(root: NonEmptyStr, before_wire: String) -> ProcessE
       if snapshot.slot_key == "srv3-06" { ExitSuccess } else {
         exit_failure(reason: join(["held wrong slot: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
       }
-    _ => exit_failure(reason: join(["lifetime did not hold: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationLifetimeDependentOnSubmitter { slot_key: _ } => exit_failure(reason: join(["lifetime did not hold: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationGenerationChanged { expected_generation: _, observed_generation: _ } => exit_failure(reason: join(["lifetime did not hold: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationContentChanged { slot_key: _ } => exit_failure(reason: join(["lifetime did not hold: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    CellSubstrateChanged { cell: _ } => exit_failure(reason: join(["lifetime did not hold: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    RequiredBuildCellObservationRefused => exit_failure(reason: join(["lifetime did not hold: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
   }
 }
 
@@ -1314,7 +1345,11 @@ fn fci1_assert_generation_changed(root: NonEmptyStr, before_wire: String) -> Pro
       if expected != observed { ExitSuccess } else {
         exit_failure(reason: join(["generation mutation carried equal fences: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
       }
-    _ => exit_failure(reason: join(["generation mutation was not observed: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    RequiredBuildCellLifetimeHeld { snapshot: _ } => exit_failure(reason: join(["generation mutation was not observed: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationLifetimeDependentOnSubmitter { slot_key: _ } => exit_failure(reason: join(["generation mutation was not observed: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationContentChanged { slot_key: _ } => exit_failure(reason: join(["generation mutation was not observed: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    CellSubstrateChanged { cell: _ } => exit_failure(reason: join(["generation mutation was not observed: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    RequiredBuildCellObservationRefused => exit_failure(reason: join(["generation mutation was not observed: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
   }
 }
 
@@ -1329,7 +1364,11 @@ fn fci1_write_generation_changed_receipt(root: NonEmptyStr, before_wire: String,
     ReservationGenerationChanged { expected_generation: expected, observed_generation: observed } =>
       if expected == 1 && observed == 2 { ExitSuccess }
       else { exit_failure(reason: "generation-changed receipt carried unexpected coordinates") }
-    _ => exit_failure(reason: "generation-changed receipt did not carry typed verdict")
+    RequiredBuildCellLifetimeHeld { snapshot: _ } => exit_failure(reason: "generation-changed receipt did not carry typed verdict")
+    ReservationLifetimeDependentOnSubmitter { slot_key: _ } => exit_failure(reason: "generation-changed receipt did not carry typed verdict")
+    ReservationContentChanged { slot_key: _ } => exit_failure(reason: "generation-changed receipt did not carry typed verdict")
+    CellSubstrateChanged { cell: _ } => exit_failure(reason: "generation-changed receipt did not carry typed verdict")
+    RequiredBuildCellObservationRefused => exit_failure(reason: "generation-changed receipt did not carry typed verdict")
   } }
 }
 
@@ -1340,7 +1379,11 @@ fn fci1_assert_lifetime_dependent(root: NonEmptyStr, before_wire: String) -> Pro
       if slot == "srv3-06" { ExitSuccess } else {
         exit_failure(reason: join(["dependent reservation named wrong slot: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
       }
-    _ => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    RequiredBuildCellLifetimeHeld { snapshot: _ } => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationGenerationChanged { expected_generation: _, observed_generation: _ } => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    ReservationContentChanged { slot_key: _ } => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    CellSubstrateChanged { cell: _ } => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
+    RequiredBuildCellObservationRefused => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
   }
 }
 
@@ -1354,7 +1397,11 @@ fn fci1_write_lifetime_dependent_receipt(root: NonEmptyStr, before_wire: String,
   else { match verdict {
     ReservationLifetimeDependentOnSubmitter { slot_key: slot } =>
       if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "lifetime-dependent receipt named wrong slot") }
-    _ => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
+    RequiredBuildCellLifetimeHeld { snapshot: _ } => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
+    ReservationGenerationChanged { expected_generation: _, observed_generation: _ } => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
+    ReservationContentChanged { slot_key: _ } => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
+    CellSubstrateChanged { cell: _ } => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
+    RequiredBuildCellObservationRefused => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
   } }
 }
 
@@ -1498,7 +1545,8 @@ fn fci1_assert_cell_admitted() -> ProcessExit {
       if fabric_cell_observed_population_host(population: population) == "srv3" { ExitSuccess } else {
         exit_failure(reason: join(["cell admitted on wrong host: ", fci1_cell_observation_wire(decision: decision)], ""))
       }
-    _ => exit_failure(reason: join(["cell substrate not admitted: ", fci1_cell_observation_wire(decision: decision)], ""))
+    FabricCellObservationDenied { host: _, blocked: _ } => exit_failure(reason: join(["cell substrate not admitted: ", fci1_cell_observation_wire(decision: decision)], ""))
+    FabricCellObservationNotApplicable { host: _ } => exit_failure(reason: join(["cell substrate not admitted: ", fci1_cell_observation_wire(decision: decision)], ""))
   }
 }
 
@@ -2048,7 +2096,11 @@ fn fci1_live_release(root: NonEmptyStr) -> ProcessExit {
       if slot == "srv3-06" { ExitSuccess } else {
         exit_failure(reason: join(["release ended wrong slot: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
       }
-    _ => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndLost { slot_key: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
   }
 }
 
@@ -2067,7 +2119,11 @@ fn fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessExi
   else { match outcome {
     CellHoldEnded { slot_key: slot, generation: _, account: _ } =>
       if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "release receipt named wrong slot") }
-    _ => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndLost { slot_key: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
   } }
 }
 

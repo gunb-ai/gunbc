@@ -1,5 +1,13 @@
 module gunbc.live_deploy.apply
 
+import gunbc.workspace_commissioning_executor_input { workspace_executor_installed_adapter_matches }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   RepositoryTransitionAdmission,
@@ -13,6 +21,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   deployment_plan_listen_port,
   deployment_plan_host_identity,
+  deployment_tailnet_door_socket,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { String, CommitSha, NonEmptyStr }
@@ -59,9 +68,20 @@ import gunbc.host_effect {
   LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeployServeRoute,
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
+import gunbc.live_deploy.tailnet_door_cutover {
+  ServeCutoverEffects, ServeCutoverOutcome, CapturedServeBackend, CapturedRestorableBackend, CapturedNoRoute,
+  tailnet_door_cutover_run, serve_cutover_outcome_committed, serve_cutover_outcome_reason,
+}
+import gunbc.live_deploy.tailnet_door_cutover_host {
+  live_deploy_serve_route_observe, tailnet_door_cutover_binding, tailnet_door_cutover_journal_read, tailnet_door_cutover_journal_write,
+}
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
@@ -73,7 +93,9 @@ import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
   live_deploy_liveness_get_local,
   ServiceReadiness,
+  ServiceProbeUnanswered,
   service_readiness_reason,
+  live_deploy_proxied_readiness,
 }
 import gunbc.live_deploy.service_ready {
   approval_broker_expected_startup,
@@ -143,7 +165,42 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
   match effect {
     LiveDeployApply { spec: _, candidate: _, plan: _ } => deploy_access_sudoers_install_scope(access: access)
     LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
-    _ => access
+    RedfishAction { action: _ } => access
+    ConvergePlan { policy: _ } => access
+    OsInstallActuatorToolchainEnsure {} => access
+    EnsureBuildCacheInstance { desired: _ } => access
+    ProvisionCodexRuntime {} => access
+    EnsureCompilePoolSlice {} => access
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => access
+    ReadEffectivePosixPrincipal { read: _ } => access
+    SudoNopasswdExecuteProbe { probe: _ } => access
+    SudoNopasswdGrantListProbe { probe: _ } => access
+    Srv3InstallMediaFetch => access
+    Srv3SeededInstallMediaRemaster => access
+    Srv3SeededInstallMediaToolchainEnsure => access
+    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebTokenExtract => access
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => access
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
+    Srv3BootOnceReadBackSleep => access
+    Srv3ReceiptEmit { lines: _ } => access
+    HostIdentityShortHostnameRead => access
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
+    LiveDeployMicrovmControllerInstall { candidate: _ } => access
+    LiveDeployEnsureDependency { dep: _ } => access
+    LiveDeployDigestReadback { port: _ } => access
+    LiveDeployServeRoute { endpoint: _, enabled: _ } => access
+    DeployAccessPreflight {} => access
+    EnsureActionsRunnerRelease { runner_release: _ } => access
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
+    EnsureRunnerJitWrapper { host_label: _ } => access
+    EnsureRunnerSystemdTemplate { host_label: _ } => access
+    EnsureRunnerMemoryCaps { slot: _ } => access
+    ActivateRunnerSlot { slot: _ } => access
+    ReplaceRunnerIncarnation { from: _, cause: _ } => access
+    ObserveRunnerLocalState { slot: _ } => access
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => access
+    ProbeToolchainHomeInterference {} => access
   }
 }
 
@@ -213,6 +270,13 @@ fn live_deploy_mutation_denied(
 // add rather than as a replace, the route is briefly ABSENT while the service is unverified. That
 // is a property of extdeps.tailscale.serve, not of this fold, and it is stated here so the ordering
 // is a known quantity rather than something a later reader rediscovers as a surprise.
+//
+// THAT ARGUMENT HOLDS ONLY FOR A ROUTE TO THE PORT THE RESTARTED UNIT SERVES. A deployment whose
+// route targets its tailnet door would be redirecting traffic to a second process, which is the
+// redirection-to-an-unverified-process the paragraph above rules out. So for such a deployment the
+// mapping is NOT written inside the mutation (gunbc.live_deploy.emit
+// tailscale_serve_mapping_apply_steps): it is written by live_deploy_tailnet_door_cutover_gate
+// below, after the readiness gate, as a transaction that restores the prior backend on failure.
 fn live_deploy_fold(
   spec: DeploymentSpec,
   effect: HostEffect,
@@ -291,24 +355,6 @@ fn live_deploy_apply_mutation_via_transport(
   }
 }
 
-fn live_deploy_apply_readiness_gate(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_readiness_gate_with_readiness(
-    mutation: mutation,
-    readiness: live_deploy_poll_until_service_ready_for_deploy(
-      spec: spec,
-      candidate: candidate,
-      transport: transport,
-      access: access,
-    ),
-  )
-}
-
 // One NotConverged, reached from both non-Ready arms. The Pending/Refused
 // distinction is NOT erased by the collapse: service_readiness_reason carries the
 // readiness value into the reason, and the retry decision that consumes the
@@ -336,6 +382,116 @@ fn live_deploy_apply_readiness_gate_with_readiness(
       Pending { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
       Refused { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
     }
+  }
+}
+
+// ── THE TAILNET DOOR CUTOVER, ON THE HOST ───────────────────────────────────────────────────
+// The four effects gunbc.live_deploy.tailnet_door_cutover sequences, bound to this deployment and
+// transport. The re-point and the restore are each one LiveDeployServeRoute through the same
+// mutation gate every other deploy mutation crosses; the observation and the proxied probe are
+// reads, and the journal is one fenced slot in the fabric state store. The restore writes the
+// backend word the capture already carries.
+fn serve_route_effect_refusal(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> String {
+  match r {
+    Converged { evidence: _, applied: _ } => ""
+    NotConverged { reason: why, applied: _ } => if why == "" { "the serve route effect did not converge" } else { why }
+  }
+}
+
+fn live_deploy_serve_route_restore(
+  spec: DeploymentSpec,
+  prior: CapturedServeBackend,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> String {
+  let declared = spec.names.tailscale_serve_endpoint
+  match prior {
+    CapturedNoRoute =>
+      serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: declared, enabled: false }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
+    CapturedRestorableBackend { target: _, backend: backend } =>
+      serve_route_effect_refusal(r: live_deploy_fold(
+        spec: spec,
+        effect: LiveDeployServeRoute { endpoint: TailscaleServeEndpoint { https_port: declared.https_port, mount: declared.mount, backend: backend }, enabled: true },
+        transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent,
+      ))
+  }
+}
+
+fn live_deploy_tailnet_door_cutover_effects(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  journal: FabricStorageBinding,
+) -> ServeCutoverEffects {
+  let binding = tailnet_door_cutover_binding(spec: spec, candidate: candidate)
+  ServeCutoverEffects {
+    journal_read: fn() { tailnet_door_cutover_journal_read(store: journal, binding: binding) },
+    journal_write: fn(expected_generation, record) { tailnet_door_cutover_journal_write(store: journal, binding: binding, expected_generation: expected_generation, record: record) },
+    observe: fn(n) { live_deploy_serve_route_observe(spec: spec, transport: transport) },
+    repoint: fn(permit) {
+      serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: spec.names.tailscale_serve_endpoint, enabled: true }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
+    },
+    proxied: fn() { live_deploy_proxied_readiness(spec: spec, candidate: candidate, transport: transport) },
+    restore: fn(prior) { live_deploy_serve_route_restore(spec: spec, prior: prior, transport: transport, access: access) },
+  }
+}
+
+// What the cutover's outcome makes of the deployment: committed leaves the reconciliation as it
+// was, and anything else is NotConverged carrying the outcome's own account, including what
+// became of the route.
+fn tailnet_door_cutover_reconciliation(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  outcome: ServeCutoverOutcome,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if serve_cutover_outcome_committed(outcome: outcome) {
+    mutation
+  } else {
+    match mutation {
+      Converged { evidence: _, applied: intent } => NotConverged { reason: serve_cutover_outcome_reason(outcome: outcome), applied: intent }
+      NotConverged { reason: why, applied: intent } => NotConverged { reason: join([why, "; ", serve_cutover_outcome_reason(outcome: outcome)], ""), applied: intent }
+    }
+  }
+}
+
+// THE CUTOVER GATE RUNS WHATEVER THE READINESS WAS, because an interrupted cutover is resumed from
+// its journal even when this run's door is not ready -- that is the case in which the route must
+// be put back. What readiness decides is the PERMIT: a mutation that did not converge, or a door
+// that is not ready, yields no permit, so this run re-points nothing and can only resume or roll
+// back.
+fn tailnet_door_cutover_door_standing(mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>, readiness: ServiceReadiness) -> ServiceReadiness {
+  if reconciliation_converged(r: mutation) {
+    readiness
+  } else {
+    tailnet_door_cutover_unpermitted_standing()
+  }
+}
+
+fn tailnet_door_cutover_unpermitted_standing() -> ServiceReadiness {
+  Pending { cause: ServiceProbeUnanswered { detail: "the deployment mutation did not converge" } }
+}
+
+// A deployment with no door has no cutover: its mapping was applied inside the mutation.
+fn live_deploy_tailnet_door_cutover_gate(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  readiness: ServiceReadiness,
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  journal: FabricStorageBinding,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => mutation
+    Present { value: _ } =>
+      tailnet_door_cutover_reconciliation(
+        mutation: mutation,
+        outcome: tailnet_door_cutover_run(
+          door: readiness,
+          binding: tailnet_door_cutover_binding(spec: spec, candidate: candidate),
+          effects: live_deploy_tailnet_door_cutover_effects(spec: spec, candidate: candidate, transport: transport, access: access, journal: journal),
+        ).outcome,
+      )
   }
 }
 
@@ -398,13 +554,22 @@ fn live_deploy_apply_via_transport(
     transport: transport,
     access: access,
   )
-  let gated = live_deploy_apply_readiness_gate(
+  let readiness = live_deploy_poll_until_service_ready_for_deploy(
     spec: spec,
     candidate: candidate,
     transport: transport,
     access: access,
-    mutation: mutation,
   )
+  let cutover = live_deploy_tailnet_door_cutover_gate(
+    spec: spec, candidate: candidate, transport: transport, access: access,
+    readiness: tailnet_door_cutover_door_standing(mutation: mutation, readiness: readiness),
+    mutation: mutation, journal: fabric_state_storage_binding(),
+  )
+  let gated = if !reconciliation_converged(r: cutover) {
+    cutover
+  } else {
+    live_deploy_apply_readiness_gate_with_readiness(mutation: cutover, readiness: readiness)
+  }
   if !reconciliation_converged(r: gated) {
     gated
   } else {
@@ -762,7 +927,13 @@ fn approval_broker_liveness_poll(
           }
         }
       }
-      _ => read
+      ServeLivenessBodyUnparseable => read
+      ServeLivenessBodyNotAnObject => read
+      ServeLivenessRevisionAbsent => read
+      ServeLivenessRevisionDuplicated { count: _ } => read
+      ServeLivenessRevisionNotAString => read
+      ServeLivenessRevisionMalformed { text: _ } => read
+      ServeLivenessObserved { revision: _ } => read
     }
   }
 }
@@ -877,7 +1048,14 @@ fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> Proc
       if (r as String) != (candidate.revision as String) {
         exit_failure(reason: join(["microvm_controller_install: the locus tree receipt names ", r as String, " and this install's candidate is ", candidate.revision as String], ""))
       } else {
-        microvm_controller_vmm_readback_exit(revision: revision)
+        match microvm_controller_vmm_readback_exit(revision: revision) {
+          ExitSuccess => if workspace_executor_installed_adapter_matches(
+            release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision),
+            slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot())) {
+            ExitSuccess
+          } else { exit_failure(reason: "microvm_controller_install: executor scripts or loaded unit failed exact readback") }
+          refused => refused
+        }
       }
   }
 }
@@ -889,7 +1067,28 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
   } else if !string_contains(s: vmm.content, pattern: microvm_controller_vmm_name) || !string_contains(s: vmm.content, pattern: microvm_controller_jailer_name) {
     exit_failure(reason: join(["microvm_controller_install: the VMM receipt does not name both binaries: ", vmm.content], ""))
   } else {
-    microvm_slot_unit_load_readback_exit()
+    microvm_readiness_store_substrate_readback_exit()
+  }
+}
+
+// Verify only the directory's write authority. Existing records are preserved and no cell
+// becomes ready here; initial commissioning still owes history and sanitation admission.
+fn microvm_readiness_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: cell_readiness_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: readiness directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: readiness directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_commissioning_store_substrate_readback_exit()
+  }
+}
+
+// Directory custody is an installation fact, not commissioning completion or capacity admission.
+fn microvm_commissioning_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: workspace_commissioning_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: commissioning directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: commissioning directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_slot_unit_load_readback_exit()
   }
 }
 
@@ -899,7 +1098,13 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
 // is not what the manager parses.
 fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
   match microvm_unit_load_readback(unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
-    ExitSuccess => microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+    ExitSuccess => match microvm_unit_load_readback(unit: workspace_executor_unit_instance_name(
+      slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+      ExitSuccess => if microvm_controller_requires_ci_reservation_unit() {
+        microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+      } else { ExitSuccess }
+      refused => refused
+    }
     refused => refused
   }
 }

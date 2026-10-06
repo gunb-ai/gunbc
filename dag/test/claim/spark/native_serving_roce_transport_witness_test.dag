@@ -1,8 +1,9 @@
 module test.claim.spark.native_serving_roce_transport_witness_test
 
-import std.types { Bool, String, NonEmptyStr, List, FilePath }
-import v2.std.optional { Present, Absent }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import std.types { Bool, String, NonEmptyStr, List, FilePath, Int }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_for_host }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.collective_transport_plan {
@@ -12,8 +13,10 @@ import gunbc.spark.native_serving_realization {
   glm_native_launch_lines, glm_native_unit_exec_words,
 }
 import gunbc.spark.native_serving_apply {
-  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps,
-  spark_native_preflight_script, spark_native_preserve_script, spark_native_rollback_script,
+  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps, SparkNativeHostStep, spark_native_front_door_plans, spark_native_transport_announcement_plans, spark_native_wait_leg_grace,
+  spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_leftover_observe_script, spark_native_leftover_resolve_script,
+  spark_native_marker_clear_script, spark_native_preflight_plans, SparkNativeLeftoverResolution, ResolveHadNoUnitAndNothingStands, ResolveIncumbentUnitUntouched, ResolveFenceOnly,
+  spark_native_preflight_script, spark_native_preserve_script, spark_native_rollback_prepare_script, spark_native_rollback_finish_script,
   spark_native_metadata_cleanup_script, spark_native_front_door_script, spark_native_commit_script,
   SparkNativeHostDisposition, HostIncumbentExecStarted, HostUnitRemovedAndContainerAbsent,
   HostDispositionUnread, spark_native_disposition_of, spark_native_disposition_is_read,
@@ -21,9 +24,9 @@ import gunbc.spark.native_serving_apply {
   SparkNativeStage, NativeStagePreflight, NativeStagePreserve, NativeStageMetadataCleanup,
   NativeStageApply, NativeStageReadback, NativeStageCommit,
   spark_native_stage_has_mutated_the_serving_arm, spark_native_stage_created_removable_artifacts,
-  spark_native_readback_disagreements, spark_native_image_readback_gap,
+  spark_native_readback_disagreements, spark_native_image_readback_gap, spark_native_unplanned_assignments, ImageFactsRead, ImageFactsUnread,
 }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.pair_serving_apply { SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
@@ -36,6 +39,9 @@ import extdeps.docker.container_inspect {
   ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
   container_inspect_from_stdout,
 }
+import gunbc.spark.awaited_incarnation { AwaitedIncarnation }
+import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import std.measure { second, second_count }
 import gunbc.spark.serving_relaunch_transaction { RelaunchDelta, relaunch_delta, delta_comparisons, delta_unclaimed_env }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, glm_native_container_name }
 
@@ -46,6 +52,16 @@ import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, g
 // direct fabric line, so these claims pin (a) the arm's plan IS the RoCE arm keyed by the lane
 // census, (b) the rendered container line carries every projection of that plan, and (c) the
 // apply's post-pass gate refuses a rank that bound Socket.
+
+
+// The rollback's script text: its prepare and finish legs, around the typed deliberate start.
+
+data w_awaited_fixture: AwaitedIncarnation = AwaitedIncarnation { host: "srv6" as HostIdentity, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+
+fn w_rollback_text(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
+  join([spark_native_rollback_prepare_script(unit_name: unit_name, transaction_id: transaction_id, container_name: container_name),
+        spark_native_rollback_finish_script(unit_name: unit_name, transaction_id: transaction_id)], "\n")
+}
 
 // THE LANE IS THE REAL CENSUS ROW, NOT A FIXTURE: the claim is precisely that the arm reads the
 // interface and the verbs device from fabric_switch_observed, so a fixture here would assert
@@ -150,9 +166,9 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
           let scripts = join([
             spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path),
             spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
-            spark_native_rollback_script(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
+            w_rollback_text(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
             spark_native_metadata_cleanup_script(unit_name: st.unit_name, transaction_id: "t"),
-            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr),
+            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr),
           ], "\n")
           !string_contains(s: scripts, pattern: "Using network")
             && !string_contains(s: scripts, pattern: "NET/IB")
@@ -291,24 +307,26 @@ fn t_device_json(d: DockerDeviceMapping) -> String {
   ], "")
 }
 
+// The HostConfig.Mounts entry the daemon records for a `--mount` flag (ReadOnly omitted when false).
 fn t_mount_bind_json(m: DockerMount) -> String {
   match m {
     BindMount { host_path: h, container_path: c, readonly: ro } =>
-      join(["\"", h as String, ":", c as String, if ro { ":ro" } else { "" }, "\""], "")
+      join(["{\"Type\":\"bind\",\"Source\":\"", h as String, "\",\"Target\":\"", c as String, "\"", if ro { ",\"ReadOnly\":true" } else { "" }, "}"], "")
     VolumeMount { volume: v, container_path: c, readonly: ro } =>
-      join(["\"", v as String, ":", c as String, if ro { ":ro" } else { "" }, "\""], "")
-    TmpfsMount { container_path: c, size_bytes: _ } => join(["\"", c as String, "\""], "")
+      join(["{\"Type\":\"volume\",\"Source\":\"", v as String, "\",\"Target\":\"", c as String, "\"", if ro { ",\"ReadOnly\":true" } else { "" }, "}"], "")
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      join(["{\"Type\":\"tmpfs\",\"Target\":\"", c as String, "\",\"TmpfsOptions\":{\"SizeBytes\":", to_string(n), "}}"], "")
   }
 }
 
-fn t_inspect_text(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool, drop_shm: Bool) -> String {
+fn t_inspect_text(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool, drop_shm: Bool, extra_env: List<String>, mounts_key: String) -> String {
   join([
     "[{\"Id\":\"0123456789ab\",\"Created\":\"2026-09-18T00:00:00Z\",",
     "\"Image\":\"", spec.image as String, "\",",
     "\"Name\":\"/", spec.name as String, "\",",
     "\"State\":{\"Status\":\"running\",\"Running\":true,\"Paused\":false,\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false},",
     "\"Config\":{\"Cmd\":", t_json_list(xs: spec.command), ",",
-    "\"Env\":", t_json_list(xs: map(spec.env, e => join([e.name as String, "=", e.value], ""))), "},",
+    "\"Env\":", t_json_list(xs: concat(extra_env, map(spec.env, e => join([e.name as String, "=", e.value], "")))), "},",
     "\"HostConfig\":{",
     "\"NetworkMode\":\"", docker_namespace_mode_wire(m: spec.network) as String, "\",",
     "\"IpcMode\":\"", docker_namespace_mode_wire(m: spec.ipc) as String, "\",",
@@ -316,14 +334,18 @@ fn t_inspect_text(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool,
     "\"CapAdd\":", if drop_capadd { "[]" } else { t_json_list(xs: map(spec.cap_add, c => join(["CAP_", c as String], ""))) }, ",",
     "\"Devices\":[", if drop_devices { "" } else { join(map(spec.devices, d => t_device_json(d: d)), ",") }, "],",
     "\"Ulimits\":[", if spec.memlock_unlimited { "{\"Name\":\"memlock\",\"Soft\":-1,\"Hard\":-1}" } else { "" }, "],",
-    "\"Binds\":[", join(map(spec.mounts, m => t_mount_bind_json(m: m)), ","), "],",
+    "\"", mounts_key, "\":[", join(map(spec.mounts, m => t_mount_bind_json(m: m)), ","), "],",
     "\"RestartPolicy\":{\"Name\":\"", docker_restart_policy_wire(p: spec.restart) as String, "\",\"MaximumRetryCount\":0}",
     "}}]",
   ], "")
 }
 
 fn t_inspect_of(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool, drop_shm: Bool) -> ContainerInspect? {
-  match container_inspect_from_stdout(stdout: t_inspect_text(spec: spec, drop_devices: drop_devices, drop_capadd: drop_capadd, drop_shm: drop_shm)) {
+  t_inspect_with_env(spec: spec, drop_devices: drop_devices, drop_capadd: drop_capadd, drop_shm: drop_shm, extra_env: [])
+}
+
+fn t_inspect_with_env(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool, drop_shm: Bool, extra_env: List<String>) -> ContainerInspect? {
+  match container_inspect_from_stdout(stdout: t_inspect_text(spec: spec, drop_devices: drop_devices, drop_capadd: drop_capadd, drop_shm: drop_shm, extra_env: extra_env, mounts_key: "Mounts")) {
     ContainerInspectUnreadable { cause: _ } => none
     ContainerInspectDecoded { container: c } => Present { value: c }
   }
@@ -345,8 +367,8 @@ fn t_delta_agrees(spec: DockerCreateSpec, observed: ContainerInspect?) -> Bool {
     Present { value: c } => {
       let d = relaunch_delta(spec: spec, observed: c, gid_selection: arm_rail_gid_selection)
       count(spark_native_readback_disagreements(comparisons: delta_comparisons(d: d))) == 0
-        && count(delta_unclaimed_env(d: d)) == 0
-        && count(spark_native_image_readback_gap(spec: spec, observed: c)) == 0
+        && count(spark_native_unplanned_assignments(observed: c, unclaimed_names: delta_unclaimed_env(d: d), image_env: [])) == 0
+        && count(spark_native_image_readback_gap(spec: spec, observed: c, facts: ImageFactsRead { id: spec.image as String, env: [] })) == 0
     }
   }
 }
@@ -365,6 +387,72 @@ fn t_delta_agrees(spec: DockerCreateSpec, observed: ContainerInspect?) -> Bool {
 // two the one-launch consolidation found had already drifted between the renderers.
 test fn w_the_readback_accepts_the_realized_plan() -> Bool {
   t_delta_agrees(spec: t_spec, observed: t_inspect_of(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false))
+}
+
+fn t_unplanned(o: ContainerInspect?, image_env: List<String>) -> List<String> {
+  match o {
+    Absent => ["<inspect undecodable>"]
+    Present { value: c } => spark_native_unplanned_assignments(observed: c, unclaimed_names: delta_unclaimed_env(d: relaunch_delta(spec: t_spec, observed: c, gid_selection: arm_rail_gid_selection)), image_env: image_env)
+  }
+}
+
+// THE IMAGE'S OWN ENVIRONMENT IS INHERITED, NOT UNPLANNED -- BY ASSIGNMENT, NOT BY NAME (Group A fp8-8,
+// run 37172948981, refused every host on the image's own PATH, CUDA_VERSION, ...). An observed assignment
+// identical to one in the image's Config.Env is inherited; the same NAME with a different VALUE that the
+// spec does not claim is an override nobody planned and refuses; a name neither declares refuses.
+test fn w_image_inherited_env_is_admitted_by_assignment() -> Bool {
+  let image_env = ["PATH=/usr/local/sbin:/usr/bin", "CUDA_VERSION=13.0.1"]
+  let inherited = t_inspect_with_env(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false, extra_env: image_env)
+  let overridden = t_inspect_with_env(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false, extra_env: ["PATH=/tmp/evil:/usr/bin", "CUDA_VERSION=13.0.1"])
+  let foreign = t_inspect_with_env(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false, extra_env: ["PATH=/usr/local/sbin:/usr/bin", "CUDA_VERSION=13.0.1", "SOMETHING_NEW=1"])
+  count(t_unplanned(o: inherited, image_env: image_env)) == 0
+    && t_unplanned(o: overridden, image_env: image_env) == ["PATH=/tmp/evil:/usr/bin"]
+    && t_unplanned(o: foreign, image_env: image_env) == ["SOMETHING_NEW=1"]
+}
+
+// THE IMAGE IS ESTABLISHED BEFORE ITS ENV IS USED: an unread image refuses with its cause (never "nothing
+// inherited" or "everything inherited"), and a container created from another image than the plan's
+// resolves to refuses whatever its env says.
+test fn w_the_image_gap_refuses_an_unread_or_different_image() -> Bool {
+  match t_inspect_of(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false) {
+    Absent => false
+    Present { value: c } =>
+      count(spark_native_image_readback_gap(spec: t_spec, observed: c, facts: ImageFactsUnread { cause: "witness: exit 1" })) == 1
+        && count(spark_native_image_readback_gap(spec: t_spec, observed: c, facts: ImageFactsRead { id: "sha256:another", env: [] })) == 1
+        && count(spark_native_image_readback_gap(spec: t_spec, observed: c, facts: ImageFactsRead { id: c.image, env: [] })) == 0
+  }
+}
+
+// THE MOUNTS ARE READ FROM HostConfig.Mounts, WHERE A `--mount` CREATE RECORDS THEM. A document carrying
+// only Binds (what `-v` produces, and what this readback used to read) leaves the mounts UNREAD, so the
+// comparison refuses rather than agreeing (Group A fp8-8, run 37172948981).
+fn t_doc_with_mounts_key(key: String) -> ContainerInspectRead {
+  container_inspect_from_stdout(stdout: t_inspect_text(spec: t_spec, drop_devices: false, drop_capadd: false, drop_shm: false, extra_env: [], mounts_key: key))
+}
+
+fn t_mounts_count(r: ContainerInspectRead) -> Int {
+  match r {
+    ContainerInspectUnreadable { cause: _ } => -1
+    ContainerInspectDecoded { container: c } =>
+      match c.host_config {
+        Absent => -1
+        Present { value: hc } => match hc.mounts { Absent => 0  Present { value: ms } => count(ms) }
+      }
+  }
+}
+
+fn t_decoded(r: ContainerInspectRead) -> ContainerInspect? {
+  match r {
+    ContainerInspectUnreadable { cause: _ } => none
+    ContainerInspectDecoded { container: c } => Present { value: c }
+  }
+}
+
+test fn w_mounts_are_read_from_hostconfig_mounts_not_binds() -> Bool {
+  count(t_spec.mounts) > 0
+    && t_mounts_count(r: t_doc_with_mounts_key(key: "Mounts")) == count(t_spec.mounts)
+    && t_mounts_count(r: t_doc_with_mounts_key(key: "Binds")) == 0
+    && !t_delta_agrees(spec: t_spec, observed: t_decoded(r: t_doc_with_mounts_key(key: "Binds")))
 }
 
 test fn w_the_readback_refuses_a_missing_verbs_device() -> Bool {
@@ -392,6 +480,61 @@ test fn w_the_readback_refuses_a_changed_shm_size() -> Bool {
 // the transaction's evidence is the container named, its ContainerInspect compared field for field,
 // the effective --node-rank read off that same container's argv, and NCCL's typed verdict on that
 // incarnation -- a verdict that cannot exist until every rank has joined.
+// THE FRONT DOOR WAITS AS LONG AS THE ENGINE MAY TAKE AND NO LONGER, AND ONLY FOR ONE INCARNATION (Group A
+// fp8-8, run 37175686123: one 30 s probe refused a loading 328 GB arm). The head's plan derives its deadline
+// from VLLM_ENGINE_READY_TIMEOUT_S in that head's own environment -- one authority, no second number -- and
+// the script refuses at once if the container id, running state or restart count moves. RED: the
+// single-probe script carries no deadline and no incarnation check.
+test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: head } => {
+          let handed = AwaitedIncarnation { host: head.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+          let plans = spark_native_front_door_plans(steps: steps, awaited: [handed], now: Present { value: 7654000 })
+          let none_handed = spark_native_front_door_plans(steps: steps, awaited: [] as List<AwaitedIncarnation>, now: Present { value: 7654000 })
+          let unclocked = spark_native_front_door_plans(steps: steps, awaited: [handed], now: none)
+          let late = spark_native_front_door_plans(steps: steps, awaited: [handed], now: Present { value: 7700000 })
+          length(plans) == 1
+            && all(plans, bp => string_contains(s: bp.plan.script, pattern: "deadline=7654321")
+                 && string_contains(s: bp.plan.script, pattern: "incarnation='0f3a9c1d2e4b'")
+                 && !string_contains(s: bp.plan.script, pattern: "StartedAt")
+                 && string_contains(s: bp.plan.script, pattern: "if curl -fsS")
+                 && second_count(s: bp.bound) == 321 + second_count(s: spark_native_wait_leg_grace))
+            && all(none_handed, bp => string_contains(s: bp.plan.script, pattern: "FRONT-DOOR-REFUSED-no-awaited-incarnation"))
+            && length(unclocked) == 1
+            && all(unclocked, bp => string_contains(s: bp.plan.script, pattern: "FRONT-DOOR-REFUSED-executor-clock-unread"))
+            && all(late, bp => second_count(s: bp.bound) == second_count(s: spark_native_wait_leg_grace))
+        }
+      }
+  }
+}
+
+// THE TRANSPORT VERDICT IS READ AFTER ITS ANNOUNCEMENT (run 37241423753: the head's `Using network`
+// line was logged after the single capture). Over the REAL arm steps: one announcement wait per rank,
+// each bounded by that rank's own VLLM_ENGINE_READY_TIMEOUT_S through the same incarnation wait as the
+// front door. RED: a readback with no announcement plans, or a plan with a deadline of its own.
+test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_timeout() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } => {
+      let plans = spark_native_transport_announcement_plans(steps: steps)
+      let timeouts = flat_map(steps, st => match engine_ready_timeout_for(env: st.launch.container.env) {
+        EngineReadyTimeoutResolved { timeout: t } => [to_string(second_count(s: t))]
+        EngineReadyTimeoutUnreadable { cause: _ } => [] as List<String>
+      })
+      length(plans) == length(steps)
+        && length(timeouts) == length(steps)
+        && all(plans, bp => any(timeouts, t => string_contains(s: bp.plan.script, pattern: join(["deadline=$(( started + ", t, " ))"], ""))
+               && to_string(second_count(s: bp.bound) - second_count(s: spark_native_wait_leg_grace)) == t)
+             && string_contains(s: bp.plan.script, pattern: "echo \"awaited|$incarnation|$deadline\"")
+             && string_contains(s: bp.plan.script, pattern: "'Using network '"))
+    }
+  }
+}
+
 test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
@@ -400,8 +543,8 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
         Absent => false
         Present { value: st } =>
           length(steps) == 4
-            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr), pattern: "ss ")
-            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr), pattern: "/v1/models")
+            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "ss ")
+            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "/v1/models")
             && count(st.launch.container.devices) > 0
             && count(st.launch.container.cap_add) > 0
             && st.launch.container.memlock_unlimited
@@ -416,7 +559,7 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
 // deleted -- the worst reachable state, reported as the best. The absence of that `|| true` is
 // asserted, and so is the daemon read that establishes the container is actually gone.
 test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
-  let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1", container_name: glm_native_container_name)
+  let script = w_rollback_text(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1", container_name: glm_native_container_name)
   string_contains(s: script, pattern: "ROLLBACK-REFUSED-this-host-was-never-preserved")
     && string_contains(s: script, pattern: "rollback-actuation-accepted-incumbent-unit-restored-and-exec-started")
     && string_contains(s: script, pattern: "rollback-actuation-accepted-unit-removed-and-container-gone")
@@ -437,7 +580,7 @@ test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
 // ABSENCE that was read back from the daemon: the unit is gone and no container answers that name, so
 // there is no unverified running thing left to adopt.
 test fn w_an_unverified_rollback_keeps_its_fence() -> Bool {
-  let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1", container_name: glm_native_container_name)
+  let script = w_rollback_text(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1", container_name: glm_native_container_name)
   string_contains(s: script, pattern: join(["mv -f /etc/systemd/system/gunbc-glm-native-head.service.gunbc-transaction /etc/systemd/system/gunbc-glm-native-head.service", ".gunbc-unresolved-rollback"], ""))
     && string_contains(s: script, pattern: "rm -f /etc/systemd/system/gunbc-glm-native-head.service /etc/systemd/system/gunbc-glm-native-head.service.gunbc-had-no-unit /etc/systemd/system/gunbc-glm-native-head.service.gunbc-transaction")
 }
@@ -459,7 +602,7 @@ test fn w_a_second_transaction_cannot_remove_the_first_ones_evidence() -> Bool {
   let a_preserve = spark_native_preserve_script(unit_name: unit, transaction_id: "A", container_name: glm_native_container_name)
   let b_cleanup = spark_native_metadata_cleanup_script(unit_name: unit, transaction_id: "B")
   let b_commit = spark_native_commit_script(unit_name: unit, transaction_id: "B")
-  let b_rollback = spark_native_rollback_script(unit_name: unit, transaction_id: "B", container_name: glm_native_container_name)
+  let b_rollback = w_rollback_text(unit_name: unit, transaction_id: "B", container_name: glm_native_container_name)
   string_contains(s: a_preserve, pattern: "set -C")
     && string_contains(s: a_preserve, pattern: "PRESERVE-REFUSED-fence-held-by-")
     && all([b_cleanup, b_commit, b_rollback], sc =>
@@ -495,7 +638,7 @@ test fn w_a_refusal_cannot_erase_the_unresolved_rollback_marker() -> Bool {
         Present { value: st } => {
           let cleanup = spark_native_metadata_cleanup_script(unit_name: st.unit_name, transaction_id: "t-1")
           let preflight = spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path)
-          let rollback = spark_native_rollback_script(unit_name: st.unit_name, transaction_id: "t-1", container_name: st.launch.container.name)
+          let rollback = w_rollback_text(unit_name: st.unit_name, transaction_id: "t-1", container_name: st.launch.container.name)
           spark_native_stage_created_removable_artifacts(st: NativeStagePreflight) == false
             && spark_native_stage_created_removable_artifacts(st: NativeStagePreserve)
             && string_contains(s: cleanup, pattern: "metadata-cleanup-noop-this-transaction-holds-no-fence-here")
@@ -534,7 +677,9 @@ test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
                  VolumeMount { volume: _, container_path: _, readonly: _ } => true
                  TmpfsMount { container_path: _, size_bytes: _ } => true
                })
-            && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-no-nvidia-runtime")
+            && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-no-gpu-cdi-device")
+            && string_contains(s: script, pattern: "nvidia.com/gpu=all")
+            && !string_contains(s: script, pattern: ".Runtimes")
         }
       }
   }
@@ -550,13 +695,13 @@ test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
 test fn w_a_host_disposition_comes_from_its_own_leg() -> Bool {
   let h = operator_host_srv9
   spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
-    host: h, detail: spark_native_incumbent_restored_word, standing: serving_standing(attempts: []) }))
+    host: h, wire: "management-lan", stdout: spark_native_incumbent_restored_word, standing: serving_standing(attempts: []) }))
     && spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
-         host: h, detail: spark_native_unit_removed_word, standing: serving_standing(attempts: []) }))
+         host: h, wire: "management-lan", stdout: spark_native_unit_removed_word, standing: serving_standing(attempts: []) }))
     && !spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplyFailed {
          host: h, cause: "ssh refused" }))
     && !spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
-         host: h, detail: "restarted", standing: serving_standing(attempts: []) }))
+         host: h, wire: "management-lan", stdout: "restarted", standing: serving_standing(attempts: []) }))
 }
 
 // ── THE FENCE: AN UNRESOLVED TRANSACTION REFUSES THE NEXT ONE ─────────────────────────────────
@@ -595,4 +740,158 @@ test fn w_an_unresolved_transaction_refuses_the_next_run() -> Bool {
 test fn w_the_container_argv_declares_the_reporter_off() -> Bool {
   let argv = head_exec_words()
   count(argv) > 0 && argv_has(argv: argv, word: vllm_usage_stats_disable_assignment_wire())
+}
+
+// ── NO ECHOED WORD IS READ AS SHELL (fleet-converge run 37304585650; valiant-crab-775 sweep) ──────────
+//
+// The front door rendered `echo served|yes`, a pipe into yes(1) that held its leg open 87 minutes. The
+// class is any echoed word carrying an UNQUOTED pipe, redirect, background or command separator glued
+// into it, so this sweeps EVERY stage script the arm renders from its real plan, not only the front door.
+// The scan reads each `echo` command's arguments, honouring single and double quotes, backslash escapes
+// inside double quotes, and command substitution; the command ends at a newline, at a `;` followed by a
+// shell keyword or a further command this corpus uses, at a spaced `|`, `||` or `&&`, at a redirect after
+// a space or a file descriptor, or at the `)` closing an enclosing subshell. Anything else glued to a
+// word is the defect. The scanner's own discriminating red is w_the_echo_scan_finds_a_glued_separator.
+type WEchoScan {
+  sq: Bool
+  dq: Bool
+  esc: Bool
+  depth: Int
+  prev: Int
+  done: Bool
+  bad: Bool
+  stop: Int
+  at: Int
+}
+
+data w_echo_follow_words: List<String> = ["exit", "else", "fi", "echo", "break", "cat", "done", "then", "sleep"]
+
+fn w_echo_step(st: WEchoScan, c: Int, next: Int) -> WEchoScan {
+  let here = WEchoScan { sq: st.sq, dq: st.dq, esc: false, depth: st.depth, prev: c, done: st.done, bad: st.bad, stop: st.stop, at: st.at + 1 }
+  if st.done { st }
+  else if st.esc { here }
+  else if st.sq { if c == 39 { WEchoScan { sq: false, dq: here.dq, esc: false, depth: here.depth, prev: c, done: false, bad: false, stop: 0, at: here.at } } else { here } }
+  else if st.dq {
+    if c == 92 { WEchoScan { sq: false, dq: true, esc: true, depth: here.depth, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+    else if c == 34 { WEchoScan { sq: false, dq: false, esc: false, depth: here.depth, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+    else { here }
+  }
+  else if c == 39 { WEchoScan { sq: true, dq: false, esc: false, depth: here.depth, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+  else if c == 34 { WEchoScan { sq: false, dq: true, esc: false, depth: here.depth, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+  else if c == 40 && st.prev == 36 { WEchoScan { sq: false, dq: false, esc: false, depth: st.depth + 1, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+  else if st.depth > 0 {
+    if c == 40 { WEchoScan { sq: false, dq: false, esc: false, depth: st.depth + 1, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+    else if c == 41 { WEchoScan { sq: false, dq: false, esc: false, depth: st.depth - 1, prev: c, done: false, bad: false, stop: 0, at: here.at } }
+    else { here }
+  }
+  else if c == 10 || c == 41 { WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: c, done: true, bad: false, stop: 0, at: here.at } }
+  else if c == 59 { WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: c, done: true, bad: false, stop: here.at, at: here.at } }
+  else if c == 124 || c == 38 {
+    if next == c || st.prev == 32 { WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: c, done: true, bad: false, stop: 0, at: here.at } }
+    else { WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: c, done: true, bad: true, stop: 0, at: here.at } }
+  }
+  else if c == 62 || c == 60 {
+    if st.prev == 32 || (st.prev >= 48 && st.prev <= 57) { WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: c, done: true, bad: false, stop: 0, at: here.at } }
+    else { WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: c, done: true, bad: true, stop: 0, at: here.at } }
+  }
+  else { here }
+}
+
+// One echo command's arguments: glued shell syntax, or a `;` followed by a word that is not a keyword or
+// a command this corpus follows an echo with.
+fn w_echo_args_are_inert(args: String) -> Bool {
+  let head = match split(s: args, delimiter: ";").get(0) { Present { value: h } => h  Absent => args }
+  if !any(w_echo_syntax_chars, m => string_contains(s: head, pattern: m)) {
+    if length(head) == length(args) { true } else { w_echo_follows_inertly(rest: substring(s: args, start: length(head) + 1, end: length(args))) }
+  } else { w_echo_args_scanned(args: args) }
+}
+
+// THE CHEAP PATH IS EXACT, NOT A SAMPLE: arguments up to the first `;` that carry no quote, substitution,
+// escape, pipe, redirect, background or subshell close are plain words, so only the `;` needs judging;
+// anything else takes the full scan.
+data w_echo_syntax_chars: List<String> = ["'", "\"", "$", "\\", "|", "&", ">", "<", ")", "("]
+
+fn w_echo_follows_inertly(rest: String) -> Bool {
+  let r = trim(s: rest)
+  r == "" || any(w_echo_follow_words, w => r == w || starts_with(s: r, prefix: join([w, " "], "")) || starts_with(s: r, prefix: join([w, ";"], "")))
+}
+
+fn w_echo_args_scanned(args: String) -> Bool {
+  let cs = chars(s: args)
+  let st = fold(enumerate(cs), init: WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: 32, done: false, bad: false, stop: 0, at: 0 },
+    f: fn(acc, p) { w_echo_step(st: acc, c: p.second, next: match cs.get(p.first + 1) { Present { value: v } => v  Absent => 0 }) })
+  if st.bad { false }
+  else if st.stop > 0 { w_echo_follows_inertly(rest: substring(s: args, start: st.stop, end: length(args))) }
+  else { true }
+}
+
+fn w_script_echoes_are_inert(script: String) -> Bool {
+  all(flat_map(split(s: script, delimiter: "\n"), line => map(filter(enumerate(split(s: line, delimiter: "echo ")), p => p.first > 0), p => p.second)),
+    args => w_echo_args_are_inert(args: args))
+}
+
+test fn w_the_echo_scan_finds_a_glued_separator() -> Bool {
+  !w_script_echoes_are_inert(script: "echo served|yes\n")
+    && !w_script_echoes_are_inert(script: "echo a>b\n")
+    && !w_script_echoes_are_inert(script: "echo x&\n")
+    && !w_script_echoes_are_inert(script: "echo a;rm -rf x\n")
+    && w_script_echoes_are_inert(script: "echo \"served|yes\"; exit 0\n")
+    && w_script_echoes_are_inert(script: "echo x=$(cat f 2>/dev/null) >&2; fi\n")
+    && w_script_echoes_are_inert(script: "if a; then echo ok; else echo no; fi\n")
+}
+
+fn w_sweep_over(pick: fn(List<SparkNativeHostStep>, SparkNativeHostStep) -> List<String>, at_least: Int) -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let scripts = pick(steps, st)
+          count(scripts) >= at_least && all(scripts, s => w_script_echoes_are_inert(script: s))
+        }
+      }
+  }
+}
+
+// THE SWEEP, cut by stage so each claim is one bounded subject: the arm's waits and preflight (every rank),
+// the apply and transaction scripts, and the leftover and marker scripts. Together they are every stage
+// script the arm renders.
+test fn w_no_wait_or_preflight_script_echoes_shell_syntax() -> Bool {
+  w_sweep_over(pick: fn(steps, st) {
+    concat(concat(
+      map(spark_native_preflight_plans(steps: steps), p => p.script),
+      map(spark_native_transport_announcement_plans(steps: steps), bp => bp.plan.script)),
+      map(spark_native_front_door_plans(steps: steps, awaited: [AwaitedIncarnation { host: st.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }], now: Present { value: 7654000 }), bp => bp.plan.script))
+  }, at_least: 9)
+}
+
+test fn w_no_apply_or_transaction_script_echoes_shell_syntax() -> Bool {
+  w_sweep_over(pick: fn(steps, st) {
+    let u = st.unit_name
+    let c = st.launch.container.name
+    [
+      spark_native_preserve_script(unit_name: u, transaction_id: "t", container_name: c),
+      spark_native_metadata_cleanup_script(unit_name: u, transaction_id: "t"),
+      spark_native_host_apply_prepare_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: st.unit_text, container_name: c),
+      spark_native_host_apply_wait_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
+      spark_native_rollback_prepare_script(unit_name: u, transaction_id: "t", container_name: c),
+      spark_native_rollback_finish_script(unit_name: u, transaction_id: "t"),
+      spark_native_commit_script(unit_name: u, transaction_id: "t"),
+    ]
+  }, at_least: 7)
+}
+
+test fn w_no_leftover_or_marker_script_echoes_shell_syntax() -> Bool {
+  w_sweep_over(pick: fn(steps, st) {
+    let u = st.unit_name
+    let c = st.launch.container.name
+    [
+      spark_native_leftover_observe_script(unit_name: u, container_name: c, planned_unit_text: st.unit_text),
+      spark_native_leftover_resolve_script(unit_name: u, container_name: c, resolution: ResolveHadNoUnitAndNothingStands, holder: "t"),
+      spark_native_leftover_resolve_script(unit_name: u, container_name: c, resolution: ResolveIncumbentUnitUntouched, holder: "t"),
+      spark_native_leftover_resolve_script(unit_name: u, container_name: c, resolution: ResolveFenceOnly, holder: "t"),
+      spark_native_marker_clear_script(unit_name: u, holder: "t"),
+    ]
+  }, at_least: 5)
 }

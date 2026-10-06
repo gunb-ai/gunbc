@@ -3,14 +3,14 @@ module gunbc.fabric_cell_converge
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
 import extdeps.systemd {
   systemd_cpu_quota_per_sec_of_threads,
   systemd_cpu_quota_per_sec_magnitude_identity,
   systemd_cpu_quota_unbounded_identity,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_ownership }

@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fabric_cell_converge { fabric_cell_attempt_root_path, fabric_cell_slice_name }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
@@ -126,7 +126,7 @@ test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool {
     AttemptSegmentRefused { refusal: AttemptSegmentContainsSeparator { spelling: _ } } => true
     _ => false
   }
-  let alias = match attempt_segment(spelling: "a/../b") {
+  let alias_value = match attempt_segment(spelling: "a/../b") {
     AttemptSegmentRefused { refusal: AttemptSegmentContainsSeparator { spelling: _ } } => true
     _ => false
   }
@@ -138,7 +138,7 @@ test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool {
     AttemptSegmentRefused { refusal: AttemptSegmentEmpty } => true
     _ => false
   }
-  parent && here && traversal && alias && absolute && empty
+  parent && here && traversal && alias_value && absolute && empty
 }
 
 // AND AN ORDINARY ID STILL PASSES. Without this the refusal could be satisfied by refusing

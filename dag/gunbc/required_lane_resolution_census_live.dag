@@ -1,16 +1,17 @@
 module gunbc.required_lane_resolution_census_live
 
 import std.types { String, Bool, List, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.github.actions { Workflow, Job }
 import gunbc.compiler_gate_workflow {
   compiler_gate_workflow, compiler_gate_merge_path_job_ids,
-  compiler_gate_floor_job_id, compiler_gate_generated_job_id, compiler_gate_aggregate_job_id,
+  compiler_gate_emit_build_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id, compiler_gate_aggregate_job_id,
 }
 import gunbc.ci_spec { gunbc_ci_heal_verify_target }
+import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.required_lane_resolution_census {
   ModuleIdentityPopulation, ModuleIdentityPopulationObserved, ModuleIdentityPopulationRefused,
@@ -30,8 +31,23 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // roster does not is a refusal, never a job read as resolving nothing. The subject rows cite the
 // same declarations the step scripts render from (gunbc.ci.ci_spec gunbc_ci_heal_verify_target
 // for the drift gate's entry; the floor's nominal seeds through the compiler query).
+//
+// emit-build became required on 2026-10-02. Its two steps run `gunbc test` over
+// //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, whose producers
+// (v1_compiler.cli_run.native_lane_runner NATIVE_COMPILE_ENTRY and V2_NATIVE_CLI_ENTRY) ingest
+// and resolve the import closure of these two entries before emitting it. The entries are the
+// instruments' own facts in gunbc.instrument_targets (self_host_entry, v2_native_cli_entry); the
+// seed's two Rust constants cannot read a .dag row yet, so
+// test.claim.compiler_gate_emit_build_lane_witness_test holds them equal to those rows and reds on drift.
 fn lane_resolution_roster() -> List<LaneResolutionRow> {
   [
+    LaneResolutionRow {
+      job_id: compiler_gate_emit_build_job_id,
+      subjects: [
+        RunEntryClosure { entry_path: self_host_entry() },
+        RunEntryClosure { entry_path: v2_native_cli_entry() },
+      ]
+    },
     LaneResolutionRow {
       job_id: compiler_gate_floor_job_id,
       subjects: [FloorNominalPreparedSubject {}]
@@ -73,7 +89,8 @@ fn count_of(xs: List<String>, x: String) -> Int {
 // as not blocking is read by no required context, so a module only it resolves is resolved by no
 // required lane, and a row for it would be the inflation this census exists to refuse. Checking
 // coverage against every emitted job instead refused this census outright from the day `emit-build`
-// landed announced, since that lane has no row and should not have one.
+// landed announced (2026-09-22), when that lane had no row and should not have had one; it has one
+// since it became required (2026-10-02).
 fn required_job_ids(w: Workflow) -> List<String> {
   let merge_path = compiler_gate_merge_path_job_ids()
   workflow_job_ids(w: w) |> filter(j => count_of(xs: merge_path, x: j) > 0)

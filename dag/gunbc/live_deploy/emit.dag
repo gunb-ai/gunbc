@@ -1,5 +1,21 @@
 module gunbc.live_deploy.emit
 
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
+
+import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
+import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script }
+import gunbc.workspace_commissioning_executor_artifact { workspace_executor_helper_script }
+import gunbc.workspace_commissioning_executor_unit {
+  workspace_executor_template_name, workspace_executor_script_name, workspace_executor_helper_name,
+  workspace_executor_unit_text, workspace_executor_unit_path, workspace_executor_wait_bound,
+}
+import gunbc.fleet_generation_execution { fleet_generation_lock }
+
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
+
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -38,6 +54,7 @@ import gunbc.managed_directory {
 import extdeps.tools.chmod { chmod_binary_path }
 import extdeps.access.posix { PosixUser }
 import extdeps.tailscale.serve {
+  TailscaleServeEndpoint,
   tailscale_serve_enable_argv,
   tailscale_serve_off_argv,
   TailscaleServeCapability,
@@ -135,7 +152,8 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -495,11 +513,25 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 // entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact.
 fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
-  let port = to_string(svc.listen.port)
-  let host = svc.listen.host
+  live_deploy_serve_unit_file_over(
+    spec: spec, revision: revision,
+    description: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr,
+    function: svc.serve_function,
+    listener: join([" --host ", svc.listen.host, " --port ", to_string(svc.listen.port)], ""),
+  )
+}
+
+// One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
+// manager environment and evaluation caps are the same value, and the two differ only in the
+// entry function they launch and the listener they bind.
+fn live_deploy_serve_unit_file_over(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding,
+  description: NonEmptyStr, function: NonEmptyStr, listener: String,
+) -> SystemdUnitFile {
+  let svc = spec.service
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
+      Description { text: description },
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
@@ -513,8 +545,8 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
-        " --host ", host, " --port ", port,
+        " --entry ", svc.serve_entry as String, " --function ", function as String,
+        listener,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -522,6 +554,33 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       Restart { policy: "on-failure" as NonEmptyStr },
     ])),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+// THE TAILNET DOOR'S UNIT: the same server as the unit above, launched on the door entry and bound
+// to the socket the deployment's serve route targets (gunbc.live_deploy.spec
+// deployment_tailnet_door_socket). Absent for a deployment whose route targets a port.
+fn live_deploy_tailnet_door_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => none
+    Present { value: socket } => Present { value: live_deploy_serve_unit_file_over(
+      spec: spec, revision: revision,
+      description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
+      function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+      listener: concat(" --unix-socket ", socket as String),
+    ) }
+  }
+}
+
+// A step of this kind exists only where the door does (deployment_tailnet_door_steps), so the
+// absent arm is a spec whose steps and names disagree: it writes a refusal marker, never a unit.
+fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
+  match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision) {
+    Absent => deploy_raw(command: "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket")
+    Present { value: unit } => deploy_raw(command: deploy_stage_write_command(
+      stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+      content: render(doc: doc_text(text: serialize_systemd_unit_file(file: unit)), proto: live_deploy_protocol),
+    ))
   }
 }
 
@@ -679,28 +738,7 @@ fn emit_approval_broker_unit_doc_on(spec: DeploymentSpec, revision: ReleaseRevis
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: port)))
 }
 
-// OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a
-// formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer
-// than the cadence schedules its successor while it is still running and ticks pile up back-to-back
-// — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping
-// spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real
-// regardless of how long a tick takes and the belt can never outrun itself. systemd additionally
-// refuses to start a Type=oneshot unit that is already active, so the two together make overlap
-// unwritable rather than unlikely.
-//
-// 60s is the operator's stated default for this lane and is deliberately not tuned against
-// anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux
-// sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an
-// observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant
-// wakeup window, which is the default behavior and would otherwise make the effective cadence
-// unpredictable.
-//
-// OnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and
-// tailscale are all converging, and a belt tick that spawns before the repo tree is in place
-// produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs
-// one cadence period and removes a class of self-inflicted refusals from the receipt.
 
-data belt_tick_cadence: String = "60s"
 
 // THE PER-TICK WATCHDOG, and the 2026-09-21 measurement that put it here. A Type=oneshot unit with
 // no start bound runs as long as the tick runs, and OnUnitInactiveSec only schedules the next tick
@@ -1088,6 +1126,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       FabricStorageServeUnit => none
       FabricStorageServeMapping => none
       ApprovalBrokerFrontDoor => none
+      TailnetDoorServeUnit => none
     }
     Dependency { step: _ } => none
   }
@@ -1278,6 +1317,19 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: shell_privileged_command_text_of_argv(
     argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
+}
+
+// THE MAPPING'S APPLY IS NOT IN THE BULK MUTATION WHEN IT WOULD REDIRECT TRAFFIC. A route to a
+// port is an idempotent re-assert of the backend the unit just restarted, and stays an ordinary
+// apply step. A route to the tailnet door moves every tailnet request to another process, so its
+// write belongs to the cutover transaction (gunbc.live_deploy.tailnet_door_cutover), which holds it
+// until the door is proven and undoes it if the proxied path fails; the member is still owned,
+// and still torn down, here.
+fn tailscale_serve_mapping_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Present { value: _ } => []
+    Absent => [tailscale_serve_apply_step(spec: spec)]
+  }
 }
 
 fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
@@ -1809,7 +1861,7 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
-  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
+  installed_release_environment(release_dir: release_dir)
 }
 
 // THE DIGEST IS OVER CONTENT, ORDER-INDEPENDENTLY, so two trees with the same bytes in the same
@@ -2130,15 +2182,7 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 // EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
 // over any such unit: the slot controller and the shakedown broker both exec from this locus.
 fn microvm_locus_unit_with_workspace_root(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
-  match file {
-    ServiceUnitFile { unit: u, service: s, install: i } =>
-      ServiceUnitFile {
-        unit: u,
-        service: concat([release_locus_workspace_root_environment(release_dir: release_dir)], s),
-        install: i,
-      }
-    other => other
-  }
+  installed_release_unit(file: file, release_dir: release_dir)
 }
 
 fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
@@ -2170,6 +2214,7 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       mode: install_file_shared_mode,
       dest: microvm_slot_unit_path() as String,
     )),
+  ] + (if microvm_controller_requires_ci_reservation_unit() { [
     deploy_raw(command: deploy_stage_write_command(
       stage_name: microvm_slot_reserve_unit_name as String,
       content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
@@ -2182,7 +2227,7 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       mode: install_file_shared_mode,
       dest: microvm_slot_reserve_unit_path() as String,
     )),
-  ]
+  ] } else { [] })
 }
 
 // THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
@@ -2204,8 +2249,12 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
         ),
       ),
       concat(
-        [deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir))],
-        concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+        [
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
+        ],
+        concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
       ),
     ),
     on_failure: FailFast,
@@ -2268,7 +2317,7 @@ fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
   }
 }
 
-// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
+// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_enrolment_code
 // runs as fleet_posix_operator_user, which owns the device store and reads the publisher token).
 fn approval_broker_helper_grantee() -> NonEmptyStr {
   fleet_posix_operator_user.name
@@ -2802,9 +2851,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
-    TailscaleServeMapping => [
-      tailscale_serve_apply_step(spec: spec),
-    ]
+    TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
     FabricStorageServeUnit => [
       apply_fabric_storage_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -2820,6 +2867,17 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: shell_privileged_command_text_of_argv(
         argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
+    ]
+    TailnetDoorServeUnit => [
+      apply_tailnet_door_unit_write_step(spec: spec, revision: revision),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+        mode: install_file_shared_mode,
+        dest: art.path as String,
+      )),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
     ]
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
@@ -2876,6 +2934,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
+    )
+    TailnetDoorServeUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_tailnet_door_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+      ]
     )
     FabricStorageServeUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
@@ -3078,6 +3143,20 @@ fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply"))]
 }
 
+// THE APPLY FRAME: what the program carries before the sudoers preamble. A named producer so a
+// claim about what follows the frame derives the offset from this list rather than counting it.
+fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_shell_strict_options_command),
+    Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+    Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
+    Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
+    Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
+    deploy_stage_directory_let_step(),
+    deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
+  ]
+}
+
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -3087,15 +3166,7 @@ fn apply_intent_from_effects(
 ) -> Pipeline {
   Pipeline {
     steps: concat(
-      [
-        deploy_raw(command: deploy_shell_strict_options_command),
-        Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-        Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
-        Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
-        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
-        deploy_stage_directory_let_step(),
-        deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
-      ],
+      deploy_apply_frame_steps(spec: spec),
       concat(
         deploy_apply_preamble_steps(access: access, spec: spec),
         concat(
@@ -3348,6 +3419,21 @@ fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipelin
   }
 }
 
+// ONE SERVE ROUTE, WRITTEN OR TURNED OFF, as a script of its own: the same privileged argv the
+// mapping member's apply and teardown steps carry, for the tailnet door cutover
+// (gunbc.live_deploy.tailnet_door_cutover), which applies the re-point and its restore singly.
+fn deployment_serve_route_script(endpoint: TailscaleServeEndpoint, enabled: Bool) -> String {
+  emit_pipeline_or_poison(
+    p: Pipeline {
+      steps: [deploy_raw(command: shell_privileged_command_text_of_argv(
+        argv: concat(["tailscale"], if enabled { tailscale_serve_enable_argv(endpoint: endpoint) } else { tailscale_serve_off_argv(endpoint: endpoint) }),
+      ))],
+      on_failure: FailFast
+    },
+    refused: live_deploy_ensure_dep_emit_refused_poison,
+  )
+}
+
 fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
   emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
@@ -3441,4 +3527,40 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     decl_name: "orch_emit_pipeline",
     field: WholeDeclaration,
   }
+}
+
+// Additive installation only: the executor is not enabled or started here. Its native waiter,
+// bounded adapter and unit are derived from the same installed release as the slot controller.
+fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = microvm_controller_release_dir(revision: revision)
+  [
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_script_name,
+      content: workspace_commissioning_executor_script())),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_script_name,
+      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_script_name], ""))),
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_helper_name,
+      content: workspace_executor_helper_script(release_dir: dir))),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_helper_name,
+      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_helper_name], ""))),
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_template_name as String,
+      content: workspace_executor_unit_text(release_dir: dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_template_name as String,
+      mode: install_file_shared_mode, dest: workspace_executor_unit_path() as String)),
+  ]
+}
+
+// The installer has already installed the exact controller release under root custody. These
+// argument-free grants name that binary, tree and three fixed entries; no job code is elevated.
+fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let stage = "workspace-commissioning-sudoers"
+  let pending = concat(workspace_dispatch_grant_path, ".pending")
+  [
+    deploy_raw(command: deploy_stage_write_command(stage_name: stage,
+      content: concat(workspace_dispatch_grant_content(release_dir: microvm_controller_release_dir(revision: revision) as NonEmptyStr), "\n"))),
+    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
+    deploy_raw(command: deploy_stage_install_owned_command(stage_name: stage, mode: "0440", owner: microvm_controller_owner, group: microvm_controller_owner, dest: pending)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: pending)),
+    deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
+  ]
 }

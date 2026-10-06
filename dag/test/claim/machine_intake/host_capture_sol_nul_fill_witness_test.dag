@@ -10,9 +10,22 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import extdeps.posix.termios { termios_onlcr_output_lines }
 import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
-import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject_for, MtCollins1CensusMedium }
+import gunbc.boot_medium { BootMedium }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
+// the medium the claim needs; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// sole_constructor). Absent fails the claim that asked for it.
+fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+    BootSubjectAdmitted { subject: s } => Present { value: s }
+    BootSubjectRefused { host: _, cause: _ } => none
+  }
+}
 
 fn nul(n: Int) -> String {
   repeat_string(s: "\x00", n: n)
@@ -72,21 +85,27 @@ test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
   }
 }
 
-// THE VERDICT: nproc's reading refuses beside workload's, and edac-after -- never run, because the
-// workload filled /dev/shm and SOL closed -- is named as unobserved rather than dropped. At main the
-// verdict is the one cause "workload write rc=1": nproc and boot-media pend behind the NULs and the
-// open fold discards every pending qualification once any other refuses.
-test fn sol_nul_capture_refuses_on_nproc_and_names_the_unobserved() -> Bool {
-  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
-  match mtcollins1_boot_terminal_verdict(capture: sol_nul_capture(), subject: subject, medium: medium) {
+// THE VERDICT: workload's write is the one refusing cause, and every qualification still pending is
+// named. nproc's NUL-prefixed "80" reads exactly and HOLDS against the one-socket milestone
+// (gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, under the declared
+// drop gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent), so it is absent from the list -- and that
+// absence is the discriminator: with the fill left in, nproc and boot-media pend and are named as
+// unterminated here. numa (dropped from the trimmed capture) and edac-after (never run: the workload
+// filled /dev/shm and SOL closed) are named as unobserved rather than dropped.
+test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bool {
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
+  match mtcollins1_boot_terminal_verdict(capture: sol_nul_capture(), subject: subject) {
     TerminalRefused { causes: cs } =>
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
-        "nproc observed 80, qualification expects 160",
         "workload write rc=1",
+        "numa not yet observed when the open envelope refused; unqualified",
         "edac-after not yet observed when the open envelope refused; unqualified",
       ]
     _ => false
+  }
+  }
   }
 }
 
@@ -95,35 +114,43 @@ test fn sol_nul_capture_refuses_on_nproc_and_names_the_unobserved() -> Bool {
 // regression (or any future corruption) cannot make a qualification vanish from the verdict -- and
 // named as OBSERVED BUT UNTERMINATED (its ARGV and 80 are there), never as unobserved.
 test fn open_refusal_names_a_pending_nproc() -> Bool {
-  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
   let capture = join(filter(sol_nul_capture_lines(), l => l != concat(nul(n: 16), "----EXIT nproc: 0\r\n")), "")
-  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject, medium: medium) {
+  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject) {
     TerminalRefused { causes: cs } =>
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
         "workload write rc=1",
         "nproc section opened but had not printed its EXIT line when the open envelope refused; unqualified",
+        "numa not yet observed when the open envelope refused; unqualified",
         "edac-after not yet observed when the open envelope refused; unqualified",
       ]
     _ => false
+  }
+  }
   }
 }
 
 // ABSENT, NOT UNTERMINATED: with nproc's whole section removed, the same refusal names it as never
 // observed -- the two standings stay distinct at terminalization.
 test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
-  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
   let nproc_lines = ["----SECTION nproc----\r\n", "----ARGV nproc: nproc\r\n", concat(nul(n: 224), "80\r\n"), concat(nul(n: 16), "----EXIT nproc: 0\r\n")]
   let capture = join(filter(sol_nul_capture_lines(), l => !any(nproc_lines, n => n == l)), "")
-  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject, medium: medium) {
+  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject) {
     TerminalRefused { causes: cs } =>
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
         "workload write rc=1",
         "nproc not yet observed when the open envelope refused; unqualified",
+        "numa not yet observed when the open envelope refused; unqualified",
         "edac-after not yet observed when the open envelope refused; unqualified",
       ]
     _ => false
+  }
+  }
   }
 }
 

@@ -58,7 +58,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -85,12 +84,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -361,6 +360,22 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
+    // demander, and that index is the first demander of every pool file's lexing, newline index
+    // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
+    // `pool_source_newline_index` and `pool_heads_parse`). So the index is forced here on
+    // the key the facts read it under and timed net of the acquisitions it forces, and the facts
+    // row is what remains: the walk, the read and the import-line scan.
+    let acquired_before = super::pool_acquire::attributed();
+    let index_started = std::time::Instant::now();
+    with_module_path_index(&pool_roots_abs(&roots), |_| ());
+    super::pre_entry_phase::record(
+        "module_path_index_build",
+        super::pre_entry_phase::PhaseScale::Tree,
+        index_started
+            .elapsed()
+            .saturating_sub(super::pool_acquire::attributed() - acquired_before),
+    );
     let observation = super::pre_entry_phase::timed(
         "graph_facts_import_edges",
         super::pre_entry_phase::PhaseScale::Tree,
@@ -949,7 +964,6 @@ pub(crate) fn try_index_for_run_or_owned_pool(
     Ok(Rc::new(new_multi_entry_index_shell(
         try_build_module_index(&roots)?,
         &roots,
-        None,
     )))
 }
 
@@ -1017,7 +1031,6 @@ pub fn try_process_shared_index_for_pool(
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    let build_started = std::time::Instant::now();
     let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
@@ -1029,11 +1042,7 @@ pub fn try_process_shared_index_for_pool(
         super::pre_entry_phase::PhaseScale::Tree,
         walk_started.elapsed(),
     );
-    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
-    discovery_phase_totals::add(
-        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
-        build_started.elapsed(),
-    );
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots));
     PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });
@@ -1139,7 +1148,6 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
-    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
     record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
     MultiEntryIndex {
@@ -1154,7 +1162,6 @@ pub(crate) fn new_multi_entry_index_shell(
         typed_module_cache_cap: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
-        cross_worker_store,
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(std::collections::HashMap::new()),
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
@@ -1394,24 +1401,7 @@ pub fn resolve_entry_with_index(
     ),
     String,
 > {
-    resolve_entry_with_parse_cache(index, entry_file, ResolveTypecheckGate::Strict)
-}
-
-pub fn resolve_entry_with_index_for_discovery_corpus(
-    index: &MultiEntryIndex,
-    entry_file: &str,
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    resolve_entry_with_parse_cache(
-        index,
-        entry_file,
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-    )
+    resolve_entry_with_parse_cache(index, entry_file)
 }
 
 /// Cumulative per-worker stage attribution across every entry resolve this thread
@@ -1519,7 +1509,6 @@ pub(crate) fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u12
 pub(crate) fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1529,7 +1518,7 @@ pub(crate) fn resolve_entry_with_parse_cache(
 > {
     let depth = resolve_span_enter();
     let span_started = std::time::Instant::now();
-    let out = resolve_entry_with_parse_cache_inner(index, entry_file, typecheck_gate);
+    let out = resolve_entry_with_parse_cache_inner(index, entry_file);
     resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
     out
 }
@@ -1537,7 +1526,6 @@ pub(crate) fn resolve_entry_with_parse_cache(
 pub(crate) fn resolve_entry_with_parse_cache_inner(
     index: &MultiEntryIndex,
     entry_file: &str,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1554,7 +1542,6 @@ pub(crate) fn resolve_entry_with_parse_cache_inner(
     resolved_graph_from_sources_with_index(
         index,
         sources,
-        typecheck_gate,
         entry_file,
         ResolvedGraphMemoShare::Memoize,
     )
@@ -1671,15 +1658,14 @@ pub(crate) fn via_index_parse_one_source(
 /// diagnostics before refusing (parse errors across every file, resolve/normalize/
 /// typecheck/ownership across every module), so a multi-error tree reports its full
 /// failing-stage set in one run, never one error per run. Hardness predicates:
-/// typecheck refusals use `is_resolve_typecheck_blocking(typecheck_gate)` and the
-/// other stages use `is_error_diagnostic` — for the gate's `Strict` mode both reduce
+/// typecheck refusals use `is_interpreter_blocking_diagnostic` and the
+/// other stages use `is_error_diagnostic` — both reduce
 /// to the `00_core.dag` interpreter-blocking authority on every class those stages
 /// can produce (`ComplexityUnknown`, the sole class where the predicates differ, is
 /// only produced by complexity analysis, which does not run on this path).
 pub(crate) fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    typecheck_gate: ResolveTypecheckGate,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
 ) -> Result<
@@ -1700,9 +1686,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // this process, so a hit is an in-run judgment.
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
-        if typecheck_gate == ResolveTypecheckGate::Strict {
-            record_required_lane_judged_sources(&sources);
-        }
+        record_required_lane_judged_sources(&sources);
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
 
@@ -1816,13 +1800,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
             .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
-    if typecheck_gate == ResolveTypecheckGate::Strict {
-        // `typed` carries the completed per-module typecheck and its diagnostics. Record the
-        // verdict before testing whether it is positive: a blocking diagnostic is stronger
-        // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
-        // produced no typed result never reach this boundary and are not credited.
-        record_required_lane_judged_sources(&sources);
-    }
+    // `typed` carries the completed per-module typecheck and its diagnostics. Record the
+    // verdict before testing whether it is positive: a blocking diagnostic is stronger
+    // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
+    // produced no typed result never reach this boundary and are not credited.
+    record_required_lane_judged_sources(&sources);
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -1852,12 +1834,12 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let has_type_errors = typed
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_type_errors {
         let msgs: Vec<String> = typed
             .diagnostics
             .iter()
-            .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
         return Err(join_via_index_stage_refusal(
@@ -1989,7 +1971,6 @@ pub(crate) fn parse_module_node_from_index_source(
 
 pub(crate) fn resolved_graph_from_sources(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1997,30 +1978,19 @@ pub(crate) fn resolved_graph_from_sources(
     ),
     String,
 > {
-    let strict_sources = (typecheck_gate == ResolveTypecheckGate::Strict).then(|| sources.clone());
-    let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => {
-            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
-        }
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
-                sources.into(),
-            ))
-        }
-    };
+    let judged_sources = sources.clone();
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
-    if typecheck_gate == ResolveTypecheckGate::Strict && result.graph.is_some() {
+    if result.graph.is_some() {
         // A produced graph is the compile-to-resolved path's completed strict judgment receipt,
         // whether its diagnostics are positive or negative.
-        if let Some(strict_sources) = strict_sources.as_ref() {
-            record_required_lane_judged_sources(strict_sources);
-        }
+        record_required_lane_judged_sources(&judged_sources);
     }
 
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2034,7 +2004,7 @@ pub(crate) fn resolved_graph_from_sources(
         // the owning module beside its location, so a line is attributable without mapping a path.
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
-            if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
+            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -2052,13 +2022,11 @@ pub(crate) fn resolved_graph_from_sources(
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
-        if typecheck_gate == ResolveTypecheckGate::Strict {
-            // The refused graph is discarded here either way; attributing it takes the only
-            // owner, so an `Rc` another holder keeps reports itself as unattributable.
-            if let Ok(owned) = Rc::try_unwrap(result) {
-                if let Some(graph) = owned.graph {
-                    typed_graph_byte_attribution("strict-refused", graph);
-                }
+        // The refused graph is discarded here either way; attributing it takes the only
+        // owner, so an `Rc` another holder keeps reports itself as unattributable.
+        if let Ok(owned) = Rc::try_unwrap(result) {
+            if let Some(graph) = owned.graph {
+                typed_graph_byte_attribution("strict-refused", graph);
             }
         }
         return Err(format!(
@@ -2137,8 +2105,7 @@ pub fn whole_tree_resolved_ctx(
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
     let modules_resolved = picked.modules_resolved;
     let modules_excluded = picked.modules_excluded;
-    let (graph, source_indices) =
-        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) = resolved_graph_from_sources(picked.sources)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -3413,6 +3380,10 @@ mod live_pool_thread_tests {
     /// builds a new index with a new generation.
     #[test]
     fn two_claims_on_the_live_pool_thread_share_one_index() {
+        // Start from no live pool: an earlier test may have left the live-pool thread holding
+        // ITS fixture pool, and a second pool on that thread is refused at the build site
+        // (SharedIndexSecondResidentPool, #12831).
+        yield_live_pool_before_building_another();
         let (root, roots) = one_module_pool("route");
         let first = {
             let roots = roots.clone();
@@ -3435,6 +3406,10 @@ mod live_pool_thread_tests {
     /// this discriminates is a thread that holds its pool under every later test's own pool.
     #[test]
     fn another_threads_pool_build_releases_the_live_pool() {
+        // Start from no live pool: an earlier test may have left the live-pool thread holding
+        // ITS fixture pool, and a second pool on that thread is refused at the build site
+        // (SharedIndexSecondResidentPool, #12831).
+        yield_live_pool_before_building_another();
         let (root, roots) = one_module_pool("release");
         let (other_root, other_roots) = one_module_pool("release-other");
         let generation = |roots: Vec<String>| {
@@ -3470,208 +3445,6 @@ mod live_pool_thread_tests {
             Some("planted live-pool failure")
         );
         assert_eq!(on_live_pool_thread(|| 7), 7);
-    }
-}
-
-/// THE INSTRUMENT for a cold entry resolve's per-term cost on the live `[dag, src/v2]` pool: one
-/// fresh process acquires the pool's tokens, builds the module path index (the heads reading
-/// `parse_module_binding` takes), builds the shared index, and resolves two small workflow
-/// entries, printing `PROBE` rows and every `pre_entry_phase` term. The first two terms are split
-/// out so the per-file token acquisition, which later readings reuse through `pool_acquire`, is
-/// not charged to whichever walk happens to run first. It reports; it asserts only that the
-/// entries resolve. Run it with
-/// `cargo test --release -p v1-compiler --lib live_pool_entry_resolve_attribution -- --ignored --nocapture`.
-#[cfg(test)]
-mod live_pool_entry_resolve_attribution {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn live_pool_entry_resolve_attribution() {
-        let t0 = std::time::Instant::now();
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let t = std::time::Instant::now();
-        let mut files = 0usize;
-        for r in &roots {
-            let mut dag_files = Vec::new();
-            collect_dag_files_tolerant(Path::new(r), &mut dag_files);
-            for f in dag_files {
-                let content = std::fs::read_to_string(&f).expect("read pool file");
-                // The spelling `parse_module_binding` acquires under (`source_key`).
-                let key = f
-                    .strip_prefix(&root)
-                    .unwrap_or(&f)
-                    .to_string_lossy()
-                    .into_owned();
-                let _ = super::pool_acquire::tokens_for(&key, &content);
-                files += 1;
-            }
-        }
-        eprintln!(
-            "PROBE pool token acquisition {:?} files={files}",
-            t.elapsed()
-        );
-        let t = std::time::Instant::now();
-        let n = build_module_path_index(&pool_roots_for_module_graph_closure(&roots)).len();
-        eprintln!(
-            "PROBE module_path_index (heads parse) {:?} modules={n}",
-            t.elapsed()
-        );
-        let t = std::time::Instant::now();
-        let index = process_shared_index(&roots);
-        eprintln!("PROBE shared_index {:?}", t.elapsed());
-        for e in [
-            "src/v2/workflow/regen_convergence_transaction.dag",
-            "src/v2/workflow/required_regen.dag",
-        ] {
-            let entry = root.join(e);
-            let t = std::time::Instant::now();
-            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
-            assert!(r.is_ok(), "{e} resolves");
-            eprintln!("PROBE resolve {e} {:?}", t.elapsed());
-            eprintln!("PROBE   stages {:?}", resolve_stage_totals());
-            for line in super::pre_entry_phase::take_lines() {
-                eprintln!("PROBE   phase {line}");
-            }
-        }
-        eprintln!("PROBE total {:?}", t0.elapsed());
-    }
-}
-
-/// THE IDENTITY DIFFERENTIAL for the closure front end reading its lexical artifact from
-/// `pool_acquire` instead of re-lexing: the only input that change alters is the artifact the
-/// closure parser receives, so it is compared at that grain over every file of the live
-/// `[dag, src/v2]` pool, under the spelling the shared index gives it -- tokens AND the annotation
-/// channel, against a fresh `tokenize_artifact` of the same bytes. A divergence names the file.
-#[cfg(test)]
-mod closure_parse_acquisition_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn pooled_closure_artifacts_equal_fresh_lexing_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let mut compared = 0usize;
-        let mut divergent: Vec<String> = Vec::new();
-        for source in index.source_files.values() {
-            let pooled = super::pool_acquire::artifact_for(&source.path, &source.content);
-            let fresh = v1_compiler_tokenize::tokenize_artifact(
-                source.content.clone(),
-                source.path.clone(),
-                crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-            );
-            if *pooled != *fresh {
-                divergent.push(source.path.clone());
-            }
-            let pooled_nl = super::pool_acquire::newline_index_for(&source.path, &source.content);
-            if *pooled_nl != *build_newline_index(source.path.clone(), source.content.clone()) {
-                divergent.push(format!("{} (newline index)", source.path));
-            }
-            compared += 1;
-        }
-        eprintln!("DIFF compared={compared} divergent={}", divergent.len());
-        assert!(compared > 1000, "the live pool was read ({compared} files)");
-        assert!(
-            divergent.is_empty(),
-            "pooled artifacts diverge: {divergent:?}"
-        );
-    }
-}
-
-/// THE LIVE IDENTITY DIFFERENTIAL for the census projecting rather than re-parsing: every file
-/// of the `[dag, src/v2]` shared index, in `pool_parse`'s order, through both readings, compared
-/// by `heads_projection_divergences`.
-#[cfg(test)]
-mod heads_projection_live_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn projected_heads_equal_the_threaded_parse_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let mut keys: Vec<String> = index.source_files.keys().cloned().collect();
-        keys.sort();
-        let files: Vec<(String, String)> = keys
-            .iter()
-            .map(|k| {
-                let sf = &index.source_files[k];
-                (sf.path.clone(), sf.content.clone())
-            })
-            .collect();
-        let (n, divergent) = super::super::census_heads::heads_projection_divergences(&files);
-        eprintln!("DIFF compared={n} divergent={}", divergent.len());
-        assert!(n > 1000, "the live pool was read ({n} files)");
-        assert!(
-            divergent.is_empty(),
-            "divergent: {:?}",
-            &divergent[..divergent.len().min(20)]
-        );
-    }
-}
-
-/// THE IDENTITY DIFFERENTIAL for the tree census upgrading the memoized raw census instead of
-/// rebuilding it: for every source root of the live `[dag, src/v2]` index, the census
-/// `tree_bare_census_for_root` now serves agrees with the direct
-/// `build_symbol_index_census_nodes(tree_census_nodes(root))` on every field its one production
-/// reader, `symbol_index_with_bare_fill`, consumes (bare lookup states and candidates, services,
-/// alias reps, exposures), its `entries` are the raw census, and the composed underlay the
-/// reconcile builds from it is equal whichever census it is composed from.
-#[cfg(test)]
-mod tree_census_from_raw_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn tree_census_from_memoized_raw_equals_the_direct_build_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let pool = super::super::pool_parse(&index).expect("pool parse");
-        let mut compared = 0usize;
-        for r in index.source_roots.iter() {
-            let served = super::super::tree_bare_census_for_root(&index, r).expect("served");
-            let nodes = super::super::tree_census_nodes(&index, r).expect("tree nodes");
-            let direct =
-                v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
-            // Every field the bare fill reads must equal the direct build; `entries` is the raw
-            // census, which no production reader of this census consumes.
-            let raw = super::super::closure_name_census(&index, Some(r)).expect("raw census");
-            let fill_equal = served.global_bare == direct.global_bare
-                && served.services == direct.services
-                && served.transparent_alias_rep == direct.transparent_alias_rep
-                && served.type_head_exposures == direct.type_head_exposures;
-            let entries_raw = served.entries == raw.entries;
-            let composed_equal =
-                *v1_compiler_infer::symbol_index_with_bare_fill(raw.clone(), served.clone())
-                    == *v1_compiler_infer::symbol_index_with_bare_fill(raw.clone(), direct.clone());
-            eprintln!(
-                "DIFF root={r} entries={} bare={} fill_equal={fill_equal} entries_raw={entries_raw} \
-                 composed_equal={composed_equal}",
-                direct.entries.len(),
-                direct.global_bare.len(),
-            );
-            assert!(fill_equal, "tree census bare fill for {r} diverges");
-            assert!(
-                entries_raw,
-                "tree census entries for {r} are not the raw census"
-            );
-            assert!(composed_equal, "bare-fill composition for {r} diverges");
-            compared += 1;
-        }
-        assert!(compared >= 2, "both live roots compared ({compared})");
     }
 }
 
@@ -3863,102 +3636,6 @@ pub(crate) fn typed_graph_byte_attribution(
     }
 }
 
-/// ONE HEADS PARSE PER (SPELLING, BYTES), asserted: over the live `[dag, src/v2]` pool, building
-/// the module path index (`parse_module_binding`) and the pool census (`pool_parse`) -- the two
-/// consumers of `pool_acquire::heads_reading_for` -- parses each acquisition key's heads exactly
-/// once, and every pool file was read.
-#[cfg(test)]
-mod heads_parse_count {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn each_pool_file_is_heads_parsed_once_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let _ = build_module_path_index(&pool_roots_for_module_graph_closure(&roots));
-        let index = process_shared_index(&roots);
-        let _ = super::super::pool_parse(&index).expect("pool parse");
-        let (keys, max, over): (usize, usize, Vec<String>) = super::pool_acquire::HEADS_PARSES
-            .with(|p| {
-                let p = p.borrow();
-                (
-                    p.len(),
-                    p.values().copied().max().unwrap_or(0),
-                    p.iter()
-                        .filter(|(_, n)| **n > 1)
-                        .map(|((f, _, _), n)| format!("{f} x{n}"))
-                        .take(20)
-                        .collect(),
-                )
-            });
-        eprintln!("HEADS keys={keys} max_parses_per_key={max}");
-        assert!(keys > 5000, "the live pool was read ({keys} keys)");
-        assert!(over.is_empty(), "heads parsed more than once: {over:?}");
-    }
-}
-
-/// THE CROSS-TREE CENSUS, over the whole live `[dag, src/v2]` pool: every import-less file's bare
-/// references resolved against its own tree census, with no whole-pool census. A name the tree
-/// does not provide but another tree does refuses (`CrossTreeBareReference`) exactly where the
-/// deleted fallback silently pulled a provider; this lists every such refusal, so the pool's
-/// dependence on the deleted fallback is counted, by identity, rather than argued. Before the
-/// change the fallback census found 13 pool-provided rows in 5 files: 12 the import migration in
-/// this change qualifies, and the builtin `get` the builtin arm now keeps from being pulled.
-#[cfg(test)]
-mod cross_tree_bare_census {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn no_import_less_file_reaches_across_trees_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let mut sources: Vec<_> = index.source_files.values().cloned().collect();
-        sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let mut scanned = 0usize;
-        let mut refusals: Vec<String> = Vec::new();
-        for sf in &sources {
-            if super::super::source_declares_import_lines(&sf.content) {
-                continue;
-            }
-            scanned += 1;
-            let r = super::super::visit_bare_reference_providers(
-                sf,
-                &index,
-                |root| super::super::closure_name_census(&index, root),
-                |_, _, _| Ok(()),
-            );
-            if let Err(e) = r {
-                refusals.push(e);
-            }
-        }
-        let pool_census_built = index.closure_name_censuses.borrow().contains_key(&None);
-        eprintln!(
-            "CROSSTREE scanned={scanned} refusals={} pool_census_built={pool_census_built}",
-            refusals.len()
-        );
-        for r in &refusals {
-            eprintln!("CROSSTREE refusal {r}");
-        }
-        assert!(scanned > 100, "the live pool was read ({scanned} files)");
-        assert!(
-            !pool_census_built,
-            "a bare resolution still built the whole-pool census"
-        );
-        assert!(
-            refusals.is_empty(),
-            "{} files reach across trees",
-            refusals.len()
-        );
-    }
-}
-
 #[cfg(test)]
 mod cross_tree_bare_reference_tests {
     use super::*;
@@ -4065,91 +3742,6 @@ mod cross_tree_bare_reference_tests {
     }
 }
 
-/// The five files the cross-tree census enumerated resolve as entries over the live pool after
-/// the migration: the four that now reference across trees qualified, and the builtin `get` claim that no
-/// longer pulls another tree's `fn get`.
-#[cfg(test)]
-mod cross_tree_migrated_entries_resolve {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn migrated_entries_resolve_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        for e in [
-            "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag",
-            "src/v2/test/claim/bootstrap_test.dag",
-            "src/v2/test/claim/infer_semantics_witness_test.dag",
-            "src/v2/test/claim/manual/path_y_fidelity_successor_test.dag",
-            "dag/test/claim/builtin_get_resolver_test.dag",
-        ] {
-            let entry = root.join(e);
-            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
-            eprintln!("MIGRATED {e} ok={}", r.is_ok());
-            if let Err(err) = &r {
-                eprintln!("MIGRATED   {}", err.chars().take(600).collect::<String>());
-            }
-            assert!(r.is_ok(), "{e} resolves");
-        }
-    }
-}
-
-/// THE PER-NAME CLAIM, for every name of the live pool: the whole-pool name census's entry for a
-/// name (bare lookup state with candidates, and service entry) equals the entry
-/// `pool_census_for_name` builds over the name's declaring modules alone. This is what licenses
-/// answering the loader's out-of-tree question without building the pool census.
-#[cfg(test)]
-mod pool_census_for_name_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn per_name_census_equals_the_pool_census_for_every_name_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let pool = super::super::closure_name_census(&index, None).expect("pool census");
-        let decl = reference_pool_names_for_index(&index).expect("names");
-        let mut names: BTreeSet<String> = BTreeSet::new();
-        names.extend(v1_rt::sorted_map_keys(&pool.global_bare));
-        names.extend(v1_rt::sorted_map_keys(&pool.services));
-        names.extend(decl.decl_index.keys().cloned());
-        let mut divergent: Vec<String> = Vec::new();
-        {
-            for name in &names {
-                let local =
-                    super::super::pool_census_for_name(&index, name).expect("per-name census");
-                if v1_rt::map_get(&pool.global_bare, name.clone())
-                    != v1_rt::map_get(&local.global_bare, name.clone())
-                {
-                    divergent.push(format!("{name} (bare)"));
-                }
-                if v1_rt::map_get(&pool.services, name.clone())
-                    != v1_rt::map_get(&local.services, name.clone())
-                {
-                    divergent.push(format!("{name} (service)"));
-                }
-            }
-        }
-        eprintln!(
-            "PERNAME names={} divergent={}",
-            names.len(),
-            divergent.len()
-        );
-        for d in divergent.iter().take(30) {
-            eprintln!("PERNAME divergent {d}");
-        }
-        assert!(names.len() > 1000, "the live pool was read");
-        assert!(divergent.is_empty(), "{} names diverge", divergent.len());
-    }
-}
-
 /// THE SPECIMEN of `gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick`,
 /// a v1 semantic defect owned by the resolver lane (routed by neat-boar-16), not by this change.
 /// One source tree declares `bar` in `ta.dep` and `ta.other`. With no imports a bare `bar()`
@@ -4208,47 +3800,6 @@ mod import_transitive_bare_pick_specimen {
         assert!(err.contains("ambiguous reference 'bar'"), "{err}");
         // THE DEFECT, pinned as observed: flip to expect_err when it is fixed.
         imported.expect("observed: one unrelated import makes the same bare name resolve");
-    }
-}
-
-/// THE INSTRUMENT for the floor's whole-pool bare admission (`admit_pool_bare_references`) on the
-/// live `[dag, src/v2]` pool, with what both routes share -- the pool heads parse, both tree name
-/// censuses and the heads name index -- warmed first, so the timed term is the admission alone.
-/// It prints the admission time, the per-name census calls and time (`ResolveStageNanos`) and the
-/// distinct names asked; calls against distinct names is the repetition a shared answer would
-/// remove. It reports; it asserts only that the admission completes.
-#[cfg(test)]
-mod live_pool_bare_admission_attribution {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn live_pool_bare_admission_attribution() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let _ = super::super::pool_parse(&index).expect("pool parse");
-        for r in index.source_roots.iter() {
-            let _ = super::super::closure_name_census(&index, Some(r)).expect("tree census");
-        }
-        let _ = reference_pool_names_for_index(&index).expect("names");
-        let before = resolve_stage_totals();
-        let t = std::time::Instant::now();
-        let verdict = super::super::admit_pool_bare_references(&index);
-        let elapsed = t.elapsed();
-        let after = resolve_stage_totals();
-        let distinct = super::super::PER_NAME_CENSUS_DISTINCT.with(|d| d.borrow().len());
-        eprintln!(
-            "ADMIT whole_pool_admission={elapsed:?} ok={} per_name_calls={} per_name_ms={} \
-             per_name_distinct={distinct} pool_census_built={}",
-            verdict.is_ok(),
-            after.bare_per_name_census_calls - before.bare_per_name_census_calls,
-            (after.bare_per_name_census - before.bare_per_name_census) / 1_000_000,
-            index.closure_name_censuses.borrow().contains_key(&None),
-        );
-        verdict.expect("the live pool admits");
     }
 }
 
@@ -4425,10 +3976,7 @@ mod strict_refusal_counts_blocking_diagnostics {
                     .diagnostics
                     .iter()
                     .filter(|d| {
-                        !is_resolve_typecheck_blocking(
-                            d.diagnostic.clone(),
-                            ResolveTypecheckGate::Strict,
-                        )
+                        !is_interpreter_blocking_diagnostic(d.diagnostic.clone())
                     })
                     .count();
                 assert!(
@@ -4437,7 +3985,7 @@ mod strict_refusal_counts_blocking_diagnostics {
                     raw.diagnostics
                 );
                 let refusal =
-                    match resolved_graph_from_sources(fixture_sources(), ResolveTypecheckGate::Strict) {
+                    match resolved_graph_from_sources(fixture_sources()) {
                         Err(text) => text,
                         Ok(_) => panic!("a fixture with a blocking diagnostic must refuse"),
                     };

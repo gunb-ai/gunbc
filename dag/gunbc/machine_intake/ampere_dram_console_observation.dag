@@ -2,7 +2,7 @@ module gunbc.machine_intake_ampere_dram_console_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 
 // WHAT THE AMPERE DRAM FIRMWARE PRINTED ON THE SERIAL CONSOLE DURING ONE BOOT, as an observation
 // receipt of this repository. It is not an upstream fact: Ampere publishes no specification of these
@@ -273,21 +273,20 @@ fn ampere_dram_socket_untrained(block: AmpereDramBlock, socket: Int) -> Bool {
   ampere_dram_dimms_on_socket(block: block, socket: socket) == 0
 }
 
-// THE DECISIVE FINDINGS THIS RECEIPT ESTABLISHES, given the sockets the caller expects: an expected
-// socket with no trained DIMM row in a CLOSED roster, and a row inside a recognised subsection
-// that does not parse. Params are never findings (see the note at the top).
-fn ampere_dram_findings(observation: AmpereDramConsoleObservation, expected_sockets: List<Int>) -> List<String> {
+// THE EXPECTED SOCKETS THIS RECEIPT ESTABLISHES AS UNTRAINED: no trained DIMM row in a CLOSED
+// roster. An open roster (the capture ended mid-roster) and an absent one establish nothing, so they
+// name no socket (see AmpereDramRosterStanding).
+fn ampere_dram_untrained_sockets(observation: AmpereDramConsoleObservation, expected_sockets: List<Int>) -> List<Int> {
   match observation {
     AmpereDramBlockNotPrinted => []
-    AmpereDramBlockObserved { block: b, blocks_printed: _ } => {
-      let closed = match b.roster { RosterClosed => true RosterNotObserved => false RosterOpen => false }
-      let empty_sockets = map(filter(expected_sockets, k => closed && ampere_dram_socket_untrained(block: b, socket: k)),
-        k => concat("DRAM firmware ", b.firmware_version as String, " printed no trained DIMM for socket ", to_string(k), " (no SK", to_string(k), " row under 'DRAM populated DIMMs:')"))
-      let bad = map(b.malformed, m => concat("DRAM firmware row under '", m.subsection as String, "' not in the transcribed grammar: ", m.line))
-      concat(empty_sockets, bad)
+    AmpereDramBlockObserved { block: b, blocks_printed: _ } => match b.roster {
+      RosterClosed => filter(expected_sockets, k => ampere_dram_socket_untrained(block: b, socket: k))
+      RosterOpen => []
+      RosterNotObserved => []
     }
   }
 }
+
 
 fn ampere_dram_console_text(observation: AmpereDramConsoleObservation, expected_sockets: List<Int>) -> String {
   match observation {

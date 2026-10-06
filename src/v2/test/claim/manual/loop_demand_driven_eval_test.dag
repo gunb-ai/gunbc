@@ -1,4 +1,5 @@
 module v2.test.manual.loop_demand_driven_eval
+import std.types { List }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -23,10 +24,9 @@ import v2.std.cardinality {
   structural_node_size_termination_proof
 }
 import v2.std.collection {
-  List,
   Map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -46,7 +46,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,

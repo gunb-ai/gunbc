@@ -1,8 +1,8 @@
 module v2.test.claim.collection.list_at_equivalence
 
-import v2.std.collection { List, list_at_optional, list_at_reference }
-import v2.std.optional { Absent, Optional, Present }
-import v2.std.logic { Bool }
+import std.types { List }
+import v2.std.collection { list_at_optional, list_at_reference }
+import std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

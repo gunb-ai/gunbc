@@ -20,7 +20,7 @@ import extdeps.apple.app_attest {
   AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionRefusal,
 }
 import extdeps.apple.secure_enclave { EnclaveKeyAccessPolicy, BiometryCurrentSet }
-import extdeps.crypto.mac { MacKey, MacVerified, mac_verify }
+import extdeps.crypto.mac { MacKey, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed, mac_verify }
 import gunbc.auth.approval_capability {
   ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name,
   ApprovalCapability, ApprovalCapabilityClaims, CapabilityRefusal, CapabilityAuthentic, CapabilityRefused,
@@ -38,7 +38,7 @@ import gunbc.auth.approval_device_wire {
   MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, RedemptionResponse, EnrolmentReadback, EnrolmentStandingActive, EnrolmentStandingRevoked, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   file_compare_and_set, observe_cas_slot_state,
 }
@@ -220,7 +220,15 @@ fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
     ApnsRefused { status, class, reason } =>
       match class {
         ApnsTokenUnregistered => PushRegistrationInvalid { provider: ProviderApns, detail: reason }
-        _ => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsBadRequest => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsAuthenticationRefused => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsBadPath => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsBadMethod => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsPayloadTooLarge => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsTooManyRequests => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsServerError => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsServiceUnavailable => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+        ApnsStatusUnlisted { status: _ } => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
       }
     ApnsUnreached { cause } => PushProviderUnreached { provider: ProviderApns, cause: cause }
     ApnsUndecodable { status, cause } => PushProviderUndecodable { provider: ProviderApns, status: status, cause: cause }
@@ -437,7 +445,11 @@ fn device_redemption_admission(
             }
         }
         }
-      _ => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+      MacTagMismatch { key_id: _ } => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+      MacKeyUnknown { key_id: _ } => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+      MacKeyRetired { key_id: _, retired_at: _ } => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+      MacSuiteMismatch { expected: _, key_suite: _ } => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+      MacTagMalformed { octets_declared: _, octets_expected: _ } => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
     }
   }
     }
@@ -538,7 +550,7 @@ fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectat
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "enrolment code is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => DeviceStoreWritten
         CasPreconditionFailed { expected: _, observed: _ } => DeviceStoreSlotOccupied
         CasStoreRefused { cause: _ } => DeviceStoreRefused { detail: "device store refused the publication" }
@@ -722,7 +734,7 @@ fn enrolment_readback_of(standing: EnrolmentSlotStanding) -> EnrolmentReadback? 
 }
 
 fn observe_enrolment_slot(root: NonEmptyStr, code: NonEmptyStr) -> EnrolmentSlotStanding {
-  match observe_cas_slot_state(root: root, key: code, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: code) {
     CasObservedUnreadable { cause: c } => EnrolmentSlotUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => EnrolmentCodeUnknown
@@ -747,7 +759,7 @@ fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Enrolmen
 // THE ISSUER TAKES NO LOGIN: the code is issued to approval_operator_login and to nobody a caller
 // could name, so the verb that runs this cannot enrol a device for anyone else.
 fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite admit_callers: [
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_and_deliver_enrolment_code_until"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_and_deliver_enrolment_code_until"),
 ] {
   let challenge = EnrolmentChallenge { code: code, issued_to_login: approval_operator_login, issued_at: issued_at, expires_at: expires_at }
   device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: IssuedCodeRecord), payload: enrolment_code_json(c: challenge) as NonEmptyStr)

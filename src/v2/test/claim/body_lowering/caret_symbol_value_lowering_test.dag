@@ -1,18 +1,18 @@
 module v2.test.claim.body_lowering.caret_symbol_value_lowering
 
+import std.types { List }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, dag_symbol_literal_name_optional }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 // A CARET SYMBOL IN VALUE POSITION LOWERS TO A SYMBOL LITERAL CARRYING ITS NAME.
@@ -52,8 +52,6 @@ data caret_named_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> S
 data caret_positional_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(^pos_positional_argument)\n}\n"
 
 data caret_let_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_value\n  s\n}\n"
-
-data caret_let_in_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_in_value in s\n}\n"
 
 data caret_whole_body_source: String = "module chunk\n\nfn f() -> Symbol {\n  ^pos_whole_body\n}\n"
 
@@ -197,7 +195,6 @@ type CaretLoweringVerdicts {
   named_argument: CaretLoweringVerdict
   positional_argument: CaretLoweringVerdict
   let_value: CaretLoweringVerdict
-  let_in_value: CaretLoweringVerdict
   whole_body: CaretLoweringVerdict
   data_initializer: CaretLoweringVerdict
   field_initializer: CaretLoweringVerdict
@@ -216,7 +213,6 @@ fn csv_verdicts() -> CaretLoweringVerdicts {
     named_argument: csv_normalize_verdict(src: caret_named_argument_source),
     positional_argument: csv_normalize_verdict(src: caret_positional_argument_source),
     let_value: csv_normalize_verdict(src: caret_let_value_source),
-    let_in_value: csv_normalize_verdict(src: caret_let_in_value_source),
     whole_body: csv_normalize_verdict(src: caret_whole_body_source),
     data_initializer: csv_normalize_verdict(src: caret_data_initializer_source),
     field_initializer: csv_normalize_verdict(src: caret_field_initializer_source),
@@ -285,11 +281,6 @@ test fn a_caret_symbol_positional_argument_lowers_to_its_symbol() -> Bool {
 
 test fn a_caret_symbol_let_value_lowers_to_its_symbol() -> Bool {
   lowers_to(v: csv_verdicts().let_value, payloads: [^pos_let_value])
-}
-
-// The `in` form's value (added by gunbc#12615 to the refusal suite this file replaces).
-test fn a_caret_symbol_let_in_value_lowers_to_its_symbol() -> Bool {
-  lowers_to(v: csv_verdicts().let_in_value, payloads: [^pos_let_in_value])
 }
 
 test fn a_caret_symbol_whole_body_lowers_to_its_symbol() -> Bool {

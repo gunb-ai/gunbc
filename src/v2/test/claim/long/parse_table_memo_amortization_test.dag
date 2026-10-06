@@ -18,7 +18,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   invariant_port_locus
 }
-import v2.std.logic { Bool }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.node { Hash, Node, content_hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

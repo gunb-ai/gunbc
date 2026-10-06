@@ -14,8 +14,9 @@ use crate::std_algebra::AlgebraProfile::{
     OrderedRingProfile, OrderedSemiringProfile, PartialFunctionProfile,
     PointwisePowerCollectionProfile,
 };
+pub use crate::std_optional::Optional;
 pub use crate::std_termination::positive_descent_count;
-use crate::std_termination::DescentEvidence::DescentUnknown;
+use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
@@ -189,10 +190,14 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
 
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
     match (*bound.clone()).clone() {
+        SizeBound::CollectionSize { param: _, .. } => false,
+        SizeBound::ParserStreamSize { witness: _, .. } => false,
+        SizeBound::WorklistDrainSize { element: _, .. } => false,
+        SizeBound::SubtreeSize { param: _, .. } => false,
+        SizeBound::ArithmeticParam { param: _, .. } => false,
         SizeBound::ExplicitCountZero => true,
         SizeBound::ExplicitCountPositive { steps: _, .. } => true,
         SizeBound::Forever => true,
-        _ => false,
     }
 }
 
@@ -202,12 +207,16 @@ pub fn forever_iteration_bound() -> i64 {
 
 pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound.clone()).clone() {
+        SizeBound::CollectionSize { param: _, .. } => std::option::Option::None,
+        SizeBound::ParserStreamSize { witness: _, .. } => std::option::Option::None,
+        SizeBound::WorklistDrainSize { element: _, .. } => std::option::Option::None,
+        SizeBound::SubtreeSize { param: _, .. } => std::option::Option::None,
+        SizeBound::ArithmeticParam { param: _, .. } => std::option::Option::None,
         SizeBound::ExplicitCountZero => Some(0),
         SizeBound::ExplicitCountPositive { steps: s, .. } => {
             Some(crate::std_termination::positive_descent_count(s.clone()))
         }
         SizeBound::Forever => Some(forever_iteration_bound()),
-        _ => std::option::Option::None,
     }
 }
 

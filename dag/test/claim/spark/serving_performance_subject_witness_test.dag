@@ -1,5 +1,10 @@
 module test.claim.spark.serving_performance_subject_witness_test
 
+import extdeps.vllm.engine_args {
+  IndexerKvDtypeOmitted, IndexerKvDtypeExplicit, IndexerKvFp8, VllmSchedulerAdmissionRequest,
+  FullInputAdmissionExplicit, KvWatermarkOmitted, vllm_scheduler_admission_omitted,
+}
+
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count }
@@ -9,12 +14,14 @@ import extdeps.nvidia.nccl {
   nccl_network_name_socket, nccl_network_name_ib, nccl_realized_transport_wire,
 }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, Glm53NativeFp8, DeepseekV4FlashIq3sSplit,
+  ServingCheckpoint, Glm53NativeFp8, DeepseekV4FlashIq3sSplit, DeepseekV41FlashDba1be0a, Glm53RadixArkNvfp4Modelopt,
   ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
   ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
   serving_topology_wire, serving_topology_rank_count, serving_topology_of_rank_count, serving_checkpoint_wire,
 }
 import gunbc.spark.serving_performance_subject {
+  AxisLaunchProfile, AxisDeploymentEnv,
+  AxisIndexerKvDtype, AxisSchedulerAdmission, AxisWeightQuantization,
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, standing_subject,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
   ServingSubjectJoin, SameSubject, DifferentSubject, SubjectIncomparable,
@@ -49,7 +56,7 @@ data fx_ib: NcclRealizedTransport = NcclTransportIbVerbs { read_from: "fixture" 
 
 // THE DEEPSEEK-ERA MEASUREMENT PROFILE, as the two measurement modules describe theirs.
 data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
-  checkpoint: DeepseekV4FlashIq3sSplit,
+  checkpoint: DeepseekV41FlashDba1be0a,
   checkpoint_revision: Present { value: "fixture-revision-aaaa" as NonEmptyStr },
   runtime: GunbcSparkrunVllmDs4Gb10,
   runtime_image_reference: "repo@sha256:aaa" as NonEmptyStr,
@@ -60,8 +67,8 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   max_num_seqs: Present { value: 32 },
   kv_cache_dtype: Present { value: KvFp8 },
   speculative: Present { value: SpeculativeDecodingOff },
-  collective_transport: Present { value: fx_socket }
-    )
+  collective_transport: Present { value: fx_socket },
+  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: Present { value: "fixture-profile-deepseek" }, deployment_env_key: Present { value: "env=none" } )
 
 // THE LIVE QUESTION'S PROFILE: GLM-5.3-Flash, community SM121 runtime, group B, TP=4. Every axis but
 // topology and budget differs from the measurement profile above, which is the whole point.
@@ -77,8 +84,8 @@ data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   max_num_seqs: Present { value: 32 },
   kv_cache_dtype: Present { value: KvFp8 },
   speculative: Present { value: SpeculativeDecodingOff },
-  collective_transport: Present { value: fx_socket }
-    )
+  collective_transport: Present { value: fx_socket },
+  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: Present { value: "fixture-profile-glm" }, deployment_env_key: Present { value: "env=none" } )
 
 fn join_is_different(j: ServingSubjectJoin) -> Bool {
   match j {
@@ -161,8 +168,8 @@ test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool {
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: fx_deepseek_tp4.collective_transport
-    )
+    collective_transport: fx_deepseek_tp4.collective_transport,
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisTopology) && !join_names_axis(j: j, a: AxisCheckpoint)
 }
@@ -180,8 +187,8 @@ test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool {
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: fx_deepseek_tp4.collective_transport
-    )
+    collective_transport: fx_deepseek_tp4.collective_transport,
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisBatchBudget)
 }
@@ -199,8 +206,8 @@ test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool {
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: Present { value: KvBf16 },
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: fx_deepseek_tp4.collective_transport
-    )
+    collective_transport: fx_deepseek_tp4.collective_transport,
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisKvCacheDtype)
 }
@@ -222,8 +229,8 @@ test fn w_socket_and_rdma_are_different_subjects() -> Bool {
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: fx_ib
-    )
+    collective_transport: fx_ib,
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: on_ib)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisCollectiveTransport)
 }
@@ -246,8 +253,8 @@ test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: Absent
-    )
+    collective_transport: Absent,
+    indexer_kv_dtype: fx_deepseek_tp4.indexer_kv_dtype, scheduler_admission: fx_deepseek_tp4.scheduler_admission, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: fx_deepseek_tp4))
     && join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: unread))
     && join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: unread))
@@ -297,8 +304,8 @@ test fn w_a_one_axis_difference_over_fully_read_subjects_names_that_axis() -> Bo
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: fx_ib
-    )
+    collective_transport: fx_ib,
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   is_delta_on(
     c: serving_subject_axis_delta(left: SubjectEstablished { subject: fx_deepseek_tp4 }, right: SubjectEstablished { subject: on_ib }),
     a: AxisCollectiveTransport)
@@ -346,7 +353,7 @@ test fn w_two_identical_subjects_are_a_repeat_and_not_a_cut() -> Bool {
 // than being maintained. Until then the roster is asserted non-degenerate so the fold cannot quietly
 // become an empty list that reads every pair of subjects as the same subject.
 test fn w_the_axis_roster_is_not_degenerate() -> Bool {
-  length(serving_subject_axes) == 12
+  length(serving_subject_axes) == 17
 }
 
 // ── THE TWO BOUND FLEET ROWS RESOLVE AS THEIR MODULES CLAIM ────────────────────────────────────
@@ -522,8 +529,9 @@ fn moved(base: ServingPerformanceSubject, which: ServingSubjectAxis) -> ServingP
     max_num_seqs: if axis_is(a: which, b: AxisMaxNumSeqs) { bumped_seqs(base: base) } else { base.max_num_seqs },
     kv_cache_dtype: base.kv_cache_dtype,
     speculative: if axis_is(a: which, b: AxisSpeculativePolicy) { Present { value: SpeculativeDecodingOn { proposer: "draft" as NonEmptyStr } } } else { base.speculative },
-    collective_transport: base.collective_transport
-  )
+    collective_transport: base.collective_transport,
+    indexer_kv_dtype: if axis_is(a: which, b: AxisIndexerKvDtype) { Present { value: IndexerKvDtypeExplicit { dtype: IndexerKvFp8 } } } else { base.indexer_kv_dtype },
+    scheduler_admission: if axis_is(a: which, b: AxisSchedulerAdmission) { Present { value: VllmSchedulerAdmissionRequest { full_input_admission: FullInputAdmissionExplicit { enabled: true }, kv_watermark: KvWatermarkOmitted } } } else { base.scheduler_admission }, launch_profile_key: if axis_is(a: which, b: AxisLaunchProfile) { Present { value: "moved-profile" } } else { base.launch_profile_key }, deployment_env_key: if axis_is(a: which, b: AxisDeploymentEnv) { Present { value: "env=moved" } } else { base.deployment_env_key } )
 }
 
 // THE BUMP GOES THROUGH THE OPTIONAL rather than substituting a literal, so the moved subject keeps
@@ -571,6 +579,54 @@ test fn w_a_different_rank_population_is_a_different_subject() -> Bool {
   moving_one_axis_prevents_transfer(a: AxisRankPopulation)
 }
 
+// THE AXES THE DEFORKING ADDED: the indexer's K-cache dtype and the scheduler's admission controls
+// each move the subject on their own, and the weight quantization is read off the checkpoint row so a
+// checkpoint change names it beside the checkpoint itself.
+test fn w_a_different_indexer_kv_dtype_is_a_different_subject() -> Bool {
+  moving_one_axis_prevents_transfer(a: AxisIndexerKvDtype)
+}
+
+// THE WHOLE LAUNCH PROFILE IS PART OF THE IDENTITY (review on #12976): two launches differing only in a
+// profile field no named axis carries -- memory fraction, prefix caching, Engram, modality, cold floor --
+// differ on the launch-profile axis.
+test fn w_a_different_launch_profile_is_a_different_subject() -> Bool {
+  moving_one_axis_prevents_transfer(a: AxisLaunchProfile)
+}
+
+// THE DEPLOYMENT ENV IS PART OF THE IDENTITY (side-chat ruling on #13319, finding 3): two launches
+// differing only in an env assignment -- the NVFP4 autotune skip-ops -- differ on this axis.
+test fn w_a_different_deployment_env_is_a_different_subject() -> Bool {
+  moving_one_axis_prevents_transfer(a: AxisDeploymentEnv)
+}
+
+test fn w_a_different_scheduler_admission_is_a_different_subject() -> Bool {
+  moving_one_axis_prevents_transfer(a: AxisSchedulerAdmission)
+}
+
+// THE AXIS READS THE ROW'S quant_method, so the same model on its FP8 and its NVFP4 checkpoint names the
+// move as a quantization change, and a checkpoint with no row reads as unread rather than a default.
+// (It is the method name only: V4.1's fp4 experts under an fp8 quant_method stay on the checkpoint row.)
+test fn w_the_weight_quantization_is_read_off_the_checkpoint_row() -> Bool {
+  let nvfp4 = serving_performance_subject(
+    checkpoint: Glm53RadixArkNvfp4Modelopt,
+    checkpoint_revision: fx_glm_group_b.checkpoint_revision,
+    runtime: fx_glm_group_b.runtime,
+    runtime_image_reference: fx_glm_group_b.runtime_image_reference,
+    topology: fx_glm_group_b.topology,
+    rank_population: fx_glm_group_b.rank_population,
+    context_ceiling: fx_glm_group_b.context_ceiling,
+    max_num_batched_tokens: fx_glm_group_b.max_num_batched_tokens,
+    max_num_seqs: fx_glm_group_b.max_num_seqs,
+    kv_cache_dtype: fx_glm_group_b.kv_cache_dtype,
+    speculative: fx_glm_group_b.speculative,
+    collective_transport: fx_glm_group_b.collective_transport,
+    indexer_kv_dtype: fx_glm_group_b.indexer_kv_dtype,
+    scheduler_admission: fx_glm_group_b.scheduler_admission, launch_profile_key: fx_glm_group_b.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
+  (serving_subject_axis_value(s: fx_glm_group_b, a: AxisWeightQuantization) as String) == "fp8"
+    && (serving_subject_axis_value(s: nvfp4, a: AxisWeightQuantization) as String) == "modelopt"
+    && serving_subject_axis_list_contains(axes: serving_subject_differing_axes(left: fx_glm_group_b, right: nvfp4), a: AxisWeightQuantization)
+}
+
 // ── AN UNKNOWN AXIS MUST NOT ERASE A DIFFERENCE THAT IS ALREADY ESTABLISHED ───────────────────
 //
 // The first round short-circuited to Incomparable the moment either side's transport was unread,
@@ -599,8 +655,8 @@ fn ServingPerformanceSubject_with_unread(base: ServingPerformanceSubject) -> Ser
     max_num_seqs: base.max_num_seqs,
     kv_cache_dtype: base.kv_cache_dtype,
     speculative: base.speculative,
-    collective_transport: Absent
-  )
+    collective_transport: Absent,
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: base.launch_profile_key, deployment_env_key: base.deployment_env_key )
 }
 
 // AND WHEN NOTHING KNOWN DIFFERS, THE UNKNOWN AXIS IS THE ANSWER. This is the other half: the same

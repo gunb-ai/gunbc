@@ -2,8 +2,8 @@ module test.claim.spark.rendezvous_participation_witness
 
 import std.types { String, Bool, NonEmptyStr, Int }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import extdeps.systemd.unit_file {
   SystemdServiceMode, SimpleMode, ExecMode, ForkingMode, OneshotMode, DbusMode, NotifyMode,
   NotifyReloadMode, IdleMode,

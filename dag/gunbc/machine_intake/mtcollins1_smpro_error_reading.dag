@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_smpro_error_reading
 
 import v2.std.algebra { filter }
 import std.types { Int, List, NonEmptyStr, String }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.bmc.ipmi_master_write_read { master_write_read_slave_byte }
 import extdeps.ampere.smpro_register {
@@ -11,7 +11,8 @@ import extdeps.ampere.smpro_register {
   smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
 }
 import extdeps.ampere.smpro_internal_error { SmproInternalRecord, SmproRecordGate, SmproProcessorPmpro, smpro_internal_error_of, smpro_record_gate }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_targets }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_site_targets }
 
 // ONE RAW SMpro ERROR-REGISTER READING FROM mtcollins1, 2026-10-03, AS RECEIVED: the operator's
 // hand-run read-only pass during the boot loop (eager-gull-22 msg_12ab1f39), before the collector in
@@ -114,9 +115,11 @@ fn last_of(rs: List<SmproRawRegisterRead>) -> SmproRawRegisterRead? {
   rs.skip(n: count(rs) - 1).first()
 }
 
-// The socket a slave byte addresses, from the collector's own target table.
+// The socket a slave byte addresses, from the collector's own admitted site; a refused site
+// addresses no socket, so every read in the capture is then unattributed rather than guessed.
 fn socket_of_slave(slave_byte: Int) -> Int? {
-  match filter(mtcollins1_smpro_targets, t => match master_write_read_slave_byte(seven_bit_address: t.seven_bit_address) { Present { value: b } => b == slave_byte Absent => false }).first() {
+  let targets = match mtcollins1_smpro_site() { SmproSiteAdmitted { site: s } => smpro_site_targets(site: s) SmproSiteRefused { cause: _ } => [] }
+  match filter(targets, t => match master_write_read_slave_byte(seven_bit_address: t.seven_bit_address) { Present { value: b } => b == slave_byte Absent => false }).first() {
     Present { value: t } => Present { value: t.socket }
     Absent => none
   }
