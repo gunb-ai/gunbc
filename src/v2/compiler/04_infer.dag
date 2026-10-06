@@ -5828,7 +5828,10 @@ fn infer_variant_arm_construct(
 // same producer the bare door uses), so the variant's declaring path is the reference's own path --
 // no second lookup beside it. Reads go through resolved_declarations: declarations with resolved
 // bodies (gunbc#12629). The global bare index is dead as a mechanism (03_resolve at the global_bare
-// comment) and names no read here.
+// comment) and names no read here. THE DECLARING PATH OF A VARIANT-ARM PAYLOAD PATH: for the
+// variant's own row this is the row itself (no claimants); for its module-level alias the binding
+// filed by symbol_index_fill_containment_node answers the variant's declaring path. One authority,
+// no parallel carrier map.
 fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConstructRead {
   match construct_tag_optional(n: node) {
     Absent => ConstructNotARecord
@@ -5841,10 +5844,6 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
             Present { value: kind } =>
               match kind {
                 VariantArmPayload =>
-                  // THE DECLARING PATH OF A VARIANT-ARM PAYLOAD PATH: for the variant's own row
-                  // this is the row itself (no claimants), for its module-level alias the binding
-                  // filed by symbol_index_fill_containment_node answers the variant's declaring
-                  // path. One authority, no parallel carrier map.
                   infer_variant_arm_construct(
                     reference: reference,
                     resolved: resolved,
