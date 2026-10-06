@@ -3229,8 +3229,7 @@ pub(crate) fn fixture_closure_union_emit_receipt(
 const STDERR_CAPTURE_POLICY_DROP: &str =
     "gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture";
 const STDERR_CAPTURE_POLICY_GAP_MODULE: &str = "extdeps.gunbc";
-const STDERR_CAPTURE_POLICY_GAP_SERVICE: &str = "WitnessBin";
-const STDERR_CAPTURE_POLICY_GAP_OPERATION: &str = "Run";
+const STDERR_CAPTURE_POLICY_GAP_SERVICE: &str = "gunbc.WitnessBin";
 
 /// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
 /// `ShellChannelNotRealizedByTarget` on every `ShellResultChannel` rust does not realize.
@@ -3287,7 +3286,7 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
             && target == "rust"
             && declaring_module == STDERR_CAPTURE_POLICY_GAP_MODULE
             && service == STDERR_CAPTURE_POLICY_GAP_SERVICE
-            && operation == STDERR_CAPTURE_POLICY_GAP_OPERATION
+            && (operation == "Run" || operation == "gunbc.WitnessBin.Run")
             && rust_shell_channel_not_realized_facts().contains(missing_realization_fact) =>
         {
             Some((declaring_module.clone(), service.clone()))
@@ -3705,8 +3704,8 @@ mod fixture_closure_union_tests {
             make_error_node(
                 Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
                     transport_kind: "shell".to_string(),
-                    service: "WitnessBin".to_string(),
-                    operation: "Run".to_string(),
+                    service: "gunbc.WitnessBin".to_string(),
+                    operation: "gunbc.WitnessBin.Run".to_string(),
                     declaring_module: "extdeps.gunbc".to_string(),
                     target: "rust".to_string(),
                     missing_realization_fact: fact,
