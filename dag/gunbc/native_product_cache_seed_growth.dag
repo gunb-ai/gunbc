@@ -20,7 +20,8 @@ data native_product_cache_seed_growth_justification: SeedGrowthJustification = S
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.native_product_cache", decl_name: "derive_key", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_product_cache", decl_name: "lookup", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.native_product_cache", decl_name: "commit", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_product_cache", decl_name: "commit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_toolchain_identity_for_key", field: WholeDeclaration }
   ],
   reason: "derive_key folds the six PreMaterializationIdentity axes in declared order (producer = the seed's own source tree, source closure plus the census-only declaration universe at content grain, target, toolchain, build configuration, lens contract) with SHA-256; lookup serves an entry only after re-hashing the executable against its manifest and the manifest against the key, and refuses and removes any entry that disagrees; commit writes a private sibling directory and renames it, only after the discriminating red held. Executed controls: four seed unit tests (hit under the key and miss under a changed one, corrupted executable refused and removed, entry without the red refused, every axis reaches the fold) and the CI run's hit/miss counters.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,

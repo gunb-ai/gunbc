@@ -8,6 +8,7 @@ import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel
 import gunbc.type_declaration_use_census_seed_growth { type_declaration_use_census_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
+import gunbc.native_product_cache_seed_growth { native_product_cache_seed_growth_justification }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
 import gunbc.floor_teardown_attribution_seed_growth { floor_teardown_attribution_seed_growth_justification }
@@ -371,7 +372,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     match_arm_guard_seed_growth_justification,
     value_depth_seed_growth_justification,
     value_drop_binding_adaptation_seed_growth_justification,
-    process_lifecycle_seed_growth_justification
+    process_lifecycle_seed_growth_justification,
+    native_product_cache_seed_growth_justification
   ]
 }
 
