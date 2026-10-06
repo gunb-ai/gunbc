@@ -5853,7 +5853,6 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
                       target: path
                     )
                   )
-                  }
                 RecordTypePayload =>
                   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
                     Absent => ConstructNotARecord
