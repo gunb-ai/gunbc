@@ -14520,6 +14520,11 @@ mod changed_witness_projection_tests {
         xs.iter().map(|x| x.to_string()).collect()
     }
 
+    // These pure cost-debt controls resolve the same live model as the other shared-pool
+    // tests. Run them on its existing holder: a fresh libtest thread per control rebuilt
+    // the whole index (~100s each in run 37379602550) until the 40-minute lane timed out.
+    // Assertions and production folds stay intact; separate archived-tree reads below
+    // keep their own indices and release the live pool before constructing another.
     /// THE PLAN/TERMINAL COMPOSITION THE FLOOR RUNS: `changed` is the diff's changed set after
     /// admissions joined it, the roster is the head roster, and the terminal rows are what
     /// planning let execute. `m.wet` is a roster-only addition of a declared BinWitnessWet identity:
@@ -14527,23 +14532,25 @@ mod changed_witness_projection_tests {
     /// unreached. `m.old` is rostered and untouched, and `m.heavy` is a new row that passed.
     #[test]
     fn cost_debt_row_admitted_but_planning_declined_is_refused_as_unreached() {
-        let refused = cost_debt_verdict_refusals(
-            &ids(&["m.wet", "m.heavy", "m.ordinary"]),
-            &ids(&["m.wet", "m.heavy", "m.old"]),
-            &[
-                terminal("m.heavy", ClaimOutcome::Pass),
-                terminal("m.ordinary", ClaimOutcome::Fail),
-            ],
-        )
-        .expect("wall");
-        assert_eq!(
-            refused.len(),
-            1,
-            "{:?}",
-            refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
-        );
-        assert_eq!(refused[0].identity, "m.wet");
-        assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
+        crate::cli_run::on_live_pool_thread(|| {
+            let refused = cost_debt_verdict_refusals(
+                &ids(&["m.wet", "m.heavy", "m.ordinary"]),
+                &ids(&["m.wet", "m.heavy", "m.old"]),
+                &[
+                    terminal("m.heavy", ClaimOutcome::Pass),
+                    terminal("m.ordinary", ClaimOutcome::Fail),
+                ],
+            )
+            .expect("wall");
+            assert_eq!(
+                refused.len(),
+                1,
+                "{:?}",
+                refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
+            );
+            assert_eq!(refused[0].identity, "m.wet");
+            assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
+        });
     }
 
     /// A real source tree at HEAD (the production extraction), with the roster replaced by a
@@ -14615,42 +14622,44 @@ mod changed_witness_projection_tests {
     /// tip, present at the merge base and at head -- is admitted only by the tip reading.
     #[test]
     fn cost_debt_row_retired_at_the_tip_but_carried_at_the_merge_base_is_not_admitted() {
-        let comparison = FreezeBaselineComparison::MergeBase {
-            base: "tip".to_string(),
-            head: "head".to_string(),
-            kind: "pull_request".to_string(),
-        };
-        let commit = cost_debt_comparison_base_commit(comparison, |base, head| {
-            assert_eq!((base, head), ("tip", "head"));
-            Ok("mb".to_string())
-        })
-        .expect("merge base");
-        assert_eq!(commit, "mb");
-        let direct = FreezeBaselineComparison::Direct {
-            base: "tip".to_string(),
-            head: "head".to_string(),
-            kind: "push".to_string(),
-        };
-        assert_eq!(
-            cost_debt_comparison_base_commit(direct, |_, _| panic!("no merge base on Direct"))
-                .unwrap(),
-            "tip"
-        );
-        let at = |commit: &str| -> Vec<String> {
-            match commit {
-                "tip" => vec!["t.old".to_string()],
-                "mb" => vec!["t.old".to_string(), "t.retired".to_string()],
-                other => panic!("no roster at {other}"),
-            }
-        };
-        let head = vec!["t.old".to_string(), "t.retired".to_string()];
-        assert!(cost_debt_admitted_by_fold(&at(&commit), Some(&head))
-            .expect("fold")
-            .is_empty());
-        assert_eq!(
-            cost_debt_admitted_by_fold(&at("tip"), Some(&head)).expect("fold"),
-            vec!["t.retired".to_string()]
-        );
+        crate::cli_run::on_live_pool_thread(|| {
+            let comparison = FreezeBaselineComparison::MergeBase {
+                base: "tip".to_string(),
+                head: "head".to_string(),
+                kind: "pull_request".to_string(),
+            };
+            let commit = cost_debt_comparison_base_commit(comparison, |base, head| {
+                assert_eq!((base, head), ("tip", "head"));
+                Ok("mb".to_string())
+            })
+            .expect("merge base");
+            assert_eq!(commit, "mb");
+            let direct = FreezeBaselineComparison::Direct {
+                base: "tip".to_string(),
+                head: "head".to_string(),
+                kind: "push".to_string(),
+            };
+            assert_eq!(
+                cost_debt_comparison_base_commit(direct, |_, _| panic!("no merge base on Direct"))
+                    .unwrap(),
+                "tip"
+            );
+            let at = |commit: &str| -> Vec<String> {
+                match commit {
+                    "tip" => vec!["t.old".to_string()],
+                    "mb" => vec!["t.old".to_string(), "t.retired".to_string()],
+                    other => panic!("no roster at {other}"),
+                }
+            };
+            let head = vec!["t.old".to_string(), "t.retired".to_string()];
+            assert!(cost_debt_admitted_by_fold(&at(&commit), Some(&head))
+                .expect("fold")
+                .is_empty());
+            assert_eq!(
+                cost_debt_admitted_by_fold(&at("tip"), Some(&head)).expect("fold"),
+                vec!["t.retired".to_string()]
+            );
+        });
     }
 
     /// An outcome with every blocking population empty: the state `run_required_floor` starts from.
@@ -14794,26 +14803,31 @@ mod changed_witness_projection_tests {
     /// `v2.workflow.floor_cost_debt_verdict` names.
     #[test]
     fn cost_debt_row_over_a_failing_claim_is_refused() {
-        let refused = cost_debt_verdict_refusals(
-            &ids(&["m.fails"]),
-            &ids(&["m.fails"]),
-            &[terminal("m.fails", ClaimOutcome::Fail)],
-        )
-        .expect("wall");
-        assert_eq!(refused.len(), 1);
-        assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
+        crate::cli_run::on_live_pool_thread(|| {
+            let refused = cost_debt_verdict_refusals(
+                &ids(&["m.fails"]),
+                &ids(&["m.fails"]),
+                &[terminal("m.fails", ClaimOutcome::Fail)],
+            )
+            .expect("wall");
+            assert_eq!(refused.len(), 1);
+            assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
+        });
     }
 
     /// RED: an expected-red enrolment does not launder it -- the withhold suppresses that
     /// enrolment, so a held red under a cost row is still a red nobody reads.
     #[test]
     fn cost_debt_row_over_an_enrolled_expected_red_is_refused() {
-        let mut row = terminal("m.known", ClaimOutcome::Fail);
-        row.expected_red = true;
-        let refused = cost_debt_verdict_refusals(&ids(&["m.known"]), &ids(&["m.known"]), &[row])
-            .expect("wall");
-        assert_eq!(refused.len(), 1);
-        assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
+        crate::cli_run::on_live_pool_thread(|| {
+            let mut row = terminal("m.known", ClaimOutcome::Fail);
+            row.expected_red = true;
+            let refused =
+                cost_debt_verdict_refusals(&ids(&["m.known"]), &ids(&["m.known"]), &[row])
+                    .expect("wall");
+            assert_eq!(refused.len(), 1);
+            assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
+        });
     }
 
     /// Positive control: a planned changed identity with a terminal Pass is the ONE green
