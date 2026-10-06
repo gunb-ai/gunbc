@@ -1890,7 +1890,16 @@ fn infer_operand_declared_type_instantiated(declared: Node, instances: List<Type
             Absent => optional_absent()
           }
       }
-    _ =>
+    TypeNode { connective: _ } =>
+      if any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
+      ) {
+        optional_absent()
+      } else {
+        optional_present(value: declared)
+      }
+    ComputationNode { behavior: _ } =>
       if any(
         xs: node_positional_child_targets(node: declared),
         predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
@@ -1916,7 +1925,12 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
             Absent => true
           }
       }
-    _ =>
+    TypeNode { connective: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
+      )
+    ComputationNode { behavior: _ } =>
       any(
         xs: node_positional_child_targets(node: declared),
         predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }

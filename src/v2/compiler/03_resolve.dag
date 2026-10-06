@@ -2739,19 +2739,32 @@ fn resolve_pattern_tag_declared_payload_path_optional(ctx: ResolveContext, pat: 
     Absent => optional_absent()
     Present { value: path } =>
       match path {
-        Cons { head: only, tail: Empty } => resolve_declared_payload_path_lookup(ctx: ctx, name: only)
-        _ =>
-          match resolve_declared_payload_candidates(
-            ctx: ctx,
-            paths: list_map(
-              xs: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path),
-              f: fn(c) { c.path }
-            )
-          ) {
-            Cons { head: only, tail: Empty } => optional_present(value: only)
-            _ => optional_absent()
+        Cons { head: only, tail: rest } =>
+          match rest {
+            Empty => resolve_declared_payload_path_lookup(ctx: ctx, name: only)
+            Cons { head: _, tail: _ } => resolve_qualified_tag_declared_payload(ctx: ctx, path: path)
           }
+        Empty => resolve_qualified_tag_declared_payload(ctx: ctx, path: path)
       }
+  }
+}
+
+// A tag naming more than one segment is a qualified path; a zero-segment tag cannot happen at a
+// pattern (the parser requires a tag), so both non-solo shapes share this lookup.
+fn resolve_qualified_tag_declared_payload(ctx: ResolveContext, path: List<Symbol>) -> Optional<QualifiedName> {
+  match resolve_declared_payload_candidates(
+    ctx: ctx,
+    paths: list_map(
+      xs: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path),
+      f: fn(c) { c.path }
+    )
+  ) {
+    Cons { head: only, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: only)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
   }
 }
 
@@ -2803,8 +2816,12 @@ fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: FreeMonoid<Qu
 // scrutinee's coproduct at infer, not by name order here.
 fn resolve_sole_declared_payload_path(ctx: ResolveContext, paths: List<QualifiedName>) -> Optional<QualifiedName> {
   match resolve_declared_payload_candidates(ctx: ctx, paths: paths) {
-    Cons { head: only, tail: Empty } => optional_present(value: only)
-    _ => optional_absent()
+    Cons { head: only, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: only)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
   }
 }
 
