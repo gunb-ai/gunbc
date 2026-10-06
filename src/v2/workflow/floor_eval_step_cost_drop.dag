@@ -38,6 +38,9 @@ import std.types { NonEmptyStr, List }
 //     of the dag target (`dag_text_round_trip_nested_bind_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows`: the kotlin and rust
 //     extended-function grammar parses (`foreign_grammar_extended_parse_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows`: the python and swift
+//     extended-function parses, whose grammar preparation one claim demands
+//     (`foreign_grammar_single_claim_preparation_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -437,8 +440,24 @@ data floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows: List<EvalSte
   },
 ]
 
+// THE ONE-CLAIM FOREIGN-GRAMMAR PARSE CLAIMS (v2.test.parse census phase 4; `gunbc.rung_drop`
+// `foreign_grammar_single_claim_preparation_new_witness_eval_step_cost`). The python and swift
+// extended-function parses: each language's grammar and lexer preparation is demanded by this ONE
+// gated claim, so it is not shared by demand and is billed in-claim with the parse, which is the
+// claim's subject (no fill-debt transfer; ruling valiant-swift-469, grammar program).
+data floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.parse_test_python_grammar.claim_python_extended_function_parses_holds" as NonEmptyStr,
+    measured_by: "v2.test.parse census phase 4, claim_batch BuildBuddy invocation 9241511f (measured_eval_steps, the claim's parse plus its own grammar and lexer preparation); re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_python_grammar_test.dag --functions claim_python_extended_function_parses_holds. The billed work is the one-claim preparation of the python grammar and lexer plus one tokenize and one real parse of an extended function, all in-claim" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.parse_test_swift_grammar.claim_swift_extended_function_parses_holds" as NonEmptyStr,
+    measured_by: "v2.test.parse census phase 4, claim_batch BuildBuddy invocation 9241511f (measured_eval_steps, the claim's parse plus its own grammar and lexer preparation); re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_swift_grammar_test.dag --functions claim_swift_extended_function_parses_holds. The billed work is the one-claim preparation of the swift grammar and lexer plus one tokenize and one real parse of an extended function, all in-claim" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows), floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

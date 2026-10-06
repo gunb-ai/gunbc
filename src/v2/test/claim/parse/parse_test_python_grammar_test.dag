@@ -9,9 +9,9 @@ fn python_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   }
 }
 
-fn python_tokenize_and_parse() -> Outcome<ParseTree> {
+fn python_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
   match tokenize(
-    text: python_extended_fn_source,
+    text: text,
     file: ^python_parse_file,
     rules: python_lex()
   ) {
@@ -26,5 +26,5 @@ fn python_tokenize_and_parse() -> Outcome<ParseTree> {
 // required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
 // v2.test.parse census (gunbc#13372).
 test fn claim_python_extended_function_parses_holds() -> Bool {
-  (python_parse_accepted(out: python_tokenize_and_parse())) == true
+  (python_parse_accepted(out: python_tokenize_and_parse_source(text: python_extended_fn_source))) == true
 }
