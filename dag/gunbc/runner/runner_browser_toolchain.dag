@@ -1280,7 +1280,7 @@ fn browser_ready_labels_posture_argv(posture: BrowserReadyLabelsPosture, command
 
 fn browser_ready_labels_reload_leg(posture: BrowserReadyLabelsPosture) -> BrowserReadyLabelsReload {
   match posture {
-    ReadyLabelsSudoElevated => ReadyLabelsReloadRun { command: sudo_elevate_command(command: argv_words(command: systemctl_daemon_reload_command())) }
+    ReadyLabelsSudoElevated => ReadyLabelsReloadRun { command: systemctl_daemon_reload_command() }
     ReadyLabelsUnprivileged => ReadyLabelsReloadPostureSkipped { cause: "unprivileged posture: daemon-reload requires root and is skipped, not fabricated" as String }
   }
 }
