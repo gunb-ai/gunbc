@@ -822,12 +822,24 @@ pub fn type_decl_occurrence_binding(
             std::option::Option::None => Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
         },
         BareOccurrenceBinding::BareOccurrenceImportedByName {
-            declaration: decl, ..
+            module_path: from_module,
+            declaration: decl,
+            ..
         } => match type_decl_identity_of_declaration(index.clone(), decl.clone()) {
             Some(identity) => Rc::new(TypeDeclOccurrenceBinding::OccurrenceImported {
                 identity: identity.clone(),
             }),
-            std::option::Option::None => Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
+            std::option::Option::None => {
+                let imported = type_decl_identity(from_module.clone(), leaf.clone());
+                match v1_rt::map_get(&index.by_identity.clone(), imported.clone()) {
+                    Some(_) => Rc::new(TypeDeclOccurrenceBinding::OccurrenceImported {
+                        identity: imported.clone(),
+                    }),
+                    std::option::Option::None => {
+                        Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
+                    }
+                }
+            }
         },
         BareOccurrenceBinding::BareOccurrenceIsKernelName => {
             Rc::new(TypeDeclOccurrenceBinding::OccurrenceIsKernelName)

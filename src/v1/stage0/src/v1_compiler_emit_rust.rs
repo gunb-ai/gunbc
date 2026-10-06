@@ -1074,9 +1074,16 @@ pub fn unstamped_reference_is_host_option(
                 declaration_node_owns_host_option(decl.clone(), source_indices.clone(), env.clone())
             }
             BareOccurrenceBinding::BareOccurrenceImportedByName {
-                declaration: decl, ..
+                module_path: from_module,
+                declaration: decl,
+                ..
             } => {
-                declaration_node_owns_host_option(decl.clone(), source_indices.clone(), env.clone())
+                (declaration_owns_host_option(from_module.clone(), leaf.clone())
+                    || declaration_node_owns_host_option(
+                        decl.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                    ))
             }
             BareOccurrenceBinding::BareOccurrenceIsKernelName => {
                 match (*crate::std_literal_elaboration::kernel_mint_declaration_for(

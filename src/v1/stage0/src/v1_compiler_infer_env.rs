@@ -410,8 +410,13 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum BareOccurrenceBinding {
-    BareOccurrenceDeclaredInItsFile { declaration: Rc<Node> },
-    BareOccurrenceImportedByName { declaration: Rc<Node> },
+    BareOccurrenceDeclaredInItsFile {
+        declaration: Rc<Node>,
+    },
+    BareOccurrenceImportedByName {
+        module_path: String,
+        declaration: Rc<Node>,
+    },
     BareOccurrenceIsKernelName,
     BareOccurrenceUndecided,
 }
@@ -476,6 +481,7 @@ pub fn bare_occurrence_import(
             ) {
                 Some(decl) => Some(Rc::new(
                     BareOccurrenceBinding::BareOccurrenceImportedByName {
+                        module_path: from_module.clone(),
                         declaration: decl.clone(),
                     },
                 )),
