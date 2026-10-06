@@ -1,5 +1,6 @@
 module test.claim.fleet_receipt_collector_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

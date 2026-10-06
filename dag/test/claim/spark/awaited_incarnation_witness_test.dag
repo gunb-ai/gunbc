@@ -1,0 +1,111 @@
+module test.claim.spark.awaited_incarnation_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr, Int, EpochSecs }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import gunbc.spark.awaited_incarnation {
+  AwaitedIncarnation, AwaitedVerdict, AwaitedObserved, AwaitedRefused, AwaitedLegOutlivedBound,
+  awaited_trace_of, awaited_verdict,
+  awaited_header_word, awaited_poll_word, awaited_served_word, awaited_field_separator, awaited_probe_ok_word,
+}
+
+// ── ONE INCARNATION AND ONE DEADLINE, DECIDED ON THE EXECUTED PATH (side-chat ruling on #13319) ───
+//
+// THE PREVIOUS REDS MATCHED RENDERED SUBSTRINGS, so they could not tell whether the decision the
+// transaction consumes is right. These run that decision: each supplies a trace in the exact form the
+// wait loop prints (its words are the same data the script renderer reads), parses it with the real
+// parser, and decides it with the real awaited_verdict the readback calls. The script only observes and
+// stops; acceptance is this function, so a red here is a red of the executed path.
+
+data w_head: HostIdentity = "srv6" as HostIdentity
+data w_a: String = "aaaaaaaaaaaa"
+data w_b: String = "bbbbbbbbbbbb"
+data w_deadline: EpochSecs = 1000
+
+fn w_header(id: String, deadline: Int) -> String {
+  join([awaited_header_word, awaited_field_separator, id, awaited_field_separator, to_string(deadline), "\n"], "")
+}
+
+fn w_poll(before: String, ok: Bool, after: String, at: Int) -> String {
+  join([awaited_poll_word, awaited_field_separator, before, awaited_field_separator, if ok { awaited_probe_ok_word } else { "fail" }, awaited_field_separator, after, awaited_field_separator, to_string(at), "\n"], "")
+}
+
+fn w_running(id: String) -> String { join([id, " true 0"], "") }
+
+fn w_awaited(id: String, deadline: EpochSecs) -> AwaitedIncarnation {
+  AwaitedIncarnation { host: w_head, id: id as NonEmptyStr, deadline_epoch: deadline }
+}
+
+fn w_decide(stdout: String, expected: AwaitedIncarnation?) -> AwaitedVerdict {
+  awaited_verdict(host: w_head, trace: awaited_trace_of(stdout: stdout), expected: expected)
+}
+
+fn w_observed(v: AwaitedVerdict) -> Bool {
+  match v { AwaitedObserved { awaited: _ } => true  AwaitedRefused { host: _, cause: _ } => false  AwaitedLegOutlivedBound { host: _, bound: _ } => false }
+}
+
+fn w_refused_with(v: AwaitedVerdict, fragment: String) -> Bool {
+  match v { AwaitedObserved { awaited: _ } => false  AwaitedRefused { host: _, cause: c } => string_contains(s: c, pattern: fragment)  AwaitedLegOutlivedBound { host: _, bound: _ } => false }
+}
+
+// THE POSITIVE CONTROL: the awaited incarnation, before and after a successful probe, before its deadline.
+test fn w_a_success_on_the_awaited_incarnation_before_its_deadline_is_observed() -> Bool {
+  match w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: false, after: w_running(id: w_a), at: 900), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 960)], ""), expected: none) {
+    AwaitedObserved { awaited: a } => (a.id as String) == w_a && a.deadline_epoch == w_deadline
+    AwaitedRefused { host: _, cause: _ } => false
+    AwaitedLegOutlivedBound { host: _, bound: _ } => false
+  }
+}
+
+// CONTROL 1: the head was REPLACED after the rank readback and before the front-door probe. The front door
+// was handed incarnation A and its deadline; the name now resolves to B. Refused -- B is never given a
+// window of its own.
+test fn w_a_replacement_after_the_readback_is_refused_at_the_front_door() -> Bool {
+  w_refused_with(
+    v: w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_b), ok: false, after: "-", at: 950)], ""), expected: Present { value: w_awaited(id: w_a, deadline: w_deadline) }),
+    fragment: "no longer resolves to the awaited incarnation")
+}
+
+// AND A FRONT DOOR THAT RECAPTURED -- waited on B, or on A under a later deadline -- is refused even when
+// its own probe succeeded: it did not carry the value it was handed.
+test fn w_a_front_door_that_recaptured_or_rederived_is_refused() -> Bool {
+  let handed = Present { value: w_awaited(id: w_a, deadline: w_deadline) }
+  w_refused_with(v: w_decide(stdout: join([w_header(id: w_b, deadline: 4600), w_poll(before: w_running(id: w_b), ok: true, after: w_running(id: w_b), at: 990)], ""), expected: handed), fragment: "did not carry the awaited incarnation")
+    && w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: 4600), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 990)], ""), expected: handed), fragment: "did not carry the awaited incarnation")
+}
+
+// CONTROL 2: a probe that RETURNED SUCCESS AFTER THE ABSOLUTE DEADLINE -- it started in time and crossed
+// the deadline while it ran. The clock read after the probe decides; success is not accepted past it.
+test fn w_a_success_after_the_deadline_is_refused() -> Bool {
+  w_refused_with(
+    v: w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 1003)], ""), expected: none),
+    fragment: "after the incarnation deadline")
+}
+
+// CONTROL 3: transport observed just before the deadline, the front door still unavailable. The front door
+// is handed the SAME deadline (it does not get a window of its own), so its failed polls run out at that
+// deadline and it refuses.
+test fn w_transport_just_before_the_deadline_leaves_the_front_door_only_what_remains() -> Bool {
+  let transport = w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 995)], ""), expected: none)
+  match transport {
+    AwaitedRefused { host: _, cause: _ } => false
+    AwaitedLegOutlivedBound { host: _, bound: _ } => false
+    AwaitedObserved { awaited: a } =>
+      w_refused_with(
+        v: w_decide(stdout: join([w_header(id: a.id as String, deadline: a.deadline_epoch), w_poll(before: w_running(id: w_a), ok: false, after: w_running(id: w_a), at: 996), w_poll(before: w_running(id: w_a), ok: false, after: w_running(id: w_a), at: 1011)], ""), expected: Present { value: a }),
+        fragment: "unobserved by the incarnation deadline")
+  }
+}
+
+// A CHANGE WHILE THE PROBE RAN, and a trace with no probe at all, refuse.
+test fn w_a_change_during_the_probe_or_no_probe_refuses() -> Bool {
+  w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_b), at: 990)], ""), expected: none), fragment: "changed while the probe ran")
+    && w_refused_with(v: w_decide(stdout: w_header(id: w_a, deadline: w_deadline), expected: none), fragment: "no probe ran")
+    && w_refused_with(v: w_decide(stdout: "", expected: none), fragment: "printed no awaited incarnation")
+}
+
+// A NEGATIVE INSTANT IS A BROKEN CLOCK, NOT A DEADLINE: the trace's deadline reads unread and the wait is
+// refused (review 76436: the carrier is EpochSecs, and the parse refuses rather than minting one).
+test fn w_a_negative_deadline_is_unread_and_refused() -> Bool {
+  w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: 0 - 5), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 1)], ""), expected: none), fragment: "printed no absolute deadline")
+}

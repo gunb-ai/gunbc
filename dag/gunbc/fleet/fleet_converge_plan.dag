@@ -2900,7 +2900,9 @@ fn fleet_converge_allocation_store_plan_artifact(
           plan_body: body,
           apply_shell: apply_shell,
         } }
-        _ => Absent
+        Sha256Hash(_) => Absent
+        Sha1Hash(_) => Absent
+        Sha512Hash(_) => Absent
       }
     }
   }
@@ -2931,6 +2933,8 @@ fn fleet_converge_observed_baseline_matches(
   let baseline = observed_baseline_text(request: observed)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex
-    _ => false
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
   }
 }
