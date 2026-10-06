@@ -104,7 +104,7 @@ fn import_targets_by_path(edges: List<ImportResolutionFact>) -> Map<String, List
 // constructor is `Accepted`, so that `Rejected` arm was UNCONSTRUCTIBLE: no fixture can hand the
 // compiler a source that produces one, which is why declining to enrol a probe for it is not
 // specification-without-execution. `v2.std.collection` says the same thing at the declaration --
-// a caller reaching for `map_get` must match an arm no producer can construct, and binds it to
+// a caller reaching for `map_get_checked` must match an arm no producer can construct, and binds it to
 // whichever domain answer is nearest, which is exactly what happened here.
 //
 // Calling the total `map_lookup` removes the arm from the return type instead of disposing of it

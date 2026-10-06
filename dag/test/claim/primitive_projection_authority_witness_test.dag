@@ -52,7 +52,7 @@ import std.types { Bool, List, String }
 
 // Executes the question a candidate collector asks of this carrier: given a DECLARATION, is it the
 // modeled surface of a PRIMITIVE, and are the two one authority or two. The discriminating control
-// is the DivergentProjection row -- v2.std.collection map_get -- which must answer NOT one
+// is the DivergentProjection row -- v2.std.collection map_get_checked -- which must answer NOT one
 // authority while the seam and modeled rows answer that they are. A carrier that collapsed the
 // three fidelities into a boolean suppress flag reds w_divergent_projection_is_not_one_authority,
 // which is the whole reason the third variant exists.
@@ -93,7 +93,7 @@ test fn w_modeled_projection_answers_with_its_fidelity() -> Bool {
 
 test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
   match primitive_projection_for_declaration(
-    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get")
+    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get_checked")
   ) {
     DeclarationProjectsNoPrimitive => false
     DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
@@ -160,7 +160,7 @@ test fn w_undisposed_is_not_one_authority_and_so_never_suppresses() -> Bool {
 
 test fn w_divergent_projection_is_not_one_authority() -> Bool {
   !declaration_and_primitive_are_one_authority(
-    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get"),
+    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get_checked"),
     primitive: primitive_map_get,
   )
 }

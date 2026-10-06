@@ -11,7 +11,7 @@ import v2.std.compilers.semantic_decl_emission {
   target_semantic_enum_surface_from_coproduct,
   target_semantic_struct_surface_from_record
 }
-import v2.std.collection { Absent, Map, Present, empty_map, map_get }
+import v2.std.collection { Absent, Map, Present, empty_map, map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -214,7 +214,7 @@ fn produced_type_binding_over(target: TargetModel, spellings: Map<Symbol, String
             match translate_target_atom_realization_for_carrier(target: target, source_carrier: type_node) {
               Accepted { value: row, diagnostics: _ } => outcome_accepted(value: target_atom_type_spelling(row: row))
               Rejected { diagnostics: _ } =>
-                match map_get(spellings, id) {
+                match map_get_checked(spellings, id) {
                   Accepted { value: Present { value: _ }, diagnostics: _ } => outcome_accepted(value: id)
                   _ => outcome_rejected(d: emit_type_reference_unrealized_diagnostic(node: type_node))
                 }

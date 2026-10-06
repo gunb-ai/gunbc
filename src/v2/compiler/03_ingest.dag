@@ -10,7 +10,7 @@ import v2.std.collection {
   Map,
   Present,
   empty_map,
-  map_get,
+  map_get_checked,
   map_insert
 }
 import v2.std.grammar {
@@ -69,7 +69,7 @@ fn parse_atom_frontier_class_direct(
   token_classes: Map<Symbol, Symbol>
 ) -> Outcome<Symbol> {
   bind_outcome(
-    o: map_get(token_classes, atom_identity),
+    o: map_get_checked(token_classes, atom_identity),
     f: fn(direct) {
       match direct {
         Present { value: token_class } => outcome_accepted(value: token_class)
@@ -86,7 +86,7 @@ fn parse_atom_frontier_class(
   token_classes: Map<Symbol, Symbol>
 ) -> Outcome<Symbol> {
   bind_outcome(
-    o: map_get(binding_to_class, atom_identity),
+    o: map_get_checked(binding_to_class, atom_identity),
     f: fn(bound) {
       match bound {
         Present { value: token_class } => outcome_accepted(value: token_class)

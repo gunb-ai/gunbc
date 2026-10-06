@@ -39,7 +39,7 @@ test fn optional_present_matches_present_pattern() -> Bool {
 }
 
 test fn map_get_miss_is_absent_not_present() -> Bool {
-  match v2.std.collection.map_get(empty_map(), "missing") {
+  match v2.std.collection.map_get_checked(empty_map(), "missing") {
     Accepted { value: Absent, diagnostics: _ } => true
     Accepted { value: Present { value: _ }, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
@@ -48,7 +48,7 @@ test fn map_get_miss_is_absent_not_present() -> Bool {
 
 test fn map_get_hit_is_present() -> Bool {
   let m = empty_map() |> map_insert("k", 7)
-  match v2.std.collection.map_get(m, "k") {
+  match v2.std.collection.map_get_checked(m, "k") {
     Accepted { value: Present { value: v }, diagnostics: _ } => v == 7
     Accepted { value: Absent, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false

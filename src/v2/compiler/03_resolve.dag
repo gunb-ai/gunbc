@@ -43,7 +43,7 @@ import v2.std.collection {
   PointwisePower,
   empty_map,
   list_at_optional,
-  map_get,
+  map_get_checked,
   map_insert,
   map_lookup
 }
@@ -1071,7 +1071,7 @@ type ScopeBinding
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   match s {
     ScopeFrame { locals: m, outer: o, kind: kind } =>
-      match v2.std.collection.map_get(m, name) {
+      match v2.std.collection.map_get_checked(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
             Accepted { value: BoundInFrame { canonical: v, kind: kind }, diagnostics: d_here }
@@ -1091,7 +1091,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     ScopeRoot { module: mod } =>
-      match v2.std.collection.map_get(mod.bindings, name) {
+      match v2.std.collection.map_get_checked(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
           Present { value: v } => Accepted { value: BoundAtRoot { canonical: v }, diagnostics: d }
           Absent => Accepted { value: ScopeUnbound, diagnostics: d }

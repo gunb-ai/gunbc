@@ -79,7 +79,7 @@ test fn witness_door_lookup_refused_for_recompute_table() -> Bool {
 }
 
 fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> Bool {
-  match v2.std.collection.map_get(m: table.entries, key: key) {
+  match v2.std.collection.map_get_checked(m: table.entries, key: key) {
     Accepted { value: Present { value: _ } } => true
     Accepted { value: Absent } => false
     Rejected { diagnostics: _ } => false
