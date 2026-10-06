@@ -156,7 +156,7 @@ fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
 // `init` produces no commits and no root and that NEITHER IS AN ERROR, so a status that rendered
 // this as a warning would contradict a stated authority and fabricate a problem the model says does
 // not exist. Asserted rather than assumed, because it is the arm a UI instinct most wants to alarm on.
-test fn a_fresh_repository_reports_nothing_checked_out_and_is_resolvable() -> Bool {
+test fn a_fresh_repository_reports_nothing_checked_out_and_is_resolvable() -> Bool  {
   let s = repository_status(
     envelope: status_witness_empty_repository(),
     pending: empty_proposal(),
@@ -175,7 +175,7 @@ test fn a_fresh_repository_reports_nothing_checked_out_and_is_resolvable() -> Bo
 // decidable here. A status that reported the selection as an ordinary checkout would assert that a
 // commit exists when it may not -- and the two arms are asserted as DIFFERENT values rather than as
 // "not an ordinary checkout", which a fresh repository would also satisfy.
-test fn a_dangling_checkout_is_reported_as_missing_not_as_ordinary() -> Bool {
+test fn a_dangling_checkout_is_reported_as_missing_not_as_ordinary() -> Bool  {
   let s = repository_status(
     envelope: status_witness_repository_with_dangling_checkout(),
     pending: empty_proposal(),
@@ -188,7 +188,7 @@ test fn a_dangling_checkout_is_reported_as_missing_not_as_ordinary() -> Bool {
     }
 }
 
-test fn a_resolvable_checkout_carries_its_commit_message() -> Bool {
+test fn a_resolvable_checkout_carries_its_commit_message() -> Bool  {
   let s = repository_status(
     envelope: status_witness_repository_with_checkout(),
     pending: empty_proposal(),
@@ -210,7 +210,7 @@ test fn a_resolvable_checkout_carries_its_commit_message() -> Bool {
 // OPPOSITE -- one preserves the target's binding, the other deletes it. This asserts all three are
 // distinguishable in the rendering a user actually reads, which is where the conflation would do its
 // damage.
-test fn stated_absence_not_stated_and_stated_binding_are_three_distinct_renderings() -> Bool {
+test fn stated_absence_not_stated_and_stated_binding_are_three_distinct_renderings() -> Bool  {
   let staged_only = repository_status(
     envelope: status_witness_empty_repository(),
     pending: author_requirement(
@@ -245,7 +245,7 @@ test fn stated_absence_not_stated_and_stated_binding_are_three_distinct_renderin
 // resolver silently selects among duplicates (#8707), adding a third would make that binding
 // arbitrary for every module in the shared scope. The helper this witness would need is itself an
 // instance of the hazard this file is careful about.
-test fn nothing_staged_is_stated_rather_than_rendered_as_silence() -> Bool {
+test fn nothing_staged_is_stated_rather_than_rendered_as_silence() -> Bool  {
   let s = repository_status(
     envelope: status_witness_empty_repository(),
     pending: empty_proposal(),
@@ -257,7 +257,7 @@ test fn nothing_staged_is_stated_rather_than_rendered_as_silence() -> Bool {
 // The store population is deliberately not reported: it is a fact about REPRESENTATION rather than
 // about the author's intent state, and below-boundary representation is opaque. Asserted so that
 // adding it later is a deliberate decision that turns this red, rather than a drift nobody notices.
-test fn status_does_not_report_store_representation() -> Bool {
+test fn status_does_not_report_store_representation() -> Bool  {
   let s = repository_status(
     envelope: status_witness_repository_with_checkout(),
     pending: empty_proposal(),
@@ -276,7 +276,7 @@ test fn status_does_not_report_store_representation() -> Bool {
 // renderer that prints a constant, which is the defect being repaired wearing a number. Driving 1
 // and 7 through the same arm makes the assertion about the SELECTION rather than about the string:
 // the only implementation that passes both is one that reads `reference`.
-test fn a_dangling_checkout_names_the_commit_it_cannot_resolve() -> Bool {
+test fn a_dangling_checkout_names_the_commit_it_cannot_resolve() -> Bool  {
   let one = repository_status(
     envelope: status_witness_repository_dangling_at(ordinal: 1),
     pending: empty_proposal(),

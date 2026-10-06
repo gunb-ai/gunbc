@@ -96,7 +96,7 @@ fn scm_sv_unrepresentable_repository() -> RepositoryEnvelope {
   }
 }
 
-test fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool {
+test fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool  {
   match save_repository(path: scm_sv_never_written_path, repo: scm_sv_unrepresentable_repository()) {
     RepositorySaveRefusedByCodec { path: p, cause: c } =>
       p == scm_sv_never_written_path &&
@@ -109,7 +109,7 @@ test fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool {
 }
 
 // THE ORDER CLAIM. Having refused, the path must still not exist.
-test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
+test fn scm_sv_a_refused_save_leaves_no_file() -> Bool  {
   let refused = match save_repository(
     path: scm_sv_never_written_path,
     repo: scm_sv_unrepresentable_repository(),
@@ -161,7 +161,7 @@ fn scm_sv_bogus_generation() -> Fnv1a64Structural {
   content_hash_atom(value: "a generation the fixture was never written at" as NonEmptyStr)
 }
 
-test fn scm_sv_a_matching_generation_is_admitted() -> Bool {
+test fn scm_sv_a_matching_generation_is_admitted() -> Bool  {
   let observed = content_hash_atom(value: "generation observed at load" as NonEmptyStr)
   match admit_repository_generation(
     expected: GenerationExpected(observed),
@@ -172,14 +172,14 @@ test fn scm_sv_a_matching_generation_is_admitted() -> Bool {
   }
 }
 
-test fn scm_sv_absence_is_admitted_for_an_absent_expectation() -> Bool {
+test fn scm_sv_absence_is_admitted_for_an_absent_expectation() -> Bool  {
   match admit_repository_generation(expected: GenerationExpectedAbsent, found: none) {
     RepositoryGenerationAdmitted => true
     RepositoryGenerationStale { expected: _, found: _ } => false
   }
 }
 
-test fn scm_sv_a_vanished_envelope_is_admitted_for_an_observed_expectation() -> Bool {
+test fn scm_sv_a_vanished_envelope_is_admitted_for_an_observed_expectation() -> Bool  {
   let observed = content_hash_atom(value: "generation observed at load" as NonEmptyStr)
   match admit_repository_generation(expected: GenerationExpected(observed), found: none) {
     RepositoryGenerationAdmitted => true
@@ -187,7 +187,7 @@ test fn scm_sv_a_vanished_envelope_is_admitted_for_an_observed_expectation() -> 
   }
 }
 
-test fn scm_sv_an_appeared_envelope_refuses_an_absent_expectation() -> Bool {
+test fn scm_sv_an_appeared_envelope_refuses_an_absent_expectation() -> Bool  {
   let on_disk = content_hash_atom(value: "generation someone else wrote" as NonEmptyStr)
   match admit_repository_generation(expected: GenerationExpectedAbsent, found: Present { value: on_disk }) {
     RepositoryGenerationAdmitted => false
@@ -204,7 +204,7 @@ test fn scm_sv_an_appeared_envelope_refuses_an_absent_expectation() -> Bool {
 // was never written at, refuses typed and names BOTH identities -- the expectation it carried and
 // the generation actually on disk (re-derived here from a direct read of the fixture bytes, so the
 // claim checks the guard's observation rather than trusting it).
-test fn scm_sv_a_stale_generation_save_refuses_naming_both_identities() -> Bool {
+test fn scm_sv_a_stale_generation_save_refuses_naming_both_identities() -> Bool  {
   let on_disk = repository_generation_of_content(content: Filesystem.Read(path: scm_sv_v7_fixture_path).content)
   let bogus = scm_sv_bogus_generation()
   match scm_sv_fixture_envelope() {
@@ -231,7 +231,7 @@ test fn scm_sv_a_stale_generation_save_refuses_naming_both_identities() -> Bool 
 // THE GUARD'S ONLY EFFECT ON A STALE WORLD IS THE REFUSAL: the fixture's bytes after the refused
 // save equal the bytes before it. The refused path performs no write (encode, observe, refuse),
 // so this is the read-before/read-after form of the file's header claim, over a file that exists.
-test fn scm_sv_a_refused_stale_save_leaves_the_envelope_byte_identical() -> Bool {
+test fn scm_sv_a_refused_stale_save_leaves_the_envelope_byte_identical() -> Bool  {
   let before = Filesystem.Read(path: scm_sv_v7_fixture_path).content
   let refused = match scm_sv_fixture_envelope() {
     Absent => false

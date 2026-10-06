@@ -49,30 +49,30 @@ fn mirrors_of(bound: AffectedSetBound) -> List<String> {
 }
 
 // POSITIVE CONTROL: the reverse walk reaches every dependent, transitively, and nothing else.
-test fn a_reverse_closure_reaches_transitive_dependents_only() -> Bool {
+test fn a_reverse_closure_reaches_transitive_dependents_only() -> Bool  {
   same_members(a: regen_reverse_closure(edited: ["std.a"], edges: fixture_edges, modules: fixture_modules), b: ["std.a", "std.b", "gunbc.c", "v1.compiler.emit_rust"])
 }
 
 // The bound for a leaf std edit is its reverse closure restricted to compared mirrors. gunbc.d
 // depends on something else and stays out; that is the over-approximation being a bound and not
 // the population.
-test fn a_leaf_std_edit_bounds_to_its_dependents_mirrors() -> Bool {
+test fn a_leaf_std_edit_bounds_to_its_dependents_mirrors() -> Bool  {
   same_members(a: mirrors_of(bound: bound_for(edited: ["std.a"])), b: ["std_a.rs", "std_b.rs", "gunbc_c.rs", "v1_compiler_emit_rust.rs"])
 }
 
 // THE DISCRIMINATING RED for the walk: an edit nobody depends on bounds to itself alone.
-test fn w_RED_an_edit_with_no_dependents_bounds_to_itself() -> Bool {
+test fn w_RED_an_edit_with_no_dependents_bounds_to_itself() -> Bool  {
   same_members(a: mirrors_of(bound: bound_for(edited: ["gunbc.d"])), b: ["gunbc_d.rs"])
 }
 
 // THE DECLARED BOOTSTRAP EDGE: editing the runtime template yields its own mirror AND v1_rt.rs,
 // which is in no graph -- the measured two-file drift of 2026-08-30.
-test fn a_runtime_template_edit_carries_the_declared_bootstrap_product() -> Bool {
+test fn a_runtime_template_edit_carries_the_declared_bootstrap_product() -> Bool  {
   same_members(a: regen_affected_set_members(bound: bound_for(edited: ["v1.compiler.runtime_rust"])), b: ["v1_compiler_runtime_rust.rs", "v1_rt.rs"])
 }
 
 // THE GENERATION-INPUT ARM: an edit to the emitter answers WholePopulation, never a subset.
-test fn a_emitter_edit_answers_whole_population() -> Bool {
+test fn a_emitter_edit_answers_whole_population() -> Bool  {
   match bound_for(edited: ["v1.compiler.emit_rust"]) {
     WholePopulation { edited: e, generation_inputs: g } => same_members(a: g, b: ["v1.compiler.emit_rust"])
     AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } => false
@@ -82,7 +82,7 @@ test fn a_emitter_edit_answers_whole_population() -> Bool {
 
 // THE REFUSAL, and its RED shape: an unlocatable path refuses BEFORE any closure is taken, and
 // the refusal carries no mirrors -- a consumer cannot mistake it for an empty affected set.
-test fn w_RED_an_unlocatable_edited_path_refuses_without_widening() -> Bool {
+test fn w_RED_an_unlocatable_edited_path_refuses_without_widening() -> Bool  {
   let bound = regen_affected_set(edited: ["std.a"], unlocatable: ["dag/std/gone.dag"], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules)
   match bound {
     EditedSetUnlocatable { unlocatable: u, reason: r } => same_members(a: u, b: ["dag/std/gone.dag"]) && count(regen_affected_set_members(bound: bound)) == 0
@@ -91,6 +91,6 @@ test fn w_RED_an_unlocatable_edited_path_refuses_without_widening() -> Bool {
   }
 }
 
-test fn a_bound_line_names_the_arm_and_the_counts() -> Bool {
+test fn a_bound_line_names_the_arm_and_the_counts() -> Bool  {
   regen_affected_set_bound_line(bound: bound_for(edited: ["std.a"])) == "regen-affected-set: AffectedMirrors edited=1 mirrors=4 bootstrap_products=0"
 }

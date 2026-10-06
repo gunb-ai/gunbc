@@ -75,7 +75,7 @@ fn key_present(keys: List<String>, key: String) -> Bool {
 // THE ITEMS ARE REQUIRED BY NAME AND NOT BY COUNT. A count assertion is satisfied by a recognizer
 // that finds the right NUMBER of wrong things -- which is exactly how the deleted census reported
 // eighteen items for a nine-item diff -- so every arm here names the identity it expects.
-test fn scan_recovers_every_item_by_name() -> Bool {
+test fn scan_recovers_every_item_by_name() -> Bool  {
   let keys = ordinary_scan_keys()
   key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::struct::Thing")
     && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::enum::Mood")
@@ -91,13 +91,13 @@ test fn scan_recovers_every_item_by_name() -> Bool {
 // v1_compiler.cli_run.bare_reference_scanner_tests. A reader that recorded `helper` bare would
 // collide it with any file-level `helper` in the same file, and the join would silently treat an
 // addition as already justified.
-test fn inline_module_members_are_qualified_not_bare() -> Bool {
+test fn inline_module_members_are_qualified_not_bare() -> Bool  {
   let keys = ordinary_scan_keys()
   key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::inner_tests.helper")
     && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::helper")
 }
 
-test fn a_wrapped_use_list_and_derive_attribute_do_not_hide_the_following_item() -> Bool {
+test fn a_wrapped_use_list_and_derive_attribute_do_not_hide_the_following_item() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_wrapped_use_and_derive) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
@@ -126,7 +126,7 @@ test fn a_wrapped_use_list_and_derive_attribute_do_not_hide_the_following_item()
 // would be the second roster this reader exists not to author); and a line inside it must NOT come
 // back file-level, because a static added inside thread_local! is hand-Rust growth and file-level is
 // the answer that would admit it silently.
-test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed() -> Bool {
+test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_macro_block) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
@@ -153,7 +153,7 @@ test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed()
 // scopes above from having quietly become a catch-all. `lazy_static!` opens a macro block, so the
 // fixture that used to make this point no longer does; a bare brace at a scope boundary is not a
 // macro, not an item header, not a use and not an attribute, and there is no arm that admits it.
-test fn an_unrecognized_structural_line_refuses() -> Bool {
+test fn an_unrecognized_structural_line_refuses() -> Bool  {
   match scan_rust_source(
     repo_path: "src/v1/stage0/src/probe.rs",
     content: "use std::fmt;\n\n{\n    1\n}\n"
@@ -177,7 +177,7 @@ test fn an_unrecognized_structural_line_refuses() -> Bool {
 // INCLUDING the `"#;` line at the item's own indent, attributes to the fn that owns the literal.
 // That last is the red for reading a body literal's terminator as the item's close, which a
 // header-opened constant's `"#;` legitimately is.
-test fn a_body_opened_raw_string_is_skipped_whole_and_its_lines_attribute_to_the_owning_fn() -> Bool {
+test fn a_body_opened_raw_string_is_skipped_whole_and_its_lines_attribute_to_the_owning_fn() -> Bool  {
   match scan_rust_source(
     repo_path: "src/v1/stage0/src/probe.rs",
     content: fixture_raw_string_reaching_column_zero
@@ -235,7 +235,7 @@ fn fixture_line_attributes_to(
 // swallowed until that fn's `}` -- never an item, and an edit to it attributed to the static. That
 // was cli_run.rs `static PROVIDER_BOOTSTRAP_STORE_SKIPS` over `fn record_provider_bootstrap_store_skip`,
 // a silent mis-attribution rather than a refusal. Line 5 is inside the fn and must say so.
-test fn a_continued_static_initializer_ends_at_its_semicolon_and_the_next_fn_is_an_item() -> Bool {
+test fn a_continued_static_initializer_ends_at_its_semicolon_and_the_next_fn_is_an_item() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_continued_initializer) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
@@ -261,7 +261,7 @@ test fn a_continued_static_initializer_ends_at_its_semicolon_and_the_next_fn_is_
 // carries an ordinary string continued with `\`: a continued line that is exactly `}` at column
 // zero (line 3), Rust-looking text at column five (line 4), and the `";` that ends the literal and the
 // declaration. None of it is structure, the const ends at that `;`, and the fn after it is found.
-test fn a_string_continued_with_a_backslash_is_text_and_the_const_ends_at_its_semicolon() -> Bool {
+test fn a_string_continued_with_a_backslash_is_text_and_the_const_ends_at_its_semicolon() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_continued_string_literal) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
@@ -284,7 +284,7 @@ test fn a_string_continued_with_a_backslash_is_text_and_the_const_ends_at_its_se
 // at its semicolon; read to the comment's last character it stayed open and swallowed the const
 // after it, silently (resolved_graph_cache.rs PART_DESCRIPTOR_LEN over V3_HEADER_LEN). Three items,
 // each where it really is: line 2 belongs to HEADER_LEN and not to PART_LEN.
-test fn a_trailing_comment_does_not_hold_a_declaration_open() -> Bool {
+test fn a_trailing_comment_does_not_hold_a_declaration_open() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_trailing_comment_after_a_declaration) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
@@ -306,7 +306,7 @@ test fn a_trailing_comment_does_not_hold_a_declaration_open() -> Bool {
 // the open item's own indent, and a header there is not something an item's body contains. Before
 // the guard the fixture's line 3 was silently body of fixture_text and `phantom` simply did not
 // exist; now the file stops at line 3.
-test fn an_item_header_at_the_open_items_own_indent_refuses_rather_than_being_swallowed() -> Bool {
+test fn an_item_header_at_the_open_items_own_indent_refuses_rather_than_being_swallowed() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_header_swallowed_by_an_open_item) {
     RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 3
     RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
@@ -320,7 +320,7 @@ test fn an_item_header_at_the_open_items_own_indent_refuses_rather_than_being_sw
 // early: the header guard stops the line at the first sibling header. Refusing is the named
 // residual, and this arm is what keeps the repair from having quietly become "skip anything that
 // looks like a literal".
-test fn an_ordinary_string_reaching_column_zero_still_refuses() -> Bool {
+test fn an_ordinary_string_reaching_column_zero_still_refuses() -> Bool  {
   match scan_rust_source(
     repo_path: "src/v1/stage0/src/probe.rs",
     content: fixture_ordinary_string_reaching_column_zero
@@ -333,7 +333,7 @@ test fn an_ordinary_string_reaching_column_zero_still_refuses() -> Bool {
 // AN UNRELATED UNSCANNABLE CONSTRUCT STILL REFUSES. `extern "C" { ... }` declares foreign items the
 // grammar authority carries no form for (src/v1/stage0/src/phase_profile.rs carries one), and
 // nothing in the literal repair reaches it.
-test fn an_extern_block_still_refuses() -> Bool {
+test fn an_extern_block_still_refuses() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_extern_block) {
     RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 1
     RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
@@ -347,7 +347,7 @@ test fn an_extern_block_still_refuses() -> Bool {
 // constant closes where it really closes, the item after it is found, and the declaration planted
 // inside the literal is not. All three are required together: finding the following item is what
 // separates a reader that skipped the literal from one that swallowed the rest of the file.
-test fn a_header_opened_raw_string_is_skipped_whole_and_mints_no_item() -> Bool {
+test fn a_header_opened_raw_string_is_skipped_whole_and_mints_no_item() -> Bool  {
   match scan_rust_source(
     repo_path: "src/v1/stage0/src/probe.rs",
     content: fixture_header_opened_raw_string
@@ -366,7 +366,7 @@ test fn a_header_opened_raw_string_is_skipped_whole_and_mints_no_item() -> Bool 
 // that peeled `const` unconditionally records the constant as a function named nothing; one that
 // never peeled it records `const fn doubled` as a constant named `fn`. Both fixtures are in one
 // file so a repair in either direction reds here.
-test fn const_item_and_const_fn_are_distinguished() -> Bool {
+test fn const_item_and_const_fn_are_distinguished() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_const_and_const_fn) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } => {
@@ -380,7 +380,7 @@ test fn const_item_and_const_fn_are_distinguished() -> Bool {
 // THE INNERMOST CONTAINING ITEM WINS. A method's lines lie inside both the method and its impl
 // block; reporting the impl block would attribute a method edit to the enclosing scope, which is
 // how a new capability lands with nothing to report.
-test fn attribution_reports_the_innermost_item() -> Bool {
+test fn attribution_reports_the_innermost_item() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_ordinary_source) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
@@ -394,7 +394,7 @@ test fn attribution_reports_the_innermost_item() -> Bool {
   }
 }
 
-test fn a_use_line_attributes_to_file_level_and_not_to_an_item() -> Bool {
+test fn a_use_line_attributes_to_file_level_and_not_to_an_item() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_ordinary_source) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
@@ -407,7 +407,7 @@ test fn a_use_line_attributes_to_file_level_and_not_to_an_item() -> Bool {
   }
 }
 
-test fn a_line_beyond_the_file_is_out_of_range_and_not_file_level() -> Bool {
+test fn a_line_beyond_the_file_is_out_of_range_and_not_file_level() -> Bool  {
   match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_const_and_const_fn) {
     RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
@@ -423,6 +423,6 @@ test fn a_line_beyond_the_file_is_out_of_range_and_not_file_level() -> Bool {
 // THE KEYWORD MAPPING IS CHECKED AGAINST THE GRAMMAR AUTHORITY RATHER THAN AGAINST ITSELF. A
 // keyword added to extdeps.languages.rust.syntax rust_item_forms and not named in the kind mapping
 // would otherwise acquire a plausible kind in silence.
-test fn every_grammar_authority_item_keyword_has_a_named_kind() -> Bool {
+test fn every_grammar_authority_item_keyword_has_a_named_kind() -> Bool  {
   rust_item_kind_keyword_mapping_is_total()
 }

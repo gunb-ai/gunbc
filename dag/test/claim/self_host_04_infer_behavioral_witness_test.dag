@@ -10,6 +10,6 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // v1_compiler, which established nothing about behavior (gunbc.recurring_failure_mode
 // hand_shim_shadows_an_emitted_module).
 
-test fn self_host_04_infer_behavioral_receipt_holds() -> Bool {
+test fn self_host_04_infer_behavioral_receipt_holds() -> Bool  {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/04_infer.dag")
 }

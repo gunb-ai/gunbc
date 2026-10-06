@@ -57,7 +57,7 @@ data scm_rl_v4_declaring_a_stage_path: String = "dag/test/fixture/scm_repository
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
 
-test fn scm_rl_a_well_formed_document_loads() -> Bool {
+test fn scm_rl_a_well_formed_document_loads() -> Bool  {
   match load_repository(path: scm_rl_empty_repository_path) {
     RepositoryLoaded { path: p, envelope: _, generation: _ } => p == scm_rl_empty_repository_path
     _ => false
@@ -68,7 +68,7 @@ test fn scm_rl_a_well_formed_document_loads() -> Bool {
 // compare-and-set operand a guarded save matches against the disk (the save witness drives that
 // arm), so it must be re-derivable from the document alone. The expectation is computed here from
 // a direct read of the same fixture bytes, and the claim refuses to trust the load's own report.
-test fn scm_rl_the_loaded_generation_is_the_content_hash_of_the_documents_bytes() -> Bool {
+test fn scm_rl_the_loaded_generation_is_the_content_hash_of_the_documents_bytes() -> Bool  {
   let expected = repository_generation_of_content(
     content: Filesystem.Read(path: scm_rl_empty_repository_path).content,
   )
@@ -79,7 +79,7 @@ test fn scm_rl_the_loaded_generation_is_the_content_hash_of_the_documents_bytes(
   }
 }
 
-test fn scm_rl_an_absent_file_is_unreadable_not_empty() -> Bool {
+test fn scm_rl_an_absent_file_is_unreadable_not_empty() -> Bool  {
   match load_repository(path: scm_rl_absent_path) {
     RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: p, error: _ } } =>
       p == scm_rl_absent_path
@@ -87,7 +87,7 @@ test fn scm_rl_an_absent_file_is_unreadable_not_empty() -> Bool {
   }
 }
 
-test fn scm_rl_a_truncated_document_is_unparseable() -> Bool {
+test fn scm_rl_a_truncated_document_is_unparseable() -> Bool  {
   match load_repository(path: scm_rl_malformed_document_path) {
     RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: p, gap: _ } } =>
       p == scm_rl_malformed_document_path
@@ -98,7 +98,7 @@ test fn scm_rl_a_truncated_document_is_unparseable() -> Bool {
 // THE DISCRIMINATING ONE. A document that PARSES cleanly and is still not a repository must reach
 // the decode arm and carry the schema's own refusal -- not the parse arm, whose remedy is "these
 // bytes are damaged" rather than "this is a repository of a version I do not know".
-test fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
+test fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool  {
   match load_repository(path: scm_rl_unknown_format_path) {
     RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
       p == scm_rl_unknown_format_path &&
@@ -126,7 +126,7 @@ test fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
 // for corruption in a file that is perfectly intact, while "I do not speak this protocol" names a
 // version gap with a real remedy. A refusal-only assertion cannot tell those apart, because both
 // arms refuse.
-test fn scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() -> Bool {
+test fn scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() -> Bool  {
   match load_repository(path: scm_rl_frozen_v1_path) {
     RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
       p == scm_rl_frozen_v1_path
@@ -149,7 +149,7 @@ test fn scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() -> Bool {
 // stays UNSUPPORTED rather than malformed, because the document is not damaged -- this build is
 // simply not its reader, and there is deliberately no v3 reader beside v4: deriving a manifest from a
 // semantic root would fabricate the authored bytes the projection discarded.
-test fn scm_rl_a_retired_v3_document_is_refused_by_name_rather_than_as_unrecognized() -> Bool {
+test fn scm_rl_a_retired_v3_document_is_refused_by_name_rather_than_as_unrecognized() -> Bool  {
   match load_repository(path: scm_rl_retired_v3_path) {
     RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
       p == scm_rl_retired_v3_path
@@ -167,7 +167,7 @@ test fn scm_rl_a_retired_v3_document_is_refused_by_name_rather_than_as_unrecogni
 
 // THE CONTROL THE CLAIM ABOVE NEEDS. Without it, a classifier that answered LoadUnsupportedProtocol
 // for everything would satisfy it. A genuinely damaged document must still classify as malformed.
-test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
+test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool  {
   match load_repository(path: scm_rl_malformed_document_path) {
     RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: p, gap: _ } } =>
       p == scm_rl_malformed_document_path
@@ -191,7 +191,7 @@ test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
 // claim goes red. The distinction it defends is that "no explicit staging selection" is a TRUTHFUL
 // reading of a v4 document -- staging did not exist when it was written -- whereas a v3 root would
 // have to invent authored bytes the semantic projection discarded.
-test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool {
+test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool  {
   match load_repository(path: scm_rl_predecessor_v4_path) {
     RepositoryLoaded { path: p, envelope: envelope, generation: _ } =>
       p == scm_rl_predecessor_v4_path
@@ -211,7 +211,7 @@ test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool {
 //
 // THIS IS THE CLAIM THAT MAKES THE TWO READERS TWO READERS. A single tolerant reader admitting both
 // member populations passes the predecessor claim above and fails this one.
-test fn scm_rl_a_v4_document_declaring_a_stage_refuses() -> Bool {
+test fn scm_rl_a_v4_document_declaring_a_stage_refuses() -> Bool  {
   match load_repository(path: scm_rl_v4_declaring_a_stage_path) {
     RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: _ } } =>
       p == scm_rl_v4_declaring_a_stage_path
@@ -245,7 +245,7 @@ fn scm_rl_line_count(path: String) -> Int {
   length(xs: scm_rl_refusal_text(path: path))
 }
 
-test fn scm_rl_a_retired_document_renders_as_a_format_this_build_does_not_read() -> Bool {
+test fn scm_rl_a_retired_document_renders_as_a_format_this_build_does_not_read() -> Bool  {
   scm_rl_says(path: scm_rl_retired_v3_path, line: "the document declares retired repository format gunbc-scm-repository-v3")
     && scm_rl_says(path: scm_rl_retired_v3_path, line: concat("  at ", scm_rl_retired_v3_path))
     && (scm_rl_says(
@@ -263,7 +263,7 @@ test fn scm_rl_a_retired_document_renders_as_a_format_this_build_does_not_read()
 // NOT VALIDATED, and never that the document is intact or that a repository is present. An earlier cut
 // of this rendering said "the document is intact"; on these bytes that was simply false, and it was
 // derived from recognizing a tag rather than from reading anything.
-test fn scm_rl_a_retired_tag_over_no_body_claims_the_protocol_and_not_the_contents() -> Bool {
+test fn scm_rl_a_retired_tag_over_no_body_claims_the_protocol_and_not_the_contents() -> Bool  {
   scm_rl_says(
     path: scm_rl_retired_v3_tag_only_path,
     line: "the document declares retired repository format gunbc-scm-repository-v3"
@@ -279,11 +279,11 @@ test fn scm_rl_a_retired_tag_over_no_body_claims_the_protocol_and_not_the_conten
 // document renders no refusal at all; a genuinely damaged one must not borrow the retirement wording;
 // and an unrecognized format is its own remedy -- nothing here was ever readable, rather than a reader
 // having been withdrawn.
-test fn scm_rl_a_healthy_document_renders_no_refusal_text() -> Bool {
+test fn scm_rl_a_healthy_document_renders_no_refusal_text() -> Bool  {
   scm_rl_line_count(path: scm_rl_empty_repository_path) == 0
 }
 
-test fn scm_rl_a_damaged_document_does_not_render_as_a_retired_format() -> Bool {
+test fn scm_rl_a_damaged_document_does_not_render_as_a_retired_format() -> Bool  {
   (scm_rl_line_count(path: scm_rl_malformed_document_path) > 0)
     && (scm_rl_says(
           path: scm_rl_malformed_document_path,
@@ -291,6 +291,6 @@ test fn scm_rl_a_damaged_document_does_not_render_as_a_retired_format() -> Bool 
         ) == false)
 }
 
-test fn scm_rl_an_unknown_format_renders_as_unrecognized_rather_than_retired() -> Bool {
+test fn scm_rl_an_unknown_format_renders_as_unrecognized_rather_than_retired() -> Bool  {
   scm_rl_says(path: scm_rl_unknown_format_path, line: "the document declares unrecognized repository format gunbc-scm-repository-v99")
 }

@@ -47,7 +47,7 @@ fn w_declared_unit_affected_by_closure_dag() -> Bool {
   unit_must_run(unit: "coproduct_reflection_conformance_test", paths: ["src/v2/std/node.dag"]) == true
 }
 
-test fn rust_stage0_gates_witnesses() -> Bool {
+test fn rust_stage0_gates_witnesses() -> Bool  {
   w_rs_selects() &&
   w_cargo_toml_selects() &&
   w_toolchain_selects() &&

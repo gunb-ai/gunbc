@@ -22,14 +22,14 @@ import gunbc.self_compile_blocking_disposition {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn current_identity_and_disposition_join_holds() -> Bool {
+test fn current_identity_and_disposition_join_holds() -> Bool  {
   count(current_self_compile_identities()) > 0
     && count(declared_current_self_compile_dispositions()) > 0
     && count(observed_current_self_compile_dispositions()) > 0
     && self_compile_disposition_join_holds(j: current_self_compile_disposition_join)
 }
 
-test fn receipt_declares_its_stale_historical_rung() -> Bool {
+test fn receipt_declares_its_stale_historical_rung() -> Bool  {
   self_compile_receipt_standing.bounded_population > 0
     && self_compile_receipt_standing.stale_by_at_least_commits > 0
     && self_compile_receipt_standing.stale_against_revision != current_self_compile_disposition_join.source_revision
@@ -48,7 +48,7 @@ fn first_identity() -> SelfCompileDiagnosticIdentity {
   )
 }
 
-test fn a_lost_subject_is_refused_RED() -> Bool {
+test fn a_lost_subject_is_refused_RED() -> Bool  {
   let observed = observed_current_self_compile_dispositions() |> skip(1)
   !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
     source_revision: current_self_compile_disposition_join.source_revision,
@@ -60,7 +60,7 @@ test fn a_lost_subject_is_refused_RED() -> Bool {
   })
 }
 
-test fn a_new_subject_is_refused_RED() -> Bool {
+test fn a_new_subject_is_refused_RED() -> Bool  {
   let observed = concat(observed_current_self_compile_dispositions(), [ObservedRefusal { identity: first_identity() }])
   !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
     source_revision: current_self_compile_disposition_join.source_revision,
@@ -72,7 +72,7 @@ test fn a_new_subject_is_refused_RED() -> Bool {
   })
 }
 
-test fn an_equal_count_identity_substitution_is_refused_RED() -> Bool {
+test fn an_equal_count_identity_substitution_is_refused_RED() -> Bool  {
   let replacement = diagnostic_identity(
     module_path: "v2.test.manual.ownership_movable",
     site: "invented_site",
@@ -91,7 +91,7 @@ test fn an_equal_count_identity_substitution_is_refused_RED() -> Bool {
     })
 }
 
-test fn a_changed_disposition_is_refused_RED() -> Bool {
+test fn a_changed_disposition_is_refused_RED() -> Bool  {
   let first = first_identity()
   let declared = [DeclaredSelfCompileDisposition { identity: first, expected: Accepts }]
   let observed = [ObservedRefusal { identity: first }]
@@ -105,7 +105,7 @@ test fn a_changed_disposition_is_refused_RED() -> Bool {
   })
 }
 
-test fn declared_refusal_regresses_when_it_starts_accepting_RED() -> Bool {
+test fn declared_refusal_regresses_when_it_starts_accepting_RED() -> Bool  {
   let first = first_identity()
   let declared = [DeclaredSelfCompileDisposition { identity: first, expected: RefusesWithThisDiagnostic }]
   let observed = [ObservedAcceptance { identity: first }]

@@ -260,7 +260,7 @@ fn ot_manifest_pair(path_a: String, at_a: String, path_b: String, at_b: String) 
 // A null `source` is a WRONG-SHAPED source member, not an absent one. The distinction is the whole
 // reason the decoder reads the member before deciding which arm it is in: absence selects another
 // arm, malformedness condemns this one, and collapsing them reports the defect against the wrong key.
-test fn ot_a_null_source_is_a_wrong_shaped_source() -> Bool {
+test fn ot_a_null_source_is_a_wrong_shaped_source() -> Bool  {
   ot_tag_of(
     entries: [json_object(members: [json_kv(key: "source", value: json_null())])]
   ) == "member_read"
@@ -268,7 +268,7 @@ test fn ot_a_null_source_is_a_wrong_shaped_source() -> Bool {
 
 // A DUPLICATED `source` refuses as duplicated rather than being read last-wins or reclassified as a
 // node. This is the arm a naive reader accepts while holding two answers.
-test fn ot_a_duplicated_source_refuses() -> Bool {
+test fn ot_a_duplicated_source_refuses() -> Bool  {
   ot_tag_of(
     entries: [
       json_object(
@@ -284,7 +284,7 @@ test fn ot_a_duplicated_source_refuses() -> Bool {
 // AN ENTRY CARRYING TWO SHAPES IS NOT ONE ARM. The source read succeeds, so the member set is checked
 // against the authored-source set and `kind`/`children` are unexpected there. This is what keeps
 // shape-sniffing a partition rather than a guess.
-test fn ot_an_entry_carrying_both_shapes_refuses() -> Bool {
+test fn ot_an_entry_carrying_both_shapes_refuses() -> Bool  {
   ot_tag_of(
     entries: [
       json_object(
@@ -308,7 +308,7 @@ test fn ot_an_entry_carrying_both_shapes_refuses() -> Bool {
 
 // THE CONTROL for the three above, and it is what makes them about the SOURCE MEMBER rather than
 // about this fixture scaffold: an ordinary authored-source entry decodes.
-test fn ot_an_ordinary_source_entry_decodes() -> Bool {
+test fn ot_an_ordinary_source_entry_decodes() -> Bool  {
   ot_tag_of(entries: [ot_source_entry(text: "text")]) == "decoded"
 }
 
@@ -319,7 +319,7 @@ test fn ot_an_ordinary_source_entry_decodes() -> Bool {
 // A CHILD EDGE NAMING A SOURCE REFUSES, AND NAMES THE SOURCE. Inside the model a StoredEdge's target
 // is a SemanticNodeTarget and this state is unwritable; a document is bytes and can say anything, so
 // this is the boundary where the wall is a typed refusal rather than a constructor.
-test fn ot_a_child_edge_naming_a_source_refuses() -> Bool {
+test fn ot_a_child_edge_naming_a_source_refuses() -> Bool  {
   ot_tag_of(
     entries: [ot_source_entry(text: "a carried file\n"), ot_node_over_position(at: "0")]
   ) == "edge_target_source"
@@ -329,7 +329,7 @@ test fn ot_a_child_edge_naming_a_source_refuses() -> Bool {
 // never appear in a commit-closure document, so the arm that refuses one shipped with its evidence
 // attached to a document that could not carry the state. Reporting it as the source case would be a
 // well-formed answer about the wrong object kind.
-test fn ot_a_child_edge_naming_a_manifest_refuses() -> Bool {
+test fn ot_a_child_edge_naming_a_manifest_refuses() -> Bool  {
   ot_tag_of(
     entries: [
       ot_source_entry(text: "a carried file\n"),
@@ -341,7 +341,7 @@ test fn ot_a_child_edge_naming_a_manifest_refuses() -> Bool {
 
 // THE CONTROL, one fact apart: the same node shape over a POSITION THAT HOLDS A NODE decodes. Without
 // it both claims above are satisfied by a decoder that refuses every edge naming a position.
-test fn ot_a_child_edge_naming_a_node_decodes() -> Bool {
+test fn ot_a_child_edge_naming_a_node_decodes() -> Bool  {
   ot_tag_of(entries: [ot_empty_node_entry(), ot_node_over_position(at: "0")]) == "decoded"
 }
 
@@ -353,7 +353,7 @@ test fn ot_a_child_edge_naming_a_node_decodes() -> Bool {
 // it found exactly as an edge's is. The asymmetry with an edge is deliberate and is the point: an
 // edge requires a node and refuses a source, an entry requires a source and refuses a node, so a
 // shared "wrong kind" cause would have to mean opposite things in the two positions.
-test fn ot_a_manifest_source_naming_a_node_refuses() -> Bool {
+test fn ot_a_manifest_source_naming_a_node_refuses() -> Bool  {
   ot_tag_of(
     entries: [ot_empty_node_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
   ) == "manifest_source_node"
@@ -361,7 +361,7 @@ test fn ot_a_manifest_source_naming_a_node_refuses() -> Bool {
 
 // A manifest entry naming a position nothing defined is UNRESOLVED, which is a different fact from
 // the wrong kind being there and has a different remedy.
-test fn ot_a_manifest_source_naming_no_position_is_unresolved() -> Bool {
+test fn ot_a_manifest_source_naming_no_position_is_unresolved() -> Bool  {
   ot_tag_of(
     entries: [ot_manifest_entry(path: "witness/only.dag", at: "9")]
   ) == "manifest_source"
@@ -370,7 +370,7 @@ test fn ot_a_manifest_source_naming_no_position_is_unresolved() -> Bool {
 // AN EMPTY PATH REFUSES RATHER THAN BEING CAST. CorpusManifestEntry.path is a NonEmptyStr, so the
 // empty string has no inhabitant to become; the check is what makes the cast honest rather than a
 // second place the invariant is asserted.
-test fn ot_a_manifest_entry_with_an_empty_path_refuses() -> Bool {
+test fn ot_a_manifest_entry_with_an_empty_path_refuses() -> Bool  {
   ot_tag_of(
     entries: [ot_source_entry(text: "text"), ot_manifest_entry(path: "", at: "0")]
   ) == "manifest_path_empty"
@@ -380,7 +380,7 @@ test fn ot_a_manifest_entry_with_an_empty_path_refuses() -> Bool {
 // the decoder rather than restated by it. A manifest denotes a path -> source function; two sources
 // at one path is not one, and answering with either would be the silent selection the store's own
 // refusal exists to prevent.
-test fn ot_a_wire_manifest_with_a_duplicated_path_refuses() -> Bool {
+test fn ot_a_wire_manifest_with_a_duplicated_path_refuses() -> Bool  {
   ot_tag_of(
     entries: [
       ot_source_entry(text: "alpha"),
@@ -392,7 +392,7 @@ test fn ot_a_wire_manifest_with_a_duplicated_path_refuses() -> Bool {
 
 // THE DISCRIMINATING CONTROL FOR IT. The same two sources under two DIFFERENT paths is an ordinary
 // manifest, so the refusal above is about the repeated path and not about a two-entry manifest.
-test fn ot_a_wire_manifest_with_two_distinct_paths_decodes() -> Bool {
+test fn ot_a_wire_manifest_with_two_distinct_paths_decodes() -> Bool  {
   ot_tag_of(
     entries: [
       ot_source_entry(text: "alpha"),
@@ -403,7 +403,7 @@ test fn ot_a_wire_manifest_with_two_distinct_paths_decodes() -> Bool {
 }
 
 // THE CONTROL: an ordinary manifest over a source it carries decodes.
-test fn ot_an_ordinary_manifest_entry_decodes() -> Bool {
+test fn ot_an_ordinary_manifest_entry_decodes() -> Bool  {
   ot_tag_of(
     entries: [ot_source_entry(text: "text"), ot_manifest_entry(path: "witness/only.dag", at: "0")]
   ) == "decoded"
@@ -462,7 +462,7 @@ fn ot_content_at(store: ObjectStore, locator: ObjectId) -> AuthoredSourceContent
 // THE TWO AUTHORED ARMS STAY DISTINCT ACROSS THE TABLE. An encoder that wrote both as the empty
 // string, or a decoder that read every source as text, would preserve the object COUNT and lose the
 // distinction -- which is why this reads the arms rather than counting objects.
-test fn ot_the_two_authored_arms_stay_distinct() -> Bool {
+test fn ot_the_two_authored_arms_stay_distinct() -> Bool  {
   let fx = ot_two_source_store()
   fx.ok
     && !object_id_eq(left: fx.empty_locator, right: fx.text_locator)
@@ -495,7 +495,7 @@ test fn ot_the_two_authored_arms_stay_distinct() -> Bool {
 // source's identity: the decoder hands the bytes to authored_source_object, which derives it by the
 // one rule. So finding the same locator after a round trip is evidence that the rule agreed, not
 // that a field survived.
-test fn ot_an_authored_source_keeps_its_derived_identity() -> Bool {
+test fn ot_an_authored_source_keeps_its_derived_identity() -> Bool  {
   let fx = ot_two_source_store()
   fx.ok
     && match ot_reencoded(store: fx.store) {
@@ -520,7 +520,7 @@ test fn ot_an_authored_source_keeps_its_derived_identity() -> Bool {
 // could not be written at all before the manifest had a wire form, and it is asserted through the
 // manifest's own lookup rather than an object count, because a count is satisfied by any object of
 // any kind at any identity.
-test fn ot_a_manifest_survives_the_table() -> Bool {
+test fn ot_a_manifest_survives_the_table() -> Bool  {
   match store_authored_source(store: empty_store(), text: "the manifested file\n") {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
     SourceStored { store: with_file, source: file } =>
@@ -598,13 +598,13 @@ fn ot_wrong_kind_barred(entries: List<JsonValue>) -> Bool {
   }
 }
 
-test fn ot_a_contained_edge_at_a_source_stands_as_a_wrong_kind_requirement() -> Bool {
+test fn ot_a_contained_edge_at_a_source_stands_as_a_wrong_kind_requirement() -> Bool  {
   ot_wrong_kind_barred(
     entries: [ot_source_entry(text: "a carried file\n"), ot_node_over_position(at: "0")]
   )
 }
 
-test fn ot_a_contained_edge_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+test fn ot_a_contained_edge_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool  {
   ot_wrong_kind_barred(
     entries: [
       ot_source_entry(text: "a carried file\n"),
@@ -614,7 +614,7 @@ test fn ot_a_contained_edge_at_a_manifest_stands_as_a_wrong_kind_requirement() -
   )
 }
 
-test fn ot_a_contained_manifest_source_at_a_node_stands_as_a_wrong_kind_requirement() -> Bool {
+test fn ot_a_contained_manifest_source_at_a_node_stands_as_a_wrong_kind_requirement() -> Bool  {
   ot_wrong_kind_barred(
     entries: [ot_empty_node_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
   )
@@ -623,7 +623,7 @@ test fn ot_a_contained_manifest_source_at_a_node_stands_as_a_wrong_kind_requirem
 // THE DISCRIMINATOR THAT KEEPS THE THREE ABOVE FROM BEING "EVERY REFUSAL IS WRONG-KIND". An
 // unresolved reference names no occupant at all, so it stays malformed -- and malformed is exactly
 // the standing that DOES permit supersession, which is why the two must not be merged.
-test fn ot_an_unresolved_manifest_source_is_not_a_wrong_kind_requirement() -> Bool {
+test fn ot_an_unresolved_manifest_source_is_not_a_wrong_kind_requirement() -> Bool  {
   ot_wrong_kind_barred(entries: [ot_manifest_entry(path: "witness/only.dag", at: "9")]) == false
 }
 
@@ -648,7 +648,7 @@ fn ot_empty_manifest_entry() -> JsonValue {
 // cause, the reference that names the occupant, and the standing and permission that cause produces.
 // Asserting the cause and then calling the entries-taking helper would decode the document twice and
 // leave the two answers unjoined.
-test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool  {
   match ot_decoded(
     entries: [ot_empty_manifest_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
   ).refusal {

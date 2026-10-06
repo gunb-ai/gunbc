@@ -32,6 +32,6 @@ import tools.self_host_logic_seed_unavailable_transport {
 // Filesystem.Write, cargo.Build.BuildManifest, and gunbc.WitnessBin.Run have no
 // mock_response.
 
-test fn self_host_logic_seed_unavailable_receipt_holds() -> Bool {
+test fn self_host_logic_seed_unavailable_receipt_holds() -> Bool  {
   subject_evidence_establishes(evidence: slbu_seed_unavailable_receipt(), licenses: fn(held) { held })
 }

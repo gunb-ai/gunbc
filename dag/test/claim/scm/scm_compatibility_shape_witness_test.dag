@@ -108,7 +108,7 @@ fn synthetic_projection(
   )
 }
 
-test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool {
+test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool  {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )
@@ -129,7 +129,7 @@ test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool {
       |> any(row => row.realization == "synthetic-fourth-r0")
 }
 
-test fn witness_projection_attachment_is_idempotent_per_realization_target() -> Bool {
+test fn witness_projection_attachment_is_idempotent_per_realization_target() -> Bool  {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )
@@ -164,7 +164,7 @@ test fn witness_projection_attachment_is_idempotent_per_realization_target() -> 
     && count(second_target.projections.realizations) == 2
 }
 
-test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
+test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool  {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )

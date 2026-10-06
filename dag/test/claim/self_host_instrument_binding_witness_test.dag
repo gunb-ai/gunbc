@@ -55,7 +55,7 @@ fn routed_producer_is_self_host(route: TargetInvocationRoute) -> Bool {
   }
 }
 
-test fn the_self_host_operand_routes_through_the_live_registry_holds() -> Bool {
+test fn the_self_host_operand_routes_through_the_live_registry_holds() -> Bool  {
   routed_producer_is_self_host(route: invoke_target(operand: "//gunbc/instruments:self-host"))
 }
 
@@ -63,12 +63,12 @@ test fn the_self_host_operand_routes_through_the_live_registry_holds() -> Bool {
 // same rows the CLI routes against, so a label added without its binding -- or a binding added
 // without its label -- is a length disagreement rather than a target that refuses at invocation
 // time in someone else's session.
-test fn every_rostered_label_carries_a_binding_holds() -> Bool {
+test fn every_rostered_label_carries_a_binding_holds() -> Bool  {
   length(xs: instrument_targets()) == length(xs: instrument_bindings())
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN INVOCATION OPTION.
-test fn the_self_host_subject_is_the_instruments_own_fact_holds() -> Bool {
+test fn the_self_host_subject_is_the_instruments_own_fact_holds() -> Bool  {
   length(xs: self_host_source_roots()) == 2
 }
 
@@ -87,18 +87,18 @@ fn routed_producer_is_v2_native_cli(route: TargetInvocationRoute) -> Bool {
   }
 }
 
-test fn the_v2_native_cli_operand_routes_through_the_live_registry_holds() -> Bool {
+test fn the_v2_native_cli_operand_routes_through_the_live_registry_holds() -> Bool  {
   routed_producer_is_v2_native_cli(route: invoke_target(operand: "//gunbc/instruments:v2-native-cli"))
 }
 
 // THE TWO GENERATION INSTRUMENTS DO NOT SHARE A LABEL, stated as a claim because the failure it
 // catches is silent: a copied row that left the CLI binding pointing at the self-host label would
 // still route, still return a producer, and still report a standing -- for the other closure.
-test fn the_two_generation_instruments_carry_distinct_labels_holds() -> Bool {
+test fn the_two_generation_instruments_carry_distinct_labels_holds() -> Bool  {
   !label_eq(a: v2_native_cli_label(), b: self_host_label())
 }
 
 // The CLI instrument's subject is its own fact, on the same rule its sibling follows.
-test fn the_v2_native_cli_subject_is_the_instruments_own_fact_holds() -> Bool {
+test fn the_v2_native_cli_subject_is_the_instruments_own_fact_holds() -> Bool  {
   length(xs: v2_native_cli_source_roots()) == 2
 }

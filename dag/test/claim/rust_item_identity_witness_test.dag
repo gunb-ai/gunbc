@@ -15,12 +15,12 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn rust_item_identity_note_cites_impl_method_gap() -> Bool {
+test fn rust_item_identity_note_cites_impl_method_gap() -> Bool  {
   string_contains(s: rust_item_identity_note, pattern: "impl-block method")
     && string_contains(s: rust_item_identity_extension_proposal_note, pattern: "ImplMethod")
 }
 
-test fn rust_item_identity_key_includes_impl_subject() -> Bool {
+test fn rust_item_identity_key_includes_impl_subject() -> Bool  {
   let item = RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
     kind: RustImplMethod,
@@ -33,7 +33,7 @@ test fn rust_item_identity_key_includes_impl_subject() -> Bool {
   rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::impl_method::std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
 }
 
-test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
+test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool  {
   let item = RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
     kind: RustFunction,
@@ -51,7 +51,7 @@ test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
 // first, and an addition would be admitted by a justification written about something else. This is
 // the discriminating pair rather than a single positive: the same name in two enclosing modules,
 // required to differ.
-test fn same_name_in_two_inline_modules_yields_two_keys() -> Bool {
+test fn same_name_in_two_inline_modules_yields_two_keys() -> Bool  {
   let left = RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
     kind: RustFunction,
@@ -75,7 +75,7 @@ test fn same_name_in_two_inline_modules_yields_two_keys() -> Bool {
       == "src/v1/stage0/src/cli_run.rs::fn::bare_reference_scanner_tests.helper"
 }
 
-test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
+test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool  {
   string_contains(s: seed_growth_admission_note, pattern: "gunbc.seed_growth")
     && string_contains(s: seed_growth_admission_note, pattern: "completeness join")
 }
@@ -88,7 +88,7 @@ test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
 // the rows saying so were pinned in place. The producer note is now asserted for what it must
 // RECORD -- that the trigger it replaced was a conjunction an unrelated cut half-satisfied -- which
 // is the fact a later reader needs and the one that would be lost if the row were quietly rewritten.
-test fn the_producer_note_records_the_half_fired_trigger() -> Bool {
+test fn the_producer_note_records_the_half_fired_trigger() -> Bool  {
   string_contains(s: rust_item_host_observation_producer_note, pattern: "CONJUNCTION")
     && string_contains(s: rust_item_host_observation_producer_note, pattern: "gunbc.rust_item_scan")
 }

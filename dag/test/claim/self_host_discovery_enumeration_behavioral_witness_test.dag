@@ -22,6 +22,6 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // for the kernel String and is deleted with the other 70, not re-pointed at v2.std.text. The receipt
 // is a wet run; its green after the discharge has not been observed yet.
 
-test fn self_host_discovery_enumeration_behavioral_receipt_holds() -> Bool {
+test fn self_host_discovery_enumeration_behavioral_receipt_holds() -> Bool  {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/discovery_enumeration.dag")
 }

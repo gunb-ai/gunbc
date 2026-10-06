@@ -24,7 +24,7 @@ fn sacs_round_trips(state: AuthorizationClaimState) -> Bool {
   }
 }
 
-test fn every_claim_state_round_trips_through_its_wire_form() -> Bool {
+test fn every_claim_state_round_trips_through_its_wire_form() -> Bool  {
   sacs_round_trips(state: Unclaimed)
     && sacs_round_trips(state: ClaimedBy { attempt: sacs_attempt(s: "tx-1"), claimed_at: "2026-09-18T00:00:00Z" })
     && sacs_round_trips(state: CompletedBy { attempt: sacs_attempt(s: "tx-1"), completed_at: "2026-09-18T00:00:01Z" })
@@ -35,7 +35,7 @@ test fn every_claim_state_round_trips_through_its_wire_form() -> Bool {
         })
 }
 
-test fn bytes_that_inhabit_no_claim_state_parse_to_nothing() -> Bool {
+test fn bytes_that_inhabit_no_claim_state_parse_to_nothing() -> Bool  {
   (match parse_authorization_claim_state(payload: "held-by\ttx-1\tt" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
     && (match parse_authorization_claim_state(payload: "claimed-by\ttx-1" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
     && (match parse_authorization_claim_state(payload: "claimed-by\t\tt" as NonEmptyStr) { Absent => true  Present { value: _ } => false })

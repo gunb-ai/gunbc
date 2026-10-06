@@ -471,7 +471,7 @@ fn pa_good() -> SelfHostCandidate {
 // on a nonempty corpus with a caught planted fault. Under the superseded byte
 // fixed-point authority this exact candidate would have been REFUSED for the sole
 // reason that its emitted source bytes were not the seed's.
-test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
+test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool  {
   pa_admitted(o: admit_promotion(c: pa_good()))
 }
 
@@ -479,7 +479,7 @@ test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
 // UNCHANGED — same producer, same source closure, same target, same toolchain, same
 // build configuration, same artifact — so a byte comparison would report a perfect
 // fixed point. Behavior diverged, so admission refuses. Byte identity buys nothing.
-test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
+test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool  {
   let ident = pa_identical_identity()
   let cand = pa_identical_candidate()
   let o = admit_promotion(
@@ -524,7 +524,7 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
 // A corpus that never proved it could fail admits nothing. Without this arm the
 // equivalence receipt is satisfiable by a corpus that agrees because it cannot
 // disagree.
-test fn uncaught_planted_fault_is_refused() -> Bool {
+test fn uncaught_planted_fault_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -571,7 +571,7 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
 // all. That is neither "the fault was caught" nor "the fault escaped", and it must
 // not be silently treated as either. Refusal names the unavailability so the deficit
 // stays countable rather than being absorbed into a green.
-test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Bool {
+test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -616,7 +616,7 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
 }
 
 // Agreement over zero cases is agreement over nothing.
-test fn empty_behavioral_corpus_is_refused() -> Bool {
+test fn empty_behavioral_corpus_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -663,7 +663,7 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
 // A receipt gathered under a DIFFERENT toolchain refuses as stale. This is the axis
 // most likely to drift unnoticed in practice, because nothing about the source
 // changes when the toolchain moves underneath it.
-test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
+test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool  {
   let stale_subject = GenerationIdentity {
     producer_compiler: pa_candidate_identity().producer_compiler,
     source_closure: pa_candidate_identity().source_closure,
@@ -716,7 +716,7 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
 // A build that failed is not a build. Stated separately from behavioral divergence
 // because a candidate that does not compile and one that compiles and misbehaves are
 // different states with different remedies.
-test fn failed_successor_build_is_refused() -> Bool {
+test fn failed_successor_build_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -761,7 +761,7 @@ test fn failed_successor_build_is_refused() -> Bool {
 // produced ITSELF is refused, because provenance is checked against the producer
 // fixed by construction when the generation was built, not against whatever the
 // receipt asserts.
-test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
+test fn candidate_cannot_authorize_its_own_provenance() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -808,7 +808,7 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
 // DISCRIMINATING RED for the oracle join (review 51140). A receipt naming the
 // CANDIDATE as its own oracle is refused. Without the join this bundle is admitted:
 // subject matches, behavior "agrees", and the comparison was against itself.
-test fn candidate_as_its_own_oracle_is_refused() -> Bool {
+test fn candidate_as_its_own_oracle_is_refused() -> Bool  {
   let self_oracle = BehavioralEquivalenceReceipt {
     subject: pa_candidate_identity(),
     oracle: pa_candidate_identity(),
@@ -856,7 +856,7 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
 // (review 51140). The generation-level witness proves two unbuilt artifacts do not
 // AGREE; this proves admission refuses an unbuilt candidate by name, which is the
 // arm that matters when SH-C's artifact axis is not yet fillable.
-test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
+test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool  {
   let unbuilt_identity = GenerationIdentity {
     producer_compiler: pa_candidate_identity().producer_compiler,
     source_closure: pa_candidate_identity().source_closure,
@@ -919,7 +919,7 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
 // own produced_by_candidate names a DIFFERENT candidate B. Every receipt joins
 // internally, so without an explicit chain check both halves look valid and the
 // successor inherits admission from a candidate that never produced it.
-test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
+test fn spliced_candidate_and_successor_chains_are_refused() -> Bool  {
   let other_candidate = CandidateGeneration {
     identity: pa_identity(
       closure_label: "OTHER-candidate-closure",
@@ -979,7 +979,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
 // DISCRIMINATING RED: the planted fault was proven discriminating over a DIFFERENT
 // corpus than the one equivalence was measured on, so the fault receipt vouches for
 // teeth the equivalence run never had.
-test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
+test fn fault_proven_on_a_different_corpus_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -1031,7 +1031,7 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
 // producer has the SAME identity as the bundled candidate but descends from a
 // DIFFERENT seed. An identity-only chain join admits this; joining the whole declared
 // producer refuses it. Without this control the bypass is unwitnessed.
-test fn same_identity_different_seed_splice_is_refused() -> Bool {
+test fn same_identity_different_seed_splice_is_refused() -> Bool  {
   let other_seed = SeedGeneration {
     identity: pa_identity(
       closure_label: "OTHER-seed-closure",
@@ -1096,7 +1096,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
 // compiler produces precisely this — it runs, it agrees on what it reached, and it never
 // reached the rest. Under the label-only join the two receipts agreed and the bundle was
 // admitted; the count sat beside the name proving nothing.
-test fn truncated_successor_run_is_refused() -> Bool {
+test fn truncated_successor_run_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -1141,7 +1141,7 @@ test fn truncated_successor_run_is_refused() -> Bool {
 // corpus it names. Refusing only the truncation would let the bar be raised silently by
 // whatever the runner happened to do, which is the same unjoined-number defect pointing
 // the other way.
-test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
+test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -1186,7 +1186,7 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
 // corpus and each runs exactly the population IT declares, so every per-receipt check
 // passes and the label join passes — yet the two ran different corpora under one name.
 // Joining identity alone admits this; joining the declared size too refuses it.
-test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
+test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle(
     candidate_lens_coverage: pa_coverage_closed(),
@@ -1292,7 +1292,7 @@ fn pa_bundle_from_observation(
 // The positive control: a fully observed run, projected into receipts, is admitted. It
 // is what makes the two REDs below discriminating rather than a mechanism that refuses
 // everything routed through the seam.
-test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
+test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool  {
   pa_admitted(
     o: admit_promotion(
       c: pa_bundle_from_observation(
@@ -1311,7 +1311,7 @@ test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
 // fault was never reported, and the old test read the exit code as proof of teeth. Routed
 // through the seam as the unavailable observation it actually is, admission refuses under
 // its own name instead of inheriting a verdict from an exit status.
-test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
+test fn unreported_fault_observation_refuses_through_the_seam() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
@@ -1331,7 +1331,7 @@ test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
 // DISCRIMINATING RED for the other half: a build that did not happen cannot yield a
 // behavioral verdict, and the observation says so rather than reporting agreement over a
 // comparison that never ran.
-test fn unbuilt_run_refuses_through_the_seam() -> Bool {
+test fn unbuilt_run_refuses_through_the_seam() -> Bool  {
   let o = admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
@@ -1451,7 +1451,7 @@ fn pa_with_coverage(
 // BY NAME on both counts -- the join's own cause AND the obligations left unaccounted -- because a
 // refusal that named only the join would tell a reader the coverage is unusable while leaving them
 // to guess what it failed to cover.
-test fn refused_candidate_coverage_refuses_promotion_by_name() -> Bool {
+test fn refused_candidate_coverage_refuses_promotion_by_name() -> Bool  {
   let o = admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_refused(),
     successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
@@ -1463,7 +1463,7 @@ test fn refused_candidate_coverage_refuses_promotion_by_name() -> Bool {
 // RED, HALF TWO: the join CLOSED and is short. Nothing in the coverage value is inconsistent, so
 // only the carried required set can catch it. This is the witness that fails if the required set is
 // ever re-read from the live roster instead of pinned.
-test fn closed_but_short_candidate_coverage_refuses_promotion() -> Bool {
+test fn closed_but_short_candidate_coverage_refuses_promotion() -> Bool  {
   let o = admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_missing_beta(),
     successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
@@ -1475,7 +1475,7 @@ test fn closed_but_short_candidate_coverage_refuses_promotion() -> Bool {
 // THE SUCCESSOR IS JUDGED TOO, not just the candidate. A promotion that checked only the candidate
 // would admit a successor whose own compile never ran the required roster, which is the generation
 // that actually becomes the next compiler.
-test fn refused_successor_coverage_refuses_promotion() -> Bool {
+test fn refused_successor_coverage_refuses_promotion() -> Bool  {
   promotion_refusal_carries(
     o: admit_promotion(c: pa_with_coverage(
       candidate_cov: pa_coverage_closed(),
@@ -1490,7 +1490,7 @@ test fn refused_successor_coverage_refuses_promotion() -> Bool {
 // EACH GENERATION'S COVERAGE NAMES ITS OWN SUBJECT, and writing it any other way is what this
 // witness exists to keep honest: handing the successor the candidate's coverage reads as complete
 // and is refused, because a receipt about one generation says nothing about the other.
-test fn closed_and_complete_coverage_on_both_generations_promotes() -> Bool {
+test fn closed_and_complete_coverage_on_both_generations_promotes() -> Bool  {
   match admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_closed(),
     successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
@@ -1540,7 +1540,7 @@ fn pa_build_failed_with_clean_coverage() -> SelfHostCandidate {
   )
 }
 
-test fn adding_coverage_preserves_the_existing_refusal_causes() -> Bool {
+test fn adding_coverage_preserves_the_existing_refusal_causes() -> Bool  {
   let o = admit_promotion(c: pa_build_failed_with_clean_coverage())
   promotion_refusal_carries(o: o, cause: ^refusal_build_not_green)
     && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_not_closed)
@@ -1553,7 +1553,7 @@ test fn adding_coverage_preserves_the_existing_refusal_causes() -> Bool {
 // [alpha] with a recomputed digest passed, and so did material shortened to nothing. The comparison
 // is now against the `required_lens_contract` axis of the generation being promoted, which the
 // submitter does not supply.
-test fn material_shortened_with_its_observations_is_refused_as_unbound() -> Bool {
+test fn material_shortened_with_its_observations_is_refused_as_unbound() -> Bool  {
   let o = admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_shortened_together(),
     successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
@@ -1563,7 +1563,7 @@ test fn material_shortened_with_its_observations_is_refused_as_unbound() -> Bool
 
 // THE DEGENERATE CASE OF THE SAME DEFECT, kept separate because an empty population is the one a
 // fold over the supplied list reports nothing about: every obligation is vacuously covered.
-test fn empty_contract_material_is_refused_as_unbound() -> Bool {
+test fn empty_contract_material_is_refused_as_unbound() -> Bool  {
   let o = admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_empty_together(),
     successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
@@ -1574,7 +1574,7 @@ test fn empty_contract_material_is_refused_as_unbound() -> Bool {
 // AN UNBOUND MATERIAL DOES NOT ALSO REPORT UNCOVERED OBLIGATIONS, because the obligations this
 // generation owes are unknown until the binding holds. Reporting a population that was never
 // established would be answering a question the receipt cannot pose.
-test fn an_unbound_material_reports_no_uncovered_population() -> Bool {
+test fn an_unbound_material_reports_no_uncovered_population() -> Bool  {
   !promotion_refusal_carries(
     o: admit_promotion(c: pa_with_coverage(
       candidate_cov: pa_coverage_shortened_together(),
@@ -1647,24 +1647,24 @@ fn pa_contract_stale_on(which: Symbol) -> PromotionOutcome {
   )
 }
 
-test fn a_contract_stale_build_receipt_refuses_naming_that_axis() -> Bool {
+test fn a_contract_stale_build_receipt_refuses_naming_that_axis() -> Bool  {
   let o = pa_contract_stale_on(which: ^on_build)
   !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
 }
 
-test fn a_contract_stale_equivalence_receipt_refuses_naming_that_axis() -> Bool {
+test fn a_contract_stale_equivalence_receipt_refuses_naming_that_axis() -> Bool  {
   let o = pa_contract_stale_on(which: ^on_equivalence)
   !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
 }
 
-test fn a_contract_stale_provenance_receipt_refuses_naming_that_axis() -> Bool {
+test fn a_contract_stale_provenance_receipt_refuses_naming_that_axis() -> Bool  {
   let o = pa_contract_stale_on(which: ^on_provenance)
   !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
 }
 
 // THE POSITIVE CONTROL FOR ALL THREE: the same bundle with no axis moved promotes, so the refusals
 // above are about the contract axis and not about the shape of this fixture.
-test fn the_same_bundle_with_no_axis_moved_promotes() -> Bool {
+test fn the_same_bundle_with_no_axis_moved_promotes() -> Bool  {
   pa_admitted(o: pa_contract_stale_on(which: ^on_nothing))
 }
 
@@ -1675,7 +1675,7 @@ test fn the_same_bundle_with_no_axis_moved_promotes() -> Bool {
 // it, which is the whole reason a coverage receipt carries one. Candidate and successor are checked
 // separately because a checker that joined only the candidate would admit a successor whose own
 // compile never ran the roster, and that is the generation that becomes the next compiler.
-test fn candidate_coverage_from_another_generation_is_refused() -> Bool {
+test fn candidate_coverage_from_another_generation_is_refused() -> Bool  {
   promotion_refusal_carries(
     o: admit_promotion(c: pa_with_coverage(
       candidate_cov: pa_coverage_closed_for(subject: pa_successor_identity()),
@@ -1685,7 +1685,7 @@ test fn candidate_coverage_from_another_generation_is_refused() -> Bool {
   )
 }
 
-test fn successor_coverage_from_another_generation_is_refused() -> Bool {
+test fn successor_coverage_from_another_generation_is_refused() -> Bool  {
   promotion_refusal_carries(
     o: admit_promotion(c: pa_with_coverage(
       candidate_cov: pa_coverage_closed(),
@@ -1698,7 +1698,7 @@ test fn successor_coverage_from_another_generation_is_refused() -> Bool {
 // AND THE SWAP IS REFUSED IN BOTH DIRECTIONS AT ONCE, which is the shape a caller would actually
 // produce by wiring the two fields the wrong way round. Naming a field `successor_lens_coverage`
 // does not make its contents about the successor.
-test fn swapping_the_two_coverages_is_refused() -> Bool {
+test fn swapping_the_two_coverages_is_refused() -> Bool  {
   promotion_refusal_carries(
     o: admit_promotion(c: pa_with_coverage(
       candidate_cov: pa_coverage_closed_for(subject: pa_successor_identity()),
@@ -1729,7 +1729,7 @@ fn pa_coverage_root_rows_for_subtree_contract() -> GenerationLensCoverage {
   )
 }
 
-test fn coverage_at_the_wrong_grain_refuses_and_names_the_grain() -> Bool {
+test fn coverage_at_the_wrong_grain_refuses_and_names_the_grain() -> Bool  {
   let o = admit_promotion(
     c: pa_with_coverage_for(
       candidate_identity: pa_candidate_identity_subtree(),
@@ -1758,7 +1758,7 @@ fn pa_coverage_matching_grain_for_subtree_contract() -> GenerationLensCoverage {
   )
 }
 
-test fn coverage_at_the_registered_grain_promotes() -> Bool {
+test fn coverage_at_the_registered_grain_promotes() -> Bool  {
   match admit_promotion(
     c: pa_with_coverage_for(
       candidate_identity: pa_candidate_identity_subtree(),
@@ -1793,7 +1793,7 @@ fn pa_coverage_rows_from_another_roster() -> GenerationLensCoverage {
   )
 }
 
-test fn coverage_summarising_another_roster_is_refused() -> Bool {
+test fn coverage_summarising_another_roster_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_with_coverage(
       candidate_cov: pa_coverage_rows_from_another_roster(),
@@ -1831,7 +1831,7 @@ fn pa_coverage_with_a_duplicated_row() -> GenerationLensCoverage {
   )
 }
 
-test fn a_lens_reported_twice_in_one_coverage_is_refused() -> Bool {
+test fn a_lens_reported_twice_in_one_coverage_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_with_coverage(
       candidate_cov: pa_coverage_with_a_duplicated_row(),
@@ -1852,7 +1852,7 @@ test fn a_lens_reported_twice_in_one_coverage_is_refused() -> Bool {
 // witness could see it, because a value minted the wrong way still equals itself. This one compares
 // the axis to the structural mint of the same digest text, and then combines it, so the carrier is
 // checked where the materialization key actually consumes it.
-test fn the_contract_axis_is_a_structural_digest() -> Bool {
+test fn the_contract_axis_is_a_structural_digest() -> Bool  {
   let text = required_lens_roster_digest_of(lenses: pa_contract_material())
   let axis = contract_axis_of_roster_digest(digest: text)
   let structural = content_hash_atom(value: text as NonEmptyStr)
@@ -1892,7 +1892,7 @@ fn pa_coverage_rows_never_executed() -> GenerationLensCoverage {
   )
 }
 
-test fn coverage_whose_rows_never_ran_is_refused() -> Bool {
+test fn coverage_whose_rows_never_ran_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_with_coverage(
       candidate_cov: pa_coverage_rows_never_executed(),
@@ -1932,7 +1932,7 @@ fn pa_coverage_root_observed_twice() -> GenerationLensCoverage {
   )
 }
 
-test fn a_root_obligation_observed_twice_is_refused() -> Bool {
+test fn a_root_obligation_observed_twice_is_refused() -> Bool  {
   let o = admit_promotion(
     c: pa_with_coverage(
       candidate_cov: pa_coverage_root_observed_twice(),
@@ -1965,7 +1965,7 @@ fn pa_coverage_subtree_observed_twice() -> GenerationLensCoverage {
   )
 }
 
-test fn a_subtree_obligation_observed_twice_promotes() -> Bool {
+test fn a_subtree_obligation_observed_twice_promotes() -> Bool  {
   match admit_promotion(
     c: pa_with_coverage_for(
       candidate_identity: pa_candidate_identity_subtree(),
@@ -2009,7 +2009,7 @@ fn pa_good_with_equivalence(outcome: EquivalenceOutcome) -> SelfHostCandidate {
 
 // POSITIVE CONTROL: v2 deliberately differs from the seed on one case, the run enumerated every
 // diverging case, and that case is a recorded correction. It promotes.
-test fn a_recorded_seed_defect_correction_admits_its_divergence() -> Bool {
+test fn a_recorded_seed_defect_correction_admits_its_divergence() -> Bool  {
   pa_admitted(
     o: admit_promotion_with_seed_corrections(
       c: pa_good_with_equivalence(outcome: BehaviorDivergesExactly { cases: ["classical_xor(True,True)"] }),
@@ -2019,14 +2019,14 @@ test fn a_recorded_seed_defect_correction_admits_its_divergence() -> Bool {
 }
 
 // THE SAME RUN WITH NO RECORD: an undisposed divergence is a v2 regression by default.
-test fn an_unrecorded_divergence_in_a_complete_run_is_refused() -> Bool {
+test fn an_unrecorded_divergence_in_a_complete_run_is_refused() -> Bool  {
   let o = admit_promotion(c: pa_good_with_equivalence(outcome: BehaviorDivergesExactly { cases: ["classical_xor(True,True)"] }))
   !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
 }
 
 // A FIRST-DIVERGENCE RECEIPT CANNOT BE DISPOSED OF: the cases after it were never judged, so a
 // record for the first case must not admit the run.
-test fn a_first_divergence_receipt_is_refused_even_when_its_case_is_recorded() -> Bool {
+test fn a_first_divergence_receipt_is_refused_even_when_its_case_is_recorded() -> Bool  {
   let o = admit_promotion_with_seed_corrections(
     c: pa_good_with_equivalence(outcome: BehaviorDiverges { at_case: "classical_xor(True,True)" }),
     corrections: [pa_xor_correction()]
@@ -2036,7 +2036,7 @@ test fn a_first_divergence_receipt_is_refused_even_when_its_case_is_recorded() -
 
 // A RECORDED CORRECTION THE RUN NO LONGER OBSERVES: v2 now agrees with the seed's defect on a case
 // it declared corrected, so the correction regressed and the row refuses.
-test fn a_recorded_correction_the_run_no_longer_observes_is_refused() -> Bool {
+test fn a_recorded_correction_the_run_no_longer_observes_is_refused() -> Bool  {
   let o = admit_promotion_with_seed_corrections(
     c: pa_good_with_equivalence(outcome: BehaviorAgrees),
     corrections: [pa_xor_correction()]

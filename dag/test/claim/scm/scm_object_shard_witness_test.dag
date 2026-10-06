@@ -43,7 +43,7 @@ fn store_of_texts(texts: List<String>) -> ObjectStore? {
   }
 }
 
-test fn a_shard_round_trips_its_member_objects() -> Bool {
+test fn a_shard_round_trips_its_member_objects() -> Bool  {
   match store_of_texts(texts: ["the whole file's text", "a second file"]) {
     Absent => false
     Present { value: store } =>
@@ -79,7 +79,7 @@ fn drop_one(xs: List<ScmObject>) -> List<ScmObject> {
   })).kept
 }
 
-test fn a_shard_naming_another_identity_is_refused() -> Bool {
+test fn a_shard_naming_another_identity_is_refused() -> Bool  {
   match store_of_texts(texts: ["honest bytes"]) {
     Absent => false
     Present { value: store } =>
@@ -104,7 +104,7 @@ test fn a_shard_naming_another_identity_is_refused() -> Bool {
 // running belt may already persist v1 shards, and the v2 partition skips sealed shards by name,
 // so v1 bytes survive until something rewrites them. The v1 name law is the content-addressed law
 // one level finer: the name derives from the single member's own content identity.
-test fn a_v1_shard_is_still_read_not_retired() -> Bool {
+test fn a_v1_shard_is_still_read_not_retired() -> Bool  {
   match store_of_texts(texts: ["legacy single-object shard member"]) {
     Absent => false
     Present { value: store } =>
@@ -132,7 +132,7 @@ test fn a_v1_shard_is_still_read_not_retired() -> Bool {
   }
 }
 
-test fn the_shard_address_derives_from_the_envelope_name_and_the_content_identity() -> Bool {
+test fn the_shard_address_derives_from_the_envelope_name_and_the_content_identity() -> Bool  {
   object_shard_path_for(
     envelope_path: "/x/projects/shell-typed-invocation.gunbc-repository.json",
     identity_digest: "0123456789abcdef",
@@ -159,7 +159,7 @@ fn shard_rostered(digests: List<String>, digest: String) -> Bool {
 // The roster names SHARDS over the store's own order, and each shard's identity derives from its
 // members' content identities: the roster and the partition agree by construction, and a member
 // change moves exactly its shard's roster entry.
-test fn the_v7_index_rosters_derives_from_shard_member_content() -> Bool {
+test fn the_v7_index_rosters_derives_from_shard_member_content() -> Bool  {
   match fixture_envelope() {
     Absent => false
     Present { value: repo } =>
@@ -207,7 +207,7 @@ fn shard_round_trip_object(object: ScmObject) -> ScmObject? {
   }
 }
 
-test fn a_v7_envelope_survives_the_full_shard_circle() -> Bool {
+test fn a_v7_envelope_survives_the_full_shard_circle() -> Bool  {
   match fixture_envelope() {
     Absent => false
     Present { value: repo } =>
@@ -259,7 +259,7 @@ test fn a_v7_envelope_survives_the_full_shard_circle() -> Bool {
 // THE BATCH GRAIN: the partition seals at the declared size and the tail stays open, and the
 // roster is derived from member identities -- change one member's content and exactly one shard's
 // identity moves.
-test fn the_partition_seals_at_the_declared_batch_size() -> Bool {
+test fn the_partition_seals_at_the_declared_batch_size() -> Bool  {
   let texts = five_texts()
   match store_of_texts(texts: texts) {
     Absent => false
@@ -275,7 +275,7 @@ test fn the_partition_seals_at_the_declared_batch_size() -> Bool {
   }
 }
 
-test fn the_roster_identity_moves_with_a_members_content() -> Bool {
+test fn the_roster_identity_moves_with_a_members_content() -> Bool  {
   match store_of_texts(texts: ["a", "b"]) {
     Absent => false
     Present { value: store } =>
@@ -295,7 +295,7 @@ fn five_texts() -> List<String> {
 // reverses inside each shard (measured 2026-09-23: a four-object store loaded back exactly
 // backwards, and every sealed shard identity moved at the next save). The flatten restores block
 // order and member order together.
-test fn shard_blocks_flatten_preserves_block_and_member_order() -> Bool {
+test fn shard_blocks_flatten_preserves_block_and_member_order() -> Bool  {
   match store_of_texts(texts: ["a", "b"]) {
     Absent => false
     Present { value: first_store } =>
@@ -332,7 +332,7 @@ test fn shard_blocks_flatten_preserves_block_and_member_order() -> Bool {
 // the tail and the index. This is the property "a save after one candidate's change rewrites only
 // its shard" stands on.
 // Second case: 3 objects, batch 512: one shard either way, and its identity moves
-test fn extending_the_store_moves_only_the_open_tail_shard() -> Bool {
+test fn extending_the_store_moves_only_the_open_tail_shard() -> Bool  {
   match store_of_texts(texts: ["a", "b"]) {
     Absent => false
     Present { value: store } =>
@@ -349,7 +349,7 @@ test fn extending_the_store_moves_only_the_open_tail_shard() -> Bool {
   }
 }
 
-test fn a_sealed_shard_never_reopens() -> Bool {
+test fn a_sealed_shard_never_reopens() -> Bool  {
   let texts = five_hundred_thirteen_texts()
   match store_of_texts(texts: texts) {
     Absent => false

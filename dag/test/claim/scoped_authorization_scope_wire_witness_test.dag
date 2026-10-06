@@ -36,7 +36,7 @@ fn sw_round_trips(scope: AuthorizationScope) -> Bool {
   }
 }
 
-test fn every_writable_scope_round_trips_through_its_wire() -> Bool {
+test fn every_writable_scope_round_trips_through_its_wire() -> Bool  {
   sw_round_trips(scope: sw_scope(verb_write: true, path: ["gunbc", "spark", "pair_serving_authority"], action: "suspend-pair-serving-authority"))
     && sw_round_trips(scope: sw_scope(verb_write: false, path: ["one"], action: "read-it"))
     && sw_round_trips(scope: AuthorizationScope { verb: Execute, resource: NamespacePosition { tree: FilesystemPathTree, path: ["usr", "bin", "tool"] }, action: ("run" as NonEmptyStr) as AuthorizedAction })
@@ -47,14 +47,14 @@ test fn every_writable_scope_round_trips_through_its_wire() -> Bool {
         })
 }
 
-test fn a_scope_with_no_unambiguous_wire_has_none() -> Bool {
+test fn a_scope_with_no_unambiguous_wire_has_none() -> Bool  {
   (match authorization_scope_wire(scope: sw_scope(verb_write: true, path: ["a b"], action: "x")) { Absent => true  Present { value: _ } => false })
     && (match authorization_scope_wire(scope: sw_scope(verb_write: true, path: ["a/b"], action: "x")) { Absent => true  Present { value: _ } => false })
     && (match authorization_scope_wire(scope: sw_scope(verb_write: true, path: [] as List<String>, action: "x")) { Absent => true  Present { value: _ } => false })
     && (match authorization_scope_wire(scope: sw_scope(verb_write: true, path: ["a"], action: "two words")) { Absent => true  Present { value: _ } => false })
 }
 
-test fn bytes_the_encoder_never_writes_decode_to_nothing() -> Bool {
+test fn bytes_the_encoder_never_writes_decode_to_nothing() -> Bool  {
   (match parse_authorization_scope_wire(wire: "write code-name gunbc/spark") { Absent => true  Present { value: _ } => false })
     && (match parse_authorization_scope_wire(wire: "delete code-name gunbc x") { Absent => true  Present { value: _ } => false })
     && (match parse_authorization_scope_wire(wire: "write nowhere gunbc x") { Absent => true  Present { value: _ } => false })
@@ -63,7 +63,7 @@ test fn bytes_the_encoder_never_writes_decode_to_nothing() -> Bool {
 }
 
 // THE FRAME: a verifier reads the scopes by position with no knowledge of the domain below them.
-test fn an_intent_frame_reads_back_its_schema_and_scopes() -> Bool {
+test fn an_intent_frame_reads_back_its_schema_and_scopes() -> Bool  {
   let a = sw_scope(verb_write: true, path: ["gunbc", "spark", "pair_serving_authority"], action: "suspend-pair-serving-authority")
   let b = sw_scope(verb_write: false, path: ["gunbc", "fabric"], action: "read-head")
   match intent_frame_head(schema: "some-intent/v1" as NonEmptyStr, scopes: [a, b]) {
@@ -81,7 +81,7 @@ test fn an_intent_frame_reads_back_its_schema_and_scopes() -> Bool {
 
 // THE RED: a text that states no scope, or a scope line that does not decode, has no frame -- it is
 // refused, never read as an intent requiring nothing.
-test fn an_intent_without_a_decodable_scope_has_no_frame() -> Bool {
+test fn an_intent_without_a_decodable_scope_has_no_frame() -> Bool  {
   (match parse_intent_scopes(text: "some-intent/v1\ntarget=group-a\n") { Absent => true  Present { value: _ } => false })
     && (match parse_intent_scopes(text: "some-intent/v1\nscope=write code-name gunbc\n") { Absent => true  Present { value: _ } => false })
     && (match parse_intent_scopes(text: "some-intent/v1\nscope=write code-name gunbc x\nscope=bogus\n") { Absent => true  Present { value: _ } => false })

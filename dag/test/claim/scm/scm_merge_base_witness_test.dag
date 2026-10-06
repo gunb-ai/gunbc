@@ -153,7 +153,7 @@ fn mb_scene() -> MbScene {
 // independent-lineage control would still pass while testing nothing, because a predicate keyed on
 // root equality would no longer have a reason to refuse it. Equally, if S2's root ever coincided with
 // S1's, the refusal control would stop separating descent from content.
-test fn scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on() -> Bool {
+test fn scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: _, s2: s2, i1: i1 } =>
@@ -187,7 +187,7 @@ test fn scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on() -> Bo
 //   consumed iff source == consumed_source        -- S2 is not S1, so it would admit
 //   consumed iff root(source) == root(consumed)   -- root(S2) != root(S1), so it would admit
 //   derive the graph base first and refuse after  -- would still return C0 here
-test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() -> Bool {
+test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: t1, s2: s2, i1: _ } =>
@@ -211,7 +211,7 @@ test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() ->
 // froze and was never integrated, so it must derive an ordinary base at the shared C0. A root-keyed
 // predicate refuses here -- a false refusal on a history it has no business refusing -- and the
 // previous claim is what stops the obvious repair of simply making the predicate weaker.
-test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -> Bool {
+test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: i1 } =>
@@ -231,7 +231,7 @@ test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -
 // EXACT REPLAY IS THE NARROW FORM, and it is asserted separately from the continued form because a
 // predicate that closes only this one is exactly the root-keyed implementation the pair above
 // refutes. Passing here while failing the descent claim is the signature of that mutation.
-test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool {
+test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
@@ -287,7 +287,7 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
 // every claim above true of a repository in memory and false of the one on disk, which is the rung
 // gap DESIGN section 4b names when it says a class's rung is the MINIMUM across its in-scope paths --
 // here source-to-value and value-to-document-to-value are two paths and both must hold.
-test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
+test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: s2, i1: _ } =>
@@ -343,7 +343,7 @@ fn mb_ordered(scene_repo: RepositoryEnvelope, order: List<RepositoryCommitRef>) 
 // THE POSITIVE CONTROL, AND IT IS NOT DECORATION EITHER. The two refusals below are reached by
 // REMOVING or REORDERING rows of this exact table, so without this claim a reader cannot tell whether
 // they refuse for the reason named or because `mb_ordered` produces something no reader accepts.
-test fn scm_mb_a_well_ordered_subset_still_decodes() -> Bool {
+test fn scm_mb_a_well_ordered_subset_still_decodes() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
@@ -360,7 +360,7 @@ test fn scm_mb_a_well_ordered_subset_still_decodes() -> Bool {
 // and merge_base returned the ordinary graph base -- the exact stale base this module exists to make
 // unavailable, reached through the path nobody checked. DESIGN section 4b reads a class's rung as the
 // MINIMUM across its in-scope paths, so before this the class sat at the wire's rung, not the mint's.
-test fn scm_mb_a_document_whose_integration_anchor_is_absent_refuses() -> Bool {
+test fn scm_mb_a_document_whose_integration_anchor_is_absent_refuses() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
@@ -378,7 +378,7 @@ test fn scm_mb_a_document_whose_integration_anchor_is_absent_refuses() -> Bool {
 // admits the document. It must not: M1 cannot have consumed a source that did not exist when M1 was
 // made, and this table admits M1 first. The membership-only implementation passes the previous claim
 // and fails here, which is the only reason both are written.
-test fn scm_mb_a_document_whose_integration_anchor_comes_later_refuses() -> Bool {
+test fn scm_mb_a_document_whose_integration_anchor_comes_later_refuses() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: _, s2: _, i1: _ } =>
@@ -394,7 +394,7 @@ test fn scm_mb_a_document_whose_integration_anchor_comes_later_refuses() -> Bool
 // THE CHECKED WRITER REFUSES THE SAME TABLE, so the malformed repository cannot be PRODUCED either.
 // Walling only the reader would leave a writer free to emit a document its own reader rejects: a
 // repository that cannot be reloaded, written by an operation that reported success.
-test fn scm_mb_checked_encode_refuses_an_absent_integration_anchor() -> Bool {
+test fn scm_mb_checked_encode_refuses_an_absent_integration_anchor() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
@@ -411,7 +411,7 @@ test fn scm_mb_checked_encode_refuses_an_absent_integration_anchor() -> Bool {
 // this the encode arm was only ever exercised on an ABSENT anchor, so a membership-only writer would
 // have passed every control while the name claimed prior admission -- the check would have been
 // weaker than its own spelling, on the exact distinction this module was reworked to draw.
-test fn scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later() -> Bool {
+test fn scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: _, s2: _, i1: _ } =>
@@ -440,7 +440,7 @@ test fn scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later() -
 // base for the one relationship the scene exists to make impossible, and went red on its first run. A
 // control that fails because its own premise contradicts the fixture is evidence about its author,
 // not about the verb.
-test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool {
+test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
@@ -461,7 +461,7 @@ test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool {
 
 // THE SAME RULE FROM THE OTHER DEGENERATE DIRECTION: the source is an ANCESTOR of the target, so the
 // nearest common ancestor is the source itself and the source side carries no changes against it.
-test fn scm_mb_squashing_an_ancestor_into_its_descendant_has_nothing_to_integrate() -> Bool {
+test fn scm_mb_squashing_an_ancestor_into_its_descendant_has_nothing_to_integrate() -> Bool  {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>

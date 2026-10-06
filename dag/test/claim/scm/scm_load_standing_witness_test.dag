@@ -158,7 +158,7 @@ fn standing_tag(s: LoadStanding) -> Int {
 // THE ARM THE RECUT EXISTS FOR. A grafted root lacks its child, so the load succeeds and the standing
 // is PARTIAL -- a success with an obligation, not a failure. The pairing against LoadComplete is what
 // makes it discriminating: a classifier answering Partial for everything would pass a lone assertion.
-test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Bool {
+test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Bool  {
   let full = ls_full()
   let partial = loaded_closure_standing(store: ls_grafted(), root: full.root)
   let complete = loaded_closure_standing(store: full.store, root: full.root)
@@ -172,7 +172,7 @@ test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Boo
 // delta for doing exactly what it was asked to do. This is the arm that did not exist to be got
 // wrong before, and it is the one most likely to be got wrong now by treating "not everything" as
 // "damaged".
-test fn a_partial_load_is_never_supersedable() -> Bool {
+test fn a_partial_load_is_never_supersedable() -> Bool  {
   !ls_permits(standing: LoadPartial)
     && !ls_permits(standing: LoadComplete)
 }
@@ -186,7 +186,7 @@ test fn a_partial_load_is_never_supersedable() -> Bool {
 // very branch could have permitted replacement with the claim still green. LoadComplete and
 // LoadPartial are checked by a_partial_load_is_never_supersedable above; the remaining three are
 // checked here, so the five are covered between the pair rather than by either alone.
-test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
+test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool  {
   ls_permits(standing: LoadDocumentMalformed)
     && !ls_permits(standing: LoadUnsupportedProtocol)
     && !ls_permits(standing: LoadIdentityCollision)
@@ -197,7 +197,7 @@ test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
 // ONLY A NAMED-BUT-ABSENT PROTOCOL MEANS THE WRITER MAY BE NEWER; a matched tag carrying an
 // unrecognized member or variant is a BROKEN DOCUMENT OF THIS SCHEMA, because this format's own
 // policy is that a schema which grows a member grows a new tag. Pairing them is the whole test.
-test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
+test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool  {
   let protocol = closure_document_load_standing(cause: ClosureDocFormatUnrecognized { found: "v9" })
   let member = closure_document_load_standing(
     cause: ClosureDocUnexpectedMember { key: "provenance" }
@@ -213,7 +213,7 @@ test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
 // AN UNRESOLVED POSITION IS MALFORMED, NOT A FETCHABLE ABSENCE. A position denotes nothing outside
 // its own document, so nobody could supply what it names. Fetchable absence is the UNCONTAINED arm,
 // which is not a refusal and never reaches this classifier at all.
-test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
+test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool  {
   standing_eq(
     a: node_table_load_standing(cause: NodeTableEdgeTargetUnresolved { reference: "7" }),
     b: LoadDocumentMalformed
@@ -229,7 +229,7 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
 // THE DATA-LOSS GUARD. object_store rules both colliding records legitimate, so a collision means
 // the structural locator cannot represent both -- not that either is damaged. Classifying it as
 // malformed would let a reader discard a writer's valid generation over an honest hash coincidence.
-test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
+test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool  {
   let collision = closure_document_load_standing(
     cause: ClosureDocNodeTableRefused {
       cause: NodeTableObjectCollision { identity: node_target_locator(target: ls_full().root) }
@@ -261,7 +261,7 @@ test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
 // THE LAST TWO CLAUSES CARRY IT THROUGH TO THE DESTINATION rather than stopping at the standing,
 // because the standing is only interesting for what it authorizes: the protocol gap must not
 // supersede a generation and the malformed document must.
-test fn an_unimplemented_identity_rule_is_a_protocol_gap_not_damage() -> Bool {
+test fn an_unimplemented_identity_rule_is_a_protocol_gap_not_damage() -> Bool  {
   let rule = repository_envelope_load_standing(
     cause: RepositoryIdentityRuleUnrecognized { found: "blake3-structural-v2" }
   )
@@ -316,7 +316,7 @@ fn ls_member_cause_is_malformed_everywhere(cause: MemberReadRefusal) -> Bool {
     )
 }
 
-test fn a_member_read_cause_is_malformed_by_either_route_at_both_classifiers() -> Bool {
+test fn a_member_read_cause_is_malformed_by_either_route_at_both_classifiers() -> Bool  {
   ls_member_cause_is_malformed_everywhere(cause: MemberReadSubjectNotObject)
     && ls_member_cause_is_malformed_everywhere(cause: MemberReadMissing { key: "at" })
     && ls_member_cause_is_malformed_everywhere(cause: MemberReadDuplicated { key: "at" })
@@ -384,7 +384,7 @@ fn ls_requirement_over_a_file() -> LsOccupied {
 // that promise is false here, because something is already there and no fetch repairs it. Answering
 // Partial would be the fabricated fetchable absence the object model closed at the record level,
 // re-entering at the standing level.
-test fn a_requirement_over_a_carried_file_is_not_partial() -> Bool {
+test fn a_requirement_over_a_carried_file_is_not_partial() -> Bool  {
   let fx = ls_requirement_over_a_file()
   fx.ok
     && standing_eq(
@@ -398,7 +398,7 @@ test fn a_requirement_over_a_carried_file_is_not_partial() -> Bool {
 // so the writer's generation is not damaged -- it describes a graph that cannot exist. Superseding
 // would destroy a valid generation over a defect that is not in its bytes, which is why
 // LoadDocumentMalformed remains the only standing that permits it.
-test fn a_wrong_kind_requirement_cannot_supersede_a_head_slot() -> Bool {
+test fn a_wrong_kind_requirement_cannot_supersede_a_head_slot() -> Bool  {
   let fx = ls_requirement_over_a_file()
   fx.ok && !ls_permits(standing: loaded_closure_standing(store: fx.store, root: fx.root))
 }

@@ -81,7 +81,7 @@ import extdeps.filesystem.filesystem_io {
 // PlainTerminal + ASCII no-colour, so an equal answer here is evidence that gunbc.scm.cli passes
 // that target and that capability -- not merely that it passes something. A colour-enabled
 // capability renders different bytes and turns this red.
-test fn cli_log_renders_the_plain_terminal_bytes_for_an_unavailable_repository() -> Bool {
+test fn cli_log_renders_the_plain_terminal_bytes_for_an_unavailable_repository() -> Bool  {
   match scm_log_response(
     result: ScmReadRepositoryUnavailable {
       cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
@@ -94,7 +94,7 @@ test fn cli_log_renders_the_plain_terminal_bytes_for_an_unavailable_repository()
 }
 
 // A REFUSED READ STILL FAILS, through this module's composition and not only the render layer's.
-test fn cli_log_exits_failure_for_an_unavailable_repository() -> Bool {
+test fn cli_log_exits_failure_for_an_unavailable_repository() -> Bool  {
   match scm_log_response(
     result: ScmReadRepositoryUnavailable {
       cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
@@ -111,7 +111,7 @@ test fn cli_log_exits_failure_for_an_unavailable_repository() -> Bool {
 
 // AN EMPTY REPOSITORY ANSWERED, so it prints and succeeds. The pair with the claim above is the
 // distinction a caller needs: "no commits" is not "no repository".
-test fn cli_log_answers_and_succeeds_for_an_empty_repository() -> Bool {
+test fn cli_log_answers_and_succeeds_for_an_empty_repository() -> Bool  {
   match scm_log_response(
     result: ScmReadAnswered { path: "repo.json", answer: repository_log(envelope: empty_repository()) }
   ) {
@@ -125,7 +125,7 @@ test fn cli_log_answers_and_succeeds_for_an_empty_repository() -> Bool {
   }
 }
 
-test fn cli_status_answers_and_succeeds_for_an_empty_repository() -> Bool {
+test fn cli_status_answers_and_succeeds_for_an_empty_repository() -> Bool  {
   match scm_status_response(
     result: ScmReadAnswered {
       path: "repo.json",
@@ -144,7 +144,7 @@ test fn cli_status_answers_and_succeeds_for_an_empty_repository() -> Bool {
 // THE CAPABILITY ROW ITSELF, stated so a change to it is a change to a claim. Bytes already pin it
 // indirectly; this says which property is load-bearing and why, so a reader editing the row learns
 // it is a contract rather than a default.
-test fn the_declared_terminal_capability_is_ascii_without_colour_or_cursor_addressing() -> Bool {
+test fn the_declared_terminal_capability_is_ascii_without_colour_or_cursor_addressing() -> Bool  {
   plain_terminal_capability.color == false
     && plain_terminal_capability.cursor_addressable == false
     && match plain_terminal_capability.tier {
@@ -181,7 +181,7 @@ fn wire_bytes(r: CliWireResponse) -> String {
 // success, and that the three say different things. A change that made the unobserved arm print the
 // foreign-file line -- telling an operator their bytes are being protected when in fact nothing was
 // observed -- would turn these red.
-test fn an_init_refusal_never_exits_success() -> Bool {
+test fn an_init_refusal_never_exits_success() -> Bool  {
   wire_refuses(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
     && wire_refuses(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
     && wire_refuses(r: scm_init_response(
@@ -197,7 +197,7 @@ test fn an_init_refusal_never_exits_success() -> Bool {
 // while nothing proved it reaches an operator as its own answer. A claim that names a population
 // has to move when the population does, or it silently covers a shrinking fraction of its subject.
 // Review 5089156132 finding 5.3 on gunbc#10026.
-test fn the_four_init_refusals_render_differently() -> Bool {
+test fn the_four_init_refusals_render_differently() -> Bool  {
   let present = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
   let foreign = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
   let unobserved = wire_bytes(r: scm_init_response(
@@ -213,7 +213,7 @@ test fn the_four_init_refusals_render_differently() -> Bool {
 
 // THE UNOBSERVED ARM CARRIES THE HOST'S CAUSE THROUGH. A refusal that dropped it would tell the
 // operator to investigate without saying what could not be observed.
-test fn the_unobserved_refusal_names_what_could_not_be_observed() -> Bool {
+test fn the_unobserved_refusal_names_what_could_not_be_observed() -> Bool  {
   match scm_init_response(
     outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "Permission denied" } }
   ) {
@@ -276,21 +276,21 @@ fn observe(listed: Bool, entries: String, read_ok: Bool, content: String) -> Fil
 
 // AN ESTABLISHED ABSENCE IS THE ONLY THING THAT MAY WRITE. This is the positive control: without it
 // every refusal claim below could be satisfied by a decision that refuses unconditionally.
-test fn only_an_established_absence_may_create() -> Bool {
+test fn only_an_established_absence_may_create() -> Bool  {
   decide(o: observe(listed: true, entries: "other.json", read_ok: false, content: "")) == "may_create"
 }
 
 // THE THREE NON-ABSENT ARMS EACH REFUSE, AND EACH KEEPS ITS OWN CAUSE. Collapsing indeterminate or
 // disagreement into the absent arm is the fail-open this module exists to prevent; collapsing them
 // into EACH OTHER would tell an operator to investigate the wrong thing.
-test fn an_unobservable_path_does_not_authorize_a_write() -> Bool {
+test fn an_unobservable_path_does_not_authorize_a_write() -> Bool  {
   decide(o: observe(listed: false, entries: "", read_ok: false, content: "")) == "unobserved"
 }
 
 // THE LISTING DID NOT NAME IT AND THE READ OF IT SUCCEEDED. One fact apart from the absence cell
 // above -- same listing, read flipped -- so this pair is what distinguishes "nothing is there" from
 // "the two observations describe different worlds".
-test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool {
+test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool  {
   decide(o: observe(listed: true, entries: "other.json", read_ok: true, content: "{}"))
     == "unobserved"
 }
@@ -319,7 +319,7 @@ fn saved_repository_bytes() -> String {
   }
 }
 
-test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
+test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool  {
   decide(o: observe(listed: true, entries: "repo.json", read_ok: true, content: "not json at all"))
       == "foreign_present"
     && decide(o: observe(
@@ -342,11 +342,11 @@ fn name_admits(n: String) -> Bool {
   }
 }
 
-test fn an_ordinary_entry_name_is_admitted() -> Bool {
+test fn an_ordinary_entry_name_is_admitted() -> Bool  {
   name_admits(n: "repo.json")
 }
 
-test fn a_name_that_is_not_one_child_of_the_directory_is_refused() -> Bool {
+test fn a_name_that_is_not_one_child_of_the_directory_is_refused() -> Bool  {
   !name_admits(n: "")
     && !name_admits(n: ".")
     && !name_admits(n: "..")
@@ -360,7 +360,7 @@ test fn a_name_that_is_not_one_child_of_the_directory_is_refused() -> Bool {
 // passes a check named for making traversal impossible, and a NUL makes the syscall see a PREFIX of
 // the name the listing was asked about. Both are the one-name-two-subjects defect the carrier
 // exists to close, reached by spellings the first cut did not model.
-test fn a_name_carrying_another_hosts_separator_or_a_nul_is_refused() -> Bool {
+test fn a_name_carrying_another_hosts_separator_or_a_nul_is_refused() -> Bool  {
   !name_admits(n: "..\\victim")
     && !name_admits(n: "subdir\\repo.json")
     && !name_admits(n: "repo.json\0.bak")
@@ -368,7 +368,7 @@ test fn a_name_carrying_another_hosts_separator_or_a_nul_is_refused() -> Bool {
 
 // THE NEWLINE CASE IS THIS MODULE'S OWN, because the delimiter belongs to Filesystem.List's encoding:
 // a name carrying one can make the membership test answer about an entry that is not present.
-test fn a_name_carrying_the_listing_delimiter_is_refused() -> Bool {
+test fn a_name_carrying_the_listing_delimiter_is_refused() -> Bool  {
   !name_admits(n: "repo.json\nother.json")
     && !name_admits(n: "repo.json\rother.json")
 }
@@ -376,7 +376,7 @@ test fn a_name_carrying_the_listing_delimiter_is_refused() -> Bool {
 // A REFUSED NAME NEVER REACHES THE FILESYSTEM. initialize_repository is effectful, but this arm
 // returns before either operation runs, so it is reachable in a SubstrateInputsOnly witness -- and
 // that is exactly the property being claimed.
-test fn a_refused_name_refuses_before_any_filesystem_operation() -> Bool {
+test fn a_refused_name_refuses_before_any_filesystem_operation() -> Bool  {
   match initialize_repository(directory: "d", name: "../victim") {
     ScmInitialized { path: _, written: _ } => false
     ScmInitWriteRefused { save: _ } => false
@@ -407,13 +407,13 @@ fn init_outcome_claims_success(save: RepositorySave) -> Bool {
   }
 }
 
-test fn a_saved_repository_is_the_only_initialized_outcome() -> Bool {
+test fn a_saved_repository_is_the_only_initialized_outcome() -> Bool  {
   init_outcome_claims_success(
     save: RepositorySaved { path: "/d/repo.json", written: byte_size(count: 12) }
   )
 }
 
-test fn no_failed_save_arm_reaches_the_initialized_outcome() -> Bool {
+test fn no_failed_save_arm_reaches_the_initialized_outcome() -> Bool  {
   !init_outcome_claims_success(
     save: RepositoryFileUnwritable { path: "/d/repo.json", error: "Permission denied" }
   )
@@ -427,7 +427,7 @@ test fn no_failed_save_arm_reaches_the_initialized_outcome() -> Bool {
 // entry could sit beside a create against another. The path now has ONE derivation, from the
 // carrier's own fields, and this pins it -- an absence for directory d and name n authorizes
 // exactly d/n and nothing else.
-test fn an_established_absence_derives_the_only_path_it_authorizes() -> Bool {
+test fn an_established_absence_derives_the_only_path_it_authorizes() -> Bool  {
   let listed = filesystem_listing_observation(
     directory: "/d", success: true, entries: "other.json", error: ""
   )
@@ -459,7 +459,7 @@ data scm_cli_retired_v3_document: String = "{\"format\": \"gunbc-scm-repository-
 
 data scm_cli_foreign_document: String = "{\"unrelated\": true}"
 
-test fn init_names_a_retired_repository_rather_than_calling_it_foreign() -> Bool {
+test fn init_names_a_retired_repository_rather_than_calling_it_foreign() -> Bool  {
   match init_present_refusal(path: "repo.json", content: scm_cli_retired_v3_document) {
     ScmInitUnsupportedDocumentPresent { path: p, protocol: protocol } =>
       p == "repo.json"
@@ -476,7 +476,7 @@ test fn init_names_a_retired_repository_rather_than_calling_it_foreign() -> Bool
 
 // THE CONTROL: genuinely foreign bytes must still be foreign, so the new arm cannot be reached by
 // everything. Without it, an init that answered "retired" for any unreadable file would pass above.
-test fn init_still_calls_genuinely_foreign_bytes_foreign() -> Bool {
+test fn init_still_calls_genuinely_foreign_bytes_foreign() -> Bool  {
   match init_present_refusal(path: "repo.json", content: scm_cli_foreign_document) {
     ScmInitForeignFilePresent { path: p } => p == "repo.json"
     ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } => false
@@ -488,7 +488,7 @@ test fn init_still_calls_genuinely_foreign_bytes_foreign() -> Bool {
 
 // AND THE RENDERING SAYS SO WHILE STILL REFUSING. The write refusal is asserted alongside the text,
 // because the repair must not have relaxed init into creating over a repository it cannot read.
-test fn a_retired_repository_renders_its_format_and_still_refuses_to_initialize() -> Bool {
+test fn a_retired_repository_renders_its_format_and_still_refuses_to_initialize() -> Bool  {
   let response = scm_init_response(
     outcome: ScmInitRefused {
       cause: ScmInitUnsupportedDocumentPresent {

@@ -158,7 +158,7 @@ fn dispositions_same_arm(a: ConformanceDisposition, b: ConformanceDisposition) -
     && (is_authority_missing(d: a) == is_authority_missing(d: b))
 }
 
-test fn conformance_all_routes_satisfy_authority_conforms() -> Bool {
+test fn conformance_all_routes_satisfy_authority_conforms() -> Bool  {
   is_conforms(
     d: classify_differential_record(
       record: record(native: right(), evaluator: right(), legacy: LegacyRun { result: right() }),
@@ -172,7 +172,7 @@ test fn conformance_all_routes_satisfy_authority_conforms() -> Bool {
 // authority it is a NativeV2Defect, because agreement is not a definition. Mutation control: change
 // fixture_expected's digest to "legacy-value" and this witness goes red -- which is the WitnessDefect
 // direction, a bad expected value, and is exactly the mutation that must not pass silently.
-test fn unanimous_agreement_on_a_wrong_value_is_not_conformance() -> Bool {
+test fn unanimous_agreement_on_a_wrong_value_is_not_conformance() -> Bool  {
   is_native_defect(
     d: classify_differential_record(
       record: record(native: wrong(), evaluator: wrong(), legacy: LegacyRun { result: wrong() }),
@@ -185,7 +185,7 @@ test fn unanimous_agreement_on_a_wrong_value_is_not_conformance() -> Bool {
 // is already defective, substituting v1's observation -- agreeing, disagreeing, or not consulted at
 // all -- cannot move the disposition. If any arm of the classifier read v1 before the v2 routes had
 // decided, one of these three would differ.
-test fn legacy_observation_cannot_move_a_native_verdict() -> Bool {
+test fn legacy_observation_cannot_move_a_native_verdict() -> Bool  {
   dispositions_same_arm(
     a: classify_differential_record(
       record: record(native: wrong(), evaluator: right(), legacy: LegacyRun { result: wrong() }),
@@ -208,7 +208,7 @@ test fn legacy_observation_cannot_move_a_native_verdict() -> Bool {
     )
 }
 
-test fn legacy_divergence_alone_is_a_legacy_defect_and_never_blocks() -> Bool {
+test fn legacy_divergence_alone_is_a_legacy_defect_and_never_blocks() -> Bool  {
   is_legacy_defect(
     d: classify_differential_record(
       record: record(native: right(), evaluator: right(), legacy: LegacyRun { result: wrong() }),
@@ -224,7 +224,7 @@ test fn legacy_divergence_alone_is_a_legacy_defect_and_never_blocks() -> Bool {
     )
 }
 
-test fn evaluator_divergence_blocks_on_route_and_not_off_it() -> Bool {
+test fn evaluator_divergence_blocks_on_route_and_not_off_it() -> Bool  {
   is_evaluator_defect(
     d: classify_differential_record(
       record: record(native: right(), evaluator: wrong(), legacy: LegacyNotConsulted),
@@ -250,7 +250,7 @@ test fn evaluator_divergence_blocks_on_route_and_not_off_it() -> Bool {
 // A record carrying ONLY a v1 result is a defective witness, not a conforming subject and not a
 // legacy defect. This is the arm that refuses the shape the lane exists to forbid: a conformance row
 // whose entire content is what the old implementation printed.
-test fn a_record_with_no_v2_observation_is_a_witness_defect() -> Bool {
+test fn a_record_with_no_v2_observation_is_a_witness_defect() -> Bool  {
   is_witness_defect(
     d: classify_differential_record(
       record: record(native: NotRun, evaluator: NotRun, legacy: LegacyRun { result: right() }),
@@ -259,7 +259,7 @@ test fn a_record_with_no_v2_observation_is_a_witness_defect() -> Bool {
   )
 }
 
-test fn a_subject_with_no_primary_authority_is_authority_missing_and_blocks() -> Bool {
+test fn a_subject_with_no_primary_authority_is_authority_missing_and_blocks() -> Bool  {
   is_authority_missing(
     d: classify_differential_record(
       record: DifferentialRecord {
@@ -311,7 +311,7 @@ fn effect_record(receipt: List<EffectReceiptEntry>) -> DifferentialRecord {
   }
 }
 
-test fn effect_receipt_in_order_conforms() -> Bool {
+test fn effect_receipt_in_order_conforms() -> Bool  {
   is_conforms(
     d: classify_differential_record(
       record: effect_record(
@@ -326,7 +326,7 @@ test fn effect_receipt_in_order_conforms() -> Bool {
 // reorder keeps both operations and both ordinals present as a SET; only carrying the ordinal in the
 // joined identity makes it a defect. The drop changes the length. Both must land on
 // HostRealizationDefect and neither may be absorbed into a value comparison.
-test fn a_reordered_effect_receipt_is_a_host_realization_defect() -> Bool {
+test fn a_reordered_effect_receipt_is_a_host_realization_defect() -> Bool  {
   is_host_realization_defect(
     d: classify_differential_record(
       record: effect_record(
@@ -337,7 +337,7 @@ test fn a_reordered_effect_receipt_is_a_host_realization_defect() -> Bool {
   )
 }
 
-test fn a_dropped_effect_is_a_host_realization_defect() -> Bool {
+test fn a_dropped_effect_is_a_host_realization_defect() -> Bool  {
   is_host_realization_defect(
     d: classify_differential_record(
       record: effect_record(receipt: [effect(name: "open", ordinal: 0)]),
@@ -351,7 +351,7 @@ test fn a_dropped_effect_is_a_host_realization_defect() -> Bool {
 // join already refuses a missing expected entry), so the length conjunct's only discriminating
 // input is an EXTRA effect the authority never ordered -- the exfiltration direction, and the more
 // dangerous one. This witness is what makes that conjunct's RED reachable.
-test fn an_extra_unexpected_effect_is_a_host_realization_defect() -> Bool {
+test fn an_extra_unexpected_effect_is_a_host_realization_defect() -> Bool  {
   is_host_realization_defect(
     d: classify_differential_record(
       record: effect_record(
@@ -394,7 +394,7 @@ fn gate_is_open(v: ExitGateVerdict) -> Bool {
 // roster -- passing at zero equals zero while nothing has been measured. Here the same empty
 // disposition list is BLOCKED by an unmeasured area and OPEN once the area reports measured, so the
 // denominator is load-bearing rather than decorative.
-test fn an_unmeasured_coverage_area_blocks_the_gate_with_no_dispositions() -> Bool {
+test fn an_unmeasured_coverage_area_blocks_the_gate_with_no_dispositions() -> Bool  {
   !gate_is_open(
     v: conformance_exit_gate(
       dispositions: [],
@@ -411,7 +411,7 @@ test fn an_unmeasured_coverage_area_blocks_the_gate_with_no_dispositions() -> Bo
     )
 }
 
-test fn a_blocking_disposition_shuts_a_fully_measured_gate() -> Bool {
+test fn a_blocking_disposition_shuts_a_fully_measured_gate() -> Bool  {
   !gate_is_open(
     v: conformance_exit_gate(
       dispositions: [
@@ -445,7 +445,7 @@ fn subject_with(id: String, expected: ExpectedOutcome) -> BehaviorSubject {
 // A conflict is two authorities disagreeing about ONE subject; two rows agreeing about one subject
 // is a duplicate, which is a different defect with a different remedy. Both directions are asserted
 // so the predicate cannot be satisfied by returning true on every shared id.
-test fn two_authorities_disagreeing_about_one_subject_conflict() -> Bool {
+test fn two_authorities_disagreeing_about_one_subject_conflict() -> Bool  {
   subjects_conflict(
     a: subject_with(id: "s", expected: ExpectsValue { digest: nes(s: "a") }),
     b: subject_with(id: "s", expected: ExpectsRefusal { diagnostic_identity: nes(s: "a") })
@@ -495,7 +495,7 @@ fn verdict_is_failed_open(v: OmittedArmVerdict) -> Bool {
 // reject-with-identity / accept / reject-with-identity, and each single-leg deviation lands in
 // FailedOpen -- including the reject-everything checker, which only the complete control catches,
 // and the wrong-identity rejection, which a presence/absence check would wave through.
-test fn omitted_arm_triple_holds_only_on_the_exact_pattern() -> Bool {
+test fn omitted_arm_triple_holds_only_on_the_exact_pattern() -> Bool  {
   match fixture_tree() {
     Absent => false
     Present { value: tree } =>
@@ -539,7 +539,7 @@ test fn omitted_arm_triple_holds_only_on_the_exact_pattern() -> Bool {
   }
 }
 
-test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
+test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool  {
   match fixture_tree() {
     Absent => false
     Present { value: tree } =>
@@ -604,7 +604,7 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
 // refusal cause, and it must not be manufacturable as Admitted even when every disposition
 // conforms and every area is measured. The FailedOpen refusal counts as a blocking disposition;
 // the Unobserved refusal counts as an unmeasured area -- they are different facts.
-test fn a_failed_open_omitted_arm_refuses_a_clean_gate() -> Bool {
+test fn a_failed_open_omitted_arm_refuses_a_clean_gate() -> Bool  {
   match fixture_tree() {
     Absent => false
     Present { value: tree } =>
@@ -696,7 +696,7 @@ fn two_route_effect_record(
 // produce the authority value, so a classifier that only compared a receipt against an expected order
 // answers Conforms here -- the disagreement silently absorbed -- and one that read a single unrouted
 // receipt answers HostRealizationDefect, naming the wrong subject.
-test fn two_routes_disagreeing_on_effect_ordinal_is_a_route_disagreement() -> Bool {
+test fn two_routes_disagreeing_on_effect_ordinal_is_a_route_disagreement() -> Bool  {
   is_route_effect_disagreement(
     d: classify_differential_record(
       record: two_route_effect_record(
@@ -713,7 +713,7 @@ test fn two_routes_disagreeing_on_effect_ordinal_is_a_route_disagreement() -> Bo
 // and disagree on value, native wrong against the law. It must classify NativeV2Defect before and
 // after the split -- agreeing receipts contribute nothing to the verdict -- and an agreeing NONEMPTY
 // pair must not trip the disagreement arm either.
-test fn routes_agreeing_on_effects_classify_by_value_unchanged() -> Bool {
+test fn routes_agreeing_on_effects_classify_by_value_unchanged() -> Bool  {
   is_native_defect(
     d: classify_differential_record(
       record: two_route_effect_record(native: wrong(), native_effects: [], evaluator_effects: []),

@@ -114,7 +114,7 @@ fn outcome_refusal_tag(outcome: SupersessionOutcome) -> String {
 // success while leaving the slot on its old generation would pass a verdict-only assertion, and that
 // is exactly the failure a compare-and-swap exists to prevent. The warrant is read too: a receipt
 // naming a generation other than the one destroyed is a receipt of a different event.
-test fn a_malformed_generation_is_superseded_and_the_slot_actually_moves() -> Bool {
+test fn a_malformed_generation_is_superseded_and_the_slot_actually_moves() -> Bool  {
   match sup_admitting_outcome() {
     SupersessionRefused { cause: _ } => false
     SupersessionApplied { slot: s, warrant: w } =>
@@ -128,7 +128,7 @@ test fn a_malformed_generation_is_superseded_and_the_slot_actually_moves() -> Bo
 // THE COMPARE-AND-SWAP ARM. Everything the evidence carries is correct; the slot simply moved
 // between the read and the write. Paired against the admitting outcome so that a relation refusing
 // unconditionally cannot satisfy it.
-test fn a_slot_that_moved_under_the_evidence_refuses_and_names_both_generations() -> Bool {
+test fn a_slot_that_moved_under_the_evidence_refuses_and_names_both_generations() -> Bool  {
   let read_slot = sup_slot()
   let evidence = sup_evidence(
     slot: read_slot,
@@ -162,7 +162,7 @@ test fn a_slot_that_moved_under_the_evidence_refuses_and_names_both_generations(
 // EVIDENCE ABOUT ANOTHER SLOT IS NOT WEAK EVIDENCE ABOUT THIS ONE. Without this arm a reader that
 // found one slot's document malformed could authorize destroying a different slot's generation,
 // which is the same data loss reached by a shorter route.
-test fn evidence_gathered_from_another_slot_refuses() -> Bool {
+test fn evidence_gathered_from_another_slot_refuses() -> Bool  {
   let other = HeadSlot { slot: "staging", generation: gen_current() }
   let outcome = supersede_head_slot(
     slot: sup_slot(),
@@ -176,7 +176,7 @@ test fn evidence_gathered_from_another_slot_refuses() -> Bool {
 // THE JOIN THE BOOL COULD NOT EXPRESS. The standing is malformed, the slot is right, the slot has
 // not moved -- and the document the reader actually examined is not the one the slot holds. A
 // permission predicate answers `true` to this configuration because it never sees either identity.
-test fn evidence_examined_from_another_document_refuses() -> Bool {
+test fn evidence_examined_from_another_document_refuses() -> Bool  {
   let slot = sup_slot()
   let outcome = supersede_head_slot(
     slot: slot,
@@ -190,7 +190,7 @@ test fn evidence_examined_from_another_document_refuses() -> Bool {
 // A SUPERSESSION THAT INSTALLS WHAT IS ALREADY THERE IS NOT A NO-OP TO REPORT AS SUCCESS. It is a
 // caller that believes it replaced a malformed generation and did not, and answering `applied` would
 // be the fabricated plausible output DESIGN section 5 forbids.
-test fn proposing_the_generation_already_installed_refuses() -> Bool {
+test fn proposing_the_generation_already_installed_refuses() -> Bool  {
   let slot = sup_slot()
   let outcome = supersede_head_slot(
     slot: slot,
@@ -212,7 +212,7 @@ test fn proposing_the_generation_already_installed_refuses() -> Bool {
 // that enumerates a subset is worse than a narrower name, because the gap is invisible at the call
 // site. `standing_name` below already carried all six arms, which is what makes the omission a
 // stale enumeration rather than a missing vocabulary.
-test fn every_non_permitting_standing_refuses_and_says_which() -> Bool {
+test fn every_non_permitting_standing_refuses_and_says_which() -> Bool  {
   standing_refusal_is_itself(standing: LoadComplete)
     && standing_refusal_is_itself(standing: LoadPartial)
     && standing_refusal_is_itself(standing: LoadUnsupportedProtocol)

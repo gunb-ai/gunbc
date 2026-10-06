@@ -164,7 +164,7 @@ fn holds(paths: List<String>, path: String) -> Bool {
 // THE MERGE TAKES BOTH SIDES' WORK, WHICH IS THE ONE THING A WRONG COMPOSITION CANNOT FAKE. Taking
 // either side's manifest wholesale produces a valid repository and a valid commit; it just silently
 // drops the other side's file.
-test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
+test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool  {
   match scene() {
     SceneUnavailable => false
     Scene { build: _, base: _, target: target, source: source } =>
@@ -201,7 +201,7 @@ test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
 // recorded as consumed rather than as a second parent. An implementation that parented the merge on
 // the SOURCE also produces a valid repository holding all three paths, so the previous claim does
 // not separate it from this one.
-test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -> Bool {
+test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -> Bool  {
   match scene() {
     SceneUnavailable => false
     Scene { build: _, base: _, target: target, source: source } =>
@@ -246,7 +246,7 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
 // THROUGH THE BASE DERIVATION rather than by a check this module added. That is what makes the
 // composition load-bearing: a verb that derived its base by any other route would merge again
 // happily, and the resurrection merge_base exists to prevent would arrive through the verb.
-test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt() -> Bool {
+test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt() -> Bool  {
   match scene() {
     SceneUnavailable => false
     Scene { build: _, base: _, target: target, source: source } =>
@@ -302,7 +302,7 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
 // is that the refusal REACHES THE REPOSITORY: no commit is minted, the conflict population arrives
 // intact, and the commit list is unchanged -- a verb that counted the conflicts and committed the
 // mergeable remainder would produce a corpus neither author wrote.
-test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
+test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool  {
   let c0 = mb_commit(
     build: mb_stage(build: mb_start(), path: "a", text: "A0"),
     message: "base",
@@ -525,7 +525,7 @@ fn sm_names_the_ghost(cause: CorpusEntrySourceRefusal) -> Bool {
 // THE DISCRIMINATING RED. Deleting the completeness observation from `admit_merge_subject` turns this
 // into a `SquashMerged`, which is the defect: a commit published over bytes that cannot be recovered,
 // with the source spent.
-test fn scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_path() -> Bool {
+test fn scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_path() -> Bool  {
   match sm_partial_scene(present: false) {
     SmPartialUnavailable => false
     SmPartialReady { repository: r, target: t, source: sc } =>
@@ -545,7 +545,7 @@ test fn scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_pa
 
 // THE POSITIVE CONTROL. Identical scene, ghost bytes present. Without it, a merge that refused
 // everything would satisfy the claim above, and a merge that never merges is not a safer merge.
-test fn scm_sm_the_same_merge_succeeds_once_the_source_is_present() -> Bool {
+test fn scm_sm_the_same_merge_succeeds_once_the_source_is_present() -> Bool  {
   match sm_partial_scene(present: true) {
     SmPartialUnavailable => false
     SmPartialReady { repository: r, target: t, source: sc } =>

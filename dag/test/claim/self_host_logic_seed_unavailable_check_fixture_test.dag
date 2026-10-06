@@ -18,7 +18,7 @@ import tools.self_host_logic_seed_unavailable_transport {
 }
 
 // GREEN: a directory with no v1_compiler:: references should pass
-test fn clean_directory_passes_v1_rt_check() -> Bool {
+test fn clean_directory_passes_v1_rt_check() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let clean_file = Filesystem.Write(
     path: concat(dir.path, "/std_logic.rs"),
@@ -37,7 +37,7 @@ test fn clean_directory_passes_v1_rt_check() -> Bool {
 // RED: a directory with a v1_compiler:: reference MUST FAIL
 // This is the DISCRIMINATING CONTROL: the transport's check catches
 // a reference to the seed crate namespace.
-test fn directory_with_v1_compiler_ref_fails_check() -> Bool {
+test fn directory_with_v1_compiler_ref_fails_check() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let bad_file = Filesystem.Write(
     path: concat(dir.path, "/std_logic.rs"),
@@ -52,7 +52,7 @@ test fn directory_with_v1_compiler_ref_fails_check() -> Bool {
 // GREEN: v1_rt.rs with v1_compiler:: in comments is permitted (it references
 // seed source files in prose; the check looks for v1_compiler:: as seed-linkage
 // tokens, and v1_rt.rs is excluded by containment test).
-test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
+test fn directory_with_v1_rt_containing_calls_passes() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let rt_file = Filesystem.Write(
     path: concat(dir.path, "/v1_rt.rs"),

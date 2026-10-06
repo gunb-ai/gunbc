@@ -99,7 +99,7 @@ fn live_of(head_content: String) -> LiveHandRustObserved {
 // THE HUNK HEADER IS GIT'S FORMAT AND THE ELIDED COUNT MEANS ONE. A reader that defaulted the count
 // to zero would report every single-line change as touching nothing, which is the empty-observation
 // narrow arriving through arithmetic rather than through a failure arm.
-test fn hunk_header_with_elided_count_means_one_line() -> Bool {
+test fn hunk_header_with_elided_count_means_one_line() -> Bool  {
   match parse_hunk_header(header: "@@ -20,0 +21 @@ fn helper() -> bool { true }") {
     HunkRangeParsed { old_range: old_range, new_range: new_range } =>
       new_range.start == 21 && new_range.count == 1 && old_range.start == 20 && old_range.count == 0
@@ -107,7 +107,7 @@ test fn hunk_header_with_elided_count_means_one_line() -> Bool {
   }
 }
 
-test fn an_undecodable_hunk_header_refuses_rather_than_yielding_no_range() -> Bool {
+test fn an_undecodable_hunk_header_refuses_rather_than_yielding_no_range() -> Bool  {
   match parse_hunk_header(header: "@@ not a range at all @@") {
     HunkRangeRefused { header: _, detail: _ } => true
     HunkRangeParsed { old_range: _, new_range: _ } => false
@@ -117,28 +117,28 @@ test fn an_undecodable_hunk_header_refuses_rather_than_yielding_no_range() -> Bo
 // LONGEST PREFIX WINS. src/v1/stage0/src/bin/ is a subtree of src/v1/stage0/src/, so a first-match
 // reader gives every binary the library's namespace and the authored row order becomes silently
 // load-bearing.
-test fn the_bin_subtree_does_not_inherit_the_library_namespace() -> Bool {
+test fn the_bin_subtree_does_not_inherit_the_library_namespace() -> Bool  {
   match rust_module_path_for_repo_path(repo_path: "src/v1/stage0/src/bin/claim_executor.rs") {
     RustModulePathProjected { module_path: path } => path == "v1_compiler.bin.claim_executor"
     RustModulePathRefused { repo_path: _, detail: _ } => false
   }
 }
 
-test fn a_path_no_namespace_row_claims_refuses_rather_than_acquiring_one() -> Bool {
+test fn a_path_no_namespace_row_claims_refuses_rather_than_acquiring_one() -> Bool  {
   match rust_module_path_for_repo_path(repo_path: "src/v2/somewhere/else.rs") {
     RustModulePathRefused { repo_path: _, detail: _ } => true
     RustModulePathProjected { module_path: _ } => false
   }
 }
 
-test fn a_nested_source_path_keeps_its_directory_as_a_namespace_segment() -> Bool {
+test fn a_nested_source_path_keeps_its_directory_as_a_namespace_segment() -> Bool  {
   match rust_module_path_for_repo_path(repo_path: "src/v1/stage0/src/cli_run/bare_reference_scanner.rs") {
     RustModulePathProjected { module_path: path } => path == "v1_compiler.cli_run.bare_reference_scanner"
     RustModulePathRefused { repo_path: _, detail: _ } => false
   }
 }
 
-test fn an_impl_method_is_reported_uncitable_rather_than_dropped_or_forced() -> Bool {
+test fn an_impl_method_is_reported_uncitable_rather_than_dropped_or_forced() -> Bool  {
   match item_declaration_ref(
     item: RustItemIdentity {
       repo_path: cli_run_path,
@@ -163,7 +163,7 @@ fn change_of(head_content: String, new_ranges: List<LineRange>) -> RustItemChang
   )
 }
 
-test fn an_added_item_is_reported_added_and_an_untouched_item_is_not_modified() -> Bool {
+test fn an_added_item_is_reported_added_and_an_untouched_item_is_not_modified() -> Bool  {
   match change_of(head_content: head_with_unjustified_addition, new_ranges: [LineRange { start: 6, count: 4 }]) {
     RustItemChangeObserved {
       added_hand_items: added,
@@ -185,7 +185,7 @@ test fn an_added_item_is_reported_added_and_an_untouched_item_is_not_modified() 
 // decides whether this construction does anything: a worker can add a whole capability inside an
 // existing function without creating one item, and a reader that reported nothing there would
 // leave the freeze open through the largest functions in the seed.
-test fn a_body_edit_inside_an_existing_item_is_reported_modified() -> Bool {
+test fn a_body_edit_inside_an_existing_item_is_reported_modified() -> Bool  {
   match change_of(head_content: head_with_modified_existing_item, new_ranges: [LineRange { start: 4, count: 1 }]) {
     RustItemChangeObserved {
       added_hand_items: added,
@@ -208,7 +208,7 @@ test fn a_body_edit_inside_an_existing_item_is_reported_modified() -> Bool {
 // A CHANGED HAND-RUST FILE THE READER CANNOT PLACE REFUSES. It does not report an empty delta, and
 // this is the arm the whole carrier exists for: an unattributed change rendered as "nothing
 // changed" is silently uncovered, where a widen would merely be expensive.
-test fn a_changed_region_the_reader_cannot_attribute_refuses() -> Bool {
+test fn a_changed_region_the_reader_cannot_attribute_refuses() -> Bool  {
   match change_of(head_content: head_with_unreadable_region, new_ranges: [LineRange { start: 7, count: 3 }]) {
     RustItemChangeScanRefused { repo_path: path, line: _, line_text: _, detail: _ } => path == cli_run_path
     RustItemChangeObserved {
@@ -227,7 +227,7 @@ test fn a_changed_region_the_reader_cannot_attribute_refuses() -> Bool {
 // tempting answer for a line inside it is "no item changed", which is exactly the empty-observation
 // narrow: a `static` added inside `thread_local!` is hand-Rust growth that no roster row names. The
 // reader has no name for it, so the join stops the line rather than reporting nothing.
-test fn a_change_inside_a_macro_block_refuses_rather_than_reporting_no_item() -> Bool {
+test fn a_change_inside_a_macro_block_refuses_rather_than_reporting_no_item() -> Bool  {
   match change_of(head_content: head_with_macro_block_addition, new_ranges: [LineRange { start: 8, count: 1 }]) {
     RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
       path == cli_run_path
@@ -244,7 +244,7 @@ test fn a_change_inside_a_macro_block_refuses_rather_than_reporting_no_item() ->
   }
 }
 
-test fn a_generated_path_change_is_classified_and_never_scanned_for_items() -> Bool {
+test fn a_generated_path_change_is_classified_and_never_scanned_for_items() -> Bool  {
   match observe_rust_item_change(
     generated_repo_paths: [cli_run_path],
     inputs: added_change(head_content: head_with_unreadable_region, new_ranges: [LineRange { start: 7, count: 3 }])
@@ -261,7 +261,7 @@ test fn a_generated_path_change_is_classified_and_never_scanned_for_items() -> B
   }
 }
 
-test fn an_unjustified_addition_refuses_and_names_the_item() -> Bool {
+test fn an_unjustified_addition_refuses_and_names_the_item() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_unjustified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_unjustified_addition),
@@ -329,7 +329,7 @@ data retro_modeled_addition_bridge: AuthorizedTemporarySeedBridge = AuthorizedTe
 // addition still refuses -- because nothing executed the test that would establish the model held
 // without the Rust beside it. A probe that did not run rendering as a passed one is the
 // execution-provenance loss the design document names, and here it has no spelling.
-test fn a_capability_modeled_in_the_same_change_refuses_until_a_probe_runs() -> Bool {
+test fn a_capability_modeled_in_the_same_change_refuses_until_a_probe_runs() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_justified_addition),
@@ -352,7 +352,7 @@ test fn a_capability_modeled_in_the_same_change_refuses_until_a_probe_runs() -> 
 // same addition the positive control admits refuses when no bridge states its capability origin:
 // the SeedGrowthJustification row is identical in both runs, so what separates them is the origin
 // relation and nothing else.
-test fn a_roster_named_addition_still_refuses_when_no_bridge_states_its_origin() -> Bool {
+test fn a_roster_named_addition_still_refuses_when_no_bridge_states_its_origin() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_justified_addition),
@@ -451,7 +451,7 @@ data expired_epoch_evidence: AdmissionEvidence = AdmissionEvidence {
 // that separates "the model constrains the Rust" from "the fixtures follow the Rust": a fixture
 // pinned to an implementation breaks under any change to it, so redness alone proves nothing about
 // where the expectation came from.
-test fn conformance_fixtures_generated_by_the_realization_refuse_despite_a_red_mutation() -> Bool {
+test fn conformance_fixtures_generated_by_the_realization_refuse_despite_a_red_mutation() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_justified_addition),
@@ -472,7 +472,7 @@ test fn conformance_fixtures_generated_by_the_realization_refuse_despite_a_red_m
 
 // A MUTATION NOTHING NOTICED IS NOT A PASS. The model agreeing with the Rust is the state this test
 // exists to distinguish from the model predicting it.
-test fn a_realization_mutation_no_evidence_noticed_refuses() -> Bool {
+test fn a_realization_mutation_no_evidence_noticed_refuses() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_justified_addition),
@@ -494,7 +494,7 @@ test fn a_realization_mutation_no_evidence_noticed_refuses() -> Bool {
 // EVIDENCE TAKEN AGAINST A DIFFERENT BASE IS EVIDENCE ABOUT A DIFFERENT CHANGE. A probe whose epoch
 // names a base the admitting observer did not observe expires, and an expired epoch is not a weaker
 // form of a current one -- E1 is reconstructed rather than re-cited.
-test fn a_probe_taken_against_another_base_expires_rather_than_admitting() -> Bool {
+test fn a_probe_taken_against_another_base_expires_rather_than_admitting() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_justified_addition),
@@ -515,7 +515,7 @@ test fn a_probe_taken_against_another_base_expires_rather_than_admitting() -> Bo
 
 // THE POSITIVE CONTROL. Without it the refusal above is satisfied by a join that refuses
 // everything, which is a wall that stops the line for every change and therefore stops nothing.
-test fn an_addition_the_roster_already_names_is_admitted() -> Bool {
+test fn an_addition_the_roster_already_names_is_admitted() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
     live: live_of(head_content: head_with_justified_addition),
@@ -542,7 +542,7 @@ test fn an_addition_the_roster_already_names_is_admitted() -> Bool {
 // a capability added inside an existing function and total invisibility is that the population is
 // carried and named. If this list were empty for a body edit, the modification arm would be
 // decorative and the addition-only gate would be the whole mechanism.
-test fn a_modified_item_is_reported_by_name_for_disposition() -> Bool {
+test fn a_modified_item_is_reported_by_name_for_disposition() -> Bool  {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_modified_existing_item, new_ranges: [LineRange { start: 4, count: 1 }]),
     live: live_of(head_content: head_with_modified_existing_item),
@@ -564,7 +564,7 @@ test fn a_modified_item_is_reported_by_name_for_disposition() -> Bool {
   }
 }
 
-test fn seed_growth_deletions_offset_nothing() -> Bool {
+test fn seed_growth_deletions_offset_nothing() -> Bool  {
   let with_deletion = observe_rust_item_change(
     generated_repo_paths: [],
     inputs: [
@@ -604,7 +604,7 @@ test fn seed_growth_deletions_offset_nothing() -> Bool {
 // A REFUSED OBSERVATION IS A REFUSED ADMISSION. The join may never render an unobservable change as
 // a complete verdict with an empty addition list -- that is the exact shape by which a broken
 // reader reads as coverage.
-test fn an_unobservable_change_cannot_produce_a_complete_verdict() -> Bool {
+test fn an_unobservable_change_cannot_produce_a_complete_verdict() -> Bool  {
   match seed_growth_admit_change(
     bridges: [],
     evidence: no_admission_evidence(),
@@ -673,18 +673,18 @@ fn reference_row_projects_to(path: String, module_path: String, decl_name: Strin
   })
 }
 
-test fn a_file_level_reference_lands_on_the_files_own_module_item() -> Bool {
+test fn a_file_level_reference_lands_on_the_files_own_module_item() -> Bool  {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_use_shims/lib.rs")) == 1
     && reference_row_projects_to(path: "dag/gunbc/instruments/planted_use_shims/lib.rs", module_path: "v1_compiled.planted_use_shims.lib", decl_name: "lib")
     && (reference_row_for(path: "dag/gunbc/instruments/planted_use_shims/lib.rs") |> all(r => r.line == 2 && r.token == "v1_rt"))
 }
 
-test fn a_reference_inside_an_item_lands_on_that_item() -> Bool {
+test fn a_reference_inside_an_item_lands_on_that_item() -> Bool  {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_fn_shims/lib.rs")) == 1
     && reference_row_projects_to(path: "dag/gunbc/instruments/planted_fn_shims/lib.rs", module_path: "v1_compiled.planted_fn_shims.lib", decl_name: "bridge")
 }
 
-test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dropped_line() -> Bool {
+test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dropped_line() -> Bool  {
   match reference_observation() {
     RustReferenceHostRefused { detail: _ } => false
     RustReferencesObserved { observed_at: _, rows: _, unattributed: u, unscannable: un } =>
@@ -695,7 +695,7 @@ test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dro
   }
 }
 
-test fn a_file_naming_no_token_yields_no_row() -> Bool {
+test fn a_file_naming_no_token_yields_no_row() -> Bool  {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs")) == 0
 }
 
@@ -703,12 +703,12 @@ test fn a_file_naming_no_token_yields_no_row() -> Bool {
 // yields no row and no unattributed line -- the receipt a deletion leaves behind must not read as
 // a consumer. A TRAILING comment is the other way, by the predicate's stated scope: it is counted,
 // and the second arm pins that so the scope is executed rather than described.
-test fn a_token_in_a_trailing_comment_is_counted_and_attributed_to_its_item() -> Bool {
+test fn a_token_in_a_trailing_comment_is_counted_and_attributed_to_its_item() -> Bool  {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_trailing_shims/lib.rs")) == 1
     && reference_row_projects_to(path: "dag/gunbc/instruments/planted_trailing_shims/lib.rs", module_path: "v1_compiled.planted_trailing_shims.lib", decl_name: "trailing")
 }
 
-test fn a_token_inside_a_comment_line_is_not_a_reference() -> Bool {
+test fn a_token_inside_a_comment_line_is_not_a_reference() -> Bool  {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_comment_shims/lib.rs")) == 0
     && match reference_observation() {
          RustReferencesObserved { rows: _, unattributed: u, unscannable: _ } =>
@@ -717,7 +717,7 @@ test fn a_token_inside_a_comment_line_is_not_a_reference() -> Bool {
        }
 }
 
-test fn a_reference_under_an_unclaimed_tree_refuses_at_the_projection_rather_than_being_skipped() -> Bool {
+test fn a_reference_under_an_unclaimed_tree_refuses_at_the_projection_rather_than_being_skipped() -> Bool  {
   count(reference_row_for(path: "fixtures/planted_unclaimed/lib.rs")) == 1
     && (reference_row_for(path: "fixtures/planted_unclaimed/lib.rs") |> all(r => match r.projection {
          ItemDeclarationRefRefused { item_key: _, detail: _ } => true
@@ -727,7 +727,7 @@ test fn a_reference_under_an_unclaimed_tree_refuses_at_the_projection_rather_tha
 }
 
 // THE POPULATION IS KEYED ON THE TOKEN, NOT THE TREE: the same sources with no token yield nothing.
-test fn the_reference_population_is_empty_under_an_empty_token_list() -> Bool {
+test fn the_reference_population_is_empty_under_an_empty_token_list() -> Bool  {
   match observe_rust_references(observed_at: planted_observed_tree, sources: reference_sources(), generated_repo_paths: [], tokens: [], rows: rust_source_namespace_rows) {
     RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: un } => count(rs) == 0 && count(u) == 0 && count(un) == 0
     RustReferenceHostRefused { detail: _ } => false

@@ -74,7 +74,7 @@ fn scene() -> RepositoryEnvelope {
 // do exactly that if left unguarded: an empty repository is a legitimate value, so every claim below
 // would run against it and several would pass for the wrong reason. This row is the guard, and it is a
 // claim rather than a comment so it executes.
-test fn scm_ws_the_scene_actually_built() -> Bool {
+test fn scm_ws_the_scene_actually_built() -> Bool  {
   match staged_entries(repository: scene()) {
     StagedEntriesRefused { cause: _ } => false
     StagedEntries { entries: entries } => length(xs: entries) == 2
@@ -110,7 +110,7 @@ fn holds(paths: List<String>, path: String) -> Bool {
 // THE CLAIM COUNTS AND NAMES. Asserting only the count would be satisfied by a verb that kept two
 // entries and dropped the added one; asserting only the added path would be satisfied by the
 // deletion this row exists to refute.
-test fn scm_ws_adding_one_path_preserves_the_paths_nobody_touched() -> Bool {
+test fn scm_ws_adding_one_path_preserves_the_paths_nobody_touched() -> Bool  {
   match staged_paths(
     ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
   ) {
@@ -128,7 +128,7 @@ test fn scm_ws_adding_one_path_preserves_the_paths_nobody_touched() -> Bool {
 // surface as a REFUSAL rather than as a wrong success -- which is the good failure. This row holds
 // the count so the refusal cannot be repaired by an author who removes the duplicate check instead of
 // the duplicate.
-test fn scm_ws_re_adding_a_path_replaces_it_rather_than_appending_a_second_entry() -> Bool {
+test fn scm_ws_re_adding_a_path_replaces_it_rather_than_appending_a_second_entry() -> Bool  {
   match staged_paths(
     ingress: stage_source_at_path(repository: scene(), path: "keep.txt" as NonEmptyStr, text: "K1")
   ) {
@@ -164,7 +164,7 @@ fn staged_repository(ingress: StageIngress) -> RepositoryEnvelope? {
 // the claim that makes "commit does not reread the worktree" checkable without a filesystem: the
 // commit's root must be byte-identical to the reference the staging step handed back, so a commit
 // that recomputed its own snapshot from anything at all would produce a different locator and go red.
-test fn scm_ws_the_commit_freezes_exactly_the_manifest_that_was_staged() -> Bool {
+test fn scm_ws_the_commit_freezes_exactly_the_manifest_that_was_staged() -> Bool  {
   let ingress = stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
   match staged_manifest(ingress: ingress) {
     Absent => false
@@ -193,7 +193,7 @@ test fn scm_ws_the_commit_freezes_exactly_the_manifest_that_was_staged() -> Bool
 // candidate inherit the OLD snapshot, so the commit just made is invisible to the work that follows
 // it; leaving the stage in place makes the next commit -- with nothing further added -- freeze the
 // same manifest under a new identity and report an empty change as a change.
-test fn scm_ws_the_commit_advances_the_checkout_and_consumes_the_stage() -> Bool {
+test fn scm_ws_the_commit_advances_the_checkout_and_consumes_the_stage() -> Bool  {
   match staged_repository(
     ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
   ) {
@@ -221,7 +221,7 @@ test fn scm_ws_the_commit_advances_the_checkout_and_consumes_the_stage() -> Bool
 // on its own that is exactly what a data-losing implementation looks like from the outside. This row
 // is its positive control: after the stage is consumed, the effective candidate still names all three
 // paths, because absence now inherits from the commit that was just made.
-test fn scm_ws_consuming_the_stage_leaves_the_corpus_inherited_rather_than_empty() -> Bool {
+test fn scm_ws_consuming_the_stage_leaves_the_corpus_inherited_rather_than_empty() -> Bool  {
   match staged_repository(
     ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
   ) {
@@ -245,7 +245,7 @@ test fn scm_ws_consuming_the_stage_leaves_the_corpus_inherited_rather_than_empty
 // and no stage there is no snapshot to freeze, and the tempting arm -- treat it as the empty corpus --
 // mints a perfectly valid commit that DELETES everything, which is the widening `effective_candidate`
 // refuses one level down and which this verb must not reintroduce.
-test fn scm_ws_committing_with_no_stage_and_no_checkout_refuses() -> Bool {
+test fn scm_ws_committing_with_no_stage_and_no_checkout_refuses() -> Bool  {
   match commit_staged(repository: empty_repository(), message: "nothing") {
     StagedCommitNothingToFreeze => true
     StagedCommitMinted { repository: _, reference: _ } => false
@@ -263,7 +263,7 @@ test fn scm_ws_committing_with_no_stage_and_no_checkout_refuses() -> Bool {
 // change reported as a change. The verb now asks `stage_standing`, which answers whether the candidate
 // DIFFERS from what is committed. Found by external review; the wet canary could not catch it either,
 // because every commit in that run followed a real add.
-test fn scm_ws_committing_again_with_nothing_further_staged_refuses() -> Bool {
+test fn scm_ws_committing_again_with_nothing_further_staged_refuses() -> Bool  {
   match staged_repository(
     ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
   ) {
@@ -290,7 +290,7 @@ test fn scm_ws_committing_again_with_nothing_further_staged_refuses() -> Bool {
 // but stages bytes that reproduce the manifest already committed -- so the stage is present and
 // explicit, and still freezes nothing. A verb that keyed on "is a stage present" rather than "does the
 // candidate differ" passes the row above and fails this one, which is why both are enrolled.
-test fn scm_ws_staging_content_identical_to_the_base_still_freezes_nothing() -> Bool {
+test fn scm_ws_staging_content_identical_to_the_base_still_freezes_nothing() -> Bool  {
   match stage_source_at_path(repository: scene(), path: "keep.txt" as NonEmptyStr, text: "K0") {
     Staged { repository: repository, manifest: _, source: _ } =>
       match commit_staged(repository: repository, message: "no change") {
@@ -308,7 +308,7 @@ test fn scm_ws_staging_content_identical_to_the_base_still_freezes_nothing() -> 
 
 // THE POSITIVE CONTROL FOR THE ROW ABOVE. Without it, a `commit_staged` that refused EVERYTHING would
 // satisfy the refusal claim, and a verb that never commits is not a safer verb.
-test fn scm_ws_committing_a_real_stage_is_admitted() -> Bool {
+test fn scm_ws_committing_a_real_stage_is_admitted() -> Bool  {
   match staged_repository(
     ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
   ) {
@@ -399,7 +399,7 @@ fn scm_ws_partial_base(present: Bool) -> RepositoryEnvelope {
 // THE DISCRIMINATING RED. Deleting the source admission from `stage_standing` turns this green-as-
 // refusal into `StagedCommitMinted`, which is the defect review found. The cause must NAME THE PATH:
 // "something is missing" is not actionable, and the path is the only thing an operator can act on.
-test fn scm_ws_committing_over_a_base_with_an_absent_source_refuses_naming_the_path() -> Bool {
+test fn scm_ws_committing_over_a_base_with_an_absent_source_refuses_naming_the_path() -> Bool  {
   match stage_source_at_path(
     repository: scm_ws_partial_base(present: false),
     path: "added.dag" as NonEmptyStr,
@@ -430,7 +430,7 @@ fn scm_ws_names_the_ghost(cause: CorpusEntrySourceRefusal) -> Bool {
 // THE POSITIVE CONTROL, AND IT IS THE SAME REPOSITORY WITH THE SOURCE PRESENT. Without it, an
 // admission that refused EVERY commit would satisfy the claim above, and a verb that never commits is
 // not a safer verb. The two scenes differ in exactly one fact: whether the store holds the bytes.
-test fn scm_ws_the_same_commit_is_admitted_once_the_source_is_present() -> Bool {
+test fn scm_ws_the_same_commit_is_admitted_once_the_source_is_present() -> Bool  {
   match stage_source_at_path(
     repository: scm_ws_partial_base(present: true),
     path: "added.dag" as NonEmptyStr,
@@ -465,7 +465,7 @@ test fn scm_ws_the_same_commit_is_admitted_once_the_source_is_present() -> Bool 
 // claim: together they say the wall fires at exactly one boundary. Restore the admission to
 // `stage_standing` and this goes red while the refusal claim stays green -- which is the whole point,
 // since a regression that only strengthens a refusal is invisible to every claim about refusing.
-test fn scm_ws_a_repository_with_an_unrecoverable_source_can_still_be_read() -> Bool {
+test fn scm_ws_a_repository_with_an_unrecoverable_source_can_still_be_read() -> Bool  {
   match stage_source_at_path(
     repository: scm_ws_partial_base(present: false),
     path: "added.dag" as NonEmptyStr,

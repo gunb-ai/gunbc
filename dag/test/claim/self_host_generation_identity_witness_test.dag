@@ -148,7 +148,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
 }
 
 // POSITIVE CONTROL. An identity agrees with itself on every axis.
-test fn generation_identity_agrees_with_itself() -> Bool {
+test fn generation_identity_agrees_with_itself() -> Bool  {
   generation_identity_agrees(left: gi_baseline(), right: gi_baseline())
 }
 
@@ -157,7 +157,7 @@ test fn generation_identity_agrees_with_itself() -> Bool {
 // (a) break overall agreement, (b) report exactly ONE mismatched axis, and (c) name THAT axis.
 // Clause (c) is what a single opaque compiler_identity scalar cannot satisfy — it fails (b) and
 // (c) together with an undifferentiated mismatch.
-test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
+test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool  {
   for_all(
     xs: generation_axes,
     predicate: fn(axis) {
@@ -187,7 +187,7 @@ test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
 // The axes NOT perturbed must still agree, so a perturbation cannot be reported
 // as a whole-identity smear. Without this, an implementation that marked every axis
 // mismatched on any change would pass the naming assertion above by accident.
-test fn perturbing_one_axis_leaves_the_others_agreeing() -> Bool {
+test fn perturbing_one_axis_leaves_the_others_agreeing() -> Bool  {
   for_all(
     xs: generation_axes,
     predicate: fn(moved_axis) {
@@ -226,7 +226,7 @@ fn gi_unbuilt() -> GenerationIdentity {
 // either artifact" as "the artifacts agree" — ⊥-as-ignorance reported as ⊥-as-answer. The arm most
 // likely to be quietly relaxed later, so asserted in both directions: unbuilt-vs-unbuilt and
 // unbuilt-vs-built.
-test fn two_unmaterialized_artifacts_do_not_agree() -> Bool {
+test fn two_unmaterialized_artifacts_do_not_agree() -> Bool  {
   !generation_axis_agrees(
     left: gi_unbuilt(),
     right: gi_unbuilt(),
@@ -288,7 +288,7 @@ fn gi_roster_empty_identity() -> SourceClosureRoster {
   }
 }
 
-test fn canonical_roster_admits_and_yields_a_digest() -> Bool {
+test fn canonical_roster_admits_and_yields_a_digest() -> Bool  {
   gi_ordered(roster: gi_roster_canonical())
     && match source_closure_axis_digest(roster: gi_roster_canonical()) {
       SourceClosureAxisDigest { digest: _ } => true
@@ -306,7 +306,7 @@ test fn canonical_roster_admits_and_yields_a_digest() -> Bool {
 // digest. It must not silently re-sort (which would hide an order-unstable
 // producer) and must not fold anyway (which would make the same closure report as
 // two different generations).
-test fn reordered_roster_refuses_naming_the_offending_member() -> Bool {
+test fn reordered_roster_refuses_naming_the_offending_member() -> Bool  {
   !gi_ordered(roster: gi_roster_reordered())
     && match source_closure_axis_digest(roster: gi_roster_reordered()) {
       SourceClosureAxisDigest { digest: _ } => false
@@ -322,7 +322,7 @@ test fn reordered_roster_refuses_naming_the_offending_member() -> Bool {
 
 // DISCRIMINATING RED. A duplicated member is its OWN verdict, not folded into the
 // ordering refusal — two different producer defects with two different remedies.
-test fn duplicate_member_refuses_as_a_distinct_verdict() -> Bool {
+test fn duplicate_member_refuses_as_a_distinct_verdict() -> Bool  {
   !gi_ordered(roster: gi_roster_duplicate())
     && match source_closure_axis_digest(roster: gi_roster_duplicate()) {
       SourceClosureAxisDigest { digest: _ } => false
@@ -336,7 +336,7 @@ test fn duplicate_member_refuses_as_a_distinct_verdict() -> Bool {
     }
 }
 
-test fn empty_member_identity_refuses() -> Bool {
+test fn empty_member_identity_refuses() -> Bool  {
   match source_closure_axis_digest(roster: gi_roster_empty_identity()) {
     SourceClosureAxisDigest { digest: _ } => false
     SourceClosureAxisRefused { verdict: v } =>
@@ -359,7 +359,7 @@ test fn empty_member_identity_refuses() -> Bool {
 // coproduct rather than measured from the corpus -- which is the narrow case DESIGN section 5 admits
 // a literal for. Bumping it is part of adding an axis, not an afterthought: an author who adds an
 // arm and not a roster row learns it here.
-test fn axis_symbols_are_pairwise_distinct() -> Bool {
+test fn axis_symbols_are_pairwise_distinct() -> Bool  {
   length(xs: generation_axes) == 7
     && for_all(
       xs: generation_axes,
@@ -395,7 +395,7 @@ fn gi_ordered(roster: SourceClosureRoster) -> Bool {
 // Before ObservedArtifactDigest was sole_constructor over a validated digest, the axis was typed as
 // the structural Hash symbol_identity_digest mints from ANY symbol, so an artifact identity could be
 // authored with no build, file or observation behind it.
-test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
+test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool  {
   match gi_artifact(hex: "not-a-digest") {
     ArtifactMaterialized { digest: _ } => false
     ArtifactNotMaterialized => true

@@ -184,18 +184,18 @@ fn seed_honesty_closing_contract_over(decision: SeedHonestyDecision) -> Bool {
     }
 }
 
-test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool {
+test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool  {
   seed_honesty_closing_contract_over(decision: seed_honesty_decision)
 }
 
-test fn seed_honesty_check_four_poles_hold_before_decision() -> Bool {
+test fn seed_honesty_check_four_poles_hold_before_decision() -> Bool  {
   seed_self_verify_same_artifact_refuses()
     && seed_self_verify_planted_divergence_refuses()
     && seed_self_verify_provenance_mismatch_refuses()
     && seed_self_verify_distinct_equal_artifacts_hold()
 }
 
-test fn seed_honesty_undecided_would_keep_closing_contract_red() -> Bool {
+test fn seed_honesty_undecided_would_keep_closing_contract_red() -> Bool  {
   !seed_honesty_closing_contract_over(decision: SeedHonestyUndecided)
 }
 
@@ -301,26 +301,26 @@ fn independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable() -
   }
 }
 
-test fn seed_honesty_discharge_unavailable_top_level_refuses() -> Bool {
+test fn seed_honesty_discharge_unavailable_top_level_refuses() -> Bool  {
   seed_honesty_discharge_refuses_when_unavailable()
 }
 
-test fn seed_honesty_discharge_unavailable_holds_agreement_refuses() -> Bool {
+test fn seed_honesty_discharge_unavailable_holds_agreement_refuses() -> Bool  {
   seed_honesty_discharge_witness_refuses_holds_agreement()
 }
 
-test fn seed_honesty_discharge_unavailable_old_magic_atom_refuses() -> Bool {
+test fn seed_honesty_discharge_unavailable_old_magic_atom_refuses() -> Bool  {
   seed_honesty_discharge_witness_refuses_old_magic_atom()
 }
 
-test fn independent_compiler_pair_unavailable_distinct_refuses() -> Bool {
+test fn independent_compiler_pair_unavailable_distinct_refuses() -> Bool  {
   independent_compiler_pair_witness_refuses_distinct_compilers_unavailable()
 }
 
-test fn independent_compiler_pair_unavailable_matching_refuses() -> Bool {
+test fn independent_compiler_pair_unavailable_matching_refuses() -> Bool  {
   independent_compiler_pair_witness_refuses_matching_compilers_unavailable()
 }
 
-test fn independent_compiler_pair_unavailable_perturbed_refuses() -> Bool {
+test fn independent_compiler_pair_unavailable_perturbed_refuses() -> Bool  {
   independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable()
 }

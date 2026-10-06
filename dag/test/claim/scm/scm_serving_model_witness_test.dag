@@ -52,7 +52,7 @@ data solo_scm_10k_profile: ScmWorkloadProfile = ScmWorkloadProfile {
   monthly_object_writes_per_user: 20,
 }
 
-test fn w_usage_derives_from_workload_primitives() -> Bool {
+test fn w_usage_derives_from_workload_primitives() -> Bool  {
   match derive_scm_usage(profile: solo_scm_10k_profile, assumption: decimal_basis_assumption) {
     ScmUsageDerived { usage: u } =>
       (u.stored_billing_units == 1000)
@@ -63,7 +63,7 @@ test fn w_usage_derives_from_workload_primitives() -> Bool {
   }
 }
 
-test fn w_s3_bill_is_egress_dominated() -> Bool {
+test fn w_s3_bill_is_egress_dominated() -> Bool  {
   match derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
     storage_row: s3_standard_first_50tb,
@@ -87,7 +87,7 @@ test fn w_s3_bill_is_egress_dominated() -> Bool {
   }
 }
 
-test fn w_r2_bill_has_no_egress_term() -> Bool {
+test fn w_r2_bill_has_no_egress_term() -> Bool  {
   match derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
     storage_row: r2_standard,
@@ -110,7 +110,7 @@ test fn w_r2_bill_has_no_egress_term() -> Bool {
   }
 }
 
-test fn w_zero_egress_vendor_is_an_order_of_magnitude_cheaper_on_this_profile() -> Bool {
+test fn w_zero_egress_vendor_is_an_order_of_magnitude_cheaper_on_this_profile() -> Bool  {
   match derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
     storage_row: s3_standard_first_50tb,
@@ -136,7 +136,7 @@ test fn w_zero_egress_vendor_is_an_order_of_magnitude_cheaper_on_this_profile() 
   }
 }
 
-test fn w_durability_is_a_cited_vendor_attribute_not_folklore() -> Bool {
+test fn w_durability_is_a_cited_vendor_attribute_not_folklore() -> Bool  {
   match durability_nines(row: s3_standard_first_50tb) {
     Present { value: n } =>
       match durability_nines(row: s3_standard_infrequent_access) {
@@ -147,14 +147,14 @@ test fn w_durability_is_a_cited_vendor_attribute_not_folklore() -> Bool {
   }
 }
 
-test fn w_red_unknown_basis_refuses() -> Bool {
+test fn w_red_unknown_basis_refuses() -> Bool  {
   match derive_scm_usage(profile: solo_scm_10k_profile, assumption: BasisUnknown) {
     ScmUsageRefused { cause: BasisAssumptionUnknown } => true
     _ => false
   }
 }
 
-test fn w_red_zero_users_refuses() -> Bool {
+test fn w_red_zero_users_refuses() -> Bool  {
   match derive_scm_usage(
     profile: ScmWorkloadProfile {
       user_count: 0,
@@ -170,7 +170,7 @@ test fn w_red_zero_users_refuses() -> Bool {
   }
 }
 
-test fn w_red_cross_vendor_blend_refuses() -> Bool {
+test fn w_red_cross_vendor_blend_refuses() -> Bool  {
   match derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
     storage_row: s3_standard_first_50tb,
@@ -184,7 +184,7 @@ test fn w_red_cross_vendor_blend_refuses() -> Bool {
   }
 }
 
-test fn w_red_uncited_vendor_rate_refuses() -> Bool {
+test fn w_red_uncited_vendor_rate_refuses() -> Bool  {
   match storage_rate_micros(row: b2_storage_rate_unavailable) {
     Present { value: _ } => false
     _ =>
@@ -195,7 +195,7 @@ test fn w_red_uncited_vendor_rate_refuses() -> Bool {
   }
 }
 
-test fn w_red_declared_basis_contradicting_a_cited_row_refuses() -> Bool {
+test fn w_red_declared_basis_contradicting_a_cited_row_refuses() -> Bool  {
   match derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
     storage_row: r2_standard,
@@ -209,7 +209,7 @@ test fn w_red_declared_basis_contradicting_a_cited_row_refuses() -> Bool {
   }
 }
 
-test fn w_red_binary_basis_moves_every_figure() -> Bool {
+test fn w_red_binary_basis_moves_every_figure() -> Bool  {
   match derive_scm_usage(
     profile: solo_scm_10k_profile,
     assumption: BasisAssumed {

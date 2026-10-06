@@ -62,7 +62,7 @@ THE DIAGNOSTIC THAT FOUND IT, worth keeping because it is cheap and general: aft
 // The failure arm. A returned ExitFailure MUST reach a nonzero status.
 // This is the exact defect the planted-drift control caught; if this row ever greens by
 // returning true, the driver is reporting success for a run that declared failure.
-test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
+test fn run_failure_verdict_reaches_nonzero_exit() -> Bool  {
   let toplevel = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: toplevel.path,
@@ -88,7 +88,7 @@ test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
 // BINARIES and would still all pass — a trio that is supposed to compare three arms of one
 // driver must reach one driver. And it asserted a Bool, which cannot participate in the
 // self-evidencing property the other two have.
-test fn run_success_verdict_reaches_zero_exit() -> Bool {
+test fn run_success_verdict_reaches_zero_exit() -> Bool  {
   let toplevel = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: toplevel.path,
@@ -113,7 +113,7 @@ test fn run_success_verdict_reaches_zero_exit() -> Bool {
 // functions below the note forbidding it. Its refusal path and its expected value are the
 // same bit, so a context that cannot execute a subprocess satisfies it without executing
 // one. Writing the rule is not applying it; the note was correct and the row was not.
-test fn run_non_process_exit_return_refuses() -> Bool {
+test fn run_non_process_exit_return_refuses() -> Bool  {
   let toplevel = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: toplevel.path,

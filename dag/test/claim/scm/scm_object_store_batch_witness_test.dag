@@ -40,7 +40,7 @@ fn stored_ref(text: String) -> AuthoredSourceObjectRef? {
   }
 }
 
-test fn the_batch_stores_duplicate_bytes_once_but_answers_every_input() -> Bool {
+test fn the_batch_stores_duplicate_bytes_once_but_answers_every_input() -> Bool  {
   match store_authored_sources_batch(store: empty_store(), texts: ["alpha", "beta", "alpha"]) {
     SourceBatchCollision { identity: _ } => false
     SourcesBatched { store, sources } =>
@@ -48,7 +48,7 @@ test fn the_batch_stores_duplicate_bytes_once_but_answers_every_input() -> Bool 
   }
 }
 
-test fn the_batch_aligns_each_reference_to_its_own_input() -> Bool {
+test fn the_batch_aligns_each_reference_to_its_own_input() -> Bool  {
   match store_authored_sources_batch(store: empty_store(), texts: ["alpha", "beta", "alpha"]) {
     SourceBatchCollision { identity: _ } => false
     SourcesBatched { store: _, sources } =>
@@ -69,7 +69,7 @@ test fn the_batch_aligns_each_reference_to_its_own_input() -> Bool {
   }
 }
 
-test fn content_already_in_the_store_dedupes_to_the_held_object() -> Bool {
+test fn content_already_in_the_store_dedupes_to_the_held_object() -> Bool  {
   match store_authored_source(store: empty_store(), text: "alpha") {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
     SourceStored { store: seeded, source: first } =>
@@ -86,7 +86,7 @@ test fn content_already_in_the_store_dedupes_to_the_held_object() -> Bool {
   }
 }
 
-test fn a_removal_drops_exactly_the_named_path() -> Bool {
+test fn a_removal_drops_exactly_the_named_path() -> Bool  {
   match stored_ref(text: "A") {
     Absent => false
     Present { value: ref_a } =>
@@ -117,7 +117,7 @@ fn holds_path(paths: List<String>, path: String) -> Bool {
 // THE DELTA PARSE: name-status -z interleaves letters and paths, a rename decomposes, and an
 // untracked row never appears in it (the untracked verb answers those separately).
 
-test fn the_changes_parse_binds_modifies_deletes_and_decomposes_renames() -> Bool {
+test fn the_changes_parse_binds_modifies_deletes_and_decomposes_renames() -> Bool  {
   let changes = worktree_changes_parse(stdout_nul: "M\0dag/a.dag\0D\0dag/b.dag\0R100\0dag/old.dag\0dag/new.dag\0")
   count(changes) == 4
     && change_present(changes: changes, want: "bind", path: "dag/a.dag")

@@ -56,7 +56,7 @@ fn mercurial_fixture_binding() -> MercurialCompatibilityBindingOutcome {
   )
 }
 
-test fn witness_mercurial_r1_consumes_native_projection_and_readback() -> Bool {
+test fn witness_mercurial_r1_consumes_native_projection_and_readback() -> Bool  {
   match mercurial_fixture_binding() {
     MercurialCompatibilityBindingRefused { cause: _ } => false
     MercurialCompatibilityBound { receipt } =>
@@ -72,7 +72,7 @@ test fn witness_mercurial_r1_consumes_native_projection_and_readback() -> Bool {
   }
 }
 
-test fn witness_mercurial_realization_preserves_c0_primary_behavior() -> Bool {
+test fn witness_mercurial_realization_preserves_c0_primary_behavior() -> Bool  {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )
@@ -96,7 +96,7 @@ test fn witness_mercurial_realization_preserves_c0_primary_behavior() -> Bool {
   }
 }
 
-test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool {
+test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool  {
   match mercurial_fixture_binding() {
     MercurialCompatibilityBindingRefused { cause: _ } => false
     MercurialCompatibilityBound { receipt } => {
@@ -129,7 +129,7 @@ test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool 
   }
 }
 
-test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
+test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool  {
   match mercurial_fixture_binding() {
     MercurialCompatibilityBindingRefused { cause: _ } => false
     MercurialCompatibilityBound { receipt } => {
@@ -144,7 +144,7 @@ test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
   }
 }
 
-test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
+test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool  {
   match mercurial_compatibility_bind(
     projection: mercurial_r0_fixture_projection(),
     target: "default",
@@ -160,7 +160,7 @@ test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
   }
 }
 
-test fn witness_mercurial_readback_identity_changes_with_observed_state() -> Bool {
+test fn witness_mercurial_readback_identity_changes_with_observed_state() -> Bool  {
   let other_projection = projection_with_publishing(
     projection: mercurial_r0_fixture_projection(),
     publishing: MercurialPublishingServer,

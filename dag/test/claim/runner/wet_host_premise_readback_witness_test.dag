@@ -14,7 +14,7 @@ import gunbc.wet_host_premise_readback { browser_toolchain_premise_reading, prem
 // AN UNRESOLVED TOOLCHAIN READS AS AN UNMET PREMISE IN THE AUTHORITY'S OWN WORDS. The resolution is
 // supplied (DESIGN section 3: a witness discriminates at one interface); the real readback path is
 // executed by the wet lane itself before every premised claim, and by those claims.
-test fn an_unresolved_toolchain_is_an_unmet_premise_carrying_its_cause() -> Bool {
+test fn an_unresolved_toolchain_is_an_unmet_premise_carrying_its_cause() -> Bool  {
   let cause = "runner_browser_toolchain: host srv9 is not in the floor pool"
   match browser_toolchain_premise_reading(premise: RunnerBrowserToolchainReadyForJobUser {}, resolution: BrowserToolchainUnresolved { cause: cause }) {
     WetHostPremiseUnmet { premise: _, words: w } => string_contains(s: w, pattern: cause)
@@ -25,7 +25,7 @@ test fn an_unresolved_toolchain_is_an_unmet_premise_carrying_its_cause() -> Bool
 // ONE READBACK PER DISTINCT PREMISE PER LANE, not one per premised claim: deduplication is the
 // property, so the roster doubled yields the same premise set as the roster, and a nonempty roster
 // yields a nonempty set (a premise is never dropped by the dedup).
-test fn the_premise_roster_reads_each_premise_once() -> Bool {
+test fn the_premise_roster_reads_each_premise_once() -> Bool  {
   let roster = local_repo_wet_premise_roster()
   let once = fold_list(xs: premise_set(roster: roster), empty: 0, cons: fn(n, _p) { n + 1 })
   let twice = fold_list(xs: premise_set(roster: list_append(left: roster, right: roster)), empty: 0, cons: fn(n, _p) { n + 1 })
@@ -34,7 +34,7 @@ test fn the_premise_roster_reads_each_premise_once() -> Bool {
 
 // EVERY PREMISED IDENTITY IS SCHEDULED. A premise that gates nothing is a roster defect; the seed
 // refuses it at decode, and this keeps the refusal from being the first place it is noticed.
-test fn every_premised_identity_is_scheduled() -> Bool {
+test fn every_premised_identity_is_scheduled() -> Bool  {
   let scheduled = local_repo_wet_scheduled_identities()
   fold_list(
     xs: local_repo_wet_premise_roster(),

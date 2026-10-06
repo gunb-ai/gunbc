@@ -61,11 +61,11 @@ fn refused_uncitable_keys(v: RosterCoverageVerdict) -> List<String> {
   }
 }
 
-test fn an_empty_change_population_is_covered() -> Bool {
+test fn an_empty_change_population_is_covered() -> Bool  {
   verdict_is_complete(v: roster_coverage_verdict(projections: []))
 }
 
-test fn a_fully_rostered_citable_population_is_covered() -> Bool {
+test fn a_fully_rostered_citable_population_is_covered() -> Bool  {
   verdict_is_complete(
     v: roster_coverage_verdict(projections: [ItemDeclarationRefProjected { ref: rostered_ref() }])
   )
@@ -73,7 +73,7 @@ test fn a_fully_rostered_citable_population_is_covered() -> Bool {
 
 // THE BLOCKER'S DISCRIMINATING RED. Under the two-list verdict this population produced
 // ExitSuccess: the item is in neither the projected refs nor the refused keys.
-test fn an_uncitable_addition_alone_refuses_rather_than_reporting_coverage() -> Bool {
+test fn an_uncitable_addition_alone_refuses_rather_than_reporting_coverage() -> Bool  {
   let v = roster_coverage_verdict(projections: [an_uncitable_projection()])
   !verdict_is_complete(v: v)
     && length(xs: refused_uncitable_keys(v: v)) == 1
@@ -85,7 +85,7 @@ test fn an_uncitable_addition_alone_refuses_rather_than_reporting_coverage() -> 
 
 // AND IT MUST NOT BE ABSORBED BY ITS COVERED SIBLINGS. This is the shape the omission actually
 // takes in practice: one uncitable item beside a fully rostered population that answers green.
-test fn an_uncitable_addition_beside_covered_ones_still_refuses() -> Bool {
+test fn an_uncitable_addition_beside_covered_ones_still_refuses() -> Bool  {
   let v = roster_coverage_verdict(
     projections: [
       ItemDeclarationRefProjected { ref: rostered_ref() },
@@ -95,7 +95,7 @@ test fn an_uncitable_addition_beside_covered_ones_still_refuses() -> Bool {
   !verdict_is_complete(v: v) && length(xs: refused_uncitable_keys(v: v)) == 1
 }
 
-test fn an_unaddressable_addition_refuses_under_its_own_cause() -> Bool {
+test fn an_unaddressable_addition_refuses_under_its_own_cause() -> Bool  {
   let v = roster_coverage_verdict(
     projections: [
       ItemDeclarationRefRefused {
@@ -112,7 +112,7 @@ test fn an_unaddressable_addition_refuses_under_its_own_cause() -> Bool {
        )
 }
 
-test fn a_citable_addition_with_no_roster_row_refuses() -> Bool {
+test fn a_citable_addition_with_no_roster_row_refuses() -> Bool  {
   let v = roster_coverage_verdict(
     projections: [ItemDeclarationRefProjected { ref: unrostered_ref() }]
   )
@@ -126,7 +126,7 @@ test fn a_citable_addition_with_no_roster_row_refuses() -> Bool {
 
 // THE THREE CAUSES ARE NOT RANKED. An arm reporting the first non-empty list and stopping would
 // hide the other two behind it, so a population carrying all three must name all three.
-test fn all_three_causes_are_reported_together_rather_than_ranked() -> Bool {
+test fn all_three_causes_are_reported_together_rather_than_ranked() -> Bool  {
   let reason = coverage_refusal_reason(
     verdict: roster_coverage_verdict(
       projections: [

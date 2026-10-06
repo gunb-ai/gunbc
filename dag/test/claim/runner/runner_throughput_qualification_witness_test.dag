@@ -438,7 +438,7 @@ fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
 
 // ── the positive control ──────────────────────────────────────────────────────────────────────
 
-test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
+test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool  {
   let a = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
   assessment_holds(a: a)
     && (match a.throughput {
@@ -456,7 +456,7 @@ test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
 
 // ── the subject join REDs (operator hold, item 2) ─────────────────────────────────────────────
 
-test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
+test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool  {
   let r = run_with(
     id: run_a, host: "srv3", specimen: specimen_identity(), effective: effective_as_selected(),
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
@@ -490,20 +490,20 @@ fn refused_on(selection: SelectedRunnerQualification<HostIdentity>, run: Observe
 // THE RUNTIME AND HOST FACTS WERE OBSERVED AND NEVER JOINED; NOW EACH ONE REFUSES ALONE. Every run
 // below is the good run with one fact changed, and the good run itself still joins, so a claim that
 // passes here is about that axis and nothing else.
-test fn a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() -> Bool {
+test fn a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() -> Bool  {
   let t = hardware_thread_count(count: 160)
   assessment_holds(a: assess_at_width(selection: selection(), runs: [good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64)]))
     && refused_on(selection: selection(), run: good_run_in(image_digest: "sha256:another-image" as NonEmptyStr, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64), axis: "image digest")
     && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: "gunbc.toolchain.rust-1.92.0" as NonEmptyStr, host_threads: t, host_architecture: Aarch64), axis: "runtime closure")
 }
 
-test fn a_run_on_another_host_shape_is_refused_on_its_host_axis() -> Bool {
+test fn a_run_on_another_host_shape_is_refused_on_its_host_axis() -> Bool  {
   refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: hardware_thread_count(count: 80), host_architecture: Aarch64), axis: "host threads")
     && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: hardware_thread_count(count: 160), host_architecture: X86_64), axis: "host architecture")
 }
 
 // AN OFFER THAT STATES NO ARCHITECTURE ADMITS NONE: the good run, unchanged, refuses on the axis.
-test fn an_offer_stating_no_architecture_refuses_the_architecture_join() -> Bool {
+test fn an_offer_stating_no_architecture_refuses_the_architecture_join() -> Bool  {
   let s = inputs_offered(
     offer: selected_offer_stating(key: "offer-mtcollins1-qual-1", architecture: Absent),
     sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves,
@@ -513,7 +513,7 @@ test fn an_offer_stating_no_architecture_refuses_the_architecture_join() -> Bool
 
 // THE SAME STEP COUNT ON A DIFFERENT SPECIMEN IS A DIFFERENT PROGRAM: the identity is joined, not
 // only the count.
-test fn a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_specimen_axis() -> Bool {
+test fn a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_specimen_axis() -> Bool  {
   let r = run_with(
     id: run_a, host: "mtcollins1", specimen: "test.claim.some_other_specimen" as NonEmptyStr, effective: effective_as_selected(),
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
@@ -523,7 +523,7 @@ test fn a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_spe
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "specimen"
 }
 
-test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Bool {
+test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Bool  {
   let other = byte_size(count: byte_size_count(b: slot_high()) + 1073741824)
   let r = run_with(
     id: run_a, host: "mtcollins1", specimen: specimen_identity(), effective: effective_with_high(high: other),
@@ -535,7 +535,7 @@ test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Boo
 }
 
 // A READABLE PEAK UNDER A BOUND THAT DID NOT RESOLVE TO THE SUBJECT'S IS NOT THE SUBJECT'S PEAK.
-test fn a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bound_axis() -> Bool {
+test fn a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bound_axis() -> Bool  {
   let unreadable = varied_run(
     id: run_a, cpu: millisecond(count: 50),
     memory: CgroupMemoryUnreadable { reason: "no cgroup memory.high or memory.max binds this process" as NonEmptyStr },
@@ -551,7 +551,7 @@ test fn a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bo
   first_join_axis(refusals: a1.refusals) == "cgroup bound" && first_join_axis(refusals: a2.refusals) == "cgroup bound"
 }
 
-test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> Bool {
+test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> Bool  {
   let r = run_with(
     id: run_a, host: "mtcollins1", specimen: specimen_identity(), effective: effective_as_selected(),
     workspace: OnSubjectUncharged, cpu: millisecond(count: 50),
@@ -566,7 +566,7 @@ test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> B
 
 // RUN A IS THE SLOWEST AND PASSES MEMORY; RUN B IS FASTER BUT REACHES memory.high. The host must
 // not deliver: throughput takes the minimum (A), memory takes the maximum peak (B).
-test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run() -> Bool {
+test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run() -> Bool  {
   let slow_clean = varied_run(id: run_a, cpu: millisecond(count: 70), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
   let fast_pinned = varied_run(id: run_b, cpu: millisecond(count: 40), memory: resolved_bound_with_peak(bytes: slot_high(), peak: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
   let a = assess_unobserved(selection: selection(), runs: [slow_clean, fast_pinned])
@@ -578,7 +578,7 @@ test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_r
     })
 }
 
-test fn the_sampling_policy_refuses_a_sample_of_the_wrong_size() -> Bool {
+test fn the_sampling_policy_refuses_a_sample_of_the_wrong_size() -> Bool  {
   let one = selection_with(sampling: ExactlyOneReconciledRun, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
   let two = assess_unobserved(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
   let zero = assess_unobserved(selection: selection(), runs: [])
@@ -591,7 +591,7 @@ fn roster_without(phase: RequiredCiPhase) -> List<PhaseWall> {
   complete_roster(wall: millisecond(count: 1000)) |> filter(w => !required_ci_phase_is(a: w.phase, b: phase))
 }
 
-test fn a_missing_or_duplicated_required_phase_refuses() -> Bool {
+test fn a_missing_or_duplicated_required_phase_refuses() -> Bool  {
   let missing = varied_run(id: run_a, cpu: millisecond(count: 50), memory: resolved_bound(bytes: slot_high()), phases: roster_without(phase: FloorPhase))
   let duplicated = varied_run(
     id: run_b, cpu: millisecond(count: 50), memory: resolved_bound(bytes: slot_high()),
@@ -605,7 +605,7 @@ test fn a_missing_or_duplicated_required_phase_refuses() -> Bool {
 }
 
 // WITHOUT CEILINGS THE WALLS ARE OBSERVATION AND THE CLAIM SAYS SO; WITH THEM THEY ARE ASSESSED.
-test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
+test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool  {
   let loose = selection_with(
     sampling: ConservativePerAxis { minimum_runs: 1 },
     ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 2000) }] },
@@ -629,7 +629,7 @@ test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
 // No cohort, a cohort one seat short of the width, a seat that failed, a seat that is not one of the
 // assessed runs, and a cohort whose seats were never all active each refuse delivery by name, while
 // assess_at_width -- the same runs and a full cohort -- delivers (the positive control above).
-test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool {
+test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool  {
   let w = expected_width()
   let ids = seat_ids(n: w)
   let runs = cohort_runs(ids: ids)
@@ -648,7 +648,7 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
 
 // ── throughput and width REDs ─────────────────────────────────────────────────────────────────
 
-test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number() -> Bool {
+test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number() -> Bool  {
   let slow = varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
   let a = assess_unobserved(selection: selection(), runs: [slow])
   let expected = eval_step_count_value(s: specimen_steps()) / 110
@@ -662,7 +662,7 @@ test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number
 
 // THE WIDTH IS READ OFF THE SELECTED PLAN AND ALLOCATION (operator hold, item 4): an oversubscribed
 // allocation or a plan the fleet refused derives no width and no delivery.
-test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bool {
+test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bool  {
   let oversubscribed = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationOversubscribed)
   let unsound = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves)
   ([oversubscribed, unsound] |> all(sel => {
@@ -680,7 +680,7 @@ test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bo
 // THE SANCTION IS AN INPUT THE FABRIC ADMITS ON, NEVER A CONCLUSION OF THIS MODULE: the same
 // delivering assessment beside a customer sanction is refused by admit_executor_capacity for
 // the floor, and nothing in the qualification module can mint a sanction from an assessment.
-test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
+test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool  {
   let inputs = inputs_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
   let s = inputs.selection
   let control = admit_executor_capacity(requirements: s.requirements, roster: [inputs.executor_sanction], executor: "mtcollins1" as NonEmptyStr)
@@ -698,7 +698,7 @@ test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
 // THE DELIVERY CLAIM IS THE FABRIC'S OWN CARRIER: claimed_delivery_check dispatches the runner arm,
 // holds for a delivering assessment bound to the claimed offer, refuses an assessment that does not
 // deliver with RunnerThroughputDidNotHold, and refuses a claim riding another offer.
-test fn the_fabric_delivery_claim_holds_refuses_and_catches_another_offer() -> Bool {
+test fn the_fabric_delivery_claim_holds_refuses_and_catches_another_offer() -> Bool  {
   let s = selection()
   let good = assess_at_width(selection: s, runs: [good_run(id: run_a)])
   let slow = assess_unobserved(selection: s, runs: [varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))])
@@ -726,7 +726,7 @@ fn route() -> List<QualificationStage> {
 
 // FOUR EFFECTFUL STAGES AT TWO GRAINS: one BMC write under the approval gate, three GitHub
 // control-plane writes; the collect stage alone is observation.
-test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
+test fn the_route_classifies_every_mutation_at_its_grain() -> Bool  {
   route_effectful_stage_count(route: route()) == 4
     && route_bmc_write_count(route: route()) == 1
     && route_control_plane_write_count(route: route()) == 3
@@ -749,7 +749,7 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
 
 // THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the boot and dispatch legs are still
 // declared frontiers. This flips to the regression control that the bindings stay when they land.
-test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
+test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool  {
   !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
 }
 
@@ -757,7 +757,7 @@ test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool
 // claim tells the two apart: wiring the image leg before a production caller builds the runner
 // image, pointing it at another declaration, or binding the boot leg to the census-only boot run,
 // turns this red.
-test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
+test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_medium() -> Bool  {
   leg_names(leg: mtcollins1_route_legs.image, module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput")
     && !leg_is_wired(leg: mtcollins1_route_legs.image)
     && match mtcollins1_route_legs.boot { LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => true _ => false }
@@ -773,7 +773,7 @@ fn leg_names(leg: RouteLegStanding, module_path: String, decl_name: String) -> B
   }
 }
 
-test fn the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() -> Bool {
+test fn the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() -> Bool  {
   leg_names(leg: mtcollins1_route_legs.registration, module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint")
     && leg_names(leg: mtcollins1_route_legs.deregistration, module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered")
     && !leg_is_wired(leg: mtcollins1_route_legs.registration)
@@ -783,13 +783,13 @@ test fn the_registration_and_deregistration_legs_are_implemented_not_wired_and_t
     && !route_is_executable(route: route())
 }
 
-test fn the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt() -> Bool {
+test fn the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt() -> Bool  {
   route_registers_one_slot(route: route())
     && route_deregisters_what_it_registered(route: route())
     && route_dispatch_selector_names_the_attempt(route: route(), attempt: attempt)
 }
 
-test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool {
+test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool  {
   route() |> all(s =>
     match stage_egress(stage: s) {
       Absent =>
@@ -813,7 +813,7 @@ test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool 
 // THE COHORT IS OWED BY THE ROUTE, NOT ONLY ASSESSED: the collect stage lists the concurrent-cohort seat
 // windows and cites product.capacity.cohort_observation seal_cohort as their producer, and the one
 // collect-stage frontier stays unbound until the stage that seals a real cohort lands.
-test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
+test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool  {
   !leg_is_wired(leg: qualification_run_producer_frontier)
     && (route() |> any(s =>
       match s {
@@ -832,7 +832,7 @@ test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
     ))
 }
 
-test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
+test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool  {
   route() |> any(s =>
     match s {
       CollectInstruments { instruments: is } =>
@@ -865,7 +865,7 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
 
 // THE EPHEMERAL SLOT CARRIES THE FLEET SLOT SHAPE, spelled through the systemd-run authority; under
 // SlotCpuQuotaUnbounded no CPUQuota word is emitted, which is the transient unit's own "no ceiling".
-test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
+test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool  {
   let argv = ephemeral_slot_argv(unit: slot_unit(), desired: gunbc_runner_slot_desired(), command_argv: ["/mnt/runner/run.sh"])
   let has_quota_word = argv |> any(w => string_contains(s: w, pattern: "--property=CPUQuota="))
   (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
@@ -879,7 +879,7 @@ test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
 // THE CLASS LABEL IS READ OFF THE SLOT AUTHORITY, not written here (review 68972 -- the class this
 // PR's own failure-mode row names, caught a fourth time in this file). The host and attempt are
 // fixture inputs.
-test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
+test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool  {
   let labels = ephemeral_slot_labels(host: "mtcollins1", attempt: attempt)
   let class_labels = gunbc_runner_slot_desired().labels.github_labels
   class_labels.length() >= 1
@@ -889,7 +889,7 @@ test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
 
 // THE INHABITANCE CLAIMS FOR THE SUPPLIED SELECTION: the fleet's plan fold derives a sound plan
 // for the fixture host, and the cores-per-slot policy is a positive width.
-test fn the_fixture_selection_is_derived_by_the_fleet_folds() -> Bool {
+test fn the_fixture_selection_is_derived_by_the_fleet_folds() -> Bool  {
   (match sound_plan() { FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } => true FleetHostPlanUnsound { reason: _ } => false })
     && hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) >= 1
     && expected_width() >= 1
