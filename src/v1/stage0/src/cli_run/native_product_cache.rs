@@ -109,6 +109,39 @@ fn sources_axis(sources: &[std::rc::Rc<crate::v1_compiler_compile::SourceFile>])
     format!("{:x}", h.finalize())
 }
 
+/// The measured inputs of one key, before folding.
+pub(super) struct AxisInputs {
+    pub producer_compiler: String,
+    pub source_closure: String,
+    pub toolchain: String,
+    pub build_configuration: String,
+    pub entry: String,
+}
+
+/// THE ONE FOLD, in `PreMaterializationIdentity` declared order. `derive_key` measures and hands
+/// the inputs here, so a control over this function is a control over the key the run uses.
+pub(super) fn assemble_key(i: AxisInputs) -> ProductKey {
+    let axes: Vec<(&'static str, String)> = vec![
+        ("producer_compiler", hex(i.producer_compiler.as_bytes())),
+        ("source_closure", hex(i.source_closure.as_bytes())),
+        (
+            "target_model",
+            hex(format!("rust;{}-{}", std::env::consts::ARCH, std::env::consts::OS).as_bytes()),
+        ),
+        ("toolchain", hex(i.toolchain.as_bytes())),
+        ("build_configuration", hex(i.build_configuration.as_bytes())),
+        (
+            "required_lens_contract",
+            hex(format!("entry={}", i.entry).as_bytes()),
+        ),
+    ];
+    let mut digest = hex(b"gunbc.native_product.pre_materialization_identity");
+    for (_, axis) in &axes {
+        digest = hex(format!("{digest}\u{0}{axis}").as_bytes());
+    }
+    ProductKey { digest, axes }
+}
+
 /// Derive the key for `entry` over `source_roots`. Loads the SAME shared index and closure the
 /// emission will use (process-shared, so the emission reuses them rather than re-reading).
 pub(super) fn derive_key(
@@ -134,25 +167,13 @@ pub(super) fn derive_key(
         super::emitted_closure_compile_host::WARNING_DENIAL_RUSTFLAGS
     )
     .as_bytes());
-    let axes: Vec<(&'static str, String)> = vec![
-        ("producer_compiler", producer_axis(workspace)?),
-        ("source_closure", source_closure),
-        (
-            "target_model",
-            hex(format!("rust;{}-{}", std::env::consts::ARCH, std::env::consts::OS).as_bytes()),
-        ),
-        ("toolchain", hex(toolchain.as_bytes())),
-        ("build_configuration", build_configuration),
-        (
-            "required_lens_contract",
-            hex(format!("entry={entry}").as_bytes()),
-        ),
-    ];
-    let mut digest = hex(b"gunbc.native_product.pre_materialization_identity");
-    for (_, axis) in &axes {
-        digest = hex(format!("{digest}\u{0}{axis}").as_bytes());
-    }
-    Ok(ProductKey { digest, axes })
+    Ok(assemble_key(AxisInputs {
+        producer_compiler: producer_axis(workspace)?,
+        source_closure,
+        toolchain,
+        build_configuration,
+        entry: entry.to_string(),
+    }))
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -362,21 +383,43 @@ mod tests {
         assert!(matches!(lookup(&store, &k), Lookup::Refused { .. }));
     }
 
-    // Each axis, changed alone, changes the folded digest (no axis is dropped from the fold).
+    // Each measured input, changed alone, changes the key `derive_key` returns: it folds through
+    // `assemble_key`, so dropping an axis there turns this red.
     #[test]
-    fn every_axis_reaches_the_digest() {
-        let fold = |axes: &[&str]| {
-            let mut d = hex(b"gunbc.native_product.pre_materialization_identity");
-            for a in axes {
-                d = hex(format!("{d}\u{0}{a}").as_bytes());
-            }
-            d
+    fn every_axis_reaches_the_key() {
+        let base = || AxisInputs {
+            producer_compiler: "p".into(),
+            source_closure: "s".into(),
+            toolchain: "t".into(),
+            build_configuration: "b".into(),
+            entry: "e".into(),
         };
-        let base = ["p", "s", "t", "c", "b", "l"];
-        for i in 0..base.len() {
-            let mut changed = base;
-            changed[i] = "X";
-            assert_ne!(fold(&base), fold(&changed), "axis {i} is not in the fold");
+        let k0 = assemble_key(base()).digest;
+        let variants: Vec<AxisInputs> = vec![
+            AxisInputs {
+                producer_compiler: "X".into(),
+                ..base()
+            },
+            AxisInputs {
+                source_closure: "X".into(),
+                ..base()
+            },
+            AxisInputs {
+                toolchain: "X".into(),
+                ..base()
+            },
+            AxisInputs {
+                build_configuration: "X".into(),
+                ..base()
+            },
+            AxisInputs {
+                entry: "X".into(),
+                ..base()
+            },
+        ];
+        for v in variants {
+            assert_ne!(k0, assemble_key(v).digest);
         }
+        assert_eq!(assemble_key(base()).axes.len(), 6);
     }
 }

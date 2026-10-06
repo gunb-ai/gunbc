@@ -98,6 +98,7 @@ import gunbc.workflow_capability_closure {
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
+import gunbc.fleet_workflow_steps { ci_native_cache_root_step }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow_name,
@@ -1163,9 +1164,22 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // THE PRELUDE IS THE FLEET PRELUDE over `gunbc` alone, because the subject steps need exactly what it
 // provides on the fleet: the judged checkout, an isolated toolchain home (and the guard requiring
 // it), a pinned default, and the `gunbc` binary the instruments are invoked through.
+// THE NATIVE PRODUCT STORE'S ROOT IS THE EXISTING DERIVATION, NOT A SECOND ONE. `emit-build` binds the
+// fleet's own `ci_native_cache_root_step` (`$RUNNER_TOOL_CACHE/gunbc-native/<toolchain segment>`),
+// which is outside the per-job `$RUNNER_TEMP` and so survives to the next run on the same runner
+// host (`cli_run::native_product_cache`, CI programme row R3). The toolchain segment is already part
+// of the root, and the product key carries the toolchain axis besides.
+fn compiler_gate_emit_build_native_cache_root_bound_step() -> CompilerGateBoundStep {
+  CompilerGateBoundStep {
+    step: ci_native_cache_root_step(),
+    role: consumes_only(capabilities: [RustcCapability]),
+    step_name: "Derive native-cache root",
+  }
+}
+
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(compiler_gate_fleet_prelude_bound_steps_around_build(bins: compiler_gate_required_bins, build_step_name: compiler_gate_build_step_name, before_build: [], after_build: []), compiler_gate_emit_build_subject_bound_steps()),
+    concat(compiler_gate_fleet_prelude_bound_steps_around_build(bins: compiler_gate_required_bins, build_step_name: compiler_gate_build_step_name, before_build: [compiler_gate_emit_build_native_cache_root_bound_step()], after_build: []), compiler_gate_emit_build_subject_bound_steps()),
     [CompilerGateBoundStep {
       step: compiler_gate_emit_build_notice_step(),
       role: capability_neutral,
@@ -1185,14 +1199,6 @@ fn compiler_gate_emit_build_capability_closure_holds() -> Bool {
   )
 }
 
-// THE HOST-LEVEL ROOT OF THE NATIVE PRODUCT STORE (`cli_run::native_product_cache`, CI programme row
-// R3). HOME is `$RUNNER_TEMP` and torn down per job, so only a path outside it can carry a product
-// from one run to the next on the same runner host; with the variable unset the seed keeps no store
-// and builds every time, so this is what turns reuse on. Keyed by content, verified on read, and a
-// store that cannot be read or written costs a rebuild, never a verdict.
-data compiler_gate_native_product_cache_root_env_key: String = "GUNBC_NATIVE_CACHE_ROOT"
-data compiler_gate_native_product_cache_root: String = "/var/tmp/gunbc_native_product_cache"
-
 fn compiler_gate_emit_build_job() -> Job {
   Job {
     id: compiler_gate_emit_build_job_id,
@@ -1203,8 +1209,7 @@ fn compiler_gate_emit_build_job() -> Job {
     needs: [],
     env: Present {
       value: [
-        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value)),
-        kv(key: compiler_gate_native_product_cache_root_env_key, value: yaml_string(s: compiler_gate_native_product_cache_root))
+        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
       ]
     },
     outputs: none,
