@@ -391,8 +391,8 @@ fn newly_red_walk(
                       newly: newly,
                       unmeasured: Cons { head: a.path, tail: unmeasured }
                     )
-                  CorpusFileScanned { suspects: as, refusals: _, causes: _ } =>
-                    if (as > 0) && (bs == 0) {
+                  CorpusFileScanned { suspects: after_suspects, refusals: _, causes: _ } =>
+                    if (after_suspects > 0) && (bs == 0) {
                       newly_red_walk(
                         before: bt,
                         after: at,

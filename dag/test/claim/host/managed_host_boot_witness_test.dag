@@ -1,0 +1,187 @@
+module test.claim.managed_host_boot_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
+import gunbc.host_reset_boot_selection { reset_boot_selection }
+import gunbc.boot_medium {
+  BootMedium,
+  BootMediumReadbackHeld,
+  BootMediumReadbackDigestDiffers,
+  boot_medium_readback,
+  stock_installer_boot_medium,
+}
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
+import gunbc.managed_host_boot_handoff { CredentialPathGiven, CredentialPathMissing, boot_handoff_password_file, boot_handoff_admission_probe_of }
+import gunbc.managed_host_boot {
+  BootSubjectAdmitted,
+  BootSubjectRefused,
+  BootSubjectHostNotManaged,
+  BootSubjectHostUnbound,
+  BootSubjectNoSelection,
+  admit_boot_subject,
+  boot_selection,
+  boot_subject_admission_for,
+  boot_subject_admission_in,
+  boot_subject_admission_refusal,
+  boot_subject_machine,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: BmcControllerEndpoint { host: host as NonEmptyStr },
+    identity: o.identity,
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+}
+
+// THE REAL PATH: mtcollins1's one managed-host row admits a boot with the medium Mt. Collins boots
+// today, and the subject carries that medium, the boot arm's own one-shot CD selection, and the
+// binding's controller. This is the inhabitance claim for gunbc.managed_host_boot AdmittedBootSubject:
+// the subject the boot run reads is minted from the real row, not supplied.
+test fn w_the_real_row_admits_a_boot_with_its_medium_and_the_boot_selection() -> Bool {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: revision) {
+    BootSubjectRefused { host: _, cause: _ } => false
+    BootSubjectAdmitted { subject: s } =>
+      (s.medium.image_name as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso"
+        && (s.medium.digest as String) == "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513"
+        && (s.medium.export.dir as String) == "/srv/bmc"
+        && (boot_subject_machine(subject: s) as String) == "mtcollins1"
+        && (s.execution_revision as String) == (revision as String)
+        && s.selection.architecture == Aarch64
+        && s.selection.firmware_mode == IpmiBootEfi
+        && s.selection.persistence == IpmiBootOnce
+        && s.selection.device == IpmiBootCdrom
+        && (ipmi_boot_selection_label(selection: s.selection) as String) == "cdrom/efi/once"
+  }
+}
+
+// RED: A HOST THAT IS NOT A MANAGED HOST. srv1 is a fleet host with no managed-host row, so its boot
+// is refused by that cause before any binding is read; the same admission over the real rows names
+// mtcollins1 admitted, so the refusal is the missing row and not an empty roster.
+test fn w_a_boot_of_a_host_that_is_not_managed_is_refused() -> Bool {
+  let refused = match boot_subject_admission_for(host: operator_host_srv1, medium: mtcollins1_boot_medium, execution_revision: revision) {
+    BootSubjectRefused { host: h, cause: BootSubjectHostNotManaged } => (h as String) == (operator_host_srv1 as String)
+    _ => false
+  }
+  let admitted = match boot_subject_admission_in(hosts: managed_hosts(), host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: revision) {
+    BootSubjectAdmitted { subject: _ } => true
+    BootSubjectRefused { host: _, cause: _ } => false
+  }
+  refused && admitted
+    && (match boot_subject_admission_refusal(admission: boot_subject_admission_for(host: operator_host_srv1, medium: mtcollins1_boot_medium, execution_revision: revision)) {
+      Present { value: t } => string_contains(s: t as String, pattern: "not a managed host")
+      Absent => false
+    })
+}
+
+// RED: AN UNBOUND HOST. The real row's secured account is kept beside an access observation of
+// another controller; the binding refuses the pair, so no boot subject is minted for it -- unit A's
+// account can never drive unit B's controller.
+test fn w_a_boot_of_an_unbound_host_is_refused() -> Bool {
+  managed_hosts() |> all(h => {
+    let crossed = match h.access {
+      BmcAccessUnobserved { endpoint: _ } => h
+      BmcAccessObserved { observation: o } =>
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    }
+    match admit_boot_subject(host: crossed, medium: mtcollins1_boot_medium, execution_revision: revision) {
+      BootSubjectRefused { host: _, cause: BootSubjectHostUnbound { standing: ManagedHostEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
+      _ => false
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A BOUND HOST WITH NO BOOT SELECTION. The real row's standings under a host name the boot arm
+// decides nothing for bind, but the boot is refused as selection-less: a capable controller is not a
+// bootable host until its boot policy is decided.
+test fn w_a_bound_host_with_no_boot_selection_is_refused() -> Bool {
+  managed_hosts() |> all(h => {
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    match admit_boot_subject(host: unselected, medium: mtcollins1_boot_medium, execution_revision: revision) {
+      BootSubjectRefused { host: x, cause: BootSubjectNoSelection } => (x as String) == "fixture-unselected-host"
+      _ => false
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// RED AND CONTROL: A MEDIUM WHOSE READBACK DIGEST DIFFERS IS REFUSED. The census medium read back as
+// the stock installer's bytes is refused, naming both digests; read back as its own digest it holds.
+test fn w_a_medium_read_back_with_another_digest_is_refused() -> Bool {
+  let held = match boot_medium_readback(medium: mtcollins1_boot_medium, observed: mtcollins1_boot_medium.digest) {
+    BootMediumReadbackHeld => true
+    BootMediumReadbackDigestDiffers { image_name: _, expected: _, observed: _ } => false
+  }
+  let differs = boot_medium_readback(medium: mtcollins1_boot_medium, observed: stock_installer_boot_medium.digest)
+  let refused = match differs {
+    BootMediumReadbackHeld => false
+    BootMediumReadbackDigestDiffers { image_name: n, expected: e, observed: o } =>
+      (n as String) == (mtcollins1_boot_medium.image_name as String)
+        && (e as String) == (mtcollins1_boot_medium.digest as String)
+        && (o as String) == (stock_installer_boot_medium.digest as String)
+  }
+  held && refused
+}
+
+// THE TWO ARMS DECIDE THEIR OWN SELECTIONS. Neither admission takes a selection as a parameter, so the
+// reset arm's value cannot be handed to a boot; the forged-carrier probe
+// (test.claim.managed_host_forged_probe_witness) pins that an AdmittedBootSubject cannot be authored
+// with one. This claim executes both deciders over the real row: each decides one for mtcollins1 and
+// the boot subject carries the boot arm's, from its own authority.
+test fn w_the_reset_and_boot_arms_each_decide_their_own_selection() -> Bool {
+  managed_hosts() |> all(h => match boot_selection(host: h) {
+    Absent => false
+    Present { value: b } => match reset_boot_selection(host: h) {
+      Absent => false
+      Present { value: _ } => match admit_boot_subject(host: h, medium: mtcollins1_boot_medium, execution_revision: revision) {
+        BootSubjectAdmitted { subject: s } => (ipmi_boot_selection_label(selection: s.selection) as String) == (ipmi_boot_selection_label(selection: b) as String)
+        BootSubjectRefused { host: _, cause: _ } => false
+      }
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// THE STOCK INSTALLER ROW IS ITS UPSTREAM ROW: the filename and digest cdimage's SHA256SUMS cites.
+test fn w_the_stock_installer_medium_is_read_off_its_upstream_row() -> Bool {
+  (stock_installer_boot_medium.image_name as String) == "ubuntu-24.04.3-live-server-arm64.iso"
+    && (stock_installer_boot_medium.digest as String) == "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
+    && (stock_installer_boot_medium.export.dir as String) == "/srv/bmc"
+}
+
+// THE HANDOFF REFUSES AN EMPTY CREDENTIAL PATH BEFORE ANY CONTROLLER WRITE, as the unit's handoff did:
+// the empty path is a typed missing input, never a placeholder filename handed to ipmitool.
+test fn w_an_empty_credential_path_is_missing_not_a_filename() -> Bool {
+  (match boot_handoff_password_file(raw: "") { CredentialPathMissing => true  CredentialPathGiven { path: _ } => false })
+    && (match boot_handoff_password_file(raw: "/run/pw") { CredentialPathGiven { path: p } => (p as String) == "/run/pw"  CredentialPathMissing => false })
+}
+
+// THE ADMISSION PROBE OVER EVERY MANAGED HOST'S REAL ROWS: each row admits its controller through its
+// binding and its empty-capability control refuses, so the fold discriminates on live data. The
+// unbound arm is the RED: the same row beside another controller's access is reported, not probed.
+test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> Bool {
+  managed_hosts() |> all(h => {
+    let real = match boot_handoff_admission_probe_of(host: h) { Absent => true  Present { value: _ } => false }
+    let crossed = match h.access {
+      BmcAccessUnobserved { endpoint: _ } => h
+      BmcAccessObserved { observation: o } =>
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    }
+    let red = match boot_handoff_admission_probe_of(host: crossed) { Present { value: why } => string_contains(s: why, pattern: "observed and secured controllers differ")  Absent => false }
+    real && red
+  }) && count(managed_hosts()) == 1
+}

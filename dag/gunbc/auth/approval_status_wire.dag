@@ -227,6 +227,7 @@ fn submission_filed_text(filed: Bool, reason: String) -> String {
 fn submission_body_admits_poll(body: String) -> Bool {
   match kv_line_read(body: body, key: filed_kv_key) {
     KvLinePresent { value: v } => v == filed_yes
-    _ => false
+    KvLineAbsent => false
+    KvLineDuplicated { key: _ } => false
   }
 }
