@@ -2893,10 +2893,17 @@ pub fn shell_result_channel_key(c: ShellResultChannel) -> String {
 
 pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
     match c.clone() {
-        ShellResultChannel::ShellChanStderrTruncated => false,
-        ShellResultChannel::ShellChanStderrTotalBytes => false,
-        ShellResultChannel::ShellChanStderrRetainedBytes => false,
+        ShellResultChannel::ShellChanStderrTruncated => target_is_rust(target.clone()),
+        ShellResultChannel::ShellChanStderrTotalBytes => target_is_rust(target.clone()),
+        ShellResultChannel::ShellChanStderrRetainedBytes => target_is_rust(target.clone()),
         _ => target_renders_shell_transport(target.clone()),
+    }
+}
+
+pub fn target_is_rust(target: RenderTarget) -> bool {
+    match target.clone() {
+        RenderTarget::Rust => true,
+        _ => false,
     }
 }
 

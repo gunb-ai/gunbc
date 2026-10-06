@@ -58,6 +58,14 @@ data unmodeled_output_key_source: String = "module tfx_key\nservice Fk \{\n  ope
 
 data payload_verb_without_content_source: String = "module tfx_payload\nservice Fp \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Seal \{\n    input \{ path: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"write_owner_only\" \}\n  \}\n\}\n"
 
+// The rust shell handler now realizes the declared stderr capture channels
+// (truncation + both byte counts) from WitnessStderrCapturePolicy. The mixed
+// row keeps the unmodeled-key RED beside that emission so a handler that
+// answered every sibling, or a wall that poisoned every sibling, still fails.
+data shell_stderr_capture_source: String = "module tfx_cap\nimport std.shell_stream_capture \{ WitnessStderrCapturePolicy, BoundedTail \}\nimport std.measure \{ byte_size \}\nservice Bin \{\n  operation Run \{\n    input \{\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail \{ bytes: byte_size(count: 16) \}\n    \}\n    output \{\n      success: Bool from \"exit_success\"\n      stderr: String from \"stderr\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    \}\n    transport shell \{ argv: [\"\{bin_path\}\"] \}\n  \}\n\}\n"
+
+data shell_stderr_capture_beside_unmodeled_key_source: String = "module tfx_cap_mix\nimport std.shell_stream_capture \{ WitnessStderrCapturePolicy, BoundedTail \}\nimport std.measure \{ byte_size \}\nservice Bin \{\n  operation Run \{\n    input \{\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail \{ bytes: byte_size(count: 16) \}\n    \}\n    output \{\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    \}\n    transport shell \{ argv: [\"\{bin_path\}\"] \}\n  \}\n  operation Weird \{\n    input \{ bin_path: String \}\n    output \{ digest: String from \"stderr_digest_hex\" \}\n    transport shell \{ argv: [\"\{bin_path\}\"] \}\n  \}\n\}\n"
+
 fn not_modeled_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -103,4 +111,16 @@ test fn w_unmodeled_output_channel_refuses_only_its_own_operation() -> Bool {
 
 test fn w_payload_verb_without_content_input_refuses_only_its_own_operation() -> Bool {
   not_modeled_blocking_count(source: payload_verb_without_content_source) == 1
+}
+
+test fn w_declared_shell_stderr_capture_channels_emit() -> Bool {
+  not_modeled_blocking_count(source: shell_stderr_capture_source) == 0
+}
+
+test fn w_declared_shell_stderr_capture_module_is_clean_of_all_blocking_diagnostics() -> Bool {
+  blocking_diagnostic_count(source: shell_stderr_capture_source) == 0
+}
+
+test fn w_unmodeled_shell_channel_refuses_beside_realized_capture_channels() -> Bool {
+  not_modeled_blocking_count(source: shell_stderr_capture_beside_unmodeled_key_source) == 1
 }

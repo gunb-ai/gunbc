@@ -38798,7 +38798,7 @@ pub fn emit_exit_code_handling(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     "\n    _ => { ".to_string(),
-                                    shell_stderr_binding_line(),
+                                    shell_error_stderr_binding(result_fields.clone()),
                                 ),
                                 " ".to_string(),
                             ),
@@ -38860,7 +38860,7 @@ pub fn emit_exit_arm(
                                 v1_rt::concat("    ".to_string(), pattern.clone()),
                                 " => { ".to_string(),
                             ),
-                            shell_stderr_binding_line(),
+                            shell_error_stderr_binding(result_fields.clone()),
                         ),
                         " ".to_string(),
                     ),
@@ -38934,7 +38934,8 @@ pub fn emit_shell_call(
                 Some(_) => true,
                 std::option::Option::None => false,
             };
-        let let_kw = if has_stdin.clone() {
+        let needs_capture = shell_needs_capture_accounting(result_fields.clone());
+        let let_kw = if has_stdin.clone() || needs_capture.clone() {
             "let mut output".to_string()
         } else {
             "let output".to_string()
@@ -39053,7 +39054,62 @@ pub fn emit_shell_call(
             __result
         });
         let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))".to_string();
-        if has_stdin.clone() {
+        let return_line = emit_exit_code_handling(
+            op_node.clone(),
+            result_fields.clone(),
+            source_indices.clone(),
+        );
+        if needs_capture.clone() {
+            let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())".to_string();
+            let spawn_exec = "    .spawn()?;".to_string();
+            let write_block = if has_stdin.clone() {
+                let stdin_expr =
+                    crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone())
+                        .clone()
+                        .unwrap();
+                let stdin_var = match (*stdin_expr.expr_data.clone()).clone() {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => crate::v1_compiler_emit::emit_ident(
+                        crate::v1_std_core::expr_var_name_at(
+                            stdin_expr.clone(),
+                            source_indices.clone(),
+                        ),
+                        RenderTarget::Rust,
+                    ),
+                    _ => crate::v1_compiler_emit::emit_simple_expr(
+                        stdin_expr.clone(),
+                        RenderTarget::Rust,
+                        source_indices.clone(),
+                    ),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(".to_string(),
+                        stdin_var.clone(),
+                    ),
+                    ".as_bytes())?;\n    }\n}".to_string(),
+                )
+            } else {
+                "if let Some(mut stdin) = output.stdin.take() { drop(stdin); }".to_string()
+            };
+            let capture_lines = emit_shell_capture_wait(op_node.clone(), source_indices.clone());
+            let all_lines = v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(Rc::new(vec![cmd_line.clone()]), arg_lines.clone()),
+                    env_lines.clone(),
+                ),
+                Rc::new(vec![
+                    wd_line.clone(),
+                    spawn_line,
+                    spawn_exec,
+                    write_block,
+                    capture_lines,
+                    return_line.clone(),
+                ]),
+            );
+            all_lines.join(&"\n".to_string())
+        } else if has_stdin.clone() {
             {
                 let stdin_expr =
                     crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone())
@@ -39129,6 +39185,60 @@ pub fn emit_shell_call(
             }
         }
     }
+}
+
+pub fn shell_needs_capture_accounting(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> bool {
+    result_fields.iter().any(|f| {
+        matches!(
+            f.channel,
+            ShellResultChannel::ShellChanStderrTruncated
+                | ShellResultChannel::ShellChanStderrTotalBytes
+                | ShellResultChannel::ShellChanStderrRetainedBytes
+        )
+    })
+}
+
+pub fn op_has_stderr_capture_param(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    op_node.params.iter().any(|p| {
+        crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
+            == "stderr_capture"
+    })
+}
+
+pub fn shell_error_stderr_binding(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
+    if shell_needs_capture_accounting(result_fields) {
+        "".to_string()
+    } else {
+        v1_rt::concat(shell_stderr_binding_line(), " ".to_string())
+    }
+}
+
+pub fn emit_shell_capture_wait(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_rt::concat(
+        emit_shell_stderr_policy_binding(op_node, source_indices),
+        shell_capture_drain_body(),
+    )
+}
+
+pub fn emit_shell_stderr_policy_binding(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if op_has_stderr_capture_param(op_node, source_indices) {
+        "let __stderr_complete_limit: Option<usize> = match &*stderr_capture {\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => {\n        match std::env::var(\"GUNBC_MEMORY_BUDGET_BYTES\") {\n            Ok(raw) => Some(raw.parse::<usize>().map_err(|cause| format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: {cause}\"))?),\n            Err(cause) => return Err(format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active GUNBC_MEMORY_BUDGET_BYTES authority ({cause})\").into()),\n        }\n    }\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => {\n        let n = crate::std_measure::byte_size_count(bytes.clone());\n        if n < 0 { return Err(\"WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative\".into()); }\n        None\n    }\n};\nlet __stderr_tail_bytes: usize = match &*stderr_capture {\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => crate::std_measure::byte_size_count(bytes.clone()) as usize,\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => 0,\n};\n".to_string()
+    } else {
+        "let __stderr_complete_limit: Option<usize> = None;\nlet __stderr_tail_bytes: usize = 16384;\n".to_string()
+    }
+}
+
+pub fn shell_capture_drain_body() -> String {
+    "let mut stdout_pipe = output.stdout.take();\nlet mut stderr_pipe = output.stderr.take();\nlet stdout_thread = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {\n    let mut buf = Vec::new();\n    if let Some(ref mut reader) = stdout_pipe {\n        std::io::Read::read_to_end(reader, &mut buf)?;\n    }\n    Ok(buf)\n});\nlet stderr_thread = std::thread::spawn(move || -> std::io::Result<(Vec<u8>, u64, bool)> {\n    let mut reader = match stderr_pipe {\n        Some(r) => r,\n        None => return Ok((Vec::new(), 0, false)),\n    };\n    let mut chunk = [0u8; 65536];\n    let mut total: u64 = 0;\n    if let Some(max_bytes) = __stderr_complete_limit {\n        let mut retained = Vec::new();\n        loop {\n            let n = std::io::Read::read(&mut reader, &mut chunk)?;\n            if n == 0 { break; }\n            total += n as u64;\n            if total <= max_bytes as u64 { retained.extend_from_slice(&chunk[..n]); }\n        }\n        let truncated = total > max_bytes as u64;\n        return Ok((if truncated { Vec::new() } else { retained }, total, truncated));\n    }\n    let cap = __stderr_tail_bytes;\n    let mut ring = Vec::with_capacity(cap);\n    let mut start = 0usize;\n    loop {\n        let n = std::io::Read::read(&mut reader, &mut chunk)?;\n        if n == 0 { break; }\n        total += n as u64;\n        for &b in &chunk[..n] {\n            if cap == 0 { continue; }\n            if ring.len() < cap {\n                ring.push(b);\n            } else {\n                ring[start] = b;\n                start = (start + 1) % cap;\n            }\n        }\n    }\n    let retained = if ring.len() < cap || cap == 0 {\n        ring\n    } else {\n        let mut out = Vec::with_capacity(cap);\n        for i in 0..cap { out.push(ring[(start + i) % cap]); }\n        out\n    };\n    let retained_len = retained.len() as u64;\n    Ok((retained, total, total > retained_len))\n});\nlet status = output.wait()?;\nlet stdout_bytes = stdout_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdout drain thread panicked\"))??;\nlet (stderr_bytes, stderr_total_u64, stderr_truncated) = stderr_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stderr drain thread panicked\"))??;\nlet stderr_total_bytes = stderr_total_u64 as i64;\nlet stderr_retained_bytes = stderr_bytes.len() as i64;\nlet stdout = String::from_utf8_lossy(&stdout_bytes).to_string();\nlet stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();\nlet output = std::process::Output { status, stdout: stdout_bytes, stderr: stderr_bytes };\n".to_string()
 }
 
 pub fn shell_argv_param_is_word_list(
@@ -39358,7 +39468,9 @@ pub fn shell_projection_value(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> S
 }
 
 pub fn shell_stderr_prelude(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
-    {
+    if shell_needs_capture_accounting(result_fields.clone()) {
+        "".to_string()
+    } else {
         let needs_stderr = {
             let mut __found = false;
             for f in result_fields.iter().cloned() {
@@ -39372,7 +39484,7 @@ pub fn shell_stderr_prelude(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> Str
             }
             __found
         };
-        if needs_stderr.clone() {
+        if needs_stderr {
             v1_rt::concat(shell_stderr_binding_line(), "\n".to_string())
         } else {
             "".to_string()
@@ -39393,15 +39505,9 @@ pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -
                 "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()"
                     .to_string(),
             ),
-            ShellResultChannel::ShellChanStderrTruncated => {
-                emit_unrealizable_shell_channel(channel.clone())
-            }
-            ShellResultChannel::ShellChanStderrTotalBytes => {
-                emit_unrealizable_shell_channel(channel.clone())
-            }
-            ShellResultChannel::ShellChanStderrRetainedBytes => {
-                emit_unrealizable_shell_channel(channel.clone())
-            }
+            ShellResultChannel::ShellChanStderrTruncated => "stderr_truncated".to_string(),
+            ShellResultChannel::ShellChanStderrTotalBytes => "stderr_total_bytes".to_string(),
+            ShellResultChannel::ShellChanStderrRetainedBytes => "stderr_retained_bytes".to_string(),
         };
         if is_optional.clone() {
             v1_rt::concat(

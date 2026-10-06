@@ -1336,17 +1336,11 @@ type ShellEmissionRefusal
 // when no `from` key is authored -- so the two directions of the one procedure
 // (DESIGN section 4) read the same rule rather than agreeing by coincidence.
 //
-// NOT MODELED, named rather than left to be inferred, because each names a fact
-// the emitted realization cannot honestly produce:
-//
-//   the byte-accounting and truncation channels -- stdout/stderr_total_bytes,
-//   _retained_bytes and _truncated. An operation declaring them also declares a
-//   capture policy (gunbc.WitnessBin.Run carries a WitnessStderrCapturePolicy
-//   input), and the emitted `std::process::Command` body implements no policy at
-//   all. Answering `false` and a raw length would not be a conservative default,
-//   it would assert that the declared policy ran and did not truncate. The
-//   next-rung trigger is the emitted realization implementing the declared
-//   capture policy; until then these refuse as a counted capability gap.
+// The byte-accounting and truncation channels are modeled. The rust handler
+// answers them from the declared WitnessStderrCapturePolicy (concurrent drain).
+// Answering `false` and a raw length without running that policy is still
+// forbidden; python and go refuse the three channels until they bind the same
+// handler fact.
 //
 //   the digest channels -- stdout/stderr_digest_hex, which the interpreter
 //   answers and the emitted realization has no digest facility for. The
@@ -1381,23 +1375,26 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
 // WHETHER A TARGET CAN REALIZE A CHANNEL IS A FACT ABOUT THE TARGET, and keeping
 // it here rather than in the roster is the whole point of the split.
 //
-// The three capture-accounting channels are REAL shell channels -- the interpreter
-// answers all three from the declared WitnessStderrCapturePolicy -- and no emitted
-// realization implements a capture policy at all. The emitted `Command` body
-// captures whole streams, so `truncated` would always be false and total would
-// always equal retained: not a conservative default but an assertion that the
-// declared policy ran and did not truncate.
-//
-// NEXT-RUNG TRIGGER, at capability grain: the emitted realization implementing the
-// declared capture policy, sufficient to answer truncation and both byte counts
-// from the policy the operation declares. Until then every realizing target
-// refuses these three, and the refusal is LOCATED AT THE FIELD.
+// The three capture-accounting channels are REAL shell channels. The rust
+// realization handler (v1.compiler.emit_rust emit_shell_call) implements the
+// declared WitnessStderrCapturePolicy: concurrent drain, BoundedTail retains a
+// tail, Complete retains within the active GUNBC_MEMORY_BUDGET_BYTES ceiling or
+// refuses. Python and go still realize no capture policy, so they refuse these
+// three at field grain rather than answering false / raw length (that answer
+// would assert the declared policy ran).
 fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
   match c {
-    ShellChanStderrTruncated => false
-    ShellChanStderrTotalBytes => false
-    ShellChanStderrRetainedBytes => false
+    ShellChanStderrTruncated => target_is_rust(target: target)
+    ShellChanStderrTotalBytes => target_is_rust(target: target)
+    ShellChanStderrRetainedBytes => target_is_rust(target: target)
     _ => target_renders_shell_transport(target: target)
+  }
+}
+
+fn target_is_rust(target: RenderTarget) -> Bool {
+  match target {
+    Rust => true
+    _ => false
   }
 }
 

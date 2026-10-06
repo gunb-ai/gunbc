@@ -3436,4 +3436,41 @@ mod fixture_closure_union_tests {
         assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
         assert!(union.conflicts.contains("dag/a.dag"));
     }
+
+    const STDERR_CAPTURE_MEMBER: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }\nimport std.measure { byte_size }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail { bytes: byte_size(count: 16) }\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
+    const STDERR_CAPTURE_UNMODELED_SIBLING: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }\nimport std.measure { byte_size }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail { bytes: byte_size(count: 16) }\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n  operation Weird {\n    input { bin_path: String }\n    output { digest: String from \"stderr_digest_hex\" }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
+    const GUNBC_MODULE_REACH_MEMBER: &str =
+        "module efr_member\nimport extdeps.gunbc { packages }\nfn ignore() -> Int { 0 }\n";
+
+    #[test]
+    fn declared_stderr_capture_channels_do_not_refuse_the_union() {
+        let union = fixture_closure_union_control_union(STDERR_CAPTURE_MEMBER)
+            .expect("capture member resolves");
+        fixture_closure_union_emit_receipt(&union)
+            .expect("the rust shell handler realizes the declared capture channels");
+    }
+
+    #[test]
+    fn an_unmodeled_shell_channel_still_refuses_the_union() {
+        let union = fixture_closure_union_control_union(STDERR_CAPTURE_UNMODELED_SIBLING)
+            .expect("mixed member resolves");
+        let refusal = fixture_closure_union_emit_receipt(&union)
+            .expect_err("unmodeled stderr_digest_hex must still refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("stderr_digest_hex"),
+            "{refusal}"
+        );
+    }
+
+    #[test]
+    fn reaching_extdeps_gunbc_does_not_refuse_the_union_for_capture_channels() {
+        let union = fixture_closure_union_control_union(GUNBC_MODULE_REACH_MEMBER)
+            .expect("extdeps.gunbc reach resolves");
+        fixture_closure_union_emit_receipt(&union).unwrap_or_else(|refusal| {
+            panic!("a compile-probe reach of extdeps.gunbc must emit: {refusal}");
+        });
+    }
 }
