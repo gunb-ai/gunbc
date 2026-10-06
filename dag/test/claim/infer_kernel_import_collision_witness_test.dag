@@ -1,7 +1,8 @@
 module test.claim.infer_kernel_import_collision_witness
 
+import extdeps.filesystem.filesystem_io
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import tools.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -15,7 +16,7 @@ import tools.multi_module_compile_fixture {
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ONE RULE: an authored import of a type that shares a kernel-mint spelling, and is not the
 // mint's own declaration, REFUSES at the import (v1.compiler.resolve
@@ -23,13 +24,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Optional types in the closure; the kernel overlay would keep winning by name and the
 // imported declaration would keep winning by interned identity. Refusal is the construction.
 //
-// THE RED IS native_emission_controls_optional_importer: it imports Optional from the
-// non-kernel collision module. THE POSITIVE CONTROL imports a non-kernel name from the same
-// module, and a second control imports the mint itself (v2.std.optional Optional).
+// THE RED BYTES ARE THE FILES. collision is the corpus declaration
+// dag/gunbc/instruments/native_emission_controls_optional_collision.dag. The importer is
+// fixtures/native_emission_controls_optional_importer.dag (not a source-root module, so the
+// accepted corpus does not violate the wall). This witness reads those files and hands the
+// bytes to compile_fixture, so a drift between file and claim is a failed read, not a second
+// source (review 76934).
 
-data collision_source: String = "module gunbc.instruments.native_emission_controls_optional_collision\n\ntype Optional\n  = CollisionWrapped \{ value: Int \}\n  | CollisionEmpty\n\nfn collision_row_value(o: Optional) -> Int \{\n  match o \{\n    CollisionWrapped \{ value: v \} => v\n    CollisionEmpty => 0\n  \}\n\}\n\nfn collision_seven() -> Int \{\n  collision_row_value(o: CollisionWrapped \{ value: 7 \})\n\}\n"
+data collision_path: String = "dag/gunbc/instruments/native_emission_controls_optional_collision.dag"
+data importer_path: String = "fixtures/native_emission_controls_optional_importer.dag"
 
-data importer_source: String = "module gunbc.instruments.native_emission_controls_optional_importer\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ Optional \}\n\nfn imported_optional_value(o: Optional) -> Int \{\n  match o \{\n    CollisionWrapped \{ value: v \} => v\n    CollisionEmpty => 0\n  \}\n\}\n"
+fn file_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn file_source(path: String) -> FixtureSource {
+  fixture_source(path: path, content: file_text(path: path))
+}
 
 data non_kernel_import_source: String = "module probe_kernel_import_ok\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_fn() -> Int \{\n  collision_seven()\n\}\n"
 
@@ -39,24 +50,20 @@ data mint_decl_source: String = "module v2.std.optional\n\ntype Optional<T>\n  =
 
 data collision_class: String = "ImportCollidesWithKernelName"
 
-fn collision_definer() -> FixtureSource {
-  fixture_source("gunbc/instruments/native_emission_controls_optional_collision.dag", collision_source)
-}
-
 fn compile_importer() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
-      collision_definer(),
-      fixture_source("gunbc/instruments/native_emission_controls_optional_importer.dag", importer_source)
+      file_source(path: collision_path),
+      file_source(path: importer_path)
     ],
-    entry: "gunbc/instruments/native_emission_controls_optional_importer.dag"
+    entry: importer_path
   })
 }
 
 fn compile_non_kernel_import() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
-      collision_definer(),
+      file_source(path: collision_path),
       fixture_source("probe_kernel_import_ok.dag", non_kernel_import_source)
     ],
     entry: "probe_kernel_import_ok.dag"
