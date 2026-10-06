@@ -104,7 +104,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.qualified_name { QualifiedName }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data frontier_probe_closure_duplicate_ref_reason: Symbol = ^frontier_probe_closure_duplicate_ref
@@ -243,7 +243,10 @@ fn frontier_probe_source_ref_for_read_diagnostic(
         refs: refs,
         path: symbol_lexeme(sym: module_file)
       )
-    _ => optional_absent()
+    NodeLocus { anchor: _ } => optional_absent()
+    SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+    InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+    DeclarationLocus { declaration: _ } => optional_absent()
   }
 }
 
@@ -260,7 +263,9 @@ fn frontier_probe_diagnostic_tail_port_lexeme(d: NonEmptyDiagnostics) -> String 
             symbol_lexeme(sym: port)
           InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } =>
             symbol_lexeme(sym: port)
-          _ => ""
+          Textual { file: _, extent: _ } => ""
+          NodeLocus { anchor: _ } => ""
+          DeclarationLocus { declaration: _ } => ""
         }
       }
     }
@@ -304,7 +309,9 @@ fn frontier_probe_first_missing_import_lookup(
         Absent =>
           match module_root_lookup(roots: roots, name: import_edge.target) {
             ModuleRootMissing { requested: qn } => optional_present(value: qn)
-            _ => optional_absent()
+            ModuleRootFound { root: _ } => optional_absent()
+            ModuleRootAmbiguous { requested: _ } => optional_absent()
+            ModuleRootLookupRejected { diagnostics: _ } => optional_absent()
           }
       }
     }

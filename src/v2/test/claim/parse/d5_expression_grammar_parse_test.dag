@@ -7,7 +7,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, symbol_lexeme }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

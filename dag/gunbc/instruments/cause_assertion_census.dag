@@ -10,7 +10,7 @@ import v2.workflow.floor_naming_hygiene { floor_entry_requires_test_sidecar }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.algebra { any, filter }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -531,7 +531,12 @@ fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> 
     join(["sources_refused", to_string(count(acquisition.refusals))], "\t"),
     join(["import_projection_unestablished_sources", to_string(count(filter(acquisition.refusals, r => match r {
       CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => true
-      _ => false
+      CauseSourceObserved { tokens: _, imports: _, members: _ } => false
+      CauseSourceReadRefused { path: _, detail: _ } => false
+      CauseSourceImportParseRefused { path: _, cause: _ } => false
+      CauseSourceExcluded { path: _, cause: _ } => false
+      CauseSourceIndexRefused { path: _, module_path: _ } => false
+      CauseSourceLexicalRefused { path: _ } => false
     })))], "\t"),
     join(map(acquisition.excluded, r => cause_source_refusal_report(refusal: r)), "\n"),
     join(map(acquisition.refusals, r => cause_source_refusal_report(refusal: r)), "\n")

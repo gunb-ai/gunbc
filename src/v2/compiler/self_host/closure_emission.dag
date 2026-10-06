@@ -77,7 +77,7 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.grammar { ParseTree }
 import v2.std.integer { Int }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 

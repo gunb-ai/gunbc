@@ -35,7 +35,7 @@ import v2.std.algebra { fold_list }
 import v2.std.integer { Int }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -294,7 +294,8 @@ fn frontier_survey_subject_eq(
     && (left.source_roots_digest.digest == right.source_roots_digest.digest)
     && match compare_content_hash(left: left.probe_policy_revision, right: right.probe_policy_revision) {
       ContentHashEqual => true
-      _ => false
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
     }
 }
 

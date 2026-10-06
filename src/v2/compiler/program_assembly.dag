@@ -36,7 +36,7 @@ import v2.compiler.name_resolve {
   resolve_with_admission_grounded,
   validate_module_roots
 }
-import v2.std.artifact { SourceFile }
+import v2.std.artifact { SourceFile, CorePackage, GeneratedSource, ProjectionArtifact, Stage0Candidate, TestClaimArtifact, WitnessBundle }
 import v2.std.language_model { LanguageModel }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -180,10 +180,12 @@ fn program_assembly_phase_tokenize(
         file: read.compilation_unit,
         prepared: lex
       )
-    _ =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+    GeneratedSource => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 

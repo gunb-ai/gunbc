@@ -37,7 +37,7 @@ import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, dia
 import v2.compiler.resolve { ObservationComplete, ObservationIncomplete }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

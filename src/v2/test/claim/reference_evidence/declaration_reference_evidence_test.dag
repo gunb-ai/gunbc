@@ -18,7 +18,7 @@ import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { list_at_optional }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node }
 import v2.test.lens_common.infer_fixture { ClaimParam, ClaimRecord, claim_callable_arrow, claim_int_literal, claim_minted, claim_minted_atom, claim_record_declaration, claim_resolved_call_tree }

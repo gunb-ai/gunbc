@@ -24,7 +24,7 @@ import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unav
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.node_query { binder_edge }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 
 // ---------------------------------------------------------------------------
 // THE ENROLLED REDS AND FALSIFIERS FOR THE POSITIONAL RETURN-TYPE READ.

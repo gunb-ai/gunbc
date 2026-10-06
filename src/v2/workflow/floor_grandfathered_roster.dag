@@ -1,7 +1,7 @@
 module v2.workflow.floor_grandfathered_roster
 
 import v2.std.algebra { Cons, Empty, list_flat_map, length, contains, filter }
-import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

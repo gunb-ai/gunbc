@@ -20,7 +20,7 @@ import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactCommittedAbsent, GeneratedArtifactObservationRefused
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

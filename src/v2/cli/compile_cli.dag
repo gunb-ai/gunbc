@@ -33,7 +33,7 @@ import v2.std.lens_verdict {
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
 

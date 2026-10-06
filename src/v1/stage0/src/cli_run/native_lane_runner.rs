@@ -258,8 +258,8 @@ pub fn emitted_build_not_clean_cause(
         .collect();
     Some(format!(
         "{label} REFUSAL cause=EmittedBuildWarnings warning_count={warning_count} \
-         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo \
-         stderr carried these warning headers (first 40 distinct, with multiplicity):\n{}",
+         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo's \
+         JSON stream carried these warning-level compiler messages on the emitted crate (first 40 distinct, with multiplicity):\n{}",
         distinct.len(),
         shown.join("\n")
     ))
@@ -413,6 +413,15 @@ fn prepare_emitted_compiler_for_entry(
         &probe_root.target_dir(),
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
+    if let super::emitted_closure_compile_host::CargoVerdict::DependencyFetchFailed { .. } =
+        &verdict
+    {
+        // INFRA, NOT A SELF-HOST DEFECT: no compiler judged the emitted crate.
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedBuildDependencyFetchFailed class=Infra — {}",
+            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
+        ));
+    }
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(emitted_build_failed_refusal(
             probe_root,

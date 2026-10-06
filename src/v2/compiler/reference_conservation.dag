@@ -39,10 +39,11 @@ import v2.std.diagnostic {
   bind_outcome,
   diagnostics_fatal
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.normalize { normalize }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, symbol_lexeme }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
 import v2.std.text { String }
@@ -252,13 +253,6 @@ fn authored_atom_population_empty() -> AuthoredAtomPopulation {
   AuthoredAtomPopulation { atoms: Empty, import_channel: 0, unreadable: Empty, items: 0, item_names: empty_map() }
 }
 
-fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-    _ => Absent
-  }
-}
-
 fn population_snoc_unreadable(acc: AuthoredAtomPopulation, item: ReferenceConservationUnmeasured) -> AuthoredAtomPopulation {
   AuthoredAtomPopulation {
     atoms: acc.atoms,
@@ -277,7 +271,7 @@ fn population_snoc_unreadable(acc: AuthoredAtomPopulation, item: ReferenceConser
 fn conserved_identity_of(node: Node) -> Optional<Symbol> {
   match dag_string_literal_value_symbol_optional(node: node) {
     Present { value: v } => Present { value: v }
-    Absent => node_atom_identity_of(node: node)
+    Absent => node_atom_identity_optional(node: node)
   }
 }
 
@@ -562,7 +556,9 @@ fn refusal_cover_add(cover: RefusalCover, d: Diagnostic) -> RefusalCover {
           RefusalCover { anchored: cover.anchored, ranges: list_snoc_item(xs: cover.ranges, item: ByteRange { start: s, end: e }) }
         WholeFile => cover
       }
-    _ => cover
+    SourcePortLocus { anchor: _, file: _, extent: _ } => cover
+    InvariantPortLocus { anchor: _, invariant: _ } => cover
+    DeclarationLocus { declaration: _ } => cover
   }
 }
 
@@ -584,7 +580,10 @@ fn range_encloses_atom(range: RefusalRange, atom: AuthoredAtom) -> Bool {
         ByteRange { start: s, end: e } => range.start <= s && e <= range.end
         WholeFile => false
       }
-    _ => false
+    NodeLocus { anchor: _ } => false
+    SourcePortLocus { anchor: _, file: _, extent: _ } => false
+    InvariantPortLocus { anchor: _, invariant: _ } => false
+    DeclarationLocus { declaration: _ } => false
   }
 }
 
@@ -735,7 +734,7 @@ fn pool_key_of_label(label: Symbol) -> Symbol {
 }
 
 fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> {
-  let here = match node_atom_identity_of(node: node) {
+  let here = match node_atom_identity_optional(node: node) {
     Absent => acc
     Present { value: identity } =>
       match authored_occurrence_of(node: node) {
@@ -1301,7 +1300,10 @@ fn authored_atom_extent_text(atom: AuthoredAtom) -> String {
           integer_int_to_decimal_string(value: s) + "-" + integer_int_to_decimal_string(value: e)
         WholeFile => "whole-file"
       }
-    _ => "unlocated"
+    NodeLocus { anchor: _ } => "unlocated"
+    SourcePortLocus { anchor: _, file: _, extent: _ } => "unlocated"
+    InvariantPortLocus { anchor: _, invariant: _ } => "unlocated"
+    DeclarationLocus { declaration: _ } => "unlocated"
   }
 }
 

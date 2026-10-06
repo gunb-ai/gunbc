@@ -1,7 +1,7 @@
 module test.claim.fleet.fleet_wireless_link_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.iw {
   IwPowerSaveOn, IwPowerSaveOff, IwPowerSaveReadValue, IwPowerSaveUnreadable, iw_power_save_of_getter,
