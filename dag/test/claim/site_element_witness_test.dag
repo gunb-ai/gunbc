@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.list { distinct_by_key }
 import std.markup { Fragment, Element }
 import extdeps.color.srgb { Srgb8 }
-import extdeps.languages.html { EmitOk, EmitRejected, serialize_html_source, try_serialize_html_source }
+import extdeps.languages.html { serialize_html_source }
 import extdeps.ietf.http_semantics { GET }
 import extdeps.http.server {
   ServedRouteTable, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
@@ -32,7 +32,7 @@ import gunbc.roadmap.roadmap_hierarchy_view {
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, AmbientRule, MediaRule, CssDecl, serialize_rules, serialize_decls, decl }
 import gunbc.design.palette { Swatch, grade_pairing, grade_rank, TextAa }
 import gunbc.design.theme_transition { rule_selector, unthemed_color_decls, untokened_length_decls }
-import gunbc.site.markup { txt }
+import gunbc.site.markup { txt, el_attrs }
 import gunbc.site.element.palette { palette_decls, palette_day, SlotGround, SlotSurface, SlotAction, SlotLink }
 import gunbc.site.element.tokens { element_token_decls, font_heading }
 import gunbc.site.element.text {
@@ -40,7 +40,11 @@ import gunbc.site.element.text {
   ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl, ElementTitle,
   ElementProseHeading, ElementIdentifier, ElementCode,
 }
-import gunbc.site.element.styles { ElementStyle, element_styles, element_rules }
+import gunbc.site.element.styles {
+  ElementStyle, element_styles, element_rules, SiteElement, element_style, site_elements,
+  SiteCard, SiteSectionHeading, SiteStatusChip, SiteButton, SiteChip, SitePriorityMark,
+  SiteNodeRow, SiteRelationTable, SiteNodeChain, SiteBuildMeter, SiteFieldList,
+}
 import gunbc.site.element.card { Card, CardLabelRow, CardEdgePlain, CardEdgeBar, card, card_rules }
 import gunbc.site.element.section_heading {
   SectionHeading, SectionUncounted, SectionCounted, SectionCountedOfTotal, section_heading, section_heading_rules,
@@ -55,7 +59,13 @@ import gunbc.site.element.node_row {
 }
 import gunbc.site.element.relation_table { RelationTable, relation_table, relation_table_rules }
 import gunbc.site.element.node_chain { node_chain, node_chain_rules, node_chain_unfolded_levels }
-import gunbc.site.specimen { specimen_route_path, specimen_content, specimen_layout_rules, specimen_field_list_fixture }
+import gunbc.site.specimen {
+  specimen_route_path, specimen_layout_rules, specimen_field_list_fixture,
+  SpecimenSection, specimen_element_sections, specimen_section_node,
+  SpecimenCardSection, SpecimenHeadingSection, SpecimenStatusSection, SpecimenButtonSection, SpecimenChipSection,
+  SpecimenPrioritySection, SpecimenNodeRowSection, SpecimenRelationSection, SpecimenChainSection,
+  SpecimenPoseSection, SpecimenMeterSection, SpecimenFieldListSection,
+}
 import gunbc.site.element.field_list {
   FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
   FieldStatusControl, FieldIdentityControl, FieldAbsent, FieldPerson, field_list, field_list_rules,
@@ -512,13 +522,50 @@ test fn specimen_route_selects_the_specimen_handler() -> Bool {
   }
 }
 
-// The specimen is built from the production elements: every registered element's class reaches
-// the served content. Removing an element from the page turns this red.
-test fn specimen_content_is_built_from_every_registered_element() -> Bool {
-  match try_serialize_html_source(node: Element { tag: "div", attributes: [], children: specimen_content() }) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } => all(element_styles(), s => has(s: h, pattern: join(["class=\"", s.class_name, "\""], "")))
-  }
+// EVERY REGISTERED ELEMENT HAS ITS SPECIMEN. Which sections an element has is a total match over
+// the element identity (gunbc.site.element.styles SiteElement) that the registry rows are also a
+// match over, so a registry row that names no sections does not compile (the language's red for
+// that state is test.claim.match_exhaustiveness_coproduct_witness
+// w_cross_module_provider_growth_reports_one_non_exhaustive). What is still writable is an element
+// mapped to no section, and a section that draws something other than its element: the first is a
+// join over the registry, the second is one rendered section per claim, each carrying its
+// element's class. Both have a red below.
+fn every_element_has_a_section(sections_of: fn(SiteElement) -> List<SpecimenSection>) -> Bool {
+  all(site_elements, e => count(sections_of(e)) > 0)
+}
+
+fn node_draws(node: Fragment, element: SiteElement) -> Bool {
+  has(s: html(node: node), pattern: join(["class=\"", element_style(element: element).class_name, "\""], ""))
+}
+
+fn section_draws(section: SpecimenSection, element: SiteElement) -> Bool {
+  any(specimen_element_sections(element: element), s => s == section)
+    && node_draws(node: specimen_section_node(section: section), element: element)
+}
+
+test fn every_registered_element_names_a_specimen_section() -> Bool {
+  every_element_has_a_section(sections_of: e => specimen_element_sections(element: e))
+    && !every_element_has_a_section(sections_of: e => if e == SiteChip { [] as List<SpecimenSection> } else { specimen_element_sections(element: e) })
+}
+
+test fn specimen_draws_the_card() -> Bool { section_draws(section: SpecimenCardSection, element: SiteCard) }
+test fn specimen_draws_the_section_heading() -> Bool { section_draws(section: SpecimenHeadingSection, element: SiteSectionHeading) }
+test fn specimen_draws_the_status_chip() -> Bool { section_draws(section: SpecimenStatusSection, element: SiteStatusChip) }
+test fn specimen_draws_the_button() -> Bool { section_draws(section: SpecimenButtonSection, element: SiteButton) }
+test fn specimen_draws_the_chip() -> Bool { section_draws(section: SpecimenChipSection, element: SiteChip) }
+test fn specimen_draws_the_priority_mark() -> Bool { section_draws(section: SpecimenPrioritySection, element: SitePriorityMark) }
+test fn specimen_draws_the_node_row() -> Bool { section_draws(section: SpecimenNodeRowSection, element: SiteNodeRow) }
+test fn specimen_draws_the_relation_table() -> Bool { section_draws(section: SpecimenRelationSection, element: SiteRelationTable) }
+test fn specimen_draws_the_node_chain() -> Bool { section_draws(section: SpecimenChainSection, element: SiteNodeChain) }
+test fn specimen_draws_the_build_meter_poses() -> Bool { section_draws(section: SpecimenPoseSection, element: SiteBuildMeter) }
+test fn specimen_draws_the_build_meters() -> Bool { section_draws(section: SpecimenMeterSection, element: SiteBuildMeter) }
+test fn specimen_draws_the_field_list() -> Bool { section_draws(section: SpecimenFieldListSection, element: SiteFieldList) }
+
+// The reds for the per-section claims: a section that is not one of the element's is reported,
+// and so is a section whose markup is hand-built rather than drawn by the element.
+test fn a_section_that_does_not_draw_its_element_is_reported() -> Bool {
+  !section_draws(section: SpecimenChipSection, element: SiteStatusChip)
+    && !node_draws(node: el_attrs("div", [], [txt("a hand-built chip")]), element: SiteChip)
 }
 
 // Ownership guards.

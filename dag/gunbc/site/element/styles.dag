@@ -25,20 +25,46 @@ type ElementStyle {
   rules: List<BuildRule>
 }
 
+// THE ELEMENTS, AS ONE CLOSED IDENTITY. An element's registry row (element_style, here) and its
+// specimen section (gunbc.site.specimen specimen_element_sections) are both total functions of
+// it, so an element cannot be registered without a specimen: the specimen's match would refuse
+// to compile. site_elements is the one enumeration both are read through.
+type SiteElement
+  = SiteCard
+  | SiteSectionHeading
+  | SiteStatusChip
+  | SiteButton
+  | SiteChip
+  | SitePriorityMark
+  | SiteNodeRow
+  | SiteRelationTable
+  | SiteNodeChain
+  | SiteBuildMeter
+  | SiteFieldList
+
+data site_elements: List<SiteElement> = [
+  SiteCard, SiteSectionHeading, SiteStatusChip, SiteButton, SiteChip, SitePriorityMark,
+  SiteNodeRow, SiteRelationTable, SiteNodeChain, SiteBuildMeter, SiteFieldList,
+]
+
+fn element_style(element: SiteElement) -> ElementStyle {
+  match element {
+    SiteCard => ElementStyle { class_name: card_class, rules: card_rules() }
+    SiteSectionHeading => ElementStyle { class_name: section_heading_class, rules: section_heading_rules() }
+    SiteStatusChip => ElementStyle { class_name: status_chip_class, rules: status_chip_rules() }
+    SiteButton => ElementStyle { class_name: button_class, rules: button_rules() }
+    SiteChip => ElementStyle { class_name: chip_class, rules: chip_rules() }
+    SitePriorityMark => ElementStyle { class_name: priority_mark_class, rules: priority_mark_rules() }
+    SiteNodeRow => ElementStyle { class_name: node_row_class, rules: node_row_rules() }
+    SiteRelationTable => ElementStyle { class_name: relation_table_class, rules: relation_table_rules() }
+    SiteNodeChain => ElementStyle { class_name: node_chain_class, rules: node_chain_rules() }
+    SiteBuildMeter => ElementStyle { class_name: build_meter_class, rules: build_meter_rules() }
+    SiteFieldList => ElementStyle { class_name: field_list_class, rules: field_list_rules() }
+  }
+}
+
 fn element_styles() -> List<ElementStyle> {
-  [
-    ElementStyle { class_name: card_class, rules: card_rules() },
-    ElementStyle { class_name: section_heading_class, rules: section_heading_rules() },
-    ElementStyle { class_name: status_chip_class, rules: status_chip_rules() },
-    ElementStyle { class_name: button_class, rules: button_rules() },
-    ElementStyle { class_name: chip_class, rules: chip_rules() },
-    ElementStyle { class_name: priority_mark_class, rules: priority_mark_rules() },
-    ElementStyle { class_name: node_row_class, rules: node_row_rules() },
-    ElementStyle { class_name: relation_table_class, rules: relation_table_rules() },
-    ElementStyle { class_name: node_chain_class, rules: node_chain_rules() },
-    ElementStyle { class_name: build_meter_class, rules: build_meter_rules() },
-    ElementStyle { class_name: field_list_class, rules: field_list_rules() },
-  ]
+  map(site_elements, e => element_style(element: e))
 }
 
 fn element_rules() -> List<BuildRule> {
