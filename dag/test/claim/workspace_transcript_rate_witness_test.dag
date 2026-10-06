@@ -2,7 +2,7 @@ module test.claim.workspace_transcript_rate
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.measure { InstantBefore, InstantSame, byte_size, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock, CpuClock, InstantAfter, InstantIncomparable }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, ProcessObservation }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_command_runs_another_program }

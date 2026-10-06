@@ -2,7 +2,7 @@ module gunbc.fabric.workspace_transcript_rate
 
 import std.types { String, NonEmptyStr, Int, Bool, List, Map }
 import v2.std.collection { empty_map, map_insert, map_lookup }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte, ObservationInstant, ProcessMonotonic, WallClock, InstantOrder, InstantAfter, InstantIncomparable, InstantBefore, InstantSame }
