@@ -75,12 +75,12 @@ fn semantic_pair_matches(golden: String) -> Bool {
   }
 }
 
-test fn semantic_generic_enum_routes_to_enum_emit() -> Bool {
+test fn semantic_generic_enum_routes_to_enum_emit() -> Bool  {
   semantic_witness_matches(golden: semantic_witness_golden)
     && !semantic_witness_matches(golden: semantic_witness_wrong_golden)
 }
 
-test fn semantic_generic_struct_routes_to_struct_emit() -> Bool {
+test fn semantic_generic_struct_routes_to_struct_emit() -> Bool  {
   semantic_pair_matches(golden: semantic_pair_golden)
     && !semantic_pair_matches(golden: semantic_pair_wrong_golden)
 }

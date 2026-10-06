@@ -70,7 +70,7 @@ fn verdict_head_reason<S, T>(v: Verdict<S, T>) -> Symbol {
   }
 }
 
-test fn structural_equals_verdict_keeps_the_actual_refusal_cause() -> Bool {
+test fn structural_equals_verdict_keeps_the_actual_refusal_cause() -> Bool  {
   verdict_head_reason(
     v: run_test_claim_structural_equals_verdict(
       actual: claim_verdict_foreign_rejection(),
@@ -80,7 +80,7 @@ test fn structural_equals_verdict_keeps_the_actual_refusal_cause() -> Bool {
   ) == ^claim_verdict_foreign_cause
 }
 
-test fn round_trip_runtime_verdict_keeps_the_actual_refusal_cause() -> Bool {
+test fn round_trip_runtime_verdict_keeps_the_actual_refusal_cause() -> Bool  {
   verdict_head_reason(
     v: run_test_claim_round_trip_verdict_runtime(
       actual: claim_verdict_foreign_rejection(),
@@ -89,7 +89,7 @@ test fn round_trip_runtime_verdict_keeps_the_actual_refusal_cause() -> Bool {
   ) == ^claim_verdict_foreign_cause
 }
 
-test fn ill_formed_input_still_reports_invalid_node() -> Bool {
+test fn ill_formed_input_still_reports_invalid_node() -> Bool  {
   verdict_head_reason(
     v: run_test_claim_structural_equals_verdict(
       actual: eval_round_trip_claim_input_for_verdict(input: claim_verdict_cause_ill_formed()),

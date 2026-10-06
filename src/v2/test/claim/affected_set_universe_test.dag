@@ -66,7 +66,7 @@ fn read_refused(o: Outcome<List<RepoProcess>>) -> Bool {
   }
 }
 
-test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
+test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool  {
   bag_eq(
     xs: process_identities(
       ps: processes_or_empty(o: ci_gate_processes(pool_roots: affected_set_universe_pool_roots))
@@ -78,7 +78,7 @@ test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
   )
 }
 
-test fn affected_set_universe_includes_meta_self() -> Bool {
+test fn affected_set_universe_includes_meta_self() -> Bool  {
   let metas = processes_or_empty(
     o: meta_processes(pool_roots: affected_set_universe_pool_roots)
   )
@@ -92,19 +92,19 @@ test fn affected_set_universe_includes_meta_self() -> Bool {
 // which every reflection read refused would still satisfy the negative half of the claim above --
 // !identity_in over an empty list is true -- so the refusal would be invisible exactly where it
 // matters most. This is the claim that makes the others mean what they say.
-test fn affected_set_universe_reflection_reads_resolve() -> Bool {
+test fn affected_set_universe_reflection_reads_resolve() -> Bool  {
   !read_refused(o: ci_gate_processes(pool_roots: affected_set_universe_pool_roots))
     && !read_refused(o: meta_processes(pool_roots: affected_set_universe_pool_roots))
 }
 
-test fn affected_set_universe_is_complete() -> Bool {
+test fn affected_set_universe_is_complete() -> Bool  {
   match repo_process_universe(pool_roots: affected_set_universe_pool_roots) {
     UniverseComplete { processes: _ } => true
     UniverseIncomplete { uncovered_kind: _, reason: _ } => false
   }
 }
 
-test fn affected_set_universe_incomplete_fails_closed() -> Bool {
+test fn affected_set_universe_incomplete_fails_closed() -> Bool  {
   match repo_process_universe_from(
     pool_roots: affected_set_universe_pool_roots,
     processes: processes_or_empty(

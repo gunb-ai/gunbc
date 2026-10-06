@@ -94,7 +94,7 @@ fn join_family_alt_tree() -> InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
 }
 
-test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool {
+test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool  {
   let digest = inferred_tree_digest(tree: meet_family_tree())
   let source = emit_on_demand_key(
     closure_digest: digest,
@@ -111,7 +111,7 @@ test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool {
   (source == native) == false
 }
 
-test fn emit_on_demand_meet_join_materialize_share_on_hit_holds() -> Bool {
+test fn emit_on_demand_meet_join_materialize_share_on_hit_holds() -> Bool  {
   let key = meet_join_family_native_key_for(tree: meet_family_tree())
   store_put_fold(
     outcome: store_put(store: meet_join_family_test_store(), key: key, artifact_bytes: byte_size(count: 64)),
@@ -128,7 +128,7 @@ test fn emit_on_demand_meet_join_materialize_share_on_hit_holds() -> Bool {
   )
 }
 
-test fn emit_on_demand_meet_join_materialize_recompute_on_miss_holds() -> Bool {
+test fn emit_on_demand_meet_join_materialize_recompute_on_miss_holds() -> Bool  {
   let lookup = emit_on_demand_lookup(
     store: meet_join_family_test_store(),
     key: meet_join_family_native_key_for(tree: meet_family_tree())
@@ -139,11 +139,11 @@ test fn emit_on_demand_meet_join_materialize_recompute_on_miss_holds() -> Bool {
   }
 }
 
-test fn emit_on_demand_meet_join_interpreter_roles_bounded_holds() -> Bool {
+test fn emit_on_demand_meet_join_interpreter_roles_bounded_holds() -> Bool  {
   interpreter_surviving_roles_bounded()
 }
 
-test fn emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds() -> Bool {
+test fn emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds() -> Bool  {
   match witness_family_realize_width(
     bound_bytes: byte_size(count: 25),
     budget: BudgetUnreadable,
@@ -156,13 +156,13 @@ test fn emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds() -> B
   }
 }
 
-test fn emit_on_demand_meet_closure_keys_differ_for_distinct_trees_holds() -> Bool {
+test fn emit_on_demand_meet_closure_keys_differ_for_distinct_trees_holds() -> Bool  {
   let key_primary = meet_join_family_native_key_for(tree: meet_family_tree())
   let key_alt = meet_join_family_native_key_for(tree: meet_family_alt_tree())
   key_primary != key_alt
 }
 
-test fn emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds() -> Bool {
+test fn emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds() -> Bool  {
   let key_primary = meet_join_family_native_key_for(tree: join_family_tree())
   let key_alt = meet_join_family_native_key_for(tree: join_family_alt_tree())
   key_primary != key_alt

@@ -148,7 +148,7 @@ fn g_diamond() -> DemandEngine<Int> {
   demand_engine_seal(e: related)
 }
 
-test fn diamond_join_waits_for_both_prerequisites_holds() -> Bool {
+test fn diamond_join_waits_for_both_prerequisites_holds() -> Bool  {
   let after_a = demand_engine_settle(e: g_diamond(), id: g_a(), state: DemandAvailable { value: 1 })
   let after_b = demand_engine_settle(e: after_a, id: g_b(), state: DemandAvailable { value: 2 })
   let after_c = demand_engine_settle(e: after_b, id: g_c(), state: DemandAvailable { value: 3 })
@@ -181,7 +181,7 @@ fn g_independent_peer() -> DemandEngine<Int> {
   )
 }
 
-test fn independent_peer_does_not_delay_a_dependent_holds() -> Bool {
+test fn independent_peer_does_not_delay_a_dependent_holds() -> Bool  {
   let after_a = demand_engine_settle(e: g_independent_peer(), id: g_a(), state: DemandAvailable { value: 1 })
   g_state_is(e: after_a, id: g_b(), want: DemandReady)
     && !g_state_is(e: after_a, id: g_e(), want: DemandAvailable { value: 1 })
@@ -190,7 +190,7 @@ test fn independent_peer_does_not_delay_a_dependent_holds() -> Bool {
 // A REFUSED PREREQUISITE NEVER UNBLOCKS. The dependent must reach a TYPED blocked state naming the
 // prerequisite -- not Waiting, which reads as "later", and not Ready, which would run a judgment on
 // an input that does not exist.
-test fn refused_prerequisite_blocks_its_dependent_holds() -> Bool {
+test fn refused_prerequisite_blocks_its_dependent_holds() -> Bool  {
   let refused = demand_engine_settle(e: g_independent_peer(), id: g_a(), state: DemandRefused)
   g_state_is(
     e: refused,
@@ -213,7 +213,7 @@ fn g_cycle() -> DemandEngine<Int> {
   )
 }
 
-test fn cycle_is_reported_as_a_cycle_holds() -> Bool {
+test fn cycle_is_reported_as_a_cycle_holds() -> Bool  {
   let e = demand_engine_seal(e: g_cycle())
   g_state_is(e: e, id: g_a(), want: DemandBlocked { cause: BlockedByCycle { members: [g_a()] } })
     && g_state_is(e: e, id: g_b(), want: DemandBlocked { cause: BlockedByCycle { members: [g_b()] } })
@@ -223,7 +223,7 @@ test fn cycle_is_reported_as_a_cycle_holds() -> Bool {
 // as one rather than as independence. Reading a missing prerequisite as "nothing to wait for" is
 // the absorbing fallback DESIGN section 5 forbids: it would make a dropped edge look like a
 // schedulable program.
-test fn missing_edge_is_reported_holds() -> Bool {
+test fn missing_edge_is_reported_holds() -> Bool  {
   let e = demand_engine_seal(
     e: demand_engine_relate(
       e: demand_engine_request(e: demand_engine_empty(), id: g_b(), nature: PureComputation),
@@ -236,7 +236,7 @@ test fn missing_edge_is_reported_holds() -> Bool {
 // ONE EQUAL SHARE-ADMITTED DEMAND IS PRODUCED ONCE. Three requests, one entry, two attachments.
 // The attachment count is what makes this discriminating: an engine that silently dropped repeat
 // requests would also show one entry, and would be a different (wrong) behaviour.
-test fn share_admitted_demand_is_produced_once_holds() -> Bool {
+test fn share_admitted_demand_is_produced_once_holds() -> Bool  {
   let e = demand_engine_request(
     e: demand_engine_request(
       e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
@@ -254,7 +254,7 @@ test fn share_admitted_demand_is_produced_once_holds() -> Bool {
 // A FRESH EFFECT IS NEVER ATTACHED IN FLIGHT. Two requests are two productions, not one production
 // with an attachment -- collapsing them would silently perform a non-idempotent effect once when
 // the program asked twice.
-test fn fresh_effect_is_never_attached_holds() -> Bool {
+test fn fresh_effect_is_never_attached_holds() -> Bool  {
   let e = demand_engine_request(
     e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: FreshEffect),
     id: g_a(), nature: FreshEffect
@@ -268,7 +268,7 @@ test fn fresh_effect_is_never_attached_holds() -> Bool {
 // CAPACITY LEAVES THE DEMAND READY. A demand that cannot obtain a seat is not blocked, not dropped
 // and not run anyway: it stays ready and the REFUSAL TO ADMIT carries the cause. An engine that
 // marked it blocked would need a second mechanism to un-block it when a seat freed.
-test fn no_seat_leaves_the_demand_ready_holds() -> Bool {
+test fn no_seat_leaves_the_demand_ready_holds() -> Bool  {
   let e = demand_engine_seal(
     e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation)
   )
@@ -288,7 +288,7 @@ test fn no_seat_leaves_the_demand_ready_holds() -> Bool {
 // THE READY QUEUE IS ORDERED BY DEMAND IDENTITY, NOT BY INSERTION. Two engines carrying the same
 // demands in opposite request order must present one queue, or a completion-order receipt cannot
 // discriminate a behaviour change from a walk-order change.
-test fn ready_queue_order_is_canonical_holds() -> Bool {
+test fn ready_queue_order_is_canonical_holds() -> Bool  {
   let forward = demand_engine_seal(
     e: demand_engine_request(
       e: demand_engine_request(
@@ -318,7 +318,7 @@ fn g_keys(ids: List<DemandIdentity>) -> List<String> {
 // UNDEMANDED JUDGMENTS NEVER ENTER THE CLOSURE. Asking for D pulls A, B and C; the unrelated E is
 // present in the engine and is NOT in the closure. This is the claim that makes "prepare everything
 // first" a different program rather than an optimization of this one.
-test fn undemanded_judgment_is_outside_the_closure_holds() -> Bool {
+test fn undemanded_judgment_is_outside_the_closure_holds() -> Bool  {
   let e = demand_engine_request(e: g_diamond(), id: g_e(), nature: PureComputation)
   let closure = demand_engine_closure(e: e, targets: [g_d()])
   length(xs: closure) == 4
@@ -354,7 +354,7 @@ fn g_branch(select_left: Bool) -> DemandEngine<Int> {
   )
 }
 
-test fn branch_selector_demands_exactly_one_arm_holds() -> Bool {
+test fn branch_selector_demands_exactly_one_arm_holds() -> Bool  {
   let left = demand_engine_closure(e: g_branch(select_left: true), targets: [g_a()])
   let right = demand_engine_closure(e: g_branch(select_left: false), targets: [g_a()])
   length(xs: left) == 2
@@ -367,7 +367,7 @@ test fn branch_selector_demands_exactly_one_arm_holds() -> Bool {
 
 // THE COMPLETION ORDER IS RECORDED, and settling appends to it. The receipt the A/B cutover
 // compares is this list, so the claim is that it carries what settled and in what order.
-test fn completion_order_records_what_settled_holds() -> Bool {
+test fn completion_order_records_what_settled_holds() -> Bool  {
   let e = demand_engine_settle(
     e: demand_engine_settle(e: g_diamond(), id: g_a(), state: DemandAvailable { value: 1 }),
     id: g_b(),
@@ -415,7 +415,7 @@ fn g_lopsided_unsealed() -> DemandEngine<Int> {
     )
 }
 
-test fn a_completion_costs_its_out_degree_not_the_graph_holds() -> Bool {
+test fn a_completion_costs_its_out_degree_not_the_graph_holds() -> Bool  {
   let sealed = g_lopsided()
   let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
   (after.readiness_computations - sealed.readiness_computations) == 1
@@ -426,14 +426,14 @@ test fn a_completion_costs_its_out_degree_not_the_graph_holds() -> Bool {
 // THE SEAL IS THE ONE WHOLE-POPULATION PASS. Stating its cost here pins the other half of the law:
 // if sealing were free the settle count above would be meaningless, because the work would simply
 // have moved. One derivation per demand, once.
-test fn sealing_derives_readiness_once_per_demand_holds() -> Bool {
+test fn sealing_derives_readiness_once_per_demand_holds() -> Bool  {
   g_lopsided().readiness_computations == 5
 }
 
 // A CYCLE IS DECIDED AT SEAL AND CARRIED, not re-walked on every completion. The verdict must
 // survive an unrelated demand settling -- if it were recomputed, this would still pass, but if it
 // were DROPPED on re-derivation the cycle would silently become Waiting.
-test fn a_sealed_cycle_verdict_survives_unrelated_completions_holds() -> Bool {
+test fn a_sealed_cycle_verdict_survives_unrelated_completions_holds() -> Bool  {
   let sealed = demand_engine_seal(
     e: demand_engine_request(e: g_cycle(), id: g_e(), nature: PureComputation)
   )
@@ -499,7 +499,7 @@ fn g_settle_deltas(e: DemandEngine<Int>) -> GSettleCost {
 //
 // UNTIL IT INVERTS, THE PRODUCTION CUT IS NOT LANDABLE: its central claim is that a completion costs
 // its out-degree and not the graph, and at the entries grain the implementation does not hold that.
-test fn a_settle_costs_the_same_in_a_wider_unrelated_graph_holds() -> Bool {
+test fn a_settle_costs_the_same_in_a_wider_unrelated_graph_holds() -> Bool  {
   let small = g_settle_deltas(e: g_lopsided_unsealed())
   let wide = g_settle_deltas(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
   (small.derivations == wide.derivations)
@@ -540,7 +540,7 @@ fn g_order_counts_each_once(e: DemandEngine<Int>) -> Bool {
 
 // EVERY IDENTITY THE ORDER NAMES IS IN THE STORE, so a whole-population pass cannot read a key the
 // store has dropped and quietly skip that demand.
-test fn the_entry_order_resolves_entirely_in_the_keyed_store_holds() -> Bool {
+test fn the_entry_order_resolves_entirely_in_the_keyed_store_holds() -> Bool  {
   let sealed = g_lopsided()
   let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
   g_order_resolves_in_store(e: sealed) && g_order_resolves_in_store(e: after)
@@ -548,7 +548,7 @@ test fn the_entry_order_resolves_entirely_in_the_keyed_store_holds() -> Bool {
 
 // AND NAMES EACH EXACTLY ONCE. A duplicated identity would make seal derive one demand's readiness
 // twice and inflate every population figure derived from the order.
-test fn the_entry_order_names_each_demand_once_holds() -> Bool {
+test fn the_entry_order_names_each_demand_once_holds() -> Bool  {
   let sealed = g_lopsided()
   let repeated = demand_engine_request(e: sealed, id: g_a(), nature: PureComputation)
   g_order_counts_each_once(e: sealed)
@@ -558,7 +558,7 @@ test fn the_entry_order_names_each_demand_once_holds() -> Bool {
 
 // SETTLEMENT NEVER TOUCHES THE ORDER, which is the value-level shadow of settlement being local: a
 // completion changes STATE, and the population it belongs to is not a function of what settled.
-test fn settlement_leaves_the_entry_order_unchanged_holds() -> Bool {
+test fn settlement_leaves_the_entry_order_unchanged_holds() -> Bool  {
   let sealed = g_lopsided()
   let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
   (length(xs: after.entry_order) == length(xs: sealed.entry_order))
@@ -588,7 +588,7 @@ fn g_maintained_matches_rebuild(e: DemandEngine<Int>) -> Bool {
   g_list_eq_ids(a: demand_engine_ready_queue(e: e), b: demand_ready_rebuild(e: e))
 }
 
-test fn the_maintained_ready_order_matches_a_full_rebuild_holds() -> Bool {
+test fn the_maintained_ready_order_matches_a_full_rebuild_holds() -> Bool  {
   let sealed = demand_engine_seal(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
   let after_a = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
   let after_b = demand_engine_settle(e: after_a, id: g_b(), state: DemandAvailable { value: 2 })
@@ -608,7 +608,7 @@ test fn the_maintained_ready_order_matches_a_full_rebuild_holds() -> Bool {
 // in-flight delta and is actually a guard over nothing (DESIGN section 4b: a check that cannot go red is
 // a decoration). It is kept for what it does establish -- the population no longer participates -- and
 // the delta gets its own discriminating row below.
-test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool {
+test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool  {
   let small = demand_engine_seal(e: g_lopsided_unsealed())
   let wide = demand_engine_seal(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
   (demand_engine_in_flight(e: small) == demand_engine_in_flight(e: wide))
@@ -624,7 +624,7 @@ test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool {
 // SO THIS ROW GOES RED IF THE DELTA BREAKS, which the population row above cannot. Entering running
 // raises the count, and leaving it for a settled state lowers it again -- a delta that only added, or
 // that counted the same demand twice, fails here.
-test fn entering_and_leaving_the_running_state_moves_the_in_flight_count_holds() -> Bool {
+test fn entering_and_leaving_the_running_state_moves_the_in_flight_count_holds() -> Bool  {
   let sealed = demand_engine_seal(e: g_lopsided_unsealed())
   let running = demand_engine_settle(e: sealed, id: g_a(), state: DemandRunning)
   let again = demand_engine_settle(e: running, id: g_a(), state: DemandRunning)
@@ -637,7 +637,7 @@ test fn entering_and_leaving_the_running_state_moves_the_in_flight_count_holds()
 
 // AND A RUNNING DEMAND IS NOT READY, so a seat held is not also a seat offered: the admission head must
 // not still name a demand that is in flight.
-test fn a_running_demand_is_not_in_the_ready_order_holds() -> Bool {
+test fn a_running_demand_is_not_in_the_ready_order_holds() -> Bool  {
   let running = demand_engine_settle(
     e: demand_engine_seal(e: g_lopsided_unsealed()),
     id: g_a(),
@@ -653,7 +653,7 @@ test fn a_running_demand_is_not_in_the_ready_order_holds() -> Bool {
 // THE CANONICAL HEAD DOES NOT DEPEND ON WHAT SETTLED LAST. Two runs of one closure must admit in one
 // order, so the order is keyed on the demand identity and never on arrival: settling an unrelated demand
 // first must leave the same identity at the head.
-test fn the_canonical_head_survives_an_unrelated_completion_holds() -> Bool {
+test fn the_canonical_head_survives_an_unrelated_completion_holds() -> Bool  {
   let sealed = demand_engine_seal(e: g_lopsided_unsealed())
   let head_before = demand_engine_ready_queue(e: sealed)
   let after_unrelated = demand_engine_settle(e: sealed, id: g_e(), state: DemandAvailable { value: 9 })
@@ -685,7 +685,7 @@ fn g_list_eq_ids(a: List<DemandIdentity>, b: List<DemandIdentity>) -> Bool {
 
 // A SETTLED DEMAND LEAVES THE READY ORDER. A stale member is the sharp failure here: it would be
 // admitted a second time after it had already produced.
-test fn a_settled_demand_is_no_longer_ready_holds() -> Bool {
+test fn a_settled_demand_is_no_longer_ready_holds() -> Bool  {
   let sealed = demand_engine_seal(e: g_lopsided_unsealed())
   let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
   !contains(
@@ -697,7 +697,7 @@ test fn a_settled_demand_is_no_longer_ready_holds() -> Bool {
 
 // A REFUSED PREREQUISITE NEVER ADMITS ITS DEPENDENT. B depends on A; refusing A must leave B out of the
 // ready order rather than ready-on-a-refusal.
-test fn a_refused_prerequisite_does_not_admit_its_dependent_holds() -> Bool {
+test fn a_refused_prerequisite_does_not_admit_its_dependent_holds() -> Bool  {
   let sealed = demand_engine_seal(e: g_lopsided_unsealed())
   let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandRefused)
   !contains(
@@ -709,7 +709,7 @@ test fn a_refused_prerequisite_does_not_admit_its_dependent_holds() -> Bool {
 
 // AND A DUPLICATED DEPENDENCY CANNOT DUPLICATE A READY IDENTITY. Declaring the same edge twice is
 // admissible; listing B twice in the ready order would admit it twice.
-test fn a_duplicated_dependency_does_not_duplicate_a_ready_identity_holds() -> Bool {
+test fn a_duplicated_dependency_does_not_duplicate_a_ready_identity_holds() -> Bool  {
   let twice = demand_engine_relate(
     e: g_lopsided_unsealed(),
     relation: g_edge(prerequisite: g_a(), dependent: g_b())

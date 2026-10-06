@@ -127,7 +127,7 @@ fn probe_projects(bind: Node) -> Bool {
 }
 
 // The positive control: a let ending in a name projected before this change and still does.
-test fn a_bind_with_a_name_tail_projects() -> Bool {
+test fn a_bind_with_a_name_tail_projects() -> Bool  {
   probe_projects(
     bind: probe_bind(key: ^bind_tail_probe_a, value: bind_tail_probe_param, tail: probe_atom(id: ^bind_tail_probe_a))
   )
@@ -135,7 +135,7 @@ test fn a_bind_with_a_name_tail_projects() -> Bool {
 
 // The discriminating red: two lets. The outer tail is the inner Bind, which the atom-only read
 // refused with transform_shape_invalid located at the inner Bind.
-test fn a_bind_whose_tail_is_a_bind_projects() -> Bool {
+test fn a_bind_whose_tail_is_a_bind_projects() -> Bool  {
   probe_projects(
     bind: probe_bind(
       key: ^bind_tail_probe_a,
@@ -152,7 +152,7 @@ test fn a_bind_whose_tail_is_a_bind_projects() -> Bool {
 // route produces; the atom-only read refused transform_shape_invalid there instead.
 data bind_tail_probe_closure: Node = probe_fn(param: ^bind_tail_probe_y, body: probe_atom(id: ^bind_tail_probe_y))
 
-test fn a_function_value_tail_reaches_the_returned_closure_route() -> Bool {
+test fn a_function_value_tail_reaches_the_returned_closure_route() -> Bool  {
   match probe_project(
     bind: probe_bind(key: ^bind_tail_probe_a, value: bind_tail_probe_param, tail: bind_tail_probe_closure)
   ) {

@@ -72,7 +72,7 @@ fn two_argument_surface() -> List<CliArgumentSyntax> {
 }
 
 // CASE 4 -- the carrier. jq exits 0 only if it received TWO argv words.
-test fn case4_expansion_carrier_splices() -> Bool {
+test fn case4_expansion_carrier_splices() -> Bool  {
   match serialize_cli_arguments(
     arguments: two_argument_surface(),
     lex: probe_lex(),

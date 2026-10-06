@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // PURE CLASSIFIER EVIDENCE. These fixtures discriminate the product standing without reading or
 // re-parsing the repository. The live file censuses remain a separate, offline coverage question.
-test fn suspect_and_analysis_standings_are_both_preserved() -> Bool {
+test fn suspect_and_analysis_standings_are_both_preserved() -> Bool  {
   match standing_from_counts(suspects: 1, refusals: 1, refusal_ceiling: 0) {
     RosterStanding {
       finding: SuspectObserved { suspects: 1 },
@@ -38,7 +38,7 @@ test fn suspect_and_analysis_standings_are_both_preserved() -> Bool {
   }
 }
 
-test fn refusal_above_ceiling_is_analysis_coverage_debt() -> Bool {
+test fn refusal_above_ceiling_is_analysis_coverage_debt() -> Bool  {
   match standing_from_counts(suspects: 0, refusals: 4, refusal_ceiling: 3) {
     RosterStanding {
       finding: NoSuspect,
@@ -48,7 +48,7 @@ test fn refusal_above_ceiling_is_analysis_coverage_debt() -> Bool {
   }
 }
 
-test fn refusal_at_ceiling_is_within_standing() -> Bool {
+test fn refusal_at_ceiling_is_within_standing() -> Bool  {
   match standing_from_counts(suspects: 0, refusals: 3, refusal_ceiling: 3) {
     RosterStanding {
       finding: NoSuspect,
@@ -58,7 +58,7 @@ test fn refusal_at_ceiling_is_within_standing() -> Bool {
   }
 }
 
-test fn not_established_cause_is_preserved_on_both_axes() -> Bool {
+test fn not_established_cause_is_preserved_on_both_axes() -> Bool  {
   match not_established_standing(cause: SourceNormalizationRejected) {
     RosterStanding {
       finding: FindingNotEstablished { cause: SourceNormalizationRejected },
@@ -73,7 +73,7 @@ test fn not_established_cause_is_preserved_on_both_axes() -> Bool {
 // its arm answers false. The arm exists because the match is deliberately total with no wildcard,
 // and that totality is what made widening the cause coproduct fail LOUDLY at this consumer instead
 // of defaulting through a catch-all -- the wall doing its job on the change that added the variant.
-test fn malformed_source_reports_tokenization_rejection() -> Bool {
+test fn malformed_source_reports_tokenization_rejection() -> Bool  {
   match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: "@@@ not dag source @@@ )( unterminated \"") {
     SourceFindingsNotEstablished { cause: SourceTokenizationRejected } => true
     SourceFindingsNotEstablished { cause: LanguageGrammarUnavailable } => false

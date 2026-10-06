@@ -247,7 +247,7 @@ fn coercion_admission_equal(left: CoercionAdmission, right: CoercionAdmission) -
 // fact the table already carries.
 
 // The name-keyed algebra against the DECLARED ROSTERS, not against the other algebra.
-test fn name_keyed_coercion_matches_the_declared_cast_rosters_holds() -> Bool {
+test fn name_keyed_coercion_matches_the_declared_cast_rosters_holds() -> Bool  {
   fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
     acc && coercion_admission_equal(
       left: coercion_fork_name_keyed_admission(row: row),
@@ -257,7 +257,7 @@ test fn name_keyed_coercion_matches_the_declared_cast_rosters_holds() -> Bool {
 }
 
 // The homomorphism algebra against the HOMOMORPHISM CONTRACT, not against the other algebra.
-test fn homomorphism_coercion_matches_the_structural_preservation_contract_holds() -> Bool {
+test fn homomorphism_coercion_matches_the_structural_preservation_contract_holds() -> Bool  {
   fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
     acc && coercion_admission_equal(
       left: coercion_fork_homomorphism_admission(row: row),
@@ -269,7 +269,7 @@ test fn homomorphism_coercion_matches_the_structural_preservation_contract_holds
 // An admitted crossing on the homomorphism side is an IDENTITY and never anything else: the only
 // realized preservation rule is exact structural equality, so no row may come back Exact or Widened.
 // This is what makes the name-only cells a missing SPELLING rather than a stricter policy.
-test fn homomorphism_coercion_admits_only_identity_quality_holds() -> Bool {
+test fn homomorphism_coercion_admits_only_identity_quality_holds() -> Bool  {
   fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
     acc && match coercion_fork_homomorphism_outcome(row: row) {
       Accepted { value: result, diagnostics: _ } => match result.quality {

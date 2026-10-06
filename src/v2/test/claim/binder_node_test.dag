@@ -103,7 +103,7 @@ fn bn_arrow(domain_members: List<Edge>) -> Node {
 }
 
 // The builder's node is a binder: its type reads back, and a default-free binder has no default.
-test fn a_built_binder_reads_back_its_type_and_no_default() -> Bool {
+test fn a_built_binder_reads_back_its_type_and_no_default() -> Bool  {
   match declared_field_from_edge(e: binder_edge(name: ^x, type_node: bn_int())) {
     Present { value: f } =>
       (content_hash(n: f.type_node) == content_hash(n: bn_int())) && bn_no_default(f: f)
@@ -111,7 +111,7 @@ test fn a_built_binder_reads_back_its_type_and_no_default() -> Bool {
   }
 }
 
-test fn a_binder_with_a_default_reads_back_both() -> Bool {
+test fn a_binder_with_a_default_reads_back_both() -> Bool  {
   match declared_field_from_edge(e: binder_edge_with_default(name: ^x, type_node: bn_int(), default: bn_value())) {
     Present { value: f } =>
       (content_hash(n: f.type_node) == content_hash(n: bn_int())) && bn_default_is(f: f, expected: bn_value())
@@ -121,7 +121,7 @@ test fn a_binder_with_a_default_reads_back_both() -> Bool {
 
 // A record type is never a binder: not one with ordinary fields, not one whose authored field is spelled
 // `binder_type` (an Authored name, so it cannot be the core BinderTypeEdge arm), and not the empty Conj.
-test fn a_record_type_is_never_read_as_a_binder() -> Bool {
+test fn a_record_type_is_never_read_as_a_binder() -> Bool  {
   !bn_reads_as_binder(n: bn_conj(children: [binder_edge(name: ^a, type_node: bn_int())]))
     && !bn_reads_as_binder(n: bn_conj(children: [Edge { label: Authored { name: ^binder_type }, target: bn_int() }]))
     && !bn_reads_as_binder(n: bn_conj(children: []))
@@ -130,7 +130,7 @@ test fn a_record_type_is_never_read_as_a_binder() -> Bool {
 
 // A binder node with anything besides its two labels -- a third edge, a second type, a positional edge --
 // is not a binder.
-test fn a_binder_node_with_a_foreign_edge_is_not_a_binder() -> Bool {
+test fn a_binder_node_with_a_foreign_edge_is_not_a_binder() -> Bool  {
   bn_reads_as_binder(n: binder_node(type_node: bn_int(), default: Absent))
     && !bn_reads_as_binder(n: bn_conj(children: [
       core_edge(marker: BinderTypeEdge, target: bn_int()),
@@ -146,7 +146,7 @@ test fn a_binder_node_with_a_foreign_edge_is_not_a_binder() -> Bool {
 // A hand-built name-to-type edge is not a binder: the reader refuses it rather than reading its raw target
 // as the type, and the member-type reader answers Absent for it while a Positional member answers its
 // target.
-test fn a_hand_built_name_to_type_edge_is_refused_by_the_readers() -> Bool {
+test fn a_hand_built_name_to_type_edge_is_refused_by_the_readers() -> Bool  {
   bn_field_is_absent(e: Edge { label: Authored { name: ^x }, target: bn_int() })
     && bn_member_type_is_absent(e: Edge { label: Authored { name: ^x }, target: bn_int() })
     && bn_member_type_is(e: Edge { label: Positional, target: bn_int() }, expected: bn_int())
@@ -154,14 +154,14 @@ test fn a_hand_built_name_to_type_edge_is_refused_by_the_readers() -> Bool {
 
 // THE WALL: an Arrow whose domain members are built binders conforms; the same Arrow with one
 // hand-built member refuses.
-test fn an_arrow_domain_with_a_hand_built_member_refuses() -> Bool {
+test fn an_arrow_domain_with_a_hand_built_member_refuses() -> Bool  {
   type_binder_node_conforms(n: bn_arrow(domain_members: [binder_edge(name: ^x, type_node: bn_int())]))
     && !type_binder_node_conforms(n: bn_arrow(domain_members: [Edge { label: Authored { name: ^x }, target: bn_int() }]))
 }
 
 // Identity: a binder's default is part of the node's content (it is authored source), and two binders
 // differing only in name share their binder node.
-test fn a_default_changes_the_binder_node_and_a_name_does_not() -> Bool {
+test fn a_default_changes_the_binder_node_and_a_name_does_not() -> Bool  {
   (content_hash(n: binder_node(type_node: bn_int(), default: Absent)) != content_hash(n: binder_node(type_node: bn_int(), default: Present { value: bn_value() })))
     && (content_hash(n: binder_edge(name: ^x, type_node: bn_int()).target) == content_hash(n: binder_edge(name: ^y, type_node: bn_int()).target))
 }
@@ -190,7 +190,7 @@ fn bn_reason_absent(r: Optional<Symbol>) -> Bool {
 // A LENS NEVER ANSWERS "NO VIOLATION" FOR A FIELD THAT IS NOT A BINDER: the unit-modeling lens reports
 // a hand-built name-to-type field as ^member_not_a_binder, located, while the same field built as a
 // binder of a non-flat type has no violation.
-test fn a_lens_refuses_a_field_that_is_not_a_binder() -> Bool {
+test fn a_lens_refuses_a_field_that_is_not_a_binder() -> Bool  {
   bn_reason_is(r: bn_unit_lens_reason(edge: Edge { label: Authored { name: ^x }, target: bn_atom(identity: ^Text) }), expected: ^member_not_a_binder)
     && bn_reason_absent(r: bn_unit_lens_reason(edge: binder_edge(name: ^x, type_node: bn_atom(identity: ^Text))))
 }

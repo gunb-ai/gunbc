@@ -21,7 +21,7 @@ fn wrapper_retained_probe_shell() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
 }
 
-test fn body_lowering_wrapper_retained_is_the_retained_variant_holds() -> Bool {
+test fn body_lowering_wrapper_retained_is_the_retained_variant_holds() -> Bool  {
   let shell = wrapper_retained_probe_shell()
   match body_lower_wrapper_retained_shell(shell: shell) {
     Accepted { value: BodyWrapperRetained { retention: r }, diagnostics: _ } => content_hash(n: r.shell) == content_hash(n: shell)
@@ -30,7 +30,7 @@ test fn body_lowering_wrapper_retained_is_the_retained_variant_holds() -> Bool {
   }
 }
 
-test fn body_lowering_wrapper_retained_emits_no_diagnostic_holds() -> Bool {
+test fn body_lowering_wrapper_retained_emits_no_diagnostic_holds() -> Bool  {
   match body_lower_wrapper_retained_shell(shell: wrapper_retained_probe_shell()) {
     Accepted { value: _, diagnostics: None } => true
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
@@ -43,7 +43,7 @@ test fn body_lowering_wrapper_retained_emits_no_diagnostic_holds() -> Bool {
 // channel; body_lowering_refuse_retained is the one arm between them. A retention through it must be
 // a refusal under the door's cause, anchored at the retained shell -- the pre-MQ-4 shape of this
 // read was body_lower_reduce_or_keep over an Accepted shell, which kept it as a lowered value.
-test fn body_lowering_value_position_refuses_a_retention_at_its_shell_holds() -> Bool {
+test fn body_lowering_value_position_refuses_a_retention_at_its_shell_holds() -> Bool  {
   let shell = wrapper_retained_probe_shell()
   match body_lowering_refuse_retained(o: body_lower_wrapper_retained_shell(shell: shell)) {
     Accepted { value: _, diagnostics: _ } => false

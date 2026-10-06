@@ -96,14 +96,14 @@ fn live_outside_class_still_outside(class: ConstructionClass) -> Bool {
   }
 }
 
-test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_holds() -> Bool {
+test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_holds() -> Bool  {
   wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: v2.lens.cost.construction_justification.class,
     downstream: v2.lens.complexity.construction_justification.class
   )
 }
 
-test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
+test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool  {
   match v2.lens.complexity.construction_justification.class {
     WallAfterGrounding { dissolves_to: _ } =>
       match complexity_derived_kernel_boundary.class {
@@ -118,20 +118,20 @@ test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
   }
 }
 
-test fn planted_outside_for_existing_decl_reds() -> Bool {
+test fn planted_outside_for_existing_decl_reds() -> Bool  {
   !guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: cost_lens_ref()))
     && !guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: synthesis_lens_ref()))
 }
 
-test fn planted_subject_as_required_capability_reds() -> Bool {
+test fn planted_subject_as_required_capability_reds() -> Bool  {
   !guarantee_boundary_required_is_not_subject(boundary: planted_subject_as_required_capability_boundary())
 }
 
-test fn planted_absent_decl_still_outside_holds() -> Bool {
+test fn planted_absent_decl_still_outside_holds() -> Bool  {
   guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: nonexistent_capability_ref()))
 }
 
-test fn live_extract_stamps_are_on_ladder() -> Bool {
+test fn live_extract_stamps_are_on_ladder() -> Bool  {
   class_is_wall_after_grounding(class: v2.lens.complexity.construction_justification.class)
     && class_is_wall_after_grounding(class: complexity_derived_kernel_boundary.class)
     && class_is_wall_after_grounding(class: v2.lens.grounding.construction_justification.class)
@@ -142,13 +142,13 @@ test fn live_extract_stamps_are_on_ladder() -> Bool {
     && class_is_wall_after_grounding(class: v2.lens.fn_index_depth_agreement.construction_justification.class)
 }
 
-test fn live_undecidable_residues_are_outside_modeled_guarantee() -> Bool {
+test fn live_undecidable_residues_are_outside_modeled_guarantee() -> Bool  {
   live_outside_class_still_outside(class: v2.lens.grounding.grounding_name_only_residual_boundary.class)
     && live_outside_class_still_outside(class: v2.lens.synthesis.synthesis_rice_residual_boundary.class)
     && live_outside_class_still_outside(class: complexity_optimality_boundary.class)
 }
 
-test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {
+test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool  {
   !wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: v2.lens.cost.construction_justification.class,
     downstream: planted_outside_requiring_cost_lens()

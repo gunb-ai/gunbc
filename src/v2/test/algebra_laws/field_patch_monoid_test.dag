@@ -17,15 +17,15 @@ fn fp_monoid_identity() -> FieldPatch<Bool> {
   field_patch_monoid().identity
 }
 
-test fn witness_left_identity() -> Bool {
+test fn witness_left_identity() -> Bool  {
   apply_field_patch(base: false, patch: compose_field_patch(left: Inherit, right: Override { value: true })) == true
 }
 
-test fn witness_right_identity() -> Bool {
+test fn witness_right_identity() -> Bool  {
   apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
 }
 
-test fn witness_right_bias() -> Bool {
+test fn witness_right_bias() -> Bool  {
   apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: Override { value: false })) == false
 }
 
@@ -35,30 +35,30 @@ fn compose_assoc_lhs() -> Bool {
 fn compose_assoc_rhs() -> Bool {
   apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: compose_field_patch(left: Override { value: false }, right: Inherit)))
 }
-test fn witness_associativity() -> Bool {
+test fn witness_associativity() -> Bool  {
   compose_assoc_lhs() == compose_assoc_rhs()
 }
 
-test fn witness_inherit_preserves() -> Bool {
+test fn witness_inherit_preserves() -> Bool  {
   apply_field_patch(base: true, patch: Inherit) == true
 }
 
-test fn witness_override_replaces() -> Bool {
+test fn witness_override_replaces() -> Bool  {
   apply_field_patch(base: true, patch: Override { value: false }) == false
 }
 
-test fn witness_monoid_identity_preserves() -> Bool {
+test fn witness_monoid_identity_preserves() -> Bool  {
   apply_field_patch(base: true, patch: fp_monoid_identity()) == true
 }
 
-test fn witness_monoid_left_identity() -> Bool {
+test fn witness_monoid_left_identity() -> Bool  {
   apply_field_patch(base: false, patch: fp_monoid_op(left: fp_monoid_identity(), right: Override { value: true })) == true
 }
 
-test fn witness_monoid_right_identity() -> Bool {
+test fn witness_monoid_right_identity() -> Bool  {
   apply_field_patch(base: false, patch: fp_monoid_op(left: Override { value: true }, right: fp_monoid_identity())) == true
 }
 
-test fn witness_monoid_right_bias() -> Bool {
+test fn witness_monoid_right_bias() -> Bool  {
   apply_field_patch(base: true, patch: fp_monoid_op(left: Override { value: true }, right: Override { value: false })) == false
 }

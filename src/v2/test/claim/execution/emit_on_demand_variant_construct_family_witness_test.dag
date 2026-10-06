@@ -174,7 +174,7 @@ fn variant_construct_family_cached_cold_then_warm(
   }
 }
 
-test fn emit_on_demand_variant_construct_grain_keys_differ_holds() -> Bool {
+test fn emit_on_demand_variant_construct_grain_keys_differ_holds() -> Bool  {
   let digest = inferred_tree_digest(tree: emit_variant_construct_eval_tree)
   let source = emit_on_demand_key(
     closure_digest: digest,
@@ -191,7 +191,7 @@ test fn emit_on_demand_variant_construct_grain_keys_differ_holds() -> Bool {
   (source == native) == false
 }
 
-test fn emit_on_demand_variant_construct_materialize_share_on_hit_holds() -> Bool {
+test fn emit_on_demand_variant_construct_materialize_share_on_hit_holds() -> Bool  {
   let key = variant_construct_family_native_key_for(tree: emit_variant_construct_eval_tree)
   store_put_fold(
     outcome: store_put(store: variant_construct_family_test_store(), key: key, artifact_bytes: byte_size(count: 64)),
@@ -208,7 +208,7 @@ test fn emit_on_demand_variant_construct_materialize_share_on_hit_holds() -> Boo
   )
 }
 
-test fn emit_on_demand_variant_construct_materialize_recompute_on_miss_holds() -> Bool {
+test fn emit_on_demand_variant_construct_materialize_recompute_on_miss_holds() -> Bool  {
   let lookup = emit_on_demand_lookup(
     store: variant_construct_family_test_store(),
     key: variant_construct_family_native_key_for(tree: emit_variant_construct_eval_tree)
@@ -219,11 +219,11 @@ test fn emit_on_demand_variant_construct_materialize_recompute_on_miss_holds() -
   }
 }
 
-test fn emit_on_demand_variant_construct_interpreter_roles_bounded_holds() -> Bool {
+test fn emit_on_demand_variant_construct_interpreter_roles_bounded_holds() -> Bool  {
   interpreter_surviving_roles_bounded()
 }
 
-test fn emit_on_demand_variant_construct_schedule_refuses_unreadable_budget_holds() -> Bool {
+test fn emit_on_demand_variant_construct_schedule_refuses_unreadable_budget_holds() -> Bool  {
   match witness_family_realize_width(
     bound_bytes: byte_size(count: 25),
     budget: BudgetUnreadable,
@@ -236,13 +236,13 @@ test fn emit_on_demand_variant_construct_schedule_refuses_unreadable_budget_hold
   }
 }
 
-test fn emit_on_demand_variant_construct_closure_keys_differ_for_distinct_trees_holds() -> Bool {
+test fn emit_on_demand_variant_construct_closure_keys_differ_for_distinct_trees_holds() -> Bool  {
   let key_primary = variant_construct_family_native_key_for(tree: emit_variant_construct_eval_tree)
   let key_alt = variant_construct_family_native_key_for(tree: emit_variant_construct_eval_wrong_value_tree)
   key_primary != key_alt
 }
 
-test fn emit_on_demand_variant_construct_native_one_build_holds() -> Bool {
+test fn emit_on_demand_variant_construct_native_one_build_holds() -> Bool  {
   let shared_parent = variant_construct_family_cache_root_for(test_id: "native_one_build")
   let tree_primary = emit_variant_construct_eval_tree
   let tree_alt = emit_variant_construct_eval_wrong_value_tree

@@ -72,7 +72,7 @@ fn aoe_module_root(arrow: Node) -> Node {
   }
 }
 
-test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
+test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool  {
   !well_formed(n: aoe_named_domain_without_order())
     && well_formed(n: aoe_named_domain_with_order())
     && well_formed(n: aoe_positional_no_binder())
@@ -86,7 +86,7 @@ fn aoe_infer_reason(arrow: Node) -> Symbol {
   }
 }
 
-test fn aoe_infer_refuses_a_named_domain_without_order() -> Bool {
+test fn aoe_infer_refuses_a_named_domain_without_order() -> Bool  {
   (aoe_infer_reason(arrow: aoe_named_domain_without_order()) == ^infer_reason_malformed_tree)
     && (aoe_infer_reason(arrow: aoe_named_domain_with_order()) != ^infer_reason_malformed_tree)
     && (aoe_infer_reason(arrow: aoe_positional_no_binder()) != ^infer_reason_malformed_tree)
@@ -104,7 +104,7 @@ fn aoe_resolve_reason(arrow: Node) -> Symbol {
   }
 }
 
-test fn aoe_resolve_refuses_a_named_domain_without_order() -> Bool {
+test fn aoe_resolve_refuses_a_named_domain_without_order() -> Bool  {
   (aoe_resolve_reason(arrow: aoe_named_domain_without_order()) == ^resolve_reason_malformed_tree)
     && (aoe_resolve_reason(arrow: aoe_named_domain_with_order()) != ^resolve_reason_malformed_tree)
     && (aoe_resolve_reason(arrow: aoe_positional_no_binder()) != ^resolve_reason_malformed_tree)
@@ -123,7 +123,7 @@ fn aoe_assembly_gate_reason(arrow: Node) -> Symbol {
   }
 }
 
-test fn aoe_assembly_gate_refuses_a_named_domain_without_order() -> Bool {
+test fn aoe_assembly_gate_refuses_a_named_domain_without_order() -> Bool  {
   (aoe_assembly_gate_reason(arrow: aoe_named_domain_without_order()) == ^resolve_reason_malformed_imported_root)
     && (aoe_assembly_gate_reason(arrow: aoe_named_domain_with_order()) != ^resolve_reason_malformed_imported_root)
     && (aoe_assembly_gate_reason(arrow: aoe_positional_no_binder()) != ^resolve_reason_malformed_imported_root)

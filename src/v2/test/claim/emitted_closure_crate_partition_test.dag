@@ -70,7 +70,7 @@ fn owner_of(assignment: Map<ModuleId, CompilationUnitId>, module_id: String) -> 
 // tree and reached by nothing -- and the policy splits it two ways with the shared dependency in
 // the first unit and the entry in the last. Those two placements are forced: the policy lays
 // components out dependencies first, so sink precedes everything and entry follows everything.
-test fn a_source_tree_resolves_to_a_policy_derived_partition_of_its_closure() -> Bool {
+test fn a_source_tree_resolves_to_a_policy_derived_partition_of_its_closure() -> Bool  {
   let p = "test.fixture.emitted_closure_partition.base."
   match fixture_partition_at(root: base_root, entry: "entry.dag") {
     EmittedClosureResolved { outcome: ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: _ } } } =>
@@ -89,7 +89,7 @@ test fn a_source_tree_resolves_to_a_policy_derived_partition_of_its_closure() ->
 // Mutation control: the one added import in the mutated tree brings stray into the closure, and
 // the resolver must now own it. If the DAG were not derived from the tree's imports -- a roster, or
 // an edge source that ignored this file -- stray would stay unowned exactly as in the base tree.
-test fn one_added_import_changes_the_derived_assignment() -> Bool {
+test fn one_added_import_changes_the_derived_assignment() -> Bool  {
   let p = "test.fixture.emitted_closure_partition.mutated."
   match fixture_partition_at(root: mutated_root, entry: "entry.dag") {
     EmittedClosureResolved { outcome: ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: _ } } } =>
@@ -106,7 +106,7 @@ test fn one_added_import_changes_the_derived_assignment() -> Bool {
 // (a) A required dependency the pool does not declare refuses at the facts-to-DAG boundary, naming
 // the importer and the target -- it does not become a smaller closure that partitions cleanly.
 // Restoring it is the base tree, where the same shape resolves with the dependency owned.
-test fn an_unresolved_required_dependency_refuses_rather_than_shrinking_the_closure() -> Bool {
+test fn an_unresolved_required_dependency_refuses_rather_than_shrinking_the_closure() -> Bool  {
   match fixture_partition_at(root: missing_root, entry: "entry.dag") {
     EmittedClosureDagRefused { cause: ClosureDependencyUnresolved { importer_path: importer, target_module: target } } =>
       importer == missing_root + "/left.dag"
@@ -117,7 +117,7 @@ test fn an_unresolved_required_dependency_refuses_rather_than_shrinking_the_clos
 }
 
 // (c) An entry the pool does not declare is refused by name, never an accepted empty partition.
-test fn an_undeclared_entry_refuses_rather_than_resolving_an_empty_closure() -> Bool {
+test fn an_undeclared_entry_refuses_rather_than_resolving_an_empty_closure() -> Bool  {
   match fixture_partition_at(root: base_root, entry: "absent.dag") {
     EmittedClosureDagRefused { cause: ClosureEntryUndeclared { entry_path: path } } => path == base_root + "/absent.dag"
     EmittedClosureDagRefused { cause: ClosureDependencyUnresolved { importer_path: _, target_module: _ } } => false

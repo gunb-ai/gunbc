@@ -106,7 +106,7 @@ fn semantic_unspelled_field_record() -> Node {
   }
 }
 
-test fn semantic_record_with_an_unspelled_field_type_refuses_by_name() -> Bool {
+test fn semantic_record_with_an_unspelled_field_type_refuses_by_name() -> Bool  {
   match emit_semantic_type_decl(
     name: ^OccurrenceIdAllocator,
     params: Empty,
@@ -119,12 +119,12 @@ test fn semantic_record_with_an_unspelled_field_type_refuses_by_name() -> Bool {
   }
 }
 
-test fn semantic_bool_coproduct_routes_to_enum_emit() -> Bool {
+test fn semantic_bool_coproduct_routes_to_enum_emit() -> Bool  {
   semantic_bool_matches(golden: semantic_bool_golden)
     && !semantic_bool_matches(golden: semantic_bool_wrong_golden)
 }
 
-test fn semantic_record_routes_to_struct_emit() -> Bool {
+test fn semantic_record_routes_to_struct_emit() -> Bool  {
   semantic_record_matches(golden: semantic_record_golden)
     && !semantic_record_matches(golden: semantic_record_wrong_golden)
 }
@@ -146,7 +146,7 @@ fn semantic_arrow_refuses() -> Bool {
   }
 }
 
-test fn semantic_unsupported_shape_refuses() -> Bool {
+test fn semantic_unsupported_shape_refuses() -> Bool  {
   semantic_arrow_refuses()
 }
 

@@ -74,15 +74,15 @@ fn shell_exec_run_native_run(expected_octet: Int) -> Bool {
   }
 }
 
-test fn shell_exec_run_eval_argv_is_bash_dash_s() -> Bool {
+test fn shell_exec_run_eval_argv_is_bash_dash_s() -> Bool  {
   shell_exec_run_eval_expected_octet() == 1
 }
 
-test fn emit_host_shell_exec_run_equals_eval_holds() -> Bool {
+test fn emit_host_shell_exec_run_equals_eval_holds() -> Bool  {
   shell_exec_run_native_run(expected_octet: shell_exec_run_eval_expected_octet())
 }
 
-test fn emit_host_shell_exec_run_wrong_oracle_refuses_holds() -> Bool {
+test fn emit_host_shell_exec_run_wrong_oracle_refuses_holds() -> Bool  {
   shell_exec_run_native_run(expected_octet: 1 - shell_exec_run_eval_expected_octet()) == false
 }
 

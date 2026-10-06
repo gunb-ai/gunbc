@@ -46,20 +46,20 @@ data tricky_strings: List<String> = [
   "back\\slash", "$\{\{ runner.os }}", "$\{\{ fromJSON('\{\"a\": 1}') }}", "ends:", "a:b", "plain text"
 ]
 
-test fn every_tricky_string_round_trips_as_a_value() -> Bool {
+test fn every_tricky_string_round_trips_as_a_value() -> Bool  {
   all(tricky_strings, s => round_trips(v: field(k: "v", v: str(s: s))))
 }
 
-test fn every_tricky_string_round_trips_as_a_key() -> Bool {
+test fn every_tricky_string_round_trips_as_a_key() -> Bool  {
   all(tricky_strings, s => round_trips(v: field(k: s, v: str(s: "x"))))
 }
 
-test fn every_tricky_string_round_trips_in_a_flow_sequence() -> Bool {
+test fn every_tricky_string_round_trips_in_a_flow_sequence() -> Bool  {
   round_trips(v: field(k: "v", v: YamlSequence { elements: map(tricky_strings, s => str(s: s)) }))
 }
 
 // The failure the old text round trip could not see: a type change.
-test fn red_a_digit_string_is_quoted_so_it_does_not_come_back_an_int() -> Bool {
+test fn red_a_digit_string_is_quoted_so_it_does_not_come_back_an_int() -> Bool  {
   (emitted(v: field(k: "v", v: str(s: "123"))) == "v: \"123\"\n")
     && (emitted(v: field(k: "v", v: YamlInt { lexeme: "123" })) == "v: 123\n")
     && round_trips(v: field(k: "v", v: YamlInt { lexeme: "123" }))
@@ -70,7 +70,7 @@ data multiline_strings: List<String> = [
   "\n", "\n\n", " leading space\nx", "x\n  indented\ny", "trailing space \nx", "tab\tinside\nx", "x\n\ty"
 ]
 
-test fn every_multiline_string_round_trips_in_a_mapping_and_a_sequence() -> Bool {
+test fn every_multiline_string_round_trips_in_a_mapping_and_a_sequence() -> Bool  {
   all(multiline_strings, s => round_trips(v: field(k: "run", v: str(s: s))))
     && all(multiline_strings, s => round_trips(v: field(k: "items", v: YamlSequence { elements: [str(s: s), str(s: "after")] })))
 }
@@ -78,27 +78,27 @@ test fn every_multiline_string_round_trips_in_a_mapping_and_a_sequence() -> Bool
 // KEYS CARRY THE SAME CONTRACT AS VALUES. A key holding a line break cannot be written plain: the
 // predicate used to admit it, and the writer then reported success on a document the reader either
 // refuses or reads as different structure.
-test fn every_multiline_string_round_trips_as_a_key() -> Bool {
+test fn every_multiline_string_round_trips_as_a_key() -> Bool  {
   all(multiline_strings, s => round_trips(v: field(k: s, v: str(s: "x"))))
 }
 
-test fn red_a_key_with_a_line_break_is_double_quoted() -> Bool {
+test fn red_a_key_with_a_line_break_is_double_quoted() -> Bool  {
   emitted(v: field(k: "a\nb", v: str(s: "x"))) == "\"a\\nb\": x\n"
 }
 
 // The literal carries its final line breaks in its chomping indicator, and keeps empty lines.
-test fn literal_blocks_pick_the_chomping_indicator_and_keep_empty_lines() -> Bool {
+test fn literal_blocks_pick_the_chomping_indicator_and_keep_empty_lines() -> Bool  {
   (emitted(v: field(k: "run", v: str(s: "a\n\nb"))) == "run: |-\n  a\n\n  b\n")
     && (emitted(v: field(k: "run", v: str(s: "a\n"))) == "run: |\n  a\n")
     && (emitted(v: field(k: "run", v: str(s: "a\n\n"))) == "run: |+\n  a\n\n")
 }
 
 // A string a literal cannot carry is written double-quoted with escaped line breaks.
-test fn red_a_string_no_literal_can_carry_is_double_quoted() -> Bool {
+test fn red_a_string_no_literal_can_carry_is_double_quoted() -> Bool  {
   emitted(v: field(k: "run", v: str(s: " lead\nx"))) == "run: \" lead\\nx\"\n"
 }
 
-test fn nested_collections_round_trip() -> Bool {
+test fn nested_collections_round_trip() -> Bool  {
   round_trips(v: YamlMapping { entries: [
     YamlKeyValue { key: "jobs", value: field(k: "build", v: field(k: "steps", v: YamlSequence { elements: [
       YamlMapping { entries: [
@@ -118,7 +118,7 @@ test fn nested_collections_round_trip() -> Bool {
   ] })
 }
 
-test fn red_values_the_writer_cannot_write_refuse_with_their_path() -> Bool {
+test fn red_values_the_writer_cannot_write_refuse_with_their_path() -> Bool  {
   refused_at(v: field(k: "jobs", v: field(k: "timeout", v: YamlInt { lexeme: "ten" })), path: "jobs.timeout", reason_part: "int lexeme `ten`")
     && refused_at(v: field(k: "s", v: YamlSequence { elements: [YamlFloat { lexeme: "1.2.3" }] }), path: "s[0]", reason_part: "float lexeme")
     && refused_at(v: YamlMapping { entries: [YamlKeyValue { key: "a", value: YamlNull }, YamlKeyValue { key: "a", value: YamlNull }] }, path: "a", reason_part: "twice")

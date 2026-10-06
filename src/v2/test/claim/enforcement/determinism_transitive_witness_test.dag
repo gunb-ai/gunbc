@@ -112,7 +112,7 @@ fn determinism_live_closure_modules() -> List<String> {
 //
 // NOTABENE — determinism over the fn-arrow call graph is currently unverified in the
 // required floor. The rung drop declares the bounded population and restoration trigger.
-test fn determinism_live_intra_holds() -> Bool {
+test fn determinism_live_intra_holds() -> Bool  {
   determinism_transitive_holds(
     entry_module: determinism_live_entry_module,
     closure_modules: determinism_live_closure_modules(),
@@ -126,7 +126,7 @@ test fn determinism_live_intra_holds() -> Bool {
 // POSITIVE CONTROL: the live subject declarations exist and belong to the entry module.
 // Without this, determinism_transitive_live_closure_holds passing could mean zero declarations
 // were found (vacuously green).
-test fn the_live_subject_is_not_empty() -> Bool {
+test fn the_live_subject_is_not_empty() -> Bool  {
   let decls = fn_arrow_decl_facts_live(
     pool_roots: determinism_live_subject_roots,
     pool_files: determinism_live_subject_files
@@ -203,11 +203,11 @@ fn shape_gap_conj_shaped_call() -> Node {
   }
 }
 
-test fn the_determinism_lens_fires_on_a_transform_shaped_call() -> Bool {
+test fn the_determinism_lens_fires_on_a_transform_shaped_call() -> Bool  {
   length(xs: determinism_findings(root: shape_gap_transform_shaped_call())) > 0
 }
 
-test fn the_determinism_lens_is_blind_to_the_conj_shape_the_marshal_no_longer_emits() -> Bool {
+test fn the_determinism_lens_is_blind_to_the_conj_shape_the_marshal_no_longer_emits() -> Bool  {
   length(xs: determinism_findings(root: shape_gap_conj_shaped_call())) == 0
 }
 
@@ -303,7 +303,7 @@ fn output_only_decl(output: Node) -> FnArrowDecl {
   FnArrowDecl { qualified_name: "fix.shape_gap.decl", name: "decl", output: output, params: [] }
 }
 
-test fn bare_atom_is_not_a_call_edge() -> Bool {
+test fn bare_atom_is_not_a_call_edge() -> Bool  {
   let scan = callees_from_decl(
     decl: output_only_decl(output: shape_gap_conj_shaped_call()),
     terminal_callee_symbols: no_terminal_callees
@@ -311,7 +311,7 @@ test fn bare_atom_is_not_a_call_edge() -> Bool {
   length(xs: scan.texts) == 0 && length(xs: scan.refusals) == 0
 }
 
-test fn callee_text_is_not_filtered_by_path_spelling() -> Bool {
+test fn callee_text_is_not_filtered_by_path_spelling() -> Bool  {
   contains(
     xs: callees_from_decl(
       decl: output_only_decl(output: call_node(callee: "src/fixture.dag")),
@@ -354,7 +354,7 @@ fn findings_over(decls: List<FnArrowDecl>) -> List<Diagnostic> {
 
 // RED CONTROL. A leak two hops out, in another module, is FOUND. This is the state the per-tree
 // door accepts today, so this row is the whole point of the transitive judgment.
-test fn transitive_leak_in_reached_declaration_is_found() -> Bool {
+test fn transitive_leak_in_reached_declaration_is_found() -> Bool  {
   length(xs: findings_over(decls: decls_with_leak_reached())) > 0
 }
 
@@ -363,14 +363,14 @@ test fn transitive_leak_in_reached_declaration_is_found() -> Bool {
 // reachable ones. Same leak, same fixture, same primitive — moved out of the call graph. A judgment
 // that flagged it would be answering "does a leak exist anywhere" rather than "can this entry reach
 // one", and the reachability authority would be doing no work.
-test fn identical_leak_outside_the_call_graph_is_not_found() -> Bool {
+test fn identical_leak_outside_the_call_graph_is_not_found() -> Bool  {
   length(xs: findings_over(decls: decls_with_leak_unreached())) == 0
 }
 
 // POSITIVE CONTROL ON THE PLANT: the fixture shape itself is clean when the reached body calls the
 // canonically-ordered twin, so the red above is caused by the CLASSIFICATION of the callee and not
 // by the fixture merely containing a call node.
-test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
+test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool  {
   determinism_transitive_holds(
     entry_module: "fix.det.entry",
     closure_modules: fixture_modules,
@@ -408,7 +408,7 @@ fn nested_calling_decl(qualified_name: String, name: String, callee: String) -> 
 // RED CONTROL AGAINST DEPTH ONE. The same two-hop cross-module leak as above, reached through an
 // entry whose call sits one statement-record below its body root. A depth-one reader finds no
 // callee on the entry at all, reaches nothing, and returns zero findings.
-test fn leak_reached_through_a_nested_body_is_found() -> Bool {
+test fn leak_reached_through_a_nested_body_is_found() -> Bool  {
   length(
     xs: findings_over(
       decls: [
@@ -423,7 +423,7 @@ test fn leak_reached_through_a_nested_body_is_found() -> Bool {
 // THE DISCRIMINATOR THAT KEEPS THE DEEPER READ FROM BECOMING "FOLD EVERYTHING". Same nested entry,
 // leak moved out of the call graph. A transitive read of a declaration's OWN body must not become a
 // transitive read of the corpus: this row is green only because reachability still decides.
-test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool {
+test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool  {
   length(
     xs: findings_over(
       decls: [
@@ -455,7 +455,7 @@ fn decl_with_param_reference(qualified_name: String, name: String, param: String
   }
 }
 
-test fn a_parameter_reference_naming_a_declaration_is_not_a_call_edge() -> Bool {
+test fn a_parameter_reference_naming_a_declaration_is_not_a_call_edge() -> Bool  {
   length(
     xs: findings_over(
       decls: [
@@ -472,7 +472,7 @@ test fn a_parameter_reference_naming_a_declaration_is_not_a_call_edge() -> Bool 
 
 // POSITIVE CONTROL ON THE STRUCTURAL ROLE: the same callee lexeme in a real call position reaches
 // the leak. A reader that rejects all colliding lexemes would make this row red.
-test fn the_same_lexeme_in_call_position_is_a_call_edge() -> Bool {
+test fn the_same_lexeme_in_call_position_is_a_call_edge() -> Bool  {
   length(
     xs: findings_over(
       decls: [

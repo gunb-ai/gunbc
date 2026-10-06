@@ -144,7 +144,7 @@ fn pdp_after_use_site_ownership(support: ProducedDeclSupport) -> Bool {
 // Positive control: the renderer survives BOTH augmenters and still executes.
 // Negative control: an unwired target stays unwired through the same call, so the
 // positive arm cannot be satisfied by a constant.
-test fn produced_decl_support_survives_augmentation() -> Bool {
+test fn produced_decl_support_survives_augmentation() -> Bool  {
   pdp_renderer_executes(target: pdp_target_with(support: pdp_wired_support()))
     && pdp_after_value_semantics(support: pdp_wired_support())
     && pdp_after_use_site_ownership(support: pdp_wired_support())

@@ -91,14 +91,14 @@ fn well_formed_wall_valid_arrow() -> Node {
   )
 }
 
-test fn body_lowering_well_formed_wall_rejects_malformed_body() -> Bool {
+test fn body_lowering_well_formed_wall_rejects_malformed_body() -> Bool  {
   !well_formed(n: well_formed_wall_malformed_arrow())
 }
 
-test fn body_lowering_well_formed_wall_accepts_atom_body() -> Bool {
+test fn body_lowering_well_formed_wall_accepts_atom_body() -> Bool  {
   well_formed(n: well_formed_wall_atom_body_arrow())
 }
 
-test fn body_lowering_well_formed_wall_accepts_valid_body() -> Bool {
+test fn body_lowering_well_formed_wall_accepts_valid_body() -> Bool  {
   well_formed(n: well_formed_wall_valid_arrow())
 }

@@ -49,34 +49,34 @@ fn ei_spelled_is(token_class: Symbol, captured: Node, expected: String) -> Bool 
   }
 }
 
-test fn a_string_with_every_escape_row_survives_encode_then_decode_holds() -> Bool {
+test fn a_string_with_every_escape_row_survives_encode_then_decode_holds() -> Bool  {
   ei_string_survives(value: "q\"b\\s\nt\tz\r\0\{\}")
 }
 
-test fn a_string_with_a_non_ascii_scalar_and_a_control_survives_holds() -> Bool {
+test fn a_string_with_a_non_ascii_scalar_and_a_control_survives_holds() -> Bool  {
   ei_string_survives(value: "\u{e9}A\x01")
 }
 
-test fn a_string_literal_node_is_spelled_quoted_and_escaped_holds() -> Bool {
+test fn a_string_literal_node_is_spelled_quoted_and_escaped_holds() -> Bool  {
   ei_spelled_is(token_class: ^dag_token_string_literal, captured: dag_string_literal_node(value: "a\"b", occurrence_id: OccurrenceSynthetic), expected: "\"a\\\"b\"")
 }
 
-test fn an_int_literal_is_spelled_by_its_magnitude_holds() -> Bool {
+test fn an_int_literal_is_spelled_by_its_magnitude_holds() -> Bool  {
   match dag_int_literal_node_from_lexeme(lexeme: "4096", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: n, diagnostics: _ } => ei_spelled_is(token_class: ^dag_token_int_literal, captured: n, expected: "4096")
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn a_float_literal_is_spelled_by_its_lexeme_holds() -> Bool {
+test fn a_float_literal_is_spelled_by_its_lexeme_holds() -> Bool  {
   ei_spelled_is(token_class: ^dag_token_float_literal, captured: dag_float_literal_node_from_lexeme(lexeme: "2.5", occurrence_id: OccurrenceSynthetic), expected: "2.5")
 }
 
-test fn the_caret_is_spelled_by_its_lex_rule_holds() -> Bool {
+test fn the_caret_is_spelled_by_its_lex_rule_holds() -> Bool  {
   ei_spelled_is(token_class: ^dag_token_caret, captured: grammar_atom(identity: ^dag_token_caret), expected: "^")
 }
 
-test fn a_literal_without_its_payload_refuses_by_name_holds() -> Bool {
+test fn a_literal_without_its_payload_refuses_by_name_holds() -> Bool  {
   match ei_spelled(token_class: ^dag_token_string_literal, captured: grammar_atom(identity: ^dag_token_string_literal)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } => ds.head.reason == ^dag_emit_string_literal_value_missing
@@ -121,21 +121,21 @@ fn ei_key_emits(tree: Node, expected: String) -> Bool {
   }
 }
 
-test fn a_quoted_key_spelled_like_an_identifier_emits_quoted_holds() -> Bool {
+test fn a_quoted_key_spelled_like_an_identifier_emits_quoted_holds() -> Bool  {
   ei_key_emits(
     tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_quoted_key_emitted, captured: dag_string_literal_node(value: "Node", occurrence_id: OccurrenceSynthetic))),
     expected: "\"Node\""
   )
 }
 
-test fn a_bare_key_emits_bare_holds() -> Bool {
+test fn a_bare_key_emits_bare_holds() -> Bool  {
   ei_key_emits(
     tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_bare_key_emitted, captured: grammar_atom(identity: symbol_intern_lexeme(lexeme: "Node")))),
     expected: "Node"
   )
 }
 
-test fn an_escaped_quoted_key_emits_escaped_holds() -> Bool {
+test fn an_escaped_quoted_key_emits_escaped_holds() -> Bool  {
   ei_key_emits(
     tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_quoted_key_emitted, captured: dag_string_literal_node(value: "a\"b", occurrence_id: OccurrenceSynthetic))),
     expected: "\"a\\\"b\""
@@ -161,7 +161,7 @@ fn ei_emits_under(root: GrammarRoot, captured: Node, expected: String) -> Bool {
   }
 }
 
-test fn a_required_line_break_is_emitted_as_one_holds() -> Bool {
+test fn a_required_line_break_is_emitted_as_one_holds() -> Bool  {
   ei_emits_under(
     root: ei_single_production_root(expression: Sequence { left: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), right: AfterLineBreak { element: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident) } }),
     captured: ei_conj(children: [
@@ -172,7 +172,7 @@ test fn a_required_line_break_is_emitted_as_one_holds() -> Bool {
   )
 }
 
-test fn a_refusal_row_is_never_selected_backward_holds() -> Bool {
+test fn a_refusal_row_is_never_selected_backward_holds() -> Bool  {
   ei_emits_under(
     root: ei_single_production_root(expression: Choice { left: RefuseOnMatch { element: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), reason: DataValueMissingAfterEq }, right: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident) }),
     captured: grammar_atom(identity: symbol_intern_lexeme(lexeme: "x")),

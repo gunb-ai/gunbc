@@ -144,7 +144,7 @@ fn outcome_is_unbound(o: ExposureOutcome) -> Bool {
 
 // A subject that refuses to parse, or that carries no declaration to bind, scores as NEITHER arm,
 // so a broken subject cannot satisfy this by producing two different flavours of nothing.
-test fn production_fed_exposure_discrimination_holds() -> Bool {
+test fn production_fed_exposure_discrimination_holds() -> Bool  {
   outcome_is_unbound(o: outcome_under(grounding: ModuleLocalMemberExposure))
     && outcome_is_bound(o: outcome_under(grounding: CrossFileProviderExportedExposure))
 }

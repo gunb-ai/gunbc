@@ -40,12 +40,12 @@ fn observation_label(observation: TargetCompileObservation) -> Symbol {
   }
 }
 
-test fn rustc_accepts_valid_target_source() -> Bool {
+test fn rustc_accepts_valid_target_source() -> Bool  {
   observation_label(observation: rustc_target_compile_observation(source: valid_rust_source))
     == ^observed_accepted
 }
 
-test fn rustc_diagnoses_invalid_target_source() -> Bool {
+test fn rustc_diagnoses_invalid_target_source() -> Bool  {
   observation_label(observation: rustc_target_compile_observation(source: invalid_rust_source))
     == ^observed_diagnosed
 }

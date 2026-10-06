@@ -68,24 +68,24 @@ fn round_trips(steps: FreeMonoid<Node>) -> Bool {
   expansion_equals(form: assemble_fold(g: anti_unify_chain(steps: steps)), expected: steps)
 }
 
-test fn gate_chain_round_trips() -> Bool {
+test fn gate_chain_round_trips() -> Bool  {
   round_trips(steps: gate_chain)
 }
-test fn divergent_chain_round_trips() -> Bool {
+test fn divergent_chain_round_trips() -> Bool  {
   round_trips(steps: divergent_chain)
 }
-test fn short_chain_round_trips() -> Bool {
+test fn short_chain_round_trips() -> Bool  {
   round_trips(steps: short_chain)
 }
 
 fn apply_recovers_step(template: Node, step: Node) -> Bool {
   node_eq(a: apply_fills(template: template, fills: extract_fillings(template: template, element: step)), b: step)
 }
-test fn apply_inverts_extract_on_gate_step() -> Bool {
+test fn apply_inverts_extract_on_gate_step() -> Bool  {
   apply_recovers_step(template: anti_unify_chain(steps: gate_chain).template, step: conj3(a: atom(id: ^run), b: atom(id: ^gate_emit), c: atom(id: ^acc1)))
 }
 
-test fn fold_form_has_exactly_one_template_edge() -> Bool {
+test fn fold_form_has_exactly_one_template_edge() -> Bool  {
   name_occurrences(name: fold_template_edge, children: assemble_fold(g: anti_unify_chain(steps: gate_chain)).children) == 1
 }
 
@@ -95,7 +95,7 @@ fn outcome_node_is(o: Outcome<Node>, expected: Node) -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-test fn fold_form_template_is_the_kernel_template() -> Bool {
+test fn fold_form_template_is_the_kernel_template() -> Bool  {
   outcome_node_is(
     o: fold_template_of(fold_form: assemble_fold(g: anti_unify_chain(steps: gate_chain))),
     expected: anti_unify_chain(steps: gate_chain).template
@@ -108,7 +108,7 @@ fn fills_eq(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
 fn per_element_eq(a: FreeMonoid<FreeMonoid<Node>>, b: FreeMonoid<FreeMonoid<Node>>) -> Bool {
   (length(xs: a) == length(xs: b)) && zip_eq(a: a, b: b, eq: fn(x, y) { fills_eq(a: x, b: y) })
 }
-test fn fold_form_preserves_per_element_fills() -> Bool {
+test fn fold_form_preserves_per_element_fills() -> Bool  {
   match fold_per_element_of(fold_form: assemble_fold(g: anti_unify_chain(steps: gate_chain))) {
     Accepted { value: pe, diagnostics: _ } => per_element_eq(a: pe, b: anti_unify_chain(steps: gate_chain).per_element)
     Rejected { diagnostics: _ } => false
@@ -133,7 +133,7 @@ fn corrupted_fold_form() -> Node {
     Edge { label: Authored { name: ^fold_elements }, target: encode_per_element(per_element: corrupted_per_element()) }
   ])
 }
-test fn corrupted_content_expands_but_differs() -> Bool {
+test fn corrupted_content_expands_but_differs() -> Bool  {
   expansion_accepted_but_differs(form: corrupted_fold_form(), expected: gate_chain)
 }
 
@@ -146,7 +146,7 @@ fn missing_template_form() -> Node {
     Edge { label: Authored { name: ^fold_elements }, target: good_elements_node() }
   ])
 }
-test fn structural_missing_template_edge_is_rejected() -> Bool {
+test fn structural_missing_template_edge_is_rejected() -> Bool  {
   expansion_rejected(form: missing_template_form())
 }
 
@@ -157,7 +157,7 @@ fn duplicate_template_form() -> Node {
     Edge { label: Authored { name: ^fold_elements }, target: good_elements_node() }
   ])
 }
-test fn structural_duplicate_template_edge_is_rejected() -> Bool {
+test fn structural_duplicate_template_edge_is_rejected() -> Bool  {
   expansion_rejected(form: duplicate_template_form())
 }
 
@@ -169,7 +169,7 @@ fn head_without_tail_elements_form() -> Node {
     ]) }
   ])
 }
-test fn structural_cons_head_without_tail_is_rejected() -> Bool {
+test fn structural_cons_head_without_tail_is_rejected() -> Bool  {
   expansion_rejected(form: head_without_tail_elements_form())
 }
 
@@ -182,6 +182,6 @@ fn arity_mismatch_form() -> Node {
     )
   })
 }
-test fn structural_fill_arity_mismatch_is_rejected() -> Bool {
+test fn structural_fill_arity_mismatch_is_rejected() -> Bool  {
   expansion_rejected(form: arity_mismatch_form())
 }

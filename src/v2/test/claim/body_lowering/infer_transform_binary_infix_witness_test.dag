@@ -10,7 +10,7 @@ import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers 
 import v2.std.witness { Holds, Violates }
 import v2.std.node { Symbol }
 
-test fn infer_transform_non_add_remains_frontier_holds() -> Bool {
+test fn infer_transform_non_add_remains_frontier_holds() -> Bool  {
   let body = infer_transform_subtract_fixture()
   match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: body)) {
     Accepted { value: tree, diagnostics: d } =>

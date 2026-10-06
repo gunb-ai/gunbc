@@ -68,6 +68,6 @@ test fn lex_comma_matches() -> Bool { lex_pair_matches(token_class: ^rust_token_
 test fn lex_rbrace_matches() -> Bool { lex_pair_matches(token_class: ^rust_token_rbrace) }
 test fn lex_derive_enum_copy_matches() -> Bool { lex_pair_matches(token_class: ^rust_token_derive_enum_copy) }
 test fn binding_enum_copy_matches() -> Bool { binding_pair_matches(binding: ^rust_decl_derive_enum_copy_binding) }
-test fn binding_bool_ident_fallback_matches() -> Bool {
+test fn binding_bool_ident_fallback_matches() -> Bool  {
   binding_pair_matches(binding: ^Bool)
 }

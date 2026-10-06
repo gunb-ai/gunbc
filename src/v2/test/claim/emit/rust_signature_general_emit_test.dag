@@ -59,7 +59,7 @@ fn rust_signature_add_matches(golden: String) -> Bool {
   }
 }
 
-test fn rust_signature_general_reproduces_add_holds() -> Bool {
+test fn rust_signature_general_reproduces_add_holds() -> Bool  {
   rust_signature_add_matches(golden: rust_signature_add_golden)
     && !rust_signature_add_matches(golden: rust_signature_add_wrong_golden)
 }

@@ -39,10 +39,10 @@ fn falsity(only_arg: Int) -> Bool {
 // coupling the header above already refuses. `!falsity(...)` holds only if the call RETURNED false: a
 // refusal fails the row, and a `true` answer fails it too, so the pair separates a refusal from a false
 // answer, which is what a single positive row cannot do.
-test fn nc_a_named_bool_call_executes_holds() -> Bool {
+test fn nc_a_named_bool_call_executes_holds() -> Bool  {
   truth(only_arg: 1)
 }
 
-test fn nc_the_false_returning_call_returns_false_holds() -> Bool {
+test fn nc_the_false_returning_call_returns_false_holds() -> Bool  {
   !falsity(only_arg: 1)
 }

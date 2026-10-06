@@ -102,7 +102,7 @@ fn emit_host_present_target_count() -> Int {
   )
 }
 
-test fn emit_host_target_coverage_complete() -> Bool {
+test fn emit_host_target_coverage_complete() -> Bool  {
   if is_empty(xs: emit_host_target_coverage_rows) {
     false
   } else {

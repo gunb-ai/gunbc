@@ -56,21 +56,21 @@ fn rostered_row(family: EmittedEffectFamily) -> TargetEmitHostRuntimeRow {
   )
 }
 
-test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool {
+test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool  {
   match rostered_row(family: FilesystemReadFamily) {
     HostRuntimeRowPresent { row: _ } => true
     HostRuntimeRowAbsent => false
   }
 }
 
-test fn emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family() -> Bool {
+test fn emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family() -> Bool  {
   match rostered_row(family: ShellExecRunFamily) {
     HostRuntimeRowPresent { row: _ } => true
     HostRuntimeRowAbsent => false
   }
 }
 
-test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -> Bool {
+test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -> Bool  {
   match construction_justification.class {
     WallNow { mechanism: _, authority: authority } =>
       authority.module_path == "v2.std.host_transport"

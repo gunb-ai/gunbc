@@ -222,7 +222,7 @@ fn ts_produced_decl_parse_identifier_count(root: ParseTree, identifier: Symbol) 
   )
 }
 
-test fn typescript_produced_decl_uses_shared_rows_and_round_trips_names() -> Bool {
+test fn typescript_produced_decl_uses_shared_rows_and_round_trips_names() -> Bool  {
   match ts_produced_decl_text() {
     Accepted { value: text, diagnostics: _ } =>
       if text != ts_produced_decl_golden || text == "function add(x: number, y: number): number { return x + y; }" {

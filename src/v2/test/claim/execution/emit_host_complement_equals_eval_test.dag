@@ -302,7 +302,7 @@ fn emit_complement_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, Run
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn emit_host_complement_equals_eval_holds() -> Bool {
+test fn emit_host_complement_equals_eval_holds() -> Bool  {
   emit_complement_eval_verdict_is_pass(
     run: emit_complement_eval_run(
       tree: emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_fixture)
@@ -310,7 +310,7 @@ test fn emit_host_complement_equals_eval_holds() -> Bool {
   )
 }
 
-test fn emit_host_complement_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_complement_wrong_fixture_refuses_holds() -> Bool  {
   emit_complement_eval_verdict_is_semantic_mismatch(
     run: emit_complement_eval_run(
       tree: emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)

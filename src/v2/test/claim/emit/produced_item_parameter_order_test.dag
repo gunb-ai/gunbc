@@ -125,11 +125,11 @@ fn ipo_ordered(arrow: Node) -> Bool {
   }
 }
 
-test fn an_item_emits_its_parameters_in_declared_order() -> Bool {
+test fn an_item_emits_its_parameters_in_declared_order() -> Bool  {
   ipo_ordered(arrow: ipo_item())
 }
 
-test fn a_domain_canonicalized_item_emits_the_same_parameter_order() -> Bool {
+test fn a_domain_canonicalized_item_emits_the_same_parameter_order() -> Bool  {
   ipo_ordered(arrow: ipo_canonical_domain(arrow: ipo_item()))
 }
 
@@ -153,7 +153,7 @@ fn ipo_rendered_params(arrow: Node) -> List<Edge> {
   }
 }
 
-test fn a_positional_call_binds_z_to_the_first_actual_on_both_copies() -> Bool {
+test fn a_positional_call_binds_z_to_the_first_actual_on_both_copies() -> Bool  {
   let original = ipo_rendered_params(arrow: ipo_item())
   let canonical = ipo_rendered_params(arrow: ipo_canonical_domain(arrow: ipo_item()))
   ipo_bound_to_first_actual(params: original) == ^ipo_z
@@ -163,7 +163,7 @@ test fn a_positional_call_binds_z_to_the_first_actual_on_both_copies() -> Bool {
 
 // THE MUTATION THIS DISCRIMINATES: the stored-order read of the canonical domain is [a, z], so a
 // renderer restoring domain.children as the parameter list fails the claim above.
-test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
+test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool  {
   arrow_domain_binder_names(arrow: ipo_canonical_domain(arrow: ipo_item())) == [^ipo_a, ^ipo_z]
 }
 
@@ -173,7 +173,7 @@ test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
 // malformed reason. Before A4 the same Arrow was well formed and refused later, as order ABSENT; the
 // refusal moved earlier, it did not go away. The claim pins both the route (the admission wall's
 // answer) and the typed refusal, and still reds if the renderer ever accepts the order-less item.
-test fn an_item_with_parameters_and_no_order_refuses_typed() -> Bool {
+test fn an_item_with_parameters_and_no_order_refuses_typed() -> Bool  {
   let stripped = ipo_without_order(arrow: ipo_item())
   match arrow_declared_parameter_order(arrow: stripped) {
     ArrowParameterOrderMalformed =>

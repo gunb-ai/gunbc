@@ -50,17 +50,17 @@ fn dai_witness_is(decl: AlgebraInhabitanceDecl, dotted: String) -> Bool {
   }
 }
 
-test fn dai_int_inhabits_the_ordered_ring_and_carries_add() -> Bool {
+test fn dai_int_inhabits_the_ordered_ring_and_carries_add() -> Bool  {
   dai_carries_field(decl: dag_int_algebra_inhabitance(), field: ^ring_field_add)
     && !dai_carries_field(decl: dag_int_algebra_inhabitance(), field: ^lattice_field_join)
 }
 
-test fn dai_bool_inhabits_the_boolean_algebra_and_carries_join() -> Bool {
+test fn dai_bool_inhabits_the_boolean_algebra_and_carries_join() -> Bool  {
   dai_carries_field(decl: dag_bool_algebra_inhabitance(), field: ^lattice_field_join)
     && !dai_carries_field(decl: dag_bool_algebra_inhabitance(), field: ^ring_field_add)
 }
 
-test fn dai_each_witness_cites_the_std_value() -> Bool {
+test fn dai_each_witness_cites_the_std_value() -> Bool  {
   dai_witness_is(decl: dag_int_algebra_inhabitance(), dotted: "v2.std.integer.int_ordered_ring")
     && dai_witness_is(decl: dag_bool_algebra_inhabitance(), dotted: "v2.std.logic.bool_boolean_algebra")
 }
@@ -68,7 +68,7 @@ test fn dai_each_witness_cites_the_std_value() -> Bool {
 // THE ROUTE, NOT ONLY THE ANSWER: a structure whose one operation's SIGNATURE mentions ^lattice_field_join
 // (inside the operation's argument type) does not DECLARE that field. A search of the node finds the name; the
 // declared-field reading does not -- so this control reds if the reading ever falls back to a node search.
-test fn dai_a_name_inside_an_operation_signature_is_not_a_declared_field() -> Bool {
+test fn dai_a_name_inside_an_operation_signature_is_not_a_declared_field() -> Bool  {
   let carrier = bool_node()
   let argument_mentioning_join = Node {
     kind: TypeNode { connective: Conj },
@@ -87,7 +87,7 @@ test fn dai_a_name_inside_an_operation_signature_is_not_a_declared_field() -> Bo
 
 // A MALFORMED INHABITANCE IS NOT "FIELD NOT DECLARED": a node with no ^algebra_edge answers InhabitanceMalformed
 // with its cause, so a consumer cannot refuse `1 || 2` for the wrong reason (DESIGN section 5).
-test fn dai_a_malformed_inhabitance_is_reported_as_malformed() -> Bool {
+test fn dai_a_malformed_inhabitance_is_reported_as_malformed() -> Bool  {
   let missing_algebra = Node {
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Authored { name: ^inhabitant_edge }, target: bool_node() }],
@@ -107,7 +107,7 @@ fn dai_contains(xs: List<Symbol>, x: Symbol) -> Bool {
   fold(xs, init: false, f: fn(acc, y) { acc || y == x })
 }
 
-test fn dai_composing_fields_are_the_structure_typed_binders() -> Bool {
+test fn dai_composing_fields_are_the_structure_typed_binders() -> Bool  {
   dai_contains(xs: algebra_structure_composing_fields, x: ^ordered_ring_field_ring)
     && dai_contains(xs: algebra_structure_composing_fields, x: ^ring_field_add)
     && dai_contains(xs: algebra_structure_composing_fields, x: ^boolean_algebra_field_bounded_lattice)
@@ -118,7 +118,7 @@ test fn dai_composing_fields_are_the_structure_typed_binders() -> Bool {
 // A FIELD EDGE THAT IS NOT A BINDER IS MALFORMED, EVEN WHEN ITS NAME IS THE ONE ASKED FOR: an ^ring_field_add
 // edge whose target is a bare atom is not a declared field, so the reader may not answer FieldDeclared from the
 // name alone.
-test fn dai_a_matching_name_on_a_non_binder_is_malformed() -> Bool {
+test fn dai_a_matching_name_on_a_non_binder_is_malformed() -> Bool  {
   let carrier = bool_node()
   let structure = Node {
     kind: TypeNode { connective: Conj },
@@ -130,7 +130,7 @@ test fn dai_a_matching_name_on_a_non_binder_is_malformed() -> Bool {
 
 // A COMPOSING FIELD MUST CARRY A STRUCTURE: an ^ordered_ring_field_ring binder whose type is an atom composes
 // nothing, so a field it should have supplied is MALFORMED rather than NotDeclared.
-test fn dai_a_composing_field_over_a_non_structure_is_malformed() -> Bool {
+test fn dai_a_composing_field_over_a_non_structure_is_malformed() -> Bool  {
   let carrier = bool_node()
   let structure = Node {
     kind: TypeNode { connective: Conj },
@@ -151,7 +151,7 @@ fn dai_is_malformed(d: AlgebraFieldDeclaration) -> Bool {
 // A DECLARED FIELD DOES NOT EXCUSE A LATER MALFORMED MEMBER: every member is classified before an answer is given,
 // with InhabitanceMalformed taking precedence over FieldDeclared -- here a valid ^ring_field_add binder followed by
 // a member that is not a binder.
-test fn dai_a_declared_field_before_a_malformed_member_is_malformed() -> Bool {
+test fn dai_a_declared_field_before_a_malformed_member_is_malformed() -> Bool  {
   let carrier = bool_node()
   let structure = Node {
     kind: TypeNode { connective: Conj },
@@ -165,7 +165,7 @@ test fn dai_a_declared_field_before_a_malformed_member_is_malformed() -> Bool {
 }
 
 // The same with the later malformed member a composing field over a non-structure.
-test fn dai_a_declared_field_before_a_malformed_composing_field_is_malformed() -> Bool {
+test fn dai_a_declared_field_before_a_malformed_composing_field_is_malformed() -> Bool  {
   let carrier = bool_node()
   let structure = Node {
     kind: TypeNode { connective: Conj },

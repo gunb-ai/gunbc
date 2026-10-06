@@ -32,22 +32,22 @@ fn kind_name(t: Node) -> String {
 // Each roster member is claimed by its own constructor's node.
 // ---------------------------------------------------------------------------
 
-test fn rest_transport_classifies_as_rest() -> Bool {
+test fn rest_transport_classifies_as_rest() -> Bool  {
   kind_name(t: rest_transport_node(occurrence_identity: OccurrenceSynthetic, base_url: str_expr(s: "https://example.invalid"), auth_props: [], headers: [], method: none, path: none, query: none, request_body: none, response_format: none, span: no_span()))
     == "rest"
 }
 
-test fn shell_transport_classifies_as_shell() -> Bool {
+test fn shell_transport_classifies_as_shell() -> Bool  {
   kind_name(t: shell_transport_node(occurrence_identity: OccurrenceSynthetic, argv: [str_expr(s: "ls")], env: [], stdin: none, span: no_span()))
     == "shell"
 }
 
-test fn file_transport_classifies_as_file() -> Bool {
+test fn file_transport_classifies_as_file() -> Bool  {
   kind_name(t: file_transport_node(occurrence_identity: OccurrenceSynthetic, base_path: str_expr(s: "/tmp/x"), verb: none, span: no_span()))
     == "file"
 }
 
-test fn bare_transport_classifies_as_local() -> Bool {
+test fn bare_transport_classifies_as_local() -> Bool  {
   kind_name(t: local_transport_node(occurrence_identity: OccurrenceSynthetic, span: no_span())) == "local"
 }
 
@@ -61,18 +61,18 @@ fn keyless_transport() -> Node {
     children: [], body: none, span: no_span())
 }
 
-test fn unrecognized_transport_matches_no_roster_member() -> Bool {
+test fn unrecognized_transport_matches_no_roster_member() -> Bool  {
   kind_name(t: keyless_transport()) == "no-roster-member"
 }
 
 // THE discriminating row: true under the old definition-by-exclusion, false now.
-test fn unrecognized_transport_is_not_local() -> Bool {
+test fn unrecognized_transport_is_not_local() -> Bool  {
   is_local_transport(t: keyless_transport(), source_indices: empty_map()) == false
 }
 
 // Positive control. Without it every refusal row above is satisfiable by a
 // classify_transport that answers none unconditionally.
-test fn the_bare_node_is_still_local_positive_control() -> Bool {
+test fn the_bare_node_is_still_local_positive_control() -> Bool  {
   is_local_transport(t: local_transport_node(occurrence_identity: OccurrenceSynthetic, span: no_span()), source_indices: empty_map()) == true
 }
 
@@ -80,7 +80,7 @@ test fn the_bare_node_is_still_local_positive_control() -> Bool {
 // One authority for the ordering, pinned to an answer.
 // ---------------------------------------------------------------------------
 
-test fn rest_wins_over_a_file_key_on_the_same_transport() -> Bool {
+test fn rest_wins_over_a_file_key_on_the_same_transport() -> Bool  {
   kind_name(t: make_transport_node(occurrence_identity: OccurrenceSynthetic,
     properties: [
       make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "base_url", value: str_expr(s: "https://example.invalid"), span: no_span(), name_span: no_span()),

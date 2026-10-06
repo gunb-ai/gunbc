@@ -58,7 +58,7 @@ fn tco_has_both_slot_dests(block: String) -> Bool {
     && string_contains(s: block, pattern: concat(tco_slot_n(), " ="))
 }
 
-test fn tco_shared_reassign_writes_every_slot_in_param_order() -> Bool {
+test fn tco_shared_reassign_writes_every_slot_in_param_order() -> Bool  {
   tco_slot_dests_once_in_order(block: tco_reassign_block(target: Rust))
     && tco_has_both_slot_dests(block: tco_reassign_block(target: Python))
     && tco_has_both_slot_dests(block: tco_reassign_block(target: Go))

@@ -166,7 +166,7 @@ fn binding_selection_class_equal(
 }
 
 // std's fold against the trichotomy, NOT against v2's answer.
-test fn occurrence_binding_fold_matches_the_declared_trichotomy_holds() -> Bool {
+test fn occurrence_binding_fold_matches_the_declared_trichotomy_holds() -> Bool  {
   fold(binding_selection_fixtures, init: true, f: fn(acc, row) {
     acc && binding_selection_class_equal(
       left: binding_std_class(names: row.candidate_names),
@@ -176,7 +176,7 @@ test fn occurrence_binding_fold_matches_the_declared_trichotomy_holds() -> Bool 
 }
 
 // v2's selection against the same independently specified trichotomy, NOT against std's answer.
-test fn lexical_selection_matches_the_declared_trichotomy_holds() -> Bool {
+test fn lexical_selection_matches_the_declared_trichotomy_holds() -> Bool  {
   fold(binding_selection_fixtures, init: true, f: fn(acc, row) {
     acc && binding_selection_class_equal(
       left: binding_lexical_class(names: row.candidate_names),
@@ -289,7 +289,7 @@ fn binding_inhabitance_real_population() -> List<LexicalBindingCandidate> {
 // INHABITANCE: the real producer emits a multi-candidate population of the shape the supplied
 // fixtures use, and the selection fold classifies THAT population -- so the fixtures are a reading
 // of a boundary the program actually reaches, not a designed field of their own.
-test fn the_real_chain_walk_emits_the_population_the_fixtures_supply_holds() -> Bool {
+test fn the_real_chain_walk_emits_the_population_the_fixtures_supply_holds() -> Bool  {
   let real_population = binding_inhabitance_real_population()
   (length(xs: real_population) == 2)
     && binding_selection_class_equal(

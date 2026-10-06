@@ -189,27 +189,27 @@ fn ccr_declared_any_lowers_no_loop() -> Bool {
 
 // (1) MAP OVER RECORDS READS A FIELD: the callback's binder `e` is the step's member formal, typed by the
 // domain element Pair, so `e.target` projects a declared field and infer raises no projection refusal.
-test fn ccr_map_over_records_reads_a_field() -> Bool {
+test fn ccr_map_over_records_reads_a_field() -> Bool  {
   ccr_map_records_reading().reads_field
 }
 
 // (2) A BAD FIELD REFUSES AT THE FIELD: the same map projecting a field Pair does not declare.
-test fn ccr_map_undeclared_field_refuses_at_the_field() -> Bool {
+test fn ccr_map_undeclared_field_refuses_at_the_field() -> Bool  {
   ccr_map_undeclared_field_reason() == ^infer_reason_field_not_declared_on_receiver
 }
 
 // (3) THE HEAD BINDS TO ITS OWN ROW, for every realized callback operation and for the piped spelling.
-test fn ccr_map_head_binds_its_row() -> Bool {
+test fn ccr_map_head_binds_its_row() -> Bool  {
   ccr_map_records_reading().binds_row
 }
 
-test fn ccr_piped_map_head_binds_its_row() -> Bool {
+test fn ccr_piped_map_head_binds_its_row() -> Bool  {
   ccr_piped_map_binds_its_row()
 }
 
 // all's body joins through &&, which infer does not yet derive (a separate frontier), so this control
 // asserts the binding and lowering, not infer acceptance.
-test fn ccr_all_head_binds_its_row() -> Bool {
+test fn ccr_all_head_binds_its_row() -> Bool  {
   ccr_all_binds_its_row()
 }
 
@@ -219,7 +219,7 @@ test fn ccr_all_head_binds_its_row() -> Bool {
 // (gunbc.recurring_failure_mode collection_callback_operation_unrealized_in_v2_lowering). The guard: a
 // module declaring its own `any` and calling it positionally assembles, and lowers to no Loop. Adding
 // any's row to v2.compiler.fold_lowering collection_roster_rows makes this control red.
-test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
+test fn ccr_declared_any_stays_an_ordinary_call() -> Bool  {
   ccr_declared_any_lowers_no_loop()
 }
 
@@ -228,7 +228,7 @@ test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
 // a snoc or append over it. This is the control that measures THIS lowering: no executor reads a
 // fold-realized Loop's encoding today (gunbc.recurring_failure_mode
 // fold_realized_loop_carries_no_iteration_direction), so an eval_steps figure measures the seed path.
-test fn ccr_map_step_conses_onto_its_accumulator() -> Bool {
+test fn ccr_map_step_conses_onto_its_accumulator() -> Bool  {
   ccr_map_records_reading().step_conses
 }
 
@@ -236,24 +236,24 @@ test fn ccr_map_step_conses_onto_its_accumulator() -> Bool {
 // order only right to left, and the order is a fact of the realization rather than of the encoding
 // (v2.compiler.fold_lowering FoldIterationDirection). On the real route the one map Loop's realized edge
 // derives IteratesRightToLeft. Red if the reader is deleted or map's synthesis is declared left to right.
-test fn ccr_map_loop_iterates_right_to_left() -> Bool {
+test fn ccr_map_loop_iterates_right_to_left() -> Bool  {
   ccr_map_records_reading().iterates_right_to_left
 }
 
 // The same reader at supplied realized paths: the authored fold and all run left to right; fold_list and
 // fold_list_right, which share one encoding, are told apart by their realized declarations.
-test fn ccr_fold_and_all_iterate_left_to_right() -> Bool {
+test fn ccr_fold_and_all_iterate_left_to_right() -> Bool  {
   ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_fold_shape"), want_right: false)
     && ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_all_shape"), want_right: false)
 }
 
-test fn ccr_fold_list_and_fold_list_right_are_told_apart() -> Bool {
+test fn ccr_fold_list_and_fold_list_right_are_told_apart() -> Bool  {
   ccr_direction_is(d: fold_realized_path_iteration_direction(path: ccr_head_path(head: ^fold_list)), want_right: false)
     && ccr_direction_is(d: fold_realized_path_iteration_direction(path: ccr_head_path(head: ^fold_list_right)), want_right: true)
 }
 
 // A path that names no collection fold derives no direction, rather than a default.
-test fn ccr_a_non_fold_path_has_no_direction() -> Bool {
+test fn ccr_a_non_fold_path_has_no_direction() -> Bool  {
   match fold_realized_path_iteration_direction(path: "std.algebra.collection_map_shape_not") {
     Absent => true
     Present { value: _ } => false

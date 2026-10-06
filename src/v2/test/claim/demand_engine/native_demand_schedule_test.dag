@@ -80,14 +80,14 @@ fn g_one_module_plan() -> NativeDemandPlan {
 // ONE MODULE WITH THREE DECLARATIONS IS FIVE DEMANDS, NOT ONE. The stages are separate demands
 // because a module whose resolution refuses must leave its identities blocked on a NAMED refused
 // prerequisite, and that is only observable if the prerequisite is its own demand.
-test fn a_module_derives_one_demand_per_stage_and_one_per_declaration_holds() -> Bool {
+test fn a_module_derives_one_demand_per_stage_and_one_per_declaration_holds() -> Bool  {
   length(xs: g_one_module_plan().bindings) == 5
 }
 
 // ONLY THE ROOT OF THE CHAIN IS READY AT THE START. If infer or eval were ready before resolve
 // settled, the edges would be decoration and the engine would admit work whose input does not
 // exist yet.
-test fn only_resolve_is_ready_before_anything_settles_holds() -> Bool {
+test fn only_resolve_is_ready_before_anything_settles_holds() -> Bool  {
   let plan = g_one_module_plan()
   length(xs: demand_engine_ready_queue(e: plan.engine)) == 1
     && g_state_is_ready(plan: plan, key: demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler())))
@@ -104,7 +104,7 @@ fn g_state_is_ready(plan: NativeDemandPlan, key: String) -> Bool {
 // that matters: when a module cannot be prepared, its identities must not read as "waiting" (which
 // means later) or as "ready" (which would evaluate against a tree that does not exist). They must
 // name what refused.
-test fn a_refused_inference_blocks_every_identity_on_the_named_prerequisite_holds() -> Bool {
+test fn a_refused_inference_blocks_every_identity_on_the_named_prerequisite_holds() -> Bool  {
   let plan = g_one_module_plan()
   let infer = native_demand_infer_identity(module: "p.a", compiler: g_compiler())
   let refused = demand_engine_settle(e: plan.engine, id: infer, state: DemandRefused)
@@ -153,7 +153,7 @@ fn g_eval_blocked_on(engine: DemandEngine<NativeDemandValue>, declaration: Strin
 // declaration rather than concatenating them, so `holds` in p.a and `holds` in p.b cannot collapse
 // into one key -- which would make the engine attach one to the other as an equal share-admitted
 // demand and evaluate ONE of them, reporting a verdict for a declaration it never ran.
-test fn one_declaration_name_in_two_modules_is_two_demands_holds() -> Bool {
+test fn one_declaration_name_in_two_modules_is_two_demands_holds() -> Bool  {
   demand_identity_key(id: native_demand_eval_identity(module: "p.a", declaration: "holds", compiler: g_compiler()))
     != demand_identity_key(id: native_demand_eval_identity(module: "p.b", declaration: "holds", compiler: g_compiler()))
 }
@@ -161,7 +161,7 @@ test fn one_declaration_name_in_two_modules_is_two_demands_holds() -> Bool {
 // THE STAGES OF ONE MODULE ARE DISTINCT DEMANDS TOO. They share a subject digest -- both are about
 // the module -- so only the artifact kind separates them, and a key that dropped the kind would
 // fuse resolve with infer.
-test fn the_two_module_stages_are_distinct_demands_holds() -> Bool {
+test fn the_two_module_stages_are_distinct_demands_holds() -> Bool  {
   demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
     != demand_identity_key(id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()))
 }
@@ -169,7 +169,7 @@ test fn the_two_module_stages_are_distinct_demands_holds() -> Bool {
 // THE COMPILER REACHES THE KEY. A declared input that fell out of the identity would be invisible
 // to every other claim here -- they all hold it constant -- and would surface only later, as a
 // cross-run lookup serving one compiler's answer for another's question. So it is asserted directly.
-test fn the_compiler_input_is_part_of_the_demand_identity_holds() -> Bool {
+test fn the_compiler_input_is_part_of_the_demand_identity_holds() -> Bool  {
   let other = DeclaredInput {
     ref: "probe_compiler" as NonEmptyStr,
     digest: Fnv1a64Structural { digest: "00000000000000c1" }
@@ -201,7 +201,7 @@ fn g_unknown_kind_identity() -> DemandIdentity {
 // disappear into the unattributed residual. A demand whose kind is outside the three contracts must
 // now be COUNTED as unclassified, because a count is what makes the rollup's completeness check
 // able to fail.
-test fn a_demand_kind_outside_the_contracts_is_counted_not_dropped_holds() -> Bool {
+test fn a_demand_kind_outside_the_contracts_is_counted_not_dropped_holds() -> Bool  {
   match native_demand_cost_class(identity: g_unknown_kind_identity()) {
     NativeCostUnclassified => true
     _ => false
@@ -211,7 +211,7 @@ test fn a_demand_kind_outside_the_contracts_is_counted_not_dropped_holds() -> Bo
 // THE THREE CONTRACT KINDS REACH THE PARTITION THE DRIVER REPORTS, and resolve and infer are ONE
 // exclusive row while eval is another -- which is the partition std.compiler_entry owns, not a
 // vocabulary this module invented.
-test fn resolve_and_infer_are_prepare_and_eval_is_eval_holds() -> Bool {
+test fn resolve_and_infer_are_prepare_and_eval_is_eval_holds() -> Bool  {
   g_is_prepare(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
     && g_is_prepare(id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()))
     && g_is_eval(
@@ -236,7 +236,7 @@ fn g_is_eval(id: DemandIdentity) -> Bool {
 // CLASSIFICATION IS A FUNCTION OF THE CONTRACT-OWNED KIND AND NOTHING ELSE. Two eval demands for
 // different declarations of different modules -- different subjects, different keys -- share a cost
 // class, because the class is about which judgment this is and not about which subject it names.
-test fn cost_class_follows_the_kind_not_the_subject_holds() -> Bool {
+test fn cost_class_follows_the_kind_not_the_subject_holds() -> Bool  {
   g_is_eval(id: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler()))
     && g_is_eval(id: native_demand_eval_identity(module: "p.b", declaration: "h9", compiler: g_compiler()))
 }
@@ -244,7 +244,7 @@ test fn cost_class_follows_the_kind_not_the_subject_holds() -> Bool {
 // A BLOCKED DEMAND PRODUCES NO TRANSITION, so it can contribute no sample. The previous shape could
 // not state this: a fabricated zero-duration sample and a demand that genuinely cost nothing are the
 // same number once the span is gone, and only the absence of a row distinguishes them.
-test fn a_blocked_demand_contributes_no_transition_holds() -> Bool {
+test fn a_blocked_demand_contributes_no_transition_holds() -> Bool  {
   let plan = g_one_module_plan()
   let refused = demand_engine_settle(
     e: plan.engine,
@@ -265,7 +265,7 @@ test fn a_blocked_demand_contributes_no_transition_holds() -> Bool {
 //
 // The previous seam would have FAILED this by construction, since its totals were folded from the
 // rendered stage word -- rename the word and the exclusive rows move.
-test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
+test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool  {
   let plan = g_one_module_plan()
   let settled = demand_engine_settle(
     e: plan.engine,
@@ -303,7 +303,7 @@ test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
 // AND THE COMPLETENESS CHECK CAN ACTUALLY FAIL. A transition whose kind no contract issues leaves the
 // rollup incomplete, which is the whole point of counting the unclassified rather than skipping it:
 // a check that cannot go red is a decoration (DESIGN section 4b).
-test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> Bool {
+test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> Bool  {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
     transitions: [NativeDemandTransition { identity: g_unknown_kind_identity(), elapsed: ElapsedObserved { nanos: 7 } }],
@@ -323,7 +323,7 @@ test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> B
 // representation lost the values -- and none of those is a duration. An earlier revision clamped it
 // to 0, which reports "this demand cost nothing" for a measurement that did not happen: the same
 // failure-as-value the unclassified kind arm exists to prevent, one field over.
-test fn a_reversed_elapsed_reading_is_invalid_not_zero_holds() -> Bool {
+test fn a_reversed_elapsed_reading_is_invalid_not_zero_holds() -> Bool  {
   match elapsed_observation(start: 900, finish: 100) {
     ElapsedObservationInvalid { start: st, finish: fi } => (st == 900) && (fi == 100)
     ElapsedObserved { nanos: _ } => false
@@ -334,7 +334,7 @@ test fn a_reversed_elapsed_reading_is_invalid_not_zero_holds() -> Bool {
 // classified count still rises -- the demand DID reach a cost class -- which is why invalid elapsed
 // is counted separately from unclassified kind: two independent ways an observation fails, and the
 // rollup must not conflate them.
-test fn an_invalid_elapsed_reading_makes_the_observation_incomplete_holds() -> Bool {
+test fn an_invalid_elapsed_reading_makes_the_observation_incomplete_holds() -> Bool  {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
     transitions: [
@@ -366,7 +366,7 @@ test fn an_invalid_elapsed_reading_makes_the_observation_incomplete_holds() -> B
 // the real clock would be asserting something about the host's timer instead -- and could not author
 // the constant-zero case at all, since a working clock refuses to produce it. Supplying the readings
 // is also what keeps the control from hanging: there is no timer to wait on.
-test fn a_run_whose_clock_never_advanced_is_not_progressed_holds() -> Bool {
+test fn a_run_whose_clock_never_advanced_is_not_progressed_holds() -> Bool  {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
     transitions: [
@@ -394,7 +394,7 @@ test fn a_run_whose_clock_never_advanced_is_not_progressed_holds() -> Bool {
 // to progress the run: progress is asked at the RUN and not per transition, because a single fast
 // transition may honestly observe a zero span on a coarse clock and refusing that would refuse real
 // work.
-test fn a_run_with_one_advancing_reading_is_progressed_holds() -> Bool {
+test fn a_run_with_one_advancing_reading_is_progressed_holds() -> Bool  {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
     transitions: [
@@ -416,7 +416,7 @@ test fn a_run_with_one_advancing_reading_is_progressed_holds() -> Bool {
 
 // AN EMPTY RUN IS VACUOUSLY PROGRESSED. Nothing executed, so there is no span to observe, and
 // reporting a defect here would be reporting one where there was simply no work.
-test fn a_run_with_no_transitions_is_vacuously_progressed_holds() -> Bool {
+test fn a_run_with_no_transitions_is_vacuously_progressed_holds() -> Bool  {
   let run = NativeDemandRun { engine: g_one_module_plan().engine, transitions: [], rows: [], scheduling_nanos: 0 }
   native_demand_observation_progressed(run: run)
 }
@@ -424,7 +424,7 @@ test fn a_run_with_no_transitions_is_vacuously_progressed_holds() -> Bool {
 // PROGRESS AND VALIDITY STAY SEPARATE FACTS. A reversed reading is invalid rather than zero, so it
 // contributes no span and leaves the run unprogressed AND incomplete -- two independent failures that
 // must not collapse into one counter, which is why progress is not folded into completeness.
-test fn an_invalid_reading_is_neither_progressed_nor_complete_holds() -> Bool {
+test fn an_invalid_reading_is_neither_progressed_nor_complete_holds() -> Bool  {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
     transitions: [
@@ -471,7 +471,7 @@ fn nds_transition(id: DemandIdentity) -> NativeDemandTransition {
 
 // A RESOLUTION FAILURE IS ONE REFUSED PREPARATION, counted at the infer demand that inherited it --
 // and the resolve transition beside it adds nothing. Before the repair this pair summed to 2.
-test fn a_resolution_failure_is_one_refused_preparation_holds() -> Bool {
+test fn a_resolution_failure_is_one_refused_preparation_holds() -> Bool  {
   let engine = demand_engine_settle(
     e: g_one_module_plan().engine,
     id: nds_infer_id(),
@@ -487,7 +487,7 @@ test fn a_resolution_failure_is_one_refused_preparation_holds() -> Bool {
 // THE RESOLVE TRANSITION ALONE CONTRIBUTES NOTHING, which is the half my second attempt got backwards.
 // It is not that resolve counts and infer does not; it is that preparation concludes at the infer
 // demand and the resolve transition is not a preparation outcome at all.
-test fn a_resolve_transition_alone_contributes_no_preparation_count_holds() -> Bool {
+test fn a_resolve_transition_alone_contributes_no_preparation_count_holds() -> Bool  {
   let engine = demand_engine_settle(
     e: g_one_module_plan().engine,
     id: nds_resolve_id(),
@@ -498,7 +498,7 @@ test fn a_resolve_transition_alone_contributes_no_preparation_count_holds() -> B
 }
 
 // AND EVAL TRANSITIONS NEVER MOVE A PREPARATION COUNT, however many there are.
-test fn eval_transitions_do_not_move_the_preparation_counts_holds() -> Bool {
+test fn eval_transitions_do_not_move_the_preparation_counts_holds() -> Bool  {
   let engine = demand_engine_settle(
     e: g_one_module_plan().engine,
     id: nds_infer_id(),
@@ -521,7 +521,7 @@ test fn eval_transitions_do_not_move_the_preparation_counts_holds() -> Bool {
 
 // THE COUNTS DO NOT MOVE WITH THE DECLARATION COUNT. Same module, same single preparation outcome,
 // whether the module declares one test or many -- which a per-transition count could not satisfy.
-test fn preparation_counts_do_not_scale_with_declarations_holds() -> Bool {
+test fn preparation_counts_do_not_scale_with_declarations_holds() -> Bool  {
   let engine = demand_engine_settle(
     e: g_one_module_plan().engine,
     id: nds_infer_id(),

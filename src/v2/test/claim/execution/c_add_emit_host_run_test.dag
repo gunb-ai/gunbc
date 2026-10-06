@@ -84,7 +84,7 @@ fn c_fixed_source_row(source_text: String) -> EmitHostRuntimeRow {
   }
 }
 
-test fn c_add_emit_host_green_run_holds() -> Bool {
+test fn c_add_emit_host_green_run_holds() -> Bool  {
   match run_emit_host(
     target: c_target_model(),
     source: c_run_source(),
@@ -104,7 +104,7 @@ test fn c_add_emit_host_green_run_holds() -> Bool {
   }
 }
 
-test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool {
+test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool  {
   match c_inject_fault_runtime_row() {
     HostRuntimeRowAbsent => false
     HostRuntimeRowPresent { row: row } =>
@@ -129,7 +129,7 @@ test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool {
   }
 }
 
-test fn c_add_emit_host_nonzero_exit_refuses_holds() -> Bool {
+test fn c_add_emit_host_nonzero_exit_refuses_holds() -> Bool  {
   match run_host_process(
     row: c_fixed_source_row(source_text: "int main(void) { return 3; }"),
     target: c_target_model(),
@@ -145,7 +145,7 @@ test fn c_add_emit_host_nonzero_exit_refuses_holds() -> Bool {
   }
 }
 
-test fn c_add_emit_host_byte_width_mismatch_refuses_holds() -> Bool {
+test fn c_add_emit_host_byte_width_mismatch_refuses_holds() -> Bool  {
   match run_host_process(
     row: c_fixed_source_row(source_text: "extern long write(int, const void *, unsigned long);\nint main(void) { unsigned char b[4] = {0, 0, 0, 0}; write(1, b, 4); return 0; }"),
     target: c_target_model(),

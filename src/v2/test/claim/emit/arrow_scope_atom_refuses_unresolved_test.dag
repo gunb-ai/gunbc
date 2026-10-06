@@ -138,7 +138,7 @@ fn probe_project(closure_body: Node) -> Outcome<TargetValueExpression> {
 data probe_unbound_atom: Node = probe_atom(id: ^arrow_scope_probe_unbound_name)
 
 // THE WALL: the name resolves in no scope, so the projection refuses at that atom.
-test fn arrow_scope_unresolved_atom_refuses_located() -> Bool {
+test fn arrow_scope_unresolved_atom_refuses_located() -> Bool  {
   match probe_project(closure_body: probe_unbound_atom) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -149,7 +149,7 @@ test fn arrow_scope_unresolved_atom_refuses_located() -> Bool {
 
 // THE POSITIVE CONTROL ON THE SAME ROUTE: an atom that spells a literal still projects as that literal,
 // so the refusal above is about the name, not the position.
-test fn arrow_scope_literal_atom_still_projects() -> Bool {
+test fn arrow_scope_literal_atom_still_projects() -> Bool  {
   match probe_project(closure_body: probe_atom(id: ^dag_token_kw_true)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -159,7 +159,7 @@ test fn arrow_scope_literal_atom_still_projects() -> Bool {
 // THE SAME ROUTE THROUGH THE PICK-TABLE ARM: an atom the one literal ladder maps to a binding
 // (target_value_expr_binding_ref_for_literal_atom) still projects, so the arrow-scope caller shares
 // that ladder rather than carrying its own copy of it.
-test fn arrow_scope_pick_table_atom_still_projects() -> Bool {
+test fn arrow_scope_pick_table_atom_still_projects() -> Bool  {
   match probe_project(closure_body: probe_atom(id: ^dag_rec_lit_nine)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -172,7 +172,7 @@ data probe_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
 // fixture, so it must refuse located at the atom -- the historical canonical-parameter table
 // (target_value_expr_binding_ref_for_canonical_param_atom, since deleted) may not admit it past a
 // scope miss.
-test fn arrow_scope_out_of_scope_canonical_param_refuses_located() -> Bool {
+test fn arrow_scope_out_of_scope_canonical_param_refuses_located() -> Bool  {
   match probe_project(closure_body: probe_out_of_scope_param_atom) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -191,7 +191,7 @@ fn probe_loop(body: Node) -> Node {
   node_synthetic(kind: ComputationNode { behavior: Loop }, children: [probe_positional(target: body)])
 }
 
-test fn loop_body_unresolved_atom_refuses_located() -> Bool {
+test fn loop_body_unresolved_atom_refuses_located() -> Bool  {
   match probe_project(closure_body: probe_loop(body: probe_unbound_atom)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -200,7 +200,7 @@ test fn loop_body_unresolved_atom_refuses_located() -> Bool {
   }
 }
 
-test fn loop_body_literal_atom_still_projects() -> Bool {
+test fn loop_body_literal_atom_still_projects() -> Bool  {
   match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_pick_lit_one))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -214,7 +214,7 @@ test fn loop_body_literal_atom_still_projects() -> Bool {
 // body_scope_binding_invalid. The body-shape gate decided scope; it no longer does.
 data probe_bound_loop: Node = probe_loop(body: probe_atom(id: ^fold_call_closure_acc))
 
-test fn loop_body_bound_param_projects_as_its_binding_ref() -> Bool {
+test fn loop_body_bound_param_projects_as_its_binding_ref() -> Bool  {
   match target_project_loop(
     arrow: probe_closure(body: probe_bound_loop),
     body: probe_bound_loop,
@@ -230,7 +230,7 @@ test fn loop_body_bound_param_projects_as_its_binding_ref() -> Bool {
   }
 }
 
-test fn loop_body_bound_param_projects_through_the_call_route() -> Bool {
+test fn loop_body_bound_param_projects_through_the_call_route() -> Bool  {
   match probe_project(closure_body: probe_bound_loop) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -243,7 +243,7 @@ test fn loop_body_bound_param_projects_through_the_call_route() -> Bool {
 // literal ladder.
 data probe_loop_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
 
-test fn loop_body_out_of_scope_canonical_param_refuses_located() -> Bool {
+test fn loop_body_out_of_scope_canonical_param_refuses_located() -> Bool  {
   match probe_project(closure_body: probe_loop(body: probe_loop_out_of_scope_param_atom)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -252,14 +252,14 @@ test fn loop_body_out_of_scope_canonical_param_refuses_located() -> Bool {
   }
 }
 
-test fn loop_body_pick_table_atom_still_projects() -> Bool {
+test fn loop_body_pick_table_atom_still_projects() -> Bool  {
   match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_rec_lit_nine))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn loop_body_bool_literal_atom_still_projects() -> Bool {
+test fn loop_body_bool_literal_atom_still_projects() -> Bool  {
   match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_token_kw_true))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

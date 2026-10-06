@@ -63,7 +63,7 @@ fn fold_resolved(
   )
 }
 
-test fn bare_authored_is_spelled_shorter_holds() -> Bool {
+test fn bare_authored_is_spelled_shorter_holds() -> Bool  {
   let row = fold_resolved(authored: fold_bare_marker())
   match row {
     ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: verdict } =>
@@ -76,7 +76,7 @@ test fn bare_authored_is_spelled_shorter_holds() -> Bool {
   }
 }
 
-test fn full_path_is_spelled_canonically_holds() -> Bool {
+test fn full_path_is_spelled_canonically_holds() -> Bool  {
   let row = fold_resolved(authored: fold_canonical_marker())
   match row {
     ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: verdict } =>
@@ -89,7 +89,7 @@ test fn full_path_is_spelled_canonically_holds() -> Bool {
   }
 }
 
-test fn partial_qualification_is_spelled_shorter_holds() -> Bool {
+test fn partial_qualification_is_spelled_shorter_holds() -> Bool  {
   match resolved_path_verdict(
     authored: fold_partial_marker(),
     canonical: fold_canonical_marker()
@@ -100,7 +100,7 @@ test fn partial_qualification_is_spelled_shorter_holds() -> Bool {
   }
 }
 
-test fn resolved_off_canonical_path_is_its_own_arm_holds() -> Bool {
+test fn resolved_off_canonical_path_is_its_own_arm_holds() -> Bool  {
   match resolved_path_verdict(
     authored: fold_off_path(),
     canonical: fold_canonical_marker()
@@ -111,7 +111,7 @@ test fn resolved_off_canonical_path_is_its_own_arm_holds() -> Bool {
   }
 }
 
-test fn unbound_is_unresolvable_holds() -> Bool {
+test fn unbound_is_unresolvable_holds() -> Bool  {
   let row = declaring_identity_spelling_unresolvable(
     authored: qualified_name_from_dotted_string(dotted: "ThisNameIsNotDeclaredInThisFixture"),
     cause: IdentityUnbound

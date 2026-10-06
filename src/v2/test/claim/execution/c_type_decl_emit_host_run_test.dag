@@ -98,7 +98,7 @@ fn ctd_expected_stdout_octets() -> List<Int> {
   [0, 5, 0, 0, 0]
 }
 
-test fn c_type_decl_emit_host_green_run_holds() -> Bool {
+test fn c_type_decl_emit_host_green_run_holds() -> Bool  {
   match run_emit_host(
     target: c_type_decl_target_model(),
     source: ctd_emit_decl_source(),
@@ -118,7 +118,7 @@ test fn c_type_decl_emit_host_green_run_holds() -> Bool {
   }
 }
 
-test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> Bool {
+test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> Bool  {
   match c_type_decl_inject_fault_runtime_row() {
     HostRuntimeRowAbsent => false
     HostRuntimeRowPresent { row: row } =>

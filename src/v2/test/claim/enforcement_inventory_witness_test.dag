@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data enforcement_live_witness_pattern: String = "enforcement_live_witness_test.dag"
 
-test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool {
+test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool  {
   match find_witness_admission_row_for_pattern(
     inventory: witness_admission_inventory_live(),
     pattern: enforcement_live_witness_pattern
@@ -45,13 +45,13 @@ test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool 
   }
 }
 
-test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool {
+test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool  {
   length(xs: witness_admission_inventory_live()) == length(xs: witness_exclusion_frontier)
 }
 
 data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness_test.dag"
 
-test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
+test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool  {
   match find_witness_admission_row_for_pattern(
     inventory: witness_admission_inventory_live(),
     pattern: enforcement_inventory_witness_pattern
@@ -69,7 +69,7 @@ test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
 // One whole-corpus acquisition, seven inventory assertions. The facts are genuinely global, but
 // acquiring the same `enforcement_corpus_facts` once per test identity made six of seven walks pure
 // repetition and safety-interrupted every row before verdict.
-test fn enforcement_inventory_global_receipt_holds() -> Bool {
+test fn enforcement_inventory_global_receipt_holds() -> Bool  {
   let inventory = lens_enforcement_inventory_live()
   inventory_reconciles_registry_both_ways(
     inventory: inventory,

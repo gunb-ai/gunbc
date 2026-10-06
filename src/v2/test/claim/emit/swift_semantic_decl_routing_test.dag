@@ -126,32 +126,32 @@ fn sdr_arrow_type() -> Node {
   anonymous_signature_arrow(domain_types: [sdr_atom_type(name: ^Int)], codomain: sdr_atom_type(name: ^Int), source: sdr_atom_type(name: ^Int))
 }
 
-test fn swift_record_emits_a_struct_with_let_members_holds() -> Bool {
+test fn swift_record_emits_a_struct_with_let_members_holds() -> Bool  {
   sdr_emits(name: ^Point, params: Empty, node: sdr_point_record(), golden: swift_point_golden)
     && !sdr_emits(name: ^Point, params: Empty, node: sdr_point_record(), golden: swift_point_wrong_golden)
 }
 
-test fn swift_nullary_coproduct_emits_one_case_list_holds() -> Bool {
+test fn swift_nullary_coproduct_emits_one_case_list_holds() -> Bool  {
   sdr_emits(name: ^Bool, params: Empty, node: sdr_bool_coproduct(), golden: swift_bool_golden)
     && !sdr_emits(name: ^Bool, params: Empty, node: sdr_bool_coproduct(), golden: swift_bool_wrong_golden)
 }
 
 // THE PAYLOAD IS A LABELED TUPLE, NOT RUST'S STRUCT-LIKE VARIANT. Swift has no `Case { field }` form,
 // so the Rust-shaped rendering is the discriminating wrong answer for this row.
-test fn swift_payload_coproduct_emits_associated_values_holds() -> Bool {
+test fn swift_payload_coproduct_emits_associated_values_holds() -> Bool  {
   sdr_emits(name: ^Answer, params: Empty, node: sdr_answer_coproduct(), golden: swift_answer_golden)
     && !sdr_emits(name: ^Answer, params: Empty, node: sdr_answer_coproduct(), golden: swift_answer_rust_shaped_golden)
 }
 
-test fn swift_generic_record_bounds_each_parameter_holds() -> Bool {
+test fn swift_generic_record_bounds_each_parameter_holds() -> Bool  {
   sdr_emits(name: ^Pair, params: [^K, ^V], node: sdr_pair_record(), golden: swift_pair_golden)
 }
 
-test fn swift_generic_coproduct_of_the_wire_decode_shape_emits_holds() -> Bool {
+test fn swift_generic_coproduct_of_the_wire_decode_shape_emits_holds() -> Bool  {
   sdr_emits(name: ^WireDecode, params: [^T], node: sdr_wire_decode_coproduct(), golden: swift_wire_decode_golden)
 }
 
-test fn swift_unsupported_shape_refuses_holds() -> Bool {
+test fn swift_unsupported_shape_refuses_holds() -> Bool  {
   match sdr_emit_text(name: ^Bogus, params: Empty, node: sdr_arrow_type()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

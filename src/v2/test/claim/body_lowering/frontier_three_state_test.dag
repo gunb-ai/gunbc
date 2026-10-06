@@ -110,30 +110,30 @@ fn rejected_disposition_keeps_its_reason() -> Symbol {
   }
 }
 
-test fn a_rejection_is_never_reported_as_lowered_holds() -> Bool {
+test fn a_rejection_is_never_reported_as_lowered_holds() -> Bool  {
   disposition_name(o: rejected_outcome()) == ^disposition_rejected
 }
 
-test fn a_rejection_carries_its_diagnostics_through_holds() -> Bool {
+test fn a_rejection_carries_its_diagnostics_through_holds() -> Bool  {
   rejected_disposition_keeps_its_reason() == ^frontier_three_state_unrelated_reason
 }
 
-test fn retention_behind_a_pending_diagnostic_is_still_retention_holds() -> Bool {
+test fn retention_behind_a_pending_diagnostic_is_still_retention_holds() -> Bool  {
   disposition_name(o: retention_behind_a_pending_diagnostic()) == ^disposition_wrapper_retained
 }
 
-test fn the_sole_retention_producer_reads_as_retention_holds() -> Bool {
+test fn the_sole_retention_producer_reads_as_retention_holds() -> Bool  {
   disposition_name(o: body_lower_wrapper_retained_shell(shell: probe_shell())) == ^disposition_wrapper_retained
 }
 
-test fn an_unrelated_diagnostic_does_not_manufacture_retention_holds() -> Bool {
+test fn an_unrelated_diagnostic_does_not_manufacture_retention_holds() -> Bool  {
   disposition_name(o: accept_with_unrelated_diagnostic()) == ^disposition_lowered
 }
 
-test fn a_clean_accept_is_lowered_holds() -> Bool {
+test fn a_clean_accept_is_lowered_holds() -> Bool  {
   disposition_name(o: clean_accept()) == ^disposition_lowered
 }
 
-test fn the_old_retention_reason_does_not_manufacture_retention_holds() -> Bool {
+test fn the_old_retention_reason_does_not_manufacture_retention_holds() -> Bool  {
   disposition_name(o: accept_with_the_old_retention_reason()) == ^disposition_lowered
 }

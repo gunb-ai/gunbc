@@ -158,19 +158,19 @@ fn dr_admits(tree: Node) -> Bool {
   }
 }
 
-test fn declared_return_int_with_a_bool_body_refuses_holds() -> Bool {
+test fn declared_return_int_with_a_bool_body_refuses_holds() -> Bool  {
   dr_refuses_at_return(tree: dr_arrow(return_type: dr_int(), body: dr_bool_literal()))
 }
 
-test fn declared_return_int_with_an_int_body_admits_holds() -> Bool {
+test fn declared_return_int_with_an_int_body_admits_holds() -> Bool  {
   dr_admits(tree: dr_arrow(return_type: dr_int(), body: dag_int_literal_fixture_one()))
 }
 
-test fn declared_return_bool_with_an_int_body_refuses_holds() -> Bool {
+test fn declared_return_bool_with_an_int_body_refuses_holds() -> Bool  {
   dr_refuses_at_return(tree: dr_arrow(return_type: dr_bool(), body: dag_int_literal_fixture_one()))
 }
 
-test fn declared_return_list_of_bool_with_an_int_list_body_refuses_holds() -> Bool {
+test fn declared_return_list_of_bool_with_an_int_list_body_refuses_holds() -> Bool  {
   dr_refuses_at_return(
     tree: dr_arrow(
       return_type: dr_list_of(element: dr_bool()),
@@ -179,7 +179,7 @@ test fn declared_return_list_of_bool_with_an_int_list_body_refuses_holds() -> Bo
   )
 }
 
-test fn declared_return_list_of_int_with_an_int_list_body_admits_holds() -> Bool {
+test fn declared_return_list_of_int_with_an_int_list_body_admits_holds() -> Bool  {
   dr_admits(
     tree: dr_arrow(
       return_type: dr_list_of(element: dr_int()),
@@ -190,11 +190,11 @@ test fn declared_return_list_of_int_with_an_int_list_body_admits_holds() -> Bool
 
 // THE DECLARED SIDE IS READ AT ITS DENOTATION. `Bool` as written is not the value type `true`
 // derives (v2.std.logic bool_node); comparing the spelling would refuse every Bool-returning fn.
-test fn declared_return_bool_with_a_bool_body_admits_holds() -> Bool {
+test fn declared_return_bool_with_a_bool_body_admits_holds() -> Bool  {
   dr_admits(tree: dr_arrow(return_type: dr_bool(), body: dr_bool_literal()))
 }
 
-test fn declared_return_list_of_bool_with_a_bool_list_body_admits_holds() -> Bool {
+test fn declared_return_list_of_bool_with_a_bool_list_body_admits_holds() -> Bool  {
   dr_admits(
     tree: dr_arrow(
       return_type: dr_list_of(element: dr_bool()),
@@ -205,7 +205,7 @@ test fn declared_return_list_of_bool_with_a_bool_list_body_admits_holds() -> Boo
 
 // A RETURN THE BINDING JOIN DOES NOT DENOTE IS COUNTED, NOT REFUSED AND NOT SILENT. Before this
 // relation judged returns, such an Arrow was admitted with no diagnostic at all.
-test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> Bool {
+test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: dr_arrow(return_type: dag_type_atom_node(identity: ^dr_type_undenoted), body: dr_bool_literal()))) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -216,7 +216,7 @@ test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> B
 // A RETURN SPELLED AS THE FN'S OWN TYPE VARIABLE IS COUNTED, NOT COMPARED. `fn f<T>() -> T { 1 }`
 // must not refuse because the Atom `T` is not the Atom `Int`; the relation holds no instance for T,
 // so the obligation is UndecidableGenericFormal on the Accepted path.
-test fn declared_return_type_variable_is_counted_generic_formal_holds() -> Bool {
+test fn declared_return_type_variable_is_counted_generic_formal_holds() -> Bool  {
   match infer(
     tree: claim_resolved_tree_without_declarations(
       root: dr_generic_arrow(
@@ -246,7 +246,7 @@ fn dr_return_obligation(declared: Node, produced: Node, type_variables: List<Sym
 
 // THE CLASS #12441 REPAIRS ON THE SEED, DECIDED BY THE ONE v2 RELATION: two instantiations of one
 // generic coproduct at distinct type arguments are distinct types.
-test fn relation_refuses_outcome_of_record_at_outcome_of_node_holds() -> Bool {
+test fn relation_refuses_outcome_of_record_at_outcome_of_node_holds() -> Bool  {
   match declared_type_inhabitance(
     obligation: dr_return_obligation(
       declared: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_node)),
@@ -260,7 +260,7 @@ test fn relation_refuses_outcome_of_record_at_outcome_of_node_holds() -> Bool {
   }
 }
 
-test fn relation_admits_outcome_of_node_at_outcome_of_node_holds() -> Bool {
+test fn relation_admits_outcome_of_node_at_outcome_of_node_holds() -> Bool  {
   match declared_type_inhabitance(
     obligation: dr_return_obligation(
       declared: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_node)),
@@ -274,7 +274,7 @@ test fn relation_admits_outcome_of_node_at_outcome_of_node_holds() -> Bool {
   }
 }
 
-test fn relation_counts_outcome_of_a_type_variable_as_generic_formal_holds() -> Bool {
+test fn relation_counts_outcome_of_a_type_variable_as_generic_formal_holds() -> Bool  {
   match declared_type_inhabitance(
     obligation: dr_return_obligation(
       declared: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_param_t)),

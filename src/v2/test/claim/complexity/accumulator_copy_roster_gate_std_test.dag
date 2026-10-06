@@ -26,6 +26,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data std_tranche_string_carrier_debt_count: Int = 7
 
-test fn roster_std_change_dag_zero_suspects_within_ratchet() -> Bool {
+test fn roster_std_change_dag_zero_suspects_within_ratchet() -> Bool  {
   file_gate(path: "dag/std/change.dag", refusal_ceiling: 13)
 }

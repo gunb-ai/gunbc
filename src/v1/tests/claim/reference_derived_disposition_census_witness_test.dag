@@ -66,21 +66,21 @@ fn fixture_disposition(registry: Map<String, ItemInfo>, export_sets: Map<String,
   ))
 }
 
-test fn candidate_the_registry_does_not_know_is_registry_absent() -> Bool {
+test fn candidate_the_registry_does_not_know_is_registry_absent() -> Bool  {
   fixture_disposition(registry: empty_map(), export_sets: empty_map()) == "registry-absent"
 }
 
-test fn candidate_provided_by_this_module_is_own_module() -> Bool {
+test fn candidate_provided_by_this_module_is_own_module() -> Bool  {
   fixture_disposition(registry: fixture_registry(name: "PeerName", module_name: "fixture.consumer"), export_sets: empty_map())
     == "own-module"
 }
 
-test fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> Bool {
+test fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> Bool  {
   fixture_disposition(registry: fixture_registry(name: "PeerName", module_name: "fixture.provider"), export_sets: empty_map())
     == "export-proof-failed"
 }
 
-test fn cross_module_candidate_with_export_proof_survives() -> Bool {
+test fn cross_module_candidate_with_export_proof_survives() -> Bool  {
   reference_derived_candidate_disposition(
     emit_info: empty_emit_graph_info(),
     name: "PeerName",
@@ -96,7 +96,7 @@ test fn cross_module_candidate_with_export_proof_survives() -> Bool {
   ) == CandidateSurvived { provider_module: "fixture.provider" }
 }
 
-test fn census_counts_each_arm_separately() -> Bool {
+test fn census_counts_each_arm_separately() -> Bool  {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "a", disposition: CandidateSurvived { provider_module: "p" } },
     ReferenceDerivedCandidateRow { module_name: "m", name: "b", disposition: CandidateOwnModule },
@@ -132,7 +132,7 @@ fn fixture_variant_type_summaries() -> Map<String, TypeSummary> {
   })
 }
 
-test fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> Bool {
+test fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> Bool  {
   reference_derived_candidate_disposition(
     emit_info: empty_emit_graph_info(),
     name: "V",
@@ -163,7 +163,7 @@ fn fixture_colliding_variant_type_summaries() -> Map<String, TypeSummary> {
   })
 }
 
-test fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> Bool {
+test fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> Bool  {
   reference_derived_candidate_disposition(
     emit_info: empty_emit_graph_info(),
     name: "V",
@@ -182,7 +182,7 @@ test fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> Boo
 // A TYPE POSITION CANNOT HOLD A VARIANT. The same spelling `V` that the whole-corpus type summaries
 // know as a variant, referenced from one of the module's type positions, is decided by the registry
 // arm -- here registry-absent, never delegated to an enum the position could not name.
-test fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> Bool {
+test fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> Bool  {
   reference_derived_disposition_name(disposition: reference_derived_candidate_disposition(
     emit_info: empty_emit_graph_info(),
     name: "V",
@@ -198,11 +198,11 @@ test fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> 
   )) == "registry-absent"
 }
 
-test fn an_unresolved_parent_is_not_reported_as_registry_absent() -> Bool {
+test fn an_unresolved_parent_is_not_reported_as_registry_absent() -> Bool  {
   reference_derived_disposition_name(disposition: CandidateVariantParentUnresolved) != "registry-absent"
 }
 
-test fn non_variant_name_still_answers_registry_absent() -> Bool {
+test fn non_variant_name_still_answers_registry_absent() -> Bool  {
   reference_derived_disposition_name(disposition: reference_derived_candidate_disposition(
     emit_info: empty_emit_graph_info(),
     name: "NotAVariant",
@@ -218,7 +218,7 @@ test fn non_variant_name_still_answers_registry_absent() -> Bool {
   )) == "registry-absent"
 }
 
-test fn only_export_proof_failed_produces_a_diagnostic() -> Bool {
+test fn only_export_proof_failed_produces_a_diagnostic() -> Bool  {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "a", disposition: CandidateSurvived { provider_module: "p" } },
     ReferenceDerivedCandidateRow { module_name: "m", name: "b", disposition: CandidateOwnModule },
@@ -229,7 +229,7 @@ test fn only_export_proof_failed_produces_a_diagnostic() -> Bool {
   reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 1
 }
 
-test fn the_export_unproven_diagnostic_is_advisory() -> Bool {
+test fn the_export_unproven_diagnostic_is_advisory() -> Bool  {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
   ]
@@ -239,14 +239,14 @@ test fn the_export_unproven_diagnostic_is_advisory() -> Bool {
 
 data registry_absent_not_surfaced_note: String = "The RED that keeps registry-absent OUT of the diagnostic stream. Measured over the regen seed closure, that arm returns 473 rows over 63 names dominated by Rust target-language tokens -- Vec, bool, Option, i64, empty_map -- which the candidate walk proposes by tokenizing the module's own emitted Rust and for which no .dag provider can ever exist. Wiring it would print a false report on every build. This test fails the moment someone adds that arm to reference_derived_row_diagnostics, which is the intended wall until the candidate walk stops proposing target-language vocabulary."
 
-test fn registry_absent_produces_no_diagnostic() -> Bool {
+test fn registry_absent_produces_no_diagnostic() -> Bool  {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "bool", disposition: CandidateRegistryAbsent }
   ]
   reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 0
 }
 
-test fn the_export_unproven_message_names_its_own_remedy() -> Bool {
+test fn the_export_unproven_message_names_its_own_remedy() -> Bool  {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
   ]

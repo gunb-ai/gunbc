@@ -39,7 +39,7 @@ fn lines_use_enum_copy_binding(lines: List<TargetSemanticDeclDecorationLine>) ->
   )
 }
 
-test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool {
+test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool  {
   match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_decl_coproduct_decoration_lines(

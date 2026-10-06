@@ -294,17 +294,17 @@ fn witness_partition_fold_two_units() -> List<CompilationUnit> {
   }
 }
 
-test fn witness_r3_header_source_object_paths() -> Bool {
+test fn witness_r3_header_source_object_paths() -> Bool  {
   c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
     && c_unit_source_path(unit_id: witness_unit_one) == "cu-one.c"
     && c_unit_object_path(unit_id: witness_unit_one) == "cu-one.o"
 }
 
-test fn witness_r3_include_directive_per_dep() -> Bool {
+test fn witness_r3_include_directive_per_dep() -> Bool  {
   c_include_directive_for_dep(dep_id: witness_unit_two) == "#include \"cu-two.h\""
 }
 
-test fn witness_r3_spelling_from_partition_fold() -> Bool {
+test fn witness_r3_spelling_from_partition_fold() -> Bool  {
   let units = witness_partition_fold_two_units()
   let point_def = witness_point_struct_conj_body()
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
@@ -319,7 +319,7 @@ test fn witness_r3_spelling_from_partition_fold() -> Bool {
   }
 }
 
-test fn witness_r3_unit_one_spelling_paths() -> Bool {
+test fn witness_r3_unit_one_spelling_paths() -> Bool  {
   let units = witness_partition_fold_two_units()
   match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
@@ -333,7 +333,7 @@ test fn witness_r3_unit_one_spelling_paths() -> Bool {
   }
 }
 
-test fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
+test fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool  {
   let dag = witness_link_cyclic_dag()
   let assignment = witness_link_cyclic_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -351,7 +351,7 @@ test fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
   }
 }
 
-test fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
+test fn witness_r4_accepts_module_scc_split_across_units() -> Bool  {
   let dag = witness_mutual_recursive_dag()
   let assignment = witness_module_scc_split_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -370,7 +370,7 @@ test fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
   }
 }
 
-test fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
+test fn witness_r4_accepts_triangle_module_scc_split() -> Bool  {
   let dag = witness_triangle_dag()
   let assignment = witness_two_unit_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -387,7 +387,7 @@ test fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
   }
 }
 
-test fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
+test fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool  {
   let dag = witness_by_value_type_cycle_dag()
   let assignment = witness_by_value_type_cycle_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -405,7 +405,7 @@ test fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
   }
 }
 
-test fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
+test fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool  {
   let dag = witness_pointer_type_cycle_dag()
   let assignment = witness_pointer_type_cycle_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -422,7 +422,7 @@ test fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
   }
 }
 
-test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
+test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool  {
   match partition_fold_outcome_with_closure_fuel(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment(),
@@ -441,7 +441,7 @@ test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
 // The positive control beside the zero-fuel refusal above: the same inputs, the default fuel, and
 // both units built. It was named for the List-returning compat wrapper it used to stand against;
 // that wrapper is deleted, so the name now says what the claim actually asserts.
-test fn witness_partition_fold_outcome_yields_both_units() -> Bool {
+test fn witness_partition_fold_outcome_yields_both_units() -> Bool  {
   match partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
@@ -462,47 +462,47 @@ test fn witness_partition_fold_outcome_yields_both_units() -> Bool {
 // contend for one .o); and a C-source control proving the rendered include remains exactly one
 // directive with no embedded newline and no premature string termination.
 
-test fn witness_c_basename_positive_control_unchanged() -> Bool {
+test fn witness_c_basename_positive_control_unchanged() -> Bool  {
   (c_translation_unit_basename(unit_id: witness_unit_one) as String) == "cu-one"
     && c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
 }
 
-test fn witness_c_basename_encodes_slash() -> Bool {
+test fn witness_c_basename_encodes_slash() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_slash) as String) == "a%00002fb"
 }
 
-test fn witness_c_basename_encodes_backslash() -> Bool {
+test fn witness_c_basename_encodes_backslash() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_backslash) as String) == "a%00005cb"
 }
 
-test fn witness_c_basename_encodes_quote() -> Bool {
+test fn witness_c_basename_encodes_quote() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_quote) as String) == "a%000022b"
 }
 
-test fn witness_c_basename_encodes_newline() -> Bool {
+test fn witness_c_basename_encodes_newline() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_newline) as String) == "a%00000ab"
 }
 
-test fn witness_c_basename_encodes_carriage_return() -> Bool {
+test fn witness_c_basename_encodes_carriage_return() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00000db"
 }
 
-test fn witness_c_basename_encodes_nul() -> Bool {
+test fn witness_c_basename_encodes_nul() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
 }
 
-test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
+test fn witness_c_basename_kills_parent_directory_segments() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
     && (c_translation_unit_basename(unit_id: hostile_dotdot) as String) == "%00002e."
     && (c_translation_unit_basename(unit_id: hostile_parent_dir) as String) == "%00002e.%00002fpeer"
 }
 
-test fn witness_c_basename_injective_on_escape_marker() -> Bool {
+test fn witness_c_basename_injective_on_escape_marker() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_percent) as String) == "a%000025b"
     && (c_translation_unit_basename(unit_id: collide_left) as String) != (c_translation_unit_basename(unit_id: collide_right) as String)
 }
 
-test fn witness_c_basename_output_always_safe() -> Bool {
+test fn witness_c_basename_output_always_safe() -> Bool  {
   c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_parent_dir) as String)
     && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_quote) as String)
     && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_newline) as String)
@@ -514,7 +514,7 @@ test fn witness_c_basename_output_always_safe() -> Bool {
     && !c_translation_unit_basename_safe(value: "")
 }
 
-test fn witness_c_include_directive_stays_single_directive() -> Bool {
+test fn witness_c_include_directive_stays_single_directive() -> Bool  {
   let hostile_include = c_include_directive_for_dep(dep_id: hostile_newline)
   let quote_include = c_include_directive_for_dep(dep_id: hostile_quote)
   hostile_include == "#include \"a%00000ab.h\""
@@ -523,7 +523,7 @@ test fn witness_c_include_directive_stays_single_directive() -> Bool {
     && !string_contains(s: quote_include, pattern: "\"a\"")
 }
 
-test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
+test fn witness_c_object_path_shares_unit_id_spelling() -> Bool  {
   c_unit_object_path(unit_id: hostile_slash) == "a%00002fb.o"
     && c_unit_header_path(unit_id: hostile_slash) == "a%00002fb.h"
     && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
@@ -545,6 +545,6 @@ test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
 // boundary was declared, triggered and discharged rather than quietly dropped; it makes no live
 // claim and names no residual gap.
 
-test fn witness_c_basename_escape_branch_is_codepoint_generic() -> Bool {
+test fn witness_c_basename_escape_branch_is_codepoint_generic() -> Bool  {
   (c_translation_unit_basename(unit_id: hostile_high_codepoint) as String) == "a%0000e9b"
 }

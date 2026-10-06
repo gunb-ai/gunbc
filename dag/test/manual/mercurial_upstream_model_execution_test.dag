@@ -730,6 +730,6 @@ fn mercurial_r0_typed_execution_read_back() -> String {
   }
 }
 
-test fn witness_mercurial_cli_fixture_projects_and_independently_reads_back() -> Bool {
+test fn witness_mercurial_cli_fixture_projects_and_independently_reads_back() -> Bool  {
   mercurial_r0_typed_execution_read_back() == mercurial_r0_fixture_expected_execution_receipt()
 }

@@ -25,7 +25,7 @@ data carried_catalog_specimen: Node = bash_build_command_from_lits(
 // adds a carried catalog count to the row's own count instead of walking the rules node per leaf;
 // if the rules node gained or lost an edge and the budget did not follow, the serializer would run
 // under a recursion bound that belongs to a different node. Red: change either side's shape.
-test fn carried_rules_budget_equals_the_rules_node_count() -> Bool {
+test fn carried_rules_budget_equals_the_rules_node_count() -> Bool  {
   match bash_fold_relation_row_witness(emitted: carried_catalog_specimen, lhs: ^bash_production_fold_command) {
     Holds { value: row } =>
       bash_fold_translation_rules_budget_for_row(row: row)
@@ -42,7 +42,7 @@ test fn carried_rules_budget_equals_the_rules_node_count() -> Bool {
 // produce the same bytes with no diagnostics. The differential is what licenses dropping the second
 // selection: a selected-row entry that skipped a token, mis-bounded the recursion or took a
 // different row goes red here rather than in an emitted script.
-test fn selected_row_route_spells_what_the_generic_route_spells() -> Bool {
+test fn selected_row_route_spells_what_the_generic_route_spells() -> Bool  {
   match bash_fold_relation_row_witness(emitted: carried_catalog_specimen, lhs: ^bash_production_fold_command) {
     Holds { value: row } =>
       match bash_fold_target_model_for_row(

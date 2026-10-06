@@ -42,25 +42,25 @@ import v2.workflow.ci_placement {
   placement_shadow_report_matches_roster
 }
 
-test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
+test fn ci_placement_gauntlet_always_admissible_holds() -> Bool  {
   placement_is_admissible(p: Gauntlet { reason: "awaiting D2 warm-cost measurement" })
 }
 
-test fn ci_placement_valid_pr_tier_admissible_holds() -> Bool {
+test fn ci_placement_valid_pr_tier_admissible_holds() -> Bool  {
   placement_is_admissible(p: PrTier {
     warm_cost: WarmCostReceipt { measured_ms: 1600, run_ref: "synthetic-warm-receipt" },
     classification: Hermetic
   })
 }
 
-test fn ci_placement_over_budget_pr_tier_refused_holds() -> Bool {
+test fn ci_placement_over_budget_pr_tier_refused_holds() -> Bool  {
   !placement_is_admissible(p: PrTier {
     warm_cost: WarmCostReceipt { measured_ms: 6000, run_ref: "synthetic-over-budget" },
     classification: Hermetic
   })
 }
 
-test fn ci_placement_unclassified_pr_tier_refused_holds() -> Bool {
+test fn ci_placement_unclassified_pr_tier_refused_holds() -> Bool  {
   !placement_is_admissible(p: PrTier {
     warm_cost: WarmCostReceipt { measured_ms: 100, run_ref: "synthetic-unclassified" },
     classification: Unclassified
@@ -147,7 +147,7 @@ fn placement_shadow_missing_identity() -> CommitCheckEnrollment {
   }
 }
 
-test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds() -> Bool {
+test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds() -> Bool  {
   placement_shadow_report_matches_roster(
     roster: commit_gate_roster,
     report: placement_shadow_report(
@@ -157,7 +157,7 @@ test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds()
   )
 }
 
-test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bool {
+test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bool  {
   let shared_source = "src-sha-2026-07-27"
   let shared_binary = "bin-sha-2026-07-27"
   let shared_roster = "roster-sha-2026-07-27"
@@ -226,7 +226,7 @@ test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bo
   }
 }
 
-test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
+test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool  {
   let shared_source = "src-sha-2026-07-27"
   let shared_binary = "bin-sha-2026-07-27"
   let shared_roster = "roster-sha-2026-07-27"
@@ -298,7 +298,7 @@ test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
   }
 }
 
-test fn ci_placement_shadow_unknown_cold_and_missing_cost_stay_incomplete_holds() -> Bool {
+test fn ci_placement_shadow_unknown_cold_and_missing_cost_stay_incomplete_holds() -> Bool  {
   let identity = placement_shadow_entry_wide_identity()
   let shared_source = "src-sha-2026-07-27"
   let shared_binary = "bin-sha-2026-07-27"

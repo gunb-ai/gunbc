@@ -83,7 +83,7 @@ fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
   }
 }
 
-test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
+test fn compile_eval_bool_reaches_node_value_holds() -> Bool  {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_bool_literal_pin),
     mode: Eval { runtime: v2_eval_bool_literal_pin }
@@ -109,7 +109,7 @@ test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
 // a derivation rule for literal atoms lands, at which point this flips back to asserting the value
 // and the fixture path stops being the only green one.
 
-test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool {
+test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool  {
   match compile(
     source: claim_resolved_tree_without_declarations(root: v2_eval_bool_literal_pin),
     mode: Eval { runtime: v2_eval_bool_literal_pin }
@@ -119,7 +119,7 @@ test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool {
   }
 }
 
-test fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
+test fn compile_eval_unit_unrepresentable_red_holds() -> Bool  {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_unit_literal_pin),
     mode: Eval { runtime: v2_eval_unit_literal_pin }

@@ -142,7 +142,7 @@ fn cld_emits(delimiting_closed: Bool, golden: String) -> Bool {
 // differs, and it is exactly one closing token of difference. The cross arms are
 // the RED: a closing target must not emit the self-delimiting text, and a
 // self-delimiting target must not acquire a close it never declared.
-test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
+test fn conditional_close_is_derived_from_declared_discipline() -> Bool  {
   cld_emits(delimiting_closed: true, golden: conditional_closed_golden)
     && cld_emits(delimiting_closed: false, golden: conditional_self_delimiting_golden)
     && !cld_emits(delimiting_closed: true, golden: conditional_self_delimiting_golden)
@@ -152,7 +152,7 @@ test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
 // Production Rust is wired to close, so it must agree with the closed arm rather
 // than merely being capable of it. Without this, the mechanism could be correct
 // while the Rust target still declared nothing.
-test fn production_rust_conditional_declares_a_close() -> Bool {
+test fn production_rust_conditional_declares_a_close() -> Bool  {
   match cld_emit(projection: rust_value_expression_projection()) {
     Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
     Rejected { diagnostics: _ } => false
@@ -196,7 +196,7 @@ fn cld_decodes(discriminant: Symbol) -> Bool {
 // closing target decode one token short, and the defect would surface as
 // unbalanced output far from the decoder that caused it. The self-delimiting
 // positive control keeps this from passing because decode is simply broken.
-test fn unknown_delimiting_discriminant_refuses() -> Bool {
+test fn unknown_delimiting_discriminant_refuses() -> Bool  {
   cld_decodes(discriminant: ^conditional_self_delimiting)
     && !cld_decodes(discriminant: ^conditional_delimiting_never_defined)
     && !cld_decodes(discriminant: ^some_symbol_that_names_no_delimiting_variant)

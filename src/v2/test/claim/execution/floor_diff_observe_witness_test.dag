@@ -27,28 +27,28 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_ci_policy_observation_succeeds() -> Bool {
+test fn witness_ci_policy_observation_succeeds() -> Bool  {
   match floor_observe_git_diff_unified_for_ci() {
     UnifiedDiffOk { text: _ } => true
     UnifiedDiffFail { reason: _ } => false
   }
 }
 
-test fn witness_invalid_base_fails_closed() -> Bool {
+test fn witness_invalid_base_fails_closed() -> Bool  {
   match floor_run_git_diff_unified(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     UnifiedDiffFail { reason: _ } => true
     UnifiedDiffOk { text: _ } => false
   }
 }
 
-test fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
+test fn witness_ci_policy_name_status_observation_succeeds() -> Bool  {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => true
     NameStatusDiffFail { reason: _ } => false
   }
 }
 
-test fn witness_invalid_base_name_status_fails_closed() -> Bool {
+test fn witness_invalid_base_name_status_fails_closed() -> Bool  {
   match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     NameStatusDiffFail { reason: _ } => true
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
@@ -67,7 +67,7 @@ data base_census_present_path_content: String = "test fn witness_present_path_yi
 // that stops there never reaches a verdict. Production (`floor_run_base_test_decl_census`)
 // remains the git caller.
 
-test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
+test fn witness_invalid_base_declaration_census_fails_closed() -> Bool  {
   match floor_base_test_decl_census_from_listing(
     base: "__gunbc_invalid_diff_base__",
     paths: [base_census_present_path],
@@ -81,7 +81,7 @@ test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
   }
 }
 
-test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
+test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool  {
   let census = floor_base_test_decl_census_from_listing(
     base: "HEAD",
     paths: [base_census_absent_path],
@@ -100,7 +100,7 @@ test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
   }
 }
 
-test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
+test fn witness_present_path_yields_declared_test_fn_names() -> Bool  {
   let census = floor_base_test_decl_census_from_listing(
     base: "HEAD",
     paths: [base_census_present_path],

@@ -180,7 +180,7 @@ fn bind_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn bind_emit_matches_serialize_holds() -> Bool {
+test fn bind_emit_matches_serialize_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: bind_target_model,
     emitted: bind_emitted_root
@@ -195,7 +195,7 @@ test fn bind_emit_matches_serialize_holds() -> Bool {
   }
 }
 
-test fn bind_ingest_via_coerce_matches_canonical() -> Bool {
+test fn bind_ingest_via_coerce_matches_canonical() -> Bool  {
   match coerce_grounded_node(
     source: bind_emitted_root,
     tree: bind_inferred_tree,

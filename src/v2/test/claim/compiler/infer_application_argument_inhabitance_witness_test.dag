@@ -188,7 +188,7 @@ fn inhabitance_formal_unresolved_tree() -> Node {
   )
 }
 
-test fn infer_incompatible_argument_refuses_holds() -> Bool {
+test fn infer_incompatible_argument_refuses_holds() -> Bool  {
   match infer(
     tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true)))
   ) {
@@ -201,14 +201,14 @@ test fn infer_incompatible_argument_refuses_holds() -> Bool {
   }
 }
 
-test fn infer_compatible_argument_admits_holds() -> Bool {
+test fn infer_compatible_argument_admits_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_int_literal_fixture_one()))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
+test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool  {
   match infer(
     tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(
       arg: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
@@ -223,7 +223,7 @@ test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
   }
 }
 
-test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
+test fn infer_generic_formal_is_counted_frontier_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -234,7 +234,7 @@ test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
   }
 }
 
-test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
+test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool  {
   match inhabitance_node_undecidable_reason(
     n: inhabitance_cardinality_type(
       inner: dag_type_atom_node(identity: ^dag_binding_type_int)
@@ -252,7 +252,7 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
 // (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
 // judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
 // infer_descent_not_derived.
-test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool {
+test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -264,7 +264,7 @@ test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool 
   }
 }
 
-test fn infer_positional_surplus_refuses_holds() -> Bool {
+test fn infer_positional_surplus_refuses_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_arity_unmodeled_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
@@ -275,7 +275,7 @@ test fn infer_positional_surplus_refuses_holds() -> Bool {
   }
 }
 
-test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
+test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_formal_unresolved_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -345,7 +345,7 @@ fn inhabitance_declared_formal_tree(declared: Node, arg: Node) -> Node {
   )
 }
 
-test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_holds() -> Bool {
+test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_holds() -> Bool  {
   match infer(
     tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
       declared: inhabitance_nominal_product_type_node(),
@@ -361,7 +361,7 @@ test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_
   }
 }
 
-test fn inhabitance_product_produced_at_a_collection_formal_refuses_holds() -> Bool {
+test fn inhabitance_product_produced_at_a_collection_formal_refuses_holds() -> Bool  {
   match infer(
     tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
       declared: inhabitance_collection_type_node(),
@@ -412,7 +412,7 @@ fn aai_refused(o: DeclaredTypeObligation) -> Bool {
   }
 }
 
-test fn inhabitance_refinement_argument_widens_to_its_declared_carrier_holds() -> Bool {
+test fn inhabitance_refinement_argument_widens_to_its_declared_carrier_holds() -> Bool  {
   aai_inhabits_by_carrier(o: aai_argument_obligation(
     produced: ^aai_pos,
     carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },
@@ -420,11 +420,11 @@ test fn inhabitance_refinement_argument_widens_to_its_declared_carrier_holds() -
   ))
 }
 
-test fn inhabitance_refinement_argument_without_a_carrier_refuses_holds() -> Bool {
+test fn inhabitance_refinement_argument_without_a_carrier_refuses_holds() -> Bool  {
   aai_refused(o: aai_argument_obligation(produced: ^aai_pos, carrier: Absent, declared: ^dag_binding_type_int))
 }
 
-test fn inhabitance_refinement_argument_widens_one_step_only_holds() -> Bool {
+test fn inhabitance_refinement_argument_widens_one_step_only_holds() -> Bool  {
   aai_refused(o: aai_argument_obligation(
     produced: ^aai_pos2,
     carrier: Present { value: dag_type_atom_node(identity: ^aai_pos) },
@@ -432,7 +432,7 @@ test fn inhabitance_refinement_argument_widens_one_step_only_holds() -> Bool {
   ))
 }
 
-test fn inhabitance_sibling_refinement_argument_refuses_holds() -> Bool {
+test fn inhabitance_sibling_refinement_argument_refuses_holds() -> Bool  {
   aai_refused(o: aai_argument_obligation(
     produced: ^aai_neg,
     carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },

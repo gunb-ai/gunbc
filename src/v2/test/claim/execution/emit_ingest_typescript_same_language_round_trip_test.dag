@@ -35,7 +35,7 @@ fn emit_ingest_typescript_canonical_emitted() -> Node {
   ts_emitted_add_fn_node()
 }
 
-test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
+test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool  {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
     emitted: emit_ingest_typescript_canonical_emitted()
@@ -46,7 +46,7 @@ test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
   }
 }
 
-test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
+test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool  {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -61,7 +61,7 @@ test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
   }
 }
 
-test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
+test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool  {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
     emitted: emit_ingest_typescript_canonical_emitted()
@@ -83,7 +83,7 @@ test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
   }
 }
 
-test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
+test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool  {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -105,7 +105,7 @@ test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
   }
 }
 
-test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
+test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool  {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -119,7 +119,7 @@ test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
   }
 }
 
-test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
+test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool  {
   match grammar_relation_row_forward_selection(
     frontier: Cons { head: ^emit_ingest_typescript_perturb_bogus_tok, tail: std.algebra.Empty },
     rules: emit_ingest_typescript_shared_rules()
@@ -129,7 +129,7 @@ test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-test fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
+test fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool  {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
     emitted: dag_fixture_emitted_add_fn

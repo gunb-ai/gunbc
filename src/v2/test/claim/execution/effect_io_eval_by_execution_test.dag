@@ -231,7 +231,7 @@ fn effect_io_eval_tree() -> InferredTree {
   }
 }
 
-test fn effect_io_eval_roundtrip_holds() -> Bool {
+test fn effect_io_eval_roundtrip_holds() -> Bool  {
   match eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_bound(),
@@ -242,7 +242,7 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
   }
 }
 
-test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
+test fn effect_io_eval_unbound_fail_closed_holds() -> Bool  {
   match eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_unbound(),

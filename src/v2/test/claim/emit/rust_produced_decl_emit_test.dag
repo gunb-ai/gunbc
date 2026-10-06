@@ -41,7 +41,7 @@ fn rust_produced_decl_emits_named_add2() -> Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add2_golden)
 }
 
-test fn rust_produced_decl_name_discriminates() -> Bool {
+test fn rust_produced_decl_name_discriminates() -> Bool  {
   rust_produced_decl_emits_named_add()
     && rust_produced_decl_emits_named_add2()
     && !rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add_golden)

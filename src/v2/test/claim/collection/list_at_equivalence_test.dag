@@ -26,7 +26,7 @@ fn list_at_row_holds(index: Int, expected: Int) -> Bool {
     && list_at_value(answer: list_at_reference(xs: list_at_fixture, index: index)) == expected
 }
 
-test fn list_at_reads_every_in_range_index_on_both_routes() -> Bool {
+test fn list_at_reads_every_in_range_index_on_both_routes() -> Bool  {
   list_at_row_holds(index: 0, expected: 10)
     && list_at_row_holds(index: 1, expected: 20)
     && list_at_row_holds(index: 2, expected: 30)
@@ -34,13 +34,13 @@ test fn list_at_reads_every_in_range_index_on_both_routes() -> Bool {
 
 // THE REFUSAL SHAPE, the row a sentinel-returning kernel fails: past the end and negative are both
 // Absent on both routes, never a default element.
-test fn list_at_answers_absent_outside_the_list_on_both_routes() -> Bool {
+test fn list_at_answers_absent_outside_the_list_on_both_routes() -> Bool  {
   list_at_row_holds(index: 3, expected: -1)
     && list_at_row_holds(index: 100, expected: -1)
     && list_at_row_holds(index: -1, expected: -1)
 }
 
-test fn list_at_on_the_empty_list_is_absent_on_both_routes() -> Bool {
+test fn list_at_on_the_empty_list_is_absent_on_both_routes() -> Bool  {
   list_at_value(answer: list_at_optional(xs: [], index: 0)) == -1
     && list_at_value(answer: list_at_reference(xs: [], index: 0)) == -1
 }
