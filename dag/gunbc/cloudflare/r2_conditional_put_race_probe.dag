@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, HttpStatus }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.citation { http_status_is_success }
 import std.measure { Microsecond, microsecond_count }
+import std.nat { Nat, nat_range_inclusive }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -339,7 +341,7 @@ fn race_probe_target() -> RaceProbeTarget {
 
 fn race_body_path(dir: FilePath, name: String) -> String { join([dir as String, "/", name], "") }
 
-fn race_write_body(path: String, round: Int, writer: String) -> Bool {
+fn race_write_body(path: String, round: Nat, writer: String) -> Bool {
   Filesystem.Write(path: path, content: join(["r2 conditional put race probe round ", to_string(round), " ", writer, "\n"], "")).success
 }
 
@@ -362,7 +364,7 @@ fn race_trace_reading(path: String) -> CurlTraceReading {
   if read.success { curl_trace_reading(trace: read.content) } else { CurlTraceRefused { cause: concat("the trace could not be read back: ", read.error) as NonEmptyStr } }
 }
 
-fn race_round(round: Int, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath) -> RaceRoundObservation {
+fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath) -> RaceRoundObservation {
   let seed_body = race_body_path(dir: dir, name: "seed")
   let trace = race_body_path(dir: dir, name: "trace")
   let a_body = race_body_path(dir: dir, name: race_writer_a as String)
@@ -394,9 +396,13 @@ fn race_round(round: Int, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
   }
 }
 
-fn race_rounds(round: Int, declared: Int, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath, acc: List<RaceRoundObservation>) -> List<RaceRoundObservation> {
-  if round > declared { acc } else {
-    race_rounds(round: round + 1, declared: declared, locator: locator, netrc: netrc, dir: dir, acc: concat(acc, [race_round(round: round, locator: locator, netrc: netrc, dir: dir)]))
+// THE ROUNDS ARE A MAP OVER THE DECLARED RANGE (std.nat nat_range_inclusive), one effectful round per
+// element in order. A declared count that is not a natural yields no rounds, which the verdict reads as
+// a short run -- inconclusive, never a pass.
+fn race_rounds(declared: Int, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath) -> List<RaceRoundObservation> {
+  match checked_int_to_nat(n: declared) {
+    Absent => []
+    Present { value: n } => map(nat_range_inclusive(lo: 1, hi: n), r => race_round(round: r, locator: locator, netrc: netrc, dir: dir))
   }
 }
 
@@ -426,7 +432,7 @@ fn race_run_with_netrc(locator: R2ObjectLocator, netrc: FilePath, workspace: Fil
   if staged.success == false {
     race_exit(verdict: RaceProbeInconclusive { rounds: 0, cause: "no directory could be created for the round bodies", witnesses: [] }, custody_clean: shred_r2_s3_netrc(workspace: workspace))
   } else {
-    let observations = race_rounds(round: 1, declared: race_probe_rounds, locator: locator, netrc: netrc, dir: staged.path, acc: [])
+    let observations = race_rounds(declared: race_probe_rounds, locator: locator, netrc: netrc, dir: staged.path)
     let cleanup = race_cleanup(locator: locator, netrc: netrc)
     let custody = shred_r2_s3_netrc(workspace: workspace)
     let bodies_removed = shell.Remove.RecursiveForce(path: staged.path).success
