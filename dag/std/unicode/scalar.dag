@@ -19,12 +19,13 @@ type NotUnicodeScalar
 // Int -> String: a total reading would fabricate text for a surrogate or an out-of-range value.
 // It is realized through the declared text-crossing route std.coercion unicode_scalar_fold (DESIGN
 // section 4, UnicodeScalarSequenceUnfold), over a one-scalar sequence, so the kernel writer behind
-// that route stays the realization. The v1 seed builtin of the same name (v1.compiler.infer_method
-// BuiltinSignature "from_code_point") is total over Int; it is NOT a second authority for this
-// meaning, and a caller that still binds it bare is enumerated debt
-// (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin).
-// A caller holding a Char already has a scalar by construction and spells it through
-// unicode_scalar_fold directly; it never needs this function and never handles its refusal.
+// that route stays the realization. The v1 seed builtin of the same name, total over Int, was
+// deleted in the change that declared this function (its BuiltinSignature row, interpreter arm and
+// v1_rt realization), together with the migration of every caller that bound it bare
+// (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin records the
+// census and the silent U+0000 that builtin answered). A caller holding a Char already has a scalar
+// by construction and spells it through char_text, below; it never needs this function and never
+// handles its refusal.
 fn from_code_point(cp: Int) -> Result<String, NotUnicodeScalar> {
   if unicode_scalar(code_point: cp) {
     Ok { value: unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: cp)) }

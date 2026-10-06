@@ -6,7 +6,7 @@ import tools.emit_host_transport { expected_stdout_nul_run }
 // assert CONTENT equality against the in-substrate NUL golden; the control below emits five SPACES
 // - byte-count-identical to the golden - and asserts inequality, so a regression of the mechanism
 // back to count comparison (the old wc -c check) or an equality that fabricates true goes RED here.
-// The pure shape tests pin the golden itself so repeat_string/from_code_point cannot silently
+// The pure shape tests pin the golden itself so repeat_string/char_text cannot silently
 // degenerate to the empty string (which trailing-whitespace trims would then match).
 
 data five_space_python_fixture: String = "import sys\nsys.stdout.write(' ' * 5)\n"
