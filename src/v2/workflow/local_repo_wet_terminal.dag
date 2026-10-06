@@ -2839,6 +2839,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "enrolled_roster_discovers_a_customer_request_the_operator_pass_misses" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "enrolled_roster_discovers_a_customer_request_the_operator_pass_misses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.tailnet_door_cutover_journal_wet_witness_test", function: "the_cutover_journal_survives_its_writer_and_fences_a_stale_write" },
       entry: "dag/test/claim/live_deploy/tailnet_door_cutover_journal_wet_witness_test.dag",
       function: "the_cutover_journal_survives_its_writer_and_fences_a_stale_write",
