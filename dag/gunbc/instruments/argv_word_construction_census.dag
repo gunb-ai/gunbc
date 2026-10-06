@@ -28,6 +28,7 @@ import v2.lens.argv_word_construction {
   ArgvWordsModuleRefused,
   RawTreeEstablished,
   RawTreeNotEstablished,
+  Node,
   facts_of,
   raw_tree_of_text,
   argv_word_construction_gates,
@@ -137,14 +138,17 @@ fn argv_word_construction_census_fixture_facts_dump() -> ProcessExit {
     true =>
       match raw_tree_of_text(text: read.content) {
         RawTreeNotEstablished { cause: cause } => exit_failure(reason: concat("fixture unparseable: ", cause))
-        RawTreeEstablished { root: root } =>
-          let rows = fold_list(xs: facts_of(root: root), empty: "decl\tkind\tcounted\tcandidates_n\tcandidates\tflag_words_n\treturns_argv_words\tlist_string_params\tlist_string_data", cons: fn(acc, f) {
-            concat(acc, concat("\n", fixture_fact_row(f: f)))
-          })
-          let written = Filesystem.Write(path: "target/argv_word_construction_fixture_facts.tsv", content: rows)
-          if written.success { ExitSuccess } else { exit_failure(reason: concat("fixture facts write refused: ", written.error)) }
+        RawTreeEstablished { root: root } => fixture_facts_write(root: root)
       }
   }
+}
+
+fn fixture_facts_write(root: Node) -> ProcessExit {
+  let rows = fold_list(xs: facts_of(root: root), empty: "decl\tkind\tcounted\tcandidates_n\tcandidates\tflag_words_n\treturns_argv_words\tlist_string_params\tlist_string_data", cons: fn(acc, f) {
+    concat(acc, concat("\n", fixture_fact_row(f: f)))
+  })
+  let written = Filesystem.Write(path: "target/argv_word_construction_fixture_facts.tsv", content: rows)
+  if written.success { ExitSuccess } else { exit_failure(reason: concat("fixture facts write refused: ", written.error)) }
 }
 
 fn fixture_fact_row(f: ArgvWordsFact) -> String {
