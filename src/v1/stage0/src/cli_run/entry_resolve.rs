@@ -509,7 +509,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 }
             }
         }
-        Ok(seen.into_iter().map(|(_, v)| v).collect())
+        Ok(seen.into_values().collect())
     }
 
     #[test]
@@ -529,9 +529,11 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     #[test]
     fn import_only_mutant_omits_the_reference_only_provider() {
         let dir = fixture_tree();
-        let mutant =
-            import_only_seeded_closure(&[dir.clone()], vec![(ENTRY.into(), ENTRY_SRC.into())])
-                .expect("mutant");
+        let mutant = import_only_seeded_closure(
+            std::slice::from_ref(&dir),
+            vec![(ENTRY.into(), ENTRY_SRC.into())],
+        )
+        .expect("mutant");
         assert!(
             !provider_in(&mutant),
             "the import-only mutant must omit the provider; got {:?}",
