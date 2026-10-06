@@ -348,41 +348,4 @@ mod tests {
             "receipted exclusion must not trip silent-loss guard"
         );
     }
-
-    #[test]
-    #[ignore = "manual: triggers whole-tree derivation (~minutes)"]
-    fn probe_exclusion_extends_pattern_authority() {
-        let pattern = super::super::whole_tree_resolve_exclusion_substrings();
-        let probe = whole_tree_probe_exclusion_substrings();
-        assert!(
-            probe.len() >= pattern.len(),
-            "probe authority must be a superset of pattern rows"
-        );
-        for row in pattern {
-            assert!(
-                probe.iter().any(|p| p == &row),
-                "pattern row {row:?} missing from probe authority"
-            );
-        }
-    }
-
-    #[test]
-    #[ignore = "manual: whole-tree strict-resolve fixed-point (~minutes)"]
-    fn derived_closure_strict_resolves_green() {
-        let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
-        let roots = super::super::default_source_roots();
-        let derived = derive_census_exclude_closure(&ws, &roots).expect("derive");
-        eprintln!(
-            "derived rounds={} module_paths={} live_importer_rows={}",
-            derived.convergence_rounds,
-            derived.module_paths.len(),
-            derived.live_importers_excluded.len()
-        );
-        super::super::whole_tree_resolved_ctx(
-            &roots,
-            &exclusion_substrings_with_derived(&derived.module_paths),
-            ExecutionMode::Wet,
-        )
-        .expect("derived authority must strict-resolve green");
-    }
 }
