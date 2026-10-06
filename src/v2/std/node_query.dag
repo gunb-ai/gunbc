@@ -192,11 +192,12 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // second spelling in the tree and so forked the authority std.constructors already holds
 // (DESIGN section 3: each fact lives in exactly one place).
 //
-// THE COLLISION THIS ANNOTATION ONCE CLAIMED IS REAL, BUT NOT WHERE IT SAID, AND IT IS NOT THIS
-// MODULE'S. The earlier text said std.constructors Cardinality could not be imported because
-// v2.std.node binds that name as the CONNECTIVE. That is wrong: both names are imported here, both
-// are used in declared_field_cardinality_of_target -- the connective in the match pattern, the type
-// in the return -- and this module resolves.
+// THE NAME `Cardinality` HAS TWO HOMES AT TWO GRAINS, AND THIS MODULE IMPORTS ONLY ONE. std.constructors
+// Cardinality is the TYPE of a field's occupancy; v2.std.node Cardinality is the CONNECTIVE variant
+// of a type node. A module that binds both bare refuses `'Cardinality' AMBIGUOUS` (the N7 native
+// route), so this module imports std.constructors Cardinality and spells the connective qualified,
+// v2.std.node.Cardinality, in every match arm. The fact and its next-rung trigger are the typed row
+// gunbc.recurring_failure_mode cardinality_axis_has_two_homes_at_two_grains, not this prose.
 //
 // WHAT IS TRUE IS A STANDING THREE-WAY FORK ON THE NAME `Optional`, and `.dag` resolves variant
 // names CORPUS-WIDE. Three authorities: the generic std.optional Optional; the Cardinality arm
