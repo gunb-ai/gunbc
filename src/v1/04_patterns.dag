@@ -496,7 +496,15 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
       Absent => type_node
     }
   }
-  if type_node.return_cardinality == CardOptional { with_optional_cardinality(n: resolved_raw) } else if scrut_is_optional { type_node } else { resolved_raw }
+  if type_node.return_cardinality == CardOptional {
+    with_optional_cardinality(n: resolved_raw)
+  } else {
+    if scrut_is_optional {
+      type_node
+    } else {
+      resolved_raw
+    }
+  }
 }
 
 // THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN
