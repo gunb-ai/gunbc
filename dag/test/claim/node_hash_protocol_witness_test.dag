@@ -141,7 +141,7 @@ fn behavior_vector_holds(b: Behavior) -> Bool {
 }
 
 // Every Connective arm. The Atom vector uses ^alpha, the symbol its expected value was derived for.
-test fn every_connective_matches_its_frozen_vector() -> Bool {
+test fn every_connective_matches_its_frozen_vector() -> Bool  {
   connective_vector_holds(c: Conj)
     && connective_vector_holds(c: Disj)
     && connective_vector_holds(c: Arrow)
@@ -151,7 +151,7 @@ test fn every_connective_matches_its_frozen_vector() -> Bool {
 }
 
 // Every Behavior arm.
-test fn every_behavior_matches_its_frozen_vector() -> Bool {
+test fn every_behavior_matches_its_frozen_vector() -> Bool  {
   behavior_vector_holds(b: Value)
     && behavior_vector_holds(b: Transform)
     && behavior_vector_holds(b: Branch)
@@ -172,18 +172,18 @@ test fn every_behavior_matches_its_frozen_vector() -> Bool {
 // implementation that did no reordering at all, so each composite specimen below is authored
 // DELIBERATELY OUT OF ORDER.
 
-test fn no_edges_discipline_matches_its_vector() -> Bool {
+test fn no_edges_discipline_matches_its_vector() -> Bool  {
   digest_of(n: atom_node(identity: ^alpha)) == "8a32b46ce830ef4c"
 }
 
-test fn labeled_edges_discipline_matches_its_vector() -> Bool {
+test fn labeled_edges_discipline_matches_its_vector() -> Bool  {
   digest_of(n: ty(c: Conj, children: [
     named(name: ^f, target: atom_node(identity: ^alpha)),
     named(name: ^g, target: atom_node(identity: ^beta)),
   ])) == "27b43e6a2a853e35"
 }
 
-test fn positional_edges_discipline_matches_its_vector() -> Bool {
+test fn positional_edges_discipline_matches_its_vector() -> Bool  {
   digest_of(n: ty(c: Cardinality, children: [
     positional(target: atom_node(identity: ^alpha)),
     positional(target: atom_node(identity: ^beta)),
@@ -192,7 +192,7 @@ test fn positional_edges_discipline_matches_its_vector() -> Bool {
 
 // Authored body-first, then g, then the positional signature, then f -- i.e. every group out of
 // canonical order at once.
-test fn arrow_body_discipline_matches_its_vector() -> Bool {
+test fn arrow_body_discipline_matches_its_vector() -> Bool  {
   digest_of(n: ty(c: Arrow, children: [
     core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^body)),
     named(name: ^g, target: atom_node(identity: ^beta)),
@@ -201,7 +201,7 @@ test fn arrow_body_discipline_matches_its_vector() -> Bool {
   ])) == "4b696908eff8d6e5"
 }
 
-test fn loop_bound_discipline_matches_its_vector() -> Bool {
+test fn loop_bound_discipline_matches_its_vector() -> Bool  {
   digest_of(n: comp(b: Loop, children: [
     core_edge(marker: LoopBoundEdge, target: atom_node(identity: ^bound)),
     named(name: ^g, target: atom_node(identity: ^beta)),
@@ -211,7 +211,7 @@ test fn loop_bound_discipline_matches_its_vector() -> Bool {
 }
 
 // Parent assembly from child identities, two levels deep.
-test fn nested_assembly_matches_its_vector() -> Bool {
+test fn nested_assembly_matches_its_vector() -> Bool  {
   digest_of(n: ty(c: Conj, children: [
     named(name: ^f, target: ty(c: Conj, children: [
       named(name: ^g, target: atom_node(identity: ^deep)),
@@ -238,21 +238,21 @@ fn minted_atom(identity: Symbol, id: Int) -> Node {
 
 // LAW: occurrence provenance is erased. Occurrence ids are graph-scoped allocator output, so two
 // independently-built copies of one program carry different ones and must still be one identity.
-test fn occurrence_provenance_is_erased() -> Bool {
+test fn occurrence_provenance_is_erased() -> Bool  {
   digest_of(n: atom_node(identity: ^alpha)) == digest_of(n: minted_atom(identity: ^alpha, id: 41))
     && digest_of(n: minted_atom(identity: ^alpha, id: 41))
       == digest_of(n: minted_atom(identity: ^alpha, id: 900))
 }
 
 // LAW: occurrence provenance is erased at DEPTH, not only at the root.
-test fn nested_occurrence_provenance_is_erased() -> Bool {
+test fn nested_occurrence_provenance_is_erased() -> Bool  {
   digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^alpha))]))
     == digest_of(n: ty(c: Conj, children: [named(name: ^f, target: minted_atom(identity: ^alpha, id: 77))]))
 }
 
 // LAW: authored order of NAMED siblings is erased under LabeledEdges. Both orders are one identity,
 // and the frozen vector above pins which identity that is.
-test fn authored_named_sibling_order_is_erased() -> Bool {
+test fn authored_named_sibling_order_is_erased() -> Bool  {
   digest_of(n: ty(c: Conj, children: [
     named(name: ^f, target: atom_node(identity: ^alpha)),
     named(name: ^g, target: atom_node(identity: ^beta)),
@@ -263,7 +263,7 @@ test fn authored_named_sibling_order_is_erased() -> Bool {
 }
 
 // LAW: named sibling order is erased at DEPTH. This is the one a root-only canonicalizer fails.
-test fn nested_named_sibling_order_is_erased() -> Bool {
+test fn nested_named_sibling_order_is_erased() -> Bool  {
   digest_of(n: ty(c: Conj, children: [named(name: ^f, target: ty(c: Conj, children: [
     named(name: ^f, target: atom_node(identity: ^x)),
     named(name: ^g, target: atom_node(identity: ^y)),
@@ -286,22 +286,22 @@ test fn nested_named_sibling_order_is_erased() -> Bool {
 // which fnv1a64 cannot support anyway -- a 64-bit locator has collisions by counting.
 
 // The kind axis: two Behaviors, nothing else differing.
-test fn behavior_is_not_erased() -> Bool {
+test fn behavior_is_not_erased() -> Bool  {
   digest_of(n: comp(b: Transform, children: [])) != digest_of(n: comp(b: Branch, children: []))
 }
 
 // The kind axis across the TypeNode/ComputationNode split.
-test fn node_kind_family_is_not_erased() -> Bool {
+test fn node_kind_family_is_not_erased() -> Bool  {
   digest_of(n: ty(c: Conj, children: [])) != digest_of(n: comp(b: Value, children: []))
 }
 
 // The atom symbol axis -- a rule that hashed only the constructor tag would pass everything above.
-test fn atom_symbol_is_not_erased() -> Bool {
+test fn atom_symbol_is_not_erased() -> Bool  {
   digest_of(n: atom_node(identity: ^alpha)) != digest_of(n: atom_node(identity: ^beta))
 }
 
 // The edge label axis: same child, same kind, different binding name.
-test fn named_edge_label_is_not_erased() -> Bool {
+test fn named_edge_label_is_not_erased() -> Bool  {
   digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^x))]))
     != digest_of(n: ty(c: Conj, children: [named(name: ^g, target: atom_node(identity: ^x))]))
 }
@@ -309,7 +309,7 @@ test fn named_edge_label_is_not_erased() -> Bool {
 // The positional order axis. This is the counterpart to the named-order quotient law: named order is
 // erased, positional order is PRESERVED, and a canonicalizer that sorted everything uniformly would
 // satisfy the quotient laws while destroying this. Cardinality takes PositionalEdges.
-test fn positional_order_is_not_erased() -> Bool {
+test fn positional_order_is_not_erased() -> Bool  {
   digest_of(n: ty(c: Cardinality, children: [
     positional(target: atom_node(identity: ^a)),
     positional(target: atom_node(identity: ^b)),
@@ -321,7 +321,7 @@ test fn positional_order_is_not_erased() -> Bool {
 
 // The child content axis: identical shape and labels, one differing leaf, so the parent digest must
 // differ. This is what makes the identity structural rather than shape-only.
-test fn child_content_is_not_erased() -> Bool {
+test fn child_content_is_not_erased() -> Bool  {
   digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^x))]))
     != digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^y))]))
 }
@@ -329,7 +329,7 @@ test fn child_content_is_not_erased() -> Bool {
 // The distinguished-edge position axis: under ArrowBodyEdges the body edge is pinned LAST regardless
 // of authored position, so moving an ORDINARY named edge across it must still change nothing (that
 // is the quotient), while the body edge carrying different content must change the digest.
-test fn arrow_body_content_is_not_erased() -> Bool {
+test fn arrow_body_content_is_not_erased() -> Bool  {
   digest_of(n: ty(c: Arrow, children: [
     core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^body)),
     positional(target: atom_node(identity: ^sig)),

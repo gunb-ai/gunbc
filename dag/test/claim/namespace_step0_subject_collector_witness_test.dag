@@ -154,7 +154,7 @@ fn paths_contain(xs: List<String>, want: String) -> Bool {
 // contract's roots, and a non-.dag file inside them, are both absent -- so a collector that handed
 // the strip producer the repository's Rust, Markdown or workflow files would red here rather than
 // producing a wider "subject" under the manifest's name.
-test fn the_subject_filter_takes_dag_sources_under_the_contract_roots_only() -> Bool {
+test fn the_subject_filter_takes_dag_sources_under_the_contract_roots_only() -> Bool  {
   let blob = concat(
     concat("dag/std/types.dag", from_code_point(0)),
     concat(
@@ -180,7 +180,7 @@ test fn the_subject_filter_takes_dag_sources_under_the_contract_roots_only() -> 
 
 // AN EMPTY POPULATION IS AN UNOBSERVED SUBJECT, NOT A SUBJECT OF SIZE ZERO -- the same rule the
 // frozen canary applies to a planted empty observation.
-test fn an_empty_read_refuses_instead_of_reporting_an_empty_subject() -> Bool {
+test fn an_empty_read_refuses_instead_of_reporting_an_empty_subject() -> Bool  {
   refusal_is_empty_subject(c: classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
@@ -188,7 +188,7 @@ test fn an_empty_read_refuses_instead_of_reporting_an_empty_subject() -> Bool {
   ))
 }
 
-test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool {
+test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool  {
   refusal_is_unreadable_commit(c: classify_step0_subject_observation(
     head_commit_hex: "not-a-sha",
     head_tree_hex: well_formed_tree_hex(),
@@ -196,7 +196,7 @@ test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool {
   ))
 }
 
-test fn an_unreadable_tree_refuses_before_any_vector_is_built() -> Bool {
+test fn an_unreadable_tree_refuses_before_any_vector_is_built() -> Bool  {
   refusal_is_unreadable_tree(c: classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: "",
@@ -207,7 +207,7 @@ test fn an_unreadable_tree_refuses_before_any_vector_is_built() -> Bool {
 // THE POSITIVE CONTROL FOR THE PURE HALF: a well-formed observation is ADMISSIBLE, so the refusals
 // above discriminate rather than being the classifier's only behaviour. It deliberately cannot
 // assert anything about a vector: this function does not produce one, which is the point.
-test fn a_well_formed_observation_is_admissible() -> Bool {
+test fn a_well_formed_observation_is_admissible() -> Bool  {
   match classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
@@ -221,7 +221,7 @@ test fn a_well_formed_observation_is_admissible() -> Bool {
 // A DECLARED ROOT THAT THE REVISION DOES NOT POPULATE IS A REFUSAL, not a smaller subject. This is
 // the arm that stops a moved or deleted root from shrinking the population while every other field
 // still agrees with the contract.
-test fn a_declared_root_with_no_members_refuses_rather_than_narrowing_the_subject() -> Bool {
+test fn a_declared_root_with_no_members_refuses_rather_than_narrowing_the_subject() -> Bool  {
   match classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
@@ -248,7 +248,7 @@ test fn a_declared_root_with_no_members_refuses_rather_than_narrowing_the_subjec
 // THE TREE RECORD IS DECODED AS GIT WRITES IT, and a record this decoder cannot read refuses rather
 // than being skipped -- a skipped record is an entry the collector never enumerated, which is the
 // empty-observation narrow one layer below the vector.
-test fn a_tree_record_decodes_into_mode_kind_object_and_path() -> Bool {
+test fn a_tree_record_decodes_into_mode_kind_object_and_path() -> Bool  {
   match step0_decode_tree_entry(record: concat("100644 blob 1111111111111111111111111111111111111111", concat(from_code_point(9), "dag/std/types.dag"))) {
     Step0TreeEntryUndecodable { record: _ } => false
     Step0TreeEntryDecoded { entry: entry } =>
@@ -259,7 +259,7 @@ test fn a_tree_record_decodes_into_mode_kind_object_and_path() -> Bool {
   }
 }
 
-test fn a_record_with_no_path_separator_is_undecodable_rather_than_a_pathless_entry() -> Bool {
+test fn a_record_with_no_path_separator_is_undecodable_rather_than_a_pathless_entry() -> Bool  {
   match step0_decode_tree_entry(record: "100644 blob 1111111111111111111111111111111111111111") {
     Step0TreeEntryDecoded { entry: _ } => false
     Step0TreeEntryUndecodable { record: _ } => true
@@ -269,7 +269,7 @@ test fn a_record_with_no_path_separator_is_undecodable_rather_than_a_pathless_en
 // A SYMLINK AND A SUBMODULE GITLINK ARE NOT SOURCES. The symlink is the sharp case: same object
 // kind as a file, so kind alone admits it and only the mode tells them apart -- reading one would
 // hand the strip a target path where a module was expected.
-test fn only_a_regular_file_blob_is_a_source_a_symlink_and_a_gitlink_are_not() -> Bool {
+test fn only_a_regular_file_blob_is_a_source_a_symlink_and_a_gitlink_are_not() -> Bool  {
   step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "100644", kind: "blob", object_hex: blob_hex(), path: "dag/std/types.dag" })
     && step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "100755", kind: "blob", object_hex: blob_hex(), path: "dag/std/types.dag" })
     && !step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "120000", kind: "blob", object_hex: blob_hex(), path: "dag/std/types.dag" })
@@ -323,14 +323,14 @@ fn dc_outcome_is_refused(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-test fn dc_probe_complete_population_compiles() -> Bool {
+test fn dc_probe_complete_population_compiles() -> Bool  {
   dc_outcome_is_completed(outcome: dc_compile(sources: [
     FixtureSource { path: dc_provider_path(), content: dc_provider_source() },
     FixtureSource { path: dc_entry_path(), content: dc_entry_source() },
   ]))
 }
 
-test fn dc_probe_omitting_one_whole_module_refuses() -> Bool {
+test fn dc_probe_omitting_one_whole_module_refuses() -> Bool  {
   dc_outcome_is_refused(outcome: dc_compile(sources: [
     FixtureSource { path: dc_entry_path(), content: dc_entry_source() },
   ]))
@@ -363,11 +363,11 @@ data outside_caller_of_the_mint_source: String = "module probe_step0_mint_outsid
 // unreachable, or the census refusing to run.
 data outside_caller_of_a_public_fn_source: String = "module probe_step0_public_outside_caller\nimport gunbc.namespace_step0_subject_collector { step0_subject_paths_at }\nimport std.types { List, String }\nfn probe_paths(blob: String) -> List<String> {\n  step0_subject_paths_at(paths_nul: blob)\n}\n"
 
-test fn an_outside_module_has_no_admitted_call_path_to_the_vector_mint() -> Bool {
+test fn an_outside_module_has_no_admitted_call_path_to_the_vector_mint() -> Bool  {
   seal_violation_count(source: outside_caller_of_the_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
 }
 
-test fn an_outside_module_calling_a_public_collector_fn_is_not_refused() -> Bool {
+test fn an_outside_module_calling_a_public_collector_fn_is_not_refused() -> Bool  {
   seal_violation_count(source: outside_caller_of_a_public_fn_source, wanted: "ConstructorCallAdmissionRefused") == 0
 }
 
@@ -386,7 +386,7 @@ fn tabbed_record() -> String {
   concat("100644 blob 1111111111111111111111111111111111111111", concat(from_code_point(9), tabbed_path()))
 }
 
-test fn a_pathname_containing_a_tab_decodes_whole_rather_than_truncating() -> Bool {
+test fn a_pathname_containing_a_tab_decodes_whole_rather_than_truncating() -> Bool  {
   match step0_decode_tree_entry(record: tabbed_record()) {
     Step0TreeEntryUndecodable { record: _ } => false
     Step0TreeEntryDecoded { entry: entry } =>
@@ -394,7 +394,7 @@ test fn a_pathname_containing_a_tab_decodes_whole_rather_than_truncating() -> Bo
   }
 }
 
-test fn a_pathname_containing_a_tab_stays_in_the_subject() -> Bool {
+test fn a_pathname_containing_a_tab_stays_in_the_subject() -> Bool  {
   paths_contain(
     xs: step0_subject_paths_at(paths_nul: concat(tabbed_path(), from_code_point(0))),
     want: tabbed_path()

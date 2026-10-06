@@ -23,7 +23,7 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
 // longer REACHES the mapping — its 3.22.00 evidence refuses before a mechanism
 // is selected — so the host half asserts the refusal and the mapping is pinned
 // on the mechanisms directly, which is where the claim always actually lived.
-test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
+test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool  {
   match srv3_install_mechanism_solution {
     OsInstallMechanismRefused { cause: _ } => true
     OsInstallMechanismSelected { mechanism: _ } => false
@@ -38,14 +38,14 @@ test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
 // upgrade; because it is derived from the solved mechanism, the upgrade
 // propagates and the plan refuses. A plan that survived the firmware change
 // would be the defect this witness exists to catch.
-test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
+test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool  {
   match srv3_os_install_actuator_plan_standing(image: srv3_resolved_image_fixture) {
     ActuatorPlanRefused { cause: _ } => true
     ActuatorPlanReady { plan: _ } => false
   }
 }
 
-test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
+test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool  {
   let steps = os_install_actuator_steps(
     mechanism: NbdProxyVirtualMediaInstall,
     export: srv3_nbd_proxy_export_placeholder
@@ -66,7 +66,7 @@ test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
     }
 }
 
-test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
+test fn pxe_actuator_steps_stage_boot_restart() -> Bool  {
   let steps = os_install_actuator_steps(
     mechanism: PxeHttpInstall,
     export: srv3_nbd_proxy_export_placeholder
@@ -86,7 +86,7 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
 // dispatch; the dispatch landed (#8582) and the legs are described commands (extdeps.tools.nbdkit /
 // extdeps.tools.websocat, admitted at the argv_command wall), so the scaffold retired to Terminal
 // and this witness asserts the standing plus the reason that says why.
-test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
+test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool  {
   let steps = os_install_actuator_steps(
     mechanism: NbdProxyVirtualMediaInstall,
     export: srv3_nbd_proxy_export_placeholder
@@ -120,7 +120,7 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
     }
 }
 
-test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
+test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool  {
   match srv3_nbd_proxy_export_dissolution_trigger {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
@@ -132,7 +132,7 @@ test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
 // previous Optional form answered Absent, which a caller cannot distinguish from "this step
 // needs no host effect" — so an install plan could report ready while omitting the very effects
 // that perform the install.
-test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool {
+test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool  {
   match actuator_step_realization(step: ActuatorRedfishInsertMedia, image: srv3_resolved_image_fixture) {
     ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
     ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
@@ -155,7 +155,7 @@ test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool 
 
 // A plan whose steps are not all realized is REFUSED, and every unrealized step is reported —
 // not just the first. The PXE mechanism's staging step has no realization, so its plan refuses.
-test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
+test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool  {
   match actuator_plan_realization(
     steps: os_install_actuator_steps(
       mechanism: PxeHttpInstall,
@@ -179,7 +179,7 @@ fn nbd_serve_step_refuses_image(step: OsInstallActuatorStep, image: SeededImageR
 // directions under a satisfiable actuator selection, so the image is the only thing that differs:
 // the resolved arm must carry exactly the fixture's path into the NBD intent, and each unresolved
 // arm must refuse by name rather than serve a path of its own.
-test fn nbd_serve_step_serves_the_resolved_image_and_refuses_an_unresolved_one() -> Bool {
+test fn nbd_serve_step_serves_the_resolved_image_and_refuses_an_unresolved_one() -> Bool  {
   let selection = ActuatorSelected { host: srv1_host }
   match os_install_actuator_steps(
     mechanism: NbdProxyVirtualMediaInstall,

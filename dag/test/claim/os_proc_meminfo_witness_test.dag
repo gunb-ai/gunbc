@@ -3,7 +3,7 @@ module test.claim.os_proc_meminfo_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn proc_meminfo_witnesses() -> Bool {
+test fn proc_meminfo_witnesses() -> Bool  {
   let info = ProcMeminfo {
     mem_total: Kibibyte { count: 8012272 },
     mem_free: Kibibyte { count: 4048136 },
@@ -51,7 +51,7 @@ test fn proc_meminfo_witnesses() -> Bool {
 // catch. And a field missing from the MIDDLE of the file names itself: that arm used to be
 // unreachable only by an invariant held between two lists, and is now unreachable by construction
 // -- there is no fallback left that could answer 0 KiB for it (review 69561 on gunbc#11962).
-test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bool {
+test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bool  {
   let text = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:       2097152 kB\nSwapFree:         524288 kB\nHugePages_Total:       0\n"
   let without_available = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
   let unparseable = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    not-a-number kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"

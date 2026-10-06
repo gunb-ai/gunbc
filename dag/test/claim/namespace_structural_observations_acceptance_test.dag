@@ -129,11 +129,11 @@ fn nso_other_module_source() -> String {
   )
 }
 
-test fn namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file() -> Bool {
+test fn namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file() -> Bool  {
   nso_contract_holds_for(source: namespace_structural_observations_subject_source())
 }
 
-test fn an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capability() -> Bool {
+test fn an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capability() -> Bool  {
   !nso_contract_holds_for(source: nso_neighbour_not_earlier_source())
     && nso_missing_is_exactly(
       source: nso_neighbour_not_earlier_source(),
@@ -141,7 +141,7 @@ test fn an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capabili
     )
 }
 
-test fn a_decision_branch_that_stops_being_two_refuses_only_that_capability() -> Bool {
+test fn a_decision_branch_that_stops_being_two_refuses_only_that_capability() -> Bool  {
   !nso_contract_holds_for(source: nso_branch_binder_collapsed_source())
     && nso_missing_is_exactly(
       source: nso_branch_binder_collapsed_source(),
@@ -149,7 +149,7 @@ test fn a_decision_branch_that_stops_being_two_refuses_only_that_capability() ->
     )
 }
 
-test fn a_later_declaration_hoisted_into_view_refuses_only_that_capability() -> Bool {
+test fn a_later_declaration_hoisted_into_view_refuses_only_that_capability() -> Bool  {
   !nso_contract_holds_for(source: nso_later_declaration_hoisted_source())
     && nso_missing_is_exactly(
       source: nso_later_declaration_hoisted_source(),
@@ -157,7 +157,7 @@ test fn a_later_declaration_hoisted_into_view_refuses_only_that_capability() -> 
     )
 }
 
-test fn two_same_spelled_declarations_merged_into_one_refuse_only_that_capability() -> Bool {
+test fn two_same_spelled_declarations_merged_into_one_refuse_only_that_capability() -> Bool  {
   !nso_contract_holds_for(source: nso_homonyms_merged_source())
     && nso_missing_is_exactly(
       source: nso_homonyms_merged_source(),
@@ -165,7 +165,7 @@ test fn two_same_spelled_declarations_merged_into_one_refuse_only_that_capabilit
     )
 }
 
-test fn observations_from_another_compiled_module_do_not_close_this_row() -> Bool {
+test fn observations_from_another_compiled_module_do_not_close_this_row() -> Bool  {
   count(nso_missing_for(source: nso_other_module_source())) == 0
     && count(structural_admission_off_subject_modules(
       rows: nso_admissions_for(source: nso_other_module_source()),
@@ -180,7 +180,7 @@ test fn observations_from_another_compiled_module_do_not_close_this_row() -> Boo
 // state onto this contract: with the bridge gone the contract is offered NO rows, and a contract
 // that closed on no rows would be green for a row nothing produced. The count(rows) > 0 conjunct
 // is what forbids it, and this control is the only thing that fails if someone deletes it.
-test fn a_row_nobody_produced_does_not_close_this_row() -> Bool {
+test fn a_row_nobody_produced_does_not_close_this_row() -> Bool  {
   !namespace_structural_observations_closing_contract_holds(rows: [])
     && count(namespace_structural_observations_missing_capabilities(rows: [])) == 4
 }
@@ -203,7 +203,7 @@ fn nso_admissions_with_unproduced_subject() -> List<OrdinaryCompileStructuralAdm
        })
 }
 
-test fn established_capabilities_with_an_unproduced_subject_still_refuse() -> Bool {
+test fn established_capabilities_with_an_unproduced_subject_still_refuse() -> Bool  {
   count(namespace_structural_observations_missing_capabilities(
     rows: nso_admissions_with_unproduced_subject(),
   )) == 0

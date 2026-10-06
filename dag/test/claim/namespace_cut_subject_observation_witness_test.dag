@@ -57,7 +57,7 @@ fn observation_kind(o: SubjectProbeObservation) -> String {
 // The mapping's four decided rows: resolved is the only Present, both absence arms are Absent,
 // and ambiguity refuses to answer -- the arm whose collapse into Absent would fabricate a
 // completed deletion out of a corpus defect.
-test fn resolution_maps_to_observation_without_collapsing_ambiguity() -> Bool {
+test fn resolution_maps_to_observation_without_collapsing_ambiguity() -> Bool  {
   let r = decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases")
   let ident = DeclarationIdentity { qualified_name: "fixture.q", name: "fixture", rel_path: "fixture.dag", kind: FnItem }
   observation_kind(o: observation_from_resolution(p: fixture_probe(), r: DeclarationRefResolved { declaration_identity: ident })) == "present"
@@ -69,7 +69,7 @@ test fn resolution_maps_to_observation_without_collapsing_ambiguity() -> Bool {
 // A host probe handed to the DECLARATION-FACT route still refuses rather than answering Absent:
 // that route resolves substrate declarations, and a host probe reaching it is a mis-route, not a
 // deletion. The host probe's real answer comes from observe_host_probe, exercised below.
-test fn a_host_probe_refuses_rather_than_answering_from_the_declaration_route() -> Bool {
+test fn a_host_probe_refuses_rather_than_answering_from_the_declaration_route() -> Bool  {
   let p = HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "extract_import_paths" }
   observation_kind(o: observe_probe(p: p, facts: [], modules: [])) == "unobservable"
     && probe_is_host(p: p)
@@ -102,7 +102,7 @@ fn host_fixture_item(name: String) -> RustItemIdentity {
   }
 }
 
-test fn the_host_join_answers_present_absent_and_two_distinct_refusals() -> Bool {
+test fn the_host_join_answers_present_absent_and_two_distinct_refusals() -> Bool  {
   let probe = host_fixture_probe()
   let refused = observe_host_probe(
     p: probe,
@@ -125,7 +125,7 @@ test fn the_host_join_answers_present_absent_and_two_distinct_refusals() -> Bool
 // A dag probe over EMPTY module facts answers Absent by the module-absent route -- authored
 // facts, so the arm is exercised without any tree state moving it. Beside it, the pool split:
 // a v1 probe and a v2 probe classify to different acquisitions, both ways.
-test fn a_dag_probe_over_authored_empty_facts_is_absent_and_pools_split_both_ways() -> Bool {
+test fn a_dag_probe_over_authored_empty_facts_is_absent_and_pools_split_both_ways() -> Bool  {
   observation_kind(o: observe_probe(p: fixture_probe(), facts: [], modules: [])) == "absent"
     && probe_is_v1(p: fixture_probe())
     && !probe_is_v1(p: DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "admit_imports" })
@@ -133,7 +133,7 @@ test fn a_dag_probe_over_authored_empty_facts_is_absent_and_pools_split_both_way
 
 // Every subject's probes render distinctly -- a duplicated probe row would double a report line
 // and a deletion milestone's outstanding member.
-test fn every_probe_render_is_distinct_across_the_roster() -> Bool {
+test fn every_probe_render_is_distinct_across_the_roster() -> Bool  {
   let renders = namespace_cut_subjects
     |> flat_map(s => subject_probe_list(s: s))
     |> map(p => probe_render(p: p))

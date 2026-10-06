@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // producer and dependency projection for all six scenarios, feed those observations through the
 // sole-constructor assessment boundary, and leave this predicate unchanged.
 
-test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
+test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool  {
   reference_derived_closure_closing_contract_holds(
     admissions: namespace_reference_derived_closure_acceptance_admissions(),
   )

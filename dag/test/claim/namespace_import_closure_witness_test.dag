@@ -10,6 +10,6 @@ import tools.namespace_import_closure_behavioral_transport { nic_behavioral_rece
 // green (DESIGN section 5). Live host effects (real emit, cargo build), so it runs in the nightly
 // falsifier Wet follow-on batch (falsifier_self_host_wet_entries), not per-PR hermetic discovery.
 
-test fn namespace_import_closure_receipt_holds() -> Bool {
+test fn namespace_import_closure_receipt_holds() -> Bool  {
   nic_behavioral_receipt_holds()
 }

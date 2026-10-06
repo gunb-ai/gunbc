@@ -45,7 +45,7 @@ fn occurrence_identity_consumer_red_debt_has(
     )
 }
 
-test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
+test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool  {
   (occurrence_identity_consumer_red_debts |> count) == 6 &&
   occurrence_identity_consumer_red_debt_has(
     id: "rebuilt-reference-identity-preservation",
@@ -79,7 +79,7 @@ test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
   )
 }
 
-test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool {
+test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool  {
   occurrence_identity_receipt_enrollment_debts == [
     OccurrenceIdentityReceiptEnrollmentDebt {
       id: "namespace-parser-occurrence-receipts-per-pr-enrollment",
@@ -132,7 +132,7 @@ fn occurrence_identity_closing_deferral(
   }
 }
 
-test fn occurrence_identity_closing_exact_receipts_cover_every_law_holds() -> Bool {
+test fn occurrence_identity_closing_exact_receipts_cover_every_law_holds() -> Bool  {
   occurrence_identity_acceptance_laws |> count == 5 &&
   occurrence_identity_closing_complete(
     verdict: occurrence_identity_closing_verdict(
@@ -142,7 +142,7 @@ test fn occurrence_identity_closing_exact_receipts_cover_every_law_holds() -> Bo
   )
 }
 
-test fn occurrence_identity_closing_deferral_is_covered_but_not_complete_holds() -> Bool {
+test fn occurrence_identity_closing_deferral_is_covered_but_not_complete_holds() -> Bool  {
   let deferred_law = occurrence_identity_acceptance_laws |> first
   match deferred_law {
     Absent => false
@@ -162,7 +162,7 @@ test fn occurrence_identity_closing_deferral_is_covered_but_not_complete_holds()
   }
 }
 
-test fn occurrence_identity_closing_missing_law_stays_open_holds() -> Bool {
+test fn occurrence_identity_closing_missing_law_stays_open_holds() -> Bool  {
   let omitted_law = occurrence_identity_acceptance_laws |> first
   match omitted_law {
     Absent => false
@@ -179,7 +179,7 @@ test fn occurrence_identity_closing_missing_law_stays_open_holds() -> Bool {
   }
 }
 
-test fn occurrence_identity_closing_unknown_receipt_refuses_holds() -> Bool {
+test fn occurrence_identity_closing_unknown_receipt_refuses_holds() -> Bool  {
   let unknown = OccurrenceIdentityExecutingReceipt {
     law_id: "unknown-occurrence-law",
     required_receipt: "unknown",
@@ -199,7 +199,7 @@ test fn occurrence_identity_closing_unknown_receipt_refuses_holds() -> Bool {
   }
 }
 
-test fn occurrence_identity_closing_duplicate_receipt_refuses_holds() -> Bool {
+test fn occurrence_identity_closing_duplicate_receipt_refuses_holds() -> Bool  {
   let receipts = occurrence_identity_closing_exact_receipts()
   let duplicate = receipts |> first
   match duplicate {
@@ -219,7 +219,7 @@ test fn occurrence_identity_closing_duplicate_receipt_refuses_holds() -> Bool {
   }
 }
 
-test fn occurrence_identity_closing_stale_receipt_refuses_holds() -> Bool {
+test fn occurrence_identity_closing_stale_receipt_refuses_holds() -> Bool  {
   let exact = occurrence_identity_closing_exact_receipts()
   let first_exact = exact |> first
   match first_exact {
@@ -248,7 +248,7 @@ test fn occurrence_identity_closing_stale_receipt_refuses_holds() -> Bool {
   }
 }
 
-test fn occurrence_identity_closing_non_green_receipt_refuses_holds() -> Bool {
+test fn occurrence_identity_closing_non_green_receipt_refuses_holds() -> Bool  {
   let exact = occurrence_identity_closing_exact_receipts()
   let first_exact = exact |> first
   match first_exact {
@@ -277,7 +277,7 @@ test fn occurrence_identity_closing_non_green_receipt_refuses_holds() -> Bool {
   }
 }
 
-test fn occurrence_identity_closing_receipt_deferral_overlap_refuses_holds() -> Bool {
+test fn occurrence_identity_closing_receipt_deferral_overlap_refuses_holds() -> Bool  {
   let law = occurrence_identity_acceptance_laws |> first
   match law {
     Absent => false

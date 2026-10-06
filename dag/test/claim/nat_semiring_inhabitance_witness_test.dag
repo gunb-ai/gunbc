@@ -39,7 +39,7 @@ fn names_include(names: List<String>, wanted: String) -> Bool {
   names |> any(n => n == wanted)
 }
 
-test fn w_nat_has_a_carrier_row_and_it_is_the_ordered_semiring() -> Bool {
+test fn w_nat_has_a_carrier_row_and_it_is_the_ordered_semiring() -> Bool  {
   match kernel_algebra_profile |> get("Nat") {
     Present { value: p } =>
       match p {
@@ -50,7 +50,7 @@ test fn w_nat_has_a_carrier_row_and_it_is_the_ordered_semiring() -> Bool {
   }
 }
 
-test fn w_the_semiring_operations_derive_for_nat() -> Bool {
+test fn w_the_semiring_operations_derive_for_nat() -> Bool  {
   let names = carrier_method_names(carrier: "Nat")
   names_include(names: names, wanted: "add")
     && names_include(names: names, wanted: "zero")
@@ -59,13 +59,13 @@ test fn w_the_semiring_operations_derive_for_nat() -> Bool {
     && names_include(names: names, wanted: "compare")
 }
 
-test fn w_an_additive_inverse_does_not_derive_for_nat() -> Bool {
+test fn w_an_additive_inverse_does_not_derive_for_nat() -> Bool  {
   !names_include(names: carrier_method_names(carrier: "Nat"), wanted: "negate")
 }
 
 // THE POSITIVE CONTROL ON THE SAME LOOKUP: Int inhabits the ordered ring, and the ring-only
 // operation is found there. Without it the row above would pass on a lookup that finds nothing.
-test fn w_an_additive_inverse_derives_for_int() -> Bool {
+test fn w_an_additive_inverse_derives_for_int() -> Bool  {
   names_include(names: carrier_method_names(carrier: "Int"), wanted: "negate")
 }
 
@@ -73,7 +73,7 @@ test fn w_an_additive_inverse_derives_for_int() -> Bool {
 // names, evaluated: on the naturals two and three, add is five and mul is six, zero is the
 // additive identity and one the multiplicative one. The numerals are written with the inductive
 // constructors, so this row also runs the carrier's kernel-integer realization end to end.
-test fn w_the_nat_semiring_witness_computes_as_a_semiring() -> Bool {
+test fn w_the_nat_semiring_witness_computes_as_a_semiring() -> Bool  {
   let two = Succ { prev: Succ { prev: Zero } }
   let three = Succ { prev: two }
   nat_semiring.add(two, three) == 5

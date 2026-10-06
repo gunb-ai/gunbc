@@ -100,7 +100,7 @@ fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
   }
 }
 
-test fn witness_two_independent_changes_both_land() -> Bool {
+test fn witness_two_independent_changes_both_land() -> Bool  {
   let r = receipt_for(scenario: TwoIndependentChangesLand)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
@@ -110,7 +110,7 @@ test fn witness_two_independent_changes_both_land() -> Bool {
     }
 }
 
-test fn witness_stale_target_auto_resynchronizes() -> Bool {
+test fn witness_stale_target_auto_resynchronizes() -> Bool  {
   let r = receipt_for(scenario: StaleTargetAutoResync)
   primary_label(receipt: r) == "Landed"
     && match r.projections.target {
@@ -124,7 +124,7 @@ test fn witness_stale_target_auto_resynchronizes() -> Bool {
     }
 }
 
-test fn witness_duplicate_submission_applies_once() -> Bool {
+test fn witness_duplicate_submission_applies_once() -> Bool  {
   let receipt = receipt_for(scenario: DuplicateSubmissionAppliesOnce)
   let ledger0 = native_scm_submission_ledger()
   let ledger1 = native_scm_apply_once(ledger: ledger0, receipt: receipt)
@@ -133,7 +133,7 @@ test fn witness_duplicate_submission_applies_once() -> Bool {
     && native_scm_applied_count(ledger: ledger2) == 1
 }
 
-test fn witness_same_name_distinct_attempts_apply_separately() -> Bool {
+test fn witness_same_name_distinct_attempts_apply_separately() -> Bool  {
   let receipt_a = receipt_for(scenario: DuplicateSubmissionAppliesOnce)
   let receipt_b = native_scm_rekey_receipt(
     receipt: receipt_a,
@@ -145,7 +145,7 @@ test fn witness_same_name_distinct_attempts_apply_separately() -> Bool {
   native_scm_applied_count(ledger: ledger2) == 2
 }
 
-test fn witness_rename_and_reference_unique_meaning_lands() -> Bool {
+test fn witness_rename_and_reference_unique_meaning_lands() -> Bool  {
   let r = receipt_for(scenario: RenameReferenceUniqueMeaning)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
@@ -155,7 +155,7 @@ test fn witness_rename_and_reference_unique_meaning_lands() -> Bool {
     }
 }
 
-test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
+test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool  {
   let r = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
@@ -194,7 +194,7 @@ test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
     }
 }
 
-test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
+test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool  {
   let receipt = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
   let duplicate = match receipt.primary {
     ChoiceRequired { question, continuation } =>
@@ -244,7 +244,7 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
   }
 }
 
-test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
+test fn witness_incompatible_goals_ask_authorized_decider() -> Bool  {
   let r = receipt_for(scenario: IncompatibleGoalsNeedAuthorizedDecider)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
@@ -283,7 +283,7 @@ test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
     }
 }
 
-test fn witness_obtainable_evidence_is_gathered_internally() -> Bool {
+test fn witness_obtainable_evidence_is_gathered_internally() -> Bool  {
   let r = receipt_for(scenario: EvidenceGatheredInternally)
   primary_label(receipt: r) == "Landed"
     && match r.receipt_details {
@@ -292,7 +292,7 @@ test fn witness_obtainable_evidence_is_gathered_internally() -> Bool {
     }
 }
 
-test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
+test fn witness_tool_model_proof_deficits_stay_internal() -> Bool  {
   let r = receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
   primary_label(receipt: r) == "InProgress"
     && match r.transition {
@@ -310,7 +310,7 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
     }
 }
 
-test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
+test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool  {
   let r = receipt_for(scenario: ProjectionFailureRepairsWithoutReinterpretation)
   let outcome = native_scm_record_repaired_projection(
     receipt: r,
@@ -335,7 +335,7 @@ test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
     }
 }
 
-test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool {
+test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool  {
   let r = receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
   let outcome = native_scm_record_repaired_projection(
     receipt: r,
@@ -357,7 +357,7 @@ test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool {
   }
 }
 
-test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {
+test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool  {
   let r = receipt_for(scenario: ConventionalScmImportWithoutManualRewrite)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
@@ -368,7 +368,7 @@ test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {
     }
 }
 
-test fn witness_visibility_authorized_details_only_when_allowed() -> Bool {
+test fn witness_visibility_authorized_details_only_when_allowed() -> Bool  {
   let r = receipt_for(scenario: VisibilityAuthorizedDetails)
   match native_scm_inspect_receipt(receipt: r, authorized: false) {
     Absent => true

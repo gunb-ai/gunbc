@@ -184,7 +184,7 @@ fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
 
 // ARM 1 RED. Fails on the deleted shape-search reading, which answered the PARAMETER
 // fn-type's Int; holds on the positional read, which cannot reach a parameter at all.
-test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool {
+test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool  {
   match nfbcp_return_atom(text: nfbcp_fn_type_param_source) {
     Absent => false
     Present { value: id } => id == ^Bool
@@ -193,7 +193,7 @@ test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool {
 
 // ARM 2 RED. With no arrow clause in the production there is no return type to read, so
 // the positional read must be ABSENT. The deleted reading returned the parameter's arrow.
-test fn nfbcp_hazard_no_return_type_reads_absent_holds() -> Bool {
+test fn nfbcp_hazard_no_return_type_reads_absent_holds() -> Bool  {
   match nfbcp_return_atom(text: nfbcp_no_return_type_source) {
     Absent => true
     Present { value: _ } => false
@@ -204,7 +204,7 @@ test fn nfbcp_hazard_no_return_type_reads_absent_holds() -> Bool {
 // `Absent => body_lower_wrapper_retained_shell`, so the member is RETAINED rather than
 // lowered to an Arrow carrying a codomain the source never declared. Asserting the
 // disposition and not only the type keeps this a claim about the ROUTE.
-test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool {
+test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool  {
   match nfbcp_fn_decl_shell(text: nfbcp_no_return_type_source) {
     Absent => false
     Present { value: shell } =>
@@ -217,7 +217,7 @@ test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool {
 // carries the AUTHORED spelling: v2.compiler.resolve maps an unshadowed kernel spelling to its
 // canonical binding, so these rows read `Int` and `Bool` as written, as the generic row reads `T`
 // (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
-test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
+test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool  {
   match nfbcp_return_atom(text: nfbcp_ordinary_fn_source) {
     Absent => false
     Present { value: id } => id == ^Int
@@ -226,7 +226,7 @@ test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
 
 // FALSIFIER: a generic fn must still read its declared return type. Absent here would mean
 // every generic fn in the corpus retains its wrapper instead of lowering.
-test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
+test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool  {
   match nfbcp_return_atom(text: nfbcp_generic_fn_source) {
     Absent => false
     Present { value: id } => id == ^T
@@ -235,21 +235,21 @@ test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
 
 // FALSIFIER: the `= expr` body arm sits at the same spine depth as the braced body, so the
 // return clause must read identically through it.
-test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool {
+test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool  {
   match nfbcp_return_atom(text: nfbcp_eq_body_fn_source) {
     Absent => false
     Present { value: id } => id == ^Int
   }
 }
 
-test fn nfbcp_generic_fn_specimen_parses_holds() -> Bool {
+test fn nfbcp_generic_fn_specimen_parses_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_generic_fn_source) {
     Absent => false
     Present { value: _ } => true
   }
 }
 
-test fn nfbcp_eq_body_specimen_parses_holds() -> Bool {
+test fn nfbcp_eq_body_specimen_parses_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_eq_body_fn_source) {
     Absent => false
     Present { value: _ } => true
@@ -258,14 +258,14 @@ test fn nfbcp_eq_body_specimen_parses_holds() -> Bool {
 
 // SPECIMEN CONTROLS. Separate "no hazard" from "the specimen stopped parsing" -- without
 // these, both reds above could go green by the fixture ceasing to compile.
-test fn nfbcp_hazard_specimen_parses_holds() -> Bool {
+test fn nfbcp_hazard_specimen_parses_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_fn_type_param_source) {
     Absent => false
     Present { value: _ } => true
   }
 }
 
-test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool {
+test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_no_return_type_source) {
     Absent => false
     Present { value: _ } => true
@@ -309,7 +309,7 @@ fn nfbcp_is_door_retention(d: Diagnostic) -> Bool {
   d.reason == ^normalized_tree_reason_wrapper_retention_not_normalized
 }
 
-test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds() -> Bool {
+test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_retention_route_source) {
     Absent => false
     Present { value: tree } =>
@@ -354,7 +354,7 @@ fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
   }
 }
 
-test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {
+test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool  {
   match body_lower_fn_signature_bindings_refusal(shell: nfbcp_atom(identity: ^g), sig: nfbcp_repeated_signature()) {
     Absent => false
     Present { value: Accepted { value: _, diagnostics: _ } } => false
@@ -366,7 +366,7 @@ test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool
 // THE SAME REFUSAL ON THE REAL ROUTE: a parsed fn through the census-grade fn_decl producer, which reads
 // the signature and reaches body_lower_fn_signature_refusal without lowering the body. This is the one
 // inhabitance claim for the supplied signature above (DESIGN section 3, the pairing obligation).
-test fn nfbcp_repeated_named_param_refuses_on_the_parsed_route_holds() -> Bool {
+test fn nfbcp_repeated_named_param_refuses_on_the_parsed_route_holds() -> Bool  {
   match nfbcp_fn_decl_shell(text: nfbcp_named_repeat_source) {
     Absent => false
     Present { value: shell } =>
@@ -419,7 +419,7 @@ fn nfbcp_locus_mentions_atom(d: Diagnostic, atom: Symbol) -> Bool {
   }
 }
 
-test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> Bool {
+test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_repeated_decl_source) {
     Absent => false
     Present { value: tree } =>
@@ -439,7 +439,7 @@ test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> 
 // (no b) or at the service (which mentions S) reds this row.
 data nfbcp_repeated_operation_source: String = "module m\nservice S {\n  operation Op {}\n  operation Op { input { b: Int } }\n}\n"
 
-test fn nfbcp_repeated_operation_refuses_at_the_second_operation_holds() -> Bool {
+test fn nfbcp_repeated_operation_refuses_at_the_second_operation_holds() -> Bool  {
   match nfbcp_parsed(text: nfbcp_repeated_operation_source) {
     Absent => false
     Present { value: tree } =>
@@ -468,7 +468,7 @@ fn nfbcp_is_repeated_operation_at_second(d: Diagnostic) -> Bool {
 // reds this row.
 data nfbcp_anonymous_record_return_source: String = "module m\nfn g() -> { s: B } { a }\n"
 
-test fn nfbcp_anonymous_record_return_type_lowers_holds() -> Bool {
+test fn nfbcp_anonymous_record_return_type_lowers_holds() -> Bool  {
   match nfbcp_fn_decl_shell(text: nfbcp_anonymous_record_return_source) {
     Absent => false
     Present { value: shell } =>

@@ -96,12 +96,12 @@ fn declared_nodes_carrying_identity(identity: String) -> Int {
 // because their subjects -- node-identity join, citation resolution, and the cited witness actually
 // executing -- are facts the receipt really carries.
 
-test fn receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool {
+test fn receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool  {
   let receipt = native_at_small_scale_transition_receipt()
   return declared_nodes_carrying_identity(identity: receipt.node as String) == 1
 }
 
-test fn a_fabricated_subject_identity_joins_no_declared_node() -> Bool {
+test fn a_fabricated_subject_identity_joins_no_declared_node() -> Bool  {
   return declared_nodes_carrying_identity(
     identity: "rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C",
   ) == 0
@@ -129,13 +129,13 @@ fn receipt_citing(
   }
 }
 
-test fn cited_evidence_declaration_names_the_imported_symbol() -> Bool {
+test fn cited_evidence_declaration_names_the_imported_symbol() -> Bool  {
   return citation_names_the_imported_evidence_symbol(
     receipt: native_at_small_scale_transition_receipt(),
   )
 }
 
-test fn a_citation_drifted_from_the_imported_symbol_is_rejected() -> Bool {
+test fn a_citation_drifted_from_the_imported_symbol_is_rejected() -> Bool  {
   return !citation_names_the_imported_evidence_symbol(
     receipt: receipt_citing(
       module_path: "v2.test.execution.native_selected_witness_bundle",
@@ -150,6 +150,6 @@ test fn a_citation_drifted_from_the_imported_symbol_is_rejected() -> Bool {
     )
 }
 
-test fn cited_evidence_declaration_is_an_executing_witness() -> Bool {
+test fn cited_evidence_declaration_is_an_executing_witness() -> Bool  {
   return selected_logic_cutover_evidence_holds()
 }

@@ -3,7 +3,7 @@ module test.claim.os_install_actuator_selection
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
+test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool  {
   os_install_actuator_requirement_kinds.first() == BmcNetworkReach
     && os_install_actuator_requirement_kinds.skip(n: 1).first() == ActuatorToolchainGrant
     && os_install_actuator_requirement_satisfied(
@@ -13,7 +13,7 @@ test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
     )
 }
 
-test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool {
+test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool  {
   srv3_os_install_actuator_selection_is_selected_on_live_fleet()
     && match srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger {
       Scaffold { dissolves_to: _, bind: _ } => true
@@ -21,7 +21,7 @@ test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool {
     }
 }
 
-test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
+test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool  {
   srv3_os_install_actuator_host_selected_because_requirements_and_policy()
     && srv3_os_install_actuator_host_is_derived_srv1()
     && match srv3_os_install_actuator_tie_break_policy {
@@ -32,7 +32,7 @@ test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
     }
 }
 
-test fn srv3_actuator_host_failover_fixture_selects_srv2() -> Bool {
+test fn srv3_actuator_host_failover_fixture_selects_srv2() -> Bool  {
   srv3_os_install_actuator_host_failover_fixture_selects_srv2()
     && srv3_os_install_actuator_host_is_derived_srv1()
 }
@@ -60,7 +60,7 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
   path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
 }
 
-test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
+test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool  {
   match os_install_actuator_steps(mechanism: NbdProxyVirtualMediaInstall, export: srv3_nbd_proxy_export_placeholder).first() {
     Absent => false
     Present { value: first_step } =>
@@ -81,7 +81,7 @@ test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
   }
 }
 
-test fn unsatisfiable_selection_yields_no_actuator_target() -> Bool {
+test fn unsatisfiable_selection_yields_no_actuator_target() -> Bool  {
   match srv3_actuator_target_under(selection: unsatisfiable_actuator_selection_fixture) {
     Srv3ActuatorTargetUnsatisfiable { reason: why } =>
       string_contains(s: why, pattern: "fixture: no candidate host")
@@ -91,7 +91,7 @@ test fn unsatisfiable_selection_yields_no_actuator_target() -> Bool {
 
 // POSITIVE CONTROL: the same two consumers still produce a target on the live, satisfiable fleet,
 // so the witnesses above discriminate the arm rather than reporting a universally refusing path.
-test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Bool {
+test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Bool  {
   match srv3_actuator_target_under(selection: srv3_os_install_actuator_selection) {
     Srv3ActuatorTargetSelected { target: t } =>
       match t {
@@ -106,7 +106,7 @@ test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Boo
 // Optional made this path answer "host absent from compute inventory", inventing a cause with a
 // different remedy for a failure it did not have; DESIGN section 5 asks for a typed and LOCATED
 // diagnostic, and a located one names the selection. This asserts the reason survives the reach.
-test fn unsatisfiable_selection_names_the_selection_not_the_inventory() -> Bool {
+test fn unsatisfiable_selection_names_the_selection_not_the_inventory() -> Bool  {
   match host_toolchain_ensure_reach_under(
     kind: OsInstallActuator,
     host: operator_host_srv3,

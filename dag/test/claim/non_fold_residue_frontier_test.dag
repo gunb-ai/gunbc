@@ -19,18 +19,18 @@ import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 // whole-corpus census (cli_run/non_fold_residue.rs nfr_whole_corpus_typed_census) at unrostered=0,
 // stale=0 for the roster as a whole.
 
-test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool {
+test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool  {
   non_fold_residue_frontier_well_formed()
 }
 
-test fn non_fold_residue_frontier_keyed_roster_build_admits() -> Bool {
+test fn non_fold_residue_frontier_keyed_roster_build_admits() -> Bool  {
   match non_fold_residue_frontier_construct() {
     KeyedRosterBuilt { rows: _ } => true
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
-test fn non_fold_residue_frontier_is_populated() -> Bool {
+test fn non_fold_residue_frontier_is_populated() -> Bool  {
   length(xs: non_fold_residue_frontier_units()) >= 100
 }
 
@@ -48,7 +48,7 @@ fn synthetic_empty_condition(text: String) -> DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
-test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
+test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool  {
   let verdict = frontier_row_well_formed(
     row: FrontierRow {
       subject: PathSubject { path: "synthetic.dag::f" },
@@ -59,7 +59,7 @@ test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
   verdict == false
 }
 
-test fn non_fold_residue_frontier_red_control_duplicate_path_reds() -> Bool {
+test fn non_fold_residue_frontier_red_control_duplicate_path_reds() -> Bool  {
   match frontier_rows_keyed_roster_build(
     rows: [
       FrontierRow {

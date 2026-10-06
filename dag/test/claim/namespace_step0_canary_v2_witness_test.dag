@@ -375,7 +375,7 @@ fn holds(a: NamespaceStep0V2Admission?, f: fn(NamespaceStep0V2Admission) -> Bool
 
 // THE POSITIVE CONTROLS. Without these every refusal below would be satisfied by a classifier that
 // refuses everything.
-test fn a_coherent_entered_receipt_is_admitted() -> Bool {
+test fn a_coherent_entered_receipt_is_admitted() -> Bool  {
   holds(a: coherent_entered(), f: fn(a) { admitted_is(a: a) })
 }
 
@@ -384,7 +384,7 @@ test fn a_coherent_entered_receipt_is_admitted() -> Bool {
 // while the run still says that it did not execute the occurrence-grain producer. The three checks
 // stay together so no later edit can quote the green arm while silently retracting subject entry,
 // the compile transition, or the deliberately separate provenance judgment.
-test fn a_green_post_strip_compile_stays_entered_without_judging_import_dependence() -> Bool {
+test fn a_green_post_strip_compile_stays_entered_without_judging_import_dependence() -> Bool  {
   let post = post_strip_completed()
   let prefix = step0_v2_entered_prefix_for(standing: post)
   let frontier = entered_with_standing(standing: post)
@@ -443,7 +443,7 @@ test fn a_green_post_strip_compile_stays_entered_without_judging_import_dependen
   )
 }
 
-test fn a_coherent_unentered_receipt_is_admitted() -> Bool {
+test fn a_coherent_unentered_receipt_is_admitted() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -471,7 +471,7 @@ test fn a_coherent_unentered_receipt_is_admitted() -> Bool {
 // THE PARTITION LAW IS THE STRUCTURAL PREDICATE'S TEETH. A member that was neither stripped nor
 // named as excluded has no representation in an admitted receipt, so a subject that quietly shrank
 // cannot be reported as a whole one.
-test fn a_partition_that_does_not_exhaust_the_collected_population_refuses() -> Bool {
+test fn a_partition_that_does_not_exhaust_the_collected_population_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -496,7 +496,7 @@ test fn a_partition_that_does_not_exhaust_the_collected_population_refuses() -> 
   )
 }
 
-test fn a_foreign_contract_identity_refuses_at_the_identity_field() -> Bool {
+test fn a_foreign_contract_identity_refuses_at_the_identity_field() -> Bool  {
   holds(
     a: score(
       contract_identity: "namespace-step0-strip-entry-canary-v1" as NonEmptyStr,
@@ -521,7 +521,7 @@ test fn a_foreign_contract_identity_refuses_at_the_identity_field() -> Bool {
   )
 }
 
-test fn a_foreign_tree_refuses_at_the_tree_field() -> Bool {
+test fn a_foreign_tree_refuses_at_the_tree_field() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -546,7 +546,7 @@ test fn a_foreign_tree_refuses_at_the_tree_field() -> Bool {
   )
 }
 
-test fn a_different_compiler_executable_refuses_at_the_executable_field() -> Bool {
+test fn a_different_compiler_executable_refuses_at_the_executable_field() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -574,7 +574,7 @@ test fn a_different_compiler_executable_refuses_at_the_executable_field() -> Boo
 // A PREFIX THAT DISAGREES WITH THE FRONTIER IS THE V1 DEFECT'S SHAPE, and it is checked in both
 // directions: an entered subject that reports the pre-strip prefix, and an unentered one that
 // reports the strip as completed.
-test fn an_entered_frontier_with_the_pre_strip_prefix_refuses() -> Bool {
+test fn an_entered_frontier_with_the_pre_strip_prefix_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -599,7 +599,7 @@ test fn an_entered_frontier_with_the_pre_strip_prefix_refuses() -> Bool {
   )
 }
 
-test fn an_unentered_frontier_with_the_entered_prefix_refuses() -> Bool {
+test fn an_unentered_frontier_with_the_entered_prefix_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -626,7 +626,7 @@ test fn an_unentered_frontier_with_the_entered_prefix_refuses() -> Bool {
 
 // AN ENTERED SUBJECT IN WHICH NOTHING WAS REMOVED WAS NOT ENTERED. This is the arm that stops a run
 // whose strip was a no-op from reporting subject entry.
-test fn an_entered_frontier_that_removed_nothing_refuses() -> Bool {
+test fn an_entered_frontier_that_removed_nothing_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -654,7 +654,7 @@ test fn an_entered_frontier_that_removed_nothing_refuses() -> Bool {
 // THE COMPILE MUST HAVE CONSUMED THE POPULATION THE STRIP PRODUCED. Without this arm a receipt
 // could report a strip of one population and a compile of another, which is the two-producer defect
 // this whole contract exists to close, one stage further down.
-test fn a_compile_over_a_population_the_strip_did_not_produce_refuses() -> Bool {
+test fn a_compile_over_a_population_the_strip_did_not_produce_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -681,7 +681,7 @@ test fn a_compile_over_a_population_the_strip_did_not_produce_refuses() -> Bool 
 
 // AN UNENTERED SUBJECT CANNOT CARRY A CENSUS, because there is nothing stripped for a census to be
 // about.
-test fn a_census_on_an_unentered_subject_refuses() -> Bool {
+test fn a_census_on_an_unentered_subject_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -713,7 +713,7 @@ test fn a_census_on_an_unentered_subject_refuses() -> Bool {
 // A CENSUS MUST NAME THE POPULATION THIS RECEIPT OBSERVED. A census bound to a foreign subject is
 // the row the binding-provenance contract's fourth conservation law forbids, refused here at the
 // receipt grain before any census exists to write one.
-test fn a_census_naming_a_foreign_population_refuses() -> Bool {
+test fn a_census_naming_a_foreign_population_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -746,7 +746,7 @@ test fn a_census_naming_a_foreign_population_refuses() -> Bool {
 // the binding-provenance contract's producer_standing field; if a producer ever inhabits that
 // contract, this consequence changes THERE and the canary follows, with no second row to update and
 // no way for the two to disagree.
-test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inhabits_it() -> Bool {
+test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inhabits_it() -> Bool  {
   match step0_binding_provenance_consequence() {
     BindingProvenanceObservable { producer: _ } => false
     BindingProvenanceUnobservable { detail: detail } => match step0_import_dependence_not_judged() {
@@ -799,7 +799,7 @@ fn contract_carries_receipt_field(field: Step0CensusReceiptField) -> Bool {
     |> filter(candidate => candidate == field)) > 0
 }
 
-test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> Bool {
+test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> Bool  {
   contract_carries_family(family: TypeAnnotationReference)
     && contract_carries_family(family: GenericTypeArgumentReference)
     && contract_carries_family(family: TopLevelValueReference)
@@ -835,7 +835,7 @@ test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> 
 // partitioned and completely stripped before the compile was attempted, so the frontier stays
 // Entered and the standing carries the instrument's own refusal. The discriminator is the prefix:
 // an entry whose compile never ran may NOT claim ContainmentCompileAttempted.
-test fn an_entered_subject_whose_compile_instrument_failed_is_still_entered() -> Bool {
+test fn an_entered_subject_whose_compile_instrument_failed_is_still_entered() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -860,7 +860,7 @@ test fn an_entered_subject_whose_compile_instrument_failed_is_still_entered() ->
   )
 }
 
-test fn an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition() -> Bool {
+test fn an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -887,7 +887,7 @@ test fn an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition() 
 
 // A PAIR STANDING MAY NOT OUTRUN ITS TWO ARMS. Claiming both compiles refused while one arm's
 // instrument never ran reports an observation that half of it does not have.
-test fn a_pair_standing_that_claims_more_than_its_arms_observed_refuses() -> Bool {
+test fn a_pair_standing_that_claims_more_than_its_arms_observed_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -913,7 +913,7 @@ test fn a_pair_standing_that_claims_more_than_its_arms_observed_refuses() -> Boo
 }
 
 // A SUBJECT THAT WAS NEVER ENTERED HAS NO POST-STRIP COMPILE FOR A PAIR TO BE ABOUT.
-test fn an_unentered_subject_carrying_an_observed_pair_refuses() -> Bool {
+test fn an_unentered_subject_carrying_an_observed_pair_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -940,7 +940,7 @@ test fn an_unentered_subject_carrying_an_observed_pair_refuses() -> Bool {
 
 // THE COMPILE OBSERVATION MUST NAME THE POPULATION THE FRONTIER SAYS IT CONSUMED. Without this the
 // receipt could carry a census of some other compile beside a frontier that never produced it.
-test fn a_post_strip_observation_of_a_foreign_population_refuses() -> Bool {
+test fn a_post_strip_observation_of_a_foreign_population_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -992,7 +992,7 @@ fn entered_with_foreign_observation() -> Step0V2Frontier {
 // THE EXCLUDED POPULATION PARTICIPATES IN THE SUBJECT PROJECTION. A receipt whose excluded
 // projection does not have one member per named entry has an exclusion nothing accounts for, and
 // before this law the count could be made to balance while the projection said otherwise.
-test fn an_excluded_projection_that_does_not_cover_its_entries_refuses() -> Bool {
+test fn an_excluded_projection_that_does_not_cover_its_entries_refuses() -> Bool  {
   holds(
     a: score(
       contract_identity: namespace_step0_canary_v2_contract.identity,
@@ -1063,14 +1063,14 @@ fn partition_refused(outcome: Step0SubjectPartitionOutcome) -> Bool {
   }
 }
 
-test fn a_module_is_admitted_to_the_subject() -> Bool {
+test fn a_module_is_admitted_to_the_subject() -> Bool  {
   match partition_of(path: "dag/w/ok.dag", source: "module w.ok\n\nimport std.types { Bool }\n") {
     Absent => false
     Present { value: outcome } => partition_admitted_count(outcome: outcome) == 1 && partition_excluded_count(outcome: outcome) == 0
   }
 }
 
-test fn a_file_that_is_not_a_module_is_excluded_and_named() -> Bool {
+test fn a_file_that_is_not_a_module_is_excluded_and_named() -> Bool  {
   match partition_of(path: "dag/w/none.dag", source: "fn w_loose() -> Bool { true }\n") {
     Absent => false
     Present { value: outcome } => partition_excluded_count(outcome: outcome) == 1 && partition_admitted_count(outcome: outcome) == 0
@@ -1079,14 +1079,14 @@ test fn a_file_that_is_not_a_module_is_excluded_and_named() -> Bool {
 
 // THE REPAIR'S OWN RED. Before the parse cause was typed, this file landed in the excluded bucket
 // and the receipt still balanced -- a malformed production module leaving the subject in silence.
-test fn a_module_with_a_malformed_path_refuses_the_run_rather_than_leaving_the_subject() -> Bool {
+test fn a_module_with_a_malformed_path_refuses_the_run_rather_than_leaving_the_subject() -> Bool  {
   match partition_of(path: "dag/w/badpath.dag", source: "module 9\n") {
     Absent => false
     Present { value: outcome } => partition_refused(outcome: outcome)
   }
 }
 
-test fn a_module_with_a_malformed_import_statement_refuses_the_run() -> Bool {
+test fn a_module_with_a_malformed_import_statement_refuses_the_run() -> Bool  {
   match partition_of(path: "dag/w/badimport.dag", source: "module w.badimport\n\nimport {\n") {
     Absent => false
     Present { value: outcome } => partition_refused(outcome: outcome)
@@ -1095,7 +1095,7 @@ test fn a_module_with_a_malformed_import_statement_refuses_the_run() -> Bool {
 
 // A REFUSAL IS ABSORBING: a later member cannot repair an earlier refusal, so a partition that
 // refused once never reports a population afterwards.
-test fn a_partition_refusal_is_not_repaired_by_a_later_member() -> Bool {
+test fn a_partition_refusal_is_not_repaired_by_a_later_member() -> Bool  {
   match member(path: "dag/w/ok.dag", source: "module w.ok\n\nimport std.types { Bool }\n") {
     Absent => false
     Present { value: good } => match partition_of(path: "dag/w/badpath.dag", source: "module 9\n") {
@@ -1132,19 +1132,19 @@ fn differential_is_undefined(outcome: Step0DifferentialOutcome) -> Bool {
   }
 }
 
-test fn a_census_with_two_rows_for_one_bucket_makes_the_differential_undefined() -> Bool {
+test fn a_census_with_two_rows_for_one_bucket_makes_the_differential_undefined() -> Bool  {
   differential_is_undefined(outcome: step0_histogram_differential(pre: distinct_census(), post: duplicated_census()))
     && differential_is_undefined(outcome: step0_histogram_differential(pre: duplicated_census(), post: distinct_census()))
 }
 
 // The positive control, so the refusal above discriminates rather than refusing every census.
-test fn a_uniquely_keyed_census_pair_computes_its_differential() -> Bool {
+test fn a_uniquely_keyed_census_pair_computes_its_differential() -> Bool  {
   !differential_is_undefined(outcome: step0_histogram_differential(pre: distinct_census(), post: distinct_census()))
 }
 
 // blocking is part of the key, so the same class and subject at two severities are two buckets and
 // not a duplicate.
-test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool {
+test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool  {
   !differential_is_undefined(outcome: step0_histogram_differential(
     pre: distinct_census(),
     post: [
@@ -1193,7 +1193,7 @@ fn computed_differential(pre: List<CompileDiagnosticCensusRow>, post: List<Compi
 // post_only_occurrences and NOT to shared_increases, so shared_increases (8) and gross_increases
 // (14) are different numbers here. Under the prior model they were one field and this row could
 // not be written.
-test fn the_four_occurrence_movements_are_reported_separately() -> Bool {
+test fn the_four_occurrence_movements_are_reported_separately() -> Bool  {
   match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
     Absent => false
     Present { value: d } =>
@@ -1213,7 +1213,7 @@ test fn the_four_occurrence_movements_are_reported_separately() -> Bool {
 // CONTROL B. The differential names its own domain, and that domain is the WHOLE census rather than
 // the blocking subset: this pair carries advisory rows (blocking: false) and their occurrences are
 // inside the movements above, which is exactly the fact the receipt failed to state.
-test fn the_differential_names_the_whole_census_as_its_domain() -> Bool {
+test fn the_differential_names_the_whole_census_as_its_domain() -> Bool  {
   match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
     Absent => false
     Present { value: d } => match d.domain {
@@ -1254,7 +1254,7 @@ fn the_real_pair_conserves() -> Bool {
   }
 }
 
-test fn a_differential_whose_movements_do_not_conserve_its_population_is_refused() -> Bool {
+test fn a_differential_whose_movements_do_not_conserve_its_population_is_refused() -> Bool  {
   let perturbed_conserves = step0_differential_conserves(differential: movements_over_one_population_totals_over_another())
   !perturbed_conserves && the_real_pair_conserves()
 }
@@ -1262,7 +1262,7 @@ test fn a_differential_whose_movements_do_not_conserve_its_population_is_refused
 // CONTROL D. The identity is not satisfiable by an empty population alone: the pair above moves
 // occurrences in all four directions and still conserves, so a conserving answer is evidence about
 // this pair rather than about zero.
-test fn the_conservation_identity_is_not_vacuous_on_a_moving_pair() -> Bool {
+test fn the_conservation_identity_is_not_vacuous_on_a_moving_pair() -> Bool  {
   match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
     Absent => false
     Present { value: d } =>

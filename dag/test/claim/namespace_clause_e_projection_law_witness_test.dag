@@ -131,7 +131,7 @@ fn contract_witness_controlled_production() -> ReferenceDerivedClauseEProduction
   )
 }
 
-test fn witness_substrate_establishes_controlled_scenario() -> Bool {
+test fn witness_substrate_establishes_controlled_scenario() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_controlled_production(),
   ) {
@@ -140,7 +140,7 @@ test fn witness_substrate_establishes_controlled_scenario() -> Bool {
   }
 }
 
-test fn witness_substrate_refuses_one_mention_only() -> Bool {
+test fn witness_substrate_refuses_one_mention_only() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
@@ -165,7 +165,7 @@ test fn witness_substrate_refuses_one_mention_only() -> Bool {
   }
 }
 
-test fn witness_substrate_refuses_two_declarations_same_provider_file() -> Bool {
+test fn witness_substrate_refuses_two_declarations_same_provider_file() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
@@ -198,7 +198,7 @@ test fn witness_substrate_refuses_two_declarations_same_provider_file() -> Bool 
   }
 }
 
-test fn witness_substrate_refuses_duplicate_reference_occurrence() -> Bool {
+test fn witness_substrate_refuses_duplicate_reference_occurrence() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
@@ -231,7 +231,7 @@ test fn witness_substrate_refuses_duplicate_reference_occurrence() -> Bool {
   }
 }
 
-test fn witness_substrate_refuses_two_file_dependencies() -> Bool {
+test fn witness_substrate_refuses_two_file_dependencies() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
@@ -270,7 +270,7 @@ test fn witness_substrate_refuses_two_file_dependencies() -> Bool {
   }
 }
 
-test fn witness_substrate_refuses_changed_declaration_identity_in_bound_population() -> Bool {
+test fn witness_substrate_refuses_changed_declaration_identity_in_bound_population() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
@@ -303,7 +303,7 @@ test fn witness_substrate_refuses_changed_declaration_identity_in_bound_populati
   }
 }
 
-test fn witness_substrate_refuses_projection_inconsistent_with_bound_population() -> Bool {
+test fn witness_substrate_refuses_projection_inconsistent_with_bound_population() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
@@ -341,7 +341,7 @@ test fn witness_substrate_refuses_projection_inconsistent_with_bound_population(
   }
 }
 
-test fn witness_substrate_refuses_reference_population_refused() -> Bool {
+test fn witness_substrate_refuses_reference_population_refused() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: ReferenceDerivedClauseEProductionReady {
       projection: ReferenceDerivedDependencyProjectionReady {
@@ -373,7 +373,7 @@ test fn witness_substrate_refuses_reference_population_refused() -> Bool {
   }
 }
 
-test fn witness_substrate_refuses_file_path_missing() -> Bool {
+test fn witness_substrate_refuses_file_path_missing() -> Bool  {
   match assess_controlled_two_mention_provenance_projection(
     production: ReferenceDerivedClauseEProductionReady {
       projection: ReferenceDerivedDependencyProjectionFileRefused {

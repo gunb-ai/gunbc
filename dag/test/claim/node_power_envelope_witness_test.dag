@@ -248,7 +248,7 @@ fn two_dpc_clock_is_unresolved(rank_count: Nat) -> Bool {
 }
 
 // 1DPC ADMITS THE PLATFORM CAPABILITY. One DIMM per channel does not consult the rank table.
-test fn one_dpc_admits_the_platform_capability() -> Bool {
+test fn one_dpc_admits_the_platform_capability() -> Bool  {
   match cited_channel_clock(
     context: mt_collins_context,
     dimms_per_channel: 1,
@@ -262,7 +262,7 @@ test fn one_dpc_admits_the_platform_capability() -> Bool {
 // CONTROL: DELETING ALL RANK-SPECIFIC ROWS MUST NOT MANUFACTURE AN ADMITTED EFFECTIVE RATE.
 // The production table is empty. If 2DPC still yielded 3200 here, the empty case would be
 // executing the platform ceiling as a default.
-test fn emptying_rank_specific_ceiling_rows_does_not_admit_an_effective_rate() -> Bool {
+test fn emptying_rank_specific_ceiling_rows_does_not_admit_an_effective_rate() -> Bool  {
   count(altra_two_dpc_ceilings.rows) == 0
     && two_dpc_clock_is_unresolved(rank_count: 1)
     && two_dpc_clock_is_unresolved(rank_count: 2)
@@ -283,7 +283,7 @@ test fn emptying_rank_specific_ceiling_rows_does_not_admit_an_effective_rate() -
 // POSITIVE CONTROL FOR THE ADMITTED 2DPC PATH. A witness-local table, not the production empty
 // table: a rank below every min_rank stays unresolved; a matching row admits min(ceiling,
 // platform_max); a second matching row deepens the ceiling.
-test fn a_rank_specific_ceiling_row_admits_the_capped_effective_rate() -> Bool {
+test fn a_rank_specific_ceiling_row_admits_the_capped_effective_rate() -> Bool  {
   match cited_channel_clock(
     context: fixture_admitted_two_dpc_context,
     dimms_per_channel: 2,
@@ -317,7 +317,7 @@ test fn a_rank_specific_ceiling_row_admits_the_capped_effective_rate() -> Bool {
     }
 }
 
-test fn uncited_rank_specific_rows_do_not_admit_an_effective_rate() -> Bool {
+test fn uncited_rank_specific_rows_do_not_admit_an_effective_rate() -> Bool  {
   match cited_channel_clock(
     context: fixture_uncited_two_dpc_context,
     dimms_per_channel: 2,
@@ -350,7 +350,7 @@ test fn uncited_rank_specific_rows_do_not_admit_an_effective_rate() -> Bool {
 // THE HELD PUBLIC SOURCES DO NOT PUBLISH THE OLD 2933/2400 TRANSCRIPTION. The empty table is
 // an unresolved 2DPC operating rate, not a cited default of the 3200 ceiling. 3200 remains
 // the platform maximum (datasheet "Up to DDR4-3200"; Mt. Jade "DDR4-3200 (2DPC)").
-test fn the_two_dpc_ceilings_are_empty_because_ampere_publishes_no_rank_derate() -> Bool {
+test fn the_two_dpc_ceilings_are_empty_because_ampere_publishes_no_rank_derate() -> Bool  {
   count(altra_two_dpc_ceilings.rows) == 0
     && match altra_two_dpc_ceilings.evidence {
       CitedToAuthority { authority: _ } => false
@@ -364,7 +364,7 @@ test fn the_two_dpc_ceilings_are_empty_because_ampere_publishes_no_rank_derate()
 // board that admits two DIMMs per channel but was populated one-deep is
 // electrically one-deep, and the only authority for which happened is the
 // PopulationOption's own coverage.
-test fn the_populated_depth_is_read_from_the_population() -> Bool {
+test fn the_populated_depth_is_read_from_the_population() -> Bool  {
   populated_dimms_per_channel(population: sixteen_module_population) == 2
     && populated_dimms_per_channel(population: eight_module_population) == 1
 }
@@ -377,7 +377,7 @@ test fn the_populated_depth_is_read_from_the_population() -> Bool {
 // because the chip count comes from the module width against the ECC word:
 // dram_chips_per_rank derives the count from the 72-bit ECC word rather than
 // the 64-bit data word.
-test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
+test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool  {
   watt_count(w: memory_power(population: eight_module_population, power_per_chip: milliwatt(count: 400))) == 115
     && node_wall(inputs: q8030_node) == 340
     && match psu_adequacy(inputs: q8030_node) {
@@ -389,7 +389,7 @@ test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
 
 // RED CONTROL: the same node behind a supply that cannot carry it reports the
 // shortfall, not a Boolean false a buyer cannot act on.
-test fn an_undersized_supply_reports_its_shortfall() -> Bool {
+test fn an_undersized_supply_reports_its_shortfall() -> Bool  {
   let small = NodeElectricalInputs {
     label: "altrad8ud-q8030-undersized",
     sockets: 1,
@@ -409,14 +409,14 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
   }
 }
 
-test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
+test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool  {
   match memory_bandwidth(context: altrad8ud_context, population: eight_module_population) {
     MemoryBandwidthDerived { bandwidth: b } => bandwidth_count(b: b) == 204800000000
     MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
   }
 }
 
-test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
+test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool  {
   match memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population) {
     MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
     MemoryBandwidthDerived { bandwidth: single } =>
@@ -428,12 +428,12 @@ test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
   }
 }
 
-test fn realizability_rejects_an_impossible_sku() -> Bool {
+test fn realizability_rejects_an_impossible_sku() -> Bool  {
   dram_module_is_realizable(module: mod_2rx4_32g, jedec: ddr4_generation_catalog)
     && !dram_module_is_realizable(module: mod_1rx8_32g_impossible, jedec: ddr4_generation_catalog)
 }
 
-test fn a_real_part_computes_a_real_die_density() -> Bool {
+test fn a_real_part_computes_a_real_die_density() -> Bool  {
   byte_size_count(b: dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
 }
 
@@ -441,7 +441,7 @@ test fn a_real_part_computes_a_real_die_density() -> Bool {
 // disagrees with the derivation is reported as the divergence it is; nothing
 // here overwrites the derived figure with the measured one, and there is no
 // function that would.
-test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
+test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool  {
   let derived = match derived_wall_power(inputs: q8030_node) {
     DerivedWallPowerReading { reading: r } => r
     DerivedWallPowerRefused { cause: _ } => WallPowerMeasured { watts: watt(count: 0), host: "unreachable" as NonEmptyStr, observed_at: 0 }
@@ -499,7 +499,7 @@ data pending_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs 
   psu_efficiency: Gold,
 }
 
-test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool {
+test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool  {
   match node_draw(inputs: pending_altrad8ud_m12830_node) {
     NodeDrawRefused { cause: c } =>
       match c {
@@ -513,7 +513,7 @@ test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool 
 // ...and the supply is UNDECIDABLE rather than adequate. A 550W supply against
 // a 183W processor and a board looks comfortable until the memory it could not
 // count is added, which is exactly the reading this arm refuses to give.
-test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
+test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool  {
   match psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
     PsuUndecidable { cause: _ } => true
     PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
@@ -525,7 +525,7 @@ test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
 // same node reports 512 GiB while refusing to report a wattage. Two questions,
 // two evidence requirements — and a reader who only needed capacity is not
 // blocked by a read obligation that does not bear on it.
-test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
+test fn the_pending_configuration_still_answers_its_capacity() -> Bool  {
   byte_size_count(b: node_memory_capacity(inputs: pending_altrad8ud_m12830_node)) == 549755813888
 }
 
@@ -568,7 +568,7 @@ data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInput
   psu_efficiency: Gold,
 }
 
-test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
+test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool  {
   match node_draw(inputs: qualified_altrad8ud_m12830_node) {
     NodeDrawDerived { dc_load: dc, wall_draw: w } => watt_count(w: dc) == 328 && watt_count(w: w) == 364
     NodeDrawRefused { cause: _ } => false

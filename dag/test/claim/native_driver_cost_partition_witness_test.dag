@@ -63,12 +63,12 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
 // The sum is over the ROW SET, so this figure moves whenever the set does -- which is the point:
 // a row added to the type and forgotten in native_driver_exclusive_sum leaves the sum short and
 // fails here, rather than silently dropping that phase's time into the remainder.
-test fn exclusive_sum_is_every_row_the_law_folds() -> Bool {
+test fn exclusive_sum_is_every_row_the_law_folds() -> Bool  {
   native_driver_exclusive_sum(rows: sample_exclusive_rows())
     == nanosecond(count: 3440619041448)
 }
 
-test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() -> Bool {
+test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 3440628826753),
     exclusive: sample_exclusive_rows(),
@@ -80,7 +80,7 @@ test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() ->
   }
 }
 
-test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
+test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 100),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -108,7 +108,7 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
   }
 }
 
-test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
+test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 200000000),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -154,7 +154,7 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
 // readiness recomputation and row collection fell into the remainder, and a large enough selected
 // universe made a VALID adjudication exit RemainderExceedsTolerance. This probe fails exactly when the
 // row is dropped from the fold -- the remaining rows sum to 50 against a parent of 100 and reconcile.
-test fn an_over_attribution_routed_through_demand_scheduling_is_the_same_refusal() -> Bool {
+test fn an_over_attribution_routed_through_demand_scheduling_is_the_same_refusal() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 100),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -182,7 +182,7 @@ test fn an_over_attribution_routed_through_demand_scheduling_is_the_same_refusal
   }
 }
 
-test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refusal() -> Bool {
+test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refusal() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 100),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -210,7 +210,7 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
   }
 }
 
-test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal() -> Bool {
+test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 100),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -243,7 +243,7 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
 // reconciles each, which is what makes the extension additive rather than a second partition:
 // the zeros change neither the sum nor the tolerance verdict.
 
-test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have_at_zero() -> Bool {
+test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have_at_zero() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 1000),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -270,7 +270,7 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
   }
 }
 
-test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Bool {
+test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 1000),
     exclusive: native_driver_exclusive_rows(measure: fn(k) {
@@ -297,7 +297,7 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
   }
 }
 
-test fn a_completed_capture_with_no_cost_rows_is_unobserved() -> Bool {
+test fn a_completed_capture_with_no_cost_rows_is_unobserved() -> Bool  {
   match native_driver_cost_row_standing(child: NativeDriverChildExited { stderr: "" }) {
     NativeDriverCostRowsUnobserved => true
     NativeDriverCostRowsObserved => false
@@ -305,7 +305,7 @@ test fn a_completed_capture_with_no_cost_rows_is_unobserved() -> Bool {
   }
 }
 
-test fn a_planted_partition_line_is_observed() -> Bool {
+test fn a_planted_partition_line_is_observed() -> Bool  {
   match native_driver_cost_row_standing(
     child: NativeDriverChildExited {
       stderr: "[native-cost-partition] {\"verdict\":\"NativeDriverCostReconciled\"}\n"
@@ -317,7 +317,7 @@ test fn a_planted_partition_line_is_observed() -> Bool {
   }
 }
 
-test fn a_child_that_has_not_exited_is_pending_not_unobserved() -> Bool {
+test fn a_child_that_has_not_exited_is_pending_not_unobserved() -> Bool  {
   match native_driver_cost_row_standing(child: NativeDriverChildStillRunning) {
     NativeDriverCostRowsPending => true
     NativeDriverCostRowsObserved => false
@@ -379,7 +379,7 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
   })
 }
 
-test fn the_measured_serialization_row_closes_the_route_residual() -> Bool {
+test fn the_measured_serialization_row_closes_the_route_residual() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 3440770610503),
     exclusive: serialization_sample_rows_measured(),
@@ -391,7 +391,7 @@ test fn the_measured_serialization_row_closes_the_route_residual() -> Bool {
   }
 }
 
-test fn without_the_serialization_row_the_route_residual_refuses() -> Bool {
+test fn without_the_serialization_row_the_route_residual_refuses() -> Bool  {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 3440770610503),
     exclusive: serialization_sample_rows_dropped(),

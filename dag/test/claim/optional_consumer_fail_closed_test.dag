@@ -27,7 +27,7 @@ fn non_optional_arg_into_required_param_source() -> String {
   "module failclosedbarearg\n\nimport std.types { Int }\n\nfn consume(x: Int) -> Int {\n  x\n}\n\nfn drive(y: Int) -> Int {\n  consume(x: y)\n}\n"
 }
 
-test fn required_param_optional_arg_emits_located_fail_closed_unwrap() -> Bool {
+test fn required_param_optional_arg_emits_located_fail_closed_unwrap() -> Bool  {
   compile_dag_rust_emit_check(
     optional_arg_into_required_param_source(),
     "src/failclosedoptarg.rs",
@@ -36,7 +36,7 @@ test fn required_param_optional_arg_emits_located_fail_closed_unwrap() -> Bool {
   )
 }
 
-test fn required_param_nonoptional_arg_stays_bare() -> Bool {
+test fn required_param_nonoptional_arg_stays_bare() -> Bool  {
   compile_dag_rust_emit_check(
     non_optional_arg_into_required_param_source(),
     "src/failclosedbarearg.rs",

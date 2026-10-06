@@ -40,7 +40,7 @@ fn oar_direct_negative_source() -> String {
   "module oar.direct\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  take_s(s: maybe_s(x: 1))\n}\n"
 }
 
-test fn an_optional_at_a_string_parameter_must_refuse() -> Bool {
+test fn an_optional_at_a_string_parameter_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_direct_negative_source()) >= 1
 }
 
@@ -48,7 +48,7 @@ fn oar_list_arg_negative_source() -> String {
   "module oar.list_arg\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> Int {\n  take_l(xs: [\"p\", maybe_s(x: 1)])\n}\n"
 }
 
-test fn an_optional_member_of_a_declared_string_list_must_refuse() -> Bool {
+test fn an_optional_member_of_a_declared_string_list_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_list_arg_negative_source()) >= 1
 }
 
@@ -56,7 +56,7 @@ fn oar_join_negative_source() -> String {
   "module oar.join\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  join([\"id-\", maybe_s(x: 1)], \"\")\n}\n"
 }
 
-test fn an_optional_member_of_an_undeclared_list_literal_must_refuse() -> Bool {
+test fn an_optional_member_of_an_undeclared_list_literal_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_join_negative_source()) >= 1
 }
 
@@ -64,7 +64,7 @@ fn oar_direct_positive_source() -> String {
   "module oar.direct_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  take_s(s: \"v\")\n}\n"
 }
 
-test fn a_string_at_a_string_parameter_still_compiles() -> Bool {
+test fn a_string_at_a_string_parameter_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_direct_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_direct_positive_source(),
@@ -78,7 +78,7 @@ fn oar_join_positive_source() -> String {
   "module oar.join_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  match maybe_s(x: 1) {\n    Present { value: v } => join([\"id-\", v], \"\")\n    Absent => \"\"\n  }\n}\n"
 }
 
-test fn matching_the_optional_before_join_still_compiles() -> Bool {
+test fn matching_the_optional_before_join_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_join_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_join_positive_source(),
@@ -92,7 +92,7 @@ fn oar_lift_positive_source() -> String {
   "module oar.lift_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> Int {\n  take_o(s: \"v\")\n}\n"
 }
 
-test fn a_string_at_an_optional_parameter_is_not_this_wall() -> Bool {
+test fn a_string_at_an_optional_parameter_is_not_this_wall() -> Bool  {
   not_inhabited_blocking_count(source: oar_lift_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_lift_positive_source(),
@@ -106,7 +106,7 @@ fn oar_narrow_positive_source() -> String {
   "module oar.narrow_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  match maybe_s(x: 1) {\n    null => \"\"\n    v => take_s(s: v)\n  }\n}\n"
 }
 
-test fn a_binding_after_a_null_arm_is_present_and_still_compiles() -> Bool {
+test fn a_binding_after_a_null_arm_is_present_and_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_narrow_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_narrow_positive_source(),
@@ -129,7 +129,7 @@ fn oar_field_parse_int_negative_source() -> String {
   "module oar.field_parse_int\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(s: String) -> Code {\n  Code { code: parse_int(s: s) }\n}\n"
 }
 
-test fn parse_int_at_a_required_int_field_must_refuse() -> Bool {
+test fn parse_int_at_a_required_int_field_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_field_parse_int_negative_source()) == 1
 }
 
@@ -137,7 +137,7 @@ fn oar_field_negative_source() -> String {
   "module oar.field\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Code {\n  Code { code: maybe_i(x: 1) }\n}\n"
 }
 
-test fn an_optional_at_a_required_record_field_must_refuse() -> Bool {
+test fn an_optional_at_a_required_record_field_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_field_negative_source()) == 1
 }
 
@@ -145,7 +145,7 @@ fn oar_return_negative_source() -> String {
   "module oar.ret\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int {\n  maybe_i(x: 1)\n}\n"
 }
 
-test fn an_optional_at_a_required_declared_return_must_refuse() -> Bool {
+test fn an_optional_at_a_required_declared_return_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_return_negative_source()) == 1
 }
 
@@ -153,7 +153,7 @@ fn oar_early_return_negative_source() -> String {
   "module oar.early_ret\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(c: Bool) -> Int {\n  if c { return maybe_i(x: 1) }\n  0\n}\n"
 }
 
-test fn an_optional_at_an_early_return_of_a_required_declared_return_must_refuse() -> Bool {
+test fn an_optional_at_an_early_return_of_a_required_declared_return_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_early_return_negative_source()) == 1
 }
 
@@ -161,7 +161,7 @@ fn oar_data_negative_source() -> String {
   "module oar.data_init\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\ndata probe: Int = maybe_i(x: 1)\n"
 }
 
-test fn an_optional_at_a_required_data_initializer_must_refuse() -> Bool {
+test fn an_optional_at_a_required_data_initializer_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_data_negative_source()) == 1
 }
 
@@ -169,7 +169,7 @@ fn oar_let_negative_source() -> String {
   "module oar.let_anno\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int {\n  let v: Int = maybe_i(x: 1)\n  v\n}\n"
 }
 
-test fn an_optional_at_a_required_let_annotation_must_refuse() -> Bool {
+test fn an_optional_at_a_required_let_annotation_must_refuse() -> Bool  {
   not_inhabited_blocking_count(source: oar_let_negative_source()) == 1
 }
 
@@ -177,7 +177,7 @@ fn oar_field_positive_source() -> String {
   "module oar.field_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(s: String) -> MaybeCode {\n  MaybeCode { code: parse_int(s: s) }\n}\n"
 }
 
-test fn an_optional_at_an_optional_record_field_still_compiles() -> Bool {
+test fn an_optional_at_an_optional_record_field_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_field_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_field_positive_source(),
@@ -191,7 +191,7 @@ fn oar_return_positive_source() -> String {
   "module oar.ret_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int? {\n  maybe_i(x: 1)\n}\n"
 }
 
-test fn an_optional_at_an_optional_declared_return_still_compiles() -> Bool {
+test fn an_optional_at_an_optional_declared_return_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_return_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_return_positive_source(),
@@ -205,7 +205,7 @@ fn oar_data_positive_source() -> String {
   "module oar.data_init_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\ndata probe: Int? = maybe_i(x: 1)\n"
 }
 
-test fn an_optional_at_an_optional_data_initializer_still_compiles() -> Bool {
+test fn an_optional_at_an_optional_data_initializer_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_data_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_data_positive_source(),
@@ -219,7 +219,7 @@ fn oar_let_positive_source() -> String {
   "module oar.let_anno_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int? {\n  let v: Int? = maybe_i(x: 1)\n  v\n}\n"
 }
 
-test fn an_optional_at_an_optional_let_annotation_still_compiles() -> Bool {
+test fn an_optional_at_an_optional_let_annotation_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_let_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_let_positive_source(),
@@ -233,7 +233,7 @@ fn oar_field_matched_positive_source() -> String {
   "module oar.field_matched_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(s: String) -> Code {\n  match parse_int(s: s) {\n    Present { value: n } => Code { code: n }\n    Absent => Code { code: 0 }\n  }\n}\n"
 }
 
-test fn matching_the_optional_before_the_required_field_still_compiles() -> Bool {
+test fn matching_the_optional_before_the_required_field_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_field_matched_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_field_matched_positive_source(),
@@ -253,7 +253,7 @@ fn oar_own_absent_positive_source() -> String {
   "module oar.own_absent_ok\n\nimport std.types { Int, String }\n\ntype Verdict\n  = Converged\n  | Absent\n\ntype Receipt { verdict: Verdict }\n\nfn take_v(v: Verdict) -> Int {\n  match v {\n    Converged => 1\n    Absent => 0\n  }\n}\n\nfn probe(c: Bool) -> Verdict {\n  let r = Receipt { verdict: Absent }\n  if c { r.verdict } else if take_v(v: Absent) == 0 { Absent } else { Converged }\n}\n"
 }
 
-test fn a_coproducts_own_absent_arm_at_its_declared_positions_still_compiles() -> Bool {
+test fn a_coproducts_own_absent_arm_at_its_declared_positions_still_compiles() -> Bool  {
   not_inhabited_blocking_count(source: oar_own_absent_positive_source()) == 0
     && compile_dag_rust_emit_check(
       oar_own_absent_positive_source(),
@@ -274,6 +274,6 @@ fn oar_index_residual_source() -> String {
   "module oar.index_residual\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\nfn probe(xs: List<Int>) -> Int {\n  xs[0]\n}\n\nfn probe_field(xs: List<Int>) -> Code {\n  Code { code: xs[0] }\n}\n"
 }
 
-test fn an_index_access_at_a_required_position_is_the_declared_residual() -> Bool {
+test fn an_index_access_at_a_required_position_is_the_declared_residual() -> Bool  {
   not_inhabited_blocking_count(source: oar_index_residual_source()) == 0
 }

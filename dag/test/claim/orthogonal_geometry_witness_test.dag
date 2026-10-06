@@ -117,7 +117,7 @@ fn axis_direction_same(a: AxisDirection3, b: AxisDirection3) -> Bool {
 // A SEGMENT REFUSES DEGENERACY AND DIAGONALITY DIFFERENTLY, because one is an authoring slip and
 // the other is a limit of the exact kernel. A single "bad segment" refusal would send both callers
 // to the same wrong place.
-test fn segment_walls_hold() -> Bool {
+test fn segment_walls_hold() -> Bool  {
   let axis_aligned = match axis_aligned_segment2(start: p2(x: 0, y: 0), end: p2(x: 3000, y: 0)) {
     OrthogonalReady { value: s } =>
       match segment2_axis(s: s) { Axis2X => true Axis2Y => false }
@@ -150,7 +150,7 @@ test fn segment_walls_hold() -> Bool {
 
 // THE REFUSAL NAMES WHICH AXIS COLLAPSED. "The box is degenerate" sends a caller to inspect three
 // numbers the mint already narrowed to one.
-test fn box_and_rectangle_walls_hold() -> Bool {
+test fn box_and_rectangle_walls_hold() -> Bool  {
   let good_box = match axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 4000, y: 3000, z: 2400)) {
     OrthogonalReady { value: b } =>
       box3_contains_point(b: b, p: p3(x: 100, y: 100, z: 100))
@@ -176,7 +176,7 @@ test fn box_and_rectangle_walls_hold() -> Bool {
 // TOUCHING IS NOT OVERLAPPING, and this is the control for that convention rather than a comment
 // asserting it: two rooms sharing a wall plane are adjacent, and a containment test that called
 // them intersecting would report every neighbour as a collision.
-test fn box_overlap_treats_touching_faces_as_adjacent() -> Bool {
+test fn box_overlap_treats_touching_faces_as_adjacent() -> Bool  {
   match axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 1000, y: 1000, z: 1000)) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: a } =>
@@ -203,7 +203,7 @@ test fn box_overlap_treats_touching_faces_as_adjacent() -> Bool {
 // representation - there is nothing to check and reject. What the controls prove is that the
 // derivation is the right-handed one and that a parallel pair, the only unreachable-by-intent
 // input, refuses.
-test fn rotation_is_orientation_preserving_by_construction() -> Bool {
+test fn rotation_is_orientation_preserving_by_construction() -> Bool  {
   let identity_rotation = match orthogonal_rotation3(x_image: PositiveX, y_image: PositiveY) {
     OrthogonalReady { value: r } => axis_direction_same(a: rotation_z_image(r: r), b: PositiveZ)
     OrthogonalRefused { cause: _ } => false
@@ -230,7 +230,7 @@ test fn rotation_is_orientation_preserving_by_construction() -> Bool {
 // THE LOOP WALLS, each with its own refusal because each sends a caller somewhere different. The
 // self-intersection pair is the one worth reading: both loops have four axis-aligned, alternating
 // edges and no repeated vertex, so nothing local to an edge distinguishes them.
-test fn loop_walls_hold() -> Bool {
+test fn loop_walls_hold() -> Bool  {
   let square = [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]
   let good = match orthogonal_loop2(vertices: square) {
     OrthogonalReady { value: l } => (loop2_vertices(l: l) |> count) == 4
@@ -266,7 +266,7 @@ test fn loop_walls_hold() -> Bool {
 // A FIGURE-EIGHT. Eight vertices, every edge axis-aligned, every adjacent pair perpendicular, no
 // vertex repeated - and two non-adjacent edges cross. Nothing except the pairwise edge test sees
 // it, which is why that test exists rather than a repeated-vertex check standing in for it.
-test fn self_intersecting_loop_refuses() -> Bool {
+test fn self_intersecting_loop_refuses() -> Bool  {
   let figure_eight = [
     p2(x: 0, y: 0), p2(x: 2000, y: 0), p2(x: 2000, y: 2000), p2(x: 1000, y: 2000),
     p2(x: 1000, y: 1000), p2(x: 3000, y: 1000), p2(x: 3000, y: 3000), p2(x: 0, y: 3000)
@@ -279,7 +279,7 @@ test fn self_intersecting_loop_refuses() -> Bool {
 
 // A BOUNDING BOX OF NOTHING IS NOT A DEGENERATE BOX AT THE ORIGIN. Returning one would be the
 // fabricated plausible output DESIGN 5 forbids, so the empty list is the one refusal.
-test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
+test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool  {
   let derived = match bounding_box3(points: [p3(x: 10, y: 0 - 5, z: 3), p3(x: 0 - 2, y: 40, z: 3), p3(x: 7, y: 1, z: 99)]) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: b } =>
@@ -309,7 +309,7 @@ test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
 // the minted surface's plane is Z-normal, at the offset given, in the extent's own frame. A
 // cross-frame arm is not written because the mint now takes only one frame-bearing input - the
 // mismatch it used to refuse has no representation.
-test fn plane_surface_and_prism_hold() -> Bool {
+test fn plane_surface_and_prism_hold() -> Bool  {
   let floor_plane = plane3(frame: room(), normal_axis: Axis3Z, offset: 0)
   let on_plane = plane3_contains_point(plane: floor_plane, p: p3(x: 500, y: 500, z: 0))
   let off_plane = !plane3_contains_point(plane: floor_plane, p: p3(x: 500, y: 500, z: 1))
@@ -370,7 +370,7 @@ fn micro_registry() -> SpatialFrameRegistry {
 // satisfies: a reader returning 200 instead of 20000 would have passed it, and the
 // reader's actual job — returning the extent in the frame's registered unit — went
 // unwitnessed. The count is asserted first, then the refusal.
-test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool {
+test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool  {
   match axis_aligned_rectangle2(
     min: point2(frame: board(), x: 0, y: 0),
     max: point2(frame: board(), x: 20000, y: 20000)
@@ -395,7 +395,7 @@ test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool {
 
 // An unregistered frame has no unit, and a reader that fell back to millimetres would answer a
 // plausible number for a real question. The registry above holds the board frame only.
-test fn an_unregistered_frame_refuses_rather_than_measuring() -> Bool {
+test fn an_unregistered_frame_refuses_rather_than_measuring() -> Bool  {
   match axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 1200, y: 800)) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: rect } =>

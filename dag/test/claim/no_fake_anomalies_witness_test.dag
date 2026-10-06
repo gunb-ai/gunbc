@@ -41,7 +41,7 @@ fn stderr_has_anomaly_glyph(stderr: String) -> Bool {
     || string_contains(s: stderr, pattern: anomaly_glyph_ascii)
 }
 
-test fn passing_run_shows_no_fake_anomaly_holds() -> Bool {
+test fn passing_run_shows_no_fake_anomaly_holds() -> Bool  {
   let stderr = run_corpus_capturing_stderr(
     entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness_test.dag",
     function: "witness_uuid_deterministic"
@@ -51,7 +51,7 @@ test fn passing_run_shows_no_fake_anomaly_holds() -> Bool {
 
 data no_fake_anomalies_red_control_note: String = "The RED control does not perturb anything: it points at an entry that STILL carries a deliberate anomaly — typed_witness_bin_run_loud_failure_red_control_holds calls gunbc.WitnessBin.Run(/bin/false) with no ExpectFailure / OutcomeIsData, so the observation layer paints ❌/✗. Re-pointed 2026-07-26 off typed_run_witness_bin_unbuildable_red_control_holds (WitnessBinNotEnrolled refuses before cargo — no glyph) and off a cargo.BuildInheritEnv missing-bin variant that restored the glyph but blew FLOOR-BATCH-OVER-BUDGET (~90s child wall). So the pair is genuine: an entry whose probes are all annotated shows no glyph, an entry with a real remaining one does. NOTE THE COUPLING, because it is load-bearing: if that Run is ever annotated, or the witness stops exercising it, THIS control goes vacuously green and the wall above loses its proof of discrimination. Re-point it at another entry carrying a deliberate anomaly at that moment — do not delete it, and do not let it pass by accident."
 
-test fn red_control_entry_with_real_anomaly_still_shows_glyph_holds() -> Bool {
+test fn red_control_entry_with_real_anomaly_still_shows_glyph_holds() -> Bool  {
   let stderr = run_corpus_capturing_stderr(
     entry: "dag/test/claim/typed_witness_invocation_test.dag",
     function: "typed_witness_bin_run_loud_failure_red_control_holds"

@@ -293,17 +293,17 @@ fn amount_is(o: ContributionOutcome, micros: Nat) -> Bool {
   }
 }
 
-test fn witness_wage_base_clamps_the_cumulative_position() -> Bool {
+test fn witness_wage_base_clamps_the_cumulative_position() -> Bool  {
   let o = contribution_for_period(spec: us_social_security_employee_2025, position: probe_crossing_the_cap)
   return subject_is(o: o, micros: 6100000000) && amount_is(o: o, micros: 378200000)
 }
 
-test fn witness_period_entirely_above_the_cap_owes_nothing() -> Bool {
+test fn witness_period_entirely_above_the_cap_owes_nothing() -> Bool  {
   let o = contribution_for_period(spec: us_social_security_employee_2025, position: probe_above_the_cap)
   return subject_is(o: o, micros: 0) && amount_is(o: o, micros: 0)
 }
 
-test fn witness_above_threshold_band_charges_only_the_excess() -> Bool {
+test fn witness_above_threshold_band_charges_only_the_excess() -> Bool  {
   let crossing = contribution_for_period(spec: us_additional_medicare_employer_withholding_2025, position: probe_crossing_the_threshold)
   let ordinary = contribution_for_period(spec: us_additional_medicare_employer_withholding_2025, position: probe_ordinary_hi)
   return subject_is(o: crossing, micros: 10000000000)
@@ -311,17 +311,17 @@ test fn witness_above_threshold_band_charges_only_the_excess() -> Bool {
     && amount_is(o: ordinary, micros: 0)
 }
 
-test fn witness_earnings_period_window_refuses_rather_than_assuming_annual() -> Bool {
+test fn witness_earnings_period_window_refuses_rather_than_assuming_annual() -> Bool  {
   refuses_with(o: contribution_for_period(spec: probe_earnings_period_spec, position: probe_earnings_period), tag: "window-unmodeled")
     && refuses_with(o: contribution_for_period(spec: us_social_security_employee_2026, position: probe_earnings_period), tag: "window-mismatch")
     && refuses_with(o: contribution_for_period(spec: probe_earnings_period_spec, position: probe_next_year_ss), tag: "window-mismatch")
 }
 
-test fn witness_aggregation_scope_must_agree() -> Bool {
+test fn witness_aggregation_scope_must_agree() -> Bool  {
   refuses_with(o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_cross_employer), tag: "scope-mismatch")
 }
 
-test fn witness_malformed_band_bounds_refuse_and_the_well_formed_twin_computes() -> Bool {
+test fn witness_malformed_band_bounds_refuse_and_the_well_formed_twin_computes() -> Bool  {
   refuses_with(o: contribution_for_period(spec: probe_reversed_bounds_spec, position: probe_between_band_position), tag: "band-bounds")
     && refuses_with(o: contribution_for_period(spec: probe_equal_bounds_spec, position: probe_between_band_position), tag: "band-bounds")
     && subject_is(o: contribution_for_period(spec: probe_well_formed_bounds_spec, position: probe_between_band_position), micros: 100000000)
@@ -331,7 +331,7 @@ test fn witness_malformed_band_bounds_refuse_and_the_well_formed_twin_computes()
 // The two positions differ ONLY in contribution_base. The Social Security row computes against its
 // own base and refuses the Medicare one by name - and the amounts would have been identical, which
 // is exactly why nothing else could have caught it.
-test fn witness_contribution_base_must_agree_all_else_held_constant() -> Bool {
+test fn witness_contribution_base_must_agree_all_else_held_constant() -> Bool  {
   amount_is(o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_ordinary_ss), micros: 248000000)
     && refuses_with(o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_ordinary_hi), tag: "base-mismatch")
 }
@@ -370,7 +370,7 @@ fn accrual_refuses_all_with(o: PeriodAccrualOutcome, tag: String, n: Nat) -> Boo
 
 // Only the Social Security position is offered, so the Medicare rows have no position under their
 // own base and refuse BY NAME rather than borrowing this one.
-test fn witness_spec_without_a_position_for_its_base_refuses_by_name() -> Bool {
+test fn witness_spec_without_a_position_for_its_base_refuses_by_name() -> Bool  {
   match accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_ordinary_ss]) {
     AccrualDerived { accrual } => false
     AccrualRefusedWhole { causes } =>
@@ -379,12 +379,12 @@ test fn witness_spec_without_a_position_for_its_base_refuses_by_name() -> Bool {
   }
 }
 
-test fn witness_stale_effective_year_refuses_the_whole_accrual() -> Bool {
+test fn witness_stale_effective_year_refuses_the_whole_accrual() -> Bool  {
   accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_next_year_ss, probe_next_year_hi]), tag: "year-mismatch", n: 5)
     && accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2026, positions: [probe_ordinary_ss, probe_ordinary_hi]), tag: "year-mismatch", n: 5)
 }
 
-test fn witness_foreign_currency_refuses_the_whole_accrual() -> Bool {
+test fn witness_foreign_currency_refuses_the_whole_accrual() -> Bool  {
   accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_foreign_ss, probe_foreign_hi]), tag: "currency-mismatch", n: 5)
 }
 
@@ -405,7 +405,7 @@ test fn witness_foreign_currency_refuses_the_whole_accrual() -> Bool {
 // The second arm is the positive control: the SAME Eur spec and position accrue normally in a
 // period declared in Eur, so the first arm refuses for the currency and not because the fixture is
 // malformed.
-test fn witness_period_currency_holds_every_spec_not_just_its_own_position() -> Bool {
+test fn witness_period_currency_holds_every_spec_not_just_its_own_position() -> Bool  {
   let crossed = accrue_period(
     currency: Usd,
     specs: [us_social_security_employee_2025, fixture_eur_levy_2025],
@@ -428,7 +428,7 @@ test fn witness_period_currency_holds_every_spec_not_just_its_own_position() -> 
   }
 }
 
-test fn witness_ordinary_period_accrues_against_published_rates() -> Bool {
+test fn witness_ordinary_period_accrues_against_published_rates() -> Bool  {
   match accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_ordinary_ss, probe_ordinary_hi]) {
     AccrualRefusedWhole { causes } => false
     AccrualDerived { accrual } =>
@@ -442,7 +442,7 @@ test fn witness_ordinary_period_accrues_against_published_rates() -> Bool {
 // it is 11,439 dollars - the maximum OASDI contribution the Social Security Administration
 // publishes per side. This asserts a figure produced elsewhere, so it catches a wrong wage base and
 // a wrong rate together; a value this repository derived for itself could not.
-test fn witness_2026_maximum_matches_the_published_contribution() -> Bool {
+test fn witness_2026_maximum_matches_the_published_contribution() -> Bool  {
   let o = contribution_for_period(spec: us_social_security_employee_2026, position: probe_2026_full_cap)
   return subject_is(o: o, micros: 184500000000) && amount_is(o: o, micros: 11439000000)
 }

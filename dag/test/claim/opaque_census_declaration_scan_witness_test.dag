@@ -65,7 +65,7 @@ fn witness_a_same_line_body_is_still_a_body() -> Bool {
   opaque_census_scan_answers(content: "type Foo = Int\n", name: "Foo") == "BODY"
 }
 
-test fn opaque_census_declaration_scan_witnesses() -> Bool {
+test fn opaque_census_declaration_scan_witnesses() -> Bool  {
   witness_longer_same_prefix_name_does_not_answer_for_a_shorter_one()
     && witness_body_on_the_following_line_is_a_body()
     && witness_a_genuinely_bodyless_declaration_is_still_opaque()
@@ -80,7 +80,7 @@ test fn opaque_census_declaration_scan_witnesses() -> Bool {
 // recorded and finally refuses as unreadable -- without a host filesystem. The three reds are
 // against the former fold, which folded every failed read into the same terminal arm as an
 // established absence.
-test fn witness_unlistable_candidate_root_refuses_the_standing_question() -> Bool {
+test fn witness_unlistable_candidate_root_refuses_the_standing_question() -> Bool  {
   let scan = declaration_candidate_scan_then_with(
     acc: DeclarationScanUnresolved { attempted: "dag/x.dag src/v2/x.dag", unobserved: none },
     o: FilesystemFileIndeterminate {
@@ -96,7 +96,7 @@ test fn witness_unlistable_candidate_root_refuses_the_standing_question() -> Boo
   }
 }
 
-test fn witness_refused_candidate_subject_refuses_the_standing_question() -> Bool {
+test fn witness_refused_candidate_subject_refuses_the_standing_question() -> Bool  {
   let scan = declaration_candidate_scan_then_with(
     acc: DeclarationScanUnresolved { attempted: "dag/x.dag", unobserved: none },
     o: FilesystemFileSubjectRefused {
@@ -113,7 +113,7 @@ test fn witness_refused_candidate_subject_refuses_the_standing_question() -> Boo
   }
 }
 
-test fn witness_moved_candidate_subject_refuses_the_standing_question() -> Bool {
+test fn witness_moved_candidate_subject_refuses_the_standing_question() -> Bool  {
   let scan = declaration_candidate_scan_then_with(
     acc: DeclarationScanUnresolved { attempted: "dag/x.dag", unobserved: none },
     o: FilesystemFileObservationsDisagree {
@@ -129,7 +129,7 @@ test fn witness_moved_candidate_subject_refuses_the_standing_question() -> Bool 
   }
 }
 
-test fn witness_first_recorded_fault_is_the_one_carried() -> Bool {
+test fn witness_first_recorded_fault_is_the_one_carried() -> Bool  {
   let first = declaration_candidate_scan_then_with(
     acc: DeclarationScanUnresolved { attempted: "dag/x.dag src/v2/x.dag", unobserved: none },
     o: FilesystemFileIndeterminate { cause: "the directory dag could not be listed -- first fault" },
@@ -154,7 +154,7 @@ test fn witness_first_recorded_fault_is_the_one_carried() -> Bool {
 // The established absence is MINTED, never written: FilesystemEstablishedAbsence is
 // sole_constructor and constructible only inside the interface module, so the fixture derives
 // the observation from a listed directory whose entries omit the candidate's name.
-test fn witness_established_candidate_absence_still_answers_unresolved() -> Bool {
+test fn witness_established_candidate_absence_still_answers_unresolved() -> Bool  {
   let listing = filesystem_listing_observation(directory: "dag", success: true, entries: "", error: "")
   match filesystem_file_observation(
     listing: listing,
@@ -183,7 +183,7 @@ test fn witness_established_candidate_absence_still_answers_unresolved() -> Bool
 // POSITIVE CONTROL: a candidate that was actually read and declares the name answers the question
 // even though a DIFFERENT candidate spelling could not be looked at -- the fault names another
 // path, and the census's happy path must not regress to a refusal.
-test fn witness_resolved_candidate_wins_over_a_recorded_fault() -> Bool {
+test fn witness_resolved_candidate_wins_over_a_recorded_fault() -> Bool  {
   let faulted = declaration_candidate_scan_then_with(
     acc: DeclarationScanUnresolved { attempted: "src/v2/x.dag dag/x.dag", unobserved: none },
     o: FilesystemFileIndeterminate { cause: "the directory src/v2 could not be listed -- permission denied" },
@@ -204,7 +204,7 @@ test fn witness_resolved_candidate_wins_over_a_recorded_fault() -> Bool {
 
 // POSITIVE CONTROL: a readable candidate that does not declare the name keeps the search going as
 // unresolved -- the file was looked at, so this is an absence, not a fault.
-test fn witness_readable_candidate_without_the_declaration_stays_unresolved() -> Bool {
+test fn witness_readable_candidate_without_the_declaration_stays_unresolved() -> Bool  {
   let scan = declaration_candidate_scan_then_with(
     acc: DeclarationScanUnresolved { attempted: "dag/x.dag", unobserved: none },
     o: FilesystemFileRead { path: "dag/x.dag", content: "type Y = Int\n" },
@@ -237,7 +237,7 @@ fn opaque_census_binary_cause_names(reason_name: String, other_name: String, emp
   }
 }
 
-test fn opaque_census_binary_refusal_carries_its_reason() -> Bool {
+test fn opaque_census_binary_refusal_carries_its_reason() -> Bool  {
   opaque_census_binary_cause_names(reason_name: "artifact-empty", other_name: "artifact-not-executable", empty: true)
     && opaque_census_binary_cause_names(reason_name: "artifact-not-executable", other_name: "artifact-empty", empty: false)
 }

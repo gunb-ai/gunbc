@@ -60,7 +60,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // function signature and must not emit the algebra head its Nat alias resolves to. A control
 // whose body asserted nothing would be a cost with no verdict, and the first cleanup would delete
 // it as an artifact with no consumer.
-test fn w_opaque_arm_is_reached_and_its_probe_emits() -> Bool {
+test fn w_opaque_arm_is_reached_and_its_probe_emits() -> Bool  {
   compile_dag_rust_emit_check(
     "module probe_opaque_reach_control\n\nimport std.nat { Nat }\n\nfn probe_identity(n: Nat) -> Nat {\n  n\n}\n",
     "src/probe_opaque_reach_control.rs",

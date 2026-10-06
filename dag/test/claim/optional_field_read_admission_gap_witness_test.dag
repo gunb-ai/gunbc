@@ -43,7 +43,7 @@ fn ofr_field_read_source() -> String {
   "module ofr.field_read\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn probe() -> Bool {\n  levels().first().id == \"l1\"\n}\n"
 }
 
-test fn a_field_read_through_first_is_admitted_today() -> Bool {
+test fn a_field_read_through_first_is_admitted_today() -> Bool  {
   blocking_count(source: ofr_field_read_source()) == 0
 }
 
@@ -51,6 +51,6 @@ fn ofr_call_arg_source() -> String {
   "module ofr.call_arg\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn level_id(l: Level) -> String {\n  l.id\n}\n\nfn probe() -> Bool {\n  level_id(l: levels().first()) == \"l1\"\n}\n"
 }
 
-test fn the_same_first_at_a_call_argument_is_refused() -> Bool {
+test fn the_same_first_at_a_call_argument_is_refused() -> Bool  {
   not_inhabited_blocking_count(source: ofr_call_arg_source()) >= 1
 }

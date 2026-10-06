@@ -44,7 +44,7 @@ fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, ProbeSelection, String,
   }
 }
 
-test fn same_name_version_different_paths_stay_distinct() -> Bool {
+test fn same_name_version_different_paths_stay_distinct() -> Bool  {
   match package_lock_lookup_node(graph: graph(), key: "node_modules/a" as NonEmptyStr) {
     PackageLockNodeUnique { node: _ } =>
       match package_lock_lookup_node(graph: graph(), key: "node_modules/b/node_modules/a" as NonEmptyStr) {
@@ -62,14 +62,14 @@ test fn same_name_version_different_paths_stay_distinct() -> Bool {
   }
 }
 
-test fn admitted_graph_accepts_unique_keys() -> Bool {
+test fn admitted_graph_accepts_unique_keys() -> Bool  {
   match package_lock_admit_graph(graph: graph()) {
     PackageLockGraphAdmitted { graph: _ } => true
     _ => false
   }
 }
 
-test fn edge_to_missing_node_refuses() -> Bool {
+test fn edge_to_missing_node_refuses() -> Bool  {
   let g = PackageLockGraph {
     manager: "probe-pm" as NonEmptyStr,
     roots: [],
@@ -87,7 +87,7 @@ test fn edge_to_missing_node_refuses() -> Bool {
   }
 }
 
-test fn duplicate_identical_node_keys_refuse_admission() -> Bool {
+test fn duplicate_identical_node_keys_refuse_admission() -> Bool  {
   let g = PackageLockGraph {
     manager: "probe-pm" as NonEmptyStr,
     roots: ["dup" as NonEmptyStr],
@@ -115,14 +115,14 @@ test fn duplicate_identical_node_keys_refuse_admission() -> Bool {
   }
 }
 
-test fn package_delivery_boundary_readmits_raw_graph() -> Bool {
+test fn package_delivery_boundary_readmits_raw_graph() -> Bool  {
   match admit_codex_package_lock_graph(raw_graph: graph()) {
     PackageLockGraphAdmitted { graph: _ } => true
     _ => false
   }
 }
 
-test fn admitted_nodes_do_not_surface_as_missing_root() -> Bool {
+test fn admitted_nodes_do_not_surface_as_missing_root() -> Bool  {
   let g = PackageLockGraph {
     manager: "probe-pm" as NonEmptyStr,
     roots: [],

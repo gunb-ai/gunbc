@@ -91,7 +91,7 @@ fn fixture_unique_index_entries(
   }
 }
 
-test fn namespace_occurrence_allocator_scope_is_explicit_holds() -> Bool {
+test fn namespace_occurrence_allocator_scope_is_explicit_holds() -> Bool  {
   let first = alloc_occurrence_id(
     alloc: occurrence_id_allocator_initial()
   )
@@ -104,7 +104,7 @@ test fn namespace_occurrence_allocator_scope_is_explicit_holds() -> Bool {
   isolated.id.value == 0
 }
 
-test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
+test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool  {
   let first = alloc_occurrence_id(
     alloc: occurrence_id_allocator_initial()
   )
@@ -127,7 +127,7 @@ test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
     second_entry.projection.occurrence.value
 }
 
-test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool {
+test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool  {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 4 }
   let span = fixture_span(file: "typed.dag", start: 7, end: 8)
   let transport = OccurrenceTransport {
@@ -176,7 +176,7 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
   }
 }
 
-test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bool {
+test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bool  {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 9 }
   let span = fixture_span(file: "refusal.dag", start: 2, end: 3)
   let declaration = DeclarationOccurrence {
@@ -222,7 +222,7 @@ test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bo
   }
 }
 
-test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool {
+test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool  {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 41 }
   let mismatched_terminal = std.occurrence_identity.OccurrenceId { value: 42 }
   let span = fixture_span(
@@ -262,7 +262,7 @@ test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool {
   }
 }
 
-test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool {
+test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool  {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 43 }
   let ancestor = std.occurrence_identity.OccurrenceId { value: 99 }
   let span = fixture_span(
@@ -306,7 +306,7 @@ test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool {
   }
 }
 
-test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
+test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool  {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 45 }
   let span = fixture_span(
     file: "occurrence-duplicate-declaration.dag",
@@ -348,7 +348,7 @@ test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
   }
 }
 
-test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool {
+test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool  {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 46 }
   let span = fixture_span(
     file: "occurrence-duplicate-reference.dag",
@@ -390,7 +390,7 @@ test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool {
   }
 }
 
-test fn namespace_occurrence_validator_large_population_holds() -> Bool {
+test fn namespace_occurrence_validator_large_population_holds() -> Bool  {
   let small = OccurrenceTransport {
     index: OccurrenceIndex {
       entries: fixture_unique_index_entries(next: 0, remaining: 256),
@@ -536,7 +536,7 @@ fn fixture_reference(
   }
 }
 
-test fn w_namespace_occurrence_transport_mints_distinct_equal_text() -> Bool {
+test fn w_namespace_occurrence_transport_mints_distinct_equal_text() -> Bool  {
   let left_decl = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
   let left_param = alloc_occurrence_id(alloc: left_decl.alloc)
   let left_body = alloc_occurrence_id(alloc: left_param.alloc)
@@ -641,7 +641,7 @@ test fn w_namespace_occurrence_transport_mints_distinct_equal_text() -> Bool {
   occurrence_transport_refusal(transport: transport) == none
 }
 
-test fn w_namespace_occurrence_transport_preserves_graph_allocator() -> Bool {
+test fn w_namespace_occurrence_transport_preserves_graph_allocator() -> Bool  {
   let first_a = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
   let first_b = alloc_occurrence_id(alloc: first_a.alloc)
   let continued = occurrence_id_allocator_advance_to(
@@ -827,7 +827,7 @@ fn pattern_fixture_has_roles(
   occurrence_transport_refusal(transport: transport) == none
 }
 
-test fn w_namespace_occurrence_transport_covers_pattern_binder_forms() -> Bool {
+test fn w_namespace_occurrence_transport_covers_pattern_binder_forms() -> Bool  {
   pattern_fixture_has_roles(
     transport: direct_binder_pattern_transport(base: 0),
     lexical_minimum: 1,

@@ -253,7 +253,7 @@ fn obc_module_sibling_inputs() -> OccurrenceBindingCandidateInputs {
   )
 }
 
-test fn module_scope_sibling_is_visible_holds() -> Bool {
+test fn module_scope_sibling_is_visible_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_module_sibling_inputs(),
@@ -339,7 +339,7 @@ fn obc_sibling_arm_inputs() -> OccurrenceBindingCandidateInputs {
   )
 }
 
-test fn sibling_match_arm_not_visible_holds() -> Bool {
+test fn sibling_match_arm_not_visible_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_sibling_arm_transport(),
     inputs: obc_sibling_arm_inputs(),
@@ -409,7 +409,7 @@ fn obc_nested_lexical_inputs() -> OccurrenceBindingCandidateInputs {
   )
 }
 
-test fn nested_lexical_only_inside_scope_holds() -> Bool {
+test fn nested_lexical_only_inside_scope_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_nested_lexical_transport(),
     inputs: obc_nested_lexical_inputs(),
@@ -470,7 +470,7 @@ fn obc_source_order_module_paths() -> List<OccurrenceModulePathRow> {
   ]
 }
 
-test fn declaration_below_occurrence_not_visible_holds() -> Bool {
+test fn declaration_below_occurrence_not_visible_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_source_order_transport(),
     inputs: obc_source_order_inputs(),
@@ -538,7 +538,7 @@ fn obc_ambiguous_inputs() -> OccurrenceBindingCandidateInputs {
   )
 }
 
-test fn same_text_distinct_identities_is_ambiguous_holds() -> Bool {
+test fn same_text_distinct_identities_is_ambiguous_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_ambiguous_transport(),
     inputs: obc_ambiguous_inputs(),
@@ -607,7 +607,7 @@ fn obc_production_inputs() -> OccurrenceBindingCandidateInputs {
   )
 }
 
-test fn production_module_call_to_earlier_sibling_binds_holds() -> Bool {
+test fn production_module_call_to_earlier_sibling_binds_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_production_transport(),
     inputs: obc_production_inputs(),
@@ -631,7 +631,7 @@ test fn production_module_call_to_earlier_sibling_binds_holds() -> Bool {
 // (BoundReferenceProvider retained; M→M omitted). A hash-ordered map readback would permute the
 // cross-module list and turn the witness red.
 
-test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
+test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool  {
   let same_module_provider = BoundReferenceProvider {
     reference_occurrence: OccurrenceId { value: 110 },
     declaration_occurrence: OccurrenceId { value: 100 },
@@ -670,7 +670,7 @@ test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
 // edge list. Empty edges are reachable only from AllReferencesBound with zero cross-module
 // providers.
 
-test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
+test fn refused_population_never_projects_empty_edge_list_holds() -> Bool  {
   match direct_module_dependencies_from_bound_population(
     population: ReferencePopulationRefused {
       first_failure: ReferenceBindingProjectionUnbound {
@@ -688,7 +688,7 @@ test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
 // module collapse to one provider-file dependency for the consumer file. Same-file self-edges are
 // omitted from the projection.
 
-test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
+test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool  {
   let provider_one = BoundReferenceProvider {
     reference_occurrence: OccurrenceId { value: 200 },
     declaration_occurrence: OccurrenceId { value: 300 },
@@ -730,7 +730,7 @@ test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
   }
 }
 
-test fn cross_file_clause_e_fixture_collapses_provider_file_holds() -> Bool {
+test fn cross_file_clause_e_fixture_collapses_provider_file_holds() -> Bool  {
   match reference_derived_provider_files_for_assembled_closure(
     closure: cross_file_clause_e_fixture_assembled_closure(),
   ) {
@@ -744,7 +744,7 @@ test fn cross_file_clause_e_fixture_collapses_provider_file_holds() -> Bool {
   }
 }
 
-test fn reference_derived_dependency_projection_preserves_provenance_and_collapses_files_holds() -> Bool {
+test fn reference_derived_dependency_projection_preserves_provenance_and_collapses_files_holds() -> Bool  {
   match cross_file_clause_e_fixture_assembled_closure() {
     AssembledCrossFileBindingClosureReady {
       transport: transport,
@@ -780,7 +780,7 @@ test fn reference_derived_dependency_projection_preserves_provenance_and_collaps
 // index build — never silently drop from the sibling-exposure population and masquerade as
 // OccurrenceUnbound.
 
-test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
+test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
@@ -813,7 +813,7 @@ test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
 // Fail-closed RED: conflicting OccurrenceModulePathRow values for the same occurrence must refuse
 // at index build — never pick the last row and change exposure.
 
-test fn duplicate_module_path_row_refuses_holds() -> Bool {
+test fn duplicate_module_path_row_refuses_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
@@ -856,7 +856,7 @@ test fn duplicate_module_path_row_refuses_holds() -> Bool {
 // Fail-closed RED: conflicting DeclarationExposureRow values for the same occurrence must refuse at
 // index build — never pick the last row and change visibility.
 
-test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
+test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
@@ -903,7 +903,7 @@ test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
 // Fail-closed RED: conflicting AuthoredOrderRow values for the same occurrence must refuse at index
 // build — never pick the last row and change source-order gating.
 
-test fn duplicate_authored_order_row_refuses_holds() -> Bool {
+test fn duplicate_authored_order_row_refuses_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
@@ -946,7 +946,7 @@ test fn duplicate_authored_order_row_refuses_holds() -> Bool {
 // MissingDeclarationExposure at index build — never silently fail the Bool visibility predicate and
 // masquerade as OccurrenceUnbound.
 
-test fn missing_declaration_exposure_refuses_holds() -> Bool {
+test fn missing_declaration_exposure_refuses_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
@@ -976,7 +976,7 @@ test fn missing_declaration_exposure_refuses_holds() -> Bool {
 // Fail-closed RED (PR 7515 blocker 2): a reference (or declaration) with no AuthoredOrderRow must
 // refuse MissingAuthoredOrderRow at index build — never treat missing ordinal as ordinary Unbound.
 
-test fn missing_authored_order_row_refuses_holds() -> Bool {
+test fn missing_authored_order_row_refuses_holds() -> Bool  {
   match resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
@@ -1008,7 +1008,7 @@ test fn missing_authored_order_row_refuses_holds() -> Bool {
 // containment. Exposure carrier alone decides — missing/wrong ModuleExposure is not rescued by
 // declaration.containment.
 
-test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool {
+test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool  {
   let nested_decl = OccurrenceId { value: 10 }
   let outer_fn = OccurrenceId { value: 20 }
   let call_ref = OccurrenceId { value: 30 }
@@ -1063,7 +1063,7 @@ test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool 
 // lookup regardless of containment ancestry or module siblinghood — visibility comes from
 // RootExposure's own semantics, not raw containment.
 
-test fn root_exposure_is_visible_holds() -> Bool {
+test fn root_exposure_is_visible_holds() -> Bool  {
   let root_decl = OccurrenceId { value: 10 }
   let call_ref = OccurrenceId { value: 30 }
   let root_path = obc_fixture_path(ancestors: [], terminal: root_decl)
@@ -1113,7 +1113,7 @@ test fn root_exposure_is_visible_holds() -> Bool {
 // MissingDeclarationIndexEntry when a declaration is absent from entries_by_id — never silent-skips
 // and shrinks the candidate population.
 
-test fn declarations_by_name_missing_index_entry_refuses_holds() -> Bool {
+test fn declarations_by_name_missing_index_entry_refuses_holds() -> Bool  {
   let decl = OccurrenceId { value: 10 }
   let decl_path = obc_fixture_path(ancestors: [], terminal: decl)
   match declarations_by_name_build(
@@ -1155,14 +1155,14 @@ fn obc_section13_joined_observations() -> List<Section13ExactHeadExecutionObserv
 // missing observation and failed observation refuse — inhabiting Section13PopulationLawExecuting
 // alone never greens.
 
-test fn witness_section13_population_law_roster_denominator_holds() -> Bool {
+test fn witness_section13_population_law_roster_denominator_holds() -> Bool  {
   section13_population_law_roster_denominator_holds(
     observations: obc_section13_joined_observations(),
     required_head: section13_fixture_head,
   )
 }
 
-test fn section13_missing_observation_refuses_holds() -> Bool {
+test fn section13_missing_observation_refuses_holds() -> Bool  {
   match section13_population_law_roster_adjudicate(
     observations: [
       obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
@@ -1178,7 +1178,7 @@ test fn section13_missing_observation_refuses_holds() -> Bool {
   }
 }
 
-test fn section13_failed_observation_refuses_holds() -> Bool {
+test fn section13_failed_observation_refuses_holds() -> Bool  {
   match section13_population_law_roster_adjudicate(
     observations: [
       obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),

@@ -37,7 +37,7 @@ fn non_optional_shared_type_return_source() -> String {
   "module optcarriernodebare\n\nimport std.types { Bool }\n\ntype Node = Product { child: Node? }\n\nfn always_node(flag: Bool) -> Node {\n  Node { child: none }\n}\n"
 }
 
-test fn optional_string_return_renders_option_signature() -> Bool {
+test fn optional_string_return_renders_option_signature() -> Bool  {
   compile_dag_rust_emit_check(
     optional_string_return_source(),
     "src/optcarrierstr.rs",
@@ -46,7 +46,7 @@ test fn optional_string_return_renders_option_signature() -> Bool {
   )
 }
 
-test fn non_optional_string_return_stays_bare() -> Bool {
+test fn non_optional_string_return_stays_bare() -> Bool  {
   compile_dag_rust_emit_check(
     non_optional_string_return_source(),
     "src/optcarrierstrbare.rs",
@@ -55,7 +55,7 @@ test fn non_optional_string_return_stays_bare() -> Bool {
   )
 }
 
-test fn optional_shared_type_return_renders_option_rc_signature() -> Bool {
+test fn optional_shared_type_return_renders_option_rc_signature() -> Bool  {
   compile_dag_rust_emit_check(
     optional_shared_type_return_source(),
     "src/optcarriernode.rs",
@@ -64,7 +64,7 @@ test fn optional_shared_type_return_renders_option_rc_signature() -> Bool {
   )
 }
 
-test fn non_optional_shared_type_return_stays_bare_rc() -> Bool {
+test fn non_optional_shared_type_return_stays_bare_rc() -> Bool  {
   compile_dag_rust_emit_check(
     non_optional_shared_type_return_source(),
     "src/optcarriernodebare.rs",
