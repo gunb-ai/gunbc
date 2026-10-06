@@ -1643,7 +1643,18 @@ type UnitEnding
 
 fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => EndingOomKill  _ => EndingNotOomKill }
+    ServiceResultRead { result: r } => match r {
+    ServiceResultSuccess => EndingNotOomKill
+    ServiceResultProtocol => EndingNotOomKill
+    ServiceResultTimeout => EndingNotOomKill
+    ServiceResultExitCode => EndingNotOomKill
+    ServiceResultSignal => EndingNotOomKill
+    ServiceResultCoreDump => EndingNotOomKill
+    ServiceResultWatchdog => EndingNotOomKill
+    ServiceResultStartLimitHit => EndingNotOomKill
+    ServiceResultResources => EndingNotOomKill
+    ServiceResultOomKill => EndingOomKill
+}
     ServiceResultUnrecognized { wire } => EndingUnclassifiable { cause: join(["the manager reported a result this corpus does not recognize: ", wire], "") }
     ServiceResultNotReported { absence } => EndingUnclassifiable { cause: summary_absence_wire(a: absence) }
     ServiceResultFormatNotGrounded { standing } => EndingUnclassifiable { cause: summary_format_standing_wire(s: standing) }
@@ -1677,7 +1688,18 @@ fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String,
 // refuses upstream and never reaches here.
 fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
+    ServiceResultRead { result: r } => match r {
+    ServiceResultSuccess => false
+    ServiceResultProtocol => false
+    ServiceResultTimeout => false
+    ServiceResultExitCode => false
+    ServiceResultSignal => false
+    ServiceResultCoreDump => false
+    ServiceResultWatchdog => false
+    ServiceResultStartLimitHit => false
+    ServiceResultResources => false
+    ServiceResultOomKill => true
+}
     ServiceResultUnrecognized { wire: _ } => false
     ServiceResultNotReported { absence: _ } => false
     ServiceResultFormatNotGrounded { standing: _ } => false

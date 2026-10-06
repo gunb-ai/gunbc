@@ -87,12 +87,6 @@ data nfr_reason_verification_producer_absent: String = "NOT terminal-state absor
 
 data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
 
-data nfr_reason_compute_summary_is_oom_kill_service_result: String = "the OomKill discrimination projects the ten-constructor SystemdServiceResult coproduct to one bit; spelling the nine non-OomKill constructors here would re-enumerate the man page's result vocabulary a second time beside systemd_service_result_wire, so the catch-all arm is the smaller surface and is rostered instead (the site predates the typed-argv cutover, whose diff touched the module and armed the scan)"
-
-data nfr_reason_compute_unit_ending_service_result: String = "the ending classification projects the same ten-constructor SystemdServiceResult coproduct; the three uncategorized readings each carry their own located cause, so the catch-all arm is exactly the OomKill/not-OomKill bit over the recognized reading — same duplication trade as compute_summary_is_oom_kill, rostered for the same reason"
-
-data nfr_dissolve_service_result_projection_rows: DissolutionCondition = unbound_dissolution(description: "a change that edits work_provider_local.dag spells the SystemdServiceResult projections exhaustively (each constructor named, no catch-all) or folds the vocabulary through one shared projection — these rows delete with that change")
-
 data nfr_reason_dispatch_selection_routing: String = "provider-selection routing residue (match on ProviderSelectionRequest, ProviderOffer, or ResolvedProviderSelection with off-shape wildcard refusal or false arms) landed with Slice A dispatch_selection.dag; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_dispatch_selection_routing: DissolutionCondition = unbound_dissolution(description: "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold")
@@ -822,16 +816,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/compiler/05_eval.dag::eval_field_projection_of_receiver" },
     reason: nfr_reason_eval_projection_receiver_not_aggregate,
     dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/compute/work_provider_local.dag::compute_summary_is_oom_kill" },
-    reason: nfr_reason_compute_summary_is_oom_kill_service_result,
-    dissolution: nfr_dissolve_service_result_projection_rows,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/compute/work_provider_local.dag::compute_unit_ending" },
-    reason: nfr_reason_compute_unit_ending_service_result,
-    dissolution: nfr_dissolve_service_result_projection_rows,
   },
 ]
 
