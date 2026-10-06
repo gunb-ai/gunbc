@@ -10,7 +10,7 @@ import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint, RedfishTemperatureCelsius, RedfishReadingValue, RedfishHealthOk, RedfishStateEnabled,
 }
 import extdeps.bmc.redfish_virtual_media {
-  RedfishVirtualMediaObservation, RedfishVirtualMediaLocator, UnderManager, MediaCd, MediaDvd, ConnectedViaNotConnected, ConnectedViaUri,
+  RedfishVirtualMediaObservation, RedfishVirtualMediaLocator, UnderManager, MediaCd, MediaDvd, ConnectedViaNotConnected, ConnectedViaUri, redfish_virtual_media_resource_path,
 }
 import gunbc.bmc_model {
   BmcWorld, BmcSelRecord, BmcPowerOn, BmcRecordSurfaces, bmc_world, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled,
@@ -373,4 +373,21 @@ test fn w_virtual_media_connected_via_and_media_types_are_archived() -> Bool {
     && digests_differ(a: on_base.outcome, b: on_types.outcome)
     && written_not_held(o: on_via.outcome)
     && written_not_held(o: on_types.outcome)
+}
+
+// THE LOCATOR'S FIELD BOUNDARIES ARE ARCHIVED (side-chat review of 5143906158). These two locators
+// render the same resource path -- /redfish/v1/Managers/a/VirtualMedia/b/VirtualMedia/c -- because the
+// path joins a manager ID and a media ID that may themselves carry the separator. Held otherwise
+// constant, they archive to different bytes and digests, and B over the store A was written to is
+// written, not held. The unchanged locator over its own store is held (the positive).
+test fn w_two_locators_that_render_one_resource_path_archive_distinctly() -> Bool {
+  let a = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "a/VirtualMedia/b" }, media_id: "c" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let b = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "a" }, media_id: "b/VirtualMedia/c" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let on_a = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: empty_store))
+  let on_b = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: b), store: on_a.store))
+  let a_again = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: on_a.store))
+  redfish_virtual_media_resource_path(locator: a.locator) == redfish_virtual_media_resource_path(locator: b.locator)
+    && digests_differ(a: on_a.outcome, b: on_b.outcome)
+    && written_not_held(o: on_b.outcome)
+    && (match a_again.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveAlreadyHeld => true  ArchiveWritten { write: _, within: _ } => false })  _ => false })
 }

@@ -19,7 +19,7 @@ import std.goal_assessment {
   GoalObservationRefused,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import extdeps.uri { uri_wire }
+import extdeps.uri { Uri, uri_scheme_wire }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_bool, json_string, json_array, json_object, serialize_json }
 import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry,
@@ -53,7 +53,9 @@ import extdeps.bmc.redfish_virtual_media {
   ConnectedViaUri,
   ConnectedViaApplet,
   ConnectedViaOem,
-  redfish_virtual_media_resource_path,
+  RedfishVirtualMediaLocator,
+  UnderManager,
+  UnderSystem,
   redfish_virtual_media_type_wire,
 }
 import gunbc.bmc_model {
@@ -361,13 +363,34 @@ fn connected_via_json(c: RedfishVirtualMediaConnectedVia) -> JsonValue {
   }
 }
 
+// THE LOCATOR, ONE MEMBER PER MODELED COMPONENT: its parent arm with that arm's own ID, and the media
+// ID. The rendered resource path is NOT the encoding: it joins the IDs around separators the IDs
+// themselves may contain, so two distinct locators can render the same path (side-chat review of
+// 5143906158). Every *_json encoder here is structural the same way; none joins fields into a string.
+fn locator_json(l: RedfishVirtualMediaLocator) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "parent", value: match l.parent {
+      UnderManager { manager_id: m } => arm(name: "UnderManager", members: [json_kv(key: "manager_id", value: json_string(s: m as String))])
+      UnderSystem { system_id: x } => arm(name: "UnderSystem", members: [json_kv(key: "system_id", value: json_string(s: x as String))])
+    }),
+    json_kv(key: "media_id", value: json_string(s: l.media_id as String)),
+  ])
+}
+
+fn uri_json(u: Uri) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "scheme", value: json_string(s: uri_scheme_wire(s: u.scheme) as String)),
+    json_kv(key: "locator", value: json_string(s: u.locator as String)),
+  ])
+}
+
 fn virtual_media_json(v: RedfishVirtualMediaObservation) -> JsonValue {
   json_object(members: [
-    json_kv(key: "resource", value: json_string(s: redfish_virtual_media_resource_path(locator: v.locator) as String)),
+    json_kv(key: "locator", value: locator_json(l: v.locator)),
     json_kv(key: "media_types", value: json_array(elements: map(v.media_types, t => json_string(s: redfish_virtual_media_type_wire(t: t) as String)))),
     json_kv(key: "connected_via", value: connected_via_json(c: v.connected_via)),
     json_kv(key: "inserted", value: json_bool(b: v.inserted)),
-    json_kv(key: "image", value: match v.image { Present { value: u } => optional_text(v: Present { value: uri_wire(uri: u) })  Absent => optional_text(v: none) }),
+    json_kv(key: "image", value: match v.image { Present { value: u } => arm(name: "Present", members: [json_kv(key: "value", value: uri_json(u: u))])  Absent => arm(name: "Absent", members: []) }),
   ])
 }
 
@@ -893,6 +916,7 @@ fn dry_archive_prior_life(
     decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
     decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
     decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
   ]
 {
   match prior_life_policy_for(platform: platform) {
