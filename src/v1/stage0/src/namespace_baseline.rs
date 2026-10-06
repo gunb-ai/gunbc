@@ -1650,15 +1650,6 @@ pub enum EnvironmentLoadRefusal {
     EnvironmentModuleMissing { revision: String, path: String },
     /// The materialized corpus did not resolve, or the item did not evaluate.
     ClosureNotEvaluable { revision: String, cause: String },
-    /// The revision's closure calls a name THIS seed does not have -- a builtin the head deleted --
-    /// so the head seed cannot judge the revision at all. Declared drop:
-    /// `gunbc.rung_drop.base_revision_judged_by_the_head_seed`; restored when the floor judges
-    /// base-revision facts with the base revision's own compiler.
-    BaseUnevaluableUnderHeadSeed {
-        revision: String,
-        name: String,
-        at: String,
-    },
     /// Walking the revision's OWN closure reached an import no file at that revision declares.
     ///
     /// Carried as data -- the missing module and the file that imports it -- because the closure
@@ -1693,32 +1684,6 @@ pub enum EnvironmentLoadRefusal {
     KernelSetNotReadable { revision: String, cause: String },
 }
 
-/// The callee name and location of the resolver's `function 'N' not found in scope` diagnostic, the
-/// one shape in which a revision's call to a name THIS seed lacks surfaces.
-///
-/// A STOPGAP INSIDE A DECLARED DROP (gunbc.rung_drop base_revision_judged_by_the_head_seed): deleted,
-/// with the BaseUnevaluableUnderHeadSeed arms, when that drop retires.
-///
-/// THE RESOLVER ANSWERS ONLY TEXT (`resolve_entry_with_index` returns `String`), so this reads that
-/// one diagnostic's fixed format. It never widens: a resolve failure it does not recognise stays
-/// `ClosureNotEvaluable`, also a refusal. A typed resolver output is the base-compiler lane's to add.
-pub(crate) fn name_this_seed_lacks(resolve_error: &str) -> Option<(String, String)> {
-    const MARK: &str = ": error: function '";
-    let i = resolve_error.find(MARK)?;
-    let at = resolve_error[..i]
-        .rsplit(|c: char| c.is_whitespace())
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let rest = &resolve_error[i + MARK.len()..];
-    let end = rest.find("' not found in scope")?;
-    let name = &rest[..end];
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return None;
-    }
-    Some((name.to_string(), at))
-}
-
 /// The operator-facing text of a refusal.
 ///
 /// A FREE FUNCTION, NOT A `Display` IMPL, because this module's seed-growth roster enumerates every
@@ -1736,11 +1701,6 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
         EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
             "{path} does not exist at revision {revision}, so the value it declares cannot be \
                  read"
-        ),
-        EnvironmentLoadRefusal::BaseUnevaluableUnderHeadSeed { revision, name, at } => format!(
-            "BaseUnevaluableUnderHeadSeed: revision {revision} calls `{name}` at {at}, which this seed \
-             does not have (a builtin the head removed), so this seed cannot judge that revision; \
-             declared drop gunbc.rung_drop base_revision_judged_by_the_head_seed"
         ),
         EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => {
             format!("the declaring closure at revision {revision} did not evaluate: {cause}")
@@ -2109,16 +2069,9 @@ fn evaluate_owned_item_in(
     let entry_display = entry.display().to_string();
     let (graph, indices) =
         super::resolve_entry_with_index(&index, &entry_display).map_err(|e| {
-            match name_this_seed_lacks(&e) {
-                Some((name, at)) => EnvironmentLoadRefusal::BaseUnevaluableUnderHeadSeed {
-                    revision: revision.to_string(),
-                    name,
-                    at,
-                },
-                None => EnvironmentLoadRefusal::ClosureNotEvaluable {
-                    revision: revision.to_string(),
-                    cause: e,
-                },
+            EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: revision.to_string(),
+                cause: e,
             }
         })?;
     // HERMETIC, NOT WET. A static declaration has no business acquiring permission to perform host
@@ -2404,35 +2357,5 @@ fn as_kernel_set_refusal(
             revision: revision.to_string(),
             cause: environment_load_refusal_text(&other),
         },
-    }
-}
-
-#[cfg(test)]
-mod name_this_seed_lacks_tests {
-    use super::name_this_seed_lacks;
-
-    /// The diagnostic #13378's floor raised verbatim: the base `std.algebra` `trim` seam calls the
-    /// `from_code_point` builtin the head seed deleted.
-    #[test]
-    fn the_removed_builtin_and_its_location_are_read_from_the_resolver_diagnostic() {
-        let e = "target/gunbc-parse-env-3491482-1791239408557372501/dag/std/algebra.dag:1173:15: \
-                 error: function 'from_code_point' not found in scope";
-        assert_eq!(
-            name_this_seed_lacks(e),
-            Some((
-                "from_code_point".to_string(),
-                "target/gunbc-parse-env-3491482-1791239408557372501/dag/std/algebra.dag:1173:15"
-                    .to_string()
-            ))
-        );
-    }
-
-    /// Any other resolve failure is NOT this refusal: it stays ClosureNotEvaluable (never widened).
-    #[test]
-    fn an_unrelated_resolve_failure_is_not_classified() {
-        assert_eq!(
-            name_this_seed_lacks("dag/x.dag:3:1: error: unresolved import: module 'm' not found"),
-            None
-        );
     }
 }

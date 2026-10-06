@@ -2756,19 +2756,7 @@ pub(crate) fn cost_debt_roster_in_tree(tree: &Path) -> Result<Vec<String>, Strin
     }
     let index = build_multi_entry_index(&roots);
     let (graph, indices) = resolve_entry_with_index(&index, &entry.to_string_lossy())
-        .map_err(|e| {
-            match crate::cli_run::namespace_baseline::name_this_seed_lacks(&e) {
-                // The SAME typed refusal the parse-environment load raises: one declared drop
-                // (gunbc.rung_drop base_revision_judged_by_the_head_seed), one restoration trigger.
-                Some((name, at)) => format!(
-                    "REQUIRED-FLOOR REFUSAL cause=BaseUnevaluableUnderHeadSeed path={FLOOR_COST_DEBT_ROSTER} \
-                     -- the base tree calls `{name}` at {at}, which this seed does not have (a builtin \
-                     the head removed), so this seed cannot judge the base roster; declared drop \
-                     gunbc.rung_drop base_revision_judged_by_the_head_seed"
-                ),
-                None => refuse(format!("resolve: {e}")),
-            }
-        })?;
+        .map_err(|e| refuse(format!("resolve: {e}")))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let value = v1_interpreter::run_in_context(
         &ctx,
