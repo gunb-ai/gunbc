@@ -2,7 +2,7 @@ module product.printed_chassis.harness_census
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure {Milliampere,milliampere_count}
-import product.printed_chassis.rear_cooling {RearFanBank,RearCoolingReading,RearFanGeometry,rear_plate_gap_um}
+import product.printed_chassis.rear_cooling {RearFanBank,RearCoolingReading,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,rear_plate_gap_um}
 import product.printed_chassis.node_power_feed {FanHeaderLoad,fan_bank_header_load,FanHeaderLoadAgainstUnreadLimit,FanBankNeedsOneHeaderPerFan}
 import extdeps.external_authority {CitedToAuthority,TranscribedUncited}
 import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_bool}
@@ -115,7 +115,7 @@ fn fan_cables(plan:FanHarnessPlan,node:Nat) -> List<CableRun> {
  }
 }
 fn selected_fan_harness_json(reading:RearCoolingReading,service_allowance:Millimeter) -> JsonValue {
- let selected=match reading {RearFanGeometry {bank:b}=>selected_fan_harness(bank:b,service_allowance:service_allowance) _=>SelectedFanHarnessOpen {reason:"No selected rear bank"}}
+ let selected=match reading {RearFanGeometry {bank:b}=>selected_fan_harness(bank:b,service_allowance:service_allowance) RearCoolingInvalidInput=>SelectedFanHarnessOpen {reason:"Invalid rear cooling input"} RearCoolingNoFit=>SelectedFanHarnessOpen {reason:"No selected rear bank"}}
  match selected {
  SelectedFanHarnessOpen {reason:r}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"open")),json_kv(key:"reason",value:json_string(s:r))])
  SelectedFanHarnessReady {plan:p,load:load}=>{
