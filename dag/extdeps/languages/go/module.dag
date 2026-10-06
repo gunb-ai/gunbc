@@ -3,7 +3,7 @@ module extdeps.languages.go.module
 import std.types { NonEmptyStr, brand }
 import std.algebra { Ordering, Less, Equal, Greater }
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, ComparisonSide, LeftOperand, RightOperand }
-import extdeps.version.semver { semver_compare, semver_version_parse }
+import extdeps.version.semver { semver_compare, semver_version_parse, SemVerVersion }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

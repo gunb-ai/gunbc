@@ -39,25 +39,61 @@ pub type SemVerIdentity = NonEmptyStr;
 
 pub type SemVerConstraint = NonEmptyStr;
 
-pub type SemVerNumericField = Rc<Vec<i64>>;
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SemVerNumericField {
+    pub digits: Rc<Vec<i64>>,
+}
+
+pub fn semver_numeric_field(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerNumericField>> {
+    if ((cps.clone().len() as i64) == 0) {
+        std::option::Option::None
+    } else {
+        if !{
+            let mut __all = true;
+            for cp in cps.iter().cloned() {
+                if !((cp.clone() >= 48) && (cp.clone() <= 57)) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        } {
+            std::option::Option::None
+        } else {
+            if ((cps.clone().len() as i64) > 1) {
+                match cps.clone().first().cloned() {
+                    Some(48) => std::option::Option::None,
+                    Some(_) => Some(Rc::new(SemVerNumericField {
+                        digits: cps.clone(),
+                    })),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            } else {
+                Some(Rc::new(SemVerNumericField {
+                    digits: cps.clone(),
+                }))
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SemVerIdentifier {
-    SemVerNumericIdentifier { digits: SemVerNumericField },
+    SemVerNumericIdentifier { digits: Rc<SemVerNumericField> },
     SemVerAlphanumericIdentifier { label: NonEmptyStr },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SemVerVersion {
-    pub major: SemVerNumericField,
-    pub minor: SemVerNumericField,
-    pub patch: SemVerNumericField,
+    pub major: Rc<SemVerNumericField>,
+    pub minor: Rc<SemVerNumericField>,
+    pub patch: Rc<SemVerNumericField>,
     pub pre_release: Rc<Vec<Rc<SemVerIdentifier>>>,
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
 
-pub fn semver_compare_numeric_digits(a: SemVerNumericField, b: SemVerNumericField) -> Ordering {
+pub fn semver_compare_numeric_digits(a: Rc<Vec<i64>>, b: Rc<Vec<i64>>) -> Ordering {
     if ((a.clone().len() as i64) < (b.clone().len() as i64)) {
         Ordering::Less
     } else {
@@ -121,7 +157,7 @@ pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier
         SemVerIdentifier::SemVerNumericIdentifier { digits: ad, .. } => {
             match (*b.clone()).clone() {
                 SemVerIdentifier::SemVerNumericIdentifier { digits: bd, .. } => {
-                    semver_compare_numeric_digits(ad.clone(), bd.clone())
+                    semver_compare_numeric_digits(ad.digits.clone(), bd.digits.clone())
                 }
                 SemVerIdentifier::SemVerAlphanumericIdentifier { label: _, .. } => Ordering::Less,
             }
@@ -215,16 +251,23 @@ pub fn semver_compare_pre_release(
 }
 
 pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
-    match semver_compare_numeric_digits(a.major.clone(), b.major.clone()) {
-        Ordering::Equal => match semver_compare_numeric_digits(a.minor.clone(), b.minor.clone()) {
-            Ordering::Equal => {
-                match semver_compare_numeric_digits(a.patch.clone(), b.patch.clone()) {
-                    Ordering::Equal => {
-                        semver_compare_pre_release(a.pre_release.clone(), b.pre_release.clone())
-                    }
-                    other => other.clone(),
+    match semver_compare_numeric_digits(
+        a.major.clone().digits.clone(),
+        b.major.clone().digits.clone(),
+    ) {
+        Ordering::Equal => match semver_compare_numeric_digits(
+            a.minor.clone().digits.clone(),
+            b.minor.clone().digits.clone(),
+        ) {
+            Ordering::Equal => match semver_compare_numeric_digits(
+                a.patch.clone().digits.clone(),
+                b.patch.clone().digits.clone(),
+            ) {
+                Ordering::Equal => {
+                    semver_compare_pre_release(a.pre_release.clone(), b.pre_release.clone())
                 }
-            }
+                other => other.clone(),
+            },
             other => other.clone(),
         },
         other => other.clone(),
@@ -234,7 +277,7 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
     match (*id.clone()).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { digits: d, .. } => {
-            semver_label_from_code_points(d.clone())
+            semver_label_from_code_points(d.digits.clone())
         }
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
@@ -254,14 +297,14 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
 pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
     {
         let core = v1_rt::concat(
-            semver_label_from_code_points(v.major.clone()),
+            semver_label_from_code_points(v.major.clone().digits.clone()),
             v1_rt::concat(
                 ".".to_string(),
                 v1_rt::concat(
-                    semver_label_from_code_points(v.minor.clone()),
+                    semver_label_from_code_points(v.minor.clone().digits.clone()),
                     v1_rt::concat(
                         ".".to_string(),
-                        semver_label_from_code_points(v.patch.clone()),
+                        semver_label_from_code_points(v.patch.clone().digits.clone()),
                     ),
                 ),
             ),
@@ -428,14 +471,6 @@ pub fn semver_numeric_run_without_leading_zero(cps: Rc<Vec<i64>>) -> bool {
     }
 }
 
-pub fn semver_digits_field(cps: Rc<Vec<i64>>) -> Option<SemVerNumericField> {
-    if !semver_numeric_run_without_leading_zero(cps.clone()) {
-        std::option::Option::None
-    } else {
-        Some(cps.clone())
-    }
-}
-
 pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
     Rc::new({
         let mut __result = Vec::new();
@@ -450,7 +485,7 @@ pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
 pub fn semver_core_fields_parse(
     cps: Rc<Vec<i64>>,
     remaining: i64,
-) -> Option<Rc<Vec<SemVerNumericField>>> {
+) -> Option<Rc<Vec<Rc<SemVerNumericField>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (remaining.clone() == 0) {
             if ((cps.clone().len() as i64) == 0) {
@@ -460,13 +495,13 @@ pub fn semver_core_fields_parse(
             }
         } else {
             if (remaining.clone() == 1) {
-                match semver_digits_field(cps.clone()) {
+                match semver_numeric_field(cps.clone()) {
                     std::option::Option::None => std::option::Option::None,
                     Some(v) => Some(Rc::new(vec![v.clone()])),
                 }
             } else {
                 match semver_index_of(46, cps.clone()) {
-                    Some(i) => match semver_digits_field(Rc::new(
+                    Some(i) => match semver_numeric_field(Rc::new(
                         cps.clone()
                             .iter()
                             .cloned()
@@ -546,9 +581,12 @@ pub fn semver_identifier_parse(
             std::option::Option::None
         } else {
             if semver_numeric_run_without_leading_zero(cps.clone()) {
-                Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
-                    digits: cps.clone(),
-                }))
+                match semver_numeric_field(cps.clone()) {
+                    Some(f) => Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
+                        digits: f.clone(),
+                    })),
+                    std::option::Option::None => std::option::Option::None,
+                }
             } else {
                 if (strict_numeric.clone() && semver_all_digits(cps.clone())) {
                     std::option::Option::None

@@ -62,7 +62,7 @@ type SemVerVersion {
 // §11 decides major, then minor, then patch "as numbers". With admission refusing leading
 // zeroes, a digit run's LENGTH is its magnitude and equal lengths compare digit-wise in ASCII
 // order — section 11's numeric comparison at any width.
-fn semver_compare_numeric_digits(a: SemVerNumericField, b: SemVerNumericField) -> Ordering {
+fn semver_compare_numeric_digits(a: List<Int>, b: List<Int>) -> Ordering {
   if a.count() < b.count() { Less } else if a.count() > b.count() { Greater } else { semver_compare_digits_lexical(a: a, b: b) }
 }
 
@@ -286,7 +286,7 @@ fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<SemVerNumeri
   } else {
     match semver_index_of(cp: 46, cps: cps) {
       Present { value: i } =>
-        match semver_digits_field(cps: cps.take(n: i)) {
+        match semver_numeric_field(cps: cps.take(n: i)) {
           Absent => none
           Present { value: v } =>
             match semver_core_fields_parse(cps: cps.skip(n: i + 1), remaining: remaining - 1) {
