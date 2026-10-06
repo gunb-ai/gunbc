@@ -85,17 +85,22 @@ type RaceOverlap
   = RaceOverlapEstablished
   | RaceOverlapUnestablished { cause: NonEmptyStr }
 
-fn race_latest(xs: List<Microsecond>) -> Int? {
+// The comparisons read the count, and the result stays a Microsecond on the trace's clock.
+fn race_later(a: Microsecond, b: Microsecond) -> Microsecond { if microsecond_count(m: b) > microsecond_count(m: a) { b } else { a } }
+
+fn race_earlier(a: Microsecond, b: Microsecond) -> Microsecond { if microsecond_count(m: b) < microsecond_count(m: a) { b } else { a } }
+
+fn race_latest(xs: List<Microsecond>) -> Microsecond? {
   match xs.first() {
     Absent => none
-    Present { value: h } => Present { value: fold(xs, init: microsecond_count(m: h), f: (acc, x) => if microsecond_count(m: x) > acc { microsecond_count(m: x) } else { acc }) }
+    Present { value: h } => Present { value: fold(xs, init: h, f: (acc, x) => race_later(a: acc, b: x)) }
   }
 }
 
-fn race_earliest(xs: List<Microsecond>) -> Int? {
+fn race_earliest(xs: List<Microsecond>) -> Microsecond? {
   match xs.first() {
     Absent => none
-    Present { value: h } => Present { value: fold(xs, init: microsecond_count(m: h), f: (acc, x) => if microsecond_count(m: x) < acc { microsecond_count(m: x) } else { acc }) }
+    Present { value: h } => Present { value: fold(xs, init: h, f: (acc, x) => race_earlier(a: acc, b: x)) }
   }
 }
 
@@ -118,10 +123,10 @@ fn race_overlap_between(events: List<CurlTraceEvent>, ta: NonEmptyStr, tb: NonEm
   }
 }
 
-fn race_overlap_of_instants(sent_a: Int, sent_b: Int, answered_a: Int, answered_b: Int) -> RaceOverlap {
-  let first_answer = if answered_a < answered_b { answered_a } else { answered_b }
-  let last_sent = if sent_a > sent_b { sent_a } else { sent_b }
-  if last_sent < first_answer { RaceOverlapEstablished } else { RaceOverlapUnestablished { cause: "one writer was answered before the other had finished sending" } }
+fn race_overlap_of_instants(sent_a: Microsecond, sent_b: Microsecond, answered_a: Microsecond, answered_b: Microsecond) -> RaceOverlap {
+  let first_answer = race_earlier(a: answered_a, b: answered_b)
+  let last_sent = race_later(a: sent_a, b: sent_b)
+  if microsecond_count(m: last_sent) < microsecond_count(m: first_answer) { RaceOverlapEstablished } else { RaceOverlapUnestablished { cause: "one writer was answered before the other had finished sending" } }
 }
 
 fn race_overlap_of_trace(reading: CurlTraceReading, label_a: NonEmptyStr, label_b: NonEmptyStr) -> RaceOverlap {
@@ -235,7 +240,7 @@ fn race_round_inconclusive(w: RaceRoundWitness) -> Bool {
 }
 
 fn race_witnesses_of(observations: List<RaceRoundObservation>) -> List<RaceRoundWitness> {
-  fold(observations, init: [], f: (acc, o) => concat(acc, [RaceRoundWitness { round: length(acc) + 1, verdict: race_round_verdict(observation: o) }]))
+  map(enumerate(observations), pair => RaceRoundWitness { round: pair.first + 1, verdict: race_round_verdict(observation: pair.second) })
 }
 
 fn race_probe_verdict(declared_rounds: Int, observations: List<RaceRoundObservation>) -> RaceProbeVerdict {
@@ -297,7 +302,7 @@ fn race_probe_verdict_line(v: RaceProbeVerdict) -> String {
 }
 
 fn race_probe_receipt(declared_rounds: Int, transport: String, observations: List<RaceRoundObservation>, cleanup: String) -> String {
-  let lines = fold(observations, init: [], f: (acc, o) => concat(acc, [race_round_line(round: length(acc) + 1, observation: o)]))
+  let lines = map(enumerate(observations), pair => race_round_line(round: pair.first + 1, observation: pair.second))
   join(concat(concat([
     "instrument=gunbc.cloudflare.r2_conditional_put_race_probe run_r2_conditional_put_race_probe",
     join(["declared_rounds=", to_string(declared_rounds), " key=", race_probe_key as String], ""),
