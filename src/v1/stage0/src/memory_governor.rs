@@ -1439,8 +1439,11 @@ pub enum CgroupV1MemoryLimitValue {
 }
 
 /// Mirror of `extdeps.linux.cgroup_v1_memory` `cgroup_v1_hierarchical_memory_limit`.
-fn host_budget_cgroup_v1_value(v: crate::v1_rt::HostBudgetCgroupV1) -> CgroupV1MemoryLimitValue {
-    match v {
+pub fn cgroup_v1_hierarchical_limit_from_stat(
+    memory_stat: &str,
+    page_size: u64,
+) -> CgroupV1MemoryLimitValue {
+    match crate::v1_rt::host_budget_cgroup_v1_from_stat(memory_stat, page_size) {
         crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
             CgroupV1MemoryLimitValue::Limited(bytes)
         }
@@ -1449,16 +1452,6 @@ fn host_budget_cgroup_v1_value(v: crate::v1_rt::HostBudgetCgroupV1) -> CgroupV1M
             CgroupV1MemoryLimitValue::Unparseable(body)
         }
     }
-}
-
-pub fn cgroup_v1_hierarchical_limit_from_stat(
-    memory_stat: &str,
-    page_size: u64,
-) -> CgroupV1MemoryLimitValue {
-    host_budget_cgroup_v1_value(crate::v1_rt::host_budget_cgroup_v1_from_stat(
-        memory_stat,
-        page_size,
-    ))
 }
 
 /// The v1 reading over supplied procfs content and a filesystem root (`/` in production, a
@@ -1471,12 +1464,41 @@ pub fn cgroup_v1_hierarchical_limit_under(
     mountinfo: &str,
     page_size: u64,
 ) -> Option<(String, CgroupV1MemoryLimitValue)> {
-    crate::v1_rt::host_budget_cgroup_v1_under(fs_root, self_cg, mountinfo, page_size)
-        .map(|(dir, v)| (dir, host_budget_cgroup_v1_value(v)))
+    crate::v1_rt::host_budget_cgroup_v1_under(fs_root, self_cg, mountinfo, page_size).map(
+        |(dir, v)| {
+            (
+                dir,
+                match v {
+                    crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+                        CgroupV1MemoryLimitValue::Limited(bytes)
+                    }
+                    crate::v1_rt::HostBudgetCgroupV1::Unlimited => {
+                        CgroupV1MemoryLimitValue::Unlimited
+                    }
+                    crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+                        CgroupV1MemoryLimitValue::Unparseable(body)
+                    }
+                },
+            )
+        },
+    )
 }
 
 pub fn read_cgroup_v1_hierarchical_limit() -> Option<(String, CgroupV1MemoryLimitValue)> {
-    crate::v1_rt::host_budget_cgroup_v1().map(|(dir, v)| (dir, host_budget_cgroup_v1_value(v)))
+    crate::v1_rt::host_budget_cgroup_v1().map(|(dir, v)| {
+        (
+            dir,
+            match v {
+                crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+                    CgroupV1MemoryLimitValue::Limited(bytes)
+                }
+                crate::v1_rt::HostBudgetCgroupV1::Unlimited => CgroupV1MemoryLimitValue::Unlimited,
+                crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+                    CgroupV1MemoryLimitValue::Unparseable(body)
+                }
+            },
+        )
+    })
 }
 
 pub fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
