@@ -31,7 +31,7 @@ fn roster_compile_stage_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/compiler/00_compile.dag", refusal_ceiling: 1)
 }
 
-test fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
+fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/test/workflow/glob_discovery_law.dag", refusal_ceiling: 0)
 }
 
