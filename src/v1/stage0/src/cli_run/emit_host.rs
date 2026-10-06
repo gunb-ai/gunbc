@@ -3232,10 +3232,10 @@ const STDERR_CAPTURE_POLICY_GAP_MODULE: &str = "extdeps.gunbc";
 const STDERR_CAPTURE_POLICY_GAP_SERVICE: &str = "gunbc.WitnessBin";
 
 /// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
-/// `ShellChannelNotRealizedByTarget` on every `ShellResultChannel` rust does not realize.
-/// Equality to that rendering is the discriminator: `ShellOutputKeyNotModeled` and any other
-/// transport stay out, including a fact that merely contains English about capture.
-fn rust_shell_channel_not_realized_facts() -> &'static BTreeSet<String> {
+/// `ShellChannelNotRealizedByTarget` on the three stderr-accounting channels the drop names.
+/// Not every channel `shell_channel_realized_by_target` currently returns false for: a later
+/// unrealized stdout-side channel must still refuse the union (review 77034).
+fn rust_stderr_capture_channel_not_realized_facts() -> &'static BTreeSet<String> {
     static FACTS: OnceLock<BTreeSet<String>> = OnceLock::new();
     FACTS.get_or_init(|| {
         use crate::v1_compiler_artifact::RenderTarget;
@@ -3246,11 +3246,6 @@ fn rust_shell_channel_not_realized_facts() -> &'static BTreeSet<String> {
         let target = RenderTarget::Rust;
         let target_name = render_target_name(target);
         [
-            ShellResultChannel::ShellChanStdout,
-            ShellResultChannel::ShellChanStderr,
-            ShellResultChannel::ShellChanExitSuccess,
-            ShellResultChannel::ShellChanExitCode,
-            ShellResultChannel::ShellChanStdoutLines,
             ShellResultChannel::ShellChanStderrTruncated,
             ShellResultChannel::ShellChanStderrTotalBytes,
             ShellResultChannel::ShellChanStderrRetainedBytes,
@@ -3287,7 +3282,8 @@ fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, Strin
             && declaring_module == STDERR_CAPTURE_POLICY_GAP_MODULE
             && service == STDERR_CAPTURE_POLICY_GAP_SERVICE
             && (operation == "Run" || operation == "gunbc.WitnessBin.Run")
-            && rust_shell_channel_not_realized_facts().contains(missing_realization_fact) =>
+            && rust_stderr_capture_channel_not_realized_facts()
+                .contains(missing_realization_fact) =>
         {
             Some((declaring_module.clone(), service.clone()))
         }
@@ -3726,14 +3722,21 @@ mod fixture_closure_union_tests {
             }));
         let substring_poison =
             "unmodeled key 'not_a_channel' implements no stderr capture policy".to_string();
+        let stdout_unrealized = shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: "stdout".to_string(),
+                target_name: "rust".to_string(),
+            },
+        ));
         assert!(stderr_capture_policy_gap_service(&mk(gap.clone())).is_some());
         assert!(stderr_capture_policy_gap_service(&mk(unmodeled_key)).is_none());
         assert!(stderr_capture_policy_gap_service(&mk(substring_poison)).is_none());
+        assert!(stderr_capture_policy_gap_service(&mk(stdout_unrealized)).is_none());
         let other_module = make_error_node(
             Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
                 transport_kind: "shell".to_string(),
-                service: "WitnessBin".to_string(),
-                operation: "Run".to_string(),
+                service: "gunbc.WitnessBin".to_string(),
+                operation: "gunbc.WitnessBin.Run".to_string(),
                 declaring_module: "extdeps.other".to_string(),
                 target: "rust".to_string(),
                 missing_realization_fact: gap,
