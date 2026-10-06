@@ -7,7 +7,7 @@ import v2.std.logic { bool_node }
 import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode }
 import std.algebra { list_snoc_item }
 import v2.std.collection { List }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 // THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma
 // through boolean algebra, equivalence, the free monoid) projected to the TypeNode its instances
@@ -64,22 +64,50 @@ fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
 // would otherwise take Int's + for concatenation. Inhabited by std.algebra FreeMonoid<T> and by the kernel
 // host text (the free monoid over Unicode scalars, Ruling 3's FreeMonoid<Char> reading held on its own
 // carrier), each by a declared row in v2.extdeps.languages.dag.
-fn free_monoid_structure_type_node(inhabitant: Node) -> Node {
+//
+// A FREE monoid is free OVER A GENERATOR SET, so the structure carries its GENERATOR as a binder
+// (^free_monoid_structure_field_generator): ONE model for every carrier (calm-boar-904, ruling B). For
+// std.algebra FreeMonoid<T> the generator is T; the kernel host text INHABITS the structure with generator
+// std.types Char -- inhabitance, not identity with v2's FreeMonoid<Char>, so Ruling 3's no-crossing holds.
+// An element-reading operation over a bound carrier reads its element from this binder
+// (free_monoid_structure_generator_optional), never from the carrier's spelling.
+fn free_monoid_structure_type_node(inhabitant: Node, generator: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       binder_edge(name: ^free_monoid_structure_field_monoid, type_node: monoid_type_node(inhabitant: inhabitant)),
       binder_edge(name: ^free_monoid_field_concat, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      binder_edge(name: ^free_monoid_structure_field_generator, type_node: generator),
     ],
     occurrence_id: OccurrenceSynthetic
 }
 }
 
-fn free_monoid_structure_node(inhabitant: Node) -> Node {
+fn free_monoid_structure_node(inhabitant: Node, generator: Node) -> Node {
   algebra_inhabitance_node(
-    algebra: free_monoid_structure_type_node(inhabitant: inhabitant),
+    algebra: free_monoid_structure_type_node(inhabitant: inhabitant, generator: generator),
     inhabitant: inhabitant
   )
+}
+
+// THE GENERATOR A FREE-MONOID INHABITANCE NODE DECLARES: the type its algebra's
+// ^free_monoid_structure_field_generator binder carries. Absent for any node that is not exactly that (no
+// algebra, no generator binder, or either ambiguous), so a caller refuses rather than guessing an element.
+fn free_monoid_structure_generator_optional(inhabitance: Node) -> Optional<Node> {
+  match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
+    NamedChildFound { target: algebra } =>
+      match named_child_lookup(root: algebra, name: ^free_monoid_structure_field_generator) {
+        NamedChildFound { target: binder } =>
+          match binder_node_parts(n: binder) {
+            Present { value: parts } => optional_present(value: parts.type_node)
+            Absent => optional_absent()
+          }
+        NamedChildMissing => optional_absent()
+        NamedChildAmbiguous => optional_absent()
+      }
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
 }
 
 fn ordering_type_node() -> Node {
@@ -304,7 +332,7 @@ fn algebra_structure_signatures_over(carrier: Node) -> List<Node> {
    semiring_type_node(inhabitant: carrier), commutative_semiring_type_node(inhabitant: carrier), ring_type_node(inhabitant: carrier),
    commutative_ring_type_node(inhabitant: carrier), ordered_ring_type_node(inhabitant: carrier), field_type_node(inhabitant: carrier),
    approximate_field_type_node(inhabitant: carrier), lattice_type_node(inhabitant: carrier), bounded_lattice_type_node(inhabitant: carrier),
-   boolean_algebra_type_node(inhabitant: carrier), equivalence_type_node(inhabitant: carrier), free_monoid_structure_type_node(inhabitant: carrier)]
+   boolean_algebra_type_node(inhabitant: carrier), equivalence_type_node(inhabitant: carrier), free_monoid_structure_type_node(inhabitant: carrier, generator: carrier)]
 }
 
 data algebra_structure_composing_fields: List<Symbol> = algebra_structure_typed_binders(structures: algebra_structure_signatures_over(carrier: Node { kind: TypeNode { connective: Atom { identity: ^algebra_signature_probe_carrier } }, children: [], occurrence_id: OccurrenceSynthetic }))

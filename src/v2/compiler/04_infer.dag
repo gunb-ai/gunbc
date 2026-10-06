@@ -29,7 +29,7 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
-import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_optional }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
@@ -3798,7 +3798,8 @@ fn infer_binder_set_structure_bounds(node: Node, binders: Node, declarations: Sy
                   Absent => optional_absent()
                   Present { value: instance } =>
                     match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: structure, declarations: declarations) {
-                      StructureInhabited => optional_absent()
+                      StructureInhabited { generator: derived } =>
+                        infer_bound_generator_agreement(node: node, structure: structure, derived: derived, declarations: declarations, instances: instances)
                       StructureNotInhabited =>
                         optional_present(value: Diagnostic {
                           reason: ^infer_reason_type_argument_does_not_inhabit_bound,
@@ -3845,11 +3846,62 @@ fn infer_bound_structure_fields(structure: Node) -> List<Symbol> {
   })
 }
 
-// What the inhabitance authority answers for one instance at one bound structure: a row admits it, no row does, or a
-// row whose inhabitant IS the instance has a malformed inhabitance node -- the last refused with ITS cause, never as the
-// user's type argument failing the bound (the same three-way reading as InferAlgebraFieldResult).
+// THE BOUND'S GENERATOR, DERIVED AND CONSUMED (ruling B). A free-monoid bound is free over its generator E
+// (v2.std.algebra_structure_signature free_monoid_structure_generator_optional); the row that admits M's instance
+// declares that instance's generator, instantiated over the row's matched parameters (List<Edge> -> Edge, kernel
+// String -> std.types Char). Its CONSUMER here: when the call has already fixed E from an argument, the two must
+// agree, or the application refuses at the bound, typed and located (infer_reason_bound_generator_disagrees). A
+// bound declaring a generator whose admitting row declares none is the AUTHORITY's defect and refuses with its own
+// cause. DECLARED FRONTIER: the derived E as the element of the call's RESULT type (first : M -> Optional<E>) is
+// not consumed here -- that is result typing for a callee's declared codomain (gunbc.recurring_failure_mode
+// call_result_of_a_declared_return_type_unjudged_in_v2_infer), which the collection 'first' row lands on.
+fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optional<Node>, declarations: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
+  match free_monoid_structure_generator_optional(inhabitance: structure) {
+    Absent => optional_absent()
+    Present { value: declared } =>
+      match derived {
+        Absent =>
+          optional_present(value: Diagnostic {
+            reason: ^infer_reason_inhabitance_row_declares_no_generator,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: CorrectionNotModeled }
+          })
+        Present { value: generator } =>
+          match infer_bound_generator_fixed_optional(declared: declared, instances: instances) {
+            Absent => optional_absent()
+            Present { value: fixed } =>
+              if infer_type_equal_ignoring_provenance(
+                a: infer_type_alias_normalized(t: fixed, declarations: declarations),
+                b: infer_type_alias_normalized(t: generator, declarations: declarations)
+              ) {
+                optional_absent()
+              } else {
+                optional_present(value: Diagnostic {
+                  reason: ^infer_reason_bound_generator_disagrees,
+                  at: node_locus(node: node),
+                  correction: Unavailable { reason: CorrectionNotModeled }
+                })
+              }
+          }
+      }
+  }
+}
+
+// The instance the call fixed for the bound's generator, when the generator is a type variable the argument walk
+// instanced; Absent when it is not a variable or was not fixed.
+fn infer_bound_generator_fixed_optional(declared: Node, instances: List<TypeVariableInstance>) -> Optional<Node> {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } => type_variable_instance_lookup(instances: instances, binder: id)
+    _ => optional_absent()
+  }
+}
+
+// What the inhabitance authority answers for one instance at one bound structure: a row admits it (with the generator
+// it declares for that instance, when it declares one), no row does, or a row whose inhabitant IS the instance has a
+// malformed inhabitance node -- the last refused with ITS cause, never as the user's type argument failing the bound
+// (the same three-way reading as InferAlgebraFieldResult).
 type InferStructureInhabitance
-  = StructureInhabited
+  = StructureInhabited { generator: Optional<Node> }
   | StructureNotInhabited
   | StructureRowMalformed { cause: Symbol }
 
@@ -3860,24 +3912,34 @@ fn infer_instance_structure_inhabitance_in(rows: List<AlgebraInhabitanceDecl>, i
   let wanted = infer_type_alias_normalized(t: instance, declarations: declarations)
   fold(rows, init: StructureNotInhabited, f: fn(acc, row) {
     match acc {
-      StructureInhabited => acc
+      StructureInhabited { generator: _ } => acc
       StructureRowMalformed { cause: _ } => acc
       StructureNotInhabited =>
-        if infer_row_inhabitant_is(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations) {
-          infer_row_declares_fields(row: row, fields: fields)
-        } else {
-          acc
+        match infer_row_inhabitant_matched_optional(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations) {
+          Absent => acc
+          Present { value: matched } =>
+            match infer_row_declares_fields(row: row, fields: fields) {
+              StructureInhabited { generator: _ } =>
+                StructureInhabited {
+                  generator: match free_monoid_structure_generator_optional(inhabitance: row.algebra) {
+                    Present { value: g } => optional_present(value: infer_type_instantiated(t: g, instances: matched))
+                    Absent => optional_absent()
+                  }
+                }
+              StructureNotInhabited => StructureNotInhabited
+              StructureRowMalformed { cause: c } => StructureRowMalformed { cause: c }
+            }
         }
     }
   })
 }
 
 fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) -> InferStructureInhabitance {
-  fold(fields, init: StructureInhabited, f: fn(acc, field) {
+  fold(fields, init: StructureInhabited { generator: optional_absent() }, f: fn(acc, field) {
     match acc {
       StructureNotInhabited => acc
       StructureRowMalformed { cause: _ } => acc
-      StructureInhabited =>
+      StructureInhabited { generator: _ } =>
         match algebra_inhabitance_field_declaration(inhabitance: row.algebra, field: field) {
           FieldDeclared => acc
           FieldNotDeclared => StructureNotInhabited
@@ -3887,14 +3949,19 @@ fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) 
   })
 }
 
-fn infer_row_inhabitant_is(row_inhabitant: Node, wanted: Node, declarations: SymbolIndex) -> Bool {
+// The row's own type parameters as matched against the instance, when its inhabitant IS the instance; Absent otherwise.
+fn infer_row_inhabitant_matched_optional(row_inhabitant: Node, wanted: Node, declarations: SymbolIndex) -> Optional<List<TypeVariableInstance>> {
   match infer_match_generic_formal(formal: row_inhabitant, produced: wanted, type_params: dag_algebra_inhabitance_row_type_params(), instances: Empty, declarations: declarations) {
-    InferFormalShapeMismatch => false
+    InferFormalShapeMismatch => optional_absent()
     InferFormalMatched { instances: matched } =>
-      infer_type_equal_ignoring_provenance(
+      if infer_type_equal_ignoring_provenance(
         a: infer_type_alias_normalized(t: infer_type_instantiated(t: row_inhabitant, instances: matched), declarations: declarations),
         b: wanted
-      )
+      ) {
+        optional_present(value: matched)
+      } else {
+        optional_absent()
+      }
   }
 }
 

@@ -297,8 +297,9 @@ fn fold_roster_form(row: DeclarationRef) -> CollectionRosterForm {
 }
 
 // THE ROW AS THE CALL'S SIGNATURE. A primitive-call row's param_types/return_type are read as one generic
-// Arrow over a single carrier binder M: ReceiverSelf is M, and M is BOUNDED by the free-monoid structure
-// (v2.std.algebra_structure_signature free_monoid_structure_node over M) through the binder's one
+// Arrow over a carrier binder M and an element binder E: ReceiverSelf is M, ReceiverElement is E, and M is
+// BOUNDED by the free-monoid structure free over E (v2.std.algebra_structure_signature free_monoid_structure_node
+// over M with generator E) through the binder's one
 // BinderStructureEdge -- the binder marker for a structure bound, distinct from a kind's BinderTypeEdge,
 // read as a StructureBound (v2.std.type_binder type_param_bound). So concat(a, b) is judged by v2.compiler.infer's ordinary
 // application path: one M must take both operands (a mixed kernel String / FreeMonoid<Char> pair refuses --
@@ -309,17 +310,25 @@ fn collection_roster_carrier_type() -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } }, children: [])
 }
 
+// THE CARRIER'S ELEMENT IS THE BOUND'S GENERATOR (ruling B): one binder E, which the free-monoid bound on M
+// is free over. It carries no annotation of its own; its instance is the generator of the inhabitance row
+// that admits M's instance (v2.compiler.infer infer_binder_set_structure_bounds), so List<Edge> gives Edge and
+// kernel String gives std.types Char, through one representation.
+fn collection_roster_element_type() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^collection_roster_element } }, children: [])
+}
+
 fn collection_roster_carrier_binder() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } },
-    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type()) }]
+    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()) }]
   )
 }
 
 fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
   match t {
     ReceiverSelf => optional_present(value: collection_roster_carrier_type())
-    ReceiverElement => optional_absent()
+    ReceiverElement => optional_present(value: collection_roster_element_type())
     ReceiverKey => optional_absent()
     ReceiverValue => optional_absent()
     NamedTemplate { name: _ } => optional_absent()
@@ -354,7 +363,7 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
               let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type())
               let binders = node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder() }], source: collection_roster_carrier_type())
+                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder() }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }], source: collection_roster_carrier_type())
               )
               optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
           }
