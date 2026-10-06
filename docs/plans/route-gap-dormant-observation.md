@@ -153,7 +153,8 @@ modeling the RELATION and marshaling the index whole as a keyed map is the resol
 - **Seed-side pairing witness** — `route_gap_admission_partition_tests` in `required_floor_runner.rs`
   drives the SAME entry by the SAME constant through `run_in_context_with_args` (the real call path the
   run site uses) and asserts both arms at identity grain; a second test pins the marshal shape (identity
-  and declared ground arm, nothing else). Local diligence, not a CI path (`docs/onboarding.md` line 175).
+  and declared ground arm, nothing else). Runs via the required `rust-unit-tests` lane (see the wall's
+  standing below — `DESIGN.md` "Building & checks"; the lane returned required on 2026-09-30).
 - **One implementation**: with the Rust classifier deleted, the run site's route to the answer is the
   modeled entry by construction; a run-path refusal names the entry that decided it.
 
@@ -166,12 +167,24 @@ shipped fixture; the fixture is gone, per review 38602, and this is what actuall
   remainder. The consumer is the fold itself; nothing about the green arm is test-only. A freshly authored
   claim shaped like the dropped population (declared, out-of-gate, enrolled) gets the same typed, located
   disposition on that run as the 536 do.
-- **Discriminating red: unit-authored only, no CI path.** The misnamed-enrollment control lives in
-  `route_gap_admission_partition_tests` and runs via `cargo test --release -p v1-compiler --lib`, which
-  `docs/onboarding.md` (line 175) says runs on NO required step — a unit-test red does not block a merge.
-  The refusal arm's red has no CI author today, and shipping one would mean shipping a misnamed enrollment
-  to the production roster — rejected by review 38602, because it would red main forever and fabricate a
-  gap the §5 oracle forbids. The named follow-up that could author it on a required lane is the same (b)
-  follow-up above: a dispatch instrument row that runs a probe roster with the join armed. Until then, this
-  PR does not claim a CI-authored red for the wall; it claims the typed refusal, green by execution, with
-  the discriminator at unit grain.
+- **Discriminating red: authored at unit grain AND enrolled on a required lane.** The misnamed-enrollment
+  control runs both ways this PR ships:
+  - **On the floor (REQUIRED, blocks merge):** the claim-home row in `v2.workflow.required_floor`
+    `required_gate_authored_modules` gate-admits `test.claim.route_gap_partition_witness`, whose third test
+    (`dag/test/claim/route_gap_partition_witness_test.dag`) drives the modeled partition over the shared
+    fixture and asserts the refused arm at identity grain — the wall's red executes on the `witnesses`
+    lane, which is a required merge gate, with substrate inputs only (constructed rows and the fixture's
+    keyed declared map; nothing shipped on the production roster, per review 38602's rejection).
+  - **At unit grain (REQUIRED):** the pairing witness in `route_gap_admission_partition_tests` drives
+    `run_in_context_with_args` — the real call path the run site takes — over the same fixture rows and
+    asserts both arms; it runs via `cargo test --release -p v1-compiler --lib`, which per `DESIGN.md`
+    "Building & checks" runs as the `rust_unit_tests` step of the required `rust-unit-tests` job, so a
+    unit-test red blocks a merge. (The doc previously cited a stale generated projection,
+    `docs/onboarding.md` line 175, saying the lane ran on no required step; the authority is `DESIGN.md`,
+    and `DESIGN.md` records the lane's 2026-09-30 return and the retirement of the
+    `rust_unit_tests_off_the_merge_path` drop.)
+  The standing caveat that remains is narrower: a *live roster* misname — a misnamed enrollment shipped
+  onto main's production roster — is not how the red is authored (rejected by review 38602: it would red
+  main forever and fabricate a gap the §5 oracle forbids); the red is authored from fixtures the claim
+  supplies. The (b) follow-up above — a dispatch instrument row that runs a probe roster with the join
+  armed — remains the path to authoring that red over the real production roster rather than a fixture.
