@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_census_image_publish
 
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
@@ -14,7 +14,7 @@ import gunbc.host_command_binding {
   scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_boot_export_host_target }
+import gunbc.boot_medium { bmc_boot_image_export }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_census_member_readback {
   CensusMemberReadback, census_member_readings_on, census_member_verdict, census_member_readback_holds, render_census_member_readback,
@@ -192,7 +192,7 @@ fn census_image_publication_on(host: CommandHost) -> SeededImagePublication {
     Mtcollins1CensusImageRefused { reason: r } =>
       SeededImagePublicationRefused { reason: concat("the mtcollins1 census image has no derivation: ", r), work: CreationNotRequested }
     Mtcollins1CensusImageDerived { input: i } =>
-      publish_seeded_image(host: host, input: i, stock_path: mtcollins1_census_image_stock_path(), boundary: BmcExportBoundary { export_dir: mtcollins1_boot_export_dir })
+      publish_seeded_image(host: host, input: i, stock_path: mtcollins1_census_image_stock_path(), boundary: BmcExportBoundary { export_dir: bmc_boot_image_export.dir })
   }
 }
 
@@ -203,7 +203,7 @@ fn mtcollins1_census_image_resolve(host: CommandHost) -> SeededImageResolution {
     Mtcollins1CensusImageRefused { reason: r } =>
       SeededImageUnobservable { reason: concat("the mtcollins1 census image has no derivation: ", r) }
     Mtcollins1CensusImageDerived { input: i } =>
-      resolve_seeded_image(host: host, input: i, dir: mtcollins1_boot_export_dir)
+      resolve_seeded_image(host: host, input: i, dir: bmc_boot_image_export.dir)
   }
 }
 
@@ -251,7 +251,7 @@ fn mtcollins1_census_image_publish_wet() -> ProcessExit {
     FleetSshContextRefused { cause: c } =>
       CensusPublishStoppedAtRegression { regression: RegressionNotApplicable { reason: concat("no fleet SSH context: ", c) } }
     FleetSshContextReady { context: context, receipt: _ } => {
-      let host = FleetSshCommandHost { target: mtcollins1_boot_export_host_target(), context: context }
+      let host = FleetSshCommandHost { target: bmc_boot_image_export.target, context: context }
       census_publish_attempt_of(regression: census_regression_on(host: host), publish: _ => census_image_publication_on(host: host))
     }
   }

@@ -3,7 +3,7 @@ module test.claim.serving.engine_progress_witness
 import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }

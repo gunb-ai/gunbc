@@ -1,5 +1,6 @@
 module v2.test.claim.gha_workflow_yaml_fold_structural
 
+import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
 import v2.extdeps.languages.gha_workflow_yaml_fold {
   gha_fold_job_emitted_witness,

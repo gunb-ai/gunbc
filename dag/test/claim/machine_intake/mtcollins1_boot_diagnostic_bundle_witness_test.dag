@@ -10,7 +10,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import std.process { ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host_boot_attempt_admission { attempt_configuration_not_recorded }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, StateAbsent, StateEnabled, StateUnrecognized, HealthOk, HealthCritical,
   redfish_memory_member_of, redfish_processor_member_of,
@@ -20,8 +20,8 @@ import gunbc.machine_intake_sel_stimulus_listener { sel_read }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
 import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering, ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
+  IpmiBootCdrom, aarch64_uefi_once_boot_selection,
 }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootRunRecord, run_record_not_taken,
   BootParam5Read, BootParam5Unread, BootParam5NotTaken, BootOverrideConsumption,
@@ -875,10 +875,10 @@ test fn a_cross_origin_systems_link_is_refused() -> Bool {
 // controller renders once a boot consumed the one-shot override.
 fn p5_pending() -> String {
   join([
-    ipmi_boot_expected_flag_rendering(selection: mtcollins1_cdrom_selection) as String,
-    ipmi_boot_expected_persistence_rendering(selection: mtcollins1_cdrom_selection) as String,
-    ipmi_boot_expected_mode_rendering(selection: mtcollins1_cdrom_selection) as String,
-    ipmi_boot_expected_device_rendering(selection: mtcollins1_cdrom_selection) as String,
+    ipmi_boot_expected_flag_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_persistence_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_mode_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_device_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
   ], "\n")
 }
 
@@ -888,7 +888,7 @@ fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOv
   boot_override_consumption(
     before: BootParam5Read { readback: before, at: "t0" },
     after: BootParam5Read { readback: after, at: "t1" },
-    selection: mtcollins1_cdrom_selection,
+    selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom),
     booted_through_override_device: census_ended,
   )
 }
@@ -918,7 +918,7 @@ test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it()
 }
 
 test fn consumption_without_a_read_is_never_minted() -> Bool {
-  match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: mtcollins1_cdrom_selection, booted_through_override_device: true) {
+  match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
     OverrideConsumptionUnread { reason: _ } => true
     _ => false
   }

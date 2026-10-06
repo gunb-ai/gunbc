@@ -33,7 +33,7 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { VerdictAbsent, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
+import gunbc.host_converge { VerdictAbsent, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob, HostConverge }
 import gunbc.host_effect {
   HostOs,
   ProvisionCodexRuntime,
@@ -122,7 +122,17 @@ fn absent_converge_target_cause(host: String) -> ConvergeCliRefusalCause {
     HostRunnerDeploymentRefused { refusal: r } =>
       match r.cause {
         HostNotEnrolledInFleet => UnknownHost { host: host }
-        _ => HostDeploymentRefused { host: host, cause: r.cause }
+        PrimaryCpuUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        UsableRamUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        SessionReservationUnestablished { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        FixedOverheadUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        CompilePoolUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        HostAllocationOversubscribedOnHost { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        HostAllocationUnchargeableOnHost { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        ZeroRunnerWidth => HostDeploymentRefused { host: host, cause: r.cause }
+        CommittedWidthUnresolved { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        JobserverCitationAbsent { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        HostCpuAllocationUnchargeable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
       }
     HostRunnerDeploymentDerived { deployment: _ } =>
       ConvergeTargetMissingForDerivedHost { host: host }
@@ -821,6 +831,20 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
   }
 }
 
+fn converge_cli_receipt_for_listed_host(hosts: List<HostConverge>, host: String) -> ConvergeCliReceipt {
+  match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+    Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+    Absent =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: VerdictAbsent,
+        reason: Present { value: absent_converge_target_cause(host: host) },
+      }
+  }
+}
+
 fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
   match fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
@@ -862,18 +886,8 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
                 reason: Present { value: SparkPreEnrollment { host: host } },
               }
           }
-        _ =>
-          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
-          Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
-          Absent =>
-            ConvergeCliReceipt {
-              host: host,
-              applied: 0,
-              drifted: 0,
-              verdict: VerdictAbsent,
-              reason: Present { value: absent_converge_target_cause(host: host) },
-            }
-          }
+        ConvergeKnobFrontier => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
+        ConvergeOutsideFleet => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
       }
   }
 }

@@ -166,8 +166,8 @@ data operator_projection_frontier: FrontierRow = FrontierRow {
     decl_name: "population_diagram_identity",
     field: WholeDeclaration,
   } },
-  reason: "The operator-facing projection now exists for mtcollins1: gunbc.machine_intake_mtcollins1_physical_orientation render_slot_map consumes this join, renders physical left-to-right slots with the physical identification gaps, and refuses count-inconsistent or unresolved populations. It still renders nothing for the real unit: it refuses until a firmware anchor resolves the view orientation and the operator reports which chassis end they face.",
+  reason: "The operator-facing projection now exists for a bound managed host on this board: gunbc.machine_intake_dimm_physical_orientation host_dimm_slot_map consumes this join through figure_population_identity, renders physical left-to-right slots with the physical identification gaps, and refuses count-inconsistent or unresolved populations. It still renders nothing for the real unit: it refuses until a firmware anchor resolves the view orientation and the operator reports which chassis end they face.",
   dissolution: UnboundDissolution {
-    description: "mtcollins1_slot_map returns SlotMapRendered on production rows: mtcollins1_placement_anchors resolves to one hypothesis and mtcollins1_operator_viewpoint is ViewpointReported. Colour-only or silkscreen-specific instructions still require separately cited physical evidence; a diagram legend does not discharge that boundary.",
+    description: "host_dimm_slot_map returns SlotMapRendered for the bound mtcollins1 host on its production rows: gunbc.machine_intake_mtcollins1_physical_orientation mtcollins1_placement_anchors resolves to one hypothesis and the anchors carry a ViewpointReported frame. Colour-only or silkscreen-specific instructions still require separately cited physical evidence; a diagram legend does not discharge that boundary.",
   },
 }

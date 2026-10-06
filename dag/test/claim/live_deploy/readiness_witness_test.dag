@@ -35,7 +35,7 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.spec { deployment_plan_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,

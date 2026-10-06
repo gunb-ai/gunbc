@@ -3,7 +3,7 @@ module gunbc.spark.fabric_blob_peer
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.tools.rsync {
   RsyncReadOnlyModule, rsyncd_conf_text, rsync_daemon_foreground_argv, rsync_daemon_url,

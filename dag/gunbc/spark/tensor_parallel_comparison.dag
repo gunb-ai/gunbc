@@ -2,7 +2,7 @@ module gunbc.spark.tensor_parallel_comparison
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, VllmSpeculativePolicy }
 import extdeps.nvidia.nccl { NcclRealizedTransport }
@@ -135,8 +135,7 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: To
       kv_cache_dtype: Absent,
       speculative: Absent,
       collective_transport: Absent,
-      indexer_kv_dtype: none, scheduler_admission: none, launch_profile_key: none
-    ),
+      indexer_kv_dtype: none, scheduler_admission: none, launch_profile_key: none, deployment_env_key: none ),
     believed: join(["the arm declares tensor_parallel_size ", to_string(degree),
                     "; a degree no ServingTopology carries leaves the topology axis absent rather than resolved to the nearest one"], "") as NonEmptyStr,
     would_settle: "for an unmapped degree, add the ServingTopology row for that rank count to gunbc.spark.serving_arm or correct the arm's declared degree; for the transport and speculative axes, read NCCL's `Using network` verdict line and the launch's speculative configuration on a relaunch -- which produces a NEW subject rather than repairing this one" as NonEmptyStr,

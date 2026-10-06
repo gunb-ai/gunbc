@@ -14,10 +14,9 @@ import v2.compiler.body_lowering_fold {
 import v2.compiler.normalize { normalize }
 import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
-  dag_lex,
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
@@ -25,7 +24,7 @@ import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unav
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.node_query { binder_edge }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 
 // ---------------------------------------------------------------------------
 // THE ENROLLED REDS AND FALSIFIERS FOR THE POSITIONAL RETURN-TYPE READ.
@@ -83,7 +82,7 @@ data nfbcp_no_return_type_source: String = "module m\nfn g(h: fn(Int) -> Int) { 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nfbcp_parsed(text: String) -> Optional<Node> {
-  match tokenize(text: text, file: ^nfbcp_probe_file, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: ^nfbcp_probe_file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: ts, diagnostics: _ } =>
       match dag_prepared_grammar() {

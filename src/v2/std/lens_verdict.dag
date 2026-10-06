@@ -21,7 +21,7 @@ import v2.std.integer { integer_int_to_decimal_string }
 import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -149,7 +149,10 @@ fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> S
           match locus {
             Textual { file: f, extent: e } =>
               concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
-            _ => lens_verdict_node_occurrence_text(node: node)
+            NodeLocus { anchor: _ } => lens_verdict_node_occurrence_text(node: node)
+            SourcePortLocus { anchor: _, file: _, extent: _ } => lens_verdict_node_occurrence_text(node: node)
+            InvariantPortLocus { anchor: _, invariant: _ } => lens_verdict_node_occurrence_text(node: node)
+            DeclarationLocus { declaration: _ } => lens_verdict_node_occurrence_text(node: node)
           }
       }
   }

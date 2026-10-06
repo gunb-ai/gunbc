@@ -24,12 +24,12 @@ import v2.compiler.compile {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
-import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
+import v2.compiler.native_test_vocabulary { FileRefusalAtWholeFile, FileRefusalLink, NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { Map }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeSemigroup }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
@@ -37,7 +37,7 @@ import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, dia
 import v2.compiler.resolve { ObservationComplete, ObservationIncomplete }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -519,9 +519,10 @@ fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRe
   NativeTestFileRefusal {
     path: path,
     module: optional_absent(),
-    head_reason: ^parse_grammar_choice_overlap_residue,
-    fatal_reason: fatal,
-    chain: []
+    chain: FreeSemigroup {
+      head: FileRefusalLink { reason: ^parse_grammar_choice_overlap_residue, at: FileRefusalAtWholeFile },
+      tail: [FileRefusalLink { reason: fatal, at: FileRefusalAtWholeFile }]
+    }
   }
 }
 

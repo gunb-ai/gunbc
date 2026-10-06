@@ -1,0 +1,429 @@
+module test.claim.workspace_checkpoint_instrument
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import std.measure { byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.fabric_blob { FabricBlobAddress }
+import std.fabric_storage { FabricObject, FabricStoredObject, FabricObjectFetched, FabricObjectGetRefused, FabricObjectMissing, fabric_object_ref_of, fabric_object_ref_eq }
+import std.durable_compare_and_set { cas_generation_first }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.cloudflare.r2_staged_transfer { R2ObjectAlreadyPresent, R2PutOutcomeUnknown, R2ObjectStored, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.fabric.fabric_object_r2 { fabric_object_r2_put_verdict, FabricObjectR2Stored, FabricObjectR2PresentVerified, FabricObjectR2OccupiedByOther, FabricObjectR2Refused, FabricObjectR2OutcomeUnknown }
+import std.checkpointed_workspace {
+  WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceHeadEntry, WorkspaceRevision, WorkspaceFence,
+  workspace_head_entry_object, workspace_head_entry_decode, workspace_stored_entry_of, WorkspaceStoredEntryAdmitted,
+  WorkspaceCommitRevision, workspace_advance_plan, WorkspaceAdvancePlanned,
+}
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault }
+import extdeps.tools.kopia { kopia_snapshot_summary_of }
+import gunbc.instruments.workspace_entry_decode_scaling { DecodeScalingStep, decode_scaling_verdict, DecodeScalingLinear, DecodeScalingSuperlinear, DecodeScalingIncorrect }
+import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.auth.access_token_source { WorkloadIdentityToken }
+import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded, R2HeadAdvanceKnown, R2HeadAdvancedTo, R2HeadStagingCustody }
+import gunbc.fabric.workspace_source {
+  WorkspaceSourceRoot, workspace_credential_exclusions, workspace_exclusions, workspace_path_exclusion, workspace_source_tally,
+  workspace_pack_readback, WorkspacePackClean, WorkspacePackCarriesExcluded,
+}
+import gunbc.fabric.workspace_checkpoint_instrument {
+  workspace_snapshot_capability, WorkspaceSnapshotBtrfs, WorkspaceSnapshotAbsent, WorkspaceSnapshotUnobserved,
+  WorkspaceMeasuredPart, PartMeasured, PartUnmeasured, workspace_bound_verdict, BoundHolds, BoundExceeded, BoundUndecided,
+  workspace_quota_verdict, QuotaHolds, QuotaExceeded,
+  workspace_instrument_commit, InstrumentCommitCasNotGrounded,
+  WorkspaceCustody, workspace_custody_clean, workspace_custody_of_head_advance, workspace_exit_with_custody,
+  WorkspaceRestoredFile, workspace_restore_compare, RestoreByteEqual, RestoreMissingFile, RestoreExtraFile, RestoreBytesDiffer, RestoreCarriesUncommittedChunk,
+}
+
+// Every claim supplies its inputs at the interface it discriminates (DESIGN 3: a witness
+// discriminates at one interface). The real-path pairing -- a committed barrier restored byte-equal
+// from the head's closure -- is the dispatched stage-1 entry workspace_checkpoint_restore_wet, which
+// refuses until the R2 head's CAS ground is cited; the gate's refusal is claimed below.
+
+fn digest(c: String) -> Sha256Digest {
+  match sha256_hex_digest(hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "")) {
+    Present { value: d } => d
+    Absent => digest(c: "0")
+  }
+}
+
+fn ms(n: Int) -> Nanosecond {
+  nanosecond(count: n * 1000000)
+}
+
+fn address(c: String) -> FabricBlobAddress {
+  FabricBlobAddress { key: digest(c: c) }
+}
+
+fn entry(path: String, c: String) -> WorkspaceEntry {
+  WorkspaceEntry { path: path as NonEmptyStr, chunk: address(c: c), size: byte_size(count: 3) }
+}
+
+// ── SNAPSHOT CAPABILITY ────────────────────────────────────────────────────────────────────────
+
+test fn btrfs_is_the_realized_snapshot_capability() -> Bool {
+  match workspace_snapshot_capability(parent: "/home/runner/w", observed: true, type_word: "btrfs\n") {
+    WorkspaceSnapshotBtrfs { parent: p } => (p as String) == "/home/runner/w"
+    WorkspaceSnapshotAbsent { parent: _, filesystem_type: _ } => false
+    WorkspaceSnapshotUnobserved { parent: _, detail: _ } => false
+  }
+}
+
+test fn a_filesystem_without_snapshots_is_refused_naming_its_type() -> Bool {
+  match workspace_snapshot_capability(parent: "/home/runner/w", observed: true, type_word: "ext2/ext3") {
+    WorkspaceSnapshotAbsent { parent: _, filesystem_type: t } => t == "ext2/ext3"
+    WorkspaceSnapshotBtrfs { parent: _ } => false
+    WorkspaceSnapshotUnobserved { parent: _, detail: _ } => false
+  }
+}
+
+test fn an_unread_filesystem_is_unobserved_never_btrfs() -> Bool {
+  match workspace_snapshot_capability(parent: "/home/runner/w", observed: false, type_word: "btrfs") {
+    WorkspaceSnapshotUnobserved { parent: _, detail: _ } => true
+    WorkspaceSnapshotBtrfs { parent: _ } => false
+    WorkspaceSnapshotAbsent { parent: _, filesystem_type: _ } => false
+  }
+}
+
+// ── THE CREDENTIAL EXCLUSION ───────────────────────────────────────────────────────────────────
+
+fn excluded_by(path: String) -> String {
+  match workspace_path_exclusion(exclusions: workspace_exclusions(), path: path) {
+    Present { value: x } => x.spelling as String
+    Absent => ""
+  }
+}
+
+test fn the_session_credentials_file_is_refused() -> Bool {
+  excluded_by(path: "session-home/.claude/.credentials.json") == "~/.claude/.credentials.json"
+}
+
+test fn every_listed_credential_shape_is_refused() -> Bool {
+  excluded_by(path: "home/u/.netrc") == ".netrc"
+    && excluded_by(path: "home/briansrls/.codex/auth.json") == "~/.codex/auth.json"
+    && excluded_by(path: "home/u/.git-credentials") == ".git-credentials"
+    && excluded_by(path: "home/u/.npmrc") == ".npmrc"
+    && excluded_by(path: "home/u/.docker/config.json") == ".docker/config.json"
+    && excluded_by(path: "home/u/tls/server.pem") == "*.pem"
+    && excluded_by(path: "home/u/tls/server.key") == "*.key"
+    && excluded_by(path: "home/u/keys/id_ed25519") == "id_ed25519"
+    && excluded_by(path: "home/u/keys/id_ed25519_sk") == "id_ed25519_sk"
+    && excluded_by(path: "home/u/keys/id_ecdsa_sk") == "id_ecdsa_sk"
+    && excluded_by(path: "home/u/.config/gh/hosts.yml") == ".config/gh"
+    && excluded_by(path: "home/u/.ssh/known_hosts") == ".ssh"
+    && excluded_by(path: "home/u/.gnupg/pubring.kbx") == ".gnupg"
+    && excluded_by(path: "home/u/.aws/config") == ".aws"
+    && excluded_by(path: "home/u/.config/gcloud/configurations/config_default") == ".config/gcloud"
+    && excluded_by(path: "home/u/repo/.env") == ".env"
+    && excluded_by(path: "home/u/repo/.env.local") == ".env.*"
+}
+
+test fn ordinary_workspace_paths_are_not_excluded() -> Bool {
+  excluded_by(path: "home/briansrls/gunbc/dag/std/fabric_blob.dag") == ""
+    && excluded_by(path: "home/u/.configx/gh/hosts.yml") == ""
+    && excluded_by(path: "home/u/repo/environment.dag") == ""
+    && excluded_by(path: "home/u/repo/keyboard.md") == ""
+}
+
+// A SIZE THAT DOES NOT PARSE IS AN UNPARSED LINE, NEVER A ZERO-BYTE EXCLUSION (review 76603): the
+// size is parsed once into a ByteSize, and a failure refuses the line.
+test fn an_unreadable_size_refuses_the_line_rather_than_counting_zero() -> Bool {
+  let t = workspace_source_tally(root: tally_root, exclusions: workspace_exclusions(), listing: "f\t600\t.env\t\tlots\nf\t600\tkeys/id_rsa\t\t-4")
+  t.excluded == 0 && t.excluded_credentials == 0 && length(t.unparsed) == 2
+}
+
+// TRANSCRIPT CONTENT IS NOT CARRIED, BY OPERATOR DECISION: Claude session transcripts (and subagent
+// transcripts) under projects/, Claude and Codex prompt history, and Codex session rollouts are
+// excluded as transcripts; memory and settings are carried, and a .jsonl outside projects/ is not a
+// transcript by this rule.
+test fn transcript_content_is_excluded_and_agent_state_is_carried() -> Bool {
+  excluded_by(path: "home/briansrls/.claude@gmail3/projects/-home-briansrls-gunbc/0d3a.jsonl") == "projects/**/*.jsonl"
+    && excluded_by(path: "home/briansrls/.claude@gmail3/projects/-home-briansrls-gunbc/0d3a/subagents/agent-1.jsonl") == "projects/**/*.jsonl"
+    && excluded_by(path: "home/briansrls/.claude@gmail3/history.jsonl") == "history.jsonl"
+    && excluded_by(path: "home/briansrls/.codex/history.jsonl") == "history.jsonl"
+    && excluded_by(path: "home/briansrls/.codex/sessions/2026/10/05/rollout-1.jsonl") == ".codex/sessions"
+    && excluded_by(path: "home/briansrls/.codex/auth.json") == "~/.codex/auth.json"
+    && excluded_by(path: "home/briansrls/.claude@gmail3/projects/-home-briansrls-gunbc/memory/MEMORY.md") == ""
+    && excluded_by(path: "home/briansrls/.claude@gmail3/settings.json") == ""
+    && excluded_by(path: "home/briansrls/.codex/config.toml") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/test/fixture/sample.jsonl") == ""
+}
+
+// THE EXCLUSION IS BY EXACT NAME: source files whose names merely MENTION a credential are carried.
+// Red for the substring rule this replaced -- every one of these was dropped by "*token*" or
+// "*credentials*", which made the measured workspace smaller than the operator's.
+test fn source_files_that_mention_credentials_are_carried() -> Bool {
+  excluded_by(path: "home/briansrls/gunbc/dag/gunbc/auth/access_token_source.dag") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/extdeps/cloudflare/account_api_tokens.dag") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/std/credentials.dag") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/extdeps/bmc/pid_control_decode.dag") == ""
+    && excluded_by(path: "home/u/.docker/daemon.json") == ""
+}
+
+data tally_root: WorkspaceSourceRoot = WorkspaceSourceRoot { label: "clone", path: "/home/u/gunbc", build_output: ["target/"] }
+
+test fn the_tally_admits_only_unexcluded_non_build_files() -> Bool {
+  let listing = join([
+    "f\t644\tREADME.md\t\t120",
+    "l\t777\tlatest\tREADME.md\t9",
+    "f\t600\t.env\t\t40",
+    "f\t644\ttarget/release/gunbc\t\t9000",
+    "f\t600\tkeys/id_rsa\t\t400",
+    "f\t644\tprojects/p/0d3a.jsonl\t\t5000",
+    "f\t644\tprojects/p/memory/note.md\t\t300",
+    "f\t644\thistory.jsonl\t\t700",
+  ], "\n")
+  let t = workspace_source_tally(root: tally_root, exclusions: workspace_exclusions(), listing: listing)
+  let members = map(t.members, m => m as String)
+  members == ["home/u/gunbc/README.md", "home/u/gunbc/latest", "home/u/gunbc/projects/p/memory/note.md"] && t.files == 2 && t.symlinks == 1 && t.excluded == 4
+    && t.excluded_credentials == 2 && measure_count(m: t.excluded_credential_bytes) == 440
+    && map(t.excluded_credential_members, m => m as String) == ["home/u/gunbc/.env", "home/u/gunbc/keys/id_rsa"]
+    && t.excluded_transcripts == 2 && measure_count(m: t.excluded_transcript_bytes) == 5700
+    && t.build_output == 1 && t.unparsed == []
+}
+
+// THE PACK READBACK'S RED: an archive that carries a credential refuses the upload, whatever list
+// built it.
+test fn an_archive_carrying_a_credential_refuses_the_upload() -> Bool {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n") {
+    WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == "session-home/.claude/.credentials.json" && (x.spelling as String) == "~/.claude/.credentials.json"
+    WorkspacePackClean { members: _ } => false
+  }
+}
+
+test fn a_clean_archive_reads_back_its_member_count() -> Bool {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: "home/u/gunbc/README.md\nhome/u/gunbc/src/a.rs\n") {
+    WorkspacePackClean { members: n } => n == 2
+    WorkspacePackCarriesExcluded { member: _, by: _ } => false
+  }
+}
+
+// ── VERDICTS ───────────────────────────────────────────────────────────────────────────────────
+
+test fn every_part_measured_under_the_bound_holds() -> Bool {
+  match workspace_bound_verdict(parts: [PartMeasured { label: "snapshot", elapsed: ms(n: 40) }, PartMeasured { label: "upload", elapsed: ms(n: 9000) }, PartMeasured { label: "commit", elapsed: ms(n: 200) }], bound: ms(n: 10000)) {
+    BoundHolds { total: t, bound: b } => nanosecond_count(n: t) == 9240000000 && nanosecond_count(n: b) == 10000000000
+    BoundExceeded { at_least: _, bound: _, complete: _ } => false
+    BoundUndecided { measured: _, bound: _, missing: _ } => false
+  }
+}
+
+test fn a_missing_part_leaves_a_fitting_sum_undecided() -> Bool {
+  match workspace_bound_verdict(parts: [PartMeasured { label: "snapshot", elapsed: ms(n: 40) }, PartUnmeasured { label: "commit", reason: "cas not grounded" }], bound: ms(n: 10000)) {
+    BoundUndecided { measured: m, bound: _, missing: missing } => nanosecond_count(n: m) == 40000000 && missing == ["commit: cas not grounded"]
+    BoundHolds { total: _, bound: _ } => false
+    BoundExceeded { at_least: _, bound: _, complete: _ } => false
+  }
+}
+
+test fn measured_parts_over_the_bound_exceed_it_whatever_is_missing() -> Bool {
+  match workspace_bound_verdict(parts: [PartMeasured { label: "upload", elapsed: ms(n: 70000) }, PartUnmeasured { label: "commit", reason: "cas not grounded" }], bound: ms(n: 60000)) {
+    BoundExceeded { at_least: m, bound: b, complete: c } => nanosecond_count(n: m) == 70000000000 && nanosecond_count(n: b) == 60000000000 && !c
+    BoundHolds { total: _, bound: _ } => false
+    BoundUndecided { measured: _, bound: _, missing: _ } => false
+  }
+}
+
+test fn the_quota_verdict_compares_bytes_to_the_quota() -> Bool {
+  let under = match workspace_quota_verdict(size: byte_size(count: 1600000000), quota: byte_size(count: 10000000000)) { QuotaHolds { size: _, quota: _ } => true  QuotaExceeded { size: _, quota: _ } => false }
+  let over = match workspace_quota_verdict(size: byte_size(count: 10000000001), quota: byte_size(count: 10000000000)) { QuotaExceeded { size: _, quota: _ } => true  QuotaHolds { size: _, quota: _ } => false }
+  under && over
+}
+
+// ── THE COMMIT GATE ────────────────────────────────────────────────────────────────────────────
+
+// WHILE THE HEAD'S CAS GROUND IS A BET, THE COMMIT REFUSES WITH ITS READ OBLIGATION AND MOVES
+// NOTHING: the binding names no reachable store, so any put or advance would not return this arm.
+test fn an_ungrounded_cas_refuses_the_commit_with_its_read_obligation() -> Bool {
+  let writer = WorkspaceWriterEpoch { workspace: "w", epoch: 1 }
+  let loc = R2ObjectLocator { endpoint: R2S3Endpoint { account_id: "acct", jurisdiction: R2JurisdictionDefault }, bucket_name: "gunbai-fabric-workspace", key: "heads/workspace.w.committed" }
+  let binding = r2_head_binding(locator: loc,
+    read: R2HeadCredential { access_key_id: "read-key", token_value: fleet_secret_ref(secret_id: "cloudflare-r2-workspace-read-token") },
+    write: R2HeadCredential { access_key_id: "write-key", token_value: fleet_secret_ref(secret_id: "cloudflare-r2-workspace-write-token") })
+  match workspace_advance_plan(writer: writer, change: WorkspaceCommitRevision { entries: [entry(path: "a", c: "a")] }, built_on: none) {
+    WorkspaceAdvancePlanned { plan: plan } =>
+      match workspace_instrument_commit(admission: R2HeadCasNotGrounded { read_obligation: "race two If-Match puts on one tag" }, plan: plan, binding: binding, token_source: WorkloadIdentityToken).commit {
+        InstrumentCommitCasNotGrounded { read_obligation: o } => (o as String) == "race two If-Match puts on one tag"
+        other => false
+      }
+    other => false
+  }
+}
+
+// ── RESTORE ────────────────────────────────────────────────────────────────────────────────────
+
+fn restored(path: String, c: String) -> WorkspaceRestoredFile {
+  WorkspaceRestoredFile { path: path as NonEmptyStr, digest: digest(c: c) }
+}
+
+data barrier_entries: List<WorkspaceEntry> = [entry(path: "README.md", c: "a"), entry(path: "src/a.txt", c: "b")]
+
+test fn an_identical_tree_restores_byte_equal() -> Bool {
+  match workspace_restore_compare(barrier: barrier_entries, restored: [restored(path: "src/a.txt", c: "b"), restored(path: "README.md", c: "a")], uncommitted: address(c: "f")) {
+    RestoreByteEqual { files: n } => n == 2
+    other => false
+  }
+}
+
+test fn a_missing_extra_or_changed_file_is_its_own_refusal() -> Bool {
+  let missing = match workspace_restore_compare(barrier: barrier_entries, restored: [restored(path: "README.md", c: "a")], uncommitted: address(c: "f")) { RestoreMissingFile { path: p } => (p as String) == "src/a.txt"  other => false }
+  let extra = match workspace_restore_compare(barrier: barrier_entries, restored: [restored(path: "README.md", c: "a"), restored(path: "src/a.txt", c: "b"), restored(path: "stray", c: "c")], uncommitted: address(c: "f")) { RestoreExtraFile { path: p } => (p as String) == "stray"  other => false }
+  let changed = match workspace_restore_compare(barrier: barrier_entries, restored: [restored(path: "README.md", c: "c"), restored(path: "src/a.txt", c: "b")], uncommitted: address(c: "f")) { RestoreBytesDiffer { path: p } => (p as String) == "README.md"  other => false }
+  missing && extra && changed
+}
+
+test fn a_restored_file_holding_the_uncommitted_chunk_refuses() -> Bool {
+  match workspace_restore_compare(barrier: barrier_entries, restored: [restored(path: "README.md", c: "a"), restored(path: "src/a.txt", c: "f")], uncommitted: address(c: "f")) {
+    RestoreCarriesUncommittedChunk { path: p } => (p as String) == "src/a.txt"
+    other => false
+  }
+}
+
+// ── THE HEAD ENTRY DECODER (std.checkpointed_workspace) ────────────────────────────────────────
+
+fn round_trips(e: WorkspaceHeadEntry) -> Bool {
+  let object = workspace_head_entry_object(entry: e)
+  match workspace_head_entry_decode(object: object) {
+    Absent => false
+    Present { value: d } =>
+      fabric_object_ref_eq(a: fabric_object_ref_of(object: workspace_head_entry_object(entry: d)), b: fabric_object_ref_of(object: object))
+        && match workspace_stored_entry_of(asked: fabric_object_ref_of(object: object), content: object, decoded: d) { WorkspaceStoredEntryAdmitted { stored: _ } => true  other => false }
+  }
+}
+
+test fn a_revision_and_a_fence_decode_to_what_they_encode() -> Bool {
+  let w = WorkspaceWriterEpoch { workspace: "ops", epoch: 3 }
+  let first = WorkspaceRevision { writer: w, parent: none, entries: [entry(path: "a dir/with; odd:name", c: "a"), entry(path: "b", c: "b")] }
+  let parent = fabric_object_ref_of(object: workspace_head_entry_object(entry: first))
+  round_trips(e: first)
+    && round_trips(e: WorkspaceRevision { writer: w, parent: Present { value: parent }, entries: [] })
+    && round_trips(e: WorkspaceFence { writer: WorkspaceWriterEpoch { workspace: "ops", epoch: 4 }, parent: Present { value: parent } })
+}
+
+test fn a_multi_entry_revision_decodes_its_entries_in_order() -> Bool {
+  let w = WorkspaceWriterEpoch { workspace: "ops", epoch: 1 }
+  let revision = WorkspaceRevision { writer: w, parent: none, entries: [entry(path: "c", c: "c"), entry(path: "a", c: "a"), entry(path: "b/d", c: "b"), entry(path: "e", c: "e")] }
+  match workspace_head_entry_decode(object: workspace_head_entry_object(entry: revision)) {
+    Present { value: WorkspaceRevision { writer: _, parent: _, entries: es } } => map(es, e => e.path as String) == ["c", "a", "b/d", "e"] && round_trips(e: revision)
+    other => false
+  }
+}
+
+fn numbered_entries(n: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry> {
+  if n <= 0 { acc } else { numbered_entries(n: n - 1, acc: Cons { head: entry(path: join(["dir/file-", to_string(n), ".txt"], ""), c: "b"), tail: acc }) }
+}
+
+fn non_ascii_entries(n: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry> {
+  if n <= 0 { acc } else { non_ascii_entries(n: n - 1, acc: Cons { head: entry(path: join(["caf\u{e9}/\u{4e2d}\u{6587} ", to_string(n), ";\u{1f600}:x.txt"], ""), c: "c"), tail: acc }) }
+}
+
+// NON-ASCII PATHS DECODE BY CODE POINT: accented, CJK and astral characters, with the body's own
+// delimiters (space, ';', ':') inside the path, round-trip in order. The length prefix counts code
+// points, so a decoder slicing by byte or by host-text offset would misread every one of them.
+test fn non_ascii_paths_decode_in_order_and_round_trip() -> Bool {
+  let es = non_ascii_entries(n: 20, acc: [])
+  let revision = WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: "\u{e9}quipe", epoch: 2 }, parent: none, entries: es }
+  match workspace_head_entry_decode(object: workspace_head_entry_object(entry: revision)) {
+    Present { value: WorkspaceRevision { writer: w, parent: _, entries: got } } => (w.workspace as String) == "\u{e9}quipe" && map(got, e => e.path as String) == map(es, e => e.path as String) && round_trips(e: revision)
+    other => false
+  }
+}
+
+// THE LARGER-N CONTROL: the offset walk decodes a revision of many entries in order and round-trips.
+test fn a_twenty_entry_revision_decodes_in_order_and_round_trips() -> Bool {
+  let es = numbered_entries(n: 20, acc: [])
+  let revision = WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: "ops", epoch: 1 }, parent: none, entries: es }
+  match workspace_head_entry_decode(object: workspace_head_entry_object(entry: revision)) {
+    Present { value: WorkspaceRevision { writer: _, parent: _, entries: got } } => map(got, e => e.path as String) == map(es, e => e.path as String) && round_trips(e: revision)
+    other => false
+  }
+}
+
+test fn a_body_that_is_not_a_head_entry_does_not_decode() -> Bool {
+  let wrong_kind = workspace_head_entry_decode(object: FabricObject { links: [], body: "workspace.other;W3:ops;epoch=1;" })
+  let truncated = workspace_head_entry_decode(object: FabricObject { links: [], body: "workspace.revision;W3:ops;epoch=1;F5:ab" })
+  match wrong_kind { Absent => true  Present { value: _ } => false } && match truncated { Absent => true  Present { value: _ } => false }
+}
+
+// ── THE KOPIA MANIFEST SUMMARY ─────────────────────────────────────────────────────────────────
+
+// The manifest is the one kopia 0.23.1 printed for a one-file, three-byte source (extdeps.tools.kopia
+// names the run); only rootEntry.summ is read.
+test fn the_kopia_manifest_summary_reads_files_and_bytes() -> Bool {
+  let manifest = "{\"id\":\"d2eb\",\"rootEntry\":{\"name\":\"src\",\"type\":\"d\",\"obj\":\"kafe\",\"summ\":{\"size\":3,\"files\":1,\"symlinks\":0,\"dirs\":1,\"numFailed\":0}}}"
+  let read = match kopia_snapshot_summary_of(manifest: manifest) { Present { value: s } => s.files == 1 && measure_count(m: s.bytes) == 3  Absent => false }
+  let unread = match kopia_snapshot_summary_of(manifest: "{\"id\":\"d2eb\"}") { Absent => true  Present { value: _ } => false }
+  read && unread
+}
+
+// ── THE OBJECT HALF: AN AMBIGUOUS PUT IS DECIDED ONLY BY MATCHING BYTES ───────────────────────
+
+data put_object: FabricObject = FabricObject { links: [], body: "workspace.revision;W2:ws;epoch=1;" }
+data other_object: FabricObject = FabricObject { links: [], body: "workspace.revision;W2:xx;epoch=1;" }
+
+fn occupant(content: FabricObject) -> std.fabric_storage.FabricObjectGet {
+  FabricObjectFetched { stored: FabricStoredObject { object: fabric_object_ref_of(object: put_object), content: content } }
+}
+
+// RED: the key answered "already present" and its occupant carries other bytes -- a structural
+// locator collision -- so the put is NOT stored. Positive control: matching bytes are.
+test fn an_occupied_key_with_other_bytes_is_not_stored() -> Bool {
+  let mismatch = match fabric_object_r2_put_verdict(object: put_object, verdict: R2ObjectAlreadyPresent, readback: Present { value: occupant(content: other_object) }) {
+    FabricObjectR2OccupiedByOther { object: _, fault: _ } => true
+    other => false
+  }
+  let matching = match fabric_object_r2_put_verdict(object: put_object, verdict: R2ObjectAlreadyPresent, readback: Present { value: occupant(content: put_object) }) {
+    FabricObjectR2PresentVerified { object: _ } => true
+    other => false
+  }
+  mismatch && matching
+}
+
+// RED: an outcome-unknown put with no readback, or a readback that found nothing, is NOT stored
+// and NOT "store unreachable": it stays a typed unknown.
+test fn an_unknown_put_without_a_resolving_readback_stays_unknown() -> Bool {
+  let unread = match fabric_object_r2_put_verdict(object: put_object, verdict: R2PutOutcomeUnknown { cause: "connection reset after upload" }, readback: none) {
+    FabricObjectR2OutcomeUnknown { object: _, cause: _ } => true
+    other => false
+  }
+  let missing = match fabric_object_r2_put_verdict(object: put_object, verdict: R2PutOutcomeUnknown { cause: "connection reset after upload" }, readback: Present { value: FabricObjectGetRefused { fault: FabricObjectMissing { object: fabric_object_ref_of(object: put_object) } } }) {
+    FabricObjectR2OutcomeUnknown { object: _, cause: _ } => true
+    other => false
+  }
+  let stored = match fabric_object_r2_put_verdict(object: put_object, verdict: R2ObjectStored { tag: none }, readback: none) {
+    FabricObjectR2Stored { object: _ } => true
+    other => false
+  }
+  unread && missing && stored
+}
+
+// RED: a head that ADVANCED while its write credential and a staging directory were left behind is
+// a commit that stands AND an exit that fails naming both. Positive control: clean custody exits
+// with the outcome it was given.
+test fn residue_survives_a_committed_advance_into_the_exit() -> Bool {
+  let advanced = R2HeadAdvanceKnown {
+    settled: R2HeadAdvancedTo { object: fabric_object_ref_of(object: put_object), generation: cas_generation_first() },
+    credential: WriteCredentialResidueRemains { cause: "the write credential's private directory could not be removed" },
+    staging: R2HeadStagingCustody { residue_paths: ["/tmp/tmp.head-stage"] },
+  }
+  let dirty = match workspace_exit_with_custody(outcome: ExitSuccess, custody: workspace_custody_of_head_advance(r: advanced)) {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "/tmp/tmp.head-stage") && string_contains(s: r, pattern: "private directory could not be removed")
+    ExitSuccess => false
+  }
+  let clean = match workspace_exit_with_custody(outcome: ExitSuccess, custody: workspace_custody_clean) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  dirty && clean
+}
+
+// THE DECODE COST CONTROL'S JUDGEMENT (gunbc.instruments.workspace_entry_decode_scaling): 4x steps
+// at about 4x time are linear; a 16x step -- the shape a quadratic decode produces -- is the red.
+test fn the_decode_scaling_verdict_refuses_a_quadratic_step() -> Bool {
+  let linear = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, elapsed: nanosecond(count: 271000000) }, DecodeScalingStep { entries: 1000, elapsed: nanosecond(count: 1098000000) }, DecodeScalingStep { entries: 4000, elapsed: nanosecond(count: 4537000000) }]) {
+    DecodeScalingLinear { steps: _ } => true
+    other => false
+  }
+  let quadratic = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, elapsed: nanosecond(count: 113000000) }, DecodeScalingStep { entries: 1000, elapsed: nanosecond(count: 1379000000) }, DecodeScalingStep { entries: 4000, elapsed: nanosecond(count: 20206000000) }]) {
+    DecodeScalingSuperlinear { from: a, to: _ } => a.entries == 250
+    other => false
+  }
+  linear && quadratic
+}

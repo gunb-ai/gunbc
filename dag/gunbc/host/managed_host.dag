@@ -136,8 +136,8 @@ fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControll
 }
 
 // THE ONE OTHER WAY TO MINT A ROW, ADMITTED ONLY TO THE WITNESSES THAT NEED A CROSS-WIRED ONE. The
-// reds in test.claim.managed_host_witness (and test.claim.megarac_managed_host_witness) re-point a real row's access at another controller, or
-// rename a real row to a host with no reset selection or boot policy, to show the binding and the
+// reds in test.claim.managed_host_witness (and test.claim.megarac_managed_host_witness, test.claim.machine_intake.dimm_physical_orientation_witness) re-point a real row's access at another controller or
+// another reported baseboard, or rename a real row to a host with no reset selection, boot selection or boot policy, to show the binding and the
 // admissions refuse them; they cannot do that without a constructor, and admit_callers keeps every other caller out.
 fn managed_host_fixture(
   host: HostIdentity,
@@ -155,12 +155,17 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
     decl_ref(module_path: "test.claim.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
     decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
+    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_a_boot_of_an_unbound_host_is_refused"),
+    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_a_bound_host_with_no_boot_selection_is_refused"),
+    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation"),
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation"),
     decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_an_account_is_released_only_with_the_controller_it_was_bound_to"),
+    decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_the_same_anchors_on_another_reported_board_are_refused_unmodeled"),
+    decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled_board"),
   ]
 {
   ManagedHost { host: host, access: access, capability_row: capability_row, secure: secure, unit_hold: unit_hold, smpro: smpro }

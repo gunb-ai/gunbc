@@ -1,7 +1,7 @@
 module test.claim.duplicate_record_field_refusal_witness
 
 import std.types { String, Int, Bool }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
