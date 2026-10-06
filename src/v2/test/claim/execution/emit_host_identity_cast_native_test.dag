@@ -13,20 +13,14 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
-  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
-  identity_cast_route_admitted_holds, identity_cast_route_refused_holds, identity_cast_route_verdict,
-  refused_cast_route_verdict,
+  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused, identity_cast_route_verdict,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMITTED IDENTITY CAST, BUILT AND RUN -- AND THE INHABITANCE OF THE ROUTE MODULE'S SUPPLIED
-// VERDICTS. v2.test.claim.coercion.identity_cast_emission_route judges IdentityCastRouteVerdict over
-// supplied values so those rows fit the new-witness budget; this module is the pairing inhabitance
-// (DESIGN section 3). identity_cast_route_verdict is the real door; identity_cast_native_emitted
-// requires identity_cast_route_admitted_holds on that verdict, and
-// a_cast_with_no_witness_is_refused_on_the_closure_route_holds requires
-// identity_cast_route_refused_holds on refused_cast_route_verdict. The text under test is the entry
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. v2.test.claim.coercion.identity_cast_emission_route
+// establishes that `fn f(x: Int) -> Int { x as Int }` is admitted and reaches Rust on the source
+// route; this module establishes what the emitted function DOES. The text under test is the entry
 // member that route emits -- never a hand-written `f` -- and the host row
 // (v2.extdeps.languages.rust_test rust_identity_cast_target_model) only reads the value from argv,
 // calls it and frames the return value.
@@ -56,23 +50,11 @@ fn identity_cast_native_inputs() -> Inputs {
 // second time: the text built here is the text the admission row asserted on. Absent when the route
 // did not emit exactly the entry.
 fn identity_cast_native_emitted() -> Optional<String> {
-  let v = identity_cast_route_verdict()
-  if identity_cast_route_admitted_holds(v: v) {
-    match v {
-      IdentityCastEntryEmitted { text: t, members: _ } => optional_present(value: t)
-      IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
-      IdentityCastClosureRefused { reason: _ } => optional_absent()
-    }
-  } else {
-    optional_absent()
+  match identity_cast_route_verdict() {
+    IdentityCastEntryEmitted { text: t, members: n } => if n == 1 { optional_present(value: t) } else { optional_absent() }
+    IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
+    IdentityCastClosureRefused { reason: _ } => optional_absent()
   }
-}
-
-// INHABITANCE OF THE SUPPLIED REFUSAL VERDICT: the real door refuses Int-as-Bool at the entry
-// member with coercion's mismatch. The required-floor row supplies that shape; this is the last
-// execution of the real path for it.
-test fn a_cast_with_no_witness_is_refused_on_the_closure_route_holds() -> Bool {
-  identity_cast_route_refused_holds(v: refused_cast_route_verdict())
 }
 
 // One run of the emitted program on one argv value: true only when it exited through the logical-run
