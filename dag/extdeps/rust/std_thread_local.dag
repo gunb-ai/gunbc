@@ -1,0 +1,25 @@
+module extdeps.rust.std_thread_local
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE std::thread_local! MACRO, AS RUST'S STANDARD LIBRARY DOCUMENTS IT AT THE PINNED TOOLCHAIN.
+// rust-toolchain.toml pins 1.93.0, and the page cited below is that release's: "The macro wraps any
+// number of static declarations and makes them thread local. Publicity and attributes for each
+// static are allowed." So the macro's whole body is a sequence of `static` item declarations, each
+// optionally attributed and with a visibility, and each declaring a nameable item of the enclosing
+// module. That is an upstream fact about one macro and nothing more: it is not a general rule that a
+// macro's body is items, and no other macro is modeled by this module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/1.93.0/std/macro.thread_local.html"
+  }
+}
+
+// The invocation name, spelled as the source spells it before the `!`.
+data thread_local_macro_name: String = "thread_local"
+
+// The one item keyword the macro's body declares. A consumer checks it against the Rust grammar
+// authority's item forms rather than trusting it to be one.
+data thread_local_declared_item_keyword: String = "static"

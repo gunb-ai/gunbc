@@ -638,6 +638,14 @@ fn store_lookup_decide_present(
 // ---------------------------------------------------------------------------------------------
 // Commit: prepare (pure), publish (the realization's one effect), read back (a lookup), settle.
 
+// The last three arms are CAPACITY REFUSALS, owned by the store realization's declared budgets
+// (std.artifact_store over the family's CacheProvider). A family with no declared budget refuses --
+// an unbudgeted family never borrows another's -- and an artifact larger than its family's whole
+// budget refuses before any eviction (store_put's fit test), so it can never empty the store to make
+// room for itself. An occupancy record that cannot be read refuses rather than reading as empty.
+// Bytes an eviction could not yet delete stay CHARGED against the family's budget: an artifact that
+// fits the budget but not the budget less those bytes refuses as cleanup outstanding, so a host that
+// keeps refusing deletes stops the store's writes instead of letting disk grow past the ceiling.
 type StoreCommitRefusal
   = StoreCommitManifestUninterpretable { decode: ManifestDecode }
   | StoreCommitContractRefused { binding: RequestArtifactBinding }
@@ -647,6 +655,10 @@ type StoreCommitRefusal
   | StoreCommitResultContentConflict { binding: EvaluationResultBinding, observed: ResultContentIdentity }
   | StoreCommitResultHashFamilyIncomparable { left: HashFamily, right: HashFamily }
   | StoreCommitResultIdentityUnverifiable { cause: String }
+  | StoreCommitBudgetUndeclared { family: ArtifactKindId }
+  | StoreCommitDidNotFit { artifact_bytes: ByteSize, budget: ByteSize }
+  | StoreCommitCleanupOutstanding { artifact_bytes: ByteSize, budget: ByteSize, undeleted: ByteSize }
+  | StoreCommitOccupancyUnavailable { cause: String }
 
 type StoreCommit
   = StoreCommitSettled { receipt: RealizationReceipt }
@@ -879,6 +891,10 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       StoreCommitResultContentConflict { binding: _, observed: _ } => "result_content_conflict"
       StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result_hash_family_incomparable"
       StoreCommitResultIdentityUnverifiable { cause: _ } => "result_identity_unverifiable"
+      StoreCommitBudgetUndeclared { family: _ } => "budget_undeclared"
+      StoreCommitDidNotFit { artifact_bytes: _, budget: _ } => "did_not_fit"
+      StoreCommitCleanupOutstanding { artifact_bytes: _, budget: _, undeleted: _ } => "cleanup_outstanding"
+      StoreCommitOccupancyUnavailable { cause: _ } => "occupancy_unavailable"
     }
   )
 }

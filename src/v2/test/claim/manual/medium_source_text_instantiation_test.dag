@@ -1,5 +1,6 @@
 module v2.test.manual.medium_source_text_instantiation
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Lossy, Medium }
 import v2.compiler.source_authority { DagSourceReadWitness }
