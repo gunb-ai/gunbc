@@ -4208,14 +4208,6 @@ pub fn match_arm_types_are_proven_disjoint(
     }
 }
 
-pub fn match_arm_type_is_optional(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    ((t.return_cardinality.clone() == Cardinality::CardOptional)
-        || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            t.clone(),
-        )) == "Optional".to_string()))
-}
-
 pub fn match_arm_type_is_bare_concrete(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
     {
         let name = crate::v1_std_core::authored_name_at(
@@ -4230,7 +4222,7 @@ pub fn match_arm_type_is_bare_concrete(t: Rc<Node>, scope: Rc<InferScope>) -> bo
                 _ => false,
             });
         (((name.clone() != "".to_string()) && !generic.clone())
-            && !match_arm_type_is_optional(t.clone(), scope.clone()))
+            && !declared_type_carries_optional(t.clone(), scope.clone()))
     }
 }
 
@@ -4239,10 +4231,10 @@ pub fn match_arm_mixes_bare_and_optional(
     arm_type: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    ((match_arm_type_is_optional(unified_arm_type.clone(), scope.clone())
+    ((declared_type_carries_optional(unified_arm_type.clone(), scope.clone())
         && match_arm_type_is_bare_concrete(arm_type.clone(), scope.clone()))
         || (match_arm_type_is_bare_concrete(unified_arm_type.clone(), scope.clone())
-            && match_arm_type_is_optional(arm_type.clone(), scope.clone())))
+            && declared_type_carries_optional(arm_type.clone(), scope.clone())))
 }
 
 pub fn match_arm_join_diagnostics(
@@ -4258,26 +4250,21 @@ pub fn match_arm_join_diagnostics(
             arm.body_type.clone(),
             scope.clone(),
         ) {
-            Rc::new(vec![inference_error(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "match arms mix a required and an optional type: ".to_string(),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                unified_arm_type.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ),
-                        ),
-                        " vs ".to_string(),
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+                    position: "match arm".to_string(),
+                    expected: crate::v1_compiler_infer_types::node_type_shape(
+                        unified_arm_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
                     ),
-                    crate::v1_compiler_infer_types::node_type_shape(
+                    got: crate::v1_compiler_infer_types::node_type_shape(
                         arm.body_type.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ),
-                ),
-                crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                    .span
-                    .clone(),
+                    span: crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                        .span
+                        .clone(),
+                }),
                 scope.module_name.clone(),
             )])
         } else {
