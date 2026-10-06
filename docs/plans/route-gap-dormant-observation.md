@@ -20,8 +20,15 @@ On required run 37236808750 (merge_group, pr-13305, floor job 111537440982):
     [floor-route-gap] roster carries 5 enrolled identity(ies)
     [floor-route-gap] 5 enrolled identity(ies) held as route-gapped; 0 unenrolled route gap(s) reported
 
-Arithmetic: 546 decoded = 536 outside-gate + 5 cost-debt-withheld + 5 carried. The source on the run's merge
-commit carried 421 typed rows + 120 legacy strings; current main carries 425 + 120.
+Arithmetic: 546 decoded = 541 route-gap-roster rows + 5 gate-inside rows enrolled in the floor's
+grandfathered roster (`v2.workflow.floor_grandfathered_roster`). The route-gap source on the run's merge
+commit carried 421 typed rows + 120 legacy strings (= 541; current main carries 425 + 120); the 5 carried
+rows — `parse_test.parse_witness_floor_holds`, `parse_test.parse_witness_perf_holds`,
+`namespace_import_closure_witness.namespace_import_closure_receipt_holds`,
+`namespace_structural_root_exposure_generated_witness_test.namespace_structural_root_exposure_generated_witness_holds`,
+`v1_dag_parse_witness.v1_dag_parse_witnesses` — are not in the route-gap chunks at all; the floor's
+grandfathered roster declares them as gate-inside enrollments, and the runner decodes both sources into
+one 546-row roster before the gate split.
 
 ## The chain, and the three drop points
 
@@ -109,9 +116,11 @@ index WHOLE as a keyed map) into it through `run_in_context_with_args`, and the 
 membership judgment itself with `map_contains_key` per row — the runner does no membership test, so
 refuse-if-undeclared is decided on the authority. An earlier Rust classifier
 (`route_gap_suppressed_undeclared`) was **deleted** rather than kept beside the call — one implementation,
-a net reduction of seed decision surface; the seed receipt counts +6 hand items (three for the floor
-expectation, three for the modeled partition's shared marshals: the entry name, the suppressed-row
-marshal, and the declared-index marshal). The declared index arrives as a keyed map so the judgment
+a net reduction of seed decision surface; the seed receipt counts **+4 hand items**, all in the runner: the
+shared entry name, the suppressed-row marshal, the declared-index marshal, and the shared production
+decode+enforce (`route_gap_admission_decode_and_enforce`) — extracted from `run_required_floor` so the
+pairing test drives the same function the run site executes, and the misnamed fixture produces the actual
+`REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared`, not just the relation's refusal arm. The declared index arrives as a keyed map so the judgment
 stays in .dag at one O(1) lookup per suppressed row: an earlier shape flattened the declared index for
 the .dag to linearly re-scan per suppressed row (541 x 28,274 ≈ 15M interpreted string comparisons per
 required run) — a cost-shape defect, fixed per DESIGN §6 rather than retired on "n is small here"; a

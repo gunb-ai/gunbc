@@ -74,16 +74,17 @@ fn count_refused_naming(rows: List<FloorRouteGapAdmissionRow>, identity: String)
   })
 }
 
-// THE MEASUREMENT ARM, AT IDENTITY GRAIN: a declared suppressed row keeps its ground and is
-// named, never absorbed into a count. For identities whose module the 2026-08-29 gate cut
-// withdrew this record closes nothing -- the gate decision owns their dormancy. Membership is
-// judged by the relation against the fixture's keyed declared map.
+// THE MEASUREMENT ARM, AT IDENTITY GRAIN, ACROSS ALL THREE DECLARED GROUNDS: a declared
+// suppressed row keeps its ground and is named, never absorbed into a count. For identities
+// whose module the 2026-08-29 gate cut withdrew this record closes nothing -- the gate decision
+// owns their dormancy. Membership is judged by the relation against the fixture's keyed
+// declared map.
 test fn the_partition_measures_a_declared_suppressed_row_with_its_ground_kept() -> Bool {
   let decided = floor_route_gap_admission_partition(
     suppressed: route_gap_partition_fixture_suppressed,
     declared: partition_fixture_declared(),
   )
-  count(decided) == 3
+  count(decided) == 4
     && count_measured_holding(
       rows: decided,
       identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
@@ -93,6 +94,11 @@ test fn the_partition_measures_a_declared_suppressed_row_with_its_ground_kept() 
       rows: decided,
       identity: "test.claim.parse_test.parse_witness_floor_holds",
       ground: WithheldCostDebt
+    ) == 1
+    && count_measured_holding(
+      rows: decided,
+      identity: "test.claim.wet_lane_probe.wet_lane_declared_holds",
+      ground: DeclinedNoCiWetLane
     ) == 1
 }
 
@@ -105,7 +111,7 @@ test fn the_partition_refuses_an_enrollment_the_tree_does_not_declare() -> Bool 
     suppressed: route_gap_partition_fixture_suppressed,
     declared: partition_fixture_declared(),
   )
-  count(decided) == 3
+  count(decided) == 4
     && count_refused_naming(
       rows: decided,
       identity: "test.claim.renamed_away_witness_test.old_witness_name"

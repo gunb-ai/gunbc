@@ -26,27 +26,33 @@ import v2.workflow.floor_route_gap {
 data route_gap_partition_fixture_suppressed: List<FloorRouteGapSuppressedRow> = [
   FloorRouteGapSuppressedRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: OutsideRequiredGate },
   FloorRouteGapSuppressedRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: WithheldCostDebt },
+  FloorRouteGapSuppressedRow { identity: "test.claim.wet_lane_probe.wet_lane_declared_holds", ground: DeclinedNoCiWetLane },
   FloorRouteGapSuppressedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name", ground: OutsideRequiredGate }
 ]
 
-// THE DECLARED SET AS DATA: a keyed map, identity -> disposition label, holding the two
+// THE DECLARED SET AS DATA: a keyed map, identity -> disposition label, holding the three
 // identities the tree declares and deliberately NOT the misnamed one -- the wall's
 // discriminating input lives in what this map omits.
 fn partition_fixture_declared() -> Map<String, String> {
   map_insert(
     m: map_insert(
-      m: empty_map(),
-      key: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
-      value: "declined_outside_gate_closure",
+      m: map_insert(
+        m: empty_map(),
+        key: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
+        value: "declined_outside_gate_closure",
+      ),
+      key: "test.claim.parse_test.parse_witness_floor_holds",
+      value: "withheld_cost_debt",
     ),
-    key: "test.claim.parse_test.parse_witness_floor_holds",
-    value: "withheld_cost_debt",
+    key: "test.claim.wet_lane_probe.wet_lane_declared_holds",
+    value: "declined_no_ci_wet_lane",
   )
 }
 
 data route_gap_partition_fixture_expected: List<FloorRouteGapAdmissionRow> = [
   FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: OutsideRequiredGate },
   FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: WithheldCostDebt },
+  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.wet_lane_probe.wet_lane_declared_holds", ground: DeclinedNoCiWetLane },
   FloorRouteGapAdmissionRefusedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name" }
 ]
 
