@@ -4,8 +4,9 @@ import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
 import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -293,8 +294,8 @@ type ShareBindingStanding
 // or executed receipt grounds any other nonzero value's meaning, so every other code is a knowledge
 // refusal rather than a guess. Three readings, each a different fact:
 //   CdErrorNone          -- 0;
-//   CdErrorDeviceEjected -- 16, grounded on the receipt above and treated as no fault;
-//   CdErrorUncatalogued  -- any other nonzero value.
+//   CdErrorDeviceEjected -- 16 on the firmware the receipt was executed against (0.32), treated as no fault;
+//   CdErrorUncatalogued  -- any other nonzero value, and 16 on any other build, which no receipt grounds.
 // An UNREAD code is never a reading, and withholds everywhere.
 type MegaRacCdErrorCode
   = CdErrorNone
@@ -303,9 +304,9 @@ type MegaRacCdErrorCode
 
 data cd_error_code_device_ejected: Int = 16
 
-fn megarac_cd_error_code_of_wire(wire: Int) -> MegaRacCdErrorCode {
+fn megarac_cd_error_code_of_wire(firmware: BmcFirmwareReleaseIdentity, wire: Int) -> MegaRacCdErrorCode {
   if wire == 0 { CdErrorNone }
-  else if wire == cd_error_code_device_ejected { CdErrorDeviceEjected }
+  else if wire == cd_error_code_device_ejected && bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) { CdErrorDeviceEjected }
   else { CdErrorUncatalogued { wire: wire } }
 }
 
@@ -322,7 +323,7 @@ fn cd_error_reading(body: String, firmware: BmcFirmwareReleaseIdentity) -> CdErr
         Present { value: w } =>
           match parse_int(s: w) {
             Absent => CdErrorUnread { detail: concat("cd_error_code is not an integer: ", w) }
-            Present { value: n } => CdErrorRead { code: megarac_cd_error_code_of_wire(wire: n) }
+            Present { value: n } => CdErrorRead { code: megarac_cd_error_code_of_wire(firmware: firmware, wire: n) }
           }
       }
   }

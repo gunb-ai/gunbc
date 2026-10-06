@@ -521,6 +521,7 @@ test fn only_code_16_reads_as_device_ejected_and_any_other_code_is_uncatalogued(
   (match cd_16 { CdErrorRead { code: CdErrorDeviceEjected } => true  _ => false })
     && (match cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32) { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 11  _ => false })
     && (match cd_error_reading(body: general_coded(code: "18"), firmware: megarac_firmware_0_32) { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 18  _ => false })
+    && (match cd_error_reading(body: mtcollins1_media_general_2026_09_27, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33")) { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16  _ => false })
 }
 
 // ─── STARTED: THE CODE IS RECORDED, NEVER WITHHELD ON ───────────────────────────────────────────
