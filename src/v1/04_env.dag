@@ -289,7 +289,7 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
 // (v1.compiler.infer_emit_info referencing_module_declarer_route_dissolves_on).
 type BareOccurrenceBinding
   = BareOccurrenceDeclaredInItsFile { declaration: Node }
-  | BareOccurrenceImportedByName { declaration: Node }
+  | BareOccurrenceImportedByName { module_path: String, declaration: Node }
   | BareOccurrenceIsKernelName
   | BareOccurrenceUndecided
 
@@ -311,7 +311,7 @@ fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> 
         Absent => none
         Present { value: from_module } =>
           match symbol_index_lookup(index: index, qualified_name: concat(from_module, ".", name)) {
-            Present { value: decl } => Present { value: BareOccurrenceImportedByName { declaration: decl } }
+            Present { value: decl } => Present { value: BareOccurrenceImportedByName { module_path: from_module, declaration: decl } }
             Absent => Present { value: BareOccurrenceUndecided }
           }
       }
