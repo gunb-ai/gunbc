@@ -13360,19 +13360,6 @@ Rc::new(InferResult {
                                             span.clone(),
                                             scope.clone(),
                                         );
-                                    let unsolved_generic_diags =
-                                        unsolved_generic_from_uninformative_actuals_diags(
-                                            call_sig_split.generic_names.clone(),
-                                            resolved_formals.clone(),
-                                            call_subst.clone(),
-                                            typed_args.clone(),
-                                            match sig.clone() {
-                                                Some(s) => s.inferred.clone(),
-                                                std::option::Option::None => error_type(),
-                                            },
-                                            span.clone(),
-                                            scope.clone(),
-                                        );
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::ResolvedDirectCallSemantics {
@@ -13383,7 +13370,7 @@ Rc::new(InferResult {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), v1_rt::concat(generic_type_argument_inhabitance_diags.clone(), v1_rt::concat(sibling_effect_order_arg_diags.clone(), unsolved_generic_diags.clone())))))))),
+    diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), v1_rt::concat(generic_type_argument_inhabitance_diags.clone(), sibling_effect_order_arg_diags.clone()))))))),
 })
                                 }
                             }
@@ -23808,142 +23795,6 @@ pub fn unify_callable_param_pairs(
             }
         }
     }
-}
-
-pub fn type_node_mentions_generic_name(
-    n: Rc<Node>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if (type_node_label(n.clone(), source_indices.clone()) == name.clone()) {
-        true
-    } else {
-        let in_inferred = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone() == name.clone(),
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                type_node_mentions_generic_name(rt.clone(), name.clone(), source_indices.clone())
-            }
-            _ => false,
-        };
-        let in_children = {
-            let mut __found = false;
-            for c in n.children.iter().cloned() {
-                if type_node_mentions_generic_name(
-                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
-                    name.clone(),
-                    source_indices.clone(),
-                ) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let in_params = {
-            let mut __found = false;
-            for p in n.params.iter().cloned() {
-                if type_node_mentions_generic_name(
-                    crate::v1_std_core::param_node_type_expr(p.clone()),
-                    name.clone(),
-                    source_indices.clone(),
-                ) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        ((in_inferred || in_children) || in_params)
-    }
-}
-
-pub fn subst_binds_generic_informatively(
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match v1_rt::map_get(&subst, name.clone()) {
-        std::option::Option::None => false,
-        Some(n) => {
-            (!unify_binding_is_uninformative(n.clone())
-                && (type_node_label(n.clone(), source_indices.clone()) != name.clone()))
-        }
-    }
-}
-
-pub fn type_is_uninformative_empty_list(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
-        && unify_binding_is_uninformative(n.clone()))
-}
-
-pub fn unsolved_generic_from_uninformative_actuals_diags(
-    generic_names: Rc<Vec<String>>,
-    formals: Rc<Vec<Rc<ResolvedFormal>>>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    typed_args: Rc<Vec<Rc<Node>>>,
-    return_type: Rc<Node>,
-    span: Rc<SourceSpan>,
-    scope: Rc<InferScope>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    let si = scope.type_env.clone().source_indices.clone();
-    Rc::new({
-        let mut __result = Vec::new();
-        for g in generic_names.iter().cloned() {
-            let in_return =
-                type_node_mentions_generic_name(return_type.clone(), g.clone(), si.clone());
-            let empty_list_offered = {
-                let mut __found = false;
-                for a in typed_args.iter().cloned() {
-                    if type_is_uninformative_empty_list(
-                        crate::v1_compiler_infer_types::resolved_type(
-                            crate::v1_std_core::arg_value(a.clone()),
-                        ),
-                        si.clone(),
-                    ) {
-                        for f in formals.iter().cloned() {
-                            let name_match = match crate::v1_std_core::arg_name_at(
-                                a.clone(),
-                                si.clone(),
-                            ) {
-                                Some(name) => name == f.parameter_identity.clone(),
-                                std::option::Option::None => false,
-                            };
-                            if (name_match
-                                && type_node_mentions_generic_name(
-                                    f.substitution_basis.clone(),
-                                    g.clone(),
-                                    si.clone(),
-                                ))
-                            {
-                                __found = true;
-                                break;
-                            }
-                        }
-                    }
-                    if __found {
-                        break;
-                    }
-                }
-                __found
-            };
-            if ((in_return && empty_list_offered)
-                && !subst_binds_generic_informatively(subst.clone(), g.clone(), si.clone()))
-            {
-                __result.push(inference_error(
-                    v1_rt::concat(
-                        "cannot infer ".to_string(),
-                        v1_rt::concat(g.clone(), " here; annotate".to_string()),
-                    ),
-                    span.clone(),
-                    scope.module_name.clone(),
-                ));
-            }
-        }
-        __result
-    })
 }
 
 pub fn unify_lambda_solves(
