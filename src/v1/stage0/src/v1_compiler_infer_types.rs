@@ -1273,7 +1273,7 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: crate::v1_std_core::wrap_optional_layer(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -1978,7 +1978,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: crate::v1_std_core::wrap_optional_layer(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -3277,7 +3277,8 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
         if is_optional.clone() {
             crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
-            if ((n.name.clone() == "Optional".to_string())
+            if (((n.name.clone() == "Optional".to_string())
+                && (n.connective.clone() == Connective::NoConnective))
                 && ((n.children.clone().len() as i64) == 1))
             {
                 match n.children.clone().first().cloned() {

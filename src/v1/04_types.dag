@@ -36,7 +36,7 @@ import v1.std.core { Unmarked,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
   InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
-  leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality,
+  leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality, wrap_optional_layer,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   default_ident_span, kernel_span,
@@ -519,7 +519,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_b.diagnostics, built.diagnostics) }
     OptionalOf { inner: inner } =>
       let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
-      KernelTypeBuild { ty: with_optional_cardinality(n: ib.ty), diagnostics: ib.diagnostics }
+      KernelTypeBuild { ty: wrap_optional_layer(n: ib.ty), diagnostics: ib.diagnostics }
     WitnessOf { inner: inner } =>
       let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
       let built = make_container_type(kind_name: "Witness", element: ib.ty)
@@ -745,7 +745,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_applied.diagnostics, built.diagnostics) }
     OptionalOf { inner: inner } =>
       let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
-      KernelTypeBuild { ty: with_optional_cardinality(n: ib.ty), diagnostics: ib.diagnostics }
+      KernelTypeBuild { ty: wrap_optional_layer(n: ib.ty), diagnostics: ib.diagnostics }
     WitnessOf { inner: inner } =>
       let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
       let built = make_container_type(kind_name: "Witness", element: ib.ty)
@@ -1290,7 +1290,7 @@ fn extract_optional_inner_node(n: Node) -> Node {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     with_required_cardinality(n: n)
-  } else if n.name == "Optional" && n.children |> count == 1 {
+  } else if n.name == "Optional" && n.connective == NoConnective && n.children |> count == 1 {
 
     match n.children |> first {
       Present { value: inner } => inner

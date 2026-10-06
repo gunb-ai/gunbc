@@ -23,7 +23,7 @@ import v1.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
+  with_optional_cardinality, with_required_cardinality, wrap_optional_layer, node_is_optional_layer, preserve_outer_optional_cardinality,
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
@@ -39,6 +39,7 @@ import std.algebra {
 
 import v1.compiler.infer_types {
   child_type_node,
+  extract_optional_inner_node,
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
@@ -784,14 +785,14 @@ fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
 }
 
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  let is_optional = n.return_cardinality == CardOptional
+  let is_optional = node_is_optional_layer(n: n)
   if is_optional {
-    let inner = with_required_cardinality(n: n)
+    let inner = extract_optional_inner_node(n: n)
     if field_name == "value" {
       Present { value: inner }
     } else {
       match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
-        Present { value: inner_result } => Present { value: with_optional_cardinality(n: inner_result) }
+        Present { value: inner_result } => Present { value: wrap_optional_layer(n: inner_result) }
         Absent => none
       }
     }

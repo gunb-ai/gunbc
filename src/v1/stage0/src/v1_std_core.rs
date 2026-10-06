@@ -5288,6 +5288,44 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
+pub fn node_is_optional_layer(n: Rc<Node>) -> bool {
+    ((n.return_cardinality.clone() == Cardinality::CardOptional)
+        || (((n.name.clone() == "Optional".to_string())
+            && (n.connective.clone() == Connective::NoConnective))
+            && ((n.children.clone().len() as i64) == 1)))
+}
+
+pub fn wrap_optional_layer(n: Rc<Node>) -> Rc<Node> {
+    if node_is_optional_layer(n.clone()) {
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Optional".to_string(),
+            span: n.span.clone(),
+            ident_span: Some(kernel_span("Optional".to_string())),
+            children: Rc::new(vec![n.clone()]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    } else {
+        with_optional_cardinality(n.clone())
+    }
+}
+
 pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: n.occurrence_identity.clone(),

@@ -21,7 +21,7 @@ import v1.std.core { Unmarked,
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
   LitBool, LitNull,
-  with_optional_cardinality,
+  with_optional_cardinality, node_is_optional_layer,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment
 }
@@ -142,7 +142,7 @@ fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node 
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_disj = scrut_node.connective == Disj
   let is_witness = is_witness_type_name(name: name)
-  let is_optional = scrut_node.return_cardinality == CardOptional
+  let is_optional = node_is_optional_layer(n: scrut_node)
   if is_optional || is_disj || is_witness {
     scrut_node
   } else {
@@ -486,7 +486,7 @@ type ConstructorField { name: String, type_node: Node }
 type PatternWitnessRow { cells: List<String> }
 
 fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
-  let scrut_is_optional = type_node.return_cardinality == CardOptional
+  let scrut_is_optional = node_is_optional_layer(n: type_node)
   let has_structure = type_node.connective != NoConnective
   let resolved_raw = if has_structure {
     type_node
@@ -496,7 +496,7 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
       Absent => type_node
     }
   }
-  if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
+  if type_node.return_cardinality == CardOptional { with_optional_cardinality(n: resolved_raw) } else if scrut_is_optional { type_node } else { resolved_raw }
 }
 
 // THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN
@@ -536,7 +536,7 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
 fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
   let is_coproduct = resolved.connective == Disj
-  let resolved_is_optional = resolved.return_cardinality == CardOptional
+  let resolved_is_optional = node_is_optional_layer(n: resolved)
   let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
   if resolved_is_optional {
     ConstructorsClosed { names: ["Present", "Absent"] }

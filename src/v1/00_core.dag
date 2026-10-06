@@ -2843,6 +2843,22 @@ fn with_optional_cardinality(n: Node) -> Node {
   Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
 }
 
+// One CardOptional flag cannot distinguish T? from T??. A second optional layer is the
+// nominal Optional application whose child is already optional (the existing coproduct
+// mint, not a third cardinality). Empty-list Absent and a present null element are
+// different values; joining flags would make them one type (DESIGN §3 / §5).
+fn node_is_optional_layer(n: Node) -> Bool {
+  n.return_cardinality == CardOptional || (n.name == "Optional" && n.connective == NoConnective && (n.children |> count) == 1)
+}
+
+fn wrap_optional_layer(n: Node) -> Node {
+  if node_is_optional_layer(n: n) {
+    Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: n.span, ident_span: Present { value: kernel_span(name: "Optional") }, children: [n], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  } else {
+    with_optional_cardinality(n: n)
+  }
+}
+
 fn with_required_cardinality(n: Node) -> Node {
   Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
 }

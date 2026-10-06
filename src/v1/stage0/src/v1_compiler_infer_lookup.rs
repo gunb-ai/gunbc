@@ -91,9 +91,9 @@ use crate::v1_std_core::MethodSemantics::{
 pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named,
-    is_interpreter_blocking_diagnostic, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
-    with_required_cardinality,
+    is_interpreter_blocking_diagnostic, node_is_optional_layer, param_node_name_at,
+    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
+    with_optional_cardinality, with_required_cardinality, wrap_optional_layer,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -962,10 +962,10 @@ pub fn lookup_field_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::node_is_optional_layer(n.clone());
         if is_optional.clone() {
             {
-                let inner = crate::v1_std_core::with_required_cardinality(n.clone());
+                let inner = crate::v1_compiler_infer_types::extract_optional_inner_node(n.clone());
                 if (field_name.clone() == "value".to_string()) {
                     Some(inner.clone())
                 } else {
@@ -974,7 +974,7 @@ pub fn lookup_field_type_node(
                         field_name.clone(),
                         source_indices.clone(),
                     ) {
-                        Some(inner_result) => Some(crate::v1_std_core::with_optional_cardinality(
+                        Some(inner_result) => Some(crate::v1_std_core::wrap_optional_layer(
                             inner_result.clone(),
                         )),
                         std::option::Option::None => std::option::Option::None,
