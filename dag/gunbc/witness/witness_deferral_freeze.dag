@@ -432,6 +432,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
     functions: [
       "roster_machine_code_zero_suspects_within_ratchet",
+      "roster_glob_discovery_zero_suspects_within_ratchet",
       "roster_lens_cost_model_zero_suspects_within_ratchet",
       "roster_std_algebra_zero_suspects_within_ratchet"
     ]

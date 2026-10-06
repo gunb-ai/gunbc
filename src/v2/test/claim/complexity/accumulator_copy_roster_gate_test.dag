@@ -20,7 +20,8 @@ fn accumulator_copy_roster_gate_entry_live_tree_disposition() -> LiveTreeDisposi
 // Executing ratchet under a 300s census cap: small live subjects plus snippet controls.
 // Interpreted file_gate over 00_compile.dag (~5943 lines) and analyze.dag (~1160 lines) is the
 // scan that blew the cap when those walks were `test fn`s in this same entry. They remain callable
-// `fn`s (wet recipe / freeze names) and are not claims the 300s census executes. Do not raise the cap.
+// `fn`s (wet recipe) and are not claims the 300s census executes. glob_discovery_law is a small
+// live subject, so it stays a `test fn`. Do not raise the cap.
 
 test fn roster_machine_code_zero_suspects_within_ratchet() -> Bool {
   accumulator_copy_roster_gate_entry_live_tree_disposition() == ReadsLiveTree
@@ -31,7 +32,7 @@ fn roster_compile_stage_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/compiler/00_compile.dag", refusal_ceiling: 1)
 }
 
-fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
+test fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/test/workflow/glob_discovery_law.dag", refusal_ceiling: 0)
 }
 
