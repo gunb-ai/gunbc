@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.base_compiler_pending_on_a_stacked_merge_group
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data base_compiler_pending_on_a_stacked_merge_group: RecurringFailureMode = RecurringFailureMode {
+  identity: "base_compiler_pending_on_a_stacked_merge_group" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a merge_group's required floor needs a base-side fact (the cost-debt roster, the parse environment or the kernel-name set -- only a diff touching the roster's closure, the parse environment's closure or std.types demands one), and its base is the PREVIOUS group's head, whose merge-queue run has not yet uploaded its compiler pair candidate. The floor judges base facts only with the base revision's own compiler (v1_compiler.cli_run.base_facts), so it cannot answer.",
+    "DISPOSITION, sharp-raven-357 ruling 2026-10-06: a BOUNDED WAIT, then a typed refusal. gunbc.compiler_gate_workflow compiler_gate_base_compiler_wait polls for the candidate (accepting an in-flight run, whose pack is verified by CONTENT -- kind, source closure equal to the base's tree, member digests -- never by run status) up to a deadline derived from the observed build window, then claim_executor refuses BaseCompilerPending { revision, run, waited }. No fallback to the head's compiler and no skip. Ejection was rejected as the default because an ejected group costs a full re-run, invalidates every group stacked behind it, and nothing requeues it.",
+    "HARM: not silent -- the refusal names the base run and the time waited, so it reads as an ordering miss. The cost is a refused group when the base's build outlasts the bound.",
+    "RUNG FOUND AT: mitigated (a typed, located refusal after a bounded wait). CEILING: structurally guaranteed -- the base compiler is a deterministic function of the base tree, so the floor can always obtain one by building it.",
+    "NEXT-RUNG TRIGGER, capability grain: when BaseCompilerPending refusals are observed on merge_group runs, the floor BUILDS the base revision's compiler pair inside its own run on that miss (option B of the 2026-10-06 derivation), so a stacked group is always judgeable. Not satisfied by lengthening the wait, and never by answering with the head's compiler.",
+  ],
+  evidence: [],
+}
