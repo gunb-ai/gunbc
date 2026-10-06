@@ -568,7 +568,7 @@ fn curl_trace_dump_text(line: String) -> String? {
 type CurlTraceScan {
   events: List<CurlTraceEvent>
   open: CurlTraceEvent?
-  last_at: Int
+  last_at: Microsecond
   refused: String
 }
 
@@ -598,7 +598,7 @@ fn curl_trace_step(scan: CurlTraceScan, line: String) -> CurlTraceScan {
         match curl_trace_time_of_day(text: curl_word_at(words: words, index: 0)) {
           Absent => CurlTraceScan { events: scan.events, open: scan.open, last_at: scan.last_at, refused: "a trace line is neither a stamped event nor a dump line" }
           Present { value: at } =>
-            if microsecond_count(m: at) < scan.last_at {
+            if microsecond_count(m: at) < microsecond_count(m: scan.last_at) {
               CurlTraceScan { events: scan.events, open: scan.open, last_at: scan.last_at, refused: "the trace clock stepped backwards" }
             } else {
               match curl_trace_transfer_of_tag(tag: curl_word_at(words: words, index: 1)) {
@@ -609,7 +609,7 @@ fn curl_trace_step(scan: CurlTraceScan, line: String) -> CurlTraceScan {
                   CurlTraceScan {
                     events: curl_trace_close(scan: scan),
                     open: Present { value: CurlTraceEvent { at: at, transfer: x, kind: curl_trace_kind_of(rest: rest), body: [] } },
-                    last_at: microsecond_count(m: at),
+                    last_at: at,
                     refused: "",
                   }
                 }
@@ -622,7 +622,7 @@ fn curl_trace_step(scan: CurlTraceScan, line: String) -> CurlTraceScan {
 }
 
 fn curl_trace_reading(trace: String) -> CurlTraceReading {
-  let scan = fold(split(s: trace, delimiter: "\n"), init: CurlTraceScan { events: [], open: none, last_at: 0, refused: "" }, f: (acc, l) => curl_trace_step(scan: acc, line: l))
+  let scan = fold(split(s: trace, delimiter: "\n"), init: CurlTraceScan { events: [], open: none, last_at: microsecond(count: 0), refused: "" }, f: (acc, l) => curl_trace_step(scan: acc, line: l))
   if scan.refused != "" { CurlTraceRefused { cause: scan.refused as NonEmptyStr } } else { CurlTraceRead { events: curl_trace_close(scan: scan) } }
 }
 
