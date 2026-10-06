@@ -13,6 +13,7 @@ import extdeps.http.server {
 import extdeps.google.issue_tracker {
   IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
   IssueActionEnabled, IssueActionDisabled,
+  issue_tracker_visual_tokens,
 }
 import gunbc.roadmap_serve { RoadmapServeHandler, SpecimenPageHandler, roadmap_serve_route_table_build }
 import gunbc.roadmap_issue_status {
@@ -33,9 +34,9 @@ import gunbc.design.palette { Swatch, grade_pairing, grade_rank, TextAa }
 import gunbc.design.theme_transition { rule_selector, unthemed_color_decls, untokened_length_decls }
 import gunbc.site.markup { txt }
 import gunbc.site.element.palette { palette_decls, palette_day, SlotGround, SlotSurface, SlotAction, SlotLink }
-import gunbc.site.element.tokens { element_token_decls }
+import gunbc.site.element.tokens { element_token_decls, font_heading }
 import gunbc.site.element.text {
-  element_text_decls, element_control_small_size_decls,
+  element_text_decls, element_control_small_size_decls, element_text_roles, ElementText,
   ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl, ElementTitle,
   ElementProseHeading, ElementIdentifier, ElementCode,
 }
@@ -61,6 +62,8 @@ import gunbc.site.element.field_list {
 }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { Color, Padding, css_property_wire }
+import gunbc.design.scale { scale_value_wire, font_sans }
+import gunbc.site.web_fonts { web_font_faces }
 
 // GUARDS FOR THE FRONTEND ELEMENTS. Each claim below reads one interface with a supplied fixture:
 // an element's markup function, an element's rules, the token block, the palette, a text role.
@@ -421,7 +424,7 @@ test fn element_tokens_add_only_what_the_shared_scale_lacks() -> Bool {
     && has(s: css, pattern: "--leading-15: 15px")
     && has(s: css, pattern: "--leading-24: 24px")
     && has(s: css, pattern: "--font-code: monospace")
-    && has(s: css, pattern: "--font-heading: Google Sans, Roboto, Arial, sans-serif")
+    && has(s: css, pattern: "--font-heading: 'Google Sans', 'Roboto', 'Arial', sans-serif")
     && has(s: css, pattern: "--tracking-80: 0.80px")
     && !has(s: css, pattern: "--space-16:")
     && !has(s: css, pattern: "--text-13:")
@@ -669,4 +672,35 @@ test fn accepted_and_withheld_draw_their_own_chips() -> Bool {
     && has(s: withheld, pattern: "<span class=\"el-status-chip\" data-status-form=\"quiet\">Withheld</span>") && has(s: withheld, pattern: "data-node-state=\"open\"")
     && !has(s: accepted, pattern: "unavailable") && !has(s: withheld, pattern: "unavailable")
     && has(s: unknown, pattern: "Status unavailable")
+}
+
+// RULING R2 THROUGH THE TOKENS. Title and Control set the Google Sans stack, Code the generic
+// monospace family, and every other role the Roboto stack. Each stack, quotes aside, is the
+// product's measured stack, and its first family is one the served stylesheet declares
+// (gunbc.site.web_fonts), so no role can name a face the page does not load.
+fn role_font(role: ElementText) -> String {
+  serialize_decls(decls: element_text_decls(role: role).take(n: 1))
+}
+
+fn stack_opens_with_a_served_face(stack: String, served: List<String>) -> Bool {
+  any(served, f => starts_with(s: stack, prefix: join(["'", f, "', "], "")))
+}
+
+test fn text_roles_set_the_served_faces_through_the_family_tokens() -> Bool {
+  let served = map(web_font_faces, f => f.source.family)
+  let heading = scale_value_wire(v: font_heading.value)
+  let body = scale_value_wire(v: font_sans.value)
+  let google_sans = [ElementTitle, ElementControl]
+  let roboto = [ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementProseHeading, ElementIdentifier]
+  all(google_sans, r => role_font(role: r) == "font-family: var(--font-heading)")
+    && all(roboto, r => role_font(role: r) == "font-family: var(--font-sans)")
+    && role_font(role: ElementCode) == "font-family: var(--font-code)"
+    && count(google_sans) + count(roboto) + 1 == count(element_text_roles)
+    && starts_with(s: heading, prefix: "'Google Sans', ")
+    && starts_with(s: body, prefix: "'Roboto', ")
+    && stack_opens_with_a_served_face(stack: heading, served: served)
+    && stack_opens_with_a_served_face(stack: body, served: served)
+    && !stack_opens_with_a_served_face(stack: "'Product Sans', 'Roboto', sans-serif", served: served)
+    && replace(s: heading, from: "'", to: "") == issue_tracker_visual_tokens.font_heading
+    && replace(s: body, from: "'", to: "") == issue_tracker_visual_tokens.font_body
 }
