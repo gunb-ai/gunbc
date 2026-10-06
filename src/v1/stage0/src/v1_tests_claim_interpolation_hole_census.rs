@@ -807,7 +807,7 @@ pub fn ihc_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Ve
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka = (|k: String| k.clone())(a.clone());
                 let __kb = (|k: String| k.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         })
