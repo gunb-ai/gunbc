@@ -87,66 +87,27 @@ fn build_module_index() -> HashMap<String, std::path::PathBuf> {
     index
 }
 
-fn extract_imports(source: &str) -> Vec<String> {
-    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
-        source.to_string(),
-        "test.dag".to_string(),
-        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    let source_index =
-        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
-    match &result.module {
-        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect(),
-        None => vec![],
-    }
+fn pool_root_strings() -> Vec<String> {
+    source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
 }
 
+/// Compile-subject closure of a witness entry. Not an import-line BFS.
 fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
-    module_index: &HashMap<String, std::path::PathBuf>,
+    _module_index: &HashMap<String, std::path::PathBuf>,
 ) -> Vec<Rc<SourceFile>> {
-    let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
-
-    while let Some((_path, content)) = queue.pop_back() {
-        for module_path in extract_imports(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = module_index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = file_path
-                        .strip_prefix(&ws)
-                        .unwrap_or(file_path)
-                        .to_string_lossy()
-                        .to_string();
-                    seen.insert(
-                        module_path.clone(),
-                        Rc::new(SourceFile {
-                            path: rel_path.clone(),
-                            content: file_content.clone(),
-                        }),
-                    );
-                    queue.push((rel_path, file_content));
-                }
-            }
-        }
-    }
-
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
-        path: entry_path.to_string(),
-        content: entry_content.to_string(),
-    }));
-    sources
+    v1_compiler::cli_run::resolve_seeded_compile_closure(
+        vec![Rc::new(SourceFile {
+            path: entry_path.to_string(),
+            content: entry_content.to_string(),
+        })],
+        &pool_root_strings(),
+    )
+    .unwrap_or_else(|e| panic!("witness compile-subject closure: {e}"))
 }
 
 fn compile_dag(source: &str) -> Rc<PipelineResult> {

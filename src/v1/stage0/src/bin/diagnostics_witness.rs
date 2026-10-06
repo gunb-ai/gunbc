@@ -81,66 +81,35 @@ fn build_module_index() -> ModuleIndex {
     index
 }
 
-fn extract_imports(source: &str) -> Vec<String> {
-    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
-        source.to_string(),
-        "test.dag".to_string(),
-        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    let source_index =
-        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
-    match &result.module {
-        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect(),
-        None => vec![],
-    }
+fn pool_root_strings() -> Vec<String> {
+    source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Compile-subject closure of a witness entry. Not an import-line BFS.
+fn resolve_over_roots(
+    entry_path: &str,
+    entry_content: &str,
+    pool_roots: &[String],
+) -> Vec<Rc<SourceFile>> {
+    v1_compiler::cli_run::resolve_seeded_compile_closure(
+        vec![Rc::new(SourceFile {
+            path: entry_path.to_string(),
+            content: entry_content.to_string(),
+        })],
+        pool_roots,
+    )
+    .unwrap_or_else(|e| panic!("witness compile-subject closure: {e}"))
 }
 
 fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
-    module_index: &ModuleIndex,
+    _module_index: &ModuleIndex,
 ) -> Vec<Rc<SourceFile>> {
-    let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
-
-    while let Some((_path, content)) = queue.pop() {
-        for module_path in extract_imports(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = module_index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = file_path
-                        .strip_prefix(&ws)
-                        .unwrap_or(file_path)
-                        .to_string_lossy()
-                        .to_string();
-                    seen.insert(
-                        module_path.clone(),
-                        Rc::new(SourceFile {
-                            path: rel_path.clone(),
-                            content: file_content.clone(),
-                        }),
-                    );
-                    queue.push((rel_path, file_content));
-                }
-            }
-        }
-    }
-
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
-        path: entry_path.to_string(),
-        content: entry_content.to_string(),
-    }));
-    sources
+    resolve_over_roots(entry_path, entry_content, &pool_root_strings())
 }
 
 fn compile_multi(module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<PipelineResult> {
@@ -827,5 +796,148 @@ fn main() -> ExitCode {
     match run_suite(&module_index, suite) {
         Ok(()) => ExitCode::SUCCESS,
         Err(msg) => fail(msg),
+    }
+}
+
+#[cfg(test)]
+mod compile_subject_closure_controls {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    const ENTRY: &str = "entry.dag";
+    const MID: &str = "mid.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module witness.bin.closure.entry\n\
+import witness.bin.closure.mid { mid_ok }\n\
+fn use_mid() -> Int { mid_ok() }\n";
+
+    const MID_SRC: &str = "module witness.bin.closure.mid\n\
+fn mid_ok() -> Int { 1 }\n\
+fn uses_provider() -> witness.bin.closure.provider.ProviderToken {\n\
+  witness.bin.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module witness.bin.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module witness.bin.closure.broken\n\
+import witness.bin.closure.mid { mid_ok }\n\
+fn broken() -> Int { no_such_function_anywhere() }\n";
+
+    fn fixture_tree() -> PathBuf {
+        let dir = workspace_root().join("target").join(format!(
+            "witness_bin_closure_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+        std::fs::write(dir.join(MID), MID_SRC).unwrap();
+        std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+        std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+        dir
+    }
+
+    fn provider_in(sources: &[Rc<SourceFile>]) -> bool {
+        sources.iter().any(|s| {
+            s.content.contains("module witness.bin.closure.provider")
+                || Path::new(&s.path)
+                    .file_name()
+                    .is_some_and(|n| n == PROVIDER)
+        })
+    }
+
+    /// Import-line BFS. THE MUTANT.
+    fn import_only(dir: &Path, entry_content: &str) -> Vec<Rc<SourceFile>> {
+        let mut files: std::collections::HashMap<String, (PathBuf, String)> =
+            std::collections::HashMap::new();
+        for name in [ENTRY, MID, PROVIDER, BROKEN] {
+            let path = dir.join(name);
+            let content = std::fs::read_to_string(&path).unwrap();
+            let module = content
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("module "))
+                .unwrap()
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .to_string();
+            files.insert(module, (path, content));
+        }
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut out = vec![Rc::new(SourceFile {
+            path: ENTRY.to_string(),
+            content: entry_content.to_string(),
+        })];
+        let mut queue = vec![entry_content.to_string()];
+        while let Some(content) = queue.pop() {
+            for module_path in content.lines().filter_map(|line| {
+                let trimmed = line.trim();
+                let rest = trimmed.strip_prefix("import ")?;
+                let module_path = rest.split('{').next().unwrap_or(rest).trim();
+                if module_path.is_empty() {
+                    None
+                } else {
+                    Some(module_path.to_string())
+                }
+            }) {
+                if !seen.insert(module_path.clone()) {
+                    continue;
+                }
+                if let Some((path, file_content)) = files.get(&module_path) {
+                    out.push(Rc::new(SourceFile {
+                        path: path.to_string_lossy().into_owned(),
+                        content: file_content.clone(),
+                    }));
+                    queue.push(file_content.clone());
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let roots = [dir.to_string_lossy().into_owned()];
+        let closed = resolve_over_roots(ENTRY, ENTRY_SRC, &roots);
+        assert!(
+            provider_in(&closed),
+            "provider missing from {:?}",
+            closed.iter().map(|s| s.path.clone()).collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let mutant = import_only(&dir, ENTRY_SRC);
+        assert!(!provider_in(&mutant), "mutant must omit provider");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let roots = [dir.to_string_lossy().into_owned()];
+        let closed = resolve_over_roots(BROKEN, BROKEN_SRC, &roots);
+        assert!(
+            provider_in(&closed),
+            "broken entry must still close the provider"
+        );
+        let result = compile_sources(Rc::new(closed.into()), RenderTarget::Rust);
+        assert!(
+            !result.diagnostics.is_empty(),
+            "a call to a function nothing declares must refuse"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
