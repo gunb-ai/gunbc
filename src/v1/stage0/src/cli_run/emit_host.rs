@@ -3081,6 +3081,9 @@ pub(crate) struct FixtureClosureUnionObserved {
     pub digest: String,
     pub files: usize,
     pub emit_diagnostics: usize,
+    /// Services not rendered, each naming module, service, the capture-policy fact, and the drop.
+    /// Empty when the union rendered every member. Never a skip without a row here.
+    pub excluded: Vec<String>,
 }
 
 /// The digest of a union: path and bytes of every member, in path order. Two runs print the same
@@ -3112,6 +3115,11 @@ pub(crate) fn fixture_closure_union_digest(members: &BTreeMap<String, String>) -
 ///     module and emit reason. These are the render's own diagnostics: a render's diagnostic list
 ///     is the compile's list followed by the emitter's (`emit_resolved_for_target_selected`), so
 ///     the suffix past the compile's length is exactly what the emitter added.
+///
+/// Unmodeled rust stderr-capture channels (`gunbc.rung_drop`
+/// `fixture_closure_union_unmodeled_stderr_capture`) are a typed exclusion, not this refusal:
+/// those services are stripped from the emit graph and listed on the observation. A sibling
+/// unmodeled key or any other emit error still refuses.
 pub(crate) fn fixture_closure_union_emit_receipt(
     union: &FixtureClosureUnion,
 ) -> Result<FixtureClosureUnionObserved, String> {
@@ -3183,6 +3191,7 @@ pub(crate) fn fixture_closure_union_emit_receipt(
             ),
         ));
     }
+    let (resolved, excluded) = union_emit_graph_excluding_unmodeled_stderr_capture(resolved);
     let compile_diagnostics = resolved.diagnostics.len();
     let rendered = v1_compiler_compile::emit_resolved_for_target(
         resolved,
@@ -3213,7 +3222,165 @@ pub(crate) fn fixture_closure_union_emit_receipt(
         digest,
         files: rendered.files.len(),
         emit_diagnostics: emitted.len(),
+        excluded,
     })
+}
+
+const STDERR_CAPTURE_POLICY_GAP_FACT: &str = "implements no stderr capture policy";
+const STDERR_CAPTURE_POLICY_DROP: &str =
+    "gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture";
+
+/// A rust TransportEmissionNotModeled whose fact is the declared capture-policy gap,
+/// not an unmodeled key and not another transport.
+fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    match &*d.diagnostic {
+        crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+            transport_kind,
+            service,
+            declaring_module,
+            target,
+            missing_realization_fact,
+            ..
+        } if transport_kind == "shell"
+            && target == "rust"
+            && missing_realization_fact.contains(STDERR_CAPTURE_POLICY_GAP_FACT) =>
+        {
+            Some((declaring_module.clone(), service.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn transport_emission_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    match &*d.diagnostic {
+        crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+            service,
+            declaring_module,
+            ..
+        } => Some((declaring_module.clone(), service.clone())),
+        _ => None,
+    }
+}
+
+/// Services whose *only* unmodeled-transport refusals are the rust stderr-capture gap.
+/// A sibling unmodeled key or another transport on the same service stays in the render set.
+fn services_excluded_for_stderr_capture_gap(
+    typed: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+) -> BTreeSet<(String, String)> {
+    let target = crate::v1_compiler_artifact::RenderTarget::Rust;
+    let unmodeled = {
+        let mut rows = Vec::new();
+        rows.extend(
+            crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(typed.clone(), target)
+                .iter()
+                .cloned(),
+        );
+        rows.extend(
+            crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(typed.clone(), target)
+                .iter()
+                .cloned(),
+        );
+        rows.extend(
+            crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(typed.clone(), target)
+                .iter()
+                .cloned(),
+        );
+        rows
+    };
+    let mut gap_services: BTreeSet<(String, String)> = BTreeSet::new();
+    for d in &unmodeled {
+        if let Some(key) = stderr_capture_policy_gap_service(d) {
+            gap_services.insert(key);
+        }
+    }
+    gap_services
+        .into_iter()
+        .filter(|key| {
+            unmodeled
+                .iter()
+                .filter(|d| transport_emission_service(d).as_ref() == Some(key))
+                .all(|d| stderr_capture_policy_gap_service(d).is_some())
+        })
+        .collect()
+}
+
+fn strip_excluded_services(
+    typed: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+    excluded: &BTreeSet<(String, String)>,
+) -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
+    if excluded.is_empty() {
+        return typed;
+    }
+    let modules = Rc::new(
+        typed
+            .modules
+            .iter()
+            .cloned()
+            .map(|tm| {
+                let module_name = crate::v1_compiler_infer_env::authored_name(
+                    tm.type_env.clone(),
+                    tm.module.clone(),
+                );
+                let items = Rc::new(
+                    tm.items
+                        .iter()
+                        .cloned()
+                        .filter(|item| {
+                            if item.module_item_kind
+                                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
+                            {
+                                return true;
+                            }
+                            let service = crate::v1_compiler_infer_env::authored_name(
+                                tm.type_env.clone(),
+                                item.clone(),
+                            );
+                            !excluded.contains(&(module_name.clone(), service))
+                        })
+                        .collect::<im::Vector<_>>(),
+                );
+                Rc::new(crate::v1_compiler_infer_items::TypedModule {
+                    items,
+                    ..(*tm).clone()
+                })
+            })
+            .collect::<im::Vector<_>>(),
+    );
+    Rc::new(crate::v1_compiler_infer_items::ResolvedGraph {
+        modules,
+        ..(*typed).clone()
+    })
+}
+
+/// Compile stays the full closure. Emit strips only services whose rust refusal is the
+/// declared capture-policy gap, each named as a typed exclusion under the rung drop.
+fn union_emit_graph_excluding_unmodeled_stderr_capture(
+    resolved: Rc<v1_compiler_compile::ResolvedPipelineResult>,
+) -> (Rc<v1_compiler_compile::ResolvedPipelineResult>, Vec<String>) {
+    let Some(typed) = resolved.graph.clone() else {
+        return (resolved, Vec::new());
+    };
+    let excluded_keys = services_excluded_for_stderr_capture_gap(&typed);
+    if excluded_keys.is_empty() {
+        return (resolved, Vec::new());
+    }
+    let excluded: Vec<String> = excluded_keys
+        .iter()
+        .map(|(module, service)| {
+            format!(
+                "module={module} service={service} cause=ShellChannelNotRealizedByTarget \
+                 fact=stderr_capture_policy_unrealized drop={STDERR_CAPTURE_POLICY_DROP}"
+            )
+        })
+        .collect();
+    let graph = strip_excluded_services(typed, &excluded_keys);
+    (
+        Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+            graph: Some(graph),
+            ..(*resolved).clone()
+        }),
+        excluded,
+    )
 }
 
 /// The red control's member: a non-tail effectful self-call, which the rust emitter refuses
@@ -3317,6 +3484,46 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
             )))
         }
     }
+    // A fixture whose closure reaches extdeps.gunbc is admitted with the typed capture-policy
+    // exclusion, not as FixtureClosureUnionEmitRefused (the #13420 floor after #13437).
+    let gunbc_observed = fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_REACH_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| {
+        refuse(format!(
+            "a fixture whose closure reaches extdeps.gunbc refused: {refusal}"
+        ))
+    })?;
+    if !gunbc_observed.excluded.iter().any(|row| {
+        row.contains("module=extdeps.gunbc")
+            && row.contains("cause=ShellChannelNotRealizedByTarget")
+            && row.contains(STDERR_CAPTURE_POLICY_DROP)
+    }) {
+        return Err(refuse(format!(
+            "a fixture whose closure reaches extdeps.gunbc was admitted without the typed exclusion: {gunbc_observed:?}"
+        )));
+    }
+    // A real emit error in a member the union still renders still refuses, even when the same
+    // closure also reaches the excluded service.
+    match fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_AND_REAL_EMIT_ERROR)
+            .map_err(&refuse)?,
+    ) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the gunbc-plus-real-emit-error member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "a real emit error beside the excluded gunbc service did not refuse the union: {observed:?}"
+            )))
+        }
+    }
     Ok((red_ms, clean_started.elapsed().as_millis()))
 }
 
@@ -3325,6 +3532,12 @@ const FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER: &str = "module efr_member\nimport 
 
 /// The same closure with a call to a function nothing declares.
 const FIXTURE_CLOSURE_REAL_ERROR_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument }\nfn broken(a: Argument) -> Bool {\n  no_such_function_anywhere(a)\n}\n";
+
+/// A member that imports a type from extdeps.gunbc, so the fixture closure contains WitnessBin.Run.
+const FIXTURE_CLOSURE_GUNBC_REACH_MEMBER: &str = "module efr_member\nimport extdeps.gunbc { CrateRole }\nfn keep(r: CrateRole) -> CrateRole {\n  r\n}\n";
+
+/// The gunbc-reaching closure with a non-tail effectful self-call the rust emitter still refuses.
+const FIXTURE_CLOSURE_GUNBC_AND_REAL_EMIT_ERROR: &str = "module efr_member\nimport extdeps.gunbc { CrateRole }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
 
 #[cfg(test)]
 mod fixture_closure_union_tests {
@@ -3435,5 +3648,41 @@ mod fixture_closure_union_tests {
         assert_eq!(union.fixture_compiles, 2);
         assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
         assert!(union.conflicts.contains("dag/a.dag"));
+    }
+
+    #[test]
+    fn a_fixture_whose_closure_reaches_extdeps_gunbc_is_excluded_by_typed_cause() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_REACH_MEMBER)
+            .expect("gunbc-reaching fixture must resolve");
+        assert!(
+            union.members.keys().any(|p| p.contains("gunbc")),
+            "closure must contain extdeps.gunbc, got {:?}",
+            union.members.keys().collect::<Vec<_>>()
+        );
+        let observed = fixture_closure_union_emit_receipt(&union)
+            .expect("capture-policy gap must not refuse the union");
+        assert!(
+            observed.excluded.iter().any(|row| {
+                row.contains("module=extdeps.gunbc")
+                    && row.contains("cause=ShellChannelNotRealizedByTarget")
+                    && row.contains(STDERR_CAPTURE_POLICY_DROP)
+            }),
+            "{observed:?}"
+        );
+    }
+
+    #[test]
+    fn a_real_emit_error_beside_the_excluded_service_still_refuses() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_AND_REAL_EMIT_ERROR)
+            .expect("mixed fixture must resolve");
+        let refusal = fixture_closure_union_emit_receipt(&union)
+            .expect_err("a real emit error must still refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member"),
+            "{refusal}"
+        );
     }
 }

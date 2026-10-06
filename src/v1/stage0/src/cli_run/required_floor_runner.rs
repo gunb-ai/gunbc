@@ -13425,6 +13425,7 @@ pub fn run_required_floor(
     eprintln!(
         "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
          memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         excluded={} excluded_rows=`{}` \
          cpu_ms={} wall_ms={}",
         union.fixture_compiles,
         union.memo_hits,
@@ -13432,6 +13433,8 @@ pub fn run_required_floor(
         union_observed.digest,
         union_observed.files,
         union_observed.emit_diagnostics,
+        union_observed.excluded.len(),
+        union_observed.excluded.join("; "),
         v1_interpreter::thread_cpu_nanos().saturating_sub(union_cpu_started) / 1_000_000,
         union_started.elapsed().as_millis(),
     );
