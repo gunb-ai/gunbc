@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
 import extdeps.systemd { SystemdUnitProperty, MemoryMax, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
 // gunbc.compute.work_provider_local as compute_unit_properties, and it moved here rather than being
@@ -48,7 +49,7 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
   concat(
     [
       SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
-      SystemdRunProperty { property: compute_kill_mode_property, value: compute_kill_mode_value },
+      SystemdRunProperty { property: compute_kill_mode_property, value: compute_kill_mode_value() },
       SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     ],
     match process_bounds {
@@ -61,4 +62,10 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
   )
 }
 
-data compute_kill_mode_value: NonEmptyStr = "control-group"
+// THE kill mode the release decision relies on is the closed systemd fact KillModeControlGroup;
+// its wire spelling is owned by systemd_kill_mode_wire. This layer projects, it does not store a
+// second copy of the spelling (review 76958: the stored "control-group" was a parallel wire for a
+// closed upstream fact).
+fn compute_kill_mode_value() -> NonEmptyStr {
+  systemd_kill_mode_wire(mode: KillModeControlGroup) as NonEmptyStr
+}

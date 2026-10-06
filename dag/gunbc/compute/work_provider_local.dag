@@ -564,7 +564,7 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
           PopulationEmpty { detail: pd } =>
             UnitAttemptCompleted {
               detail: join([
-                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value as String,
+                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value() as String,
                 " and ", pd,
               ], ""),
             }

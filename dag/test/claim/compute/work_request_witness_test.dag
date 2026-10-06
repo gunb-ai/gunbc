@@ -17,6 +17,7 @@ import gunbc.compute.work_provider_local {
   UnitPropertyReading, unit_property_from_shell,
 }
 import gunbc.compute.unit_bounds { compute_kill_mode_property, compute_kill_mode_value }
+import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
@@ -226,8 +227,8 @@ test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -
   let props = compute_unit_properties(
     layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
     granted: kibibyte(count: 1048576))
-  contains(property_words(props), join([systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value as String], ""))
-    && compute_kill_mode_value == "control-group"
+  contains(property_words(props), join([systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String], ""))
+    && contains(property_words(props), join([systemd_unit_property_wire(property: KillModeProperty) as String, "=", systemd_kill_mode_wire(mode: KillModeControlGroup) as String], ""))
     && count(filter(property_words(props), p => starts_with(s: p, prefix: "MemoryMax="))) == 1
 }
 
