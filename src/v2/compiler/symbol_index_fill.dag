@@ -255,11 +255,13 @@ fn symbol_index_fill_containment_children(
 // Conj arm: there, namespace_graft_spine_segment_edge_optional read a one-binder domain whose binder is
 // a record (an operation's ^operation_input, a fn of one record-typed parameter) as a dotted-name
 // segment, and indexed the record's fields at the Arrow's path with the binder's level erased.
-// A UNIQUE MODULE-LEVEL VARIANT SPELLING RESOLVES THROUGH THE ALIAS, WHICH DOES NOT NAME ITS
-// CARRIER: for a uniquely-named variant the walk below mints the alias entry (module plus arm
-// name) AND the alias-to-carrier row on the index together, where the variant's declared path is
-// in hand, so one walk decides both. (The separate alias walk keyed the same alias without a
-// carrier, and the construct read had no way back to the declaring coproduct from `p.Boxed`.)
+// A UNIQUE MODULE-LEVEL VARIANT SPELLING RESOLVES THROUGH THE ALIAS, AND THE ALIAS IS FILED AS A
+// BINDING TO ITS DECLARING PATH (the repair the receipt
+// a_binding_position_recorded_as_a_declaring_identity names): for a uniquely-named variant the
+// walk below files the binding in the same pass where the variant's declared path is in hand, so
+// symbol_index_declaring_path_of answers the variant's declaring path at the alias and the
+// variant's own row answers itself -- one authority, no parallel carrier map. (A second ENTRY over
+// the same arm node was the double-entry defect that row describes.)
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
   path: QualifiedName,
@@ -297,18 +299,15 @@ fn symbol_index_fill_containment_node(
             if disj_variant_count_of(counts: counts, sym: sym) == 1 {
               let alias_path = qualified_name_snoc(qn: module_qn, segment: sym)
               symbol_index_fill_containment_node(
-                index: symbol_index_mark_variant_alias_carrier(
-                  index: symbol_index_mark_declared_payload(
-                    index: symbol_index_insert(
-                      index: with_variant,
-                      qualified_path: alias_path,
-                      resolved: edge.target
-                    ),
-                    qualified_path: alias_path,
-                    kind: VariantArmPayload
+                index: symbol_index_mark_declared_payload(
+                  index: symbol_index_bind_at(
+                    index: with_variant,
+                    binding_path: alias_path,
+                    declaring_path: variant_path,
+                    resolved: edge.target
                   ),
-                  alias_path: alias_path,
-                  carrier: variant_path
+                  qualified_path: alias_path,
+                  kind: VariantArmPayload
                 ),
                 path: variant_path,
                 node: edge.target,

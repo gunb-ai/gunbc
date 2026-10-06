@@ -3669,13 +3669,11 @@ fn resolve_type_application_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // it must name a coproduct, and an argument inhabits it exactly when the argument resolves to one of
 // that coproduct's variants -- by the DECLARATION the index holds, never by leaf spelling. A unique
 // variant referenced bare resolves to its module-level path (p.Pointer), which
-// v2.compiler.symbol_index_fill symbol_index_fill_containment_node files as an ENTRY over the
-// alias path carrying the SAME arm node, with the declaring coproduct recorded beside it in
-// SymbolIndex.variant_alias_carriers -- so the paths relate through the carrier map, NOT yet
-// through symbol_index_declaring_path_of. The repair the receipt
-// a_binding_position_recorded_as_a_declaring_identity names -- filing the alias as a BINDING to
-// the variant's declaring path (symbol_index_bind_at) so the parallel carrier map retires -- is
-// that receipt's named follow-up and is NOT landed here. A Nat literal and a type
+// v2.compiler.symbol_index_fill symbol_index_fill_containment_node files as a BINDING to the
+// variant's declaring path (p.Resolution.Pointer) -- the repair the receipt
+// a_binding_position_recorded_as_a_declaring_identity names, landed here: the alias was a second
+// ENTRY over the same arm node, which was the double-entry defect that row describes, and
+// symbol_index_declaring_path_of now relates the two paths with no parallel carrier map. A Nat literal and a type
 // parameter of an enclosing declaration are not judged (v2.std.type_binder KindInhabitance).
 fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, argument: Node, kind: Node) -> KindInhabitance {
   if dag_node_is_int_literal_atom(node: argument) {
