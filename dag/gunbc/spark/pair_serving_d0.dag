@@ -4,7 +4,7 @@ import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_s
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.list { list_cover }

@@ -9,7 +9,7 @@ import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.host_run { EmitHostRunReceipt, HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, node_synthetic }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {

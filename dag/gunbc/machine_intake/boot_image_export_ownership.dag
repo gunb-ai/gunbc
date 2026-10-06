@@ -2,7 +2,7 @@ module gunbc.machine_intake_boot_image_export_ownership
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.tools.gnu_coreutils { ls_long_directory_command, ls_long_directory_numeric_command }
 import gunbc.host_command_binding { CommandHost, LocalCommandHost, HostCommandDone, host_command, host_command_outcome_text }
 import std.process { ExitSuccess, ProcessExit, exit_failure }

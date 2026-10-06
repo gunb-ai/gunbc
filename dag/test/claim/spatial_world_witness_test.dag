@@ -18,7 +18,7 @@ import product.spatial_world {
   PlacedSpace, World, world, world_rooms, world_room_count, world_total_volume,
   WorldVariant, world_variant, realize_variant, variant_base,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.spatial_frame {
   SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with,

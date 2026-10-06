@@ -1,7 +1,7 @@
 module test.claim.std_checkpointed_workspace
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.measure { byte_size, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, SharedMonotonic, WallClock, InstantAfter, InstantIncomparable }
 import std.content_hash { Sha256Digest, Sha256DigestHex }

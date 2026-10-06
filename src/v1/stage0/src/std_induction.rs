@@ -25,6 +25,7 @@ use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever
 pub use crate::std_computation::{
     CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
+pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::OneStep;
 use crate::std_termination::ProportionalDivisor::DivideByTwo;

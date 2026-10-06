@@ -2,7 +2,7 @@ module gunbc.spark.pair_serving_realization
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.tools.sha256sum

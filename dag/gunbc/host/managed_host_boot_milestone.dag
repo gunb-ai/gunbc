@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureWorkloadShape }
 
 // WHAT A MILESTONE BOOT MUST SHOW: exactly `threads` hardware threads, ALL of them on `socket`, and

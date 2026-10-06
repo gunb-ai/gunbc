@@ -67,13 +67,15 @@ import gunbc.scm.object_store {
   MaterializedKindDisagrees, MaterializedCollision,
 }
 import gunbc.scm.repository_envelope {
-  repository_format_of, RepositoryFormatV8, RepositoryFormatV7,
-  decode_repository_v8_index, RepositoryShardedIndex, RepositoryObjectRoster, ObjectRosterAbsentByFormat, ObjectRosterDeclared,
+  repository_format_of, RepositoryFormatV9, RepositoryFormatV8, RepositoryFormatV7,
+  decode_repository_v8_index, decode_repository_v9_index, RepositoryShardedIndexDecode, RepositoryShardedIndex, RepositoryObjectRoster, ObjectRosterAbsentByFormat, ObjectRosterDeclared,
   RepositoryIndexHasNoObjectRoster, RepositoryObjectRosterMalformed, RepositoryFormatV6, RepositoryFormatV5, RepositoryFormatV4,
   RepositoryFormatRetiredV3, RepositoryFormatUnknown,
   decode_repository_v7_index, decode_repository_v7_finish,
   ShardedIndexDecoded, ShardedIndexRefused,
   RepositoryShardNotDecodable,
+  supersession_census, SupersessionsAdmitted, SupersessionsAwaitManifests, SupersessionCensusRefused,
+  RepositorySupersessionCensusRefused, RepositorySupersessionRootsUnverifiable,
   RepositoryEnvelope,
   decode_repository,
   RepositoryDecodeOutcome,
@@ -161,7 +163,8 @@ fn load_repository(path: String) -> RepositoryLoad {
           match read_string_member(v: v, key: "format") {
             MemberString { value: format } =>
               match repository_format_of(tag: format) {
-                RepositoryFormatV8 => load_repository_sharded_v8(path: path, v: v, generation: generation)
+                RepositoryFormatV9 => load_repository_sharded_rostered(path: path, index_decode: decode_repository_v9_index(v: v), found: format, generation: generation)
+                RepositoryFormatV8 => load_repository_sharded_rostered(path: path, index_decode: decode_repository_v8_index(v: v), found: format, generation: generation)
                 RepositoryFormatV7 => load_repository_sharded(path: path, v: v, generation: generation)
                 RepositoryFormatV6 => load_repository_whole(path: path, v: v, generation: generation)
                 RepositoryFormatV5 => load_repository_whole(path: path, v: v, generation: generation)
@@ -337,7 +340,7 @@ fn load_repository_sharded(path: String, v: JsonValue, generation: Fnv1a64Struct
                 },
               }
             StoreAssembled { store } =>
-              match decode_repository_v7_finish(v: index.document, store: store) {
+              match decode_repository_v7_finish(v: index.document, store: store, commit_policy: index.commit_policy) {
                 RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
                 RepositoryDecodeRefused { cause } =>
                   RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
@@ -418,13 +421,15 @@ fn load_v8_shards_checked(envelope_path: String, index: RepositoryShardedIndex, 
   }
 }
 
-fn load_repository_sharded_v8(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
-  match decode_repository_v8_index(v: v) {
+// v8 AND v9 SHARE THIS LOAD: their index layouts are one, and the commit member population the
+// index decoder recorded (index.commit_policy) is what the shared body reads commits under.
+fn load_repository_sharded_rostered(path: String, index_decode: RepositoryShardedIndexDecode, found: String, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match index_decode {
     ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
     ShardedIndexDecoded { index } =>
       match index.roster {
         ObjectRosterAbsentByFormat =>
-          RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryIndexHasNoObjectRoster { found: "gunbc-scm-repository-v8" } } }
+          RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryIndexHasNoObjectRoster { found: found } } }
         ObjectRosterDeclared { rows } =>
           match load_v8_shards_checked(envelope_path: path, index: index, rows: rows) {
             ShardRosterDisagrees { detail } =>
@@ -439,7 +444,7 @@ fn load_repository_sharded_v8(path: String, v: JsonValue, generation: Fnv1a64Str
                     },
                   }
                 StoreAssembled { store } =>
-                  match decode_repository_v7_finish(v: index.document, store: store) {
+                  match decode_repository_v7_finish(v: index.document, store: store, commit_policy: index.commit_policy) {
                     RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
                     RepositoryDecodeRefused { cause } =>
                       RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
@@ -472,7 +477,8 @@ fn load_repository_indexed(path: String) -> RepositoryLoad {
           match read_string_member(v: v, key: "format") {
             MemberString { value: format } =>
               match repository_format_of(tag: format) {
-                RepositoryFormatV8 => load_repository_indexed_v8(path: path, v: v, generation: generation)
+                RepositoryFormatV9 => load_repository_indexed_rostered(path: path, index_decode: decode_repository_v9_index(v: v), found: format, generation: generation)
+                RepositoryFormatV8 => load_repository_indexed_rostered(path: path, index_decode: decode_repository_v8_index(v: v), found: format, generation: generation)
                 RepositoryFormatV7 => repository_index_has_no_roster(path: path, found: format)
                 RepositoryFormatV6 => repository_index_has_no_roster(path: path, found: format)
                 RepositoryFormatV5 => repository_index_has_no_roster(path: path, found: format)
@@ -492,18 +498,47 @@ fn repository_index_has_no_roster(path: String, found: String) -> RepositoryLoad
   RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryIndexHasNoObjectRoster { found: found } } }
 }
 
-fn load_repository_indexed_v8(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
-  match decode_repository_v8_index(v: v) {
+// THE CORRECTED-ROOT EQUALITY, ANSWERED FOR AN INDEXED LOAD (the NO-LAND ruling on gunbc#13402,
+// blocker 5). The index-grain decode ran every supersession law it can answer from the commit table
+// and named the manifests the root equality needs; this reads exactly those shards -- one corrective
+// commit's three merge sides, nothing else -- and asks the census again. Anything still outstanding
+// after the read refuses: no load hands a caller a corrective record whose tree was not checked.
+fn indexed_supersession_roots(path: String, envelope: RepositoryEnvelope, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match supersession_census(repository: envelope) {
+    SupersessionsAdmitted => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+    SupersessionCensusRefused { cause } =>
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionCensusRefused { cause: cause } } }
+    SupersessionsAwaitManifests { demand } =>
+      match materialize_objects(envelope_path: path, store: envelope.store, identities: demand) {
+        ObjectMaterializationRefused { detail } =>
+          RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryShardNotDecodable { detail: detail } } }
+        ObjectsMaterialized { store: with_sides, read_shards: _ } => {
+          let read = RepositoryEnvelope { store: with_sides, commits: envelope.commits, commit_allocator: envelope.commit_allocator, checked_out: envelope.checked_out, staged: envelope.staged }
+          match supersession_census(repository: read) {
+            SupersessionsAdmitted => RepositoryLoaded { path: path, envelope: read, generation: generation }
+            SupersessionCensusRefused { cause } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionCensusRefused { cause: cause } } }
+            SupersessionsAwaitManifests { demand: still } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionRootsUnverifiable { missing: still } } }
+          }
+        }
+      }
+  }
+}
+
+fn load_repository_indexed_rostered(path: String, index_decode: RepositoryShardedIndexDecode, found: String, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match index_decode {
     ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
     ShardedIndexDecoded { index } =>
       match index.roster {
-        ObjectRosterAbsentByFormat => repository_index_has_no_roster(path: path, found: "gunbc-scm-repository-v8")
+        ObjectRosterAbsentByFormat => repository_index_has_no_roster(path: path, found: found)
         ObjectRosterDeclared { rows } =>
           match decode_repository_v7_finish(
             v: index.document,
             store: rostered_store(rostered: rows_by_digest(rows: rows), shards: index.shard_digests),
+            commit_policy: index.commit_policy,
           ) {
-            RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+            RepositoryDecoded { envelope } => indexed_supersession_roots(path: path, envelope: envelope, generation: generation)
             RepositoryDecodeRefused { cause } =>
               RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
           }

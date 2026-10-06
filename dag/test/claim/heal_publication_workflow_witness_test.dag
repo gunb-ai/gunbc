@@ -1,7 +1,7 @@
 module test.claim.heal_publication_workflow_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlString, YamlNull, YamlBool, YamlInt, YamlFloat, YamlSequence, YamlMapping, yaml_string, yaml_bool, kv }
 import extdeps.github.actions {
