@@ -360,7 +360,10 @@ fn dbg_reasons_full(prefix: Symbol, d: NonEmptyDiagnostics) -> String {
 }
 
 fn dbg_one_diag(prefix: Symbol, d: Diagnostic) -> String {
-  symbol_lexeme(sym: prefix) + ":" + symbol_lexeme(sym: d.reason) + "@" + dbg_locus_tag(l: d.at)
+  match d.correction {
+    Suggested { node: na } => symbol_lexeme(sym: prefix) + ":" + symbol_lexeme(sym: d.reason) + "~" + dbg_anat_deep(n: na, depth: 10)
+    _ => symbol_lexeme(sym: prefix) + ":" + symbol_lexeme(sym: d.reason)
+  }
 }
 
 fn dbg_locus_tag(l: Locus) -> String {

@@ -6872,6 +6872,13 @@ fn infer_caller_admission_judged_diags(
   arrow: Node
 ) -> Diagnostics {
   match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
+    Absent => infer_admission_diags_of([
+      Diagnostic {
+        reason: ^dbg_admit_facts_arrow_unmarked,
+        at: node_locus(node: application),
+        correction: Suggested { node: arrow }
+      }
+    ])
     Ambiguous =>
       infer_admission_diags_of([
         Diagnostic {
