@@ -321,6 +321,7 @@ fn service_unit_expectation_of(file: SystemdUnitFile) -> ServiceUnitExpectationD
       }
     TimerUnitFile { unit: _, timer: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a timer" }
     SliceUnitFile { unit: _, slice: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a slice" }
+    PathUnitFile { unit: _, path: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a path unit" }
   }
 }
 
@@ -436,6 +437,7 @@ fn timer_unit_expectation_of(file: SystemdUnitFile) -> TimerUnitExpectationDeriv
       }
     ServiceUnitFile { unit: _, service: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a service" }
     SliceUnitFile { unit: _, slice: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a slice" }
+    PathUnitFile { unit: _, path: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a path unit" }
   }
 }
 

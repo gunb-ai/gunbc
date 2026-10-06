@@ -93,7 +93,8 @@ import gunbc.executor_privileged_operation {
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
 import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
+  SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
@@ -152,11 +153,12 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
-  deployment_belt_timer_unit_name,
+  deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path,
   deployment_publication_service_unit_name,
   deployment_publication_timer_unit_name,
@@ -180,6 +182,7 @@ import gunbc.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
+  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import gunbc.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -763,7 +766,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
+      Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
@@ -781,7 +784,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
+        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
       ], "") as NonEmptyStr },
     ])),
     install: NotInstallable,
@@ -923,21 +926,80 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   ]
 }
 
-fn live_deploy_belt_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  TimerUnitFile {
-    unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
-    timer: [
-      TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
-      OnBootSec { duration: "2min" as NonEmptyStr },
-      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
-      AccuracySec { duration: "5s" as NonEmptyStr },
+// THE BELT'S EVENT UNITS (dogfood intervention #4). Each service is one `gunbc run` entry of
+// gunbc.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
+// event services resolve the same instance the belt service does and start obligation units in the
+// same user manager the belt's workers run in.
+//
+// THE EXIT PATH IS A LEVEL, NOT AN EDGE (extdeps.systemd.unit_file SystemdPathDirective): with
+// DirectoryNotEmpty= systemd re-checks the inbox when the drain finishes, so an exit recorded while
+// the drain was running starts it again instead of waiting for the next one. The drain moves every
+// entry it hands off out of the inbox, so the inbox empties and the path goes quiet.
+//
+// THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
+// A change while discovery is running is coalesced into that run; discovery reads every attempt's
+// evidence, so the coalesced answer is still seen.
+fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String) -> SystemdUnitFile {
+  let svc = spec.service
+  ServiceUnitFile {
+    unit: [
+      Description { text: description as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
     ],
-    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+    service: concat([
+      ServiceType { mode: OneshotMode },
+      TimeoutStartSec { duration: belt_tick_run_bound as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      WorkingDirectory { path: svc.repo_root },
+      Environment { assignment: join([
+        belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function ", function,
+      ], "") as NonEmptyStr },
+    ])),
+    install: NotInstallable,
   }
 }
 
-fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_timer_unit_file(spec: spec)))
+fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli")
+}
+
+fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli")
+}
+
+fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
+    path: [
+      PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+fn live_deploy_belt_answer_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [Description { text: "gunbc roadmap belt: a publication answer arrived" as NonEmptyStr }],
+    path: [
+      PathUnit { target: deployment_belt_discovery_service_unit_name(names: spec.names) },
+      PathChanged { path: publication_answer_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: file))
 }
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
@@ -1014,7 +1076,7 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
 // here: this member's apply arm is a retirement poison (the cadence is on-demand via
 // fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
-// on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
+// on any fresh instance root since that retirement. It rides BeltEventPathUnit apply against the
 // per-instance receipts directory instead — see the annotation on emit_artifact_upsert. Publication and
 // bootstrap remain orthogonal problems; only the bootstrap's home moved.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
@@ -1066,10 +1128,18 @@ fn apply_fleet_converge_timer_unit_write_step(spec: DeploymentSpec) -> PipelineS
   ))
 }
 
-fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+fn apply_belt_unit_file_write_step(stage_name: NonEmptyStr, file: SystemdUnitFile) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_belt_timer_unit_name(names: spec.names) as String,
-    content: render(doc: emit_belt_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+    stage_name: stage_name as String,
+    content: render(doc: emit_belt_unit_file_doc(file: file), proto: live_deploy_protocol),
+  ))
+}
+
+fn apply_belt_unit_file_install_step(stage_name: NonEmptyStr, dest: NonEmptyStr) -> PipelineStep {
+  deploy_raw(command: deploy_stage_install_command(
+    stage_name: stage_name as String,
+    mode: install_file_shared_mode,
+    dest: dest as String,
   ))
 }
 
@@ -1118,7 +1188,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       DispatchWorktreeRoot => Present { value: DirectoryRoot { path: art.path } }
       AttemptStateRoot => Present { value: DirectoryRoot { path: art.path } }
       ComputeRoot => Present { value: DirectoryRoot { path: art.path } }
-      BeltTimerUnit => none
+      BeltEventPathUnit => none
       FleetConvergeTimerUnit => none
       TailscaleServeMapping => none
       DeployedTreeRemoteUnit => none
@@ -2827,26 +2897,35 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_publication_timer_unit_name(names: spec.names))),
       ]
     )
-    BeltTimerUnit => [
+    BeltEventPathUnit => [
       deploy_raw(command: install_d_owned_command(
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_spool_root(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_refused_dir(instance_root: spec.service.instance_root as String))),
       apply_belt_service_unit_write_step(spec: spec),
-      apply_belt_timer_unit_write_step(spec: spec),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
         dest: deployment_belt_service_unit_path(names: spec.names) as String,
       )),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_belt_timer_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_timer_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_timer_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
     ]
     FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
@@ -2956,11 +3035,17 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    BeltTimerUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true),
+    BeltEventPathUnit => concat(
+      concat(
+        systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
+        systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+      ),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
+          deployment_belt_answer_path_unit_path(names: spec.names) as String,
+          deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
+          deployment_belt_discovery_service_unit_path(names: spec.names) as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),

@@ -65,19 +65,33 @@ fn belt_attempt_obligation_kind_rank(kind: BeltAttemptObligationKind) -> Int {
 
 // THE INSTANCE'S OBLIGATIONS: each a fold over the instance's durable records, owed whenever any
 // attempt's record moves. None of them is a phase of any other and none waits on one.
+//
+// LAUNCH IS ONE OF THEM, and it is what the belt tick now is: launch admission over the ready frontier,
+// spawn and teardown, and discovery. It is owed when capacity may have freed -- a worker's exit -- or
+// when an operator asks; there is no clock. It has ONE unit name per instance, so two launches never
+// run at once and capacity is never admitted twice; the deployment's belt service only queues it.
 type BeltInstanceObligationKind
-  = ServedObservationObligation
+  = LaunchObligation
+  | ServedObservationObligation
   | ResultReturnObligation
   | MeteringObligation
   | DogfoodStartRecordObligation
   | SnapshotCensusObligation
 
 data belt_instance_obligation_kinds: List<BeltInstanceObligationKind> = [
+  LaunchObligation, MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
+]
+
+// THE INSTANCE OBLIGATIONS AN ATTEMPT'S RECORD MOVING MAKES OWED: every one but launch. Launch is owed
+// on a worker's exit (the exit drain queues it) and on an operator's request, not on every record an
+// obligation writes -- a launch per review verdict would admit against unchanged capacity for nothing.
+data belt_record_moved_obligation_kinds: List<BeltInstanceObligationKind> = [
   MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
 ]
 
 fn belt_instance_obligation_kind_key(kind: BeltInstanceObligationKind) -> String {
   match kind {
+    LaunchObligation => "launch"
     ServedObservationObligation => "observe"
     ResultReturnObligation => "result-return"
     MeteringObligation => "metering"

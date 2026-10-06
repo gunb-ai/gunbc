@@ -510,7 +510,7 @@ fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
       ServeBinary => []
       GunbcSourceTree => []
       SystemdUnit => []
-      BeltTimerUnit => []
+      BeltEventPathUnit => []
       FleetConvergeTimerUnit => []
       TailscaleServeMapping => []
       DeployedTreeRemoteUnit => []

@@ -27,7 +27,7 @@ import gunbc.live_deploy.spec {
   DispatchWorktreeRoot,
   AttemptStateRoot, ComputeRoot,
   SystemdUnit,
-  BeltTimerUnit,
+  BeltEventPathUnit,
   FleetConvergeTimerUnit,
   TailscaleServeMapping,
   DeployedTreeRemoteUnit,
@@ -241,7 +241,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     FabricStorageServeMapping => ""
     ApprovalBrokerFrontDoor => ""
     TailnetDoorServeUnit => ""
-    BeltTimerUnit => "belt"
+    BeltEventPathUnit => "belt"
     TailscaleServeMapping => "route"
     DispatchWorktreeRoot => ""
     AttemptStateRoot => ""

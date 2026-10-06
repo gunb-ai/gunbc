@@ -100,7 +100,7 @@ type OwnedArtifactKind =
   | AttemptStateRoot
   | ComputeRoot
   | SystemdUnit
-  | BeltTimerUnit
+  | BeltEventPathUnit
   | FleetConvergeTimerUnit
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
@@ -207,7 +207,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     AttemptStateRoot => TeardownActs
     ComputeRoot => TeardownActs
     SystemdUnit => TeardownActs
-    BeltTimerUnit => TeardownActs
+    BeltEventPathUnit => TeardownActs
     FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
     PublicationHelperTimerUnit => TeardownActs
@@ -690,8 +690,26 @@ fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.service"], "") as NonEmptyStr
 }
 
-fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
-  join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
+// THE BELT'S EVENT UNITS (dogfood intervention #4: event-driven, not timer-driven). There is no belt
+// timer. A worker, reviewer or auditor ending writes an exit record into the instance's exit inbox
+// (gunbc.roadmap.roadmap_attempt_exit_spool), and the exit path unit starts the drain service, which
+// hands each recorded exit to its attempt's obligation unit. A publication answer arriving starts the
+// discovery service, which queues the attempts whose publication is still owed. The belt service
+// stays: it is the launch obligation, started by a drained worker exit or by an operator.
+fn deployment_belt_exit_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-exit.path"], "") as NonEmptyStr
+}
+
+fn deployment_belt_exit_drain_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-exit.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_answer_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-discovery.path"], "") as NonEmptyStr
+}
+
+fn deployment_belt_discovery_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-discovery.service"], "") as NonEmptyStr
 }
 
 // THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
@@ -814,8 +832,20 @@ fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
-fn deployment_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
+fn deployment_belt_exit_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_exit_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_exit_drain_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_exit_drain_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_answer_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_answer_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_discovery_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_discovery_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
@@ -1038,8 +1068,15 @@ type DeploymentSpec {
 // and this member is unconditional again — the mirror holds because the twin genuinely has a
 // correct timer, not because the asymmetry was argued away.
 //
-// One member, two files, exactly as GunbcSourceTree owns gunbc-tree-sync.service plus its env file:
-// the member's identity is the .timer path and its teardown removes the .service beside it. The
+// THE TIMER IS GONE (dogfood intervention #4, gunbc#13124: event-driven, not timer-driven; the timer
+// is not a product requirement and does not become a desired-state row). The member is now the belt's
+// EVENT units: the exit path unit and the drain service it starts, the publication-answer path unit
+// and the discovery service it starts, and the belt service itself, which no timer starts -- a drained
+// worker exit or an operator does. Everything the paragraphs above say about lifecycle and per-instance
+// roots holds unchanged for these units.
+//
+// One member, five files, as GunbcSourceTree owns gunbc-tree-sync.service plus its env file: the
+// member's identity is the exit .path unit and its teardown removes the four files beside it. The
 // names DERIVE from unit_name rather than being carried as DeploymentNames fields the way tree-
 // sync's are, and the difference is that tree-sync had migration debt to express — production runs
 // under names the derivation would not mint, so both constructors must state them. No belt unit
@@ -1065,7 +1102,7 @@ fn deployment_owned_steps(
       kind: PublicationHelperTimerUnit,
       path: deployment_publication_timer_unit_path(names: names),
     },
-    DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
+    DeploymentArtifactStep { kind: BeltEventPathUnit, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,

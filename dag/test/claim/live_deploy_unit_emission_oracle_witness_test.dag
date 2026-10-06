@@ -449,6 +449,7 @@ fn unit_has(file: SystemdUnitFile, target: SystemdUnitDirective) -> Bool {
     ServiceUnitFile { unit: u, service: _, install: _ } => has_directive_unit(dirs: u, target: target)
     TimerUnitFile { unit: u, timer: _, install: _ } => has_directive_unit(dirs: u, target: target)
     SliceUnitFile { unit: u, slice: _, install: _ } => has_directive_unit(dirs: u, target: target)
+    PathUnitFile { unit: u, path: _, install: _ } => has_directive_unit(dirs: u, target: target)
   }
 }
 
