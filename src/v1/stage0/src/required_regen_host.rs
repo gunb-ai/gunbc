@@ -2931,6 +2931,43 @@ mod tests {
 // built seed never produced.
 // ---------------------------------------------------------------------------------------------
 
+/// THE ONE-MIRROR DISCRIMINATOR beside the round (`//gunbc/instruments:regen-round-cost`).
+///
+/// The question it answers is where `compile.emit` spends its time: rendering each module, or
+/// re-deriving closure-wide facts per render. It runs the SAME producer the round runs
+/// (`run_required_regen_scoped`, never a second emit path) over the same corpus with a selection
+/// of exactly ONE mirror, and returns that run's drained trace ledger. If emit cost is per-module
+/// it collapses to roughly the whole emit over the population count; if closure-wide work
+/// dominates it stays near the whole emit. Either reading is an answer, so the probe reports the
+/// rows and decides nothing. It writes only under `target/` (its own candidate dir and receipt),
+/// never into `src/v1/stage0/src`.
+pub fn run_regen_one_mirror_emit_probe(
+    basename: &str,
+) -> Result<Vec<v1_rt::TraceLedgerRow>, String> {
+    let scope = RegenEmissionScope::Affected {
+        members: vec![basename.to_string()],
+    };
+    v1_rt::trace_ledger_arm();
+    let outcome = run_required_regen_scoped(
+        "target/stage0-regen-one-mirror-probe",
+        "target/stage0-regen-one-mirror-probe-receipt.json",
+        &scope,
+    );
+    let rows = v1_rt::trace_ledger_drain().unwrap_or_default();
+    let outcome = outcome?;
+    if !outcome.failures.is_empty() {
+        return Err(format!(
+            "refusal: the one-mirror probe's regen reported failures, so its ledger is not a \
+             measurement of a clean emit: {}",
+            outcome.failures.join("; ")
+        ));
+    }
+    if rows.is_empty() {
+        return Err("refusal: the one-mirror probe's trace ledger is empty".to_string());
+    }
+    Ok(rows.into_iter().collect())
+}
+
 pub struct RegenRoundCostOutcome {
     /// The rendered receipt, already printed by the caller's contract to stderr.
     pub rendered: String,
