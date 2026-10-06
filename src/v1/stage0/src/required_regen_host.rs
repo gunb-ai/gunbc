@@ -1813,10 +1813,16 @@ fn normalize_population(
             break;
         }
         RUSTFMT_SPAWNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // `skip_children=true`: given a FILE, rustfmt follows its `mod` declarations to sibling
+        // files, which stdin mode never does, so a mirror declaring a module refused the batch
+        // with `failed to resolve mod` (seen on a remote round). Each member is formatted alone,
+        // exactly as the single stdin seek formats it.
         let output = formatter
             .command()
             .arg("--edition")
             .arg("2021")
+            .arg("--config")
+            .arg("skip_children=true")
             .args(moving.iter().map(|i| paths[*i].as_os_str()))
             .output()
             .map_err(|e| formatter.spawn_refusal(e))?;
@@ -2394,6 +2400,9 @@ mod tests {
             "pub struct S{a:u8,b:String}\nimpl S{fn f(&self)->u8{self.a}}\n",
             "fn b() { let v = if true { vec![1,2,3].iter().map(|x| x * 2).collect::<Vec<_>>() } else { Vec::new() }; drop(v); }\n",
             "fn  a( x:i32 )->i32{ x+1 }\n",
+            // A member declaring a module whose file does not exist beside it: stdin formats it,
+            // and a batch that followed the declaration refused the whole population.
+            "mod  no_such_sibling;\nfn c(){}\n",
         ];
         let single = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
         let expected: Vec<String> = inputs
