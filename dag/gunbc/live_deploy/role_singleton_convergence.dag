@@ -37,11 +37,12 @@ import std.measure { Millisecond, millisecond, millisecond_count, second_to_mill
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.http.client
 import extdeps.tailscale.whois { WhoIsNodeName, WhoIsNodeNamed, WhoIsNodeUnreadable, whois_node_name }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, json_object, json_kv, json_string, json_array, json_int }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, json_object, json_kv, json_string, json_array, json_int, json_null }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   json_field_int, FieldAbsent, FieldRead, FieldMalformed,
+  json_member_presence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable,
 }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
 import gunbc.live_deploy.member_observe {
@@ -471,7 +472,7 @@ data role_singleton_self_report_route: String = "/instance.json"
 
 type RoleSingletonSelfReport {
   host: NonEmptyStr
-  observed_at_unix_millis: EpochMs
+  observed_at_unix_millis: EpochMs?
   reading: HostRoleSingletonReading
 }
 
@@ -603,24 +604,25 @@ fn roster_row_of_instance(instance: HostDashboardInstance, rows: List<DesiredDep
 
 // THE REPORT A DASHBOARD SERVES. The host it names is the serving instance's roster target; an
 // instance that is no roster row, or a clock that cannot be read, still serves a report -- one that
-// says it is unobservable, so the reader refuses rather than guessing.
+// says it is unobservable and carries NO instant (review 76947: a reporter without a clock reading has
+// no observed_at to state, and a zero would be a fabricated epoch the reader then ages as stale).
 fn role_singleton_self_report_of(instance: HostDashboardInstance) -> RoleSingletonSelfReport {
   let rows = desired_deployment_roster()
   match roster_row_of_instance(instance: instance, rows: rows) {
     Absent => RoleSingletonSelfReport {
       host: instance.host_identity as NonEmptyStr,
-      observed_at_unix_millis: 0,
+      observed_at_unix_millis: none,
       reading: HostRoleSingletonsUnobservable { host: instance.host_identity as NonEmptyStr, cause: join(["dashboard instance ", instance_id_text(id: instance.instance_id), " is not a desired_deployment_roster row, so it names no roster host"], "") },
     }
     Present { value: row } => match clock_unix_millis_read() {
       ClockUnixMillisRefused { detail } => RoleSingletonSelfReport {
         host: row.target.ssh_host,
-        observed_at_unix_millis: 0,
+        observed_at_unix_millis: none,
         reading: HostRoleSingletonsUnobservable { host: row.target.ssh_host, cause: join(["the reporter's clock is unreadable: ", detail], "") },
       }
       ClockUnixMillisObserved { millis } => RoleSingletonSelfReport {
         host: row.target.ssh_host,
-        observed_at_unix_millis: millis,
+        observed_at_unix_millis: Present { value: millis },
         reading: host_role_singleton_reading(host: row.target.ssh_host, rows: rows),
       }
     }
@@ -682,7 +684,7 @@ fn role_singleton_self_report_json(report: RoleSingletonSelfReport) -> JsonValue
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: role_singleton_self_report_schema)),
     json_kv(key: "host", value: json_string(s: report.host as String)),
-    json_kv(key: "observed_at_unix_millis", value: json_int(n: report.observed_at_unix_millis)),
+    json_kv(key: "observed_at_unix_millis", value: match report.observed_at_unix_millis { Present { value: at } => json_int(n: at)  Absent => json_null() }),
     json_kv(key: "reading", value: reading_json(r: report.reading)),
   ])
 }
@@ -797,6 +799,25 @@ type SelfReportDecode
   = SelfReportDecoded { report: RoleSingletonSelfReport }
   | SelfReportUndecodable { cause: String }
 
+// THE REPORT'S INSTANT: a non-negative EpochMs, or an explicit null from a reporter that had no clock
+// reading. A MISSING member is a malformed report, not a report without an instant.
+type ObservedInstant
+  = InstantDecoded { at: EpochMs? }
+  | InstantUndecodable { cause: String }
+
+fn observed_instant(v: JsonValue) -> ObservedInstant {
+  match json_member_presence(obj: v, key: "observed_at_unix_millis") {
+    JsonMemberMissing => InstantUndecodable { cause: "observed_at_unix_millis is missing" }
+    JsonMemberUnreadable { cause } => InstantUndecodable { cause: cause }
+    JsonMemberNull => InstantDecoded { at: none }
+    JsonMemberValue { value: _ } => match json_field_int(obj: v, key: "observed_at_unix_millis") {
+      FieldAbsent => InstantUndecodable { cause: "observed_at_unix_millis is missing" }
+      FieldMalformed { cause } => InstantUndecodable { cause: cause }
+      FieldRead { value: at } => if at < 0 { InstantUndecodable { cause: join(["observed_at_unix_millis is negative: ", to_string(at)], "") } } else { InstantDecoded { at: Present { value: at } } }
+    }
+  }
+}
+
 fn decode_self_report_value(v: JsonValue) -> SelfReportDecode {
   match wire_text(v: v, key: "schema") {
     WireTextRefused { cause } => SelfReportUndecodable { cause: cause }
@@ -806,10 +827,9 @@ fn decode_self_report_value(v: JsonValue) -> SelfReportDecode {
       } else {
         match wire_name(v: v, key: "host") {
           WireTextRefused { cause } => SelfReportUndecodable { cause: cause }
-          WireTextFound { value: h } => match json_field_int(obj: v, key: "observed_at_unix_millis") {
-            FieldAbsent => SelfReportUndecodable { cause: "observed_at_unix_millis is missing" }
-            FieldMalformed { cause } => SelfReportUndecodable { cause: cause }
-            FieldRead { value: at } => if at < 0 { SelfReportUndecodable { cause: join(["observed_at_unix_millis is negative: ", to_string(at)], "") } } else { match json_object_unique_member(v: v, key: "reading") {
+          WireTextFound { value: h } => match observed_instant(v: v) {
+            InstantUndecodable { cause } => SelfReportUndecodable { cause: cause }
+            InstantDecoded { at } => match json_object_unique_member(v: v, key: "reading") {
               JsonMemberFound { value: r } => match decode_reading(v: r) {
                 ReadingUndecodable { cause } => SelfReportUndecodable { cause: cause }
                 ReadingDecoded { reading } => SelfReportDecoded { report: RoleSingletonSelfReport { host: h as NonEmptyStr, observed_at_unix_millis: at, reading: reading } }
@@ -817,7 +837,7 @@ fn decode_self_report_value(v: JsonValue) -> SelfReportDecode {
               JsonMemberAbsent => SelfReportUndecodable { cause: "reading is missing" }
               JsonMemberDuplicated { count: _ } => SelfReportUndecodable { cause: "reading is duplicated" }
               JsonMemberNotAnObject => SelfReportUndecodable { cause: "the report is not an object" }
-            } }
+            }
           }
         }
       }
@@ -893,6 +913,27 @@ fn reading_of_reported_host(host: NonEmptyStr, reading: HostRoleSingletonReading
   }
 }
 
+// FRESHNESS OF A READ REPORT against its own receipt. A report that says its host is unobservable is
+// adjudicated before this, so its authored cause survives rather than being re-labelled stale.
+fn fresh_reading(host: NonEmptyStr, report: RoleSingletonSelfReport, observed: EpochMs, received: EpochMs) -> HostRoleSingletonReading {
+  let bound = role_singleton_self_report_max_age()
+  match report_age(observed: observed, received: received) {
+    ReportAgeUnrepresentable { cause } => self_report_unobservable(host: host, cause: cause)
+    ReportAgedBy { age } =>
+      if millisecond_count(m: age) > millisecond_count(m: bound) {
+        self_report_unobservable(host: host, cause: join(["the report is stale: ", millisecond_text(m: age), " old, bound ", millisecond_text(m: bound)], ""))
+      } else {
+        reading_of_reported_host(host: host, reading: report.reading)
+      }
+    ReportAheadBy { lead } =>
+      if millisecond_count(m: lead) > millisecond_count(m: bound) {
+        self_report_unobservable(host: host, cause: join(["the report is stamped ", millisecond_text(m: lead), " after the reader received it, bound ", millisecond_text(m: bound)], ""))
+      } else {
+        reading_of_reported_host(host: host, reading: report.reading)
+      }
+  }
+}
+
 // THE ADJUDICATION OF ONE HOST'S REPORT, from what the fetch returned and the reader's own clock.
 fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport) -> HostRoleSingletonReading {
   match fetched {
@@ -909,21 +950,12 @@ fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetch
               if (report.host as String) != (host as String) {
                 self_report_unobservable(host: host, cause: join(["the report names host ", report.host as String], ""))
               } else {
-                let bound = role_singleton_self_report_max_age()
-                match report_age(observed: report.observed_at_unix_millis, received: received_at_unix_millis) {
-                  ReportAgeUnrepresentable { cause } => self_report_unobservable(host: host, cause: cause)
-                  ReportAgedBy { age } =>
-                    if millisecond_count(m: age) > millisecond_count(m: bound) {
-                      self_report_unobservable(host: host, cause: join(["the report is stale: ", millisecond_text(m: age), " old, bound ", millisecond_text(m: bound)], ""))
-                    } else {
-                      reading_of_reported_host(host: host, reading: report.reading)
-                    }
-                  ReportAheadBy { lead } =>
-                    if millisecond_count(m: lead) > millisecond_count(m: bound) {
-                      self_report_unobservable(host: host, cause: join(["the report is stamped ", millisecond_text(m: lead), " after the reader received it, bound ", millisecond_text(m: bound)], ""))
-                    } else {
-                      reading_of_reported_host(host: host, reading: report.reading)
-                    }
+                match report.reading {
+                  HostRoleSingletonsUnobservable { host: _, cause: _ } => reading_of_reported_host(host: host, reading: report.reading)
+                  HostRoleSingletonsRead { host: _, sightings: _ } => match report.observed_at_unix_millis {
+                    Absent => self_report_unobservable(host: host, cause: "the report carries a reading but no observed_at instant")
+                    Present { value: observed } => fresh_reading(host: host, report: report, observed: observed, received: received_at_unix_millis)
+                  }
                 }
               }
           }

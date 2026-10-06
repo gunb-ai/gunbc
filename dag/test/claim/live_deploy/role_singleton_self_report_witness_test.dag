@@ -77,7 +77,7 @@ fn full_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
 }
 
 fn report(host: String, at: EpochMs, sightings: List<RoleSingletonSighting>) -> RoleSingletonSelfReport {
-  RoleSingletonSelfReport { host: host as NonEmptyStr, observed_at_unix_millis: at, reading: HostRoleSingletonsRead { host: host as NonEmptyStr, sightings: sightings } }
+  RoleSingletonSelfReport { host: host as NonEmptyStr, observed_at_unix_millis: Present { value: at }, reading: HostRoleSingletonsRead { host: host as NonEmptyStr, sightings: sightings } }
 }
 
 // THE SUPPLIED /instance.json: the served document with its role_singletons member, encoded by the
@@ -193,7 +193,7 @@ test fn a_report_signed_as_the_wrong_host_refuses() -> Bool {
   let desired = prod_role_actuated_realization()
   refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv1", r: report(host: "srv1", at: now_millis, sightings: []))), host: "srv2")
     && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: report(host: "srv1", at: now_millis, sightings: []))), host: "srv2")
-    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsRead { host: "srv2" as NonEmptyStr, sightings: [SightedBroker { host: "srv1" as NonEmptyStr }] } })), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: Present { value: now_millis }, reading: HostRoleSingletonsRead { host: "srv2" as NonEmptyStr, sightings: [SightedBroker { host: "srv1" as NonEmptyStr }] } })), host: "srv2")
     && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: "whois failed" }, body: instance_body(r: report(host: "srv2", at: now_millis, sightings: [])), received_at_unix_millis: now_millis }), host: "srv2")
     && is_noop(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: srv2_empty()))
 }
@@ -201,7 +201,7 @@ test fn a_report_signed_as_the_wrong_host_refuses() -> Bool {
 // A HOST THAT REPORTS ITSELF UNOBSERVABLE (the dashboard cannot list the store control directory)
 // stays unobservable at the reader.
 test fn a_host_reporting_itself_unobservable_refuses() -> Bool {
-  refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsUnobservable { host: "srv2" as NonEmptyStr, cause: "listing fabric-storage-control: permission denied" } })), host: "srv2")
+  refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: Present { value: now_millis }, reading: HostRoleSingletonsUnobservable { host: "srv2" as NonEmptyStr, cause: "listing fabric-storage-control: permission denied" } })), host: "srv2")
 }
 
 // ── A moved role with srv1 still reporting the singleton: Refuse (move not implemented) ────────
@@ -217,12 +217,12 @@ test fn a_moved_role_with_srv1_still_reporting_the_singleton_refuses_as_a_move()
 // A MISMATCHED MARKER TRAVELS THE WIRE AS ITSELF: the encoder and decoder keep every field, so the
 // reporter's marker readback reaches the adjudication unflattened.
 test fn a_mismatched_marker_sighting_round_trips_through_the_report() -> Bool {
-  let r = RoleSingletonSelfReport { host: "srv1" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsRead { host: "srv1" as NonEmptyStr, sightings: [SightedMismatchedMarker { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, field: "mode" as NonEmptyStr, expected: "640", observed: "644" }] } }
+  let r = RoleSingletonSelfReport { host: "srv1" as NonEmptyStr, observed_at_unix_millis: Present { value: now_millis }, reading: HostRoleSingletonsRead { host: "srv1" as NonEmptyStr, sightings: [SightedMismatchedMarker { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, field: "mode" as NonEmptyStr, expected: "640", observed: "644" }] } }
   match decode_self_report_in_instance_document(body: instance_body(r: r)) {
     SelfReportDecoded { report: d } => match d.reading {
       HostRoleSingletonsRead { host: _, sightings } => match sightings |> first {
         Present { value: SightedMismatchedMarker { host, deployment, field, expected, observed } } =>
-          (host as String) == "srv1" && deployment == srv1_daily_workspace_deployment && (field as String) == "mode" && expected == "640" && observed == "644" && length(sightings) == 1 && d.observed_at_unix_millis == now_millis
+          (host as String) == "srv1" && deployment == srv1_daily_workspace_deployment && (field as String) == "mode" && expected == "640" && observed == "644" && length(sightings) == 1 && instant_text(i: d.observed_at_unix_millis) == to_string(now_millis)
         _ => false
       }
       HostRoleSingletonsUnobservable { host: _, cause: _ } => false
@@ -240,9 +240,28 @@ test fn a_report_with_a_negative_observed_at_is_undecodable() -> Bool {
     SelfReportDecoded { report: _ } => false
   }
     && match decode_self_report_in_instance_document(body: instance_body(r: report(host: "srv2", at: now_millis, sightings: []))) {
-      SelfReportDecoded { report: d } => d.observed_at_unix_millis == now_millis
+      SelfReportDecoded { report: d } => match d.observed_at_unix_millis { Present { value: at } => at == now_millis  Absent => false }
       SelfReportUndecodable { cause: _ } => false
     }
+}
+
+// A REPORTER WITHOUT A CLOCK STATES NO INSTANT (review 76947): its unobservable reading reaches the
+// reader with its own cause, not re-labelled stale; and a READ report with no instant refuses, since
+// its freshness cannot be judged.
+fn reader_cause(f: FetchedSelfReport) -> String {
+  match self_report_host_reading(host: "srv2" as NonEmptyStr, expected_node: node_of(host: "srv2"), fetched: f) {
+    HostRoleSingletonsUnobservable { host: _, cause } => cause
+    HostRoleSingletonsRead { host: _, sightings: _ } => "read"
+  }
+}
+
+test fn a_report_without_an_instant_keeps_its_own_cause_or_refuses() -> Bool {
+  let clockless_unobservable = RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: none, reading: HostRoleSingletonsUnobservable { host: "srv2" as NonEmptyStr, cause: "the reporter's clock is unreadable: no clock" } }
+  let clockless_read = RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: none, reading: HostRoleSingletonsRead { host: "srv2" as NonEmptyStr, sightings: [] } }
+  string_contains(s: reader_cause(f: served_by(node_host: "srv2", r: clockless_unobservable)), pattern: "the reporter's clock is unreadable")
+    && !string_contains(s: reader_cause(f: served_by(node_host: "srv2", r: clockless_unobservable)), pattern: "stale")
+    && string_contains(s: reader_cause(f: served_by(node_host: "srv2", r: clockless_read)), pattern: "no observed_at instant")
+    && reader_cause(f: served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis, sightings: []))) == "read"
 }
 
 // ── Mutants ─────────────────────────────────────────────────────────────────────────────────────
@@ -294,6 +313,10 @@ test fn a_mutant_accepting_any_hosts_report_reads_noop_where_the_real_reader_ref
 // THE PRODUCER'S REPORT DECODES AS ITSELF. role_singleton_self_report_of runs the real on-host read
 // for the srv1 instance (whatever this runner's filesystem answers), and the real decoder reads back
 // the same host, the same instant and the same reading arm.
+fn instant_text(i: EpochMs?) -> String {
+  match i { Present { value: at } => to_string(at)  Absent => "none" }
+}
+
 fn reading_shape(r: HostRoleSingletonReading) -> String {
   match r {
     HostRoleSingletonsRead { host, sightings } => join(["read ", host as String, " ", to_string(length(sightings))], "")
@@ -305,7 +328,7 @@ test fn the_real_producers_report_decodes_as_itself() -> Bool {
   let produced = role_singleton_self_report_of(instance: srv1_live_dashboard_instance())
   (produced.host as String) == "srv1"
     && match decode_self_report_in_instance_document(body: instance_body(r: produced)) {
-      SelfReportDecoded { report: d } => (d.host as String) == "srv1" && d.observed_at_unix_millis == produced.observed_at_unix_millis && reading_shape(r: d.reading) == reading_shape(r: produced.reading)
+      SelfReportDecoded { report: d } => (d.host as String) == "srv1" && instant_text(i: d.observed_at_unix_millis) == instant_text(i: produced.observed_at_unix_millis) && reading_shape(r: d.reading) == reading_shape(r: produced.reading)
       SelfReportUndecodable { cause: _ } => false
     }
 }
