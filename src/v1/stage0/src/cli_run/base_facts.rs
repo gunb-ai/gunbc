@@ -344,7 +344,7 @@ pub fn emit_base_fact(
             serde_json::to_value(&*env).map_err(|e| e.to_string())?
         }
         BaseFactKind::KernelNames => {
-            let names = nb::kernel_names_at(repo, revision, &nb::LiveDagIndex::new())
+            let names = nb::kernel_names_at(repo, revision)
                 .map_err(|e| nb::environment_load_refusal_text(&e))?;
             serde_json::to_value(names).map_err(|e| e.to_string())?
         }
