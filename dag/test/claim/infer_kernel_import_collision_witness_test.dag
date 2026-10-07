@@ -54,9 +54,9 @@ data collision_fn_source: String = "module gunbc.instruments.native_emission_con
 
 data non_kernel_import_source: String = "module probe_kernel_import_ok\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_fn() -> Int \{\n  collision_seven()\n\}\n"
 
-data mint_import_source: String = "module probe_kernel_mint_import\n\nimport v2.std.optional \{ Optional \}\n\nfn uses_mint(o: Optional<Int>) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n"
+data mint_import_source: String = "module probe_kernel_mint_import\n\nimport std.optional \{ Optional \}\n\nfn uses_mint(o: Optional<Int>) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n"
 
-data mint_decl_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
+data mint_decl_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
 
 data collision_class: String = "ImportCollidesWithKernelName"
 
@@ -83,7 +83,7 @@ fn compile_non_kernel_import() -> MultiModuleCompileFixtureOutcome {
 fn compile_mint_import() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
-      fixture_source("v2/std/optional.dag", mint_decl_source),
+      fixture_source("std/optional.dag", mint_decl_source),
       fixture_source("probe_kernel_mint_import.dag", mint_import_source)
     ],
     entry: "probe_kernel_mint_import.dag"
@@ -145,11 +145,11 @@ test fn a_mint_row_for_owner_maybe_does_not_exempt_importing_owner_optional() ->
 test fn importing_the_mint_declaration_itself_is_admitted() -> Bool {
   match kernel_named_import_standing(
     imported_name: "Optional",
-    import_path: "v2.std.optional",
+    import_path: "std.optional",
     module_declares_type: true,
     rows: [KernelMintDeclaration {
       minted_name: "Optional" as NonEmptyStr,
-      declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional")
+      declaration: decl_ref(module_path: "std.optional", decl_name: "Optional")
     }]
   ) {
     KernelNamedImportAdmitted => true
