@@ -6,11 +6,11 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.optional { Present, Absent }
 import gunbc.spark.pair_serving_authority_log { HostEffectRecord }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv1, operator_host_srv2 }
 import gunbc.spark.cell_role {
   SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell, spark_cell_role_assignments,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, glm_canary_host_claim, glm_group_b_serving_arm, spark_serving_arm_host_claims }
 import gunbc.spark.serving_subject {

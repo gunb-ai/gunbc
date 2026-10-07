@@ -22,8 +22,7 @@ import gunbc.spark.serving_engine {
 }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed {
-  FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire,
-  FabricLaneObserved, fabric_lane_for_host,
+  FabricGroup, FabricGroupB, fabric_group_hosts, fabric_group_wire, FabricLaneObserved, fabric_lane_for_host,
 }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }

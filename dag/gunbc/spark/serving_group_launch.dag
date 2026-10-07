@@ -3,7 +3,7 @@ module gunbc.spark.serving_group_launch
 import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.pair_serving_realization {
   spark_pair_head_unit_name, spark_pair_container_name, spark_pair_model_path_in_container,
   spark_pair_desired_snapshot,

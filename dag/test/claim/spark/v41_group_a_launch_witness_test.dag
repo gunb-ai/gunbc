@@ -11,7 +11,7 @@ import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpe
 import product.host_identity { HostIdentity }
 import extdeps.container.oci.digest { oci_sha256_content_digest }
 import extdeps.vllm.engine_args { PrefixCachingExplicit }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryReading }
 import gunbc.spark.vllm_runtime_image_build { VllmImageDistributionSubject, VllmImageTargetRead, VllmImageTargetHolds, VllmImageTargetNeeds, VllmImageTargetRefused }

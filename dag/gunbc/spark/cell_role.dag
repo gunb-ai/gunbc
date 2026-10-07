@@ -2,7 +2,6 @@ module gunbc.spark.cell_role
 
 import std.types { String, Bool, List, NonEmptyStr }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 
 // SPARK-PAIR-0 P0. The single authority for what each DGX Spark unit is FOR. Desired serving hosts
 // and, later, the training offer roster are both projections of this one assignment — neither
@@ -68,16 +67,6 @@ type SparkCellRoleAssignment {
 // and confines the retirement -- the part with no existing vocabulary -- to one machine.
 data spark_cell_role_assignment_basis: NonEmptyStr = "OPERATOR DECISION (SPARK-PAIR-0, 2026-09-02): srv5 and srv6 both serve. This SUPERSEDES the 2026-08-29 decision that assigned srv6 to training; the operator withdrew it as premature -- 'i wouldn't dedicate a whole node for any task - just have it converge and serve whatever task we converge it to' -- and moved training to its own lane. The units are identical, so neither assignment was ever a measurement. Consequence in gunbc.spark.serving_converge_plan: srv6 now receives full serving desired members rather than the baseline-only members a training cell receives." as NonEmptyStr
 
-data srv5_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
-  host: operator_host_srv5,
-  role: SparkServingCell,
-}
-
-data srv6_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
-  host: operator_host_srv6,
-  role: SparkServingCell,
-}
-
 // SPARK-BATCH-3 (operator, 2026-09-05): the goal for every unit is the desired serving state, IN
 // PAIRS, serving DeepSeek V4 Flash. None of the five newer units is assigned a cell role yet, and
 // that is a refusal, not an omission; the serving desired state is still per-host Ollama, which is
@@ -102,8 +91,6 @@ data srv6_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
 // (gunbc.spark.host_commitment), so this note names it rather than restating it, and a reader after
 // the next roster change gets the derivation's answer instead of this paragraph's.
 data spark_cell_role_assignments: List<SparkCellRoleAssignment> = [
-  srv5_cell_role,
-  srv6_cell_role,
 ]
 
 // THE ONE PLACE THE VARIANTS ARE ENUMERATED IS THE WIRE PROJECTION, AND EQUALITY READS IT.

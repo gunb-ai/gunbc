@@ -17,7 +17,7 @@ import extdeps.networkmanager.nmcli {
   NmDeviceActivated, NmDeviceDisconnected, nm_device_state_of_getter,
 }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.fleet_host_identity { operator_host_srv7, operator_host_srv12 }
+import gunbc.fleet_host_identity { operator_host_srv12 }
 import gunbc.fleet_wireless_link {
   WirelessLinkDesired, WirelessLinkObservation, WirelessLinkPlan,
   DisconnectCountRead, kernel_disconnect_line_count,

@@ -50,7 +50,7 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   host_deployment_refusal_text,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import std.types { FilePath }
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {

@@ -10,7 +10,6 @@ import std.measure {
   attention_layer_count,
   ByteSize, byte_size,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }

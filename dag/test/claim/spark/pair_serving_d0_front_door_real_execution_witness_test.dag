@@ -15,7 +15,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFil
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessConnectFailed, HarnessDeadline, HarnessTransportUnread, harness_bounded_presence, harness_models_url }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.pair_serving_authority { FencedRefusal, pair_serving_authority_for }
 import gunbc.spark.serving_incarnation_observe { UnitInstalled, EndpointListenerReading, EndpointNoListener, EndpointListening, EndpointListenerUnread, read_endpoint_listener }
 import gunbc.host_effect { LocalShell }

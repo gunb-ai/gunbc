@@ -27,7 +27,7 @@ import extdeps.git.plumbing
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroup, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
   d0_standing_grant_for, D0AuthorizationBasis, D0BasisBroker, D0BasisStandingGrant, d0_dispatch_with, D0GrantRowProof, D0GrantRowUnproven, D0GrantRowApproved, d0_freeze_filing_with, parse_d0_frozen_filing, sha256_of_text,

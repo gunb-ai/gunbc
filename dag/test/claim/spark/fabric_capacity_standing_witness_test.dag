@@ -7,7 +7,6 @@ import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { concurrent_request_hundredths_count, token_count }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_kv_layout_observe { KvLayoutUnreadable }
 import gunbc.instruments.fabric_capacity_standing {

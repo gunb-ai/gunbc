@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import gunbc.fleet_multi_principal_probe { env_var_nonempty }
 import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet, group_arm_occupancy_observe_session }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4 }
 import gunbc.spark.group_checkpoint_materialize { CheckpointMaterialization, checkpoint_materialize_wet }
 import gunbc.spark.runtime_image_produce_dispatch { runtime_image_env, runtime_image_options, runtime_image_choice_of_wire, runtime_image_held_of }

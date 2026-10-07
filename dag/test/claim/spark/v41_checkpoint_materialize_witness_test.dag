@@ -12,7 +12,6 @@ import gunbc.artifact_acquisition {
   acquisition_key_wire,
 }
 import gunbc.spark.model_snapshot_materialize { spark_transfer_unit_for }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
 import gunbc.spark.v41_engram_row_store { V41PublishedSpan }

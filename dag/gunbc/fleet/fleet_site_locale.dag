@@ -21,7 +21,7 @@ import std.types { NonEmptyStr, Bool, List, Int }
 import product.placement_supply { SiteIdentity }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv4 }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotAssigned,

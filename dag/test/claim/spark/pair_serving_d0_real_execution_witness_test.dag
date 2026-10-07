@@ -21,7 +21,7 @@ import gunbc.fabric_event_log {
   SeatGranted, fabric_seat_acquire, SeatRoomObserved, fabric_seat_observe,
   PartitionReadOk, event_log_read_partition_with,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.serving_incarnation_observe { UnitInstalled, UnitNotInstalled }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }

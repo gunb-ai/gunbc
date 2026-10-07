@@ -40,7 +40,6 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live_over }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import gunbc.spark.serving_subject { PairServingUnitOn }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.v41_engram_row_store { v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
 import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_production_produced_image }

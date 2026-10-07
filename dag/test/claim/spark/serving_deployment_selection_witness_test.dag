@@ -14,7 +14,6 @@ import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
   group_rank_free_memory_region, group_rank_free_memory_observed,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
@@ -32,8 +31,8 @@ import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.serving_subject {
   ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_group_b_serving_subject,

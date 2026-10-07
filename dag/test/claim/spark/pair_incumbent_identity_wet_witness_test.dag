@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
 import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
 

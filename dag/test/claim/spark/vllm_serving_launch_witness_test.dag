@@ -2,7 +2,7 @@ module test.claim.spark.vllm_serving_launch_witness
 
 import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.content_hash { ContentHash, Sha256Hash, Sha1Hash, Sha256Digest, Sha1Digest, Sha256DigestHex, Sha1DigestHex }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.vllm_serving_launch {

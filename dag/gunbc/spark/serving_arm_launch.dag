@@ -7,12 +7,7 @@ import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
 import gunbc.spark.fabric_switch_observed {
-  FabricGroup,
-  FabricGroupA,
-  FabricGroupB,
-  fabric_group_hosts,
-  FabricLaneObserved,
-  fabric_lane_for_host,
+  FabricGroup, FabricGroupB, fabric_group_hosts, FabricLaneObserved, fabric_lane_for_host,
 }
 import extdeps.docker.cli {
   DockerCreateSpec,

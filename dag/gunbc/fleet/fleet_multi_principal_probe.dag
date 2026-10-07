@@ -36,7 +36,6 @@ import gunbc.fleet_ssh_credential_verify {
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, filter }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }

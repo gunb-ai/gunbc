@@ -3,7 +3,6 @@ module test.claim.serving.serving_availability_bind_wet_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.turn_admission {
   BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,

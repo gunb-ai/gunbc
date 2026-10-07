@@ -9,7 +9,7 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_co
 import product.capacity.lease { LeaseGrant }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
 import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable, HeadAbsent, HeadAt, HeadExpectation }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import std.measure { second, second_count, byte_size }
 import extdeps.docker.cli { DockerPsByName, DockerPsByAncestor, DockerPsByLabel, DockerLabel, docker_run_ephemeral_command }

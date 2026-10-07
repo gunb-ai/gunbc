@@ -26,7 +26,6 @@ import gunbc.spark.v41_row_store_encode {
 }
 import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_directory }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_occupancy_admission { admit_spark_host_unoccupied, spark_ctx_argv_run }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }

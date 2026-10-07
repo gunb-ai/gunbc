@@ -18,7 +18,6 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
   spark_pair_serving_engine_args,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, glm_5_3_flash_snapshot,

@@ -2,7 +2,7 @@ module test.claim.serving_routing_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import std.nat { Nat }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.serving.serving_enrollment {
   serving_enrolled_groups, serving_route, serving_route_ceiling, serving_route_endpoint_wire,
   serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,

@@ -9,7 +9,6 @@ import std.measure {
   byte_size_count,
 }
 import extdeps.network.ipv4 { ipv4_address, render_ipv4_address }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.spark.llama_cpp_rpc_observed {
   llama_cpp_rpc_observed_fabric, llama_cpp_rpc_fabric_endpoint_on,

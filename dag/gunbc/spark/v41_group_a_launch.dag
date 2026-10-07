@@ -18,7 +18,7 @@ import extdeps.docker.cli { DockerEnvAssignment, BindMount }
 import extdeps.vllm.source_build { VllmContainerBuildRecipe }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryReading }

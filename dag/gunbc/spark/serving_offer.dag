@@ -11,7 +11,7 @@ import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import product.host_identity { HostIdentity }
-import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroup, FabricGroupB }
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.dgx_procurement { OperatorAllocation }

@@ -16,7 +16,7 @@ import gunbc.spark.cell_role {
   spark_cell_role_in,
   spark_cell_role_assignments,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire, fabric_group_of_host }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_hosts, fabric_group_wire, fabric_group_of_host }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts, pair_serving_authority_for }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_pair_serving_authority,

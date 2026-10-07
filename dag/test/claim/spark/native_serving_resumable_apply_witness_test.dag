@@ -5,7 +5,7 @@ import product.host_identity { HostIdentity }
 
 import std.measure { second }
 import std.types { Bool, String, NonEmptyStr, Int }
-import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,

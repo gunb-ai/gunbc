@@ -15,11 +15,9 @@ import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable }
 import extdeps.linux.diskstats { DiskstatsReading, DiskReadMeasured, DiskReadUnmeasurable, parse_diskstats, disk_read_interval }
 
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
-import gunbc.fleet_intent_network { srv6_host_lan_endpoint }
-import gunbc.fleet_host_identity { operator_host_srv6 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildHostWork, SparkBuildHostRefused, SparkBuildHostRan }
 import gunbc.spark.serving_arm { FourSparkTp4, GunbcDeepseekV41EngramProduced, deepseek_v41_flash_row, runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished }

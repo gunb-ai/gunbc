@@ -17,7 +17,6 @@ import gunbc.spark.vllm_runtime_image_build { VllmImageDistributionSubject }
 import extdeps.container.oci.digest { OciSha256Digest }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import product.host_identity { HostIdentity }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.runtime_architecture_registry_reading { registry_dump_architectures, registry_dump_count }
 
 // ── THE GLM-5.3-FLASH IMAGE WITH THE KV ALLOCATION-PLAN EMISSION, PRODUCED ONCE (deforking cut 8c) ──

@@ -2,7 +2,7 @@ module test.claim.spark.spark_fabric_switch_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.host_identity { host_identity_eq }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv12, operator_host_srv1 }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_wire, Lane50GCr2, crs812_passive_dac_requires_forced_mode }
 import extdeps.transceiver.sff_8636 {
   Sff8636NominalRate, NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
@@ -19,11 +19,7 @@ import product.cable_leg_observation {
 }
 import product.cable_plant_assessment { CableLegReading, LegReadingTaken, LegNeverRead }
 import gunbc.spark.fabric_switch_observed {
-  fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
-  fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant,
-  fabric_leg_reading_of_row, FabricLegEepromObservation, AcquisitionInvalidatedByReflash, AcquisitionCurrent,
-  fabric_forced_100g_attempts, fabric_forced_100g_ever_trained,
-  FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
+  fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed, fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant, fabric_leg_reading_of_row, FabricLegEepromObservation, AcquisitionInvalidatedByReflash, AcquisitionCurrent, fabric_forced_100g_attempts, fabric_forced_100g_ever_trained, FabricGroup, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
 }
 
 // The coding from the FIRST receipt, for the byte-level witnesses below. Reached THROUGH the receipt

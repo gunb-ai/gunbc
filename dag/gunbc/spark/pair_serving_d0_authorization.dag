@@ -7,7 +7,7 @@ import std.content_hash { ContentHash }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, ClaimedBy }
 import gunbc.auth.approval_gate { ApprovalGateRefusal, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll }
 import gunbc.auth.approval_request_client { ApprovalPollStanding }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
 import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41DerivationEvidence, v41_derivation_obligations, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
 import gunbc.spark.pair_serving_d0 { d0_release_lifecycle_escalation_id, D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, parse_d0_frozen_filing, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }

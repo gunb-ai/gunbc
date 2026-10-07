@@ -11,7 +11,6 @@ import gunbc.auth.approval_request_client { PollApproved, PollNotFiled, PollStil
 import gunbc.auth.approval_gate { StandingReadAt, StandingClockUnreadable, ApprovalDenied }
 import gunbc.spark.pair_serving_d0_door { d0_absent_claim_step, D0AbsentClaimClockUnreadable, D0AbsentClaimFileFrozen, D0AbsentClaimEnterPoll, D0AbsentClaimDecided, pair_serving_d0_mode_admission, D0ModeAdmitted, D0ModeRefused }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }

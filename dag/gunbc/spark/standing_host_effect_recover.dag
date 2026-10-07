@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
 import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingHostEffectRecover }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_of_host, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_of_host, fabric_group_wire }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
 import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing, executed_grant_row }
 import gunbc.spark.pair_serving_authority_log { HostEffectRecord, placement_read, PlacementReadAt, PlacementUnread, live_claim_on, LiveClaimFound, LiveClaimAbsent, LiveClaimUnread }

@@ -21,7 +21,6 @@ import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, PlannedRemoteStep }
 import gunbc.typed_remote_file_write { typed_remote_file_write_seal, TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused, RemoteFileModeOwnerReadWrite }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.group_image_produce { GroupImageProduction, ProducedImageHeld }

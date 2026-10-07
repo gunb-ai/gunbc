@@ -23,8 +23,8 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_declared_head_digest,
 }
 import std.measure { token_count }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
 import gunbc.spark.vllm_endpoint_process_launch {
