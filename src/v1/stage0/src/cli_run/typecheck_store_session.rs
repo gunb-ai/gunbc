@@ -58,6 +58,8 @@ struct OutcomeCounts {
     unavailable: u64,
     commit_committed: u64,
     commit_missed_open: u64,
+    /// Commits whose stored size could not be read back: excluded from the largest-entry reading.
+    commit_size_unread: u64,
     reentry_lookup: u64,
     reentry_commit: u64,
     unreachable_lookup: u64,
@@ -70,7 +72,7 @@ struct OutcomeCounts {
 
 thread_local! {
     static OUTCOMES: Cell<OutcomeCounts> = const { Cell::new(OutcomeCounts {
-        hit: 0, miss: 0, unavailable: 0, commit_committed: 0, commit_missed_open: 0,
+        hit: 0, miss: 0, unavailable: 0, commit_committed: 0, commit_missed_open: 0, commit_size_unread: 0,
         reentry_lookup: 0, reentry_commit: 0, unreachable_lookup: 0, unreachable_commit: 0,
         store_openings: 0, open_refused: 0,
     }) };
@@ -91,6 +93,7 @@ pub(crate) fn store_receipt_line() -> Option<String> {
     let degraded = c.unavailable
         + c.open_refused
         + c.commit_missed_open
+        + c.commit_size_unread
         + c.reentry_lookup
         + c.reentry_commit
         + c.unreachable_lookup
@@ -100,12 +103,13 @@ pub(crate) fn store_receipt_line() -> Option<String> {
         return None;
     }
     Some(format!(
-        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} store_openings={} open_refused={} largest_entry_bytes={}",
+        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} commit_size_unread={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} store_openings={} open_refused={} largest_entry_bytes={}",
         c.hit,
         c.miss,
         c.commit_committed,
         c.unavailable,
         c.commit_missed_open,
+        c.commit_size_unread,
         c.reentry_lookup,
         c.reentry_commit,
         c.unreachable_lookup,
@@ -359,14 +363,21 @@ pub(crate) fn durable_typecheck_commit(
             count(|c| c.commit_committed += 1);
             // The stored object's size as the store sizes it (local_store_object_bytes), read
             // back from the door: the grain the budget frontier names.
-            let stored = match ctx.field(fields, "stored_bytes") {
-                Some(Value::Int(n)) if *n >= 0 => *n as u64,
-                other => return Err(format!("stored_bytes not a count: {other:?}")),
+            let stored = match ctx.field(fields, "stored") {
+                Some(Value::Record { fields: m, .. }) => match ctx.field(m, "count") {
+                    Some(Value::Int(n)) if *n >= 0 => *n as u64,
+                    other => return Err(format!("stored size not a count: {other:?}")),
+                },
+                other => return Err(format!("stored not a ByteSize: {other:?}")),
             };
-            OBSERVED_LARGEST_ENTRY.with(|c| {
-                if stored > c.get() {
-                    c.set(stored);
-                }
+            record_stored_entry_bytes(stored);
+            return Ok(());
+        }
+        if ctx.sym_eq(*variant_name, "SeedTypecheckCommittedSizeUnread") {
+            // Committed, size unmeasured: counted, and never a reading (Absent is not zero).
+            count(|c| {
+                c.commit_committed += 1;
+                c.commit_size_unread += 1;
             });
             return Ok(());
         }
@@ -390,6 +401,14 @@ pub(crate) fn durable_typecheck_commit(
         count(|c| c.unreachable_commit += 1);
     }
     Ok(())
+}
+
+fn record_stored_entry_bytes(stored: u64) {
+    OBSERVED_LARGEST_ENTRY.with(|c| {
+        if stored > c.get() {
+            c.set(stored);
+        }
+    });
 }
 
 pub(crate) fn observed_largest_entry_bytes() -> u64 {
@@ -618,5 +637,23 @@ mod session_reach {
             "{:?}",
             got.err()
         );
+    }
+}
+
+#[cfg(test)]
+mod size_unread_tests {
+    use super::*;
+
+    #[test]
+    fn a_commit_whose_size_read_fails_does_not_change_the_largest_entry_reading() {
+        OBSERVED_LARGEST_ENTRY.with(|c| c.set(0));
+        record_stored_entry_bytes(10);
+        let before = observed_largest_entry_bytes();
+        count(|c| {
+            c.commit_committed += 1;
+            c.commit_size_unread += 1;
+        });
+        assert_eq!(observed_largest_entry_bytes(), before);
+        assert_eq!(OUTCOMES.with(|c| c.get().commit_size_unread), 1);
     }
 }

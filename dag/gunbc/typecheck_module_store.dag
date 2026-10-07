@@ -3,7 +3,7 @@ module gunbc.typecheck_module_store
 import std.types { List, String, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, fnv1a64_structural_hex_digest }
 import std.interface_summary { InterfaceHash }
-import std.measure { ByteSize, measure_count }
+import std.measure { ByteSize }
 import std.materialization_provider {
   ArtifactRequest,
   TypecheckModuleRequest,
@@ -239,7 +239,8 @@ type SeedTypecheckLookup
   | SeedTypecheckDigestRefused { which: String }
 
 type SeedTypecheckCommit
-  = SeedTypecheckCommitted { stored_bytes: Int }
+  = SeedTypecheckCommitted { stored: ByteSize }
+  | SeedTypecheckCommittedSizeUnread
   | SeedTypecheckCommitMissedOpen { root_path: String }
   | SeedTypecheckCommitRefused
   | SeedTypecheckCommitDigestRefused { which: String }
@@ -276,11 +277,9 @@ fn seed_commit_typecheck_opened(
     LocalStoreUnavailable { root_path: p, cause: _ } => SeedTypecheckCommitMissedOpen { root_path: p }
     LocalStoreOpened { capability: c, durability: _ } =>
       match commit_typecheck_module(capability: c, req: req, interface_text: interface_text, diagnostics_text: diagnostics_text).commit {
-        StoreCommitSettled { receipt: _ } => SeedTypecheckCommitted {
-          stored_bytes: match typecheck_module_entry_bytes(req: req, payloads: typecheck_module_payloads(interface: interface_text, diagnostics: diagnostics_text)) {
-            Present { value: b } => measure_count(m: b)
-            Absent => 0
-          }
+        StoreCommitSettled { receipt: _ } => match typecheck_module_entry_bytes(req: req, payloads: typecheck_module_payloads(interface: interface_text, diagnostics: diagnostics_text)) {
+          Present { value: b } => SeedTypecheckCommitted { stored: b }
+          Absent => SeedTypecheckCommittedSizeUnread
         }
         StoreCommitRefused { key: _, refusal: _ } => SeedTypecheckCommitRefused
       }
