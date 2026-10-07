@@ -42,9 +42,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
   gitcommit90_glm_53_one_spark_pinned_reference, gitcommit90_glm_53_one_spark_vllm_version,
 }
 import gunbc.spark.runtime_architecture_registry_reading {
-  ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
-  sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
-  glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading, glm53_kvplan_v2_group_a_registry_reading,
+  ArchitectureRegistryReading, registry_reading_contains, reading_applies_to, sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading, glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root, spark_models_root,
@@ -105,7 +103,6 @@ type ServingRuntime
   | GunbcGlm53NopeDerivedGb10
   | GunbcGlm53DerivedGb10
   | GunbcGlm53DerivedKvplanV2Gb10
-  | GunbcGlm53KvplanV2GroupAProduced
   | GunbcDeepseekV41EngramProduced { artifact: RuntimeArtifactIdentity, registry_reading: ArchitectureRegistryReading? }
 
 // THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE, AND ONLY A RANK COUNT. It exists
@@ -180,7 +177,6 @@ fn serving_runtime_wire(r: ServingRuntime) -> NonEmptyStr {
     GunbcGlm53NopeDerivedGb10 => "gunbc-glm53-nope-derived-gb10" as NonEmptyStr
     GunbcGlm53DerivedGb10 => "gunbc-glm53-derived-gb10" as NonEmptyStr
     GunbcGlm53DerivedKvplanV2Gb10 => "gunbc-glm53-derived-kvplan-v2-gb10" as NonEmptyStr
-    GunbcGlm53KvplanV2GroupAProduced => "gunbc-glm53-kvplan-v2-group-a-produced" as NonEmptyStr
     GunbcDeepseekV41EngramProduced { artifact: _, registry_reading: _ } => "gunbc-deepseek-v41-engram-produced" as NonEmptyStr
   }
 }
@@ -762,7 +758,6 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
     GunbcGlm53NopeDerivedGb10 => Present { value: glm53_nope_derived_row }
     GunbcGlm53DerivedGb10 => Present { value: glm53_derived_row }
     GunbcGlm53DerivedKvplanV2Gb10 => Present { value: glm53_derived_kvplan_v2_row }
-    GunbcGlm53KvplanV2GroupAProduced => Present { value: glm53_kvplan_v2_group_a_row }
   }
 }
 
@@ -1591,35 +1586,5 @@ data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: glm53_derived_kvplan_v2_registry_reading },
   reasoning_projection: none,
   provenance: "the engine inside this tag self-reported vllm 0.1.dev1+g8d09804c8 and printed its v2 KV allocation plan at the 2026-09-26 bounded experiment on the four Group B ranks; its architecture registry was read inside the tag on 2026-10-01 (glm53_derived_kvplan_v2_registry_reading). NOT read inside this tag: the hub CLI path and the reasoning projection" as NonEmptyStr,
-  claimed_defaults_revision: Present { value: Vllm8d09804 },
-}
-
-// THE SAME KVPLAN-V2 BUILD, PRODUCED ONCE FOR GROUP A (deforking cut 8c, image option A). It is a distinct
-// runtime from the Group B row above because it is a distinct artifact: one content id built on srv7 by
-// fleet-converge run 37100656092 from the pinned recipe (gunbc.spark.vllm_runtime_image_build
-// converge_glm53_kvplan_image) and moved by digest, where Group B's is a per-host layer under a shared
-// tag. So a receipt taken on Group A is about THIS identity and does not promote Group B's.
-data glm53_kvplan_v2_group_a_row: ServingRuntimeRow = ServingRuntimeRow {
-  runtime: GunbcGlm53KvplanV2GroupAProduced,
-  artifact: runtime_artifact_identity(
-    pin: PinnedByDigest { reference: "sha256:6ef84cd49a68dbefd957bfca36f0ec458ed80f8194def41642e7b37b34ae76fb" as NonEmptyStr },
-    source: PackageVersionClaimsRevision {
-      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
-      package_version: glm53_nope_derived_vllm_version,
-      build_provenance: "built from source revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 by fleet-converge run 37100656092 (base and FlashInfer stage build key c99be081f219d123, kvplan layer build key 50ba9aad263fea47); the probe inside the produced digest read vllm 0.1.dev1+g8d09804c8 and the kvplan marker present" as NonEmptyStr,
-    },
-    patch_set: [
-      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
-      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
-      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
-      "kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr,
-    ],
-    provenance: "produced on srv7 by fleet-converge run 37100656092 under tag gunbc-vllm-glm53-gb10:kvplan-v2-50ba9aad263fea47, configuration digest read back inside the image by that run's probe" as NonEmptyStr,
-  ),
-  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
-  vllm_version: Present { value: glm53_nope_derived_vllm_version },
-  registry_reading: Present { value: glm53_kvplan_v2_group_a_registry_reading },
-  reasoning_projection: none,
-  provenance: "every field of this row except the patch roster was read inside the produced digest by fleet-converge run 37100656092 (version, package dir, kvplan marker, hub CLI path, 378-name registry); the patch roster is the recipe's" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

@@ -214,13 +214,6 @@ type UnitObserved {
   role: NonEmptyStr
 }
 
-data first_pair_units: List<UnitObserved> = [
-  UnitObserved { host: operator_host_srv6, unit: "spark-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "boot-time bring-up of the head container; the container outlived it" as NonEmptyStr },
-  UnitObserved { host: operator_host_srv5, unit: "spark-ray-worker.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "active (running)" as NonEmptyStr, role: "runs /usr/local/bin/spark-ray-worker.sh: ray worker only, no vllm serve" as NonEmptyStr },
-  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment; loaded with no unit file on disk, not in any wants directory" as NonEmptyStr },
-  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm-verify.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "failed" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment; loaded with no unit file on disk, not in any wants directory" as NonEmptyStr },
-]
-
 data first_pair_stdout_capture: NonEmptyStr = "/root/prod_a.log inside container dsv4 on 192.168.1.225 (nohup $LAUNCH > $LOG 2>&1)" as NonEmptyStr
 
 // THE POOL, FROM THE ENGINE'S OWN STARTUP LINE. The earlier figure derived from num_gpu_blocks x
@@ -255,13 +248,6 @@ type GroupKvPoolObserved {
 
 data group_kv_pools_observed: List<GroupKvPoolObserved> = [
   GroupKvPoolObserved {
-    group: FabricGroupA,
-    pool_tokens: 11767856,
-    max_concurrency_at_max_model_len_wire: "11.22x for 1,048,576 tokens per request" as NonEmptyStr,
-    probed_at: "2026-09-05T20:44Z" as NonEmptyStr,
-    source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
-  },
-  GroupKvPoolObserved {
     group: FabricGroupB,
     pool_tokens: 11952124,
     max_concurrency_at_max_model_len_wire: "11.40x for 1,048,576 tokens per request" as NonEmptyStr,
@@ -272,8 +258,7 @@ data group_kv_pools_observed: List<GroupKvPoolObserved> = [
 
 fn fabric_group_same(a: FabricGroup, b: FabricGroup) -> Bool {
   match a {
-    FabricGroupA => match b { FabricGroupA => true  FabricGroupB => false }
-    FabricGroupB => match b { FabricGroupA => false  FabricGroupB => true }
+    FabricGroupB => match b { FabricGroupB => true }
   }
 }
 
@@ -352,16 +337,11 @@ type GroupRankFreeMemoryObserved {
   precision_caveat: NonEmptyStr
 }
 
-data group_rank_free_memory_observed: List<GroupRankFreeMemoryObserved> = [
-  GroupRankFreeMemoryObserved {
-    group: FabricGroupA,
-    reported_free_wire: "116.9 GiB free per rank with the engine idle" as NonEmptyStr,
-    free: gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695),
-    probed_at: "2026-09-12" as NonEmptyStr,
-    instrument: "the serving runtime's own memory-profiling line on an idle Group A rank during the V4.1 Flash rollout, read from the head's captured stdout; NVML refuses this query on unified memory and must not be substituted for it" as NonEmptyStr,
-    precision_caveat: "the runtime reports one decimal of GiB, so the true free value lies within about 0.05 GiB of this figure; a verdict drawn against this bound must exceed that uncertainty to be established rather than borderline" as NonEmptyStr,
-  },
-]
+// THE ONE READING THERE WAS IS GONE WITH ITS HOSTS: it was an idle Group A rank (2026-09-12), and Group A was
+// decommissioned on 2026-10-07 (operator; sold). No Group B rank has an idle-engine reading of the same kind
+// -- gunbc.spark.arm_memory_experiment_observed reads free memory at boot, before any engine is loaded,
+// which is a different quantity -- so every consumer answers unestablished until one is taken.
+data group_rank_free_memory_observed: List<GroupRankFreeMemoryObserved> = [] as List<GroupRankFreeMemoryObserved>
 
 // ONE TENTH OF A GIBIBYTE IS NOT A BYTE COUNT ANYONE SHOULD TYPE. The reported figure is tenths of
 // GiB, so the byte value is a std.measure scaling of a Gibibyte measure and not a hand-multiplied
@@ -409,10 +389,6 @@ fn group_rank_free_memory_upper(i: OrderedClosedInterval<ByteSize>) -> ByteSize 
 fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
   first(filter(group_rank_free_memory_observed, r => fabric_group_same(a: r.group, b: group)))
 }
-
-// The head host of the first pair as observed: the unit and the serve process are on srv6, and the
-// Ray node address is srv6's rail-0 endpoint.
-data first_pair_observed_head: HostIdentity = operator_host_srv6
 
 // DRIFT THE OBSERVATION SURFACED. Each row is a disagreement between two sources for one fact; the
 // render slice must resolve each explicitly rather than pick a side by accident.
