@@ -6574,7 +6574,7 @@ fn infer_admit_record_check(record: Node) -> Optional<InferAdmitCallerCoords> {
           match infer_admit_entry_field_symbol(record: record, field: ^decl_name) {
             Absent => optional_absent()
             Present { value: dn } =>
-              optional_present(value: InferAdmitCallerCoords { module_path: mp, decl_name: dn })
+              optional_present(value: InferAdmitCallerCoords { module_path: optional_present(value: mp), decl_name: dn })
           }
       }
   }
