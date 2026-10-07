@@ -6,15 +6,20 @@
 //! the build that made it -- by the effective inputs of that production, so a run whose inputs are
 //! identical reuses it and spends its time on the instrument's controls instead.
 //!
-//! THE KEY IS THE SIX CAUSAL AXES of `v2.compiler.self_host.generation` `PreMaterializationIdentity`
-//! in their declared order (producer compiler, source closure, target model, toolchain, build
-//! configuration, required lens contract), folded as `pre_materialization_digest` folds them. The
-//! fold hash is SHA-256 (`std.content_hash` `HashFamily` cryptographic arm), not the 64-bit
-//! structural family, because a collision here serves a wrong compiler rather than missing.
-//! The keyed relation is `std.materialization_provider` `ArtifactRequest::NativeCompilerArtifactRequest`;
-//! this is its first consumer (the seed-side realization of `request_key`, v1 maintenance standing:
-//! it serves the v2 self-host program and is dissolved when the native ancestry lane makes the
-//! provider the only producer -- `native_product_cache_seed_growth`).
+//! THE KEY IS A SEED-LOCAL PRODUCT KEY OVER THE SAME SIX CAUSAL AXES as `v2.compiler.self_host.generation`
+//! `PreMaterializationIdentity` (producer compiler, source closure, target model, toolchain, build
+//! configuration, required lens contract), in that declared order. It is NOT `pre_materialization_digest`
+//! and NOT `std.materialization_provider` `request_key`: those are structural Fnv folds (the digest
+//! combines the last two axes as a pair, and `request_key` wraps it in an evaluation bucket with demand
+//! kind and declared inputs, a 16-hex `ContentHash`). This one left-folds six SHA-256 digests under a
+//! fixed tag into a 64-hex key. STATED REASON FOR THE DIVERGENCE (DESIGN 3b, diverges with a reason):
+//! a collision here serves a wrong compiler rather than missing, so the store address must be
+//! cryptographic, and the provider does not yet serve the native artifact so there is no `request_key`
+//! to inhabit. Axis identity and order are the shared fact; the fold and the wrapper are this seed's.
+//! The relation keyed is `ArtifactRequest::NativeCompilerArtifactRequest`; this is its first consumer, and
+//! the key is dissolved into `request_key`'s cryptographic realization when the native ancestry lane
+//! makes `provider_serve` the only producer (`native_product_cache_seed_growth`), which is what
+//! discharges the divergence.
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:

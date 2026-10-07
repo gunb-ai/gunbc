@@ -10,14 +10,17 @@ import gunbc.fabric.fabric_blob_r2 {
 }
 
 // THE SHARED REALIZATION OF THE NATIVE PRODUCT STORE (CI programme row R3), BEHIND THE SAME KEY.
-// The request is unchanged: std.materialization_provider ArtifactRequest::NativeCompilerArtifactRequest,
-// whose key the seed folds (v1_compiler.cli_run.native_product_cache derive_key) as the SHA-256 of
-// the six PreMaterializationIdentity axes. R2 is that request's REALIZATION (DESIGN section 3: the
-// interface is the keyed request, the realization is where its product lives): the address is the
-// request key itself, std.fabric_blob's admitted key, and the object is the whole publication,
-// created if absent and never overwritten, so concurrent writers cannot race and a reader never sees
-// half of one. Transport, bucket, release and the credential are gunbc.fabric.fabric_blob_r2's and
-// gunbc.cloudflare.r2_origin's, spelled here by no one.
+// The keyed relation is std.materialization_provider ArtifactRequest::NativeCompilerArtifactRequest.
+// The key the seed derives today is a SEED-LOCAL product key over that request's six causal axes
+// (v1_compiler.cli_run.native_product_cache assemble_key): a left-fold of six SHA-256 digests, NOT
+// pre_materialization_digest and NOT request_key, which are structural Fnv folds. The divergence has
+// a stated reason (a collision serves a wrong compiler, so the store address must be cryptographic)
+// and is discharged when provider_serve becomes the only producer, at which point the address is
+// request_key's cryptographic realization. R2 is this key's REALIZATION (DESIGN section 3: interface,
+// realization): the address is that 64-hex key, std.fabric_blob's admitted Sha256 address, and the
+// object is the whole publication, created if absent and never overwritten, so concurrent writers
+// cannot race and a reader never sees half of one. Transport, bucket, release and the credential are
+// gunbc.fabric.fabric_blob_r2's and gunbc.cloudflare.r2_origin's, spelled here by no one.
 //
 // WHAT THIS MODULE OWNS IS THE ONE FACT NO OTHER HOME DOES: WHICH RUN MAY USE THE STORE, AND HOW.
 // A fork's pull request is handed no workload identity at all, so it has no access and falls back to
@@ -58,7 +61,7 @@ fn native_product_store_access(standing: NativeProductRunStanding) -> NativeProd
   }
 }
 
-// THE ADDRESS IS THE REQUEST KEY, NOT A DERIVATION OF IT: the seed's key is lower hex SHA-256, which
+// THE ADDRESS IS THE SEED'S PRODUCT KEY, NOT A DERIVATION OF IT: the key is lower hex SHA-256, which
 // is exactly std.fabric_blob's Sha256Digest. A key that is not that shape has no address.
 fn native_product_blob_address(key_hex: String) -> FabricBlobAddress? {
   match sha256_hex_digest(hex: key_hex) {

@@ -22,8 +22,8 @@ test fn only_same_repo_runs_and_the_merge_group_have_standing() -> Bool {
   fork && other && pr && mg
 }
 
-// The seed's key (lower hex SHA-256) is the address; anything else has no address.
-test fn the_request_key_is_the_address_and_a_malformed_key_has_none() -> Bool {
+// The seed product key (lower hex SHA-256) is the address; anything else has no address.
+test fn the_product_key_is_the_address_and_a_malformed_key_has_none() -> Bool {
   let ok = match native_product_blob_address(key_hex: live_key) { Present { value: _ } => true, Absent => false }
   let bad = match native_product_blob_address(key_hex: "not-a-digest") { Present { value: _ } => false, Absent => true }
   ok && bad
