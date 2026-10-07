@@ -9,7 +9,7 @@ import gunbc.roadmap_presentation { issue_status_sort_rank }
 import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
 import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph_interactive }
-import gunbc.roadmap_presentation { dependency_cycle_touches }
+
 import gunbc.principal_mention { principal_mention_read, principal_mention_markdown }
 import extdeps.uri { uri_wire }
 import gunbc.site.controls { site_client_path }
@@ -52,10 +52,10 @@ import gunbc.roadmap_style { roadmap_styles, roadmap_css, round_fill_delay_var, 
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
-  roadmap_parent_ids, roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
+  roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
   SectionElement, Prose, Group, SectionGroup, Closes, MemberOf, AdmittedRoot,
 }
-import gunbc.roadmap_status { line_ticket, TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
+import gunbc.roadmap_status { line_ticket, AuthoredLine }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
@@ -71,7 +71,8 @@ import gunbc.roadmap_authority {
   declared_roadmap_edges,
   closing_contract_family_claim, ticket_headline_of,
 }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title, ReadinessGraph }
+
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, ReadinessGraph }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
   AlignmentLevel, RootPrinciplesLevel, ProjectIntentLevel, TaskContractLevel,
@@ -111,8 +112,7 @@ import gunbc.roadmap_presentation {
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
-  WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
-  WorkBandEntry, BandRow, BandFamily, BandProject,
+  WorkFamilyDecl, WorkFamilyMemberFact,
   ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
   IssueTableRow,
   worker_alive_from_process,
@@ -221,10 +221,6 @@ fn dashboard_instance_banner() -> Fragment {
 // and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated
 // claim for someone. The client program repaints both from storage on load, exactly as before.
 
-
-
-
-
 // A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT
 // wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A
 // ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes
@@ -244,7 +240,6 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 // which rows a person navigates to -- a fact this page owns. If the pair ever disagrees the tell is
 // a 404 from a header link, which is why the link text and the route literal are the only two
 // spellings and both live one grep apart.
-
 
 // The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
 // work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to
@@ -1385,14 +1380,6 @@ fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext
 // ProgramProgressView consumer: its ready-obligation count is the causal link between the program
 // claim and the queue below it.
 
-fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
-  Element {
-    tag: "li",
-    attributes: node_li_attributes(view: view),
-    children: render_task_row(view: view, observation: observation),
-  }
-}
-
 // MEMBER ROWS ARE SUMMARY-ONLY (owner defect fix 2026-09-23: fifteen stacked 'inspect'
 // disclosures in/after one row on the old dashboard lanes). Inside a project disclosure or a
 // family group, every member task rendered a FULL taskbar row including its own taskbar-inspect
@@ -1410,35 +1397,6 @@ fn member_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragm
     children: [ taskbar_nodes(view: view, bar: bar, project: none) ],
   }
 }
-
-fn workspace_rows_ul(rows: List<WorkRowView>, observation: ObservationImpactView) -> Fragment {
-  el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
-}
-
-fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -> Fragment {
-  el_class("li", "family-group", [
-    el_class("div", "family-head", [
-      el_class("span", "family-claim", [ txt(family.claim) ]),
-      el_class("span", "family-count", [ txt(concat(to_string(count(family.rows)), " nodes")) ]),
-    ]),
-    el_class("ul", "family-rows", map(family.rows, v => member_row_li(view: v, observation: observation))),
-  ])
-}
-
-// THE PROJECT ROW (operator request 2026-09-20). The row's own face is the SAME row shape every
-// task renders — the decided head (chips, headline, dispatch actuator), its activity region, its
-// disclosure — followed by the two project-only regions: the derived progress summary ("k of n
-// tasks closed" plus a CSS-only bar whose segments are flex-weighted by the counts, the round
-// strip's proportional-by-construction idiom, so no percentage arithmetic ever rounds) and the
-// task disclosure. The disclosure is the page's existing details/summary idiom; its open attribute
-// is the seam's DECIDED auto_open, never authored per project. A COLLAPSED chain (operator ruling
-// 2026-09-21, see gunbc.roadmap_presentation) carries its swallowed intermediate projects as the
-// chain line inside this disclosure, so collapse never drops a node. Rendered depth is capped at
-// project_render_depth_cap levels: a project AT the cap renders its tasks behind a collapsed
-// "+N deeper" disclosure (N = the tasks hidden at the next level) rather than an open one — the
-// rows beyond still render inside it, so the cap bounds the default view without ever dropping a
-// node. Nested task rows are emitted by the same workspace_row_li as every flat row; the row
-// renderer is not forked.
 
 fn project_render_depth_cap() -> Int { 3 }
 
@@ -1533,22 +1491,6 @@ fn project_tree_li(view: ProjectTreeView, observation: ObservationImpactView) ->
         project_tasks_details(view: view, observation: observation))),
   }
 }
-
-fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fragment {
-  match entry {
-    BandRow { row } => workspace_row_li(view: row, observation: observation)
-    BandFamily { family } => family_group_li(family: family, observation: observation)
-    BandProject { project } => project_tree_li(view: project, observation: observation)
-  }
-}
-
-fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> Fragment {
-  el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
-}
-
-// THE BAND SHELLS ARE RETIRED WITH THE VIEWS (owner ruling 2026-09-25): the frontier-bucket band
-// renderers had no caller left once the served page dropped the forest; the entry renderer
-// (workspace_entries_ul and its chain) stays for the /sandbox exhibit.
 
 fn issue_owner_value(view: WorkRowView) -> String {
   fold(view.supporting_facts, init: "", f: (acc, f) =>
@@ -1913,8 +1855,6 @@ fn issue_event_text(env: RoadmapEventEnvelope) -> String {
 fn issue_events_newest_first(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
   roadmap_issue_history_newest_first(envs: envs)
 }
-
-
 
 // CODE-ISH CONTENT GETS MONO BLOCKS, never prose paragraphs (owner mandate 2026-09-25): a field
 // value that spans lines or names code (a fn signature, a module path) renders in a pre block on
@@ -2288,7 +2228,7 @@ fn issue_head_chip_nodes(view: WorkRowView) -> List<Fragment> {
 // THE PROJECT PATH BREADCRUMB: one navigation answer per issue, rendered directly above the page
 // body. The ONLY derivation named is alignment_resolve -- the same resolution the dispatch gate
 // consumes -- never a second path answer folded out of the raw memberships. The ready arm renders
-// the chain's levels ROOT-TO-LEAF: each project level links to its /project/<node_id> suite, the
+// the chain's levels ROOT-TO-LEAF: each project level links to its own /issue/<node_id> page, the
 // task level is the current page and renders as plain text (no self-link), and the
 // root-principles pointer is skipped (it is a pointer to gunbc.design_document, not a page). The
 // unresolved arm renders the typed refusal itself -- a partial path is never dressed as a complete
@@ -2326,7 +2266,7 @@ fn issue_breadcrumb_crumb_node(crumb: IssueBreadcrumbCrumb) -> Fragment {
   match crumb {
     IssueBreadcrumbProject { node_id, purpose, boundary } =>
       el_attrs("a", [
-        attr(name: "href", value: join(["/project/", node_id], "")),
+        attr(name: "href", value: join(["/issue/", node_id], "")),
         attr(name: "title", value: boundary),
       ], [ txt(purpose) ])
     IssueBreadcrumbTask { node_id: _, purpose, boundary } =>
@@ -2714,134 +2654,12 @@ el_class("main", "issue-detail", [
 ])
 }
 
-// THE PROJECT SUITE PAGE (GET /project/<node_id>): ONE project's direct membership listing --
-// the members declared under it in gunbc.roadmap_nesting, in authored order as the base order,
-// then Kahn-layered by the declared dependency edges restricted to the member set: a member whose
-// in-set prerequisites include another member sorts AFTER that member, and members with no
-// in-set prerequisites keep their authored order at the front. The heading is the project row's
-// own ticket headline; an absent row or a non-ticket row renders the not-found document, the same
-// grain as the issue detail route.
-type ProjectSuiteRow { node_id: String, title: String, cycle: Bool }
-
-// THE HEADING'S TICKET PROJECTION: exactly one declared row, and that row a ticket -- anything
-// else is a not-found, because a suite whose heading cannot be read against the row's own brief
-// would be a listing no check can read against.
-fn project_suite_headline(nodes: List<RoadmapNode>, node_id: String) -> String? {
-  match (filter(nodes, n => (n.node as String) == node_id)).first() {
-    Absent => none
-    Present { value: rn } =>
-      match rn.line {
-        TicketLine { done: _, ticket } => Present { value: ticket.headline }
-        DerivableLine { prs: _, title: _, description: _ } => none
-        AuthoredLine { done: _, content: _ } => none
-        PlainLine { content: _ } => none
-        SupersededLine { by: _, content: _ } => none
-      }
-  }
-}
-
-// THE DIRECT MEMBERS, in authored order: the memberships whose project field names this suite --
-// nothing from another project, nothing nested one level deeper.
-fn project_suite_member_ids(memberships: List<RoadmapMembership>, project: String) -> List<String> {
-  map(filter(memberships, m => m.project == project), m => m.member)
-}
-
-// A MEMBER'S IN-SET PREREQUISITES: the parent ends of its declared dependency edges (the
-// roadmap_parent_ids read) restricted to members of this suite -- an edge whose parent stands
-// outside the member set constrains nothing here.
-fn project_suite_in_set_prereqs(edges: List<RoadmapEdge>, member: String, members: List<String>) -> List<String> {
-  filter(roadmap_parent_ids(edges: edges, node: member as NonEmptyStr as RoadmapNodeId), p => any(members, m => m == (p as String)))
-}
-
-// ONE KAHN LAYER: every not-yet-emitted member whose in-set prerequisites are all already emitted,
-// in authored order. A STABLE sort by construction: filter preserves the authored order the
-// membership relation supplies.
-fn project_suite_next_layer(members: List<String>, edges: List<RoadmapEdge>, emitted: List<String>) -> List<String> {
-  filter(members, m => !any(emitted, e => e == m)
-    && all(project_suite_in_set_prereqs(edges: edges, member: m, members: members), p => any(emitted, e => e == p)))
-}
-
-// A CYCLE STOPS PROGRESS: when no not-yet-emitted member can advance (a dependency cycle inside
-// the member set), the remainder emits in authored order -- the listing degrades to declaration
-// order rather than refusing the page over a fixture cycle. The fuel bound is count(members):
-// every advancing layer emits at least one member, so a cycle is the only way to exhaust it.
-fn project_suite_order_step(members: List<String>, edges: List<RoadmapEdge>, emitted: List<String>, fuel: Int) -> List<String> {
-  if fuel <= 0 {
-    concat(emitted, filter(members, m => !any(emitted, e => e == m)))
-  } else {
-    let layer = project_suite_next_layer(members: members, edges: edges, emitted: emitted)
-    if count(layer) == 0 {
-      concat(emitted, filter(members, m => !any(emitted, e => e == m)))
-    } else {
-      project_suite_order_step(members: members, edges: edges, emitted: concat(emitted, layer), fuel: fuel - 1)
-    }
-  }
-}
-
-fn project_suite_ordered_members(members: List<String>, edges: List<RoadmapEdge>) -> List<String> {
-  project_suite_order_step(members: members, edges: edges, emitted: [], fuel: count(members))
-}
-
-// THE ROW'S TITLE: the node row's own title when one exists, the raw id when none does -- an
-// undeclared member still lists, honestly labeled.
-fn project_suite_member_title(nodes: List<RoadmapNode>, member: String) -> String {
-  match (filter(nodes, n => (n.node as String) == member)).first() {
-    Absent => member
-    Present { value: rn } => node_title(item: rn.line)
-  }
-}
-
-// THE LISTING, one row per direct member, topologically ordered.
-fn project_suite_rows(memberships: List<RoadmapMembership>, edges: List<RoadmapEdge>, nodes: List<RoadmapNode>, project: String) -> List<ProjectSuiteRow> {
-  let ordered = project_suite_ordered_members(members: project_suite_member_ids(memberships: memberships, project: project), edges: edges)
-  map(ordered, m => ProjectSuiteRow { node_id: m, title: project_suite_member_title(nodes: nodes, member: m), cycle: dependency_cycle_touches(node_id: m, edges: edges) })
-}
-
-fn project_suite_row_node(row: ProjectSuiteRow) -> Fragment {
-  el_class("li", "project-suite-member", [
-    el_attrs("a", [
-      attr(name: "href", value: join(["/issue/", row.node_id], "")),
-      attr(name: "title", value: row.node_id),
-    ], [ txt(row.title) ]),
-    el_class("span", "issue-graph-warning", if row.cycle { [txt(" · dependency cycle")] } else { [] }),
-  ])
-}
-
-fn project_suite_page_launch(headline: String, node_id: String, rows: List<ProjectSuiteRow>, viewer: String) -> Fragment {
-  site_document(title: join(["gunbc — project ", node_id], ""), heading: "project", styles: roadmap_styles(), content: [
-el_class("main", "project-suite", [
-          el_class("div", "issue-detail-head", [
-            el_class("span", "issue-id", [ txt(node_id) ]),
-            el_class("h1", "issue-detail-title", [ txt(headline) ]),
-          ]),
-          el_class("p", "issue-graph-warning", if any(rows, r => r.cycle) { [txt("A dependency cycle prevents a complete ordering. Unresolved members follow in declared order.")] } else { [] }),
-          if count(rows) == 0 {
-            el_class("p", "project-suite-empty", [ txt("no direct members declared") ])
-          } else {
-            el_class("ul", "project-suite-members", map(rows, r => project_suite_row_node(row: r)))
-          },
-        ])
-])
-}
-
-// THE NOT-FOUND DOCUMENT, the issue route's grain: an absent row or a non-ticket row is a missing
-// project, said in one sentence.
-fn project_suite_not_found_page(node_id: String, viewer: String) -> Fragment {
-  site_document(title: "gunbc — project not found", heading: "project", styles: roadmap_styles(), content: [
-el_class("main", "project-suite", [
-          el_class("p", "issue-not-found", [ txt(join(["no project named ", node_id, " is declared as a ticket in the roadmap authority"], "")) ]),
-        ])
-])
-}
-
 // THE WORKSPACE RENDERS THE TABLE ALONE (owner ruling 2026-09-25: the tree/bands views and their
 // forest container retire from the served page — see the surface note above issue_owner_value).
 // The band derivation still runs one level down: DailyWorkspaceView's active/ready/not-ready/done/
 // superseded entries are what the flat table flattens (workspace_flat_table), so the table's row
 // ORDER is the band order and every row carries its data-band for the filter chips — the band
-// vocabulary outlives the band SURFACE. The forest renderer below (workspace_entries_ul and its
-// chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
-// calls it.
+// vocabulary outlives the band SURFACE.
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", [

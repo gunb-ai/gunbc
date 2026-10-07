@@ -29,7 +29,7 @@ import gunbc.compiler_frontend_program_interlock {
   milestone_prerequisites,
 }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
-import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
 import gunbc.self_host_behavioral_equivalence_receipt {
@@ -702,6 +702,7 @@ fn standing_rung_drop_outstanding(drop: RungDrop) -> List<String> {
   match drop.standing {
     Standing => [drop.identity as String]
     Retired { trigger_fired: _ } => []
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => []
   }
 }
 
