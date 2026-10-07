@@ -1211,17 +1211,21 @@ test fn w_bmc_secure_apply_of_another_unit_is_refused() -> Bool {
 }
 
 test fn w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply() -> Bool {
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc_key = bmc_secure_apply_key()
   match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
     Present { value: apply } =>
-      match discharge_bmc_secure_apply(
-        key: step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key),
+      match bmc_secure_bound(
+        key: bmc_key,
+        identity_key: identity,
+        identity_subject: mtjade1_intake_subject(),
+        prior_key: prior,
         inputs: mtjade1_bmc_inputs(reading: apply.application.plan.diverged, grant: none, apply: Present { value: apply }, capability: none),
-        standing: apply.application.plan.managed_write.route,
-        request: apply.application.plan.managed_write.request,
       ) {
-        Absent => true
-        Present { value: _ } => false
+        StepRefused { key: _, cause: c } => match c { BmcSecureAuthorizationUndischarged => true  _ => false }
+        _ => false
       }
   }
 }
