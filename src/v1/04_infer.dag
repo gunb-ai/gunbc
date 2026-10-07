@@ -14109,7 +14109,7 @@ fn unify_binding_is_uninformative(n: Node) -> Bool {
           Absent => false
         }
       } else {
-        n.connective == Coproduct && (n.name == "FreeMonoid" || n.name == "List")
+        n.name == "FreeMonoid" || n.name == "List"
       }
   }
 }

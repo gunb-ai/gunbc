@@ -24520,9 +24520,8 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
                         }
                     }
                 } else {
-                    break (n.connective.clone() == Connective::Coproduct
-                        && (n.name.clone() == "FreeMonoid".to_string()
-                            || n.name.clone() == "List".to_string()));
+                    break (n.name.clone() == "FreeMonoid".to_string()
+                        || n.name.clone() == "List".to_string());
                 }
             }
         }
