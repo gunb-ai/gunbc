@@ -6,7 +6,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.fabric.workspace_source {
   WorkspaceTranscriptPlaceholder, WorkspaceStagedPlaceholder, workspace_stage_placeholders, WorkspacePlaceholdersStaged, WorkspacePlaceholdersRefused,
-  workspace_pack_archive, WorkspacePackBuilt, WorkspacePackRefused,
+  workspace_pack_archive, workspace_pack_refusal_words, WorkspacePackBuilt, WorkspacePackRefused,
   WorkspacePackClean, WorkspacePackCarriesExcluded, WorkspacePackPlaceholderAbsent, WorkspacePackPlaceholderNotRegular,
   WorkspacePackPlaceholderSizeDiffers, WorkspacePackPlaceholderUnread, WorkspacePackPlaceholderDigestDiffers,
 }
@@ -68,7 +68,7 @@ fn pack(dir: String, plan: List<WorkspaceTranscriptPlaceholder>, swap_in_real_co
         "swap-failed"
       } else {
         match workspace_pack_archive(staging: staging, members: [relative_to_root(path: join([dir, "/real/README.md"], "")) as NonEmptyStr], placeholders: staged, placeholder_root: root) {
-          WorkspacePackRefused { verdict: v, why: w } => join(["pack-refused: ", v, " ", w], "")
+          WorkspacePackRefused { refusal: v, why: w } => join(["pack-refused: ", workspace_pack_refusal_words(refusal: v), " ", w], "")
           WorkspacePackBuilt { archive: _, readback: r } =>
             match r {
               WorkspacePackClean { members: n } => concat("clean ", to_string(n))
