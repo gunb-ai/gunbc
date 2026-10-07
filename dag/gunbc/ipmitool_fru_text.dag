@@ -8,18 +8,23 @@ import v2.std.algebra { filter }
 // THE PURE LINE DECODE of `ipmitool fru print` text: each field is read from exactly one line.
 // Shared by every consumer of a committed FRU capture (the Mt. Jade identity read and the board
 // authority read), so the line grammar has one home.
+// The two grains are two types: a field read can only be absent, repeated or empty, so the
+// capture-level failures are not representable in what `fru_field` returns.
+type FruFieldGapKind
+  = FruFieldAbsent { field: NonEmptyStr }
+  | FruFieldRepeated { field: NonEmptyStr }
+  | FruFieldEmpty { field: NonEmptyStr }
+
 type FruCaptureGap
   = FruCaptureUnreadable { error: String }
   | FruCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
-  | FruFieldAbsent { field: NonEmptyStr }
-  | FruFieldRepeated { field: NonEmptyStr }
-  | FruFieldEmpty { field: NonEmptyStr }
+  | FruFieldGapped { gap: FruFieldGapKind }
   | FruSubjectLinkUnobserved
   | FruBoundToAnotherLink { board_extra: String }
 
 type FruFieldRead
   = FruFieldValue { value: NonEmptyStr }
-  | FruFieldGap { gap: FruCaptureGap }
+  | FruFieldGap { gap: FruFieldGapKind }
 
 fn fru_line_key(line: String) -> String {
   match split(s: line, delimiter: " : ").first() {

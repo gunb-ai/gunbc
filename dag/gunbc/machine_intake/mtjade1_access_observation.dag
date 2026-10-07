@@ -52,7 +52,7 @@ import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import gunbc.board_authority_binding { mtjade1_fru_receipt, receipt_sha256_hex }
 import gunbc.ipmitool_fru_text {
-  FruCaptureGap, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
+  FruCaptureGap, FruFieldGapped, FruFieldGapKind, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
   FruSubjectLinkUnobserved, FruBoundToAnotherLink, FruFieldRead, FruFieldValue, FruFieldGap, fru_field, fru_line_key, fru_line_value,
 }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
@@ -435,9 +435,9 @@ fn fru_gap_text(gap: FruCaptureGap) -> NonEmptyStr {
   match gap {
     FruCaptureUnreadable { error: e } => join(["the recorded FRU capture could not be read: ", e], "") as NonEmptyStr
     FruCaptureDigestMismatch { expected: x, observed: o } => join(["the recorded FRU capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
-    FruFieldAbsent { field: f } => join(["the recorded FRU capture carries no ", f as String, " line"], "") as NonEmptyStr
-    FruFieldRepeated { field: f } => join(["the recorded FRU capture carries more than one ", f as String, " line"], "") as NonEmptyStr
-    FruFieldEmpty { field: f } => join(["the recorded FRU capture's ", f as String, " is empty"], "") as NonEmptyStr
+    FruFieldGapped { gap: FruFieldAbsent { field: f } } => join(["the recorded FRU capture carries no ", f as String, " line"], "") as NonEmptyStr
+    FruFieldGapped { gap: FruFieldRepeated { field: f } } => join(["the recorded FRU capture carries more than one ", f as String, " line"], "") as NonEmptyStr
+    FruFieldGapped { gap: FruFieldEmpty { field: f } } => join(["the recorded FRU capture's ", f as String, " is empty"], "") as NonEmptyStr
     FruSubjectLinkUnobserved => "the subject unit has no observed BMC link address to bind the FRU capture to"
     FruBoundToAnotherLink { board_extra: b } => join(["the recorded FRU capture names Board Extra ", b, ", which is not this unit's observed BMC link"], "") as NonEmptyStr
   }
@@ -445,19 +445,19 @@ fn fru_gap_text(gap: FruCaptureGap) -> NonEmptyStr {
 
 fn decode_fru_fields(content: String) -> FruDecode {
   match fru_field(content: content, field: "Board Serial") {
-    FruFieldGap { gap: g } => FruRefused { gap: g }
+    FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
     FruFieldValue { value: serial } =>
       match fru_field(content: content, field: "Board Part Number") {
-        FruFieldGap { gap: g } => FruRefused { gap: g }
+        FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
         FruFieldValue { value: board_pn } =>
           match fru_field(content: content, field: "Board Product") {
-            FruFieldGap { gap: g } => FruRefused { gap: g }
+            FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
             FruFieldValue { value: product } =>
               match fru_field(content: content, field: "Chassis Part Number") {
-                FruFieldGap { gap: g } => FruRefused { gap: g }
+                FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
                 FruFieldValue { value: chassis_pn } =>
                   match fru_field(content: content, field: "Chassis Serial") {
-                    FruFieldGap { gap: g } => FruRefused { gap: g }
+                    FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
                     FruFieldValue { value: chassis_serial } =>
                       FruDecoded {
                         fields: FruIdentityFields {
@@ -485,7 +485,7 @@ fn decode_fru_capture(content: String, expected_sha256: NonEmptyStr, link: Eui48
       Absent => FruRefused { gap: FruSubjectLinkUnobserved }
       Present { value: l } =>
         match fru_field(content: content, field: "Board Extra") {
-          FruFieldGap { gap: g } => FruRefused { gap: g }
+          FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
           FruFieldValue { value: extra } =>
             if (extra as String) == board_extra_spelling(link: l) {
               decode_fru_fields(content: content)
