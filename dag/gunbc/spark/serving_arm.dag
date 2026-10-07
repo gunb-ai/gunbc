@@ -1344,41 +1344,6 @@ data glm53_native_kv_auto_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
   modality: ModalityOmitted,
 }
 
-// ── THE V4.1 LAUNCH POLICY: WHAT THE MODEL DECIDES, OVER WHAT THE ENVELOPE DECIDES ─────────────
-//
-// THIS WAS A MINT THAT BUILT A WHOLE PROFILE (deepseek_v41_measurement_profile), deleted with the
-// deforking: its model half is this row, and its capacity half is the V4.1 cold intent and envelope
-// (gunbc.spark.v41_group_a_launch v41_group_a_profile) through the one profile derivation every model
-// uses. Half its fields belonged to another authority, which is why it could not stay a row of its own. The capacity
-// measurement (gunbc.spark.v41_capacity_measurement) owns the window, the admitted sequences, the
-// scheduler budget, the memory fraction and the prefix-caching request: they are the axes it measures
-// at, and a row here would be a second copy of each. What this mint fixes is what the V4.1 launch
-// itself decides, and nothing a caller may override:
-//   - the KV cache is requested as fp8_ds_mla, the layout the measurement's startup receipt requires
-//     to resolve (ResolvedFp8DsMla) before it admits a rank;
-//   - the Engram tables are served through the prefetch path -- cpu_offload true, dp_shared_memory
-//     false -- which is what the file-backed overlay requires and refuses at model init without;
-//   - THE LAUNCH SERVES TEXT ONLY, AND THE VISION CAPABILITY IS DROPPED ON PURPOSE. The checkpoint is
-//     the vision variant (vision_n_layers > 0), and at the pinned revision that widens every prefill
-//     sliding-window row from sliding_window (128) to sliding_window + vision_max_n_token (1152) for
-//     bidirectional image spans (vllm/v1/attention/backends/mla/sparse_swa.py prefill_index_width,
-//     vllm/models/deepseek_v4_1/attention.py max_image_tokens). FlashInfer's SM120 DSv4 kernel has no
-//     specialization at 1152, and every call with 64 or fewer query tokens must take one, so attempt
-//     13 died in CUDA-graph capture on all four ranks. --language-model-only stubs the tower and
-//     admits no image; overriding vision_n_layers to 0 is what returns the width to 128, because
-//     max_image_tokens is read off the config and not off the modality limit. A launch that wants
-//     images back needs an SM120 kernel at the widened width first; it is a different product, not
-//     this one with a flag flipped.
-// The route's port and served name are the caller's because they belong to the route this launch
-// answers, not to the model.
-data deepseek_v41_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
-  checkpoint: DeepseekV41FlashDba1be0a,
-  kv_cache_dtype: KvFp8DsMla,
-  indexer_kv_dtype: IndexerKvDtypeOmitted,
-  engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
-  modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
-}
-
 // THE NVFP4 CHECKPOINT'S POLICY: its KV request is its own row's; the rest is the base model's (no
 // Engram, text by omission, indexer at its default).
 data glm53_flash_nvidia_nvfp4_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {

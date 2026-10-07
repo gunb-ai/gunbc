@@ -406,13 +406,6 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
-    site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    hold: group_a_dev_standing_grant.ruling.interlock,
-    refusal: site(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_decide_release"),
-    premise: "the release runs only under D0's durable claim of the consent slot and its pending state, and refuses (D0HostNotQuiescent) unless a fresh reading taken at filing time finds every host quiescent; an unanswering host refuses as unobserved" as NonEmptyStr,
-    hold_owning_roots: [] as List<InterlockRoot>,
-  },
-  PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
@@ -931,36 +924,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "pair_serving_d0_ci_wet"),
-    effect: PrivilegedEffect {
-      subject: "D0: suspend a group's pair-serving authority for a keyed successor -- claim the consent slot, move the authority partition twice and finalize the host-placement preparation on the fabric DB" as NonEmptyStr,
-      frequency: FleetOnce,
-      reversibility: IrreversibleEffect { what_is_lost: "the incumbent pair's serving authority: a suspended authority is not restored by re-applying, only by a further authority transition" as NonEmptyStr },
-      surface: ApiSurface,
-      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
-      minted_reach: MintsNoCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
-    realized: RealizedUnauthorized,
-    divergence_reason: Present { value: fabric_store_write_unverified },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    effect: PrivilegedEffect {
-      subject: "D0: release a group's pair-serving authority to the fleet under a committed standing grant -- claim the consent slot, read every host quiescent fresh, and move the authority partition to ReleasedToFleet" as NonEmptyStr,
-      frequency: FleetOnce,
-      reversibility: IrreversibleEffect { what_is_lost: "the group's pair-serving authority: a released authority is not restored by re-applying, only by a new establish" as NonEmptyStr },
-      surface: ApiSurface,
-      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
-      minted_reach: MintsNoCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: StandingRulingUnderInterlock { ruling: group_a_dev_standing_grant.ruling },
-    },
-    realized: RealizedUnauthorized,
-    divergence_reason: Present { value: fabric_store_write_unverified },
-  },
-  PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.host_commitment", decl_name: "claim_host_effect_live"),
     effect: PrivilegedEffect {
       subject: "admit a bounded host effect on the host-placement partition of the fabric DB for a v41 lane" as NonEmptyStr,
@@ -979,21 +942,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.spark.host_commitment", decl_name: "settle_host_effect_live_over"),
     effect: PrivilegedEffect {
       subject: "release a bounded host effect on the host-placement partition of the fabric DB when its lane settles" as NonEmptyStr,
-      frequency: EveryProvision,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
-      minted_reach: MintsNoCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
-    realized: RealizedUnauthorized,
-    divergence_reason: Present { value: fabric_store_write_unverified },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.spark.standing_host_effect_recover", decl_name: "standing_host_effect_recover_ci_wet"),
-    effect: PrivilegedEffect {
-      subject: "release a dead lane's host-effect claim on a Group A host under the committed standing grant: exactly one unreleased claim derived from the live partition, a typed claimant disposition, a fresh quiescence read of that claim's residue, and a readback" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

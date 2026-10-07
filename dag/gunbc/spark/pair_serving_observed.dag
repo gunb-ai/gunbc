@@ -203,17 +203,6 @@ data first_pair_collective_env_live: CollectiveTransportEnvObserved = Collective
 data first_pair_script_tp_socket_ifname: NonEmptyStr = "enp1s0f0np0" as NonEmptyStr
 data first_pair_container_baked_node_ip: NonEmptyStr = "192.168.50.58 (foreign to every fleet segment)" as NonEmptyStr
 
-// Units on each host and their observed activity. The head's unit is a boot-time bring-up that is
-// inactive while the container it started 36 hours earlier keeps running; the engine itself was
-// launched by nohup from launch_prod_pair.sh with stdout captured inside the container.
-type UnitObserved {
-  host: HostIdentity
-  unit: NonEmptyStr
-  scope: NonEmptyStr
-  active_state: NonEmptyStr
-  role: NonEmptyStr
-}
-
 data first_pair_stdout_capture: NonEmptyStr = "/root/prod_a.log inside container dsv4 on 192.168.1.225 (nohup $LAUNCH > $LOG 2>&1)" as NonEmptyStr
 
 // THE POOL, FROM THE ENGINE'S OWN STARTUP LINE. The earlier figure derived from num_gpu_blocks x

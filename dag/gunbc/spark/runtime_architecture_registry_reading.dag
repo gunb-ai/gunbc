@@ -43,30 +43,6 @@ type ArchitectureRegistryReading {
   architectures: List<NonEmptyStr>
 }
 
-// A READING APPLIES TO A DESIRED IMAGE ONLY IF IT WAS TAKEN INSIDE THAT EXACT DIGEST. There is no
-// near-match arm and no repository-level fallback: two digests of one repository are two different
-// images, and the whole reason this fleet pins by digest is that they answer differently.
-// THE REGISTRY DUMP'S TWO LINE KINDS, read the same way by every probe that prints one: a
-// `REGISTRY_COUNT <n>` line and one `REGISTERED <architecture>` line per architecture
-// (gunbc.spark.v41_runtime_image_probe and gunbc.spark.glm53_kvplan_image both print this shape). A
-// reading is minted from a dump only when the two agree; that check is the caller's, because the
-// caller also owns which digest the dump was taken inside.
-fn registry_dump_architectures(stdout: String) -> List<NonEmptyStr> {
-  flat_map(split(stdout, "\n"), l => {
-    let t = trim(s: l)
-    if starts_with(s: t, prefix: "REGISTERED ") && length(t) > 11 { [substring(s: t, start: 11, end: length(t)) as NonEmptyStr] } else { [] as List<NonEmptyStr> }
-  })
-}
-
-fn registry_dump_count(stdout: String) -> Int? {
-  first(flat_map(split(stdout, "\n"), l => {
-    let t = trim(s: l)
-    if starts_with(s: t, prefix: "REGISTRY_COUNT ") {
-      match parse_int(s: substring(s: t, start: 15, end: length(t))) { Present { value: n } => [n]  Absent => [] as List<Int> }
-    } else { [] as List<Int> }
-  }))
-}
-
 fn reading_applies_to(r: ArchitectureRegistryReading, desired_reference: NonEmptyStr) -> Bool {
   let observed = r.image_reference as String
   let desired = desired_reference as String

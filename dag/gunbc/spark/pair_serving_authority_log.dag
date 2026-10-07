@@ -1955,30 +1955,6 @@ fn placement_abort(store: FabricStorageBinding, preparation: EventId, reason: St
   placement_abort_at(store: store, read: placement_read(store: store), preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
 }
 
-// A GROUP'S PENDING PREPARATION, REPAIRED WHERE THE JOIN ALLOWS: none pending is nothing to do;
-// a pending one an authority event consumed is finalized (a saga that died after its group
-// append); a pending one no authority event consumed is left for the operator's abort -- this
-// caller cannot know the claimant's standing -- and reported as still fencing. A transaction
-// that resumes on a group calls this before its own saga, because one saga is pending at a time.
-fn placement_repair_pending(store: FabricStorageBinding, group: FabricGroup, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup? {
-  match placement_fold_read(store: store) {
-    PlacementUnread { step: st, reason: why } => Present { value: PlacementCleanupUnread { cause: join(["the placement partition could not be read at ", st, ": ", why], "") } }
-    PlacementReadAt { head: _, effects: _, preparations: preps } =>
-      match first(filter(preps, r => same_group(a: r.group, b: group) && preparation_is_pending(r: r))) {
-        Absent => none
-        Present { value: r } => {
-          let consumed = preparation_consumption(store: store, preparation: r.id)
-          match consumed {
-            PreparationConsumedBy { preparation: _, authority_event: _, state: _ } => Present { value: placement_finalize(store: store, consumed: consumed, actor: actor, at: at) }
-            PreparationNotConsumed { record: _, group_head: _, cancelled: _ } => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: join(["preparation ", r.id as String, " (", preparation_line(r: r), ") is pending and no authority event consumed it; an operator aborts it with host_placement_abort_wet"], "") } }
-            PreparationAbsent => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: "the pending preparation vanished between two reads" } }
-            PreparationConsumptionUnread { step: st, reason: why } => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: join(["the join could not be read at ", st, ": ", why], "") } }
-          }
-        }
-      }
-  }
-}
-
 fn placement_cleanup_line(c: PlacementCleanup) -> String {
   match c {
     PlacementFinalizedAt { preparation: p, id: _ } => join(["placement finalized (preparation ", p as String, ")"], "")
@@ -2281,33 +2257,9 @@ fn authority_transition_append(store: FabricStorageBinding, group: FabricGroup, 
   event_log_append_with(store: store, partition: pair_authority_partition(group: group), event: event, expected: head, encode: fn(e) { pair_authority_event_wire_text(event: e) })
 }
 
-// RECORD THE ENTRY STATE: the receipt's bytes appended as their own event, against the head the
-// caller observed, so a concurrent writer is a stale refusal and never a receipt attributed to
-// the wrong state. The id returned is the store's content address of the bytes; the settling
-// transition names it, and a reader fetches the bytes by it from the store.
-type EntryStateRecord
   = EntryStateRecordedAt { id: EventId }
   | EntryStateRecordStale { observed: HeadExpectation }
   | EntryStateRecordRefused { step: String, reason: String }
-
-fn pair_serving_authority_record_entry_state(store: FabricStorageBinding, group: FabricGroup, expected_head: HeadExpectation, transaction: NonEmptyStr, body: String, actor: NonEmptyStr, at: EpochSecs) -> EntryStateRecord {
-  let parent = match expected_head {
-    HeadAbsent => none
-    HeadAt { id: h } => Present { value: h }
-  }
-  let event = ChainEvent {
-    partition: pair_authority_partition(group: group),
-    parent: parent,
-    recorded_at: at,
-    actor: actor,
-    payload: EntryStateRecorded { transaction: transaction, body: body },
-  }
-  match event_log_append_with(store: store, partition: pair_authority_partition(group: group), event: event, expected: expected_head, encode: fn(e) { pair_authority_event_wire_text(event: e) }) {
-    EventAppended { id: h } => EntryStateRecordedAt { id: h }
-    EventAppendStale { expected: _, observed: o } => EntryStateRecordStale { observed: o }
-    EventAppendRefused { cause: c } => EntryStateRecordRefused { step: "store", reason: event_log_refusal_wire(cause: c) }
-  }
-}
 
 data current_authority_unread_marker: String = " authority unread at "
 
