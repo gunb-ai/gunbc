@@ -29708,7 +29708,7 @@ const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 const LAYER_COMPILER: &str = "LayerPrefixCompiler";
 const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
 
-// SCAFFOLD (§7 HAND-RUST — authority: `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`).
+// SCAFFOLD (§7 HAND-RUST — authority: `v2.std.layer.layer_prefix_from_dotted_qualified_name`).
 // Host `layer_import_facts` must stamp `LayerImportFact.layer` on every emitted row; the builtin
 // seam cannot call the `.dag` classifier without an interpreter round-trip per file. This mirror
 // is byte-synced to that authority and carries an explicit dissolution trigger — not a second
@@ -29719,7 +29719,7 @@ const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
 pub(crate) const CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER: &str =
     "cli_run_layer_prefix_from_dotted_module_scaffold";
 
-/// Rust mirror of `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`.
+/// Rust mirror of `v2.std.layer.layer_prefix_from_dotted_qualified_name`.
 /// See `CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER`.
 fn layer_prefix_from_dotted_module(module: &str) -> &'static str {
     let parts: Vec<&str> = module.split('.').filter(|p| !p.is_empty()).collect();
