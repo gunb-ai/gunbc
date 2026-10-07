@@ -787,7 +787,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
-      concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- compare against Present { value: .. } or match on the optional")
+      concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional")
     TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
       concat("type argument arity mismatch applying '", t, "': ", to_string(value: s), " type argument(s) supplied, ", to_string(value: d), " type parameter(s) declared")
     TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
