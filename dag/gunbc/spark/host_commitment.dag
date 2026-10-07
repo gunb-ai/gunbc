@@ -620,7 +620,7 @@ fn group_standing_over(group: FabricGroup, partition: GroupPartitionRead, placem
 // re-reads of a live store that could disagree with each other.
 fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> CurrentStandings {
   let placement = placement_fold_read(store: store)
-  let groups = map([FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
+  let groups = map([FabricGroupB {}], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
   let standings = map(groups, gs => group_standing_over(group: gs.group, partition: gs.partition, placement: placement, at: at))
   let unread = flat_map(standings, st => match st { GroupStandingUnread { cause: c } => [c]  GroupStandingEstablished { current: _ } => [] as List<String>  GroupStandingUnclaimed => [] as List<String> })
   if length(unread) != 0 {

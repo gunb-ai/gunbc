@@ -53,14 +53,14 @@ fn w_lease(h: ContentHash, observed_stale: Bool) -> HeldLease {
 
 fn w_active() -> PairServingGroupAuthority {
   PairServingActive {
-    group: FabricGroupB,
+    group: FabricGroupB {},
     exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
   }
 }
 
 fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     transaction: "witness-transaction" as NonEmptyStr,
     authorization_binding: h,
     lease: w_lease(h: h, observed_stale: stale),
@@ -69,7 +69,7 @@ fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
 
 fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspendedForAuthorizedSuccessor {
-    group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     authorization: "witness-authorization" as NonEmptyStr,
     exact_candidate_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
     lease: w_lease(h: h, observed_stale: stale),
@@ -79,14 +79,14 @@ fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
 
 fn w_fenced() -> PairServingGroupAuthority {
   FencedRefusal {
-    group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     cause: "witness-foreign-occupant" as NonEmptyStr,
     disposition_authority: "witness-operator" as NonEmptyStr,
   }
 }
 
 fn w_released(h: ContentHash) -> PairServingGroupAuthority {
-  ReleasedToFleet { group: FabricGroupB, release_receipt: h }
+  ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
 }
 
 // APPLY ACTS ONLY WHEN ACTIVE. The four negatives are the content of this claim: an apply seam that
@@ -181,7 +181,7 @@ test fn a_released_authority_removes_its_hosts_from_the_commitment() -> Bool {
     let released = spark_claimed_members_under(authorities: [w_released(h: h)])
     let suspended = spark_claimed_members_under(authorities: [w_pending(h: h, stale: false)])
     (length(released) == 0)
-      && (length(suspended) == length(fabric_group_hosts(g: FabricGroupB)))
+      && (length(suspended) == length(fabric_group_hosts(g: FabricGroupB {})))
   })
 }
 
@@ -197,7 +197,7 @@ fn w_plan_refused(p: SparkPairApplyPlan) -> Bool {
 
 test fn the_apply_seam_refuses_a_suspended_or_absent_authority() -> Bool {
   with_w_hash(scenario: h => {
-    let r = spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupB))
+    let r = spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupB {}))
     w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_pending(h: h, stale: false) }))
       && w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_released(h: h) }))
       && w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_fenced() }))

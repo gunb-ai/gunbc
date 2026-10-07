@@ -59,8 +59,8 @@ data witness_key: MacKey = MacKey {
   material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
 }
 
-data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB, class: InteractiveQualitySensitive, seats: 1)
-data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB, class: BatchQualityTolerant, seats: 2)
+data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB {}, class: InteractiveQualitySensitive, seats: 1)
+data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB {}, class: BatchQualityTolerant, seats: 2)
 data witness_partition: PartitionId = quality_pool.partition
 data witness_attempt: NonEmptyStr = "attempt-7" as NonEmptyStr
 data witness_admitting: EventId = "ev-acquire-7" as EventId
@@ -68,10 +68,10 @@ data witness_granted_at: EpochSecs = 1000
 data witness_term: EpochSecs = 600
 
 data group_b_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
-  group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
+  group: FabricGroupB {}, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
 )
 data group_b_relaunch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
-  group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
+  group: FabricGroupB {}, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
 )
 
 fn seat_for(attempt: NonEmptyStr, launch: VllmEndpointProcessLaunch) -> HarnessSeatReference {
@@ -97,7 +97,7 @@ data witness_grant: LeaseGrant = lease_grant(
   policy: LeasePolicy { maximum_duration_seconds: witness_term, release_law: QuiescenceRequired },
 )
 
-data group_b_door: FrontDoorIdentity = FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool, tolerant_pool] }
+data group_b_door: FrontDoorIdentity = FrontDoorIdentity { group: FabricGroupB {}, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool, tolerant_pool] }
 
 data service_caller: RequestAuthenticationEvidence = FabricServiceEvidence {
   kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-10-03T00:00:00Z",
@@ -394,7 +394,7 @@ test fn a_permit_whose_class_and_partition_disagree_is_refused() -> Bool {
 }
 
 test fn a_permit_for_a_class_the_door_serves_no_pool_for_is_refused() -> Bool {
-  let quality_only = FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool] }
+  let quality_only = FrontDoorIdentity { group: FabricGroupB {}, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool] }
   let presented = forged_with(seat: witness_seat, partition: tolerant_pool.partition, class: BatchQualityTolerant, generation: 1, expires_at: 1600)
   match front_door_admit(
     evidence: service_caller, presented: presented, mac_result: mac_for(presented: presented), door: quality_only, observed_at: 1100, request: request_one,
@@ -600,7 +600,7 @@ test fn a_seat_whose_use_ended_but_was_not_released_is_released_by_recovery() ->
 // ── The door's pools belong to the door's group ──────────────────────────────────────────────
 
 fn door_with(pools: List<HarnessSeatPoolIdentity>) -> FrontDoorIdentity {
-  FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: pools }
+  FrontDoorIdentity { group: FabricGroupB {}, launch: group_b_launch, suite: HmacSha256, pools: pools }
 }
 
 fn verdict_at_door(door: FrontDoorIdentity) -> FrontDoorVerdict {
@@ -621,7 +621,7 @@ test fn a_door_configured_with_two_pools_for_one_class_refuses_rather_than_choos
 
 test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
   let selected = match front_door_pool_for(door: group_b_door, class: InteractiveQualitySensitive) {
-    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(group: FabricGroupB, class: InteractiveQualitySensitive, seats: 1).partition as String)
+    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(group: FabricGroupB {}, class: InteractiveQualitySensitive, seats: 1).partition as String)
     _ => false
   }
   let admits = match verdict_at_door(door: group_b_door) {

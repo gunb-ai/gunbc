@@ -50,10 +50,10 @@ test fn every_unit_has_exactly_one_leg_on_an_odd_lane() -> Bool {
 
 // THE GROUPS ARE THE CAGES. srv9..srv12 share cage 2, and a host off the fabric belongs to no group.
 test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool {
-  let b = fabric_group_hosts(g: FabricGroupB)
+  let b = fabric_group_hosts(g: FabricGroupB {})
   length(b) == 4
     && any(b, h => host_identity_eq(a: h, b: operator_host_srv9)) && any(b, h => host_identity_eq(a: h, b: operator_host_srv12))
-    && (match fabric_group_of_host(host: operator_host_srv11) { Present { value: FabricGroupB } => true  _ => false })
+    && (match fabric_group_of_host(host: operator_host_srv11) { Present { value: FabricGroupB {} } => true  _ => false })
     && (match fabric_group_of_host(host: operator_host_srv1) { Absent => true  Present { value: _ } => false })
 }
 

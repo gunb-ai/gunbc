@@ -1509,7 +1509,7 @@ test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool {
 // stays correct if `closed_interval` ever refuses for a second cause.
 fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat) -> GroupRankFreeMemoryObserved {
   GroupRankFreeMemoryObserved {
-    group: FabricGroupB,
+    group: FabricGroupB {},
     reported_free_wire: "a designed row whose endpoints are supplied by this claim" as NonEmptyStr,
     free: gib_hundredths_interval(low_hundredths: free_construction_low, high_hundredths: free_construction_high),
     probed_at: "2026-09-15" as NonEmptyStr,

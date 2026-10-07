@@ -588,7 +588,7 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 // here instead of a receipt that quietly claims the wrong silicon.
 fn fabric_group_accelerator(g: FabricGroup) -> NonEmptyStr {
   match g {
-    FabricGroupB => spark_gb10_accelerator
+    FabricGroupB {} => spark_gb10_accelerator
   }
 }
 

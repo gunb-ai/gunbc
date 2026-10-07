@@ -32,7 +32,7 @@ data w_digest_hex: String = "444444444444444444444444444444444444444444444444444
 
 fn w_launch(invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupB,
+    group: FabricGroupB {},
     head: operator_host_srv9,
     systemd_invocation: invocation as NonEmptyStr,
     container_id: "glm-canary" as NonEmptyStr,

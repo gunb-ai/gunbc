@@ -157,7 +157,7 @@ type ServingRouteCeilingStanding
 // (DESIGN section 3), never inside either of them.
 fn serving_route_ceiling(group: FabricGroup) -> ServingRouteCeilingStanding {
   match group {
-    FabricGroupB => serving_group_b_route_turn_ceiling()
+    FabricGroupB {} => serving_group_b_route_turn_ceiling()
   }
 }
 
@@ -166,7 +166,7 @@ fn serving_route_ceiling(group: FabricGroup) -> ServingRouteCeilingStanding {
 // roster that arm's launch is planned from (gunbc.spark.fabric_serving_assignment fabric_serving_head).
 fn serving_route_head(group: FabricGroup) -> FabricServingHead {
   match group {
-    FabricGroupB => fabric_serving_head(a: glm_group_b_serving_assignment)
+    FabricGroupB {} => fabric_serving_head(a: glm_group_b_serving_assignment)
   }
 }
 
@@ -175,7 +175,7 @@ fn serving_route_head(group: FabricGroup) -> FabricServingHead {
 // renders as --port.
 fn serving_route_port(group: FabricGroup) -> Port {
   match group {
-    FabricGroupB => group_b_restoration_serve_port
+    FabricGroupB {} => group_b_restoration_serve_port
   }
 }
 
@@ -247,7 +247,7 @@ fn serving_route(group: FabricGroup) -> ServingRoute {
 // about whose hosts are claimed, which engine is desired, or what is converged -- those stay with
 // gunbc.spark.pair_serving_desired and gunbc.spark.fabric_serving_assignment respectively, and neither
 // is widened by this row.
-data serving_enrolled_groups: List<FabricGroup> = [FabricGroupB]
+data serving_enrolled_groups: List<FabricGroup> = [FabricGroupB {}]
 
 fn serving_enrolled_routes() -> List<ServingRoute> {
   map(serving_enrolled_groups, g => serving_route(group: g))

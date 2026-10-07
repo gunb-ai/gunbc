@@ -102,7 +102,7 @@ fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
 // though it is not the live state: it is the wall against a group that has neither a measurement nor
 // an operator choice.
 test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
-  w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupB, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
+  w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupB {}, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
 }
 
 // THE LIVE COUNT IS A CHOSEN LAUNCH ARGUMENT. Dressing `--max-num-seqs` as SeqCapacityMeasured would
@@ -124,7 +124,7 @@ test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool {
 // destroyed by answering Unmeasured: the unit refused, the realization refused, the apply plan
 // refused, and no engine could ever start to produce the launch line a measurement needs.
 test fn the_promoted_group_is_launchable() -> Bool {
-  match spark_pair_serving_unit(group: FabricGroupB) {
+  match spark_pair_serving_unit(group: FabricGroupB {}) {
     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
     SparkPairServingUnitRefused { group: _, cause: _ } => false
   }
@@ -133,7 +133,7 @@ test fn the_promoted_group_is_launchable() -> Bool {
 // GROUP B IS srv9 AT THE HEAD WITH srv10, srv11 AND srv12 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
 // tensor-parallel four, and the engine is vLLM.
 test fn group_b_is_four_ranks_headed_by_srv9_at_their_rail_addresses() -> Bool {
-  match spark_pair_serving_unit(group: FabricGroupB) {
+  match spark_pair_serving_unit(group: FabricGroupB {}) {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: e, head: h, workers: ws } =>
       host_identity_eq(a: h.host, b: operator_host_srv9)
@@ -146,7 +146,7 @@ test fn group_b_is_four_ranks_headed_by_srv9_at_their_rail_addresses() -> Bool {
 }
 
 test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool {
-  let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupB))
+  let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupB {}))
   string_contains(s: w, pattern: "group group-b tp=4 head=srv9@192.168.110.17 workers=")
     && string_contains(s: w, pattern: "srv12@192.168.110.16")
 }

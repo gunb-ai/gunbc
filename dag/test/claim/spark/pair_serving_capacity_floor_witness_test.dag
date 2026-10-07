@@ -36,8 +36,8 @@ data w_hex: String = "1111111111111111111111111111111111111111111111111111111111
 
 fn w_inc(invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupB,
-    head: spark_pair_serving_head(group: FabricGroupB),
+    group: FabricGroupB {},
+    head: spark_pair_serving_head(group: FabricGroupB {}),
     systemd_invocation: invocation as NonEmptyStr,
     container_id: "gunbc-spark-pair" as NonEmptyStr,
     executable_digest: w_digest(hex: w_hex),

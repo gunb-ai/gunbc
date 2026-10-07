@@ -52,7 +52,7 @@ type FabricServingAssignment sole_constructor {
 // yet, so every Group B launch refuses by name until one is recorded inside the tag; that refusal is
 // the correct state, and the one that stops a silent downgrade.
 data glm_group_b_serving_assignment: FabricServingAssignment = FabricServingAssignment {
-  group: FabricGroupB,
+  group: FabricGroupB {},
   checkpoint: Glm53NativeFp8,
   runtime: GunbcGlm53DerivedKvplanV2Gb10,
   topology: FourSparkTp4,

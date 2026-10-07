@@ -679,13 +679,13 @@ type HarnessDeclaredUnitRoster {
 // repair is to carry the first value from the least common ancestor rather than to cache it.
 fn harness_declared_unit_roster() -> HarnessDeclaredUnitRoster {
   HarnessDeclaredUnitRoster {
-    group_b: harness_declared_unit_digest(group: FabricGroupB),
+    group_b: harness_declared_unit_digest(group: FabricGroupB {}),
   }
 }
 
 fn harness_declared_unit_from_roster(roster: HarnessDeclaredUnitRoster, group: FabricGroup) -> DeclaredUnitDigestStanding {
   match group {
-    FabricGroupB => roster.group_b
+    FabricGroupB {} => roster.group_b
   }
 }
 
@@ -726,13 +726,13 @@ type HarnessGroupParticipationRoster {
 
 fn harness_group_participation_roster(access: FleetSshContextPreparation) -> HarnessGroupParticipationRoster {
   HarnessGroupParticipationRoster {
-    group_b: harness_group_participation(access: access, group: FabricGroupB),
+    group_b: harness_group_participation(access: access, group: FabricGroupB {}),
   }
 }
 
 fn harness_participation_from_roster(roster: HarnessGroupParticipationRoster, group: FabricGroup) -> ServingGroupRendezvousReach? {
   match group {
-    FabricGroupB => roster.group_b
+    FabricGroupB {} => roster.group_b
   }
 }
 

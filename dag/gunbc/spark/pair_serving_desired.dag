@@ -273,7 +273,7 @@ data spark_pair_serving_groups: List<FabricGroup> = map(spark_pair_serving_autho
 // operator named first of that batch; an arbitrary choice among identical units, written down.
 fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
   match group {
-    FabricGroupB => operator_host_srv9
+    FabricGroupB {} => operator_host_srv9
   }
 }
 

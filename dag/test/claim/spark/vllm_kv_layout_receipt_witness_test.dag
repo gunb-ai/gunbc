@@ -53,8 +53,8 @@ fn w_fork_revision() -> VllmSourceRevision {
 
 fn w_launch_id(invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupB,
-    head: spark_pair_serving_head(group: FabricGroupB),
+    group: FabricGroupB {},
+    head: spark_pair_serving_head(group: FabricGroupB {}),
     systemd_invocation: invocation as NonEmptyStr,
     container_id: "gunbc-spark-pair" as NonEmptyStr,
     executable_digest: w_digest(hex: w_exe),

@@ -266,23 +266,25 @@ fn fabric_lane_for_host(host: HostIdentity) -> FabricLaneObserved? {
 // A GROUP IS THE SET OF HOSTS ON ONE 400G CAGE: four legs of one breakout share the cage, so the
 // four hosts are one fabric-natural tensor-parallel group. Group B is cage 2. Group A (cage 1: srv5-srv8)
 // was decommissioned on 2026-10-07 -- the units were sold -- so cage 1 carries no lane and no group.
+type FabricGroupB {}
+
 type FabricGroup = FabricGroupB
 
 fn fabric_group_cage(g: FabricGroup) -> Nat {
   match g {
-    FabricGroupB => 2
+    FabricGroupB {} => 2
   }
 }
 
 fn fabric_group_wire(g: FabricGroup) -> NonEmptyStr {
   match g {
-    FabricGroupB => "group-b" as NonEmptyStr
+    FabricGroupB {} => "group-b" as NonEmptyStr
   }
 }
 
 // The exact inverse of fabric_group_wire; a word naming no group is no group.
 fn parse_fabric_group(wire: String) -> FabricGroup? {
-  if wire == "group-b" { Present { value: FabricGroupB } }
+  if wire == "group-b" { Present { value: FabricGroupB {} } }
   else { none }
 }
 
@@ -293,7 +295,7 @@ fn fabric_group_hosts(g: FabricGroup) -> List<HostIdentity> {
 fn fabric_group_of_host(host: HostIdentity) -> FabricGroup? {
   match fabric_lane_for_host(host: host) {
     Absent => none
-    Present { value: o } => if o.cage == fabric_group_cage(g: FabricGroupB) { Present { value: FabricGroupB } } else { none }
+    Present { value: o } => if o.cage == fabric_group_cage(g: FabricGroupB {}) { Present { value: FabricGroupB {} } } else { none }
   }
 }
 

@@ -114,7 +114,7 @@ fn t_declared_path() -> String {
 // THE SERVICE HALF'S EVIDENCE IS ABSENT IN THESE FIXTURES, as it is in production. The telemetry
 // standing does not read it; the fields are here because the realization carries them.
 fn t_endpoint() -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
+  vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
 }
 
 fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
@@ -488,7 +488,7 @@ test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
 
 fn t_launch() -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupB,
+    group: FabricGroupB {},
     head: operator_host_srv9,
     systemd_invocation: "fixture-invocation-telemetry" as NonEmptyStr,
     container_id: "fixture-container-telemetry" as NonEmptyStr,

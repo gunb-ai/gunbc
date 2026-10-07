@@ -18,14 +18,14 @@ import product.capacity.event_chain { HeadAbsent }
 // Group A's decommission, so the production roster is empty; these claims build the realization for
 // FabricGroupB directly and supply an active resting authority for it at generation 0, which is what
 // the log folds to when no transition has been recorded.
-data w_authority: PairServingGroupAuthority = PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "witness: no content-addressed key for the supplied realization" as NonEmptyStr } }
+data w_authority: PairServingGroupAuthority = PairServingActive { group: FabricGroupB {}, exact_realization: PairRealizationUnestablished { obligation: "witness: no content-addressed key for the supplied realization" as NonEmptyStr } }
 
 fn w_current() -> List<CurrentAuthority> {
   [CurrentAuthorityRead { authority: w_authority, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> }]
 }
 
 fn w_realization() -> SparkPairRealization {
-  spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupB))
+  spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupB {}))
 }
 
 fn w_plan() -> SparkPairApplyPlan {
@@ -77,7 +77,7 @@ test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> 
 // renders. Folding the unread arm back onto the source row would plan the incumbent here and turn
 // this red.
 test fn an_unread_authority_refuses_the_plan_with_the_reads_cause() -> Bool {
-  let unread = [CurrentAuthorityUnread { group: FabricGroupB, step: "fetch" as String, reason: "witness: the partition could not be fetched" as String }]
+  let unread = [CurrentAuthorityUnread { group: FabricGroupB {}, step: "fetch" as String, reason: "witness: the partition could not be fetched" as String }]
   let refusals = spark_pair_apply_plan_refusals(plans: [spark_pair_apply_plan_current(r: w_realization(), current: unread)])
   length(refusals) == 1
     && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read") && string_contains(s: r, pattern: "witness: the partition could not be fetched"))

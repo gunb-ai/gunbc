@@ -68,7 +68,7 @@ fn with_digests(scenario: fn(ContentHash, ContentHash, ContentHash, ContentHash)
 
 fn t_declared(head_digest: ContentHash, worker_digest: ContentHash) -> DeclaredPairRealization {
   declared_pair_realization_of(
-    group: FabricGroupB,
+    group: FabricGroupB {},
     head: DeclaredRankUnit { host: operator_host_srv9, unit_name: spark_pair_head_unit_name, digest: head_digest },
     workers: [
       DeclaredRankUnit { host: operator_host_srv10, unit_name: spark_pair_worker_unit_name, digest: worker_digest },
@@ -80,9 +80,9 @@ fn t_declared(head_digest: ContentHash, worker_digest: ContentHash) -> DeclaredP
 
 fn t_head_observation(unit_digest: ContentHash, image: ContentHash) -> EndpointIncarnationObservation {
   endpoint_incarnation_observation(
-    endpoint: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
+    endpoint: vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
     launch: vllm_serving_launch(
-      group: FabricGroupB, head: operator_host_srv9,
+      group: FabricGroupB {}, head: operator_host_srv9,
       systemd_invocation: "fixture-invocation-head" as NonEmptyStr, container_id: "fixture-container" as NonEmptyStr,
       executable_digest: image, unit_digest: unit_digest, started_at: 1788907506,
     ),
@@ -98,7 +98,7 @@ fn t_worker(host: HostIdentity, unit_digest: ContentHash) -> ObservedRankUnit {
 fn t_observed(head_digest: ContentHash, image: ContentHash, workers: List<ObservedRankUnit>) -> ObservedPairRealizationReading {
   ObservedPairRealizationRead {
     observed: observed_pair_realization_of(
-      group: FabricGroupB, head: t_head_observation(unit_digest: head_digest, image: image), workers: workers,
+      group: FabricGroupB {}, head: t_head_observation(unit_digest: head_digest, image: image), workers: workers,
       receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef,
     ),
   }
@@ -194,9 +194,9 @@ test fn a_missing_worker_rank_is_a_population_difference() -> Bool {
 test fn a_head_on_another_host_is_a_population_difference() -> Bool {
   with_digests(scenario: fn(a, b, c, img) {
     let head = endpoint_incarnation_observation(
-      endpoint: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
+      endpoint: vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
       launch: vllm_serving_launch(
-        group: FabricGroupB, head: operator_host_srv1,
+        group: FabricGroupB {}, head: operator_host_srv1,
         systemd_invocation: "fixture-invocation-head" as NonEmptyStr, container_id: "fixture-container" as NonEmptyStr,
         executable_digest: img, unit_digest: a, started_at: 1788907506,
       ),
@@ -204,7 +204,7 @@ test fn a_head_on_another_host_is_a_population_difference() -> Bool {
       receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef,
     )
     let observed = ObservedPairRealizationRead {
-      observed: observed_pair_realization_of(group: FabricGroupB, head: head, workers: t_three_workers(digest: b), receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef),
+      observed: observed_pair_realization_of(group: FabricGroupB {}, head: head, workers: t_three_workers(digest: b), receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef),
     }
     match t_agreement(declared: t_declared(head_digest: a, worker_digest: b), observed: observed) {
       PairRealizationRankPopulationDiffers { key: _, declared_hosts: _, observed_hosts: _ } => true
@@ -230,7 +230,7 @@ test fn a_refused_observation_is_unread_not_drifted() -> Bool {
 test fn an_unavailable_declaration_is_reported_before_the_observation() -> Bool {
   with_digests(scenario: fn(a, b, c, img) {
     match pair_realization_agreement(
-      declared: DeclaredPairRealizationUnavailable { group: FabricGroupB, obligation: "witness" as NonEmptyStr },
+      declared: DeclaredPairRealizationUnavailable { group: FabricGroupB {}, obligation: "witness" as NonEmptyStr },
       observed: t_observed(head_digest: a, image: img, workers: t_three_workers(digest: b)),
     ) {
       PairRealizationDeclarationUnavailable { group: _, obligation: o } => (o as String) == "witness"

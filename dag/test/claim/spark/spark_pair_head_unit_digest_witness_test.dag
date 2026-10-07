@@ -84,10 +84,10 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
 // above must agree with what the group-level producer returned. RED if the group producer ever
 // digested something other than the unit text it renders.
 test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
-  match spark_pair_declared_head_digest(group: FabricGroupB) {
+  match spark_pair_declared_head_digest(group: FabricGroupB {}) {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
     DeclaredUnitDigested { evidence: e } =>
-      match spark_pair_rendered_unit_digest(render: declared_head_unit_render_for_group(group: FabricGroupB)) {
+      match spark_pair_rendered_unit_digest(render: declared_head_unit_render_for_group(group: FabricGroupB {})) {
         RenderedUnitDigestUnavailable { obligation: _ } => false
         RenderedUnitDigested { unit_name: _, digest: again } =>
           match compare_content_hash(left: e.digest, right: again) {

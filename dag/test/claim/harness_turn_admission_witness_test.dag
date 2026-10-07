@@ -49,11 +49,11 @@ import product.fabric.supply { ExactGrantDuration, EstimatedGrantDuration, Unobs
 // offered launch, a matching declared unit and an observed incarnation then reach the admitted arm.
 
 fn t_launch() -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
+  vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
 }
 
 fn t_endpoint() -> ServingRouteEndpoint {
-  ServingRouteEndpoint { group: FabricGroupB, address: "10.0.0.1" as NonEmptyStr, port: 8000 }
+  ServingRouteEndpoint { group: FabricGroupB {}, address: "10.0.0.1" as NonEmptyStr, port: 8000 }
 }
 
 fn t_ready() -> ServingFrontDoorAvailabilityVerdict {
@@ -130,7 +130,7 @@ fn t_empty() -> HarnessCandidates {
 test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
   let subject = t_subject(prompt: "p", attempt: "a-1")
   let placed = harness_bind_candidate(
-    acc: t_empty(), group: FabricGroupB, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
+    acc: t_empty(), group: FabricGroupB {}, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
     readback: t_realization().readback, incarnation: t_realization().incarnation, route: ServingRouteObserved { route: t_route() }, subject: subject,
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
   )
@@ -138,7 +138,7 @@ test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
     SparkOfferBound { bound: projection } =>
       match spark_first_party_admission(
-        realization: harness_serving_realization(group: FabricGroupB, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
+        realization: harness_serving_realization(group: FabricGroupB {}, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
         scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
         offer: projection.offer.id,
       ) {
@@ -160,7 +160,7 @@ test fn a_bound_offer_refused_by_admission_is_not_a_candidate_and_carries_the_ca
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
     SparkOfferBound { bound: projection } => {
       let placed = harness_admit_bound_offer(
-        acc: t_empty(), group: FabricGroupB, endpoint: t_endpoint(), launch: t_launch(),
+        acc: t_empty(), group: FabricGroupB {}, endpoint: t_endpoint(), launch: t_launch(),
         realization: t_realization(), projection: projection, subject: subject,
         unit: DeepseekV4FlashOnVllm, seats: 1,
       )

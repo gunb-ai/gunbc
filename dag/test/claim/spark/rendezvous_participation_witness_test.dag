@@ -189,7 +189,7 @@ test fn the_native_arms_recovery_posture_is_declared_and_has_a_noticer() -> Bool
 // GROUP B'S ARM CARRIES ITS MODELED RENDEZVOUS ROSTER: four ranked hosts and the master endpoint on
 // :29501. A later edit that dropped the roster, or shrank it, goes red here.
 test fn the_rendezvous_roster_is_group_bs() -> Bool {
-  match serving_group_rendezvous(group: FabricGroupB) {
+  match serving_group_rendezvous(group: FabricGroupB {}) {
     Absent => false
     Present { value: r } => r.ranked_hosts.length() == 4 && contains(r.master_endpoint as String, ":29501")
   }

@@ -28,8 +28,8 @@ data w_unit: String = "333333333333333333333333333333333333333333333333333333333
 // witness fixtures.
 fn w_launch(invocation: String, container: String, exe: String, started: EpochSecs) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupB,
-    head: spark_pair_serving_head(group: FabricGroupB),
+    group: FabricGroupB {},
+    head: spark_pair_serving_head(group: FabricGroupB {}),
     systemd_invocation: invocation as NonEmptyStr,
     container_id: container as NonEmptyStr,
     executable_digest: w_sha256(hex: exe),
@@ -70,7 +70,7 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
     && (match same_launch(
           a: w_first(),
           b: vllm_serving_launch(
-            group: FabricGroupB,
+            group: FabricGroupB {},
             head: operator_host_srv10,
             systemd_invocation: "inv-16-36" as NonEmptyStr,
             container_id: "gunbc-spark-pair" as NonEmptyStr,
@@ -91,8 +91,8 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
 // legible rather than reading as a rebuild.
 test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_rebuild() -> Bool {
   let other_family = vllm_serving_launch(
-    group: FabricGroupB,
-    head: spark_pair_serving_head(group: FabricGroupB),
+    group: FabricGroupB {},
+    head: spark_pair_serving_head(group: FabricGroupB {}),
     systemd_invocation: "inv-16-36" as NonEmptyStr,
     container_id: "gunbc-spark-pair" as NonEmptyStr,
     executable_digest: w_sha1(hex: "4444444444444444444444444444444444444444"),

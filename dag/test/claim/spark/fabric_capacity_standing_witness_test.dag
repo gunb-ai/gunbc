@@ -103,7 +103,7 @@ test fn decode_identity_fields_are_the_launch_join_keys() -> Bool {
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match launch_from_fields(group: FabricGroupB, head: spark_pair_serving_head(group: FabricGroupB), f: f) {
+      match launch_from_fields(group: FabricGroupB {}, head: spark_pair_serving_head(group: FabricGroupB {}), f: f) {
         LaunchUnidentified { detail: _ } => false
         LaunchIdentified { launch: l } => (l.systemd_invocation as String) == "inv-a"
       }
@@ -170,7 +170,7 @@ test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match launch_from_fields(group: FabricGroupB, head: spark_pair_serving_head(group: FabricGroupB), f: f) {
+      match launch_from_fields(group: FabricGroupB {}, head: spark_pair_serving_head(group: FabricGroupB {}), f: f) {
         LaunchUnidentified { detail: _ } => false
         LaunchIdentified { launch: launch } =>
           match readings_from_fields(
@@ -315,7 +315,7 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // real group_report producer and the binding that maps it over the roster both execute. The
 // production roster claims no group, so the row is supplied rather than read from it.
 fn w_resting_roster() -> List<PairServingGroupAuthority> {
-  [PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }]
+  [PairServingActive { group: FabricGroupB {}, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }]
 }
 
 fn w_resting_current() -> List<CurrentAuthority> {
@@ -323,7 +323,7 @@ fn w_resting_current() -> List<CurrentAuthority> {
 }
 
 test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_today() -> Bool {
-  let live = group_report(group: FabricGroupB)
+  let live = group_report(group: FabricGroupB {})
   match fabric_capacity_standing_current(current: w_resting_current()) {
     ExitSuccess => false
     ExitFailure { code: _, reason: reason } =>
@@ -351,7 +351,7 @@ fn with_capacity_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 
 fn w_suspended_authority(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     transaction: "witness-transaction" as NonEmptyStr,
     authorization_binding: h,
     lease: held_lease(
@@ -374,7 +374,7 @@ test fn a_suspended_authority_stands_without_admitting() -> Bool {
 
 test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
   with_capacity_hash(scenario: h => {
-    let st = standing_for_authority(a: ReleasedToFleet { group: FabricGroupB, release_receipt: h })
+    let st = standing_for_authority(a: ReleasedToFleet { group: FabricGroupB {}, release_receipt: h })
     (st.admitting == false) && string_contains(s: st.text, pattern: "no longer claims these hosts")
   })
 }
@@ -383,9 +383,9 @@ test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
 // being satisfied by a fold that refuses everything.
 test fn an_ordinary_authority_routes_to_the_live_probe() -> Bool {
   let via_authority = standing_for_authority(a: PairServingActive {
-    group: FabricGroupB,
+    group: FabricGroupB {},
     exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
   })
-  let direct = group_report(group: FabricGroupB)
+  let direct = group_report(group: FabricGroupB {})
   (via_authority.admitting == direct.admitting) && (via_authority.text == direct.text)
 }

@@ -39,7 +39,7 @@ fn w_launch_on(group: FabricGroup, invocation: String) -> VllmServingLaunch {
 }
 
 fn w_launch(invocation: String) -> VllmServingLaunch {
-  w_launch_on(group: FabricGroupB, invocation: invocation)
+  w_launch_on(group: FabricGroupB {}, invocation: invocation)
 }
 
 fn w_attempt_from(group: FabricGroup, invocation: String, n: Nat, terminal: LaunchTerminal, digest_hex: String) -> PairServingLaunchAttempt {
@@ -56,7 +56,7 @@ fn w_attempt_from(group: FabricGroup, invocation: String, n: Nat, terminal: Laun
 fn w_attempt_on_head(head: HostIdentity, invocation: String, n: Nat, terminal: LaunchTerminal, digest_hex: String) -> PairServingLaunchAttempt {
   PairServingLaunchAttempt {
     launch: vllm_serving_launch(
-      group: FabricGroupB,
+      group: FabricGroupB {},
       head: head,
       systemd_invocation: invocation as NonEmptyStr,
       container_id: "gunbc-spark-pair" as NonEmptyStr,
@@ -73,7 +73,7 @@ fn w_attempt_on_head(head: HostIdentity, invocation: String, n: Nat, terminal: L
 }
 
 fn w_attempt(invocation: String, n: Nat, terminal: LaunchTerminal) -> PairServingLaunchAttempt {
-  w_attempt_from(group: FabricGroupB, invocation: invocation, n: n, terminal: terminal, digest_hex: w_unit)
+  w_attempt_from(group: FabricGroupB {}, invocation: invocation, n: n, terminal: terminal, digest_hex: w_unit)
 }
 
 // EXIT 137 IS A SIGKILL SHAPE. 128+n is the convention for "terminated by signal n", so the group B
@@ -178,8 +178,8 @@ test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool {
 
 test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool {
   let mixed = [
-    w_attempt_from(group: FabricGroupB, invocation: "inv-old", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
-    w_attempt_from(group: FabricGroupB, invocation: "inv-new", n: 2, terminal: LaunchServing, digest_hex: w_exe),
+    w_attempt_from(group: FabricGroupB {}, invocation: "inv-old", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
+    w_attempt_from(group: FabricGroupB {}, invocation: "inv-new", n: 2, terminal: LaunchServing, digest_hex: w_exe),
   ]
   (match serving_standing(attempts: mixed) {
      ServingStandingUnobserved { cause: c } => string_contains(s: c as String, pattern: "desired_digest")
@@ -190,7 +190,7 @@ test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> 
 
 test fn a_mixed_host_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool {
   let mixed = [
-    w_attempt_from(group: FabricGroupB, invocation: "inv-a", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
+    w_attempt_from(group: FabricGroupB {}, invocation: "inv-a", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
     w_attempt_on_head(head: operator_host_srv10, invocation: "inv-b", n: 2, terminal: LaunchServing, digest_hex: w_unit),
   ]
   match serving_standing(attempts: mixed) {

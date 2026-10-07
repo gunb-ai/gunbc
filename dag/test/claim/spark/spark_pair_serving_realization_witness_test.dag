@@ -57,7 +57,7 @@ data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
 }
 
 fn w_fixture_unit() -> SparkPairServingUnit {
-  spark_pair_serving_unit_with(group: FabricGroupB, capacity: SeqCapacityMeasured {
+  spark_pair_serving_unit_with(group: FabricGroupB {}, capacity: SeqCapacityMeasured {
     max_num_seqs: 32,
     basis: "controlled fixture: this witness asserts renderer shape, never a measured capacity" as NonEmptyStr,
   })

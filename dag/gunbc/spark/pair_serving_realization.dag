@@ -682,7 +682,7 @@ fn spark_pair_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRen
 // below still takes only a group, and a caller still cannot reach past it to choose bytes.
 fn declared_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRender {
   match group {
-    FabricGroupB =>
+    FabricGroupB {} =>
       match glm_native_head_unit_render() {
         GlmNativeUnitRenderRefused { unit_name: n, cause: c } => SparkPairUnitRenderRefused { unit_name: n, cause: c }
         GlmNativeUnitRendered { unit_name: n, text: t } => SparkPairUnitRendered { unit_name: n, text: t }

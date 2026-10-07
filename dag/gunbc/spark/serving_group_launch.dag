@@ -39,7 +39,7 @@ type ServingGroupLaunch {
 
 fn serving_group_launch(group: FabricGroup) -> ServingGroupLaunch {
   match group {
-    FabricGroupB => ServingGroupLaunch {
+    FabricGroupB {} => ServingGroupLaunch {
       head_unit_name: glm_native_head_unit_name,
       container_name: glm_native_container_name,
       engine_binary: glm_native_engine_binary,
@@ -61,7 +61,7 @@ type GroupRendezvous sole_constructor {
 
 fn serving_group_rendezvous(group: FabricGroup) -> GroupRendezvous? {
   match group {
-    FabricGroupB =>
+    FabricGroupB {} =>
       match glm_native_master_endpoint() {
         Absent => none
         Present { value: endpoint } =>

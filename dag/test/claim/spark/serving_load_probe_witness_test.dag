@@ -107,7 +107,7 @@ data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
 
 fn fx_launch() -> VllmEndpointProcessLaunchObservation {
   LaunchObserved {
-    launch: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: start_field),
+    launch: vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: start_field),
     receipt: "fx" as ObservationReceiptRef,
   }
 }
@@ -540,7 +540,7 @@ test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
 
 test fn exporter_restart_breaks_counter_continuity() -> Bool {
   let after: VllmEndpointProcessLaunchObservation = LaunchObserved {
-    launch: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: "1789300999.00" as NonEmptyStr),
+    launch: vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: "1789300999.00" as NonEmptyStr),
     receipt: "fx2" as ObservationReceiptRef,
   }
   match counter_continuity(before: fx_launch(), after: after) {

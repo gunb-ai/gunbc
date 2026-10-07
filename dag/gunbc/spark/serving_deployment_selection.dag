@@ -1268,7 +1268,7 @@ fn candidate_component_budget(
   p: ServingDecisionParameters,
 ) -> ComponentMemoryBudget {
   let ctx = candidate_route_context(c: c, p: p)
-  match group_rank_free_memory(group: FabricGroupB) {
+  match group_rank_free_memory(group: FabricGroupB {}) {
     Absent => ComponentBudgetUnestablished {
       subject: ctx,
       obligation: "no idle free-memory reading exists for a rank of this fleet, so the bytes available to a routed component are unknown; total device memory is a hardware property and the requested utilisation fraction is a launch parameter, and neither is a reading of what a rank actually has free" as NonEmptyStr,

@@ -167,7 +167,7 @@ fn is_ruling_reservation_for(c: SparkHostCommitment, subject: ServingSubject) ->
 // serving group and occupied by a serving arm at once; dropping any of them would make a later release
 // look like it freed a host it did not free.
 test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
-  match fixture_standing(assignments: fixture_assignments, claimed: [member(group: FabricGroupB, host: operator_host_srv9)], arms: [glm_canary_host_claim], host: operator_host_srv9) {
+  match fixture_standing(assignments: fixture_assignments, claimed: [member(group: FabricGroupB {}, host: operator_host_srv9)], arms: [glm_canary_host_claim], host: operator_host_srv9) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
     Present { value: SparkHostCommitted { host: h, commitments: c } } =>
@@ -225,7 +225,7 @@ test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool {
 // standing something holds on the host.
 test fn each_commitment_cause_renders_distinctly() -> Bool {
   let role = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: CommittedToCellRole { role: SparkServingCell } }) as String
-  let group = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: MemberOfClaimedServingGroup { group: FabricGroupB } }) as String
+  let group = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: MemberOfClaimedServingGroup { group: FabricGroupB {} } }) as String
   let ambiguous = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: CellRoleUndecidable { assignments: fixture_duplicate_assignments } }) as String
   let armed = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: OccupiedByServingArm { claim: glm_canary_host_claim } }) as String
   let ruled = spark_host_commitment_wire(c: RulingDerivedCommitment { cause: ReservedForServingSubject { subject: glm_group_b_serving_subject, basis: glm_group_b_serving_reservation.basis } }) as String
@@ -259,7 +259,7 @@ test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool {
   match spark_host_standing_in(
     units: fixture_units,
     assignments: fixture_assignments,
-    claimed_group_members: [member(group: FabricGroupB, host: operator_host_srv9)],
+    claimed_group_members: [member(group: FabricGroupB {}, host: operator_host_srv9)],
     arm_claims: [glm_canary_host_claim],
     serving_reservations: [],
     host_effects: [] as List<HostEffectRecord>,
@@ -533,7 +533,7 @@ test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bo
 // THE PRODUCTION ANSWER. Group B's subject sees srv9-srv12, every host of its cage. A pair unit on
 // group B is used below as a SUBJECT that holds none of them: no group is claimed by pair serving,
 // so against it the arm claim and the ruling's reservation are both unheld.
-data pair_unit_b: ServingSubject = PairServingUnitOn { group: FabricGroupB }
+data pair_unit_b: ServingSubject = PairServingUnitOn { group: FabricGroupB {} }
 
 test fn group_b_s_assigned_subject_is_admitted_group_b() -> Bool {
   let admissible = spark_serving_admissible_hosts(subject: glm_group_b_serving_subject)
@@ -650,7 +650,7 @@ test fn an_unclaimed_serving_role_and_any_training_role_are_held_by_nobody() -> 
       SparkCellRoleAssignment { host: operator_host_srv10, role: SparkServingCell },
       SparkCellRoleAssignment { host: operator_host_srv11, role: SparkTrainingCell },
     ],
-    claimed_group_members: [member(group: FabricGroupB, host: operator_host_srv11)],
+    claimed_group_members: [member(group: FabricGroupB {}, host: operator_host_srv11)],
     arm_claims: [],
     serving_reservations: [],
     host_effects: [] as List<HostEffectRecord>
