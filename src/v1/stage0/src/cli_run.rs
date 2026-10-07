@@ -6338,7 +6338,7 @@ impl ModuleGraphFactsLive {
     /// a stripped (no `import` line) module is otherwise missing from its typed-module content
     /// key (DESIGN §3: consumes the same `selection_adjacency` authority affected-set selection
     /// already reads; no second reference-edge producer). For an import-bearing file it
-    /// returns the modules it reaches by qualified or unique-bare reference WITHOUT importing them;
+    /// returns the modules it reaches by qualified reference (bare names there are lexically bound) WITHOUT importing them;
     /// its declared imports are already covered by `resolved.resolved_imports`.
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
