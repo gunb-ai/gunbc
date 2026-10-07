@@ -19,7 +19,7 @@ import gunbc.managed_host {
   AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
   OrdinaryMember,
-  drop_covers_superseded_bmc_secure,
+  drop_is_standing_citation,
   managed_host_admission,
   managed_host_admission_receipt,
   managed_host_binding_for,
@@ -32,10 +32,15 @@ import gunbc.managed_host {
   project_managed_host_admission,
   ManagedHostNotManaged,
   ManagedHostFound,
+  ManagedHostFoundUnderDeclaredDrop,
 }
 import gunbc.machine_intake_mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
-import gunbc.host_reset_subject_roster { reset_subject_roster, reset_subject_roster_of }
-import gunbc.auth.managed_host_boot_federation { boot_federation_for, BootFederationProvisioned, BootFederationUnprovisioned }
+import gunbc.host_reset_subject_roster {
+  ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
+}
+import gunbc.auth.managed_host_boot_federation {
+  boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -63,8 +68,16 @@ test fn w_reset_roster_and_boot_federation_match_the_declared_drop_arm() -> Bool
           (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
             && (h.host as String) == (operator_host_mtcollins1 as String)
             && count(reset_subject_roster()) == 1
+            && reset_subject_roster() |> all(e => match e {
+              OrdinaryResetRosterHost { host: _ } => false
+              ResetRosterHostUnderDeclaredDrop { host: rh, drop: rd } =>
+                (rh as String) == (operator_host_mtcollins1 as String)
+                  && (rd.decl_name as String) == (d.decl_name as String)
+            })
             && match boot_federation_for(host: h.host) {
-              BootFederationProvisioned { federation: _ } => true
+              BootFederationProvisioned { federation: _ } => false
+              BootFederationProvisionedUnderDeclaredDrop { federation: _, drop: fd, standing_subject: _, current_subject: _ } =>
+                (fd.decl_name as String) == (d.decl_name as String)
               BootFederationUnprovisioned { host: _, cause: _ } => false
             }
       }
@@ -134,6 +147,8 @@ test fn w_a_missing_hold_decision_is_absent() -> Bool {
           hold: AdmissionHoldMissing,
           smpro: r.smpro,
           receipt: r.receipt,
+          current_subject: r.current_subject,
+          covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.subject },
         drops: [mtcollins1_bmc_secure_standing_predates_reflash],
@@ -179,6 +194,8 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
             access_host: r.receipt.access_host,
             secure_attempt: r.receipt.secure_attempt,
           ),
+          current_subject: r.current_subject,
+          covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.subject },
         drops: [mtcollins1_bmc_secure_standing_predates_reflash],
@@ -194,6 +211,7 @@ test fn w_mtjade1_has_no_record_and_is_not_managed() -> Bool {
   match managed_host_binding_for(host: "mtjade1" as NonEmptyStr) {
     ManagedHostNotManaged { host: h } => (h as String) == "mtjade1" && count(managed_hosts()) == 1
     ManagedHostFound { standing: _ } => false
+    ManagedHostFoundUnderDeclaredDrop { standing: _, drop: _, standing_subject: _, current_subject: _ } => false
   }
 }
 
@@ -218,22 +236,21 @@ fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<Str
   }
 }
 
-test fn w_covering_is_host_identity_and_drop_identity_not_population_prose() -> Bool {
-  drop_covers_superseded_bmc_secure(drop: mtcollins1_bmc_secure_standing_predates_reflash, host: operator_host_mtcollins1)
-    && drop_covers_superseded_bmc_secure(drop: mtcollins1_bmc_secure_standing_predates_reflash, host: operator_host_srv1) == false
-    && drop_covers_superseded_bmc_secure(
+test fn w_covering_is_cited_drop_identity_not_population_prose() -> Bool {
+  drop_is_standing_citation(drop: mtcollins1_bmc_secure_standing_predates_reflash, cited: mtcollins1_bmc_secure_standing_drop_ref)
+    && drop_is_standing_citation(
       drop: drop_with_identity_and_population(
         identity: mtcollins1_bmc_secure_standing_predates_reflash.identity,
         population: ["no host token in this sentence"],
       ),
-      host: operator_host_mtcollins1,
+      cited: mtcollins1_bmc_secure_standing_drop_ref,
     )
-    && drop_covers_superseded_bmc_secure(
+    && drop_is_standing_citation(
       drop: drop_with_identity_and_population(
         identity: "some_other_drop" as NonEmptyStr,
         population: ["mtcollins1 is named here so a substring search would have matched"],
       ),
-      host: operator_host_mtcollins1,
+      cited: mtcollins1_bmc_secure_standing_drop_ref,
     ) == false
 }
 

@@ -22,6 +22,8 @@ import gunbc.managed_host {
   managed_host_binding,
   managed_host_memberships,
 }
+import gunbc.machine_intake_subject { MachineIntakeSubject }
+import std.decl_ref { DeclarationRef }
 import gunbc.host_reset_boot_selection { reset_boot_selection }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 
@@ -95,22 +97,53 @@ fn reset_subject_roster_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
   map(admitted_reset_subjects(hosts: hosts), s => s.binding.host.host as NonEmptyStr)
 }
 
+type ResetRosterEntry
+  = OrdinaryResetRosterHost { host: NonEmptyStr }
+  | ResetRosterHostUnderDeclaredDrop { host: NonEmptyStr, drop: DeclarationRef }
+
+fn reset_roster_hosts(entries: List<ResetRosterEntry>) -> List<NonEmptyStr> {
+  map(entries, e => match e {
+    OrdinaryResetRosterHost { host: h } => h
+    ResetRosterHostUnderDeclaredDrop { host: h, drop: _ } => h
+  })
+}
+
+type ResetSubjectLookup
+  = ResetSubjectNotAdmitted
+  | ResetSubjectAdmittedOrdinary { subject: AdmittedResetSubject }
+  | ResetSubjectAdmittedUnderDeclaredDrop {
+      subject: AdmittedResetSubject
+      drop: DeclarationRef
+      standing_subject: MachineIntakeSubject
+      current_subject: MachineIntakeSubject
+    }
+
+fn reset_lookup_subject(lookup: ResetSubjectLookup) -> AdmittedResetSubject? {
+  match lookup {
+    ResetSubjectNotAdmitted => none
+    ResetSubjectAdmittedOrdinary { subject: s } => Present { value: s }
+    ResetSubjectAdmittedUnderDeclaredDrop { subject: s, drop: _, standing_subject: _, current_subject: _ } =>
+      Present { value: s }
+  }
+}
+
+fn reset_roster_entries_of(m: ManagedHostMembership) -> List<ResetRosterEntry> {
+  match m {
+    OrdinaryMember { host: h } =>
+      map(reset_subject_roster_of(hosts: [h]), name => OrdinaryResetRosterHost { host: name })
+    MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
+      map(reset_subject_roster_of(hosts: [h]), name => ResetRosterHostUnderDeclaredDrop { host: name, drop: d })
+  }
+}
+
 // THE FILTER IS A PREDICATE, NOT A FAILURE ARM, AND THE DIFFERENCE MATTERS HERE. Dropping a
 // candidate whose controller does not admit power control is not an absorbing fallback swallowing a
 // diagnostic -- it is the membership condition doing its job, and the dropped host is not a loss but
 // a non-member. The refusal that DOES have to be loud is one level up, in
 // gunbc.host_reset_return reset_dispatch_options, where an unmintable observer pairing refuses the
 // whole option list rather than quietly shrinking it.
-fn reset_subject_roster() -> List<NonEmptyStr> {
-  fold(
-    managed_host_memberships(),
-    init: [],
-    f: (acc, m) => match m {
-      OrdinaryMember { host: h } => concat(acc, reset_subject_roster_of(hosts: [h]))
-      MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-        concat(acc, reset_subject_roster_of(hosts: [h]))
-    },
-  )
+fn reset_subject_roster() -> List<ResetRosterEntry> {
+  fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, reset_roster_entries_of(m: m)))
 }
 
 // THE PEERS THAT MAY OBSERVE A RESET are the executor fleet hosts, and this is the one place the two
@@ -125,20 +158,34 @@ fn reset_observer_peer_roster() -> List<NonEmptyStr> {
 // selection without re-walking the roster in its own vocabulary. Absent means the label names no
 // admitted subject, which a caller must treat as a refusal and never as a host it may drive with
 // defaults.
-fn reset_subject_for(host: NonEmptyStr) -> AdmittedResetSubject? {
+fn reset_subject_for(host: NonEmptyStr) -> ResetSubjectLookup {
   fold(
     managed_host_memberships(),
-    init: none,
+    init: ResetSubjectNotAdmitted,
     f: (acc, m) => match acc {
-      Present { value: _ } => acc
-      Absent =>
+      ResetSubjectAdmittedOrdinary { subject: _ } => acc
+      ResetSubjectAdmittedUnderDeclaredDrop { subject: _, drop: _, standing_subject: _, current_subject: _ } => acc
+      ResetSubjectNotAdmitted =>
         match m {
           OrdinaryMember { host: h } =>
-            fold(admitted_reset_subjects(hosts: [h]), init: none, f: (inner, s) =>
-              if (s.binding.host.host as String) == (host as String) { Present { value: s } } else { inner })
-          MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-            fold(admitted_reset_subjects(hosts: [h]), init: none, f: (inner, s) =>
-              if (s.binding.host.host as String) == (host as String) { Present { value: s } } else { inner })
+            fold(admitted_reset_subjects(hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
+              if (s.binding.host.host as String) == (host as String) {
+                ResetSubjectAdmittedOrdinary { subject: s }
+              } else {
+                inner
+              })
+          MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
+            fold(admitted_reset_subjects(hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
+              if (s.binding.host.host as String) == (host as String) {
+                ResetSubjectAdmittedUnderDeclaredDrop {
+                  subject: s,
+                  drop: d,
+                  standing_subject: standing,
+                  current_subject: current,
+                }
+              } else {
+                inner
+              })
         }
     },
   )

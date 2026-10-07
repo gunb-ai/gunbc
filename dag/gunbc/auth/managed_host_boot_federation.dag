@@ -14,9 +14,11 @@ import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_bmc_secure { BmcSecured, BmcSecureRefused }
 import gunbc.managed_host {
   ManagedHost, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured,
-  ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding, managed_host_memberships,
-  managed_membership_for,
+  ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, ManagedHostMembership, managed_host_binding,
+  managed_host_memberships, managed_membership_for,
 }
+import gunbc.machine_intake_subject { MachineIntakeSubject }
+import std.decl_ref { DeclarationRef }
 
 // ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
 // (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
@@ -100,7 +102,46 @@ type BootFederationUnprovisionedCause
 
 type ManagedHostBootFederationStanding
   = BootFederationProvisioned { federation: ManagedHostBootFederation }
+  | BootFederationProvisionedUnderDeclaredDrop {
+      federation: ManagedHostBootFederation
+      drop: DeclarationRef
+      standing_subject: MachineIntakeSubject
+      current_subject: MachineIntakeSubject
+    }
   | BootFederationUnprovisioned { host: HostIdentity, cause: BootFederationUnprovisionedCause }
+
+fn provisioned_federation_of(s: ManagedHostBootFederationStanding) -> ManagedHostBootFederation? {
+  match s {
+    BootFederationProvisioned { federation: f } => Present { value: f }
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      Present { value: f }
+    BootFederationUnprovisioned { host: _, cause: _ } => none
+  }
+}
+
+fn boot_federation_standing_of(m: ManagedHostMembership) -> ManagedHostBootFederationStanding {
+  match m {
+    OrdinaryMember { host: h } => admit_boot_federation(host: h)
+    MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
+      match admit_boot_federation(host: h) {
+        BootFederationUnprovisioned { host: u, cause: c } => BootFederationUnprovisioned { host: u, cause: c }
+        BootFederationProvisioned { federation: f } =>
+          BootFederationProvisionedUnderDeclaredDrop {
+            federation: f,
+            drop: d,
+            standing_subject: standing,
+            current_subject: current,
+          }
+        BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+          BootFederationProvisionedUnderDeclaredDrop {
+            federation: f,
+            drop: d,
+            standing_subject: standing,
+            current_subject: current,
+          }
+      }
+  }
+}
 
 // THE PAIR'S ADMISSION INCLUDES ITS POLICY, and its cells are the ROW's values. The BMC credential
 // cell is the version the row's secure standing published (gunbc.machine_intake_bmc_secure
@@ -144,12 +185,7 @@ fn admit_boot_federation(host: ManagedHost) -> ManagedHostBootFederationStanding
 fn boot_federation_for(host: HostIdentity) -> ManagedHostBootFederationStanding {
   match managed_membership_for(host: host) {
     Absent => BootFederationUnprovisioned { host: host, cause: BootFederationHostNotManaged }
-    Present { value: m } =>
-      match m {
-        OrdinaryMember { host: h } => admit_boot_federation(host: h)
-        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-          admit_boot_federation(host: h)
-      }
+    Present { value: m } => boot_federation_standing_of(m: m)
   }
 }
 
@@ -160,14 +196,9 @@ fn provisioned_boot_federations() -> List<ManagedHostBootFederation> {
     managed_host_memberships(),
     init: [],
     f: (acc, m) => {
-      let standing = match m {
-        OrdinaryMember { host: h } => admit_boot_federation(host: h)
-        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-          admit_boot_federation(host: h)
-      }
-      match standing {
-        BootFederationProvisioned { federation: f } => concat(acc, [f])
-        BootFederationUnprovisioned { host: _, cause: _ } => acc
+      match provisioned_federation_of(s: boot_federation_standing_of(m: m)) {
+        Present { value: f } => concat(acc, [f])
+        Absent => acc
       }
     },
   )

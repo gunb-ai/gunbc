@@ -23,6 +23,8 @@ import gunbc.machine_intake_ampere_smpro_observation {
   SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
 }
 import gunbc.host_reset_subject_roster {
+  OrdinaryResetRosterHost,
+  ResetRosterHostUnderDeclaredDrop,
   ResetSubjectAdmitted,
   ResetSubjectControllerNotAdmitted,
   ResetSubjectNoSelection,
@@ -61,7 +63,10 @@ test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission()
           ResetNoUnitHold => false
         })
     && count(roster) == 1
-    && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+    && roster |> all(r => match r {
+      OrdinaryResetRosterHost { host: _ } => false
+      ResetRosterHostUnderDeclaredDrop { host: h, drop: _ } => (h as String) == (operator_host_mtcollins1 as String)
+    })
 }
 
 fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
