@@ -3298,6 +3298,21 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
             "a provider reached only by reference is missing from the fixture closure: {refusal}"
         ))
     })?;
+    // THE QUALIFIED-REFERENCE EDGE. The same walker must follow a dotted module-path
+    // reference, not only a bare name: `test.fixture.reference_derived_graph.consumer_reference_only`
+    // imports `std.types` and names `test.fixture.reference_derived_graph.provider.provided_value`
+    // qualified, so an import-only walk compiles it without its provider. The pair is small
+    // (no `v2.std.node`); the large corpus specimens (`v2.std.artifact` → `v2.std.refinement`)
+    // are the same edge at a cost the floor control must not pay.
+    fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_QUALIFIED_REFERENCE_REACH_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| {
+        refuse(format!(
+            "a provider reached only by qualified reference is missing from the fixture closure: {refusal}"
+        ))
+    })?;
     // And the closure fix closes providers without narrowing what refuses: a real error in a
     // member of the fixture's own closure still refuses, located at that member.
     match fixture_closure_union_emit_receipt(
@@ -3322,6 +3337,10 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
 
 /// A member reaching `std.graph` only through `std.syllogism`'s bare references.
 const FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument, argument_is_acyclic }\nfn acyclic(a: Argument) -> Bool {\n  argument_is_acyclic(a)\n}\n";
+
+/// A member reaching `test.fixture.reference_derived_graph.provider` only through that
+/// consumer's dotted qualified reference (no import of the provider, no bare name).
+const FIXTURE_CLOSURE_QUALIFIED_REFERENCE_REACH_MEMBER: &str = "module efr_member\nimport test.fixture.reference_derived_graph.consumer_reference_only { uses_provider }\nfn probe() -> Int {\n  uses_provider()\n}\n";
 
 /// The same closure with a call to a function nothing declares.
 const FIXTURE_CLOSURE_REAL_ERROR_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument }\nfn broken(a: Argument) -> Bool {\n  no_such_function_anywhere(a)\n}\n";

@@ -11618,11 +11618,29 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_
 // a module-scope `data ...: Map<String, String> = empty_map()` in a module with no generic scope at
 // all. Two sites asking one question is the second representation DESIGN section 2 forbids, so the
 // question is asked once, here, and both sites read the answer.
+// AN ERASED TYPE ARGUMENT DECLINES TO THE TARGET'S INFERENCE, EXACTLY AS AN UNBOUND FORMAL DOES. The
+// arm above already defers `::<_, _>()` when the emitter cannot name the formals in this fn's scope.
+// A key or value whose inferred node is a compiler error is the same state seen one stage earlier:
+// v1.compiler.infer does not bind a generic record's parameter at an unannotated record literal
+// (std.list duplicated_by_key's `DuplicatedScan { firsts: empty_map(), .. }` inside a fold), so the
+// field type arrives erased and rendered as `compile_error!("UNRESOLVED_CompilerError")`. Rendering
+// that refusal is what rust_witness_carrier_from_type_node's note forbids -- an erased first source
+// must decline so the next authority is consulted -- and here the next authority is rustc, which
+// infers T from the field's later `map_insert` or refuses loudly; nothing is widened. The upstream
+// boundary stays open and is named, not absorbed: generic record instantiation at infer
+// (declared_type_conformance_note's "generic record instantiation" lane).
+fn type_node_carries_erased_type_argument(n: Node) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    (t.inferred != none && is_compiler_error(inferred: t.inferred.value)) || type_node_carries_erased_type_argument(n: t))
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
-  } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names) {
+  } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
+    || type_node_carries_erased_type_argument(n: map_type) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
