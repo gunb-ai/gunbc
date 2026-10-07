@@ -1,0 +1,196 @@
+module tools.unimported_type_import_migrate
+
+import std.types { Bool, Int, List, String }
+import std.import {
+  ImportStatementMalformed,
+  ImportStatementParseCause,
+  ImportStatementParseRefused,
+  ImportStatementsParsed,
+  ParsedImportStatement
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.compilers.lexing { Token }
+import v2.std.algebra { any }
+import std.optional { Absent, Present }
+import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import tools.source_reference_repoint { SourceEdit, apply_source_edits }
+
+// THE IMPORT MIGRATION THAT CLOSES THE SEED FAIL-OPEN. Identities are (referencing module, name,
+// provider). Native resolve defines the set (SymbolIndexAtomUnbound), not a regex; a seed hit-log
+// is joined against that set. Wet splice waits on that census; import_migration_identities stays
+// empty until then.
+//
+// SPLICE AUTHORITY IS tools.source_reference_repoint SourceEdit / apply_source_edits (gunbc#13388).
+// This module does not copy those declarations. A cyclic new edge is ImportMigrationCyclicDebt,
+// a typed outcome, never success. Names native resolve binds without an import (kernel spellings;
+// container-arity aliases that stay BARE, #12526) are ImportMigrationNativeBare and get no
+// generated import.
+
+type ImportMigrationIdentity {
+  referencing_module: String
+  source_path: String
+  name: String
+  provider: String
+}
+
+type ImportEdge {
+  importer: String
+  imported: String
+}
+
+type ImportInsertKind
+  = ExtendExistingProvider
+  | NewProviderLine
+
+type ImportMigrationStanding
+  = ImportMigrationApply { identity: ImportMigrationIdentity, kind: ImportInsertKind }
+  | ImportMigrationAlreadyPresent { identity: ImportMigrationIdentity }
+  | ImportMigrationNativeBare { identity: ImportMigrationIdentity }
+  | ImportMigrationCyclicDebt { identity: ImportMigrationIdentity }
+  | ImportMigrationParseRefused { identity: ImportMigrationIdentity, cause: ImportStatementParseCause }
+
+fn native_bare_spellings() -> List<String> {
+  [
+    "String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes", "Symbol",
+    "List", "Map", "Set", "Witness"
+  ]
+}
+
+fn spelling_is_native_bare(name: String) -> Bool {
+  native_bare_spellings() |> any(s => s == name)
+}
+
+fn import_graph_reaches(edges: List<ImportEdge>, from: String, target: String) -> Bool {
+  import_graph_reaches_seen(edges: edges, from: from, target: target, seen: [])
+}
+
+fn import_graph_reaches_seen(edges: List<ImportEdge>, from: String, target: String, seen: List<String>) -> Bool {
+  if from == target { true }
+  else if seen |> any(s => s == from) { false }
+  else {
+    let next = seen |> list_push(from)
+    edges |> any(e =>
+      e.importer == from && import_graph_reaches_seen(edges: edges, from: e.imported, target: target, seen: next))
+  }
+}
+
+fn adding_edge_is_cyclic(edges: List<ImportEdge>, importer: String, imported: String) -> Bool {
+  importer == imported || import_graph_reaches(edges: edges, from: imported, target: importer)
+}
+
+fn token_in_span(tok: Token, start: Int, end: Int) -> Bool {
+  tok.start >= start && tok.end <= end
+}
+
+fn import_member_names(tokens: List<Token>, stmt: ParsedImportStatement) -> List<String> {
+  fold(tokens, init: ImportNameScan { in_brace: false, names: [] }, f: (acc, tok) =>
+    if !token_in_span(tok: tok, start: stmt.span.start, end: stmt.span.end) { acc }
+    else if tok.class == ^ShLBrace { ImportNameScan { in_brace: true, names: acc.names } }
+    else if tok.class == ^ShRBrace { ImportNameScan { in_brace: false, names: acc.names } }
+    else if acc.in_brace && (tok.class == ^ShIdent || tok.class == ^ShKeyword) {
+      ImportNameScan { in_brace: true, names: list_push(acc.names, tok.lexeme) }
+    } else { acc }).names
+}
+
+type ImportNameScan {
+  in_brace: Bool
+  names: List<String>
+}
+
+fn first_rbrace_in_span(tokens: List<Token>, stmt: ParsedImportStatement) -> Token? {
+  tokens |> fold(init: none, f: (acc, tok) =>
+    match acc {
+      Present { value: t } => Present { value: t }
+      Absent =>
+        if token_in_span(tok: tok, start: stmt.span.start, end: stmt.span.end) && tok.class == ^ShRBrace {
+          Present { value: tok }
+        } else { none }
+    })
+}
+
+fn statement_importing(stmts: List<ParsedImportStatement>, provider: String) -> ParsedImportStatement? {
+  stmts |> fold(init: none, f: (acc, stmt) =>
+    match acc {
+      Present { value: s } => Present { value: s }
+      Absent => if stmt.imported_module == provider { Present { value: stmt } } else { none }
+    })
+}
+
+fn extend_existing_provider_edit(rbrace_start: Int, name: String) -> SourceEdit {
+  SourceEdit { start: rbrace_start, end: rbrace_start, replacement: concat(", ", name) }
+}
+
+fn splice_import_edits(source: String, edits: List<SourceEdit>) -> String {
+  apply_source_edits(text: source, edits: edits)
+}
+
+fn plan_identity(
+  identity: ImportMigrationIdentity,
+  source: String,
+  edges: List<ImportEdge>
+) -> ImportMigrationStanding {
+  if spelling_is_native_bare(name: identity.name) {
+    ImportMigrationNativeBare { identity: identity }
+  } else if adding_edge_is_cyclic(edges: edges, importer: identity.referencing_module, imported: identity.provider) {
+    ImportMigrationCyclicDebt { identity: identity }
+  } else {
+    let observation = parsed_import_observation_live(file: identity.source_path, source: source)
+    match observation.imports {
+      ImportStatementParseRefused { cause: cause } =>
+        ImportMigrationParseRefused { identity: identity, cause: cause }
+      ImportStatementsParsed { statements: stmts } =>
+        plan_parsed_identity(identity: identity, tokens: observation.tokens, stmts: stmts)
+    }
+  }
+}
+
+fn plan_parsed_identity(
+  identity: ImportMigrationIdentity,
+  tokens: List<Token>,
+  stmts: List<ParsedImportStatement>
+) -> ImportMigrationStanding {
+  match statement_importing(stmts: stmts, provider: identity.provider) {
+    Present { value: stmt } => {
+      let names = import_member_names(tokens: tokens, stmt: stmt)
+      if names |> any(n => n == identity.name) {
+        ImportMigrationAlreadyPresent { identity: identity }
+      } else {
+        match first_rbrace_in_span(tokens: tokens, stmt: stmt) {
+          Absent => ImportMigrationParseRefused { identity: identity, cause: ImportStatementMalformed }
+          Present { value: _ } =>
+            ImportMigrationApply { identity: identity, kind: ExtendExistingProvider }
+        }
+      }
+    }
+    Absent => ImportMigrationApply { identity: identity, kind: NewProviderLine }
+  }
+}
+
+data import_migration_identities: List<ImportMigrationIdentity> = []
+
+data std_coercion_import_identities: List<ImportMigrationIdentity> = [
+  ImportMigrationIdentity { referencing_module: "std.coercion", source_path: "dag/std/coercion.dag", name: "Char", provider: "std.types" },
+  ImportMigrationIdentity { referencing_module: "std.coercion", source_path: "dag/std/coercion.dag", name: "NonEmptyStr", provider: "std.types" },
+  ImportMigrationIdentity { referencing_module: "std.coercion", source_path: "dag/std/coercion.dag", name: "DeclarationRef", provider: "std.decl_ref" },
+  ImportMigrationIdentity { referencing_module: "std.coercion", source_path: "dag/std/coercion.dag", name: "FreeMonoid", provider: "std.algebra" },
+  ImportMigrationIdentity { referencing_module: "std.coercion", source_path: "dag/std/coercion.dag", name: "Present", provider: "std.optional" },
+  ImportMigrationIdentity { referencing_module: "std.coercion", source_path: "dag/std/coercion.dag", name: "Absent", provider: "std.optional" }
+]
+
+data std_coercion_list_is_native_bare: ImportMigrationIdentity = ImportMigrationIdentity {
+  referencing_module: "std.coercion",
+  source_path: "dag/std/coercion.dag",
+  name: "List",
+  provider: "std.types"
+}
+
+// Empty roster: nothing to splice. A non-empty roster refuses rather than inventing a second
+// splice path: apply_source_edits is the one applier, and the identity list is not yet the
+// native-unbound join.
+fn migrate() -> ProcessExit {
+  if count(import_migration_identities) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "unimported type import migrate: roster is not the native-unbound join; not spliced")
+  }
+}
