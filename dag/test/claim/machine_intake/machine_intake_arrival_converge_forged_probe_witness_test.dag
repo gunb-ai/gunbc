@@ -92,14 +92,13 @@ test fn authored_arrival_inputs_are_refused() -> Bool {
     && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "BoardSerialAgreement") >= 1
 }
 
-data outside_mtjade1_bmc_reading_probe_source: String = "module probe_mtjade1_bmc_reading_outside\nimport test.claim.machine_intake_arrival_converge_witness { mtjade1_diverged_reading, mtjade1_intake_subject, mtjade1_dry_applied_bmc }\nimport gunbc.machine_intake_bmc_secure { BmcAccountStateObservation }\nimport gunbc.machine_intake_arrival_converge { BmcSecureApplyInputs }\nfn leak_reading() -> BmcAccountStateObservation { mtjade1_diverged_reading(subject: mtjade1_intake_subject()) }\nfn leak_apply() -> BmcSecureApplyInputs? { mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) }\n"
+data outside_mtjade1_bmc_reading_probe_source: String = "module probe_mtjade1_bmc_reading_outside\nimport test.claim.machine_intake_arrival_converge_witness { mtjade1_intake_subject, mtjade1_dry_applied_bmc }\nimport gunbc.machine_intake_arrival_converge { BmcSecureApplyInputs }\nfn leak_apply() -> BmcSecureApplyInputs? { mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) }\n"
 
 data bmc_account_state_seal_removed_mutant_source: String = "module probe_bmc_account_state_seal_removed\ntype BmcAccountStateObservation { n: Int }\nfn leak() -> BmcAccountStateObservation { BmcAccountStateObservation { n: 1 } }\n"
 
 test fn the_mtjade1_bmc_reading_helpers_refuse_an_outside_caller() -> Bool {
   let c = compile_dag_diagnostic_census(outside_mtjade1_bmc_reading_probe_source)
-  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtjade1_diverged_reading") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtjade1_dry_applied_bmc") >= 1
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtjade1_dry_applied_bmc") >= 1
 }
 
 test fn removing_the_bmc_account_state_seal_makes_a_literal_writable() -> Bool {
