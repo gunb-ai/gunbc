@@ -880,6 +880,8 @@ type Startability
   | BlockedOnPrerequisites { blocking: List<String> }
   | StartabilityNotDerivable { unanswerable: List<String>, blocking: List<String> }
 
+// milestone_label is NonEmptyStr. std.coercion has no implicit-safe NonEmptyStr→String
+// route (§4: total, exact, unique, consent-free), so the widening is an authored `as String`.
 fn prerequisite_names_by_class(m: ProgramMilestone, want: MilestoneStandingClass) -> List<String> {
   fold(milestone_prerequisites(m: m), init: [], f: fn(acc, p) {
     if standing_class_label(c: standing_class(s: milestone_status(m: p)))
@@ -1032,6 +1034,7 @@ fn milestone_missing_instruments(m: ProgramMilestone) -> List<MissingInstrument>
 // milestone reads its outstanding fold directly.
 data conditionally_awaited_instruments: List<MissingInstrument> = []
 
+// Same authored `as String` as prerequisite_names_by_class: no declared implicit-safe route.
 fn milestones_awaiting(i: MissingInstrument) -> List<String> {
   fold(program_milestones, init: [], f: fn(acc, m) {
     if any(milestone_missing_instruments(m: m), other => missing_instrument_eq(a: other, b: i)) {

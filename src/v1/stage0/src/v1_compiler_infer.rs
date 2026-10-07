@@ -24745,17 +24745,32 @@ pub fn list_element_type_node(n: Rc<Node>) -> std::option::Option<Rc<Node>> {
         .map(crate::v1_compiler_infer_types::child_type_node)
 }
 
+pub fn list_element_ctor_name(el: Rc<Node>) -> String {
+    if !el.name.is_empty() {
+        el.name.clone()
+    } else {
+        crate::v1_compiler_infer_types::child_type_node(el).name.clone()
+    }
+}
+
 pub fn list_concat_elements_agree(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match (list_element_type_node(left), list_element_type_node(right)) {
+    match (list_element_type_node(left.clone()), list_element_type_node(right.clone())) {
         (Some(le), Some(re)) => {
             type_node_label(le.clone(), source_indices.clone())
                 == type_node_label(re.clone(), source_indices)
                 && ((le.children.clone().len() as i64) == (re.children.clone().len() as i64))
                 && (le.connective.clone() == re.connective.clone())
+                && match (
+                    left.children.clone().first().cloned(),
+                    right.children.clone().first().cloned(),
+                ) {
+                    (Some(lraw), Some(rraw)) => list_element_ctor_name(lraw) == list_element_ctor_name(rraw),
+                    _ => false,
+                }
         }
         _ => false,
     }
