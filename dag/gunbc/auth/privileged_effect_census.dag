@@ -30,7 +30,7 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
-  InterlockPending, UnconditionalStanding, InterlockedBy, StandingRulingInterlock,
+  InterlockPending, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
   OperatorOwnSession, PastedOperatorToken,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -382,7 +382,6 @@ fn privileged_effect_interlock_hold(interlock: StandingRulingInterlock) -> Decla
   match interlock {
     InterlockedBy { hold: i } => Present { value: i }
     InterlockPending { obligation: _ } => none
-    UnconditionalStanding { reason: _ } => none
   }
 }
 
@@ -451,7 +450,7 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
     hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply") },
     refusal: site(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write"),
-    premise: "BmcSecure Apply discharges the mtjade1 standing ruling only when admit_rotation_apply is rostered against this site; InterlockPending and UnconditionalStanding never discharge, and a named hold that is not this site's rostered interlock does not discharge" as NonEmptyStr,
+    premise: "BmcSecure Apply discharges the mtjade1 standing ruling only when admit_rotation_apply is rostered against this site; InterlockPending never discharges, and a named hold that is not this site's rostered interlock does not discharge" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
@@ -473,8 +472,7 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
 ]
 
 // A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK. InterlockPending never discharges and is
-// always a defect. UnconditionalStanding discharges without a rostered hold. InterlockedBy discharges
-// only when that hold is rostered against the same site.
+// always a defect. InterlockedBy discharges only when that hold is rostered against the same site.
 fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
   any(privileged_effect_interlocks, i =>
     declaration_ref_eq(a: i.site, b: site_ref)
@@ -487,7 +485,6 @@ fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: Declaration
 fn ruling_discharge_interlock_defect(site_ref: DeclarationRef, ruling: StandingDestructiveAuthorization) -> DeclarationRef? {
   match ruling.interlock {
     InterlockPending { obligation: _ } => Present { value: site_ref }
-    UnconditionalStanding { reason: _ } => none
     InterlockedBy { hold: i } =>
       if ruling_interlock_is_rostered(site_ref: site_ref, interlock: i) { none } else { Present { value: site_ref } }
   }

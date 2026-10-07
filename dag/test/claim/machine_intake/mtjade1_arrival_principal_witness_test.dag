@@ -27,7 +27,7 @@ import gunbc.auth.mtjade1_arrival_federation {
 import gunbc.auth.authorization_pattern_selection {
   FederatedScopedGrant, OperatorApprovedCapability,
   PatternSelected, AuthorizationPatternSelection,
-  InterlockPending, InterlockedBy, UnconditionalStanding,
+  InterlockPending, InterlockedBy,
   select_authorization_pattern,
 }
 import gunbc.auth.privileged_effect_census { rulings_without_a_rostered_interlock }
@@ -169,11 +169,9 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
     && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
       InterlockPending { obligation: _ } => true
       InterlockedBy { hold: _ } => false
-      UnconditionalStanding { reason: _ } => false
     }
     && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingBmcSecureAccountWrite) {
       InterlockedBy { hold: h } => (h.decl_name as String) == "admit_rotation_apply"
       InterlockPending { obligation: _ } => false
-      UnconditionalStanding { reason: _ } => false
     }
 }

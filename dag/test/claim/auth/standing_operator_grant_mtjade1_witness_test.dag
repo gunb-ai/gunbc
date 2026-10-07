@@ -24,7 +24,7 @@ import gunbc.auth.authorization_pattern_selection {
   IrreversibleEffect,
   NoBillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
-  InterlockPending, UnconditionalStanding, InterlockedBy,
+  InterlockPending, InterlockedBy,
   FederatedScopedGrant, OperatorApprovedCapability,
   PatternSelected, NoAdmissiblePattern,
   AuthorizationPatternSelection,
@@ -145,7 +145,6 @@ test fn w_the_ruling_text_is_the_operator_quote() -> Bool {
     && match mtjade1_live_standing_grant.ruling.interlock {
       InterlockPending { obligation: _ } => true
       InterlockedBy { hold: _ } => false
-      UnconditionalStanding { reason: _ } => false
     }
     && !standing_ruling_discharges_irreversibility(r: mtjade1_live_standing_grant.ruling)
     && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingBmcSecureAccountWrite) {
@@ -153,12 +152,10 @@ test fn w_the_ruling_text_is_the_operator_quote() -> Bool {
         (h.module_path as String) == "gunbc.machine_intake_bmc_rotation_route"
           && (h.decl_name as String) == "admit_rotation_apply"
       InterlockPending { obligation: _ } => false
-      UnconditionalStanding { reason: _ } => false
     }
     && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
       InterlockPending { obligation: _ } => true
       InterlockedBy { hold: _ } => false
-      UnconditionalStanding { reason: _ } => false
     }
 }
 

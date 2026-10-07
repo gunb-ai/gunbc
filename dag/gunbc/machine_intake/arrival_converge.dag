@@ -129,7 +129,7 @@ import gunbc.machine_intake_bmc_secure {
   BmcAccountApplication,
 }
 import gunbc.auth.authorization_pattern_selection {
-  InterlockedBy, InterlockPending, UnconditionalStanding,
+  InterlockedBy, InterlockPending,
 }
 import gunbc.auth.standing_operator_grant {
   StandingOperatorGrant,
@@ -140,6 +140,7 @@ import gunbc.auth.standing_operator_grant {
 }
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
 import gunbc.fleet.convergence_fold {
@@ -693,7 +694,6 @@ fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: Hos
   standing_grant_covers(g: g, scope: StandingGrantHost { host: host }, effect: StandingBmcSecureAccountWrite)
     && match standing_grant_arm_interlock(g: g, e: StandingBmcSecureAccountWrite) {
       InterlockPending { obligation: _ } => false
-      UnconditionalStanding { reason: _ } => false
       InterlockedBy { hold: h } =>
         ruling_interlock_is_rostered(site_ref: bmc_secure_account_rotation_site(), interlock: h)
     }
@@ -718,8 +718,14 @@ fn capability_discharges_bmc_secure_account_write(
   }
 }
 
-fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity {
-  (key.subject as NonEmptyStr) as HostIdentity
+fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity? {
+  if ((key.subject as NonEmptyStr) as String) == (operator_host_mtjade1 as String) {
+    Present { value: operator_host_mtjade1 }
+  } else if ((key.subject as NonEmptyStr) as String) == (operator_host_mtcollins1 as String) {
+    Present { value: operator_host_mtcollins1 }
+  } else {
+    none
+  }
 }
 
 fn discharge_bmc_secure_apply(
@@ -728,24 +734,39 @@ fn discharge_bmc_secure_apply(
   standing: BmcRotationRouteStanding,
   request: BmcAccountWriteRequest,
 ) -> InstanceAuthorization? {
-  let host = bound_bmc_secure_host(key: key)
   match inputs.grant {
     Present { value: g } =>
-      if grant_discharges_bmc_secure_account_write(g: g, host: host) {
-        Present { value: instance_authorization(key: key, principal: g.principal) }
-      } else {
-        match inputs.capability {
-          Present { value: r } =>
-            if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
-              match r {
-                RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
-                RedemptionRefused { cause: _ } => none
-              }
-            } else {
-              none
+      match bound_bmc_secure_host(key: key) {
+        Present { value: host } =>
+          if grant_discharges_bmc_secure_account_write(g: g, host: host) {
+            Present { value: instance_authorization(key: key, principal: g.principal) }
+          } else {
+            match inputs.capability {
+              Present { value: r } =>
+                if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
+                  match r {
+                    RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
+                    RedemptionRefused { cause: _ } => none
+                  }
+                } else {
+                  none
+                }
+              Absent => none
             }
-          Absent => none
-        }
+          }
+        Absent =>
+          match inputs.capability {
+            Present { value: r } =>
+              if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
+                match r {
+                  RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
+                  RedemptionRefused { cause: _ } => none
+                }
+              } else {
+                none
+              }
+            Absent => none
+          }
       }
     Absent =>
       match inputs.capability {
@@ -1037,10 +1058,14 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
         Absent =>
           match bmc.grant {
             Present { value: g } =>
-              if grant_discharges_bmc_secure_account_write(g: g, host: bound_bmc_secure_host(key: key)) {
-                [instance_authorization(key: key, principal: g.principal)]
-              } else {
-                []
+              match bound_bmc_secure_host(key: key) {
+                Absent => []
+                Present { value: host } =>
+                  if grant_discharges_bmc_secure_account_write(g: g, host: host) {
+                    [instance_authorization(key: key, principal: g.principal)]
+                  } else {
+                    []
+                  }
               }
             Absent => []
           }
