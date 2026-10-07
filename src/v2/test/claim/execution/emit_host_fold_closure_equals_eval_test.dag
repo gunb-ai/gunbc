@@ -27,7 +27,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,

@@ -37,7 +37,8 @@ import v2.std.collection {
 import v2.std.qualified_name {
   qualified_name_snoc,
   qualified_name_to_dotted_string, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
-import v2.std.optional {
+import v2.std.grammar { node_atom_identity_optional }
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -117,6 +118,11 @@ import v2.std.node {
   Value,
   Arrow,
   Atom,
+  Cardinality,
+  Conj,
+  Disj,
+  Instantiation,
+  Match,
   DirectAtomBody,
   FunctionValueBody,
   ComputationBody,
@@ -1272,10 +1278,10 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
 }
 
 fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
       optional_present(value: environment_binding_key_for_symbol(sym: sym))
-    _ => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -1550,7 +1556,17 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
 fn eval_node_is_arrow(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
@@ -1648,21 +1664,51 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
           }
         Rejected { diagnostics: _ } => false
       }
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
 fn eval_node_is_branch(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Branch } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
 fn eval_node_is_loop(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
@@ -1684,7 +1730,17 @@ fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) 
       match node.kind {
         ComputationNode { behavior: Transform } =>
           !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
-        _ => false
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: Value } => false
+        ComputationNode { behavior: Branch } => false
+        ComputationNode { behavior: Loop } => false
+        ComputationNode { behavior: Bind } => false
+        ComputationNode { behavior: Match } => false
       }
   }
 }
@@ -2934,7 +2990,14 @@ fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
     ComputationNode { behavior: Loop } => true
     ComputationNode { behavior: Bind } => true
     ComputationNode { behavior: Match } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
   }
 }
 
@@ -2952,10 +3015,18 @@ fn eval_runtime_control_node(
       let dispatch = match node.kind {
         ComputationNode { behavior: b } =>
           interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
-        _ =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+        TypeNode { connective: Atom { identity: _ } } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Conj } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Disj } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Arrow } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Cardinality } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Instantiation } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
       }
       bind_outcome(
         o: match node.kind {
@@ -2999,7 +3070,21 @@ fn eval_runtime_control_node(
               runtime: runtime,
               effect_io: effect_io
             )
-          _ =>
+          TypeNode { connective: Atom { identity: _ } } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Conj } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Disj } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Arrow } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Cardinality } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Instantiation } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          ComputationNode { behavior: Value } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          ComputationNode { behavior: Transform } =>
             outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
         },
         f: fn(value) {
@@ -3399,6 +3484,32 @@ fn aggregate_verdicts<S, T>(
   )
 }
 
+fn run_test_claim_runtime_evaluated(
+  subject: TestClaimEvalSubject<Node>,
+  at: Node
+) -> TestClaimRun<Node, RuntimeValue> {
+  let actual = eval_with_context(
+    tree: subject.tree,
+    context: subject.context,
+    inputs: inputs_root_only(root: subject.input.evaluator_input)
+  )
+  TestClaimRun {
+    cache: test_claim_cache_receipt_node(subject: subject),
+    verdict: aggregate_verdicts(
+      rs: [
+        run_test_claim_runtime_assert(
+          claim: subject.claim,
+          tree: subject.tree,
+          interpretation: eval_context_interpretation(context: subject.context),
+          actual: actual,
+          at: at
+        )
+      ],
+      at: at
+    )
+  }
+}
+
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>
 ) -> TestClaimRun<Node, RuntimeValue> {
@@ -3426,28 +3537,9 @@ fn run_test_claim(
           at: at
         )
       }
-    _ => {
-      let actual = eval_with_context(
-        tree: subject.tree,
-        context: subject.context,
-        inputs: inputs_root_only(root: subject.input.evaluator_input)
-      )
-      TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: aggregate_verdicts(
-          rs: [
-            run_test_claim_runtime_assert(
-              claim: subject.claim,
-              tree: subject.tree,
-              interpretation: eval_context_interpretation(context: subject.context),
-              actual: actual,
-              at: at
-            )
-          ],
-          at: at
-        )
-      }
-    }
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
   }
 }
 

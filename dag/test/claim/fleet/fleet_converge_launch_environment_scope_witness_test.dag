@@ -51,7 +51,7 @@ import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.host_axis_caps { CapMember }
 import gunbc.fleet_host_identity { operator_host_srv3 }
 import std.content_hash { serialize_content_hash }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 

@@ -202,6 +202,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_ci_mode = false;
     let mut required_ci_measurement_receipt: Option<String> = None;
     let mut required_ci_adjudicate_receipt: Option<String> = None;
+    let mut reach_base_standings_file: Option<String> = None;
+    let mut claim_wall_limit_ms: Option<u64> = None;
     let mut required_ci_unreached_receipt: Option<String> = None;
     let mut required_ci_unreached_cause: Option<String> = None;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
@@ -249,6 +251,27 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 required_ci_adjudicate_receipt =
                     Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            // THE BASE SIDE OF THE PER-PR v2 CLAIM DIFFERENTIAL. Only the required floor passes
+            // this, as a separate process whose working directory is a worktree at the diff base
+            // (`v1_compiler::cli_run::reach_base_standings`). It names the reached identities and
+            // the floor's own per-claim wall limit, read once by the floor from
+            // `v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms`.
+            "--reach-base-standings" => {
+                i += 1;
+                reach_base_standings_file =
+                    Some(require_value(&args, i, "--reach-base-standings")?);
+            }
+            "--claim-wall-limit-ms" => {
+                i += 1;
+                let value = require_value(&args, i, "--claim-wall-limit-ms")?;
+                match value.parse::<u64>() {
+                    Ok(ms) => claim_wall_limit_ms = Some(ms),
+                    Err(e) => {
+                        eprintln!("--claim-wall-limit-ms {value:?}: {e}");
+                        return Err(ExitCode::from(2));
+                    }
+                }
             }
             "--measurement-unreached-receipt" => {
                 i += 1;
@@ -352,6 +375,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
+    if let Some(path) = reach_base_standings_file {
+        let Some(wall_ms) = claim_wall_limit_ms else {
+            eprintln!("--reach-base-standings requires --claim-wall-limit-ms");
+            return Err(ExitCode::from(2));
+        };
+        return run_reach_base_standings(&source_roots, &path, wall_ms);
+    }
     if let Some(path) = required_ci_adjudicate_receipt {
         return adjudicate_required_ci_measurement_receipt(&path);
     }
@@ -2206,6 +2236,9 @@ fn required_floor_measurement_blockers(
     for identity in &outcome.failures {
         add(identity, "claim_failed");
     }
+    for (identity, differential) in &outcome.reach_differential_blocking {
+        add(identity, &format!("reach_differential_{differential}"));
+    }
     for identity in &outcome.non_verdict_unenrolled {
         add(identity, "non_verdict_unenrolled");
     }
@@ -2254,6 +2287,47 @@ fn required_floor_measurement_blockers(
         add(&blocker.identity, &blocker.cause);
     }
     blockers
+}
+
+/// One line per reached identity on stdout, `reach-base identity=<id> standing=<name>`, then exit
+/// 0. Exit 3 with `reach-base-refused identity=<id> cause=<cause>` when an outcome is not a
+/// verdict, and exit 2 when the arm could not run at all. The floor parses these lines and
+/// nothing else.
+fn run_reach_base_standings(
+    source_roots: &[String],
+    identities_file: &str,
+    wall_ms: u64,
+) -> Result<ExitCode, ExitCode> {
+    use v1_compiler::cli_run::reach_base_standings::{reach_base_standings, ReachBaseArm};
+    let text = std::fs::read_to_string(identities_file).map_err(|e| {
+        eprintln!("reach-base: {identities_file}: {e}");
+        ExitCode::from(2)
+    })?;
+    let identities: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    match reach_base_standings(source_roots, &identities, wall_ms) {
+        Ok(ReachBaseArm::Completed(standings)) => {
+            for (identity, standing) in standings {
+                println!(
+                    "reach-base identity={identity} standing={}",
+                    standing.name()
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Ok(ReachBaseArm::Refused { identity, cause }) => {
+            println!("reach-base-refused identity={identity} cause={cause}");
+            Ok(ExitCode::from(3))
+        }
+        Err(e) => {
+            eprintln!("reach-base: arm did not run: {e}");
+            Err(ExitCode::from(2))
+        }
+    }
 }
 
 fn main() -> ExitCode {

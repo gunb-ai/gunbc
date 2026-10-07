@@ -17,7 +17,7 @@ import gunbc.guarantee_probe_corpus {
 }
 import std.types { Bool, Int, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // THIS MODULE EXISTS BECAUSE ITS ASSERTIONS HAVE TO EXECUTE, AND THE OBVIOUS HOME FOR THEM DID
 // NOT WHILE DeclinedLiveTree stood. The three probes below belong to the guarantee probe corpus

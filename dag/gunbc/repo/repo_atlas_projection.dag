@@ -3,7 +3,7 @@ module gunbc.repo_atlas_projection
 import std.content_hash { content_hash_atom }
 import v2.lens.module_graph { ModuleDeclarationFact, map_lookup_where_rejected_unreachable }
 import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.lens.module_impact_query {
   ModuleIdentity,
   ImpactReading,
@@ -462,7 +462,9 @@ fn atlas_impact_is_exact(overlay: AtlasImpactOverlay) -> Bool {
     AtlasImpactComputed { reached: _, standing: standing } =>
       match standing {
         ExactForGraphSubject => true
-        _ => false
+        ProvisionalForObservedPool => false
+        Incomplete { causes: _ } => false
+        PoolIndependentProjectionUnavailable { trigger: _ } => false
       }
   }
 }

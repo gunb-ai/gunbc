@@ -56,7 +56,7 @@ import v2.test.lens_common.infer_fixture {
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.diagnostic { outcome_accepted }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
 import v2.std.collection { list_at_optional }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }

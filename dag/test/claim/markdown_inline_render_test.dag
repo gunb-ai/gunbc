@@ -1,5 +1,6 @@
 module test.claim.markdown_inline_render
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr }
 import std.markdown {
   markdown_inlines_to_fragments,

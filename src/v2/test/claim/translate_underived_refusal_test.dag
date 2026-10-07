@@ -64,7 +64,7 @@ import v2.std.node {
   content_hash,
   node_rebuild,
 }
-import v2.std.optional { Absent, Optional, optional_absent }
+import std.optional { Absent, Optional, optional_absent }
 import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
