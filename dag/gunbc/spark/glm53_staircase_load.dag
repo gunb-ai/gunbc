@@ -86,7 +86,7 @@ fn glm53_step_load(s: Glm53StaircaseStep) -> Glm53StepLoad {
                         group: inputs.assignment.group,
                         container: inputs.container.container_name,
                         base_url: join(["http://127.0.0.1:", to_string(inputs.profile.serve_port)], "") as NonEmptyStr,
-                        served_alias: inputs.profile.served_alias,
+                        served_alias: inputs.profile.served_names.reported,
                         standing: serving_subject_standing(
                           subject: perf,
                           believed: "the running Group A arm is believed to be this step's launch: its image is the step's runtime pin and its argv the step's profile; collective transport is unread" as NonEmptyStr,

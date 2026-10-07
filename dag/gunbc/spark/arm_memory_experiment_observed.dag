@@ -21,9 +21,9 @@ import extdeps.vllm.kv_layout {
   VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
 }
 import extdeps.vllm.sparse_prefill_transient { sparse_topk_indices_buffer_bytes }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape, glm_5_3_flash_served_name_base }
 import gunbc.spark.serving_arm {
-  glm53_native_launch_policy,
+  glm53_native_launch_policy, served_name_only,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
   ServingLaunchProfile,
@@ -164,7 +164,7 @@ fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
           policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
-          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          served_names: served_name_only(name: glm_5_3_flash_served_name_base),
           prefix_caching: PrefixCachingExplicit { enabled: true },
         ),
         launch_generation: arm_experiment_2026_09_25_generation,
@@ -527,7 +527,7 @@ fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
           policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
-          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          served_names: served_name_only(name: glm_5_3_flash_served_name_base),
           prefix_caching: PrefixCachingExplicit { enabled: true },
         ),
         launch_generation: arm_experiment_2026_09_26_generation,
@@ -740,7 +740,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint 
           policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
-          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          served_names: served_name_only(name: glm_5_3_flash_served_name_base),
           prefix_caching: PrefixCachingExplicit { enabled: true },
         ),
         launch_generation: arm_experiment_kvplan_v2_2026_09_26_generation,
@@ -1489,7 +1489,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile 
     policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
-    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    served_names: served_name_only(name: glm_5_3_flash_served_name_base),
     prefix_caching: PrefixCachingExplicit { enabled: true },
   )
 }

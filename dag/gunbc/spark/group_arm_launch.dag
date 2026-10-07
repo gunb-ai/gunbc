@@ -113,7 +113,7 @@ fn group_arm_launch_plan(inputs: GroupArmLaunchInputs) -> GroupArmLaunchPlan {
 fn group_arm_unit_renders(intent: ArmIntent, units: ArmUnitIdentity, p: GroupArmLaunchPlan) -> List<GlmNativeUnitRender> {
   match p {
     GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: _ } =>
-      map(ls, l => arm_host_unit_file_for(intent: intent, launch: l, units: units, served_alias: prof.served_alias))
+      map(ls, l => arm_host_unit_file_for(intent: intent, launch: l, units: units, served_alias: prof.served_names.reported))
     GroupArmLaunchRefused { causes: _ } => [] as List<GlmNativeUnitRender>
   }
 }

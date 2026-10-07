@@ -5,7 +5,8 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   harness_unit_model_id, harness_serving_unit_wire,
 }
-import gunbc.spark.group_b_serving_capacity { group_b_restoration_served_alias }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_served_names }
+import extdeps.vllm.engine_args { vllm_served_model_names_all }
 
 // ── WHICH MODELS A TURN MAY BE ANSWERED BY, AND WHY THAT IS A SET RATHER THAN A ROW ───────────
 //
@@ -50,7 +51,7 @@ import gunbc.spark.group_b_serving_capacity { group_b_restoration_served_alias }
 fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match unit {
     DeepseekV4FlashOnVllm => [harness_unit_model_id(unit: DeepseekV4FlashOnVllm)]
-    Glm53FlashOnVllm => [harness_unit_model_id(unit: Glm53FlashOnVllm), group_b_restoration_served_alias]
+    Glm53FlashOnVllm => concat([harness_unit_model_id(unit: Glm53FlashOnVllm)], vllm_served_model_names_all(n: group_b_restoration_served_names))
   }
 }
 

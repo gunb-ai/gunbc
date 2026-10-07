@@ -1,0 +1,76 @@
+module test.claim.spark.served_model_names_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import v2.std.algebra { length }
+import extdeps.vllm.engine_args { VllmServedModelNames, vllm_served_model_names_all, vllm_served_model_name_argv }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_served_name_base }
+import gunbc.spark.serving_arm {
+  served_name_only, checkpoint_served_name, glm53_native_fp8_row, glm53_flash_nvidia_nvfp4_row,
+  group_b_fp8_served_names, glm_native_initial_profile, serving_launch_profile_key,
+}
+import gunbc.spark.native_serving_realization { glm_native_launch_lines }
+import gunbc.spark.native_serving_apply { spark_native_arm_steps, NativeArmSteps, NativeArmStepsRefused, spark_native_front_door_served_test }
+
+fn names_text(n: VllmServedModelNames) -> String {
+  join(map(vllm_served_model_names_all(n: n), x => x as String), ",")
+}
+
+// THE QUALIFIED NAME IS DERIVED FROM THE ROW'S WEIGHT SCHEME, NOT ITS QUANTIZATION DECLARER. The NVFP4
+// row's quant_method is "modelopt"; a derivation reading the declarer would mint glm-5.3-flash:modelopt.
+// Red if either row's weight scheme moves or the derivation reads the wrong field.
+test fn w_qualified_name_is_derived_from_the_weight_scheme() -> Bool {
+  (checkpoint_served_name(base: glm_5_3_flash_served_name_base, row: glm53_native_fp8_row) as String) == "glm-5.3-flash:fp8"
+    && (checkpoint_served_name(base: glm_5_3_flash_served_name_base, row: glm53_flash_nvidia_nvfp4_row) as String) == "glm-5.3-flash:nvfp4"
+}
+
+// GROUP B ANSWERS TO THE PLAIN NAME FIRST AND THE fp8 NAME SECOND: first is what vLLM reports.
+test fn w_group_b_reports_the_plain_name_and_answers_the_qualified_one() -> Bool {
+  names_text(n: group_b_fp8_served_names) == "glm-5.3-flash,glm-5.3-flash:fp8"
+}
+
+// ROUTE: THE REAL LAUNCH PLAN renders both names, in order, as one --served-model-name flag directly after
+// the model path. This runs the Group B plan the apply relaunches from; red if the plan refuses or the
+// argv carries a single name.
+test fn w_group_b_launch_argv_renders_both_names() -> Bool {
+  match glm_native_launch_lines().first() {
+    Absent => false
+    Present { value: l } =>
+      match l.engine_argv {
+        Nil => false
+        Cons { head: _, tail: rest } =>
+          join(rest, " ").starts_with("--served-model-name glm-5.3-flash glm-5.3-flash:fp8 --tensor-parallel-size")
+      }
+  }
+}
+
+// ROUTE: THE APPLY'S READBACK requires every declared name. Each host step carries both names, and the
+// served test conjoins one grep per name, so a listing with only the plain name reads "no".
+test fn w_apply_readback_requires_every_name() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: ss, master_endpoint: _ } =>
+      match ss.first() {
+        Absent => false
+        Present { value: st } =>
+          let t = spark_native_front_door_served_test(names: st.served_names)
+          names_text(n: st.served_names) == "glm-5.3-flash,glm-5.3-flash:fp8"
+            && t.contains("\"id\":\"glm-5.3-flash\"")
+            && t.contains("\"id\":\"glm-5.3-flash:fp8\"")
+            && t.contains(" && ")
+      }
+  }
+}
+
+// CONTROL: a single-name list renders one grep and no conjunction, and one argv word after the flag.
+test fn w_single_name_renders_as_before() -> Bool {
+  let one = served_name_only(name: "glm-5.3-flash" as NonEmptyStr)
+  !spark_native_front_door_served_test(names: one).contains(" && ")
+    && join(vllm_served_model_name_argv(n: one), " ") == "--served-model-name glm-5.3-flash"
+}
+
+// A SINGLE-NAME PROFILE KEEPS ITS KEY TEXT, so subjects recorded before the list existed are not
+// re-keyed; only a profile that gained a name became a new subject.
+test fn w_single_name_profile_key_is_unchanged() -> Bool {
+  serving_launch_profile_key(p: glm_native_initial_profile).contains(" alias=glm-5.3-flash prefix=")
+}

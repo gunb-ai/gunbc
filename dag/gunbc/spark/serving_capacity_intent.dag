@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, List, Port }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint }
 import extdeps.vllm.engine_args {
+  VllmServedModelNames,
   VllmPrefixCachingRequest, VllmKvCacheDtypeRequest, VllmEngramConfigRequest, VllmModalityRequest,
   VllmSchedulerAdmissionRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
   KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted, vllm_scheduler_admission_defect,
@@ -243,7 +244,7 @@ fn profile_for_envelope(
   policy: ModelLaunchPolicy,
   decided_gpu_memory_basis_points: BasisPoint,
   serve_port: Port,
-  served_alias: NonEmptyStr,
+  served_names: VllmServedModelNames,
   prefix_caching: VllmPrefixCachingRequest,
 ) -> ServingLaunchProfile {
   serving_launch_profile(
@@ -254,7 +255,7 @@ fn profile_for_envelope(
     guaranteed_cold_seqs: intent_max_active_sequences(i: envelope.cold),
     decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
     serve_port: serve_port,
-    served_alias: served_alias,
+    served_names: served_names,
     prefix_caching: prefix_caching,
     scheduler_admission: envelope.admission,
   )

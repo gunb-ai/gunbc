@@ -458,7 +458,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
       Present { value: head } =>
         let window = spark_churn_window_seconds(admitted_seconds: plan.max_runtime_seconds)
         let context_window = token_count_value(t: plan.profile.max_model_len)
-        let served = plan.profile.served_alias
+        let served = plan.profile.served_names.reported
         Present { value: SparkExperimentWorkloadPhase {
           variant: variant,
           readiness_gate: SparkExperimentWorkloadLeg {

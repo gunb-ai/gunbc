@@ -18,7 +18,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
-import gunbc.spark.group_b_serving_capacity { group_b_restoration_profile, group_b_restoration_serve_port, group_b_restoration_served_alias }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_profile, group_b_restoration_serve_port, group_b_restoration_served_names }
 import gunbc.spark.serving_arm_launch { glm_native_container_name, glm_native_weights_container_dir }
 import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
 import gunbc.spark.serving_performance_subject {
@@ -94,7 +94,7 @@ fn glm_native_serve_base_url() -> NonEmptyStr {
 data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
   base_url: glm_native_serve_base_url(),
-  model: group_b_restoration_served_alias,
+  model: group_b_restoration_served_names.reported,
   tokenizer: glm_native_engine_tokenizer_path,
   dataset: glm_native_sweep_dataset,
   num_prompts: 4,
@@ -148,7 +148,7 @@ fn glm_native_protected_subject() -> ProtectedSubjectField? {
     Absent => none
     Present { value: subject } => Present { value: protected_subject_field(
       subject: subject,
-      served_alias: group_b_restoration_served_alias,
+      served_alias: group_b_restoration_served_names.reported,
       route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
     ) }
   }
@@ -163,7 +163,7 @@ fn glm_native_serving_load_subject() -> ServingLoadSubject? {
       group: FabricGroupB,
       container: glm_native_container_name,
       base_url: glm_native_serve_base_url(),
-      served_alias: group_b_restoration_served_alias,
+      served_alias: group_b_restoration_served_names.reported,
       standing: standing,
       admission: glm_native_workload_admission,
       qualification_frontier: glm_native_qualification_frontier,

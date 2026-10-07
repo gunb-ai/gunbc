@@ -18,7 +18,7 @@ import extdeps.vllm.kv_layout {
   ResolvedKvLayout, resolved_kv_layout, KvGroupLayout, FullAttention,
   cold_admission_bytes, AdmissionByteCostBytes, AdmissionByteCostUnestablished,
 }
-import gunbc.spark.serving_arm {
+import gunbc.spark.serving_arm { served_name_only,
   glm53_native_launch_policy,
   Glm53NativeFp8, Glm53Exl3_205, GunbcGlm53NopeDerivedGb10, Gitcommit90Sm121Exl3,
   SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
@@ -247,7 +247,7 @@ fn fx_derived_profile() -> ServingLaunchProfile {
     policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8400),
     serve_port: 30000,
-    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
     prefix_caching: PrefixCachingExplicit { enabled: true },
   )
 }
@@ -1360,7 +1360,7 @@ fn fx_wet_profile() -> ServingLaunchProfile {
     policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
-    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
     prefix_caching: PrefixCachingExplicit { enabled: true },
   )
 }
@@ -2020,7 +2020,7 @@ fn fx_262k_subject() -> MemoryProofSubject? {
           policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
-          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
           prefix_caching: PrefixCachingExplicit { enabled: true },
         ),
         launch_generation: "group-b/future-262k" as NonEmptyStr) {
@@ -2403,7 +2403,7 @@ fn fx_launch_wall_profile() -> ServingLaunchProfile {
     policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
-    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
     prefix_caching: PrefixCachingExplicit { enabled: true },
   )
 }

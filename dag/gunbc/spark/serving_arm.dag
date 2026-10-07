@@ -16,6 +16,7 @@ import extdeps.vllm.engine_args {
   VllmSchedulerAdmissionRequest, vllm_scheduler_admission_omitted, vllm_scheduler_admission_argv, vllm_scheduler_admission_key,
   KvFp8E4m3, KvNvfp4, KvNvfp4DsMla, IndexerKvDtypeOmitted,
   VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_argv, vllm_indexer_kv_dtype_key,
+  VllmServedModelNames, vllm_served_model_names_all,
 }
 import extdeps.vllm.kv_dtype_capability {
   KvMainDtypeRow, kv_main_dtype_row, FlashInferMlaSparseSm120, KvBasisObservedOnBuild, RowOnBuild, kv_runtime,
@@ -23,7 +24,7 @@ import extdeps.vllm.kv_dtype_capability {
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
 import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_dtype }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_architecture_class,
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_architecture_class, glm_5_3_flash_served_name_base,
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
 }
 import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim }
@@ -265,6 +266,45 @@ fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
   }
 }
 
+// THE WEIGHT SCHEME IS A SECOND FACT BESIDE THE QUANTIZATION DECLARER, NOT A SPELLING OF IT. The
+// declarer's wire is what the engine is told or reads (quant_method), and for the ModelOpt rows that is
+// "modelopt" -- the tool that produced the checkpoint, not what its weights are. What a served name must
+// say is the WEIGHT FORMAT, which each checkpoint's own config states in its own place: quant_method fp8
+// for the native GLM row; hf_quant_config.json quant_algo NVFP4 for both NVFP4 rows; the exl3 scheme
+// the EXL3 row spells on argv; and for DeepSeek V4.1 quant_method fp8 with an fp4 expert dtype
+// (extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_expert_dtype). One closed variant per
+// format, one tag per variant, so the tag a served name carries cannot be typed beside the row.
+type CheckpointWeightScheme
+  = WeightFp8Block
+  | WeightNvfp4
+  | WeightExl3
+  | WeightFp8WithFp4Experts
+
+fn checkpoint_weight_scheme_tag(s: CheckpointWeightScheme) -> NonEmptyStr {
+  match s {
+    WeightFp8Block => "fp8" as NonEmptyStr
+    WeightNvfp4 => "nvfp4" as NonEmptyStr
+    WeightExl3 => "exl3" as NonEmptyStr
+    WeightFp8WithFp4Experts => "fp8-fp4experts" as NonEmptyStr
+  }
+}
+
+// THE BUILD-QUALIFIED SERVED NAME, DERIVED (operator ruling 2026-10-07, relayed by valiant-crab-775):
+// the model's served-name base, a colon, and the checkpoint's weight-scheme tag. Every arm that serves a
+// qualified name reads it here -- Group B's fp8 arm and Group A's nvfp4 arm call the same function, so
+// "glm-5.3-flash:fp8" and "glm-5.3-flash:nvfp4" are two derivations of one rule rather than two
+// hand-typed strings that agree today.
+fn checkpoint_served_name(base: NonEmptyStr, row: ServingCheckpointRow) -> NonEmptyStr {
+  join([base as String, ":", checkpoint_weight_scheme_tag(s: row.weight_scheme) as String], "") as NonEmptyStr
+}
+
+// A SERVED-NAME LIST WITH ONE NAME, for every arm that answers to a single name: it reports that name
+// and answers to nothing else, which is exactly what the one-name --served-model-name it rendered
+// before meant.
+fn served_name_only(name: NonEmptyStr) -> VllmServedModelNames {
+  VllmServedModelNames { reported: name, also_answers: [] }
+}
+
 // THE PARSERS ARE THE CHECKPOINT'S, NOT THE LAUNCHER'S. gunbc.spark.serving_arm_launch spelled GLM's
 // tool and reasoning parser names inside its argv renderer, so the one multi-host launcher could only
 // ever launch a GLM model: pointing it at another architecture would have rendered GLM's parsers for
@@ -308,6 +348,7 @@ type ServingCheckpointRow {
   architecture: NonEmptyStr
   weight_gib: Gibibyte
   quantization: CheckpointQuantization
+  weight_scheme: CheckpointWeightScheme
   parsers: CheckpointVllmParsers
   resident_beyond_weights: PoolResidentAllowance
   provenance: NonEmptyStr
@@ -321,6 +362,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   architecture: glm_5_3_flash_architecture_class,
   weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
+  weight_scheme: WeightExl3,
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
@@ -334,6 +376,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  weight_scheme: WeightFp8Block,
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
@@ -352,6 +395,7 @@ data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_nvfp4_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  weight_scheme: WeightNvfp4,
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_manifest, read from the Hub API at that exact revision on 2026-10-02; the GiB figure is derived from those bytes. The architecture is the sole entry of `architectures` in config.json at the pin. NOT fetched, NOT launched and NOT measured on this fleet" as NonEmptyStr,
@@ -370,6 +414,7 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   architecture: glm_5_3_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_nvfp4_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  weight_scheme: WeightNvfp4,
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject, and gunbc.spark.serving_fit_projection is its consumer" as NonEmptyStr,
@@ -402,6 +447,7 @@ data deepseek_v41_flash_row: ServingCheckpointRow = ServingCheckpointRow {
   architecture: deepseek_v4_1_flash_architecture_class,
   weight_gib: gibibyte_ceiling(b: deepseek_v4_1_flash_published_rows_bytes(rows: deepseek_v4_1_flash_weight_manifest_backbone_rows)),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: deepseek_v4_1_flash_quant_method, because: "the checkpoint's own config.json carries quant_method fp8 with its ue8m0 scale format, weight block size and fp4 expert dtype (extdeps.deepseek.deepseek_v4_1_flash); a bare --quantization flag would replace that structure with a scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  weight_scheme: WeightFp8WithFp4Experts,
   parsers: CheckpointVllmParsers {
     tool_call_parser: vllm_recipe_deepseek_v4_1_flash_tool_call_parser,
     reasoning_parser: vllm_recipe_deepseek_v4_1_flash_reasoning_parser,
@@ -985,7 +1031,7 @@ type ServingLaunchProfile sole_constructor {
   decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype: VllmKvCacheDtypeRequest
   serve_port: Port
-  served_alias: NonEmptyStr
+  served_names: VllmServedModelNames
   prefix_caching: VllmPrefixCachingRequest
   engram: VllmEngramConfigRequest
   modality: VllmModalityRequest
@@ -1010,7 +1056,7 @@ fn serving_launch_profile(
   guaranteed_cold_seqs: Nat,
   decided_gpu_memory_basis_points: BasisPoint,
   serve_port: Port,
-  served_alias: NonEmptyStr,
+  served_names: VllmServedModelNames,
   prefix_caching: VllmPrefixCachingRequest,
   scheduler_admission: VllmSchedulerAdmissionRequest,
 ) -> ServingLaunchProfile {
@@ -1023,7 +1069,7 @@ fn serving_launch_profile(
     decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
     kv_cache_dtype: policy.kv_cache_dtype,
     serve_port: serve_port,
-    served_alias: served_alias,
+    served_names: served_names,
     prefix_caching: prefix_caching,
     engram: policy.engram,
     modality: policy.modality,
@@ -1080,7 +1126,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
     " kv=", vllm_kv_cache_dtype_wire(request: p.kv_cache_dtype) as String,
     " port=", to_string(p.serve_port),
-    " alias=", p.served_alias as String,
+    " alias=", join(map(vllm_served_model_names_all(n: p.served_names), x => x as String), ","),
     " prefix=", match p.prefix_caching {
       PrefixCachingOmitted => "omitted"
       PrefixCachingExplicit { enabled: e } => if e { "on" } else { "off" }
@@ -1238,10 +1284,22 @@ data glm_native_initial_profile: ServingLaunchProfile = serving_launch_profile(
   guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   serve_port: 30000,
-  served_alias: "glm-5.3-flash" as NonEmptyStr,
+  served_names: served_name_only(name: glm_5_3_flash_served_name_base),
   prefix_caching: PrefixCachingExplicit { enabled: true },
   scheduler_admission: vllm_scheduler_admission_omitted,
 )
+
+// GROUP B'S fp8 ARM ANSWERS TO TWO NAMES (operator ruling 2026-10-07, relayed by valiant-crab-775). The
+// plain base was, until this row, the only name it served -- while Group A was set to serve the NVFP4
+// build of the same model, so one name would have meant two builds with different quality. The
+// build-qualified name is DERIVED from this arm's checkpoint row, so the fp8-versus-nvfp4 qualification
+// has a name of its own. The PLAIN name stays FIRST: vLLM reports the first name in every response
+// (extdeps.vllm.engine_args VllmServedModelNames), so existing sessions see no change in the model they
+// are told they reached, and the router routes on the name a client REQUESTS, which either answers.
+data group_b_fp8_served_names: VllmServedModelNames = VllmServedModelNames {
+  reported: glm_5_3_flash_served_name_base,
+  also_answers: [checkpoint_served_name(base: glm_5_3_flash_served_name_base, row: glm53_native_fp8_row)],
+}
 
 // ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
 //
@@ -1295,7 +1353,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = serving_launch_profil
   guaranteed_cold_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
   serve_port: glm_native_initial_profile.serve_port,
-  served_alias: glm_native_initial_profile.served_alias,
+  served_names: group_b_fp8_served_names,
   prefix_caching: PrefixCachingExplicit { enabled: true },
   scheduler_admission: vllm_scheduler_admission_omitted,
 )
@@ -1431,7 +1489,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = serving_launch_profile(
   guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
   serve_port: 30001,
-  served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+  served_names: served_name_only(name: "glm-5.3-flash-exl3-canary" as NonEmptyStr),
   prefix_caching: PrefixCachingOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
 )

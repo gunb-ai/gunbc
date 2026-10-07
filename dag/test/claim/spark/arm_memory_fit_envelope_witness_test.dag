@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args {
   PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted,
   VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted,
 }
-import gunbc.spark.serving_arm { glm53_native_launch_policy,
+import gunbc.spark.serving_arm { served_name_only, glm53_native_launch_policy,
   ServingLaunchProfile, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
 }
 import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
@@ -41,7 +41,7 @@ fn w_profile(ceiling: Nat, cold: Nat, admission: VllmSchedulerAdmissionRequest) 
     guaranteed_cold_seqs: cold,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
-    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
     prefix_caching: PrefixCachingExplicit { enabled: true },
     scheduler_admission: admission,
   )

@@ -70,6 +70,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.nvidia.nccl { NcclTransportReading, NcclTransportIbVerbs, NcclTransportSocket, nccl_using_network_marker, nccl_channel_via_marker }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli, spark_remote_run, SparkRemoteRun, RemoteRan, RemoteUnreachable }
 import gunbc.spark.serving_arm { glm_native_concurrent_profile, ServingLaunchProfile }
+import extdeps.vllm.engine_args { VllmServedModelNames, vllm_served_model_names_all }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines, glm_native_master_endpoint }
 import std.nat { Nat }
 import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
@@ -854,7 +855,17 @@ fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_with
 // THE FRONT DOOR IS HANDED THE HEAD'S AWAITED INCARNATION and waits on exactly it: the name must still
 // resolve to that id, under that deadline. After a successful probe it reports whether the answer names
 // this arm's served model; the verdict requires both.
-fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, awaited: AwaitedIncarnation, container: NonEmptyStr) -> String {
+//
+// EVERY DECLARED NAME MUST BE LISTED, NOT ANY ONE OF THEM. An arm launched to answer to a plain and a
+// build-qualified name has relaunched correctly only when /v1/models carries a card for each (vLLM emits
+// one card per served name -- extdeps.vllm.engine_args VllmServedModelNames); a listing carrying the
+// plain name alone is the old single-name arm still answering, and accepting it would report a relaunch
+// that never took. So the served word is "yes" only when every name's id is found.
+fn spark_native_front_door_served_test(names: VllmServedModelNames) -> String {
+  join(map(vllm_served_model_names_all(n: names), n => join(["grep -Fq ", shell_quote(arg: join(["\"id\":\"", n as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact"], "")), " && ")
+}
+
+fn spark_native_front_door_script(port_text: String, served_names: VllmServedModelNames, awaited: AwaitedIncarnation, container: NonEmptyStr) -> String {
   join([
     "set -e\n",
     "mkdir -p ", spark_native_readback_dir, "\n",
@@ -865,7 +876,7 @@ fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, 
       waited_for: "front-door" as NonEmptyStr),
     "if [ \"$ok\" = ", awaited_probe_ok_word, " ]; then\n",
     "  tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
-    "  if grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo \"", awaited_served_word, awaited_field_separator, "yes\"; else echo \"", awaited_served_word, awaited_field_separator, "no\"; fi\n",
+    "  if ", spark_native_front_door_served_test(names: served_names), "; then echo \"", awaited_served_word, awaited_field_separator, "yes\"; else echo \"", awaited_served_word, awaited_field_separator, "no\"; fi\n",
     "fi\n",
   ], "")
 }
@@ -1277,7 +1288,7 @@ type SparkNativeHostStep sole_constructor {
   log_path: NonEmptyStr
   launch: ArmNodeLaunch
   serve_port: Port
-  served_alias: NonEmptyStr
+  served_names: VllmServedModelNames
 }
 
 type SparkNativeArmSteps
@@ -1295,7 +1306,7 @@ fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender, unit
         log_path: arm_unit_log_path_for(units: units, launch: launch),
         launch: launch,
         serve_port: profile.serve_port,
-        served_alias: profile.served_alias,
+        served_names: profile.served_names,
       } }
   }
 }
@@ -1381,7 +1392,7 @@ fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>, awaited: List
             Present { value: n } => {
               let remaining = if (a.deadline_epoch as Int) > (n as Int) { (a.deadline_epoch as Int) - (n as Int) } else { 0 }
               SparkNativeBoundedPlan {
-                plan: spark_native_plan_of(step: st, script: spark_native_front_door_script(port_text: to_string(st.serve_port), served_alias: st.served_alias, awaited: a, container: st.launch.container.name)),
+                plan: spark_native_plan_of(step: st, script: spark_native_front_door_script(port_text: to_string(st.serve_port), served_names: st.served_names, awaited: a, container: st.launch.container.name)),
                 bound: second(count: remaining + second_count(s: spark_native_wait_leg_grace)),
               }
             }

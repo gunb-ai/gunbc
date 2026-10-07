@@ -1,5 +1,6 @@
 module test.claim.spark.group_b_serving_capacity_witness_test
 
+import extdeps.vllm.engine_args { vllm_served_model_names_all }
 import std.types { Bool }
 import std.optional { Present, Absent }
 import gunbc.spark.group_b_serving_capacity {
@@ -93,13 +94,13 @@ test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
             && token_count_value(t: profile.max_num_batched_tokens) == 2048
             && basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8567
             && (vllm_kv_cache_dtype_wire(request: profile.kv_cache_dtype) as String) == "fp8"
-            && (profile.served_alias as String) == "glm-5.3-flash"
+            && join(map(vllm_served_model_names_all(n: profile.served_names), n => n as String), ",") == "glm-5.3-flash,glm-5.3-flash:fp8"
             && (serving_launch_profile_key(p: profile) == serving_launch_profile_key(p: profile_for_envelope(
               envelope: envelope_at_cold_floor(cold: intent),
               policy: glm53_native_launch_policy,
               decided_gpu_memory_basis_points: group_b_restoration_utilization,
               serve_port: profile.serve_port,
-              served_alias: profile.served_alias,
+              served_names: profile.served_names,
               prefix_caching: profile.prefix_caching)))
       }
   }

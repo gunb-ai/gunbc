@@ -9,7 +9,8 @@ import extdeps.vllm.engine_args {
   VllmEngramConfigRequest, EngramConfigOmitted,
   ModalityOmitted,
 }
-import gunbc.spark.serving_arm { ServingLaunchProfile, glm53_native_launch_policy }
+import gunbc.spark.serving_arm { ServingLaunchProfile, glm53_native_launch_policy, group_b_fp8_served_names }
+import extdeps.vllm.engine_args { VllmServedModelNames }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, ServingCapacityIntentAdmission, uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
   SchedulerEnvelope, envelope_hard_max_num_seqs,
@@ -114,7 +115,7 @@ data group_b_restoration_utilization: BasisPoint = basis_point(count: 8567)
 
 data group_b_restoration_serve_port: Port = 30000
 
-data group_b_restoration_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+data group_b_restoration_served_names: VllmServedModelNames = group_b_fp8_served_names
 
 data group_b_restoration_prefix_caching: VllmPrefixCachingRequest = PrefixCachingExplicit { enabled: true }
 
@@ -187,7 +188,7 @@ fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
         policy: glm53_native_launch_policy,
         decided_gpu_memory_basis_points: group_b_restoration_utilization,
         serve_port: group_b_restoration_serve_port,
-        served_alias: group_b_restoration_served_alias,
+        served_names: group_b_restoration_served_names,
         prefix_caching: group_b_restoration_prefix_caching,
       ) } }
   }

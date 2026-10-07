@@ -1,5 +1,6 @@
 module test.claim.spark.native_serving_roce_transport_witness_test
 
+import gunbc.spark.serving_arm { served_name_only }
 import std.types { Bool, String, NonEmptyStr, List, FilePath, Int }
 import std.algebra { trim }
 import std.optional { Present, Absent }
@@ -168,7 +169,7 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
             spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
             w_rollback_text(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
             spark_native_metadata_cleanup_script(unit_name: st.unit_name, transaction_id: "t"),
-            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr),
+            spark_native_front_door_script(port_text: "30000", served_names: served_name_only(name: "x" as NonEmptyStr), awaited: w_awaited_fixture, container: "c" as NonEmptyStr),
           ], "\n")
           !string_contains(s: scripts, pattern: "Using network")
             && !string_contains(s: scripts, pattern: "NET/IB")
@@ -543,8 +544,8 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
         Absent => false
         Present { value: st } =>
           length(steps) == 4
-            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "ss ")
-            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "/v1/models")
+            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_names: served_name_only(name: "x" as NonEmptyStr), awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "ss ")
+            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_names: served_name_only(name: "x" as NonEmptyStr), awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "/v1/models")
             && count(st.launch.container.devices) > 0
             && count(st.launch.container.cap_add) > 0
             && st.launch.container.memlock_unlimited

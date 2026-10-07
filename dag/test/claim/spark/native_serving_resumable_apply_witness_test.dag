@@ -1,5 +1,6 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
 
+import gunbc.spark.serving_arm { served_name_only }
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import product.host_identity { HostIdentity }
 
@@ -425,7 +426,7 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
     spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name),
     spark_native_commit_script(unit_name: unit, transaction_id: "T"),
     spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800)),
-    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name),
+    spark_native_front_door_script(port_text: "8000", served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), awaited: w_awaited_head, container: glm_native_container_name),
   ]
   all(others, t => !string_contains(s: t, pattern: "reset-failed"))
 }
@@ -449,7 +450,7 @@ test fn w_the_transport_wait_captures_the_awaited_incarnation_and_prints_it() ->
 }
 
 test fn w_the_front_door_is_rendered_from_the_carried_incarnation() -> Bool {
-  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name)
+  let d = spark_native_front_door_script(port_text: "8000", served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), awaited: w_awaited_head, container: glm_native_container_name)
   string_contains(s: d, pattern: "incarnation='0f3a9c1d2e4b'")
     && string_contains(s: d, pattern: "deadline=1234567")
     && !string_contains(s: d, pattern: "StartedAt")
@@ -479,7 +480,7 @@ test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bo
 // The field separator is a shell metacharacter, so every line that prints it must quote it. RED: the
 // unquoted spelling, or any separator outside quotes in the post-probe report.
 test fn w_the_front_door_report_quotes_the_field_separator() -> Bool {
-  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name)
+  let d = spark_native_front_door_script(port_text: "8000", served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), awaited: w_awaited_head, container: glm_native_container_name)
   string_contains(s: d, pattern: "echo \"served|yes\"")
     && string_contains(s: d, pattern: "echo \"served|no\"")
     && !string_contains(s: d, pattern: "echo served|")

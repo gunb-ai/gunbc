@@ -1,7 +1,7 @@
 module test.claim.spark.scheduler_envelope_witness_test
 
 import std.types { Bool, List, String, NonEmptyStr }
-import gunbc.spark.serving_arm { glm53_native_launch_policy }
+import gunbc.spark.serving_arm { served_name_only, glm53_native_launch_policy }
 import std.nat { Nat }
 import std.measure { token_count, basis_point, basis_point_count }
 import std.optional { Present, Absent }
@@ -124,7 +124,7 @@ test fn w_the_floor_envelope_reproduces_the_pre_split_profile() -> Bool {
         policy: glm53_native_launch_policy,
         decided_gpu_memory_basis_points: basis_point(count: 8567),
         serve_port: 30000,
-        served_alias: "glm-5.3-flash" as NonEmptyStr,
+        served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
         prefix_caching: PrefixCachingExplicit { enabled: true },
       )
       p.max_num_seqs == 8 && !envelope_above_floor(e: e) && envelope_best_effort_seats(e: e) == 0

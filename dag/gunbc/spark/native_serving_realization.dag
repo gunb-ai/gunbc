@@ -216,7 +216,7 @@ fn glm_native_host_unit_file(launch: ArmNodeLaunch) -> GlmNativeUnitRender {
 }
 
 fn glm_native_host_unit_file_for(intent: ArmIntent, launch: ArmNodeLaunch) -> GlmNativeUnitRender {
-  arm_host_unit_file_for(intent: intent, launch: launch, units: glm_native_arm_units, served_alias: glm_native_concurrent_profile.served_alias)
+  arm_host_unit_file_for(intent: intent, launch: launch, units: glm_native_arm_units, served_alias: glm_native_concurrent_profile.served_names.reported)
 }
 
 // THE PERSISTENT RENDER, KEPT FOR THE CALLER WHOSE OWN INTENT DECIDES LIFETIME ELSEWHERE: the V4.1

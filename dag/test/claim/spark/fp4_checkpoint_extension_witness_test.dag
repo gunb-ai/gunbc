@@ -11,7 +11,7 @@ import extdeps.vllm.kv_dtype_capability {
   kv_runtime, kv_capability_verdict, KvCapabilitySubject, FlashInferMlaSparseSm120, DsaSparseIndexer, upstream_kv_main_dtype_rows,
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
-import gunbc.spark.serving_arm { GlmNativeEngineDerived8d09804, glm_native_engine_build_image,
+import gunbc.spark.serving_arm { served_name_only, GlmNativeEngineDerived8d09804, glm_native_engine_build_image,
   ServingCheckpoint, Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
   ServingLaunchProfile, glm53_flash_nvidia_nvfp4_launch_policy, ModelLaunchPolicy, serving_checkpoint_row, glm_derived_flashinfer_sm120_row,
 }
@@ -37,7 +37,7 @@ fn w_profile(policy: ModelLaunchPolicy) -> ServingLaunchProfile? {
         ServingCapacityIntentAdmitted { intent: i } => Present { value: profile_for_envelope(
           envelope: envelope_at_cold_floor(cold: i), policy: policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567), serve_port: 30000,
-          served_alias: "glm-5.3-flash" as NonEmptyStr, prefix_caching: PrefixCachingExplicit { enabled: true }) }
+          served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), prefix_caching: PrefixCachingExplicit { enabled: true }) }
       }
 }
 

@@ -465,7 +465,7 @@ test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
     Absent => false
     Present { value: executable } =>
       let expected = execution_generation_of_intent(intent_key: serving_launch_profile_key(p: executable.profile))
-      let alias_value = executable.profile.served_alias as String
+      let alias_value = executable.profile.served_names.reported as String
       match spark_experiment_members(hosts: glm_native_ranked_hosts(), renders: glm_native_experiment_all_unit_renders()) {
         Absent => false
         Present { value: members } =>

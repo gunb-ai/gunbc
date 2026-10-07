@@ -26,7 +26,7 @@ import gunbc.spark.pair_serving_authority {
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
-import gunbc.spark.serving_arm { deepseek_v41_launch_policy, gb10_unified_pool_gib, serving_arm_admits, serving_arm_admits_under, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
+import gunbc.spark.serving_arm { served_name_only, deepseek_v41_launch_policy, gb10_unified_pool_gib, serving_arm_admits, serving_arm_admits_under, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
 import gunbc.spark.native_serving_realization { GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused }
 import gunbc.spark.serving_capacity_intent {
   uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
@@ -283,7 +283,7 @@ test fn w_the_engram_page_cache_allowance_is_charged_to_the_pool() -> Bool {
               let half = profile_for_envelope(
                 envelope: envelope_at_cold_floor(cold: i), policy: deepseek_v41_launch_policy,
                 decided_gpu_memory_basis_points: basis_point(count: 5000),
-                serve_port: 30000, served_alias: "witness" as NonEmptyStr, prefix_caching: PrefixCachingExplicit { enabled: false })
+                serve_port: 30000, served_names: served_name_only(name: "witness" as NonEmptyStr), prefix_caching: PrefixCachingExplicit { enabled: false })
               match serving_arm_admits_under(checkpoint: DeepseekV41FlashDba1be0a, runtime: r, topology: FourSparkTp4, profile: Present { value: half }) {
                 ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "GiB declared page-cache allowance")
                 ServingArmAdmitted => false

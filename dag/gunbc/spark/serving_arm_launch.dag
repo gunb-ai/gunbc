@@ -91,7 +91,7 @@ import std.measure {
 }
 import std.decl_ref { decl_ref }
 import extdeps.vllm.runtime_defaults { resolve_vllm_scheduler_admission, VllmDefaultsKnown, SchedulerAdmissionResolved, SchedulerAdmissionUnresolvable }
-import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv, vllm_indexer_kv_dtype_argv }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv, vllm_indexer_kv_dtype_argv, vllm_served_model_name_argv }
 
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement,
@@ -483,9 +483,7 @@ fn arm_tokenizer_mode_argv(crow: ServingCheckpointRow) -> List<String> {
 }
 
 fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, master_port: Port) -> List<String> {
-  concat([
-    arm_mount_plan(row: crow).model_path as String,
-    "--served-model-name", profile.served_alias as String,
+  concat(concat([arm_mount_plan(row: crow).model_path as String], vllm_served_model_name_argv(n: profile.served_names)), concat([
     "--tensor-parallel-size", to_string(ranks),
     "--distributed-executor-backend", "mp",
     "--nnodes", to_string(ranks),
@@ -505,7 +503,7 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
   ], concat(
     vllm_prefix_caching_argv(r: profile.prefix_caching),
     concat(checkpoint_quantization_argv(row: crow), concat(arm_headless_argv(node: node),
-      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), concat(vllm_scheduler_admission_argv(r: profile.scheduler_admission), vllm_indexer_kv_dtype_argv(r: profile.indexer_kv_dtype)))))))))
+      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), concat(vllm_scheduler_admission_argv(r: profile.scheduler_admission), vllm_indexer_kv_dtype_argv(r: profile.indexer_kv_dtype))))))))))
 }
 
 // ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────

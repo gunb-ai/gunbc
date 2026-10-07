@@ -26,6 +26,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // rather than a second name for the same subject.
 data glm_5_3_flash_model_id: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptyStr
 
+// THE SERVED-NAME BASE, the one spelling of "glm-5.3-flash" every served name of this model is built
+// from. It names the MODEL and no build of it: a build-qualified name is this base plus the
+// checkpoint's weight-scheme tag (gunbc.spark.serving_arm checkpoint_served_name), so the plain base
+// and each qualified name are distinct names for distinct contracts rather than one name whose meaning
+// moves with whichever checkpoint happens to answer it.
+data glm_5_3_flash_served_name_base: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+
 // THE ARCHITECTURE CLASS IS THE STRING A RUNTIME'S REGISTRY IS ASKED FOR, as extdeps.zhipu.glm_5_3
 // glm_5_3_architecture_class is for the full model. Every Flash checkpoint row -- native and each
 // quantization of it -- reads THIS declaration rather than a spelling of its own. It is the sole entry of

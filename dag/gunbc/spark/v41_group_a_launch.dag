@@ -22,7 +22,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryReading }
-import gunbc.spark.serving_arm { ServingRuntime, GunbcDeepseekV41EngramProduced, DeepseekV41FlashDba1be0a, FourSparkTp4, ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_launch_policy, runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished }
+import gunbc.spark.serving_arm { ServingRuntime, GunbcDeepseekV41EngramProduced, DeepseekV41FlashDba1be0a, FourSparkTp4, ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_launch_policy, runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished, served_name_only }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender }
 import gunbc.spark.native_serving_apply { SparkNativeArmSteps, SparkNativeHostStep }
@@ -336,7 +336,7 @@ fn v41_group_a_profile(shape: V41MeasurementLaunchShape) -> ServingLaunchProfile
       policy: deepseek_v41_launch_policy,
       decided_gpu_memory_basis_points: shape.gpu_memory_utilization,
       serve_port: spark_pair_serve_port,
-      served_alias: v41_group_a_served_alias,
+      served_names: served_name_only(name: v41_group_a_served_alias),
       prefix_caching: shape.prefix_caching,
     ) }
   }

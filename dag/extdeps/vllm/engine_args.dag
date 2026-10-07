@@ -844,3 +844,26 @@ fn vllm_argv_indexer_kv_dtype_request(argv: List<String>) -> VllmIndexerKvDtypeR
     IndexerKvDtypeReadUnread { cause: _ } => none
   }
 }
+
+// THE SERVED MODEL NAMES ARE AN ORDERED, NON-EMPTY LIST, AND THE ORDER CARRIES MEANING. Read at
+// github.com/vllm-project/vllm revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (the live pin,
+// extdeps.vllm.server vllm_source_revision_read): vllm/config/model.py ModelConfig.served_model_name
+// is `str | list[str] | None`, documented "if multiple names are provided, the server will respond to
+// any of the provided names. The model name in the model field of a response will be the first name in
+// this list", and the prometheus model_name tag takes the first as well. The listing follows from the
+// launcher: vllm/entrypoints/launchers/api_server/app_state.py builds one BaseModelPath per served
+// name, and vllm/entrypoints/openai/models/serving.py show_available_models emits one /v1/models card
+// per base path, so every name is listed. Hence two fields rather than a bare list: the name responses
+// REPORT, and the further names the server also ANSWERS to. An empty list cannot be written.
+type VllmServedModelNames {
+  reported: NonEmptyStr
+  also_answers: List<NonEmptyStr>
+}
+
+fn vllm_served_model_names_all(n: VllmServedModelNames) -> List<NonEmptyStr> {
+  concat([n.reported], n.also_answers)
+}
+
+fn vllm_served_model_name_argv(n: VllmServedModelNames) -> List<String> {
+  concat(["--served-model-name"], map(vllm_served_model_names_all(n: n), x => x as String)])
+}

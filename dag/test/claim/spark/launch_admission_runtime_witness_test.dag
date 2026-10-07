@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args {
   VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted,
 }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm8d09804, Vllm1967a5627 }
-import gunbc.spark.serving_arm { glm53_native_launch_policy, ServingLaunchProfile, serving_launch_profile, ServingRuntimeRow, serving_runtime_row, GunbcGlm53DerivedKvplanV2Gb10 }
+import gunbc.spark.serving_arm { served_name_only, glm53_native_launch_policy, ServingLaunchProfile, serving_launch_profile, ServingRuntimeRow, serving_runtime_row, GunbcGlm53DerivedKvplanV2Gb10 }
 import gunbc.spark.serving_arm_launch { scheduler_admission_runtime_refusal }
 
 // THE SUBJECT IS THE LAUNCH WALL'S RUNTIME RESOLUTION OF THE ADMISSION CONTROLS: a control the launch
@@ -19,7 +19,7 @@ fn w_profile(ceiling: Nat, admission: VllmSchedulerAdmissionRequest) -> ServingL
     policy: glm53_native_launch_policy,
     max_model_len: token_count(count: 262144), max_num_batched_tokens: token_count(count: 2048),
     max_num_seqs: ceiling, guaranteed_cold_seqs: 8,
-    decided_gpu_memory_basis_points: basis_point(count: 8567), serve_port: 30000, served_alias: "glm-5.3-flash" as NonEmptyStr,
+    decided_gpu_memory_basis_points: basis_point(count: 8567), serve_port: 30000, served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
     prefix_caching: PrefixCachingExplicit { enabled: true },
     scheduler_admission: admission)
 }

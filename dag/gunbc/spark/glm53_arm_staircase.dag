@@ -11,7 +11,7 @@ import extdeps.vllm.engine_args { VllmSchedulerAdmissionRequest, FullInputAdmiss
 import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
-import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy, served_name_only }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size, glm53_staircase_container_name, glm53_staircase_head_log_path }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
@@ -178,7 +178,7 @@ fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
       policy: glm53_step_policy(s: s),
       decided_gpu_memory_basis_points: group_b_restoration_utilization,
       serve_port: spark_pair_serve_port,
-      served_alias: glm53_staircase_served_alias,
+      served_names: served_name_only(name: glm53_staircase_served_alias),
       prefix_caching: glm53_staircase_prefix_caching,
     ) }
   }
