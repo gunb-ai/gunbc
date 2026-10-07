@@ -15013,10 +15013,13 @@ fn dispatch_service_wet(
         return dispatch_env_get_native(op_node, param_env, ctx);
     }
 
-    // Local `command -v`: searching THIS host's PATH is not a host effect (shell-to-dag residual
-    // census §0b), the sibling of shell.Env.Get. The `sh -c 'command -v "$1"'` child was the
-    // wrong hardwired transport; a native in-process search answers it directly. `shell.PosixCommandV.Check`
-    // remains the remote-target realization (a target that is another process on another host).
+    // `command -v` against THIS host: searching its own PATH is not a host effect (shell-to-dag
+    // residual census §0b), the sibling of shell.Env.Get. This interception matches the operation
+    // name here in `dispatch_service_wet` — the OnTarget realization path — NOT on locality; the
+    // `sh -c 'command -v "$1"'` child it replaces was the wrong hardwired transport, and a native
+    // in-process search answers it directly. A remote target (another host) never arrives here:
+    // it is realized by the `command -v` transport over its ssh/fleet route, not by any branch in
+    // this function.
     if intent == "shell.PosixCommandV.Check" {
         return dispatch_posix_command_v_native(op_node, param_env, ctx);
     }
