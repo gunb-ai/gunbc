@@ -1,7 +1,7 @@
 module extdeps.ethtool
 
 import std.types { NonEmptyStr, String, List, Bool, Unit, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

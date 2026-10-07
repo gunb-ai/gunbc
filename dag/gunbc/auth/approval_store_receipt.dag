@@ -3,7 +3,7 @@ module gunbc.auth.approval_store_receipt
 import std.logic { Bool }
 import std.types { NonEmptyStr, Timestamp, String, Int, List }
 import v2.std.algebra { skip }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_first }
 import extdeps.crypto.mac {

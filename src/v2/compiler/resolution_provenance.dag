@@ -14,7 +14,7 @@ import v2.std.algebra {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol, EdgeLabel, label_sort_key }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

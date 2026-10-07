@@ -73,7 +73,7 @@ import v2.test.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
   fold_fixture_param_wrong_arrow,
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,

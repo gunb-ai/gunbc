@@ -8,6 +8,7 @@ use self::AnnotationPlacement::*;
 pub use crate::std_algebra::FreeSemigroup;
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

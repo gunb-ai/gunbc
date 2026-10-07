@@ -11,7 +11,7 @@ import extdeps.netfilter.iptables_legacy { iptables_legacy_save_cli_tool }
 import extdeps.nftables.ruleset { nft_cli_tool }
 import extdeps.shell
 import std.types { String, NonEmptyStr, List, Int }
-import v2.std.optional { Optional, Present, Absent, optional_absent, optional_present }
+import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 
 // Host CLI placement for wet witnesses: observe whether an executable is on PATH before attempting
 // shell transport. A missing npm on the falsifier runner surfaced as runtime error: failed to

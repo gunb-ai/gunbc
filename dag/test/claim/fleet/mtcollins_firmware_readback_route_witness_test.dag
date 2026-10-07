@@ -2,7 +2,7 @@ module test.claim.mtcollins_firmware_readback_route_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.firmware.types { MainboardCpld, HostBios, BmcController }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32, ipmitool_hpm_upgrade_cpld_row_bmc0_45_3, ipmitool_hpm_upgrade_app_row_bmc0_45_3 }
 import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, hpm_check_table_of }
