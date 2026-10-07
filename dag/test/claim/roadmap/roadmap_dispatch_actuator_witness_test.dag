@@ -632,8 +632,10 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
     TmuxLsParsed { entries } => {
       let filtered = filter_dispatch_tmux_sessions(entries: entries)
       count(filtered) == 1
-        && filtered.first().session_name == "gunbc-dispatch-node-4"
-        && filtered.first().windows == 2
+        && match filtered.first() {
+          Present { value: s } => s.session_name == "gunbc-dispatch-node-4" && s.windows == 2
+          Absent => false
+        }
     }
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }

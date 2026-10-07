@@ -143,9 +143,15 @@ test fn a_failure_ahead_of_the_corpus_is_a_different_outcome_from_a_corpus_disag
   match stopped {
     CheckCoverageDeniedStopped { completed, unexecuted, cause } =>
       length(unexecuted) == 1
-        && unexecuted.first() == gate_corpus
+        && match unexecuted.first() {
+          Present { value: u } => u == gate_corpus
+          Absent => false
+        }
         && length(completed) == 1
-        && completed.first().gate == gate_witnesses
+        && match completed.first() {
+          Present { value: c } => c.gate == gate_witnesses
+          Absent => false
+        }
         && cause == "the build ahead of the corpus failed and stopped the run"
     CheckCoverageAdmitted => false
     CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
