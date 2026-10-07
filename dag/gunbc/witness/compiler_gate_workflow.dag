@@ -98,7 +98,6 @@ import gunbc.workflow_capability_closure {
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
-import gunbc.fleet_workflow_steps { ci_native_cache_root_step }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow_name,
@@ -1141,11 +1140,13 @@ fn compiler_gate_native_cache_condition() -> String {
 // Hand-authored two-line shell (scaffold): dissolves when the restore step of the shared native
 // product store is itself an emitted intent that names its job-private directory, at which point this
 // script is derived from that intent rather than spelled here.
+data compiler_gate_native_cache_root_step_name: String = "Bind job-private native product store root"
+
 data compiler_gate_native_cache_root_script: String = "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\""
 
 fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
   RunStep {
-    name: Present { value: ci_native_cache_derive_step_name },
+    name: Present { value: compiler_gate_native_cache_root_step_name },
     id: none,
     run: compiler_gate_native_cache_root_script,
     shell: none,
