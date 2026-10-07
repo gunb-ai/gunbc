@@ -1,174 +1,287 @@
 # Served-model identity and endpoint selection — design
 
 Status: **design, model-before-implement.** No `.dag` lands with this document. It names the homes,
-the phases and the operator rulings still open. Owner: sunny-deer-146 (operator assignment,
+the deliveries and the operator rulings still open. Owner: sunny-deer-146 (operator assignment,
 2026-10-07). Contributing lanes: valiant-crab-775 / cool-carp-342 (Group A deployment record) and
 smart-owl-201 (per-checkpoint weight scheme).
 
-## 0. The defect, in one paragraph
+Revision 2 incorporates the side-chat review of revision 1 (fb5d363). The changes:
+
+- admission becomes the mandatory input to every invocation;
+- hard capacity admission uses the actual request bounds;
+- the `CheckpointQuantization` and `HarnessServingUnit` migrations are decomposed rather than
+  replaced by one identifier;
+- deployment records are bound to the answering launch;
+- the session's accepted alternatives are separated from the selected offer;
+- several OpenRouter and pricing claims are corrected;
+- the deliveries are re-sequenced around working consumers.
+
+## 0. The defect
 
 Every consumer that chooses where a model turn runs keys on a **model name string**, and that name
-is a meaning fork (DESIGN §3): within one naming surface and one epoch, `glm-5.3-flash` names two
+is a meaning fork (DESIGN §3): within one routing surface and one epoch, `glm-5.3-flash` names two
 materially different contracts.
 
 - **Sparks.** Group B serves the native fp8 checkpoint. Group A was brought up with NVIDIA's nvfp4
   checkpoint. Both answer `/v1/models` as `glm-5.3-flash`.
 - **gunbc harness.** `gunbc.harness.harness_backend` `harness_observe_replica` admits the first
-  advertised id that matches `gunbc.serving.admitted_model` `serving_admitted_units`. Its closed unit
-  `HarnessServingUnit::Glm53FlashOnVllm` covers both checkpoints, so a seat can bind to either
-  without the turn ever learning which.
+  advertised id that matches `gunbc.serving.admitted_model` `serving_admitted_units`. The closed unit
+  `HarnessServingUnit::Glm53FlashOnVllm` covers both checkpoints.
 - **ctrl mini-agent.** It has the same name-only join on the Sparks. On OpenRouter it ranks
-  endpoints by step price without reading the per-endpoint `quantization` field. The cheapest
-  endpoints are mostly fp4 or `unknown`, so "cheapest" largely means "most quantized or undisclosed".
+  endpoints without reading `quantization`.
 
-The quantization fact already exists in the corpus, at
-`gunbc.spark.serving_arm` `ServingCheckpointRow.quantization` (`CheckpointQuantization`), keyed by
-`ServingCheckpoint` (`Glm53NativeFp8`, `Glm53FlashNvidiaNvfp4`). It just never reaches the
-selection. This is a §6b case: the symptom is observed at selection, and the earliest unjustified
-boundary is the **served identity**, which is a string where a checkpoint reference was available.
+Worse, ctrl's selection is not binding on what it sends:
 
-Interim mitigation already landed outside this design: ctrl#2282 delisted Group A's head from ctrl
-routing. That is an exclusion, not a second copy of the quantization fact. It is retired by phase 2
-below.
+- When `openrouterRouting` finds no admissible endpoint, it returns `lookup_error`. `runTurn` logs
+  this and sends the turn as plain `:floor`, which is OpenRouter's own selection with none of our
+  exclusions.
+- Compaction (`compactMessages`) and the step-limit wrap-up call never consult the selector at all.
 
-## 1. What a served model IS (the identity)
+So a stricter selector alone would *move* traffic onto the bypass rather than stop it.
 
-A turn's model identity is **(upstream model, checkpoint revision, weight scheme)**. It is not a
-served name. Each component already has, or is gaining, one home:
+The supplier-side facts already exist. `gunbc.spark.serving_arm` `ServingCheckpointRow` carries
+checkpoint, revision and `CheckpointQuantization`, and `ServingRuntimeRow` carries the runtime's
+reasoning projection. What is missing is the connection between four things: what the caller
+requires, what a supplier establishably offers, what is selected, and what is actually invoked.
+The earliest unjustified boundary (§6b) is therefore **the invocation**: it does not consume a
+selection result. The served-name string is the second.
 
-| Component | Home | State |
-|---|---|---|
-| upstream model | `extdeps.zhipu.glm_5_3_flash` `glm_5_3_flash_model_id` (and each vendor's module) | exists |
-| checkpoint + revision | `extdeps.nvidia.glm_5_3_flash_nvfp4` `glm_5_3_flash_nvfp4_manifest` (and peers); fleet projection `gunbc.spark.serving_arm` `ServingCheckpointRow` | exists |
-| weight scheme | `CheckpointWeightScheme` (smart-owl-201, in flight): a closed, cited scheme per checkpoint (fp8 / nvfp4 / mxfp4 / bf16 …) | in flight |
+Interim mitigation, outside this design: ctrl#2282 delisted Group A's head from ctrl routing. Its
+retirement trigger is stated in §6.
 
-The served name (`--served-model-name`) is demoted to a **wire alias**. It is realization, not
-identity (§3: interface, realization and policy are three facts). Two deployments of different
-checkpoints may never share an alias within one routing surface; that becomes a refusal, not a
-convention (phase 2).
+## 1. Demand and offer are different facts
 
-`CheckpointQuantization` and `CheckpointWeightScheme` must not become two answers to one question.
-The scheme is the identity fact; the argv/config spelling is how a launch realizes it. Phase 1
-reconciles them as a **replacement migration** (DESIGN §3, cut over at the root), not as a second
-field beside the first.
+This follows the distinction `gunbc.serving.turn_demand` `ServingTurnRequest` already draws. A
+caller's requirement exists before supplier selection, and a supplier's implementation is offer
+evidence. They meet in one compatibility relation.
 
-## 2. The deployment record (Sparks)
+**Demand: the session's accepted alternatives.** A session carries an explicit set of complete
+implementation alternatives. Each is a row, never a cross product of independent sets:
 
-There is one record per serving group, derived from the arm's own step rows and never hand-typed.
-Owner: cool-carp-342's lane.
+| Alternative | Artifact | Revision | Weight representation |
+|---|---|---|---|
+| A | `zai-org/GLM-5.3-Flash` | its pinned revision | fp8 |
+| B | `nvidia/GLM-5.3-Flash-NVFP4` | `da920bb0…` | nvfp4 |
+
+Accepting A and B does not accept "native artifact, revision A, nvfp4". An exact-artifact
+requirement is a singleton set. Two further policy facts are separate from this set: whether a
+session may move between accepted alternatives turn to turn, and whether it should stay on one
+endpoint.
+
+**Offer: what a supplier establishably provides,** at a stated evidence strength:
+
+- **Local (Sparks):** a checkpoint declaration bound to the answering launch (§2). Its strength is
+  *established*.
+- **External (OpenRouter):** the endpoint list's declaration (§3). Its strength is *declared by the
+  provider*. A requirement that demands an exact checkpoint cannot be satisfied by a declaration
+  that does not establish one. That requirement stays unsatisfied, and renaming a provider string
+  cannot supply the missing evidence.
+
+**The checkpoint facts are several facts, not one field.** `CheckpointQuantization` distinguishes
+quantization *spelled on argv* from quantization *resolved from the checkpoint's config*. That
+distinction decides whether `checkpoint_quantization_argv` emits a flag at all, and its `wire` can
+name a **loader method** (`modelopt`) rather than a numeric representation. The existing rows show
+why one flat tag cannot replace it:
+
+- The NVIDIA GLM row reads a modelopt config that specifies nvfp4.
+- The DeepSeek V4.1 row's config method is `fp8` with fp4 expert dtype.
+
+`CheckpointWeightScheme` (smart-owl-201) and `CheckpointQuantization` are therefore reconciled as
+**distinct facts derived from one canonical checkpoint declaration**:
+
+- the weight representation, which may be per-component as in mixed expert dtypes;
+- the loader/config source;
+- argv emission or omission.
+
+Neither is deleted until their relationship is modeled.
+
+**`HarnessServingUnit` carries protocol behavior, not only identity.** Its consumers select:
+
+- the request reasoning dialect (`harness_reasoning_kwargs_for`);
+- the tool-call parser (`harness_unit_tool_call_parser`);
+- the response framing (`harness_unit_reasoning_projection`);
+- server-side vs. client-side reasoning split (`harness_unit_server_parses_reasoning`);
+- the declared context ceiling (`harness_unit_declared_context_ceiling`).
+
+Dissolving the enum means decomposing these roles into:
+
+- **model/artifact identity**, the demand-side key;
+- **serving behavior**, which request encoding and response decoding need. Where that is a runtime
+  fact, it is read from `ServingRuntimeRow`, not re-derived from the checkpoint.
+
+Replacing the enum's whole authority with a checkpoint reference would recreate the conflation at a
+narrower grain.
+
+The served name (`--served-model-name`) is a **wire alias**: realization, not identity.
+
+## 2. Local deployment record, bound to the answering launch
+
+There is one record per serving group, derived from the arm's own rows and never hand-typed. Owner:
+cool-carp-342's lane.
 
 ```
-group · head endpoint · wire alias · ServingCheckpoint · weight scheme (derived) · arm intent
+group · head endpoint · wire alias · ServingCheckpoint · runtime · arm intent
 ```
 
-`ArmIntent` today is `ArmBoundedExperiment | ArmNormalServing`. The operator-qualification serving
-mode (operator ruling 2026-10-07, B) is a third arm with its own name, so "normal serving" keeps one
-meaning.
+A published record is a **declaration** until it is bound to the process that actually answers.
+The machinery exists:
 
-**Consumers, which DESIGN §3c requires to be named:**
+- `gunbc.spark.vllm_endpoint_process_launch` `VllmEndpointProcessLaunch` identifies the group,
+  endpoint and process-start discriminator;
+- `gunbc.spark.serving_offer` `spark_service_from_observation` checks the answering endpoint,
+  placement, declared-unit provenance and rendezvous consistency.
 
-- **gunbc harness.** `harness_observe_replica` stops admitting by advertised name. It joins the
-  observed alias to the record, and the candidate carries the `ServingCheckpoint`.
-  `HarnessServingUnit` either splits per checkpoint or is replaced by the checkpoint reference. Which
-  of the two is a phase-1 modeling question, with a bias to replace, per the replacement-migration
-  doctrine.
-- **ctrl mini-agent.** It reads the published records instead of its hard-coded URL list (ctrl
-  `sparks_endpoints.mjs` `DEFAULT_ENDPOINTS`), and a session pins an identity, not a name.
+The offer that selection consumes is the *bound* record. That binding is carried into selection and
+into the invocation, so a replaced process invalidates its predecessor's selection even when the
+alias is unchanged.
 
-**Transport** (how ctrl reads the record: front-door endpoint vs. emitted file) is a realization
-choice, made in phase 2. It is not part of the record.
+**Alias uniqueness** is required within the namespace an actual dispatch resolves. Two different
+checkpoints may not share an alias that one dispatch resolves by name. It is not a universal
+prohibition on a logical model name that groups several *accepted* implementations; that grouping
+is the demand side's job (§1), not the alias's.
+
+**Operator-qualification serving** (operator ruling 2026-10-07, B) is a third `ArmIntent` arm, and
+it is meaningful only because admission consumes it. A qualification deployment is admitted for
+requests that name it, not for ordinary traffic, so publishing one never enrolls it into the fleet's
+general pool.
 
 ## 3. OpenRouter as a cited upstream
 
-A new `extdeps.openrouter` module models the endpoint-list API as it actually returns. The source is
-`GET /api/v1/models/{author}/{slug}/endpoints`, and the module keeps OpenRouter's own field names
-and states the version read. It stores no observations (§3, external upstream decomposition: a
-read is a receipt in the observing layer).
+A new `extdeps.openrouter` module models the endpoint-list API as documented. The source is
+`GET /api/v1/models/{author}/{slug}/endpoints`, with OpenRouter's own field names and the API
+version read stated. Its observing adapter and first real consumer land with it, never the shape
+alone (§3c). Observations are receipts in the observing layer, not upstream facts.
 
-Fields that bear on selection, each on a live response read on 2026-10-07:
+Corrections to revision 1's reading:
 
-| Field | Why it matters |
-|---|---|
-| `quantization` | `fp4` / `nvfp4` / `mxfp4` / `fp8` / `bf16` / `unknown`, a different weight scheme, priced lower |
-| `name` (dated build, e.g. `…-20260826`) | model version; two endpoints can serve different revisions under one id |
-| `context_length`, `max_prompt_tokens`, `max_completion_tokens` | capacity; the output cap varies per endpoint (e.g. 131,072) |
-| `pricing.{prompt,completion,input_cache_read,input_cache_write}`, `pricing.discount` | cost; `discount` is a temporary promotion, while a session holds its endpoint for life |
-| `supported_parameters` | whether tools and reasoning are honored |
-| `status`, `uptime_last_{5m,30m,1d}` | health |
-| `tag` suffixes (`/zdr`, `/us`, `/fast`, `/flex`) | data policy, region and tier; whether a structured field exists for each is a read obligation in phase 3 |
+- **`name` is a display name**, not a model revision. The dated suffix seen on live responses is not
+  a documented revision contract. A requirement for an exact revision is unsatisfiable from this
+  API unless a field that establishes it is found.
+- **`quantization` is a provider-declared category.** `fp4` spans MXFP4 and NVFP4, and `fp8` spans
+  MXFP8. It establishes a category, never a subtype, and no "wider is acceptable" ordering exists in
+  the API. `unknown` is its own arm.
+- **Service tier is part of the offer.** `:floor` admits flex endpoints, and the reported serving
+  tier determines the billed rate. Tier is carried as permitted (demand), established (offer) and
+  reported (result).
+- **`pricing.discount`** is recorded as observed. No expiry or future price is inferred from it, and
+  it is applied exactly once, as the API defines. Revision 1's "temporary promotion priced over a
+  horizon" is withdrawn.
+- Data policy and region (`/zdr`, `/us` in tags): whether a structured field establishes them is a
+  read obligation of this delivery. Tag spelling is not evidence.
 
-An OpenRouter endpoint's weight scheme is mapped onto the same `CheckpointWeightScheme` vocabulary.
-`unknown` is its own arm. It is never coerced to a scheme.
+## 4. Selection, and the invocation that must consume it
 
-## 4. One selection, consumed by both harnesses
+Selection inhabits the existing homes (§3b decision/selection and fabric/compute rows) and mints no
+new decision algebra (§3d). Those homes protect only the obligations represented in their inputs,
+so every property below arrives as a **declared obligation** of the request:
 
-Selection inhabits the existing homes (§3b decision/selection and fabric/compute rows). It mints no
-new decision algebra (§3d):
+- **Compatibility.** The offer satisfies one accepted alternative at the evidence strength the
+  requirement demands.
+- **Capacity, against the actual request.** Let `P` be the rendered prompt (system text and tools
+  included), `O` the completion budget actually emitted on the wire, `C` the context capacity, and
+  `P_max` / `O_max` the endpoint's own caps where defined. The offer is admitted only if:
+  - `P ≤ P_max`
+  - `O ≤ O_max`
+  - `P + O ≤ C`
 
-- **Hard constraints exclude before ranking** (`std.decision` `HardConstraint`; in the fabric fold,
-  an `OfferCandidacy` rejection arm):
-  - the weight scheme is in the admitted set for the model;
-  - the model revision matches the session's pinned revision;
-  - the data policy is admitted;
-  - the context, prompt and output caps fit the predicted step;
-  - the required parameters are present;
-  - the endpoint is healthy.
-- **An unread field is evidence-missing, never admitted.** A missing `context_length` or
-  `supported_parameters`, or a `quantization: unknown` when the policy requires a known scheme, is
-  `SelectionNeedsEvidence` / a typed rejection. This closes the fail-open arm currently in ctrl
-  `scripts/mini-agent/routing.mjs` `admit()`, where an absent value counts as fitting.
-- **Ranking** is cost over the admitted set, the same priced axes as `product.fabric.selection`
-  `select_supply`. A `discount` is carried on the offer, and its horizon is priced against the
-  session's expected lifetime rather than read as the steady-state rate.
-- **Pinning.** The admitted identity set (model, revision, scheme set, data policy) is fixed at
-  session creation and is part of the selection receipt. A resume that would land outside it is a
-  different decision (§3d: different constraints mean a different decision), never a silent
-  re-route.
-- **Receipt per turn.** The served endpoint, scheme, revision and the discount in force are recorded
-  with usage, so cost and quality reports say what actually ran.
+  Predictions of output and cache behavior belong to **cost ranking**, not admission. If the
+  allowance is reduced to fit, the reduced value is the admitted result, and it is what the request
+  emits.
+- **Parameters.** Tools and reasoning are present where required.
+- **Policy rows** from §5: permitted tier, data policy.
+- **Health** is a declared predicate, not a word: what is read (`status`, an uptime window, our own
+  cooldown) and the threshold. It is a policy row.
 
-ctrl's mini-agent is a JS consumer outside the `.dag` closure. It consumes this selection through an
-emitted projection or a served decision, chosen in phase 4. It does not re-implement it. Until then,
-ctrl's routing is a declared, bounded divergence (§3b, diverges with a stated reason) with this
-document as its trigger.
+**Missing evidence for a required property cannot satisfy the request.** It is
+`SelectionNeedsEvidence` or a typed rejection. This closes ctrl `routing.mjs` `admit()`, where an
+absent `context_length` or `supported_parameters` counts as fitting.
 
-**Shadow pricing for self-hosted models** (ctrl `lib/model_pricing.mjs`) currently strips any
-`:suffix` and prices nvfp4 at the fp8 reference rate. Under this design the reference row is keyed
-by identity, including scheme. Where no honest reference exists for a scheme, the answer is a stated
-"no reference", never the neighbouring row.
+**Ranking** is cost over the admitted set, on the priced axes of `product.fabric.selection`
+`select_supply`.
 
-## 5. Operator rulings this design needs
+**The invocation consumes an admitted result, and nothing else.** Every covered model call takes
+one input, the **admitted invocation**, which binds:
 
-These are policy rows in the selection, not code. Each is open:
+- the normalized request;
+- the selected offer, with its launch binding (local) or provider order (external);
+- the permitted routing, which for OpenRouter means `provider.order` = the selection and fallbacks
+  off;
+- the applicable policy.
 
-1. **Admitted weight schemes per model.** Either an explicit operator list per model, or "the model
-   maker's own published scheme or wider". Note that Moonshot's own Kimi K3 endpoint is mxfp4, so
-   one global threshold such as "fp8 or better" would exclude a first-party build.
-   **Recommendation: the explicit list.** It is a handful of rows, and nothing is inferred.
-2. **Undisclosed quantization (`unknown`).** Exclude or admit. **Recommendation: exclude**
-   (fail-closed; a session must be able to say what it ran).
-3. **Data policy.** Whether non-ZDR endpoints may receive repository contents. Default:
-   **ZDR-only** until ruled otherwise.
+A refusal or missing-evidence result has **no inference route**. There is no `:floor` fallback.
 
-## 6. Phases
+This applies to ordinary turns, compaction, the wrap-up call and retries. Each derives its own
+functional requirements (a compaction prompt has its own `P` and `O`), while keeping the session's
+restrictions.
 
-Each phase lands consumed in the same change (§3c). None is a scaffold.
+**Endpoint affinity is policy, not fact.** Today `runTurn` re-plans every step and `planRoute` may
+move a session for projected cost. Whether that continues is the affinity row of §1, stated
+explicitly. Revision 1's claim that "a session holds its endpoint for life" was false and is
+withdrawn.
 
-1. **Identity.** Land `CheckpointWeightScheme` (smart-owl-201) and reconcile it with
-   `CheckpointQuantization`. Replace `HarnessServingUnit`'s name-keyed GLM arm with checkpoint
-   identity. First consumer: `harness_observe_replica`.
-2. **Deployment record.** cool-carp-342 adds the third `ArmIntent` arm and publishes the per-group
-   record. The harness and ctrl consume it. A shared alias across checkpoints on one routing surface
-   is refused. ctrl re-lists Group A, which retires ctrl#2282.
-3. **`extdeps.openrouter`.** The endpoint shape, cited. Resolve the data-policy and region read
-   obligation from the actual response.
-4. **Selection.** Constraints and ranking over both supplies through the existing homes. The
-   rulings from §5 land as policy rows. ctrl's routing switches to the shared decision and retires
-   its own `admit()`.
-5. **Accounting.** Per-turn receipts and identity-keyed shadow pricing.
+**Per-call record.** The record keeps four kinds of fact distinct:
+
+- requested: the accepted alternatives and the bounds;
+- advertised: the offer's declarations;
+- enforced: what the request bound, e.g. the provider order;
+- reported: what the supplier says served, the charge, and the tier.
+
+Reported charges stay distinct from our estimates.
+
+ctrl's mini-agent sits outside the `.dag` closure. It consumes this contract through an emitted
+projection or a served decision, chosen in delivery 1. It does not keep a second implementation.
+Until then ctrl's routing is a declared, bounded divergence (§3b) with this document as its trigger.
+
+## 5. Operator rulings
+
+These gate the **activation** of particular admission policies, not the local serving contract.
+
+| Question | Recommendation | Gates |
+|---|---|---|
+| Allowed implementations per model | Explicit complete alternatives per model/workload (§1 rows). No global "fp8 or better", since e.g. Moonshot's own Kimi K3 endpoint is mxfp4 | activating that model's admission policy |
+| Undisclosed quantization (`unknown`) | Insufficient for any requirement that names an allowed scheme; recorded honestly, never coerced | routes using such a requirement |
+| Repository data policy | ZDR-only — **a proposal, not adopted policy**, until the operator rules | activating external routing for repository-bearing sessions |
+
+## 6. Deliveries
+
+Each delivery lands with its working consumer (§3c). None is a scaffold. Minimal per-call identity
+and provenance are part of the first delivery that executes, not a later one.
+
+1. **Local serving contract.**
+   - Reconcile the checkpoint facts (§1) and decompose `HarnessServingUnit` into identity plus
+     serving behavior.
+   - Bind the deployment record to the answering launch (§2), including the third `ArmIntent` arm.
+   - Carry the caller's accepted alternatives through `harness_observe_replica` / harness seat
+     selection and through ctrl's Sparks path into the invocation.
+   - Make the admitted invocation mandatory on every covered call, including ctrl's compaction and
+     wrap-up.
+   - It needs no §5 ruling.
+2. **OpenRouter contract.** The cited `extdeps.openrouter` shape, its observing adapter, and ctrl's
+   OpenRouter route as consumer: the admitted requirements become the actual request controls, and
+   the `:floor` fallback is deleted. The §5 rows activate here as they are ruled.
+3. **Pricing and presentation.**
+   - Offer-specific cost comparison.
+   - Identity-keyed shadow pricing for self-hosted models: ctrl `lib/model_pricing.mjs` currently
+     strips the `:suffix` and prices nvfp4 at the fp8 reference. Where no honest reference exists
+     for an identity, the answer is "no reference".
+   - Reporting that keeps reported charges apart from estimates.
+
+**ctrl#2282 is retired by working behavior,** not by a published record. Delivery 1 must show that
+ctrl's Sparks route enforces the accepted-alternatives requirement at invocation.
+
+**Discriminating acceptance for delivery 1:**
+
+- An fp8-only requirement cannot execute against the nvfp4 offer.
+- Rejecting every offer produces no inference request on any path (turn, compaction, wrap-up,
+  retry).
+- Compaction and wrap-up keep the session's restrictions.
+- The actual request bounds, not predictions, govern admission.
+- Replacing the answering process invalidates the predecessor's binding.
+- The migration preserves quantization loading behavior (argv emission/omission) and runtime
+  response decoding.
 
 ## 7. Out of scope
 
 - Which models to offer at all. That is the operator's shortlist and stays a configured list.
-- Quality qualification of a given scheme (the nvfp4-vs-fp8 comparison the operator is running).
-  This design makes that comparison *attributable*; it does not perform it.
+- Quality qualification of a given implementation (the nvfp4-vs-fp8 comparison the operator is
+  running). This design makes that comparison attributable; it does not perform it.
