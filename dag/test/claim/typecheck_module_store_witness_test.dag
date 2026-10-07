@@ -20,8 +20,14 @@ import gunbc.typecheck_module_store {
   typecheck_module_payloads,
   typecheck_module_entry_bytes,
 }
+import gunbc.typecheck_store_selector {
+  typecheck_store_selection,
+  TypecheckStoreConfigured,
+  TypecheckStoreNotConfigured,
+  TypecheckStoreSelectorRefused,
+}
 import std.measure { measure_count }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 
 fn h(v: String) -> Fnv1a64Structural {
@@ -73,5 +79,18 @@ test fn a_typecheck_entry_for_the_probe_interface_fits_the_family_entry_budget_u
   match typecheck_module_entry_bytes(req: req, payloads: payloads) {
     Absent => false
     Present { value: n } => measure_count(m: n) <= measure_count(m: typecheck_module_family_entry_budget_unit())
+  }
+}
+
+test fn the_selector_reads_absence_as_not_configured_the_admitted_value_as_configured_and_any_other_as_refused() -> Bool {
+  match typecheck_store_selection(value: Absent) {
+    TypecheckStoreNotConfigured => true
+    _ => false
+  } && match typecheck_store_selection(value: Present { value: "durable" }) {
+    TypecheckStoreConfigured => true
+    _ => false
+  } && match typecheck_store_selection(value: Present { value: "1" }) {
+    TypecheckStoreSelectorRefused { value: _ } => true
+    _ => false
   }
 }

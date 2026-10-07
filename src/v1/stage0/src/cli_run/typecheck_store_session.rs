@@ -163,18 +163,101 @@ pub(crate) fn own_of_result(result: &TypecheckModuleResult) -> TypecheckModuleOw
     }
 }
 
-/// The invoking workflow's explicit choice to use the granted durable store. The root itself is
-/// the one declared datum `std.materialization_store_grant materialization_store_durable_root_path`
-/// (a caller never supplies a path); this variable only says whether this invocation uses it, so a
-/// compile that was not given a store never reaches a host-durable write.
-const STORE_CONFIG_ENV: &str = "GUNBC_TYPECHECK_STORE";
+/// The invoking workflow's explicit choice to use the granted durable store is a declared .dag
+/// fact (`gunbc.typecheck_store_selector`: the variable's name, its one admitted value, absence =
+/// not configured); Rust only reads the environment variable that declaration names and asks the
+/// declaration's `typecheck_store_selection` what it means. Decided once per thread.
+const SELECTOR_ENTRY: &str = "dag/gunbc/typecheck_store_selector.dag";
+const SELECTOR_MODULE: &str = "gunbc.typecheck_store_selector";
 
-fn store_configured() -> bool {
+thread_local! {
+    static SELECTED: Cell<Option<bool>> = const { Cell::new(None) };
+}
+
+/// `Ok(Some(true))` configured, `Ok(Some(false))` not configured, `Ok(None)` the declaring module
+/// is not in the caller's pool (counted unreachable by the caller), `Err` a refused value.
+fn ctx_optional_str(
+    ctx: &v1_interpreter::InterpContext,
+    v: Option<String>,
+) -> Result<Value, String> {
+    Ok(match v {
+        Some(v) => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Present"),
+            fields: std::rc::Rc::new(vec![(ctx.sym("value"), str_value(v))]),
+        },
+        None => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Absent"),
+            fields: std::rc::Rc::new(vec![]),
+        },
+    })
+}
+
+fn store_selected(index: &MultiEntryIndex) -> Result<Option<bool>, String> {
     #[cfg(test)]
     if WITNESS_ROOT.with(|w| w.borrow().is_some()) {
-        return true;
+        return Ok(Some(true));
     }
-    std::env::var(STORE_CONFIG_ENV).is_ok_and(|v| v == "durable")
+    if let Some(v) = SELECTED.with(|c| c.get()) {
+        return Ok(Some(v));
+    }
+    if !index.holds_module(SELECTOR_MODULE) {
+        return Ok(None);
+    }
+    let entry = super::workspace_root()
+        .join(SELECTOR_ENTRY)
+        .to_string_lossy()
+        .into_owned();
+    // Resolving the selector's own closure typechecks modules, which reach this store's lookup:
+    // the re-entry guard turns that into a counted re-entry instead of a recursion.
+    PREPARING.with(|c| c.set(true));
+    let resolved = resolve_entry_with_index(index, &entry);
+    PREPARING.with(|c| c.set(false));
+    let (graph, indices) = resolved?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let name_value = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "typecheck_store_selector_env_name_of",
+        &[],
+        false,
+    )
+    .map_err(|e| format!("typecheck_store_selector_env_name_of: {e}"))?;
+    let name = match &name_value {
+        Value::Str(s) => s.to_string(),
+        other => return Err(format!("selector name not a String: {other:?}")),
+    };
+    let value = match std::env::var(&name) {
+        Ok(v) => ctx_optional_str(&ctx, Some(v))?,
+        Err(_) => ctx_optional_str(&ctx, None)?,
+    };
+    let decision = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "typecheck_store_selection",
+        &[(Some("value".to_string()), value)],
+        false,
+    )
+    .map_err(|e| format!("typecheck_store_selection: {e}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &decision
+    else {
+        return Err(format!("selection not a variant: {decision:?}"));
+    };
+    let configured = if ctx.sym_eq(*variant_name, "TypecheckStoreConfigured") {
+        true
+    } else if ctx.sym_eq(*variant_name, "TypecheckStoreNotConfigured") {
+        false
+    } else if ctx.sym_eq(*variant_name, "TypecheckStoreSelectorRefused") {
+        let v = field_str(&ctx, fields, "value")?;
+        return Err(format!("{name} has an unadmitted value ({v})"));
+    } else {
+        return Err(format!("unknown selection {}", ctx.resolve(*variant_name)));
+    };
+    SELECTED.with(|c| c.set(Some(configured)));
+    Ok(Some(configured))
 }
 
 /// `Ok(None)` when the store's own closure is not reachable from the compiler's roots (the entry
@@ -250,9 +333,16 @@ pub(crate) fn durable_typecheck_lookup(
         count(|c| c.reentry_lookup += 1);
         return Ok(DurableTypecheckGet::Miss);
     }
-    if !store_configured() {
-        count(|c| c.not_configured_lookup += 1);
-        return Ok(DurableTypecheckGet::Miss);
+    match store_selected(index)? {
+        Some(true) => {}
+        Some(false) => {
+            count(|c| c.not_configured_lookup += 1);
+            return Ok(DurableTypecheckGet::Miss);
+        }
+        None => {
+            count(|c| c.unreachable_lookup += 1);
+            return Ok(DurableTypecheckGet::Unavailable);
+        }
     }
     let imports = list_value(
         import_interface_hexes
@@ -340,9 +430,16 @@ pub(crate) fn durable_typecheck_commit(
         count(|c| c.reentry_commit += 1);
         return Ok(());
     }
-    if !store_configured() {
-        count(|c| c.not_configured_commit += 1);
-        return Ok(());
+    match store_selected(index)? {
+        Some(true) => {}
+        Some(false) => {
+            count(|c| c.not_configured_commit += 1);
+            return Ok(());
+        }
+        None => {
+            count(|c| c.unreachable_commit += 1);
+            return Ok(());
+        }
     }
     let (interface_text, diagnostics_text) = own_payload_texts(own)?;
     let imports = list_value(
@@ -644,27 +741,62 @@ mod session_reach {
         assert_eq!(after.miss, before.miss);
     }
 
-    /// No store configured by the invoking workflow: no open, no write, a counted outcome of its own
-    /// (neither Miss-as-success nor Unavailable).
+    /// A pool that lacks the selector declaration cannot decide: counted unreachable, no open.
     #[test]
-    fn an_unconfigured_invocation_never_opens_the_store_and_is_counted() {
+    fn a_pool_without_the_selector_module_is_counted_unreachable_and_never_opens() {
         let (root, idx) = fixture_index();
         let hex = "0".repeat(64);
         set_witness_root(None);
-        if std::env::var(STORE_CONFIG_ENV).is_ok() {
-            return;
-        }
         let before = OUTCOMES.with(|c| c.get());
         let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
         let after = OUTCOMES.with(|c| c.get());
         let _ = std::fs::remove_dir_all(root);
-        assert!(matches!(got, Ok(DurableTypecheckGet::Miss)));
-        assert_eq!(
-            after.not_configured_lookup,
-            before.not_configured_lookup + 1
-        );
+        assert!(matches!(got, Ok(DurableTypecheckGet::Unavailable)));
+        assert_eq!(after.unreachable_lookup, before.unreachable_lookup + 1);
         assert_eq!(after.store_openings, before.store_openings);
-        assert_eq!(after.unavailable, before.unavailable);
+    }
+
+    /// The compile runs on a large-stack thread in production; the default test thread's 2 MiB cannot
+    /// hold the selector evaluation over a live pool, so the live tests run their body on one too.
+    fn on_big_stack(body: impl FnOnce() + Send + 'static) {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(body)
+            .expect("spawn")
+            .join()
+            .unwrap_or_else(|e| std::panic::resume_unwind(e));
+    }
+
+    /// The declared selector resolves through the caller's real pool: with the variable unset the
+    /// invocation is NOT CONFIGURED (counted, nothing opened); an admitted value would configure it.
+    #[ignore = "live-corpus: resolves the live dag+src/v2 pool (minutes); the receipts lane runs these with --ignored"]
+    #[test]
+    fn the_declared_selector_reads_absence_as_not_configured_through_the_callers_pool() {
+        on_big_stack(|| {
+            let root = workspace_root();
+            let idx = build_multi_entry_index(&[
+                root.join("dag").to_string_lossy().into_owned(),
+                root.join("src/v2").to_string_lossy().into_owned(),
+            ]);
+            set_witness_root(None);
+            if std::env::var("GUNBC_TYPECHECK_STORE").is_ok() {
+                return;
+            }
+            let hex = "0".repeat(64);
+            let before = OUTCOMES.with(|c| c.get());
+            let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
+            let after = OUTCOMES.with(|c| c.get());
+            assert!(
+                matches!(got, Ok(DurableTypecheckGet::Miss)),
+                "{:?}",
+                got.err()
+            );
+            assert_eq!(
+                after.not_configured_lookup,
+                before.not_configured_lookup + 1
+            );
+            assert_eq!(after.store_openings, before.store_openings);
+        });
     }
 
     /// The caller's real pool holds the store: the lookup resolves through that same index from a
@@ -672,25 +804,27 @@ mod session_reach {
     #[ignore = "live-corpus: resolves and typechecks the live dag+src/v2 closure (minutes); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn the_callers_pool_serves_the_session_from_a_foreign_cwd() {
-        let root = workspace_root();
-        let idx = build_multi_entry_index(&[
-            root.join("dag").to_string_lossy().into_owned(),
-            root.join("src/v2").to_string_lossy().into_owned(),
-        ]);
-        let saved = std::env::current_dir().expect("cwd");
-        std::env::set_current_dir(std::env::temp_dir()).expect("leave workspace");
-        let hex = "0".repeat(64);
-        let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
-        std::env::set_current_dir(saved).expect("restore cwd");
-        assert!(
-            matches!(&got, Ok(_))
-                || got
-                    .as_ref()
-                    .err()
-                    .is_some_and(|e| e.contains("digest refused")),
-            "{:?}",
-            got.err()
-        );
+        on_big_stack(|| {
+            let root = workspace_root();
+            let idx = build_multi_entry_index(&[
+                root.join("dag").to_string_lossy().into_owned(),
+                root.join("src/v2").to_string_lossy().into_owned(),
+            ]);
+            let saved = std::env::current_dir().expect("cwd");
+            std::env::set_current_dir(std::env::temp_dir()).expect("leave workspace");
+            let hex = "0".repeat(64);
+            let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
+            std::env::set_current_dir(saved).expect("restore cwd");
+            assert!(
+                got.is_ok()
+                    || got
+                        .as_ref()
+                        .err()
+                        .is_some_and(|e| e.contains("digest refused")),
+                "{:?}",
+                got.err()
+            );
+        });
     }
 }
 

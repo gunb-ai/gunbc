@@ -1,0 +1,31 @@
+module gunbc.typecheck_store_selector
+
+import std.types { String }
+
+// THE INVOKING WORKFLOW'S CHOICE TO USE THE GRANTED DURABLE TYPECHECK STORE, AS A DECLARED FACT.
+// The store root is the one datum std.materialization_store_grant materialization_store_durable_root_path;
+// a caller never supplies a path. What a workflow chooses is only whether THIS invocation uses it:
+// the environment variable named below, with the one admitted value below. Absence means NOT
+// CONFIGURED -- no open, no write attempted, a counted outcome -- never a refused attempt. Any other
+// value is a refusal, never silently read as configured or as absent.
+
+data typecheck_store_selector_env_name: String = "GUNBC_TYPECHECK_STORE"
+
+data typecheck_store_selector_admitted_value: String = "durable"
+
+type TypecheckStoreSelection
+  = TypecheckStoreConfigured
+  | TypecheckStoreNotConfigured
+  | TypecheckStoreSelectorRefused { value: String }
+
+fn typecheck_store_selector_env_name_of() -> String {
+  typecheck_store_selector_env_name
+}
+
+fn typecheck_store_selection(value: String?) -> TypecheckStoreSelection {
+  match value {
+    Absent => TypecheckStoreNotConfigured
+    Present { value: v } =>
+      if v == typecheck_store_selector_admitted_value { TypecheckStoreConfigured } else { TypecheckStoreSelectorRefused { value: v } }
+  }
+}
