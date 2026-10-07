@@ -408,7 +408,7 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+      - name: Bind job-private native product store root
         run: |-
           mkdir -p "$RUNNER_TEMP/gunbc-native-products"
           echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products" >> "$GITHUB_ENV"

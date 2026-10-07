@@ -1162,7 +1162,7 @@ fn compiler_gate_emit_build_native_cache_root_bound_step() -> CompilerGateBoundS
   CompilerGateBoundStep {
     step: compiler_gate_native_cache_root_step_for_pull_requests(),
     role: consumes_only(capabilities: [RustcCapability]),
-    step_name: "Derive native-cache root",
+    step_name: compiler_gate_native_cache_root_step_name,
   }
 }
 
