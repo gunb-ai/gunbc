@@ -119,11 +119,6 @@ type FabricCellDirectoryObservation
   | DirectoryUnreadable { path: String, cause: String }
   | PathOccupiedByNonDirectory { path: String, kind: StatFileKind }
 
-// THE GNU FILE-TYPE WORDS, DECODED INTO A CLOSED VOCABULARY. Every token coreutils can print for
-// `%F` gets an arm, and anything else is UnknownKind carrying the word -- not a silent default,
-// because a type this repository has not seen is a fact about the host worth reporting verbatim.
-
-
 // THE PROJECTION IS PURE AND TOTAL, WHICH IS WHERE EVERY LAW ABOUT THIS MODULE LIVES. The host
 // effects below are unreachable in a hermetic fixture; this function is not, so the mapping from
 // what a host reported to what the observer will believe is testable without a host.
@@ -267,19 +262,7 @@ type FabricCellPathObservation
   = PathKindObserved { kind: StatFileKind }
   | PathMetadataUnread { path: String, cause: String }
 
-// A COMPLETED `stat` THAT PRINTED NOTHING IS NOT A KIND, AND THE COLLAPSE IT CAUSES IS THE WORST
-// AVAILABLE ONE. Exit success alone was once taken as an answer here, so an empty `%F` fell through
-// the token decoder to `UnknownKind { word: "" }` and out as `PathOccupiedByNonDirectory` -- a
-// POSITIVE assertion that some object nobody can name is sitting on the path. That fails closed for
-// provisioning and is still wrong, because it sends the operator to the wrong remedy: "something is
-// in the way, go look at it" instead of "the metadata operation did not answer, the host read is
-// broken". The distinction is the same one the property reader below already draws for
-// `systemctl show`, and it is drawn here for the same reason -- success is a fact about the CALL,
-// never about whether the OUTPUT carrying the answer arrived.
-// PURE, SO THE `success` x `output` RELATION IS TESTABLE WITHOUT A HOST. The token decoder below it
-// is total over nonempty words by construction; what needed a wall is the step BEFORE it, which is
-// the only place an unanswered call can be mistaken for an answer.
-
+// The kind is decoded by extdeps.tools.stat stat_file_type_reading, the one decoder of stat's %F.
 fn fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
   let t = stat.File.FileType(path: path)
   match stat_file_type_reading(success: t.success, output: t.file_type) {

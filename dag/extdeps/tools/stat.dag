@@ -280,8 +280,12 @@ fn stat_file_kind_word(kind: StatFileKind) -> String {
 }
 
 // A COMPLETED READ THAT PRINTED NOTHING IS UNANSWERED, NOT UNRECOGNIZED: an empty word is not a kind.
-// A read that did not complete is unanswered too; what a non-completion MEANS (absent, refused) is the
-// consumer's to decide from the diagnostic, not this decoder's.
+// Taking exit success alone as the answer once let an empty %F fall through to UnknownKind { word: "" }
+// and out as a positive claim that some unnamed object occupied the path -- failing closed, but sending
+// the operator to the wrong remedy ("something is in the way") instead of the right one ("the metadata
+// read did not answer"). Success is a fact about the CALL, never about whether the output carrying the
+// answer arrived. A read that did not complete is unanswered too; what a non-completion MEANS (absent,
+// refused) is the consumer's to decide from the diagnostic, not this decoder's.
 type StatFileTypeReading
   = StatFileTypeRead { kind: StatFileKind }
   | StatFileTypeUnanswered { cause: String }
