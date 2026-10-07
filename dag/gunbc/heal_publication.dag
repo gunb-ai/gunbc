@@ -3,7 +3,7 @@ module gunbc.heal_publication
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.git.plumbing

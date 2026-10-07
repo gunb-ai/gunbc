@@ -15,7 +15,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.boot_medium { BootImageExport, BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, bmc_boot_image_export, boot_image_export_eq, stock_installer_boot_medium }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake_host_capture_envelope {

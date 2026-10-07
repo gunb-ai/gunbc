@@ -4,7 +4,7 @@ import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest, Sha256DigestHex, serialize_content_hash }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,

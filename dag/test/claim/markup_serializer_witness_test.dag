@@ -1,5 +1,6 @@
 module test.claim.markup_serializer_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.markup {
   Fragment,
   FragmentText,

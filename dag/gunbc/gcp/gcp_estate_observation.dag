@@ -1,7 +1,7 @@
 module gunbc.gcp_estate_observation
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.cloud.gcp.gcp {
   GcpProjectId,
   GcpProject,

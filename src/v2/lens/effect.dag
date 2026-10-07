@@ -10,7 +10,7 @@ import std.algebra { list_snoc_item }
 import v2.std.collection {
   optional_present_witness
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   optional_absent,
   optional_prefer_first_present,

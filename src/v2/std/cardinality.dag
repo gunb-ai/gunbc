@@ -10,7 +10,7 @@ import std.termination {
   descent_evidence_lattice_meet,
   evidence_rank
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
@@ -188,7 +188,12 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
         }
       }
     }
-    _ => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    ComputationNode { behavior: Value } => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    ComputationNode { behavior: Transform } => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    ComputationNode { behavior: Branch } => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    ComputationNode { behavior: Bind } => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    ComputationNode { behavior: Match } => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    TypeNode { connective: _ } => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
   }
 }
 

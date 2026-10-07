@@ -1,7 +1,7 @@
 module test.claim.fleet.fleet_converge_checkout_pin_witness_test
 
 import std.types { Bool, String, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.yaml.types { kv, yaml_string }
 import extdeps.github.actions { Workflow, Job, UsesStep, WorkflowDispatch, HostedRunner, UbuntuLatest }
 import extdeps.github.action.upload_artifact { upload_artifact_v6_0_0 }

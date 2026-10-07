@@ -396,7 +396,10 @@ pub fn emit_simple_expr(
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
@@ -1021,64 +1024,6 @@ pub fn emit_data_fields_json(
             )
         },
     )
-}
-
-pub fn emit_declared_optional_row_json(
-    value: Rc<Node>,
-    inner_type_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_wire: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
-) -> Rc<EmitterOutcome> {
-    match (*value.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitNull) =>
-        {
-            let LiteralValue::LitNull = value.as_ref() else {
-                unreachable!()
-            };
-            Rc::new(EmitterOutcome::Emitted {
-                json: "null".to_string(),
-            })
-        }
-        ExprData::ExprRecordLit {
-            parent_enum: pe, ..
-        } => match pe.clone() {
-            Some(parent) => {
-                if (crate::v1_std_core::qualified_last_segment(parent.clone())
-                    == crate::v1_std_core::qualified_last_segment(inner_type_name.clone()))
-                {
-                    Rc::new(EmitterOutcome::Refused {
-    reason: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("a data row declared ".to_string(), inner_type_name.clone()), "? is initialized with a bare ".to_string()), inner_type_name.clone()), " literal: no declared coercion lifts T into T? (DESIGN 4, 2026-09-26), so spell it Present { value: .. } or none".to_string()),
-})
-                } else {
-                    match value.children.clone().first().cloned() {
-                        std::option::Option::None => Rc::new(EmitterOutcome::Emitted {
-                            json: "null".to_string(),
-                        }),
-                        Some(payload_field) => {
-                            if ((value.children.clone().len() as i64) == 1) {
-                                emit_data_value_json(
-                                    crate::v1_std_core::field_init_node_value(
-                                        payload_field.clone(),
-                                    ),
-                                    source_indices.clone(),
-                                    variant_wire.clone(),
-                                )
-                            } else {
-                                Rc::new(EmitterOutcome::Refused {
-    reason: v1_rt::concat(v1_rt::concat("an optional row's present literal carries ".to_string(), crate::v1_compiler_emit_core_support::to_string((value.children.clone().len() as i64))), " fields; the option's present arm carries exactly its payload".to_string()),
-})
-                            }
-                        }
-                    }
-                }
-            }
-            std::option::Option::None => {
-                emit_data_value_json(value.clone(), source_indices.clone(), variant_wire.clone())
-            }
-        },
-        _ => emit_data_value_json(value.clone(), source_indices.clone(), variant_wire.clone()),
-    }
 }
 
 pub fn emit_data_value_json(
@@ -5301,7 +5246,7 @@ pub fn child_from_key(
         .clone()
         {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5419,7 +5364,7 @@ pub fn file_transport_declared_verb(
     match crate::v1_std_core::transport_verb(t.clone(), source_indices.clone()) {
         Some(v) => match (*v.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5515,7 +5460,7 @@ pub fn file_transport_path_is_renderable(
     match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
         Some(p) => match (*p.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6200,7 +6145,7 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
                 ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                 {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()

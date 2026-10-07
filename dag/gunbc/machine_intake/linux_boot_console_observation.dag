@@ -3,7 +3,7 @@ module gunbc.machine_intake_linux_boot_console_observation
 import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.linux.efi_stub { linux_efi_stub_line_prefix, linux_efi_stub_initrd_load_failed_prefix, linux_efi_load_error_rendering }
 import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_prefix, linux_kernel_panic_end_marker }
 
