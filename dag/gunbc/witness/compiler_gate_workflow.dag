@@ -1120,11 +1120,14 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // THE PRELUDE IS THE FLEET PRELUDE over `gunbc` alone, because the subject steps need exactly what it
 // provides on the fleet: the judged checkout, an isolated toolchain home (and the guard requiring
 // it), a pinned default, and the `gunbc` binary the instruments are invoked through.
-// THE NATIVE PRODUCT STORE'S ROOT IS THE EXISTING DERIVATION, NOT A SECOND ONE. `emit-build` binds the
-// fleet's own `ci_native_cache_root_step` (`$RUNNER_TOOL_CACHE/gunbc-native/<toolchain segment>`),
-// which is outside the per-job `$RUNNER_TEMP` and so survives to the next run on the same runner
-// host (`cli_run::native_product_cache`, CI programme row R3). The toolchain segment is already part
-// of the root, and the product key carries the toolchain axis besides.
+// THE NATIVE PRODUCT STORE'S ROOT IS JOB-PRIVATE (`$RUNNER_TEMP/gunbc-native-products`), NEVER A SHARED
+// HOST DIRECTORY. `$RUNNER_TOOL_CACHE` is shared by every job on a self-hosted host, so a pull
+// request's job could plant a self-consistent entry (verify-on-read checks an entry against its own
+// manifest, which its writer controls) that a later job would serve as a HIT. A private directory is
+// empty at job start, so the only filler is the credentialed shared-store restore, whose writer is the
+// merge_group-only federation (`gunbc.native_product_shared_store`); until that restore is wired the
+// store is empty and every run builds cold. The product key carries the toolchain axis, so the root
+// needs no toolchain segment.
 // THE STORE EXISTS ONLY FOR PULL REQUESTS. The required run on the merge queue's composed revision is
 // the proof of the sha that lands, so it builds its own compiler: with the root unset the seed reads
 // and writes nothing (GUNBC_NATIVE_CACHE_ROOT unset is "no store"). A per-host entry is verified only
@@ -1135,11 +1138,19 @@ fn compiler_gate_native_cache_condition() -> String {
   join(["github.event_name == '", github_event_name_pull_request, "'"], "")
 }
 
+data compiler_gate_native_cache_root_script: String = "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\""
+
 fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
-  match ci_native_cache_root_step() {
-    RunStep { name: n, id: i, run: r, shell: s, env: e, working_directory: w, if_condition: _, continue_on_error: c, timeout_minutes: tm } =>
-      RunStep { name: n, id: i, run: r, shell: s, env: e, working_directory: w, if_condition: Present { value: compiler_gate_native_cache_condition() }, continue_on_error: c, timeout_minutes: tm }
-    other => other
+  RunStep {
+    name: Present { value: ci_native_cache_derive_step_name },
+    id: none,
+    run: compiler_gate_native_cache_root_script,
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_native_cache_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
   }
 }
 

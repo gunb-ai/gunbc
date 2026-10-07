@@ -6,6 +6,7 @@ import v2.std.algebra { fold_list }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, RunsOnExpression }
 import gunbc.compiler_gate_workflow {
   compiler_gate_emit_build_native_cache_root_bound_step, compiler_gate_native_cache_condition,
+  compiler_gate_native_cache_root_script,
   compiler_gate_floor_job, compiler_gate_generated_job, compiler_gate_drift_step_id,
   compiler_gate_stage0_regen_step_id, compiler_gate_lint_step_id,
   compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
@@ -220,4 +221,12 @@ test fn the_native_cache_root_step_runs_on_pull_requests_and_never_on_the_merge_
   condition == compiler_gate_native_cache_condition()
     && string_contains(s: condition, pattern: "pull_request")
     && !string_contains(s: condition, pattern: "merge_group")
+}
+
+// THE STORE ROOT IS JOB-PRIVATE: a shared host directory (RUNNER_TOOL_CACHE) is writable by any job's
+// code, so an entry planted there would be served as a HIT. Restoring the shared-tool-cache root makes
+// this refuse.
+test fn the_native_cache_root_is_job_private_and_never_the_shared_tool_cache() -> Bool {
+  string_contains(s: compiler_gate_native_cache_root_script, pattern: "$RUNNER_TEMP/")
+    && !string_contains(s: compiler_gate_native_cache_root_script, pattern: "RUNNER_TOOL_CACHE")
 }
