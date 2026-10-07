@@ -1,16 +1,17 @@
 module test.claim.print_process_geometry_witness_test
 import std.types {Bool}
+import std.measure {micrometer}
 import product.printed_chassis.print_preparation {placement_admitted,PlatePlacement}
 
 test fn upright_cradle_rotation_is_refused() -> Bool {
- !placement_admitted(p:PlatePlacement {id:"M140",rx:90,ry:0,rz:0,x_um:10000,y_um:10000})
+ !placement_admitted(p:PlatePlacement {id:"M140",rx:90,ry:0,rz:0,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
 }
 test fn upright_grille_rotation_is_refused() -> Bool {
- !placement_admitted(p:PlatePlacement {id:"G140",rx:90,ry:90,rz:0,x_um:10000,y_um:10000})
+ !placement_admitted(p:PlatePlacement {id:"G140",rx:90,ry:90,rz:0,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
 }
 test fn modeled_plane_preserves_packing_rotation() -> Bool {
- placement_admitted(p:PlatePlacement {id:"any-part",rx:0,ry:0,rz:90,x_um:10000,y_um:10000})
+ placement_admitted(p:PlatePlacement {id:"any-part",rx:0,ry:0,rz:90,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
 }
 test fn inverted_unqualified_part_is_refused() -> Bool {
- !placement_admitted(p:PlatePlacement {id:"any-part",rx:180,ry:0,rz:0,x_um:10000,y_um:10000})
+ !placement_admitted(p:PlatePlacement {id:"any-part",rx:180,ry:0,rz:0,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
 }
