@@ -18,7 +18,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, list_append }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
 import v2.std.algebra { contains, list_map }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.node_query { construct_tag_optional }
@@ -642,6 +642,15 @@ test fn vfp_the_call_result_scrutinee_fact_stays_underived_on_the_assembled_rout
   vfp_arrow_reading().call_result_fact == ^vfp_underived
 }
 
+// DECLARED RED, the N7 facet: the same underived-facts family, at the CONSTRUCT-FIELD consumption.
+// The arm-body binder derives (the arrow green above); a binder consumed as a construct's field
+// value does not. The corpus reports the same defect one stage earlier (prepare:
+// record_field_value_does_not_inhabit, seed 2891478, node #2891987, g_tokenize_parse line 38).
+// Flips with the derivation landing, beside the call-result red above.
+test fn vfp_the_n7_shape_construct_field_binder_stays_underived_red() -> Bool {
+  vfp_n7_reason() == ^record_field_value_does_not_inhabit
+}
+
 // DECLARED RED: same refused walk as the two-arm mismatch row -- the projection's fact reads the
 // terminal reason until the mismatch is settled.
 test fn vfp_the_projection_fact_reads_the_located_refusal_red() -> Bool {
@@ -701,4 +710,30 @@ fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
 }
 
 fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
+
+// THE N7 SHAPE (silent-deer-637's corpus measurement, seed 2891478, node #2891987, offset 509): a
+// payload binder in the Rejected arm of a call-result scrutinee, consumed as a CONSTRUCT's field
+// value (`Rejected { diagnostics: d } => Rejected { diagnostics: d }` over a call). Measured on
+// this route 2026-10-07: the walk refuses with the underived-facts family -- the arm-body binder
+// derives (the arrow green above) but a binder consumed as a construct field value does not, which
+// is the facet the corpus prepare stage's record_field_value_does_not_inhabit also reports.
+data vfp_n7_src: String = "module p\n\ntype R = Ok { v: Int } | Bad { why: Int }\n\nfn g() -> R {\n  Ok { v: 1 }\n}\n\nfn h() -> R {\n  match g() {\n    Ok { v } => Ok { v: v }\n    Bad { why } => Bad { why: why }\n  }\n}"
+
+fn vfp_n7_reason() -> Symbol {
+  match vfp_assemble(src: vfp_n7_src) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r2 } => vfp_n7_last_reason(xs: r2.tail, last: r2.head.reason)
+        Accepted { value: _, diagnostics: _ } => ^infers
+      }
+  }
+}
+
+fn vfp_n7_last_reason(xs: List<Diagnostic>, last: Symbol) -> Symbol {
+  match xs {
+    Empty => last
+    Cons { head: h, tail: t } => vfp_n7_last_reason(xs: t, last: h.reason)
+  }
+}
 
