@@ -865,5 +865,5 @@ fn vllm_served_model_names_all(n: VllmServedModelNames) -> List<NonEmptyStr> {
 }
 
 fn vllm_served_model_name_argv(n: VllmServedModelNames) -> List<String> {
-  concat(["--served-model-name"], map(vllm_served_model_names_all(n: n), x => x as String)])
+  concat(["--served-model-name"], map(vllm_served_model_names_all(n: n), x => x as String))
 }
