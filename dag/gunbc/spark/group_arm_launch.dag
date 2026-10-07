@@ -1,10 +1,10 @@
 module gunbc.spark.group_arm_launch
 
-import extdeps.huggingface.hub { hub_repo_cache_directory }
+import extdeps.huggingface.hub { hub_repo_cache_directory, hub_dereferenced_bytes_argv }
 import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root }
 import gunbc.fleet_wireless_link { observe_wireless_link, spark_wireless_link_desired, wireless_link_observation_line, kernel_disconnect_line_count, dgx_spark_wireless_interface }
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv }
-import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
+import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch, StandingGrantFabricGroup }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
 import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing, executed_grant_row }
 import extdeps.git
@@ -317,7 +317,7 @@ fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity
 }
 
 fn group_arm_released_launch_coverage_causes(group: FabricGroup, hosts: List<HostIdentity>) -> List<String> {
-  if any(d0_standing_grants, g => standing_grant_covers(g: g, group: group, effect: StandingArmLaunch, hosts: hosts)) {
+  if any(d0_standing_grants, g => standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: group, hosts: hosts }, effect: StandingArmLaunch)) {
     [] as List<String>
   } else {
     [join([group_label(g: group), " has been released to the fleet and no standing grant covers an arm launch on every planned host (", join(map(hosts, h => h as String), ", "), "); there is no suspension to launch a successor under either"], "")]
@@ -913,7 +913,7 @@ fn checkpoint_cache_bytes_lines(ctx: SparkMaterializeContext) -> String {
     Absent => ""
     Present { value: row } =>
       join([
-        observe_leg(ctx: ctx, what: join(["completed bytes of ", serving_checkpoint_wire(c: c) as String, " (snapshot dereferenced)"], ""), argv: ["du", "-sbL", join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/snapshots"], "")]),
+        observe_leg(ctx: ctx, what: join(["completed bytes of ", serving_checkpoint_wire(c: c) as String, " (snapshot dereferenced)"], ""), argv: hub_dereferenced_bytes_argv(path: join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/snapshots"], "") as NonEmptyStr)),
         observe_leg(ctx: ctx, what: join(["in-flight partials of ", serving_checkpoint_wire(c: c) as String, " (bytes per .incomplete file)"], ""), argv: ["find", join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/blobs"], ""), "-name", "*.incomplete", "-printf", "%s\n"]),
       ], "")
   }), "")

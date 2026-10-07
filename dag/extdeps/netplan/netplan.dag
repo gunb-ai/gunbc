@@ -3,6 +3,10 @@ module extdeps.netplan.netplan
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.networkmanager.nmcli { nm_keyfile_profile_dir }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -88,5 +92,95 @@ fn interface_has_link(o: InterfaceObservation) -> Bool {
     CarrierPresent => true
     CarrierAbsent => false
     CarrierUnobserved => false
+  }
+}
+
+// ── THE NETWORKMANAGER YAML BACKEND: WHICH LAYER PERSISTS A PROFILE ────────────────────────────
+//
+// netplan.readthedocs.io/en/stable/netplan-everywhere/ ("NetworkManager YAML settings back end"):
+// on Ubuntu, NetworkManager stores a connection profile it creates or modifies as netplan YAML,
+// /etc/netplan/90-NM-<uuid>.yaml, carrying every keyfile setting netplan has no native key for under
+// `networkmanager: passthrough:`; `netplan generate` renders that YAML into a keyfile under
+// /run/NetworkManager/system-connections/netplan-NM-<uuid>-<name>.nmconnection, which is what
+// NetworkManager loads. The /run keyfile is a PROJECTION regenerated from the YAML: an edit made to it
+// directly is lost on the next generate, while an edit through NetworkManager (nmcli connection
+// modify) is written back to the YAML. Read on spark-2196 (srv12) 2026-10-05 ~16:55Z by
+// valiant-crab-775: the Wi-Fi profile's FILENAME is that /run keyfile, /etc/NetworkManager/
+// system-connections is empty, the YAML carries `wifi.powersave` '2' and the /run keyfile powersave=2.
+data netplan_nm_generated_profile_prefix: NonEmptyStr = "/run/NetworkManager/system-connections/netplan-" as NonEmptyStr
+
+fn netplan_nm_profile_yaml_path(uuid: NonEmptyStr) -> NonEmptyStr {
+  join([netplan_config_dir as String, "/90-NM-", uuid as String, ".yaml"], "") as NonEmptyStr
+}
+
+// WHERE A PROFILE'S SETTINGS PERSIST, decided from the file NetworkManager loaded it from. A /run
+// profile that netplan did not generate is runtime-only: nothing regenerates it and it is gone at
+// reboot, so a setting converged there is not persisted anywhere.
+type NmProfilePersistence
+  = PersistedByNetplanYaml { yaml: NonEmptyStr, definition: NonEmptyStr }
+  | PersistedByKeyfile { path: NonEmptyStr }
+  | PersistedNowhere { path: NonEmptyStr }
+
+fn nm_profile_persistence(uuid: NonEmptyStr, filename: NonEmptyStr) -> NmProfilePersistence {
+  let f = filename as String
+  if starts_with(s: f, prefix: netplan_nm_generated_profile_prefix as String) { PersistedByNetplanYaml { yaml: netplan_nm_profile_yaml_path(uuid: uuid), definition: netplan_nm_definition_id(uuid: uuid) } }
+  else if starts_with(s: f, prefix: nm_keyfile_profile_dir as String) { PersistedByKeyfile { path: filename } }
+  else { PersistedNowhere { path: filename } }
+}
+
+// THE 90-NM FILE IS ONE INPUT, NOT THE AUTHORITY. netplan-yaml (netplan.readthedocs.io/en/stable/
+// netplan-yaml/, "General structure"): netplan reads every *.yaml under /lib/netplan, /etc/netplan and
+// /run/netplan; a file in /run shadows a same-named file in /etc, which shadows /lib; the surviving
+// files are applied in lexicographic order of name, a later file's keys overriding an earlier file's.
+// So what the next `netplan generate` renders for the profile is the MERGED value, and a later file
+// (say 99-override.yaml) can override 90-NM-<uuid>.yaml or supply a key that file omits. The 90-NM
+// path is kept as PROVENANCE (which file NetworkManager wrote), never as the verdict.
+//
+// netplan get (netplan.readthedocs.io/en/stable/netplan-get/): "Get a setting by specifying a nested
+// key like 'ethernets.eth0.addresses', or 'all'", answered from netplan's parse of the merged
+// configuration and printed as YAML. Read on spark-2196 (srv12, netplan.io 1.1.2-8ubuntu1~24.04.2) as
+// root 2026-10-05 by valiant-crab-775:
+//   - the profile's definition is `NM-<uuid>` under `wifis`, and its passthrough is PER ACCESS POINT:
+//     `wifis.NM-<uuid>.access-points.<ssid>.networkmanager.passthrough` printed one key per line,
+//     quoted (`wifi.powersave: "2"`, `connection.auth-retries: "0"`, ...), while
+//     `wifis.NM-<uuid>.networkmanager.passthrough` printed `null` and `...networkmanager` only uuid/name;
+//   - the key path splits on '.', so a dotted leaf (`...passthrough.wifi.powersave`) prints `null`:
+//     the whole passthrough map is asked for and the key looked up here;
+//   - ANY missing path prints `null` with exit 0, so `null` cannot distinguish a wrong path from an
+//     absent setting. A consumer must refuse `null` as unread, never read it as defaults; and since the
+//     path is built from the definition id and the SSID, both come from the active profile, and an SSID
+//     the dotted path cannot address (one containing '.') is refused rather than mis-addressed.
+fn netplan_nm_definition_id(uuid: NonEmptyStr) -> NonEmptyStr {
+  join(["NM-", uuid as String], "") as NonEmptyStr
+}
+
+data netplan_get_missing_path_answer: NonEmptyStr = "null" as NonEmptyStr
+
+fn netplan_key_segment_addressable(segment: String) -> Bool {
+  segment != "" && !string_contains(s: segment, pattern: ".")
+}
+
+fn netplan_get_wifi_access_point_passthrough_argv(definition: NonEmptyStr, ssid: NonEmptyStr) -> List<String> {
+  ["netplan", "get", join(["wifis.", definition as String, ".access-points.", ssid as String, ".networkmanager.passthrough"], "")]
+}
+
+// A passthrough key in the MERGED passthrough subtree, as the word netplan prints (quotes stripped).
+// The key absent from the merged subtree is its own reading: no layer supplies it, so the generated
+// keyfile omits it and NetworkManager applies its default. Absent from one FILE is not this reading.
+type NetplanPassthroughRead
+  = PassthroughValue { word: String }
+  | PassthroughKeyAbsent
+
+// Top-level keys only: the answer is the passthrough MAP, printed one key per line at column 0
+// (srv12, 2026-10-05), so an indented line belongs to some nested value and never names a key here.
+fn netplan_passthrough_value(yaml: String, key: NonEmptyStr) -> NetplanPassthroughRead {
+  let pattern = join([key as String, ":"], "")
+  let hits: List<String> = filter(split(s: yaml, delimiter: "\n"), l => starts_with(s: l, prefix: pattern))
+  match first(hits) {
+    Absent => PassthroughKeyAbsent
+    Present { value: l } => {
+      let t = trim(s: l)
+      PassthroughValue { word: replace(s: replace(s: trim(s: substring(s: t, start: length(pattern), end: length(t))), from: "'", to: ""), from: "\"", to: "") }
+    }
   }
 }

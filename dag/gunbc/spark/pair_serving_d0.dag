@@ -1,6 +1,6 @@
 module gunbc.spark.pair_serving_d0
 
-import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet }
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet, StandingGrantFabricGroup }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
@@ -786,7 +786,7 @@ fn d0_standing_grant_for_subject(subject: D0Subject) -> StandingOperatorGrant? {
   match subject.operation {
     D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => none
     D0ReleaseToFleet { cause: _, approval: _ } =>
-      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, group: subject.group, effect: StandingD0ReleaseToFleet, hosts: subject.hosts)))
+      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: subject.group, hosts: subject.hosts }, effect: StandingD0ReleaseToFleet)))
   }
 }
 
