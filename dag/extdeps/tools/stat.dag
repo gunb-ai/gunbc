@@ -3,7 +3,7 @@ module extdeps.tools.stat
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { Bool, NonEmptyStr, List, Unit, Int, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
