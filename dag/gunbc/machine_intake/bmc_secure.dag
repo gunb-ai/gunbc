@@ -1,7 +1,6 @@
 module gunbc.machine_intake_bmc_secure
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
-import v2.std.algebra { filter }
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

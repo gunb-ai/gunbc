@@ -26,7 +26,7 @@ import v2.lens.module_graph { ModuleDeclarationFact }
 import std.decl_ref { decl_ref }
 import std.types { List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.algebra { any, fold_list, list_reverse }
+import v2.std.algebra { fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 

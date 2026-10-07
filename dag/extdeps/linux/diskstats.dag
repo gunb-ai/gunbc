@@ -1,6 +1,5 @@
 module extdeps.linux.diskstats
 
-import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { trim }

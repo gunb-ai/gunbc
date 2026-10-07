@@ -2,7 +2,7 @@ module v2.compiler.self_host.native_routing_frontier
 
 import std.types { List }
 import v2.std.text { String }
-import v2.std.algebra { length, any, contains }
+import v2.std.algebra { length, contains }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.compiler.self_host.parity_window { ParityObservation, parity_routing_admitted }
 import v2.lens.module_graph {

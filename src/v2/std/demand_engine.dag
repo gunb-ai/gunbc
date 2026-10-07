@@ -2,9 +2,7 @@ module v2.std.demand_engine
 
 import std.types { List }
 import v2.std.algebra {
-  any,
   contains,
-  filter,
   fold_list,
   for_all,
   length,

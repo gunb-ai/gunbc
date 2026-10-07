@@ -12,7 +12,6 @@ import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUncon
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_curl }
-import v2.std.algebra { any }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, Set, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.node { Node }
-import v2.std.algebra { any, list_map }
+import v2.std.algebra { list_map }
 import v2.lens.effect_reach { atom_identities_in_node }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

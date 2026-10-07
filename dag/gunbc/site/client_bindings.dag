@@ -1,5 +1,4 @@
 module gunbc.site.client_bindings
-import v2.std.algebra { any }
 
 import std.types { String, List }
 import extdeps.languages.typescript.program {

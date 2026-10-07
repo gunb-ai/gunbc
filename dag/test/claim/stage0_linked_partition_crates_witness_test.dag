@@ -3,7 +3,7 @@ module test.claim.stage0_linked_partition_crates_witness
 import std.types { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import v2.workflow.rust_crate_partition {
   Stage0PartitionCrateRow,
   Stage0FoundationCrate,

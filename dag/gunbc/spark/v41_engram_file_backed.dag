@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size_count, Microsecond, microsecond, microsecond_count }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter, length, skip }
+import v2.std.algebra { length, skip }
 import std.list { distinct_by_key }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, V41CompleteStore,

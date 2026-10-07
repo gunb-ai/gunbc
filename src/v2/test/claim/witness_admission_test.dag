@@ -19,7 +19,7 @@ import std.witness_admission {
   DiscoverySelection,
   NoConsumer
 }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import gunbc.ci_layer_roots { known_red_probe_roster }
 import v2.std.text { String }
 

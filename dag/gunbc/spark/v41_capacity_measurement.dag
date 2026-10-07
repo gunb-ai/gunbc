@@ -1,6 +1,5 @@
 module gunbc.spark.v41_capacity_measurement
 
-import v2.std.algebra { filter }
 import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
 import gunbc.spark.serving_performance_subject { ServingSubjectKey }
 import v2.std.collection { list_at_optional }

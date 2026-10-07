@@ -3,7 +3,6 @@ module test.claim.spark.v41_capacity_measurement_witness
 import gunbc.spark.serving_performance_subject { ServingSubjectKey, serving_subject_key, serving_performance_subject }
 import gunbc.spark.serving_arm { DeepseekV41FlashDba1be0a, GunbcSparkrunVllmDs4Gb10 }
 
-import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.staircase { StaircaseStopped, StaircaseCompleted }
 import std.types { Bool, Int, List, NonEmptyStr, String }

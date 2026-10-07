@@ -1,6 +1,5 @@
 module test.claim.runner.runner_microvm_slot_controller_witness_test
 
-import v2.std.algebra { any }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, second_count }

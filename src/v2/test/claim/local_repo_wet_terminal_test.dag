@@ -3,7 +3,7 @@ module v2.test.claim.local_repo_wet_terminal_test
 import std.types { List }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { length, filter, count_where }
+import v2.std.algebra { length, count_where }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, Returned, Panicked, RouteGap,

@@ -13,7 +13,6 @@ import extdeps.auth.oidc {
 import gunbc.principal_projection {
   PrincipalRef, HumanPrincipalMinted, HumanPrincipalRefused, mint_human_principal_from_verdict,
 }
-import v2.std.algebra { filter }
 
 // THE APPLICATION SESSION (ruling authority placement: gunbc.auth.session). An
 // AuthenticatedSession is what a completed Google login mints: the verdict-sealed human

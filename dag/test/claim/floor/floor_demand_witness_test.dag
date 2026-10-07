@@ -33,7 +33,6 @@ import gunbc.floor_demand {
   SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import v2.std.algebra { any }
 
 fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {
   FloorRunCgroupPeakMeasured {

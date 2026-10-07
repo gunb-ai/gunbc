@@ -1,6 +1,5 @@
 module gunbc.machine_intake_dimm_physical_orientation
 
-import v2.std.algebra { filter }
 import std.types { String, List, list_length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

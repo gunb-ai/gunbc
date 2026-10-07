@@ -2,7 +2,6 @@ module gunbc.machine_intake_mtcollins1_census_refusal_hypotheses
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }

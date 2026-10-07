@@ -31,7 +31,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_command
 }
 import extdeps.exec.command { shell_command_render }
-import v2.std.algebra { length, filter }
+import v2.std.algebra { length }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 

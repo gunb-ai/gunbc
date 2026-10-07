@@ -2,7 +2,7 @@ module gunbc.v1_complexity_decl_classification
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.v1_complexity_capability_census {
   ComplexityCapabilityId,

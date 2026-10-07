@@ -3,7 +3,6 @@ module v2.std.node_minimal
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.algebra { any }
 import v2.std.integer { UInt32 }
 import v2.std.node {
   Connective,

@@ -2,7 +2,7 @@ module gunbc.declined_live_tree_defect_classification
 
 import std.types { String, List }
 import v2.std.integer { Int }
-import v2.std.algebra { any, count_where, length, fold_list }
+import v2.std.algebra { count_where, length, fold_list }
 import std.algebra { list_snoc_item }
 
 // WHY THIS CARRIER EXISTS. Thirteen witness identities were measured failing on

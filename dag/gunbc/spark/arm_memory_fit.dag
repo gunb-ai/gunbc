@@ -53,7 +53,7 @@ import gunbc.spark.serving_capacity_intent {
   intent_max_active_sequences, intent_max_single_sequence_tokens,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
-import v2.std.algebra { any, filter, length }
+import v2.std.algebra { length }
 
 // ── WHAT THIS MODULE IS ─────────────────────────────────────────────────────────────────────────
 //

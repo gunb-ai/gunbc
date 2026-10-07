@@ -1,6 +1,5 @@
 module extdeps.bmc.ipmitool_hpm_check
 
-import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim }

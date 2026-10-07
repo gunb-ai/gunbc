@@ -34,7 +34,6 @@ import gunbc.machine_intake_megarac_kvm_still {
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
 import extdeps.bmc.megarac { megarac_ui_features_json }
-import v2.std.algebra { any }
 
 // PROCESS-AND-PROTOCOL EVIDENCE, NOT HARDWARE EVIDENCE (eager-owl-205, 2026-09-28). Each control runs
 // the REAL held observer -- the same launcher (through kvm_observer_protocol_launch), triggers, handoff admission and

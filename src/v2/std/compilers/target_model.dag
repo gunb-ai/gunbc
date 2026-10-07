@@ -26,7 +26,6 @@ import v2.std.algebra {
   Ordering,
   TailAbsent,
   TailFound,
-  any,
   fold_list,
   fold_list_node,
   fold_list_right,

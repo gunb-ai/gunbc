@@ -10,10 +10,8 @@ import v2.lens.witness_cost_locality {
 }
 import v2.std.algebra {
   contains,
-  filter,
   fold_list,
   length,
-  any,
   list_head,
   list_tail,
   HeadFound,

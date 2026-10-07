@@ -36,7 +36,7 @@ import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_grant_list_s
 import v2.workflow.bash_emit { bash_emit_negation }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 
 // Denial subjects are real deployment mutations. The permit pole uses receipt
 // data so exercising authorization never tears down a live deployment.

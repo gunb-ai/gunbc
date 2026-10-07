@@ -24,7 +24,6 @@ import gunbc.workspace_slot_mutation {
   WorkspaceCommissioningMutationReleased, WorkspaceCommissioningMutationRecoveryRefused,
 }
 
-import v2.std.algebra { filter }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
 import gunbc.runner_microvm_slot_controller { slot_controller_receipt_prefix, outcome_text, SlotControllerCommissioned }
