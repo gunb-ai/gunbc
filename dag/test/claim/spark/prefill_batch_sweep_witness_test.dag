@@ -3,7 +3,7 @@ module test.claim.spark.prefill_batch_sweep
 import std.types { Bool, List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.prefill_batch_sweep {
   PrefillProbe, ThreeTermFit, FitDerived, FitUnderdetermined,
   ReadingBasis, DirectMeasurement, DerivedAtCommonWorkload, PredictedOutsideMeasuredArm,

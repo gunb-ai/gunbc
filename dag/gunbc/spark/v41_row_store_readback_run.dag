@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.measure { ByteSize, byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.gnu_coreutils { od_hex_span_command }

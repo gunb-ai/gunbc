@@ -9,7 +9,7 @@ import std.measure {
   Kibibyte, kibibyte, kibibyte_count, kibibyte_to_byte_size,
 }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationAttempt, ObservationEstablished, ObservationRefused, assess_by_deviations_and_unknowns }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.algebra { non_empty_to_list }
 import v2.std.cardinality { Never }
 import extdeps.toolchain.types { Architecture }

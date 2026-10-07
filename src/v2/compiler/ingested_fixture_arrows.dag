@@ -2,7 +2,7 @@ module v2.compiler.ingested_fixture_arrows
 
 import v2.compiler.staged_front_end { front_end_run_outcome, run_front_end }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
