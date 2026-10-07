@@ -3609,14 +3609,29 @@ mod import_binding_authority_tests {
 
         // THE OLD map_get FORK IS DISSOLVED, AND THIS ARM IS ITS PERMANENT REGRESSION CONTROL,
         // checked by its exact identity set rather than a count or list order. Before the rename,
-        // a module that omitted the declaration from its authored list while calling the bare name
-        // minted TWO rival authorities -- `builtin:map_get` and
-        // `declared:v2.std.collection:map_get` -- and went ambiguous. The declared projection now
-        // answers to `map_get_checked` alone, so the bare spelling has no declared candidate and
-        // only the builtin rival remains, which this callable route leaves unresolved (builtins
-        // reach inference through the method path). A future re-widening -- a declared projection
-        // reclaiming the bare spelling -- puts the rival back and flips this arm to
-        // FuncSigAmbiguous, failing here.
+        // omitting the declaration from the authored list while calling the bare name minted TWO
+        // rival authorities -- `builtin:map_get` and `declared:v2.std.collection:map_get` -- and
+        // went ambiguous. The rename moved the declaration to `map_get_checked`, so the bare
+        // spelling now has no declared candidate at all: only the builtin remains, which this
+        // route leaves unresolved (builtins reach inference through the method path).
+        //
+        // HONESTY ABOUT WHAT THIS ARM CAN AND CANNOT SEE ANY MORE (review 77428). The former
+        // rival-join -- a rival declaration omitted from the authored list joining the builtin
+        // into FuncSigAmbiguous -- is NOT reachable at this seam any more, and that absence is
+        // the repair, not a hole: the only DivergentProjection row in the compiled roster
+        // (std_primitive_projection.rs) answers to the declaration `map_get_checked`, which is
+        // not a primitive-registry key, while the registry keys the primitive as `map_get`
+        // (v1_compiler_infer_method.rs). parent_closure_callable_candidates takes the declared
+        // identity's decl_name from the LOOKUP KEY, so no lookup name can carry both a rival
+        // declaration and a builtin co-candidate; a synthetic fixture that "declares map_get"
+        // mints the identity (v2.std.collection, map_get), which the roster does not cover. A
+        // re-widening that reclaimed the bare spelling under a registry-keyed name would
+        // re-ambient the join, but THIS arm would still green until a lookup name carried both
+        // authorities -- so the rival predicate's own discriminating control
+        // (declared_candidate_rivals_the_builtin_discriminates_by_row_fidelity, below) stays
+        // enrolled as the executing evidence for the mechanism, per DESIGN 4b(4), and the census
+        // wall w_projection_census_declares_no_divergent_shared_spelling holds the no-shared-
+        // spelling fact at the tree grain.
         match &*bare {
             FuncSigLookup::FuncSigUnresolved => {}
             FuncSigLookup::FuncSigAmbiguous { candidates } => panic!(
@@ -3629,5 +3644,75 @@ mod import_binding_authority_tests {
                  authority -- no declared candidate, never ambiguous -- got {other:?}"
             ),
         }
+    }
+
+    /// THE RIVAL PREDICATE'S OWN DISCRIMINATING CONTROL, ENROLLED AFTER THE RENAME DISSOLVED THE
+    /// SEAM'S SHARED SPELLING (review 77428; DESIGN 4b(4): the class's executing evidence stays
+    /// enrolled). Checked against the COMPILED roster's actual rows, so a row that loses its
+    /// DivergentProjection fidelity, a predicate that stops consulting the roster, or a roster
+    /// that stops carrying the divergent specimen all fail here. The identity values are the
+    /// mechanism's own data: the divergent declaration must rival, a modeled projection must
+    /// not, an unprojected declaration must not, and a builtin candidate is never a rival to
+    /// itself.
+    #[test]
+    fn declared_candidate_rivals_the_builtin_discriminates_by_row_fidelity() {
+        use crate::v1_compiler_infer_lookup::declared_candidate_rivals_the_builtin;
+        use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
+        use crate::v1_compiler_infer_sigs::{CallableCandidate, DeclaredCallableIdentity};
+
+        let candidate_for = |owner: &str, decl: &str| {
+            Rc::new(CallableCandidate {
+                identity: Rc::new(DeclaredCallable {
+                    identity: Rc::new(DeclaredCallableIdentity {
+                        owner_module_path: owner.to_string(),
+                        decl_name: decl.to_string(),
+                    }),
+                }),
+                sig: parent_env_declaring_map_get_checked()
+                    .parents
+                    .iter()
+                    .next()
+                    .expect("fixture parent")
+                    .local
+                    .values()
+                    .next()
+                    .expect("fixture signature")
+                    .clone(),
+            })
+        };
+
+        // The compiled roster's one DivergentProjection row: the declaration must rival.
+        assert!(declared_candidate_rivals_the_builtin(candidate_for(
+            "v2.std.collection",
+            "map_get_checked"
+        )));
+        // A modeled projection is a faithful alias, never a rival.
+        assert!(!declared_candidate_rivals_the_builtin(candidate_for(
+            "v2.std.collection",
+            "empty_map"
+        )));
+        // An unprojected declaration is never a rival.
+        assert!(!declared_candidate_rivals_the_builtin(candidate_for(
+            "cut.unrelated.module",
+            "map_get_checked"
+        )));
+        // A builtin candidate is never a rival to itself.
+        assert!(!declared_candidate_rivals_the_builtin(Rc::new(
+            CallableCandidate {
+                identity: Rc::new(BuiltinCallable {
+                    primitive_name: "map_get".to_string(),
+                }),
+                sig: parent_env_declaring_map_get_checked()
+                    .parents
+                    .iter()
+                    .next()
+                    .expect("fixture parent")
+                    .local
+                    .values()
+                    .next()
+                    .expect("fixture signature")
+                    .clone(),
+            }
+        )));
     }
 }
