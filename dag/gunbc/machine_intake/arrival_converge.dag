@@ -1,7 +1,7 @@
 module gunbc.machine_intake_arrival_converge
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -132,6 +132,7 @@ import gunbc.auth.standing_operator_grant {
   StandingBmcSecureAccountWrite,
   standing_grant_covers,
 }
+import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
@@ -674,8 +675,8 @@ type BmcSecureInputs {
 // units is WorkloadIdentityUnbindable, so FederatedScopedGrant is not a selected pattern for this
 // effect. A NonEmptyStr here was a silent widen (review 38602): any string minted Apply.
 
-fn bmc_secure_apply_interlock_hold() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply")
+fn bmc_secure_account_rotation_site() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action")
 }
 
 fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: HostIdentity) -> Bool {
@@ -683,7 +684,8 @@ fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: Hos
     && match g.ruling.interlock {
       InterlockPending { obligation: _ } => false
       UnconditionalStanding { reason: _ } => false
-      InterlockedBy { hold: h } => declaration_ref_eq(a: h, b: bmc_secure_apply_interlock_hold())
+      InterlockedBy { hold: h } =>
+        ruling_interlock_is_rostered(site_ref: bmc_secure_account_rotation_site(), interlock: h)
     }
 }
 
