@@ -14,6 +14,8 @@ type SupportRectangle {half_x_um:Micrometer,half_z_um:Micrometer}
 type LoadScenario {components:List<PlacedMass>,support:SupportRectangle,push_height_um:Micrometer}
 // feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier; cg_* are signed
 // feature:missing-torque-carrier — dissolve-on: std.measure has no force×length product; restoring_*_mn_mm stays Int
+// feature:signed-force-carrier — dissolve-on: Millinewton inhabits Nat; tip_push_mn and corner_reactions_mn are signed (outside_support_has_no_positive_tip_margin is f<0 and any corner <0)
+// feature:signed-acceleration-carrier — dissolve-on: MicrometrePerSecondSquared inhabits Nat; tip_base_acceleration_um_s2 is signed (same RED requires a<0)
 type LoadScreen
  = InvalidLoadScenario {reason:NonEmptyStr}
  | RigidBodyScreen {mass_g:Gram,cg_x_um:Int,cg_y_um:Int,cg_z_um:Int,
