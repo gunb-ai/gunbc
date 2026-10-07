@@ -7951,6 +7951,10 @@ fn bind_unbound_collection_element_generic(
   }
 }
 
+fn type_is_bare_collection_carrier(n: Node) -> Bool {
+  (n.name == "FreeMonoid" || n.name == "List") && (n.children |> count) != 1
+}
+
 fn fold_step_callable(acc_type: Node, element_type: Node) -> Node {
   let fold_params = [
     make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: acc_type, default_value: none, span: no_span(), name_span: no_span()),
@@ -7970,13 +7974,16 @@ fn collection_fold_lambda_expected(results: List<ArgInferResult>, call_args: Lis
     Absent => none
     Present { value: xs_ty } =>
       let elem = for_each_element_type_node(n: xs_ty, source_indices: source_indices)
-      if unify_binding_is_uninformative(n: xs_ty) || unify_binding_is_uninformative(n: elem) {
+      if unify_binding_is_uninformative(n: xs_ty) || unify_binding_is_uninformative(n: elem)
+          || type_is_bare_collection_carrier(n: xs_ty) || type_is_bare_collection_carrier(n: elem) {
         none
       } else {
         match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.acc_formal_index, source_indices: source_indices) {
           Absent => Present { value: fold_step_callable(acc_type: type_variable_node(id: "FoldAccumulator"), element_type: elem) }
           Present { value: acc_ty } =>
-            let acc = if unify_binding_is_uninformative(n: acc_ty) { type_variable_node(id: "FoldAccumulator") } else { acc_ty }
+            let acc = if unify_binding_is_uninformative(n: acc_ty) || type_is_bare_collection_carrier(n: acc_ty) {
+              type_variable_node(id: "FoldAccumulator")
+            } else { acc_ty }
             Present { value: fold_step_callable(acc_type: acc, element_type: elem) }
         }
       }
@@ -8066,6 +8073,14 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       } else { st.subst }
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
       unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
+    } else if (match fold_roles {
+        Absent => false
+        Present { value: roles } => match formal_selection {
+          CallArgumentFormalSelected { formal_index: fi, formal: _ } => fi == roles.acc_formal_index
+          CallArgumentFormalUnavailable => false
+        }
+      } && type_is_bare_collection_carrier(n: resolved_type(n: ar.typed))) {
+      st.subst
     } else {
       bind_unbound_collection_element_generic(
         formal: formal_raw,
@@ -14101,16 +14116,13 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
 fn unify_binding_is_uninformative(n: Node) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: _ } } => true
-    Present { value: Resolved { node: inner } } => unify_binding_is_uninformative(n: inner)
     _ =>
       if n.children |> count == 1 {
         match n.children |> first {
           Present { value: c } => unify_binding_is_uninformative(n: child_type_node(ch: c))
           Absent => false
         }
-      } else {
-        n.name == "FreeMonoid" || n.name == "List"
-      }
+      } else { false }
   }
 }
 

@@ -12102,6 +12102,11 @@ pub fn typed_arg_type_for_formal(
         })
 }
 
+pub fn type_is_bare_collection_carrier(n: Rc<Node>) -> bool {
+    (n.name.clone() == "FreeMonoid".to_string() || n.name.clone() == "List".to_string())
+        && ((n.children.clone().len() as i64) != 1)
+}
+
 pub fn fold_step_callable(acc_type: Rc<Node>, element_type: Rc<Node>) -> Rc<Node> {
     let fold_params = Rc::new(vec![
         crate::v1_std_core::make_param_node(
@@ -12171,6 +12176,8 @@ pub fn collection_fold_lambda_expected(
             );
             if unify_binding_is_uninformative(xs_ty.clone())
                 || unify_binding_is_uninformative(elem.clone())
+                || type_is_bare_collection_carrier(xs_ty.clone())
+                || type_is_bare_collection_carrier(elem.clone())
             {
                 std::option::Option::None
             } else {
@@ -12186,7 +12193,9 @@ pub fn collection_fold_lambda_expected(
                         elem,
                     )),
                     Some(acc_ty) => {
-                        let acc = if unify_binding_is_uninformative(acc_ty.clone()) {
+                        let acc = if unify_binding_is_uninformative(acc_ty.clone())
+                            || type_is_bare_collection_carrier(acc_ty.clone())
+                        {
                             type_variable_node("FoldAccumulator".to_string())
                         } else {
                             acc_ty
@@ -12437,19 +12446,44 @@ pub fn infer_call_arguments_generic_pass(
                             st.subst.clone(),
                         )
                     } else {
-                        bind_unbound_collection_element_generic(
-                            formal_raw.clone(),
-                            crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
-                            generic_names.clone(),
-                            unify_generics(
+                        let skip_bare_fold_acc = match fold_roles.clone() {
+                            Some(roles) => match (*formal_selection.clone()).clone() {
+                                CallArgumentFormalSelection::CallArgumentFormalSelected {
+                                    formal_index: fi,
+                                    ..
+                                } => {
+                                    fi == roles.acc_formal_index.clone()
+                                        && type_is_bare_collection_carrier(
+                                            crate::v1_compiler_infer_types::resolved_type(
+                                                ar.typed.clone(),
+                                            ),
+                                        )
+                                }
+                                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                                    false
+                                }
+                            },
+                            std::option::Option::None => false,
+                        };
+                        if skip_bare_fold_acc {
+                            st.subst.clone()
+                        } else {
+                            bind_unbound_collection_element_generic(
                                 formal_raw.clone(),
                                 crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
                                 generic_names.clone(),
+                                unify_generics(
+                                    formal_raw.clone(),
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        ar.typed.clone(),
+                                    ),
+                                    generic_names.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                    st.subst.clone(),
+                                ),
                                 scope.type_env.clone().source_indices.clone(),
-                                st.subst.clone(),
-                            ),
-                            scope.type_env.clone().source_indices.clone(),
-                        )
+                            )
+                        }
                     }
                 }
             };
@@ -24502,10 +24536,6 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
             Some(InferredNode::TypeVariable { id: _, .. }) => {
                 break true;
             }
-            Some(InferredNode::Resolved { node: inner, .. }) => {
-                __tco_loop_n = inner;
-                continue;
-            }
             _ => {
                 if ((n.children.clone().len() as i64) == 1) {
                     match n.children.clone().first().cloned() {
@@ -24520,8 +24550,7 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
                         }
                     }
                 } else {
-                    break (n.name.clone() == "FreeMonoid".to_string()
-                        || n.name.clone() == "List".to_string());
+                    break false;
                 }
             }
         }
