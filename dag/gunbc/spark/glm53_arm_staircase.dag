@@ -1,5 +1,6 @@
 module gunbc.spark.glm53_arm_staircase
 
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_served_name_base }
 import std.types { String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { token_count, basis_point }
@@ -11,7 +12,7 @@ import extdeps.vllm.engine_args { VllmSchedulerAdmissionRequest, FullInputAdmiss
 import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
-import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy, served_name_only }
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy, served_name_only, checkpoint_served_name, serving_checkpoint_row }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size, glm53_staircase_container_name, glm53_staircase_head_log_path }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
@@ -167,10 +168,18 @@ fn glm53_step_envelope(s: Glm53StaircaseStep) -> Glm53StepEnvelope {
 // (gunbc.spark.group_b_serving_capacity group_b_restoration_utilization) -- the same hardware and
 // engine, read rather than re-decided; the memory wall prices it per step. Prefix caching is on, as
 // the GLM arm serves.
-data glm53_staircase_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+//
+// THE NAME IS THE STEP'S BUILD, ONLY. Each step announces checkpoint_served_name over its own checkpoint
+// row (glm-5.3-flash:nvfp4 for an NVFP4 step) and NOT the plain base, which Group B's fp8 arm reports
+// (gunbc.spark.serving_arm group_b_fp8_served_names): one name answering for two builds of different
+// quality is the meaning fork DESIGN section 3 forbids. A step whose checkpoint has no row has no name and
+// no profile.
 data glm53_staircase_prefix_caching: VllmPrefixCachingRequest = PrefixCachingExplicit { enabled: true }
 
 fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
+  match serving_checkpoint_row(c: glm53_step_checkpoint(s: s)) {
+    Absent => none
+    Present { value: row } =>
   match glm53_step_envelope(s: s) {
     Glm53StepEnvelopeRefused { cause: _ } => none
     Glm53StepEnvelopeAdmitted { envelope: e } => Present { value: profile_for_envelope(
@@ -178,9 +187,10 @@ fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
       policy: glm53_step_policy(s: s),
       decided_gpu_memory_basis_points: group_b_restoration_utilization,
       serve_port: spark_pair_serve_port,
-      served_names: served_name_only(name: glm53_staircase_served_alias),
+      served_names: served_name_only(name: checkpoint_served_name(base: glm_5_3_flash_served_name_base, row: row)),
       prefix_caching: glm53_staircase_prefix_caching,
     ) }
+  }
   }
 }
 

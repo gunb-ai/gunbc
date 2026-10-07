@@ -301,7 +301,8 @@ fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
 
 // THE BUILD-QUALIFIED SERVED NAME, DERIVED (operator ruling 2026-10-07, relayed by valiant-crab-775):
 // the model's served-name base, a colon, and the checkpoint's weight-scheme tag. Every arm that serves a
-// qualified name reads it here -- Group B's fp8 arm and Group A's nvfp4 arm call the same function, so
+// qualified name reads it here -- Group B's fp8 arm (group_b_fp8_served_names) and Group A's staircase
+// steps (gunbc.spark.glm53_arm_staircase glm53_step_profile) call the same function, so
 // "glm-5.3-flash:fp8" and "glm-5.3-flash:nvfp4" are two derivations of one rule rather than two
 // hand-typed strings that agree today.
 fn checkpoint_served_name(base: NonEmptyStr, row: ServingCheckpointRow) -> NonEmptyStr {

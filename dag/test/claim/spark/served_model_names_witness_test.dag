@@ -10,6 +10,7 @@ import gunbc.spark.serving_arm {
   group_b_fp8_served_names, glm_native_initial_profile, serving_launch_profile_key,
 }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines }
+import gunbc.spark.glm53_arm_staircase { glm53_step_profile, Glm53StaircaseStep, Glm53Nvfp4Step, Glm53Fp8Step, Nvfp4Seats8, Fp8Seats8 }
 import gunbc.spark.native_serving_apply {
   spark_native_arm_steps, NativeArmSteps, NativeArmStepsRefused,
   spark_native_front_door_names_reading, FrontDoorListsEveryName, FrontDoorMissesNames, FrontDoorListingUnreadable,
@@ -95,4 +96,19 @@ test fn w_single_name_renders_as_before() -> Bool {
 // re-keyed; only a profile that gained a name became a new subject.
 test fn w_single_name_profile_key_is_unchanged() -> Bool {
   serving_launch_profile_key(p: glm_native_initial_profile).contains(" alias=glm-5.3-flash prefix=")
+}
+
+// NO NAME ANSWERS FOR TWO BUILDS (review 77447): Group A's staircase steps announce ONLY their own
+// build's qualified name -- an NVFP4 step never the plain base Group B's fp8 arm reports. Red if a step
+// reintroduces the base or a hand-typed name.
+fn step_names(s: Glm53StaircaseStep) -> String {
+  match glm53_step_profile(s: s) {
+    Absent => ""
+    Present { value: p } => names_text(n: p.served_names)
+  }
+}
+
+test fn w_staircase_steps_announce_only_their_own_build() -> Bool {
+  step_names(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) == "glm-5.3-flash:nvfp4"
+    && step_names(s: Glm53Fp8Step { step: Fp8Seats8 }) == "glm-5.3-flash:fp8"
 }
