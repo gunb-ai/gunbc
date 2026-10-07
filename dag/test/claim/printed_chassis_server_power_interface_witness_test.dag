@@ -8,7 +8,8 @@ import product.printed_chassis.component_mass {node_components,node_components_f
 import gunbc.fleet_intent {srv3_memory_population}
 import std.measure {watt,watt_count,volt,percent,gram_count,micrometer_count,micrometer}
 import std.optional {Present,Absent}
-import extdeps.power.fsp_crps {fsp800_50fs_reference,fsp1200_50fs_reference}
+import extdeps.power.fsp_crps {fsp1200_50fs_reference}
+import extdeps.power.fsp800_50fs {fsp800_50fs_reference}
 import product.printed_chassis.server_power_interface {reference_main_power,required_station_power,available_main_power,AllModulesPresent,LargestModuleUnavailable,integration_standing,ReferenceArchitectureOnly}
 
 test fn main_rail_excludes_other_rails() -> Bool {

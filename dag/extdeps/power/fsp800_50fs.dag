@@ -1,0 +1,38 @@
+module extdeps.power.fsp800_50fs
+import std.types {NonEmptyStr}
+import std.measure {Volt,volt,Milliampere,milliampere,Watt,watt,Millisecond,millisecond,Celsius,celsius,millimeter}
+import std.decl_ref {DeclarationRef,WholeDeclaration}
+import extdeps.external_authority {ExternalAuthority,ExternalModelScope,ExternalSubjectRef,CitedFigureStanding,CitedToAuthority}
+import extdeps.uri {Uri,Https}
+import extdeps.power.fsp_crps {ServerPowerReference,MainRailRating,fsp_catalog_authority}
+
+// FSP Group FSP800-50FS, 800 W CRPS 2U redundant power supply module, technical datasheet
+// (document dated 2019/2020). Only figures the datasheet prints are modeled; whatever it does not
+// print (PS_ON/enable, sense, PMBus address, sharing, output connector) is NOT a property of this
+// product here -- it is a read obligation owned by the consuming design layer.
+data fsp800_50fs_datasheet:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"www.fsp-group.com/download/pro/FSP800-50FS_Datasheet.pdf"}}
+data extdeps_model_scope:ExternalModelScope=ExternalModelScope {subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.power.fsp800_50fs",decl_name:"fsp800_50fs_main_12v",field:WholeDeclaration}},first_citation:fsp800_50fs_datasheet,further_citations:[fsp_catalog_authority]}
+
+type OutputRailRating {rail:NonEmptyStr,input_min:Volt,input_max:Volt,min_current:Milliampere,max_current:Milliampere,standing:CitedFigureStanding}
+// OUTPUT RATING table: +12V, 100~240V, min 0.5 A, max 65 A, 780 W.
+data fsp800_50fs_main_12v:OutputRailRating=OutputRailRating {rail:"+12V",input_min:volt(count:100),input_max:volt(count:240),min_current:milliampere(count:500),max_current:milliampere(count:65000),standing:CitedToAuthority {authority:fsp800_50fs_datasheet}}
+// Table row: +12Vsb, 100~240V, 0 A to 4.5 A, 22.5 W.
+data fsp800_50fs_standby_12v:OutputRailRating=OutputRailRating {rail:"+12Vsb",input_min:volt(count:100),input_max:volt(count:240),min_current:milliampere(count:0),max_current:milliampere(count:4500),standing:CitedToAuthority {authority:fsp800_50fs_datasheet}}
+// Table columns: 12 V total output 780 W within the module's 800 W total.
+data fsp800_50fs_main_12v_power:Watt=watt(count:780)
+data fsp800_50fs_total_power:Watt=watt(count:800)
+// General specifications: hold-up time at 100% load, 12 V = 11 ms.
+data fsp800_50fs_holdup_12v:Millisecond=millisecond(count:11)
+// Input specifications: input voltage 90-264 Vac; input current 10 A at 115 Vac.
+data fsp800_50fs_input_current_115v:Milliampere=milliampere(count:10000)
+data fsp800_50fs_operating_ambient_max:Celsius=celsius(count:55)
+// Features list: "Meet PMBus 1.2" -- a conformance claim, not an address or a command map.
+data fsp800_50fs_pmbus_revision:NonEmptyStr="1.2"
+// Complete-assembly reference derived from the rail row above (one authority for 65 A), with the
+// larger 2025-26 catalog envelope reserved (265 x 76 x 84 mm; the datasheet gives 250 x 76 x 83.8).
+// Drawing/variant reconciliation is required before mount CAD.
+data fsp800_50fs_reference:ServerPowerReference=ServerPowerReference {
+ model:"FSP800-50FS",main_voltage:volt(count:12),
+ main_ratings:[MainRailRating {input_min:fsp800_50fs_main_12v.input_min,input_max:fsp800_50fs_main_12v.input_max,current:fsp800_50fs_main_12v.max_current}],
+ reservation_length:millimeter(count:265),reservation_width:millimeter(count:76),reservation_height:millimeter(count:84),authority:fsp800_50fs_datasheet,
+}

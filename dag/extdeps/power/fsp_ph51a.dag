@@ -1,0 +1,15 @@
+module extdeps.power.fsp_ph51a
+import std.types {Int}
+import std.decl_ref {DeclarationRef,WholeDeclaration}
+import extdeps.external_authority {ExternalAuthority,ExternalModelScope,ExternalSubjectRef,CitedFigureStanding,CitedToAuthority}
+import extdeps.uri {Uri,Https}
+
+// FSP Group FSP-PH51A, CRPS power distribution board, technical datasheet (2019/2020).
+// The datasheet states "Support single CRPS module": this board is NOT a redundant PDB. It is the
+// only PDB datasheet read for this product family, so a matched redundant PDB for two FSP800-50FS
+// modules remains unidentified; nothing here claims one.
+data fsp_ph51a_datasheet:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"www.fsp-group.com/download/pro/FSP-PH51A_Datasheet.pdf"}}
+data extdeps_model_scope:ExternalModelScope=ExternalModelScope {subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.power.fsp_ph51a",decl_name:"fsp_ph51a_supported_crps_modules",field:WholeDeclaration}},first_citation:fsp_ph51a_datasheet,further_citations:[]}
+
+// Features list: "Support single CRPS module"; "A high reliability PDB with fixed wire harness".
+data fsp_ph51a_supported_crps_modules:Int=1

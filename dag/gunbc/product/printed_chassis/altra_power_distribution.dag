@@ -1,0 +1,335 @@
+module product.printed_chassis.altra_power_distribution
+import std.types {Int,List,NonEmptyStr,String,Bool}
+import std.measure {Watt,watt,watt_count,Volt,volt,milliampere,milliampere_count,millivolt,millivolt_count,Milliampere,Percent,percent,percent_count,millimeter,ampere_count}
+import std.nat {Nat}
+import std.optional {Present,Absent}
+import std.decl_ref {DeclarationRef,decl_ref}
+import std.interval {degenerate_interval}
+import std.pareto {AxisGap,AxisReading,HigherIsBetter,LowerIsBetter,ParetoEntry,SelectionAxis}
+import std.decision {ChoiceDomain,ConstraintSatisfied,CausalModelEstablished,DecisionAssessment,DecisionConstraint,DecisionRegion,DecisionSubject,DecisionVariable,ContextParameter,HardConstraint,ObjectiveMeasure,ObjectiveTerm,ParameterBound,PhysicalModelEstablished,RealizationSelectionResult,RelationOtherwiseEstablished,SelectionPolicy,UniqueSurvivorRequired,VariesAlong,VendorDocumentedCoupling,SelectedWithin,SelectionNeedsEvidence,NoFeasibleRealization,CandidateFieldUnestablished,SelectionNeedsPolicy,RealizationSelectionRefused,select_realization}
+import extdeps.external_authority {CitedFigureStanding,CitedToAuthority,TranscribedUncited}
+import extdeps.power.fsp800_50fs {fsp800_50fs_reference,fsp800_50fs_main_12v,fsp800_50fs_standby_12v,fsp800_50fs_total_power,fsp800_50fs_holdup_12v,fsp800_50fs_pmbus_revision,fsp800_50fs_input_current_115v,fsp800_50fs_operating_ambient_max}
+import extdeps.power.fsp_ph51a {fsp_ph51a_supported_crps_modules}
+import extdeps.connector.molex_mini_fit_jr {MiniFitJrTerminalRating,mini_fit_jr_standard_terminal_rating,mini_fit_jr_hcs_terminal_rating,mini_fit_jr_current_table_authority}
+import extdeps.standards.atx12v_psdg {atx12v_twelve_volt_regulation}
+import extdeps.boards.asrock_rack {asrock_altrad8ud_required_input_population}
+import extdeps.boards.types {PowerInputPopulationStanding,PowerInputPopulationSpecified,PowerInputMinimumOneStated,PowerInputPopulationUnresolved}
+import product.printed_chassis.node_power_feed {NodeFeedInputs,NodeFeedReading,NodeFeedScreeningOnly,NodeFeedRefused,declared_connector_derating,node_feed}
+import product.printed_chassis.server_power_interface {InterfaceObligation,ExactPsuPdbPairAndPinout,PsuEnableAndSense,SharingAndOring,StandbyAndMinimumLoad,PmbusAddressAndOwnership,PerNodeFaultIsolation,KeyedRatedNodeConnector,NodeInrushAndDischarge,GroundingAndStrainRelief,CoolingAndInsertionEnvelope,BoardHeaderPopulation,server_power_interface_obligations,reference_main_power,required_station_power,available_main_power,capacity_screen,AvailabilityCase,AllModulesPresent,LargestModuleUnavailable,PowerCassetteBudget,NodePowerAssignment,PairingScreen,PairingCapacityOnly,PairingRefused,pairing_screen}
+import product.node_power_envelope {PsuAdequacy,PsuAdequate,PsuUndersized,PsuUndecidable}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_array,json_bool}
+
+// ALTRA POWER CASSETTE: distribution, protection and control for the operator-selected supply.
+// This module extends server_power_interface (obligations, capacity_screen, pairing_screen) and
+// node_power_feed (the board-side feed screen); it declares no second power vocabulary.
+// NOTHING HERE IS ELECTRICAL APPROVAL. Every screen below is a capacity or sizing arithmetic result
+// whose evidence state is stated beside it; approval needs EstablishedOverEnvelope evidence, which
+// no row of this design reaches.
+
+// ---- the operator's selection, recorded as policy (operator, 2026-10-07) ----
+// Modules that may be lost with the whole load still carried; 1 means either module alone carries everything.
+type RedundancyRequirement {modules_that_may_be_lost:Int}
+type OperatorSupplyPolicy {
+ decided_by:NonEmptyStr,decided_on:NonEmptyStr,supply_assembly:NonEmptyStr,site_input:Volt,
+ modules:Int,min_nodes:Int,max_nodes:Int,redundancy:RedundancyRequirement,out_of_scope:NonEmptyStr,
+}
+// (a) FSP800-50FS complete redundant assembly bought complete, 120 V-class site power; (b) 2-3
+// ASRock ALTRAD8UD-1L2T nodes per power cassette; (c) total load within ONE module's rating so
+// either module carries everything; (d) Mt. Collins keeps its own PDB and Chicony PSUs in its own cassette.
+data altra_operator_policy:OperatorSupplyPolicy=OperatorSupplyPolicy {
+ decided_by:"operator",decided_on:"2026-10-07",supply_assembly:"FSP800-50FS two modules plus matched PDB, bought complete",
+ site_input:volt(count:120),modules:2,min_nodes:2,max_nodes:3,redundancy:RedundancyRequirement {modules_that_may_be_lost:1},out_of_scope:"Mt. Collins (own PDB and Chicony PSUs in its own cassette)",
+}
+// Per-node loads are OPERATOR-STATED planning figures (3 x 200 W or 2 x 300 W), not measured loads.
+// Overhead and reserve repeat the existing pairing_example allowance: caller-declared policy.
+data altra_cassette_overhead:Watt=watt(count:20)
+data altra_cassette_reserve:Percent=percent(count:20)
+
+// ---- evidence states, kept distinct (operator-adopted review, 2026-10-07) ----
+type EvidenceState = Unresolved {read_obligation:NonEmptyStr}
+ | ConservativeBound {basis:NonEmptyStr}
+ | MeasuredUnder {conditions:NonEmptyStr}
+ | EstablishedOverEnvelope {envelope:NonEmptyStr}
+fn evidence_state_label(e:EvidenceState) -> String {
+ match e {Unresolved {read_obligation:_}=>"unresolved" ConservativeBound {basis:_}=>"conservative_bound" MeasuredUnder {conditions:_}=>"measured_under_conditions" EstablishedOverEnvelope {envelope:_}=>"established_over_envelope"}
+}
+// Only established-over-the-envelope evidence can support approval; a bound or a measurement
+// under stated conditions cannot, and neither can a passing capacity screen.
+fn supports_electrical_approval(e:EvidenceState) -> Bool {
+ match e {Unresolved {read_obligation:_}=>false ConservativeBound {basis:_}=>false MeasuredUnder {conditions:_}=>false EstablishedOverEnvelope {envelope:_}=>true}
+}
+
+// ---- the 11 server_power_interface obligations, each discharged or explicitly left open ----
+type ObligationFinding {part:NonEmptyStr,evidence:EvidenceState}
+type ObligationDisposition {obligation:InterfaceObligation,findings:List<ObligationFinding>}
+fn finding(part:NonEmptyStr,evidence:EvidenceState) -> ObligationFinding {ObligationFinding {part:part,evidence:evidence}}
+fn obligation_established(d:ObligationDisposition) -> Bool {
+ count(d.findings)>0 && all(d.findings,f=>supports_electrical_approval(e:f.evidence))
+}
+fn pdb_pair_evidence() -> EvidenceState {
+ if fsp_ph51a_supported_crps_modules<2 {Unresolved {read_obligation:"FSP-PH51A's datasheet states it supports a single CRPS module, so no datasheet read identifies the matched redundant PDB for two FSP800-50FS modules; obtain that PDB's datasheet, output pinout and order code from FSP."}} else {Unresolved {read_obligation:"Read the PDB's pinout and confirm the pairing against the module's order code."}}
+}
+fn altra_obligation_dispositions() -> List<ObligationDisposition> {[
+ ObligationDisposition {obligation:ExactPsuPdbPairAndPinout,findings:[finding(part:"matched redundant PDB identity and pinout",evidence:pdb_pair_evidence())]},
+ ObligationDisposition {obligation:PsuEnableAndSense,findings:[finding(part:"PS_ON/enable polarity, remote sense, present/OK signals",evidence:Unresolved {read_obligation:"The FSP800-50FS datasheet is silent on PS_ON and sense; read the FSP product specification or CRPS connector pinout for this model and the PDB header."})]},
+ ObligationDisposition {obligation:SharingAndOring,findings:[finding(part:"module output sharing and OR-ing",evidence:Unresolved {read_obligation:"Datasheet is silent on current sharing; read the FSP product specification for load sharing and the PDB's OR-ing arrangement."})]},
+ ObligationDisposition {obligation:StandbyAndMinimumLoad,findings:[
+  finding(part:"12 V minimum load",evidence:ConservativeBound {basis:"datasheet states 12 V minimum current 0.5 A; every declared scenario load is several hundred watts, far above it. Held at the stated minimum, not measured."}),
+  finding(part:"standby rail loading by the board's DC-in standby",evidence:Unresolved {read_obligation:"The ASRock manual does not state the board's standby draw under DC-in (asrock_altrad8ud_dc_in_standby_standing is uncited); compare against the datasheet 12Vsb maximum."})]},
+ ObligationDisposition {obligation:PmbusAddressAndOwnership,findings:[
+  finding(part:"PMBus ownership",evidence:ConservativeBound {basis:"design rule: exactly one station controller is PMBus master (station_control_decision); a refusal control, not a bus measurement."}),
+  finding(part:"PMBus address and command map",evidence:Unresolved {read_obligation:"Datasheet states only conformance to PMBus 1.2; read FSP's PMBus command and address documentation for the module and PDB."})]},
+ ObligationDisposition {obligation:PerNodeFaultIsolation,findings:[finding(part:"per-branch protection window",evidence:ConservativeBound {basis:"branch_protection_window sizes the fuse between the constant-power current at the 11.4 V floor and the derated connector limit; no fault-clearing test exists."})]},
+ ObligationDisposition {obligation:KeyedRatedNodeConnector,findings:[finding(part:"keyed locking connector family and wire gauge",evidence:Unresolved {read_obligation:"Selection over the Mini-Fit Jr standard and HCS terminals needs HCS rating evidence (Molex PS-45750-001) and the board header part; see connector_selection."})]},
+ ObligationDisposition {obligation:NodeInrushAndDischarge,findings:[finding(part:"node input capacitance, inrush and discharge",evidence:Unresolved {read_obligation:"Neither the ASRock manual nor the FSP datasheet states board input capacitance or supply inrush tolerance; read or measure both."})]},
+ ObligationDisposition {obligation:GroundingAndStrainRelief,findings:[finding(part:"grounding, strain relief, retention",evidence:Unresolved {read_obligation:"Requirement stated in connection_integrity_requirements; no design, crimp-system or retention source selected."})]},
+ ObligationDisposition {obligation:CoolingAndInsertionEnvelope,findings:[
+  finding(part:"module envelope reservation",evidence:ConservativeBound {basis:"265 x 76 x 84 mm catalog envelope reserved against the datasheet's 250 x 76 x 83.8 mm; drawing reconciliation still owed."}),
+  finding(part:"module airflow and temperature derating",evidence:Unresolved {read_obligation:"Datasheet gives 0-55 C working temperature only; cassette airflow path against the module's fan is unread."})]},
+ ObligationDisposition {obligation:BoardHeaderPopulation,findings:[
+  finding(part:"board input population at 200-300 W",evidence:Unresolved {read_obligation:"ASRock manual v1.20 section 2.7 states any one of ATX12V1-3 suffices under the lowest PSU and no rule above it; read ASRock Rack for the high-load population."})]},
+]}
+fn dispositions_cover_every_obligation() -> Bool {
+ all(server_power_interface_obligations,o=>count(filter(altra_obligation_dispositions(),d=>d.obligation==o))==1)
+}
+
+// ---- station control: one owner of PS_ON and PMBus (obligation 5) ----
+type SignalDriver = StationController {id:NonEmptyStr} | NodeBoard {node:NonEmptyStr}
+type StationControlPlan {shared_supply:NonEmptyStr,ps_on_drivers:List<SignalDriver>,pmbus_masters:List<SignalDriver>}
+type StationControlCause = NodeBoardDrivesSharedPsOn | PsOnNotExactlyOneOwner | PmbusNotExactlyOneMaster | PsOnAndPmbusOwnersDiffer
+type StationControlDecision = StationControlSingleOwner {controller:NonEmptyStr} | StationControlRefused {cause:StationControlCause}
+fn controller_id(d:SignalDriver) -> NonEmptyStr? {match d {StationController {id:i}=>Present {value:i} NodeBoard {node:_}=>none}}
+fn station_control_decision(plan:StationControlPlan) -> StationControlDecision {
+ let node_drives=any(plan.ps_on_drivers,d=>match d {NodeBoard {node:_}=>true StationController {id:_}=>false})
+ if node_drives {return StationControlRefused {cause:NodeBoardDrivesSharedPsOn}}
+ if count(plan.ps_on_drivers)!=1 {return StationControlRefused {cause:PsOnNotExactlyOneOwner}}
+ if count(plan.pmbus_masters)!=1 {return StationControlRefused {cause:PmbusNotExactlyOneMaster}}
+ match plan.ps_on_drivers.first() {
+  Absent=>StationControlRefused {cause:PsOnNotExactlyOneOwner}
+  Present {value:p}=>match plan.pmbus_masters.first() {
+   Absent=>StationControlRefused {cause:PmbusNotExactlyOneMaster}
+   Present {value:m}=>match controller_id(d:p) {
+    Absent=>StationControlRefused {cause:NodeBoardDrivesSharedPsOn}
+    Present {value:pid}=>match controller_id(d:m) {Absent=>StationControlRefused {cause:PsOnAndPmbusOwnersDiffer} Present {value:mid}=>if pid==mid {StationControlSingleOwner {controller:pid}} else {StationControlRefused {cause:PsOnAndPmbusOwnersDiffer}}}
+   }
+  }
+ }
+}
+data altra_station_control_plan:StationControlPlan=StationControlPlan {shared_supply:"FSP800-50FS assembly",ps_on_drivers:[StationController {id:"station-controller"}],pmbus_masters:[StationController {id:"station-controller"}]}
+
+// ---- capacity and redundancy screen (obligation 6) ----
+type PathLimitStanding = PathLimitStated {limit:Watt} | PathLimitUnresolved {read_obligation:NonEmptyStr}
+data altra_pdb_path_limit:PathLimitStanding=PathLimitUnresolved {read_obligation:"The matched redundant PDB's output rating is unidentified (fsp_ph51a is a single-module board); the screen applies no PDB or bus bound until FSP's PDB datasheet is read."}
+type RedundancyRefusal = NodeCountOutsidePolicy {nodes:Int} | ModuleRatingUnstatedAtSiteInput | LoadExceedsOneModule {required:Watt,one_module:Watt} | CapacityUndecidable
+type RedundancyClaim = RedundancyWithinOneModule {required:Watt,one_module:Watt,headroom:Watt} | RedundancyRefused {cause:RedundancyRefusal}
+// CAPACITY ONLY. The claim is arithmetic against the datasheet module rating at the site input and
+// the declared overhead and reserve. electrical_approval is carried as an evidence state, not a Bool:
+// it stays Unresolved however much headroom this screen finds.
+type AltraCapacityScreen {scenario:NonEmptyStr,nodes:Int,claim:RedundancyClaim,path_limit:PathLimitStanding,all_modules_adequate:Bool,electrical_approval:EvidenceState}
+data capacity_is_not_approval:EvidenceState=Unresolved {read_obligation:"Capacity headroom is not electrical approval: protection, connector, inrush, sharing, enable and PMBus evidence must each reach established-over-envelope before any approval."}
+fn one_module_rating(policy:OperatorSupplyPolicy) -> Watt? {reference_main_power(reference:fsp800_50fs_reference,input:policy.site_input)}
+fn path_bound(standing:PathLimitStanding,modules:List<Watt>) -> Watt {
+ match standing {PathLimitStated {limit:l}=>l PathLimitUnresolved {read_obligation:_}=>watt(count:fold(modules,init:0,f:(n,w)=>n+watt_count(w:w)))}
+}
+fn adequacy_ok(a:PsuAdequacy) -> Bool {match a {PsuAdequate {dc_load:_,rated:_,headroom:_}=>true PsuUndersized {dc_load:_,rated:_,shortfall:_}=>false PsuUndecidable {cause:_}=>false}}
+fn altra_capacity_screen(scenario:NonEmptyStr,node_loads:List<Watt>,policy:OperatorSupplyPolicy,path:PathLimitStanding) -> AltraCapacityScreen {
+ let n=count(node_loads)
+ let in_policy=n>=policy.min_nodes && n<=policy.max_nodes
+ match one_module_rating(policy:policy) {
+  Absent=>AltraCapacityScreen {scenario:scenario,nodes:n,claim:RedundancyRefused {cause:ModuleRatingUnstatedAtSiteInput},path_limit:path,all_modules_adequate:false,electrical_approval:capacity_is_not_approval}
+  Present {value:one}=>{
+   let modules=[one,one]
+   let both=available_main_power(modules:modules,path_limit:path_bound(standing:path,modules:modules),state:AllModulesPresent)
+   let single=available_main_power(modules:modules,path_limit:path_bound(standing:path,modules:modules),state:LargestModuleUnavailable)
+   let required=required_station_power(node_loads:node_loads,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve)
+   let all_ok=adequacy_ok(a:capacity_screen(node_loads:node_loads,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve,available:both))
+   let one_ok=adequacy_ok(a:capacity_screen(node_loads:node_loads,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve,available:single))
+   let claim=if !in_policy {RedundancyRefused {cause:NodeCountOutsidePolicy {nodes:n}}} else {if one_ok {RedundancyWithinOneModule {required:required,one_module:single,headroom:watt(count:watt_count(w:single)-watt_count(w:required))}} else {RedundancyRefused {cause:LoadExceedsOneModule {required:required,one_module:single}}}}
+   AltraCapacityScreen {scenario:scenario,nodes:n,claim:claim,path_limit:path,all_modules_adequate:all_ok,electrical_approval:capacity_is_not_approval}
+  }
+ }
+}
+fn redundancy_holds(s:AltraCapacityScreen) -> Bool {match s.claim {RedundancyWithinOneModule {required:_,one_module:_,headroom:_}=>true RedundancyRefused {cause:_}=>false}}
+type AltraNode {name:NonEmptyStr,branch:Int,load:Watt}
+fn altra_node(name:NonEmptyStr,branch:Int,w:Int) -> AltraNode {AltraNode {name:name,branch:branch,load:watt(count:w)}}
+fn node_loads(nodes:List<AltraNode>) -> List<Watt> {map(nodes,n=>n.load)}
+data altra_3x200:List<AltraNode> = [altra_node(name:"n0",branch:0,w:200),altra_node(name:"n1",branch:1,w:200),altra_node(name:"n2",branch:2,w:200)]
+data altra_2x300:List<AltraNode> = [altra_node(name:"n0",branch:0,w:300),altra_node(name:"n1",branch:1,w:300)]
+data altra_3x300:List<AltraNode> = [altra_node(name:"n0",branch:0,w:300),altra_node(name:"n1",branch:1,w:300),altra_node(name:"n2",branch:2,w:300)]
+// 3 x 280 W requires 1032 W with the declared overhead and reserve: more than one module (780 W) and
+// less than both (1560 W), so the assembly is adequate with both modules and redundancy must refuse.
+data altra_3x280:List<AltraNode> = [altra_node(name:"n0",branch:0,w:280),altra_node(name:"n1",branch:1,w:280),altra_node(name:"n2",branch:2,w:280)]
+type AltraScenario {id:NonEmptyStr,nodes:List<AltraNode>}
+data altra_scenarios:List<AltraScenario> = [AltraScenario {id:"3x200W",nodes:altra_3x200},AltraScenario {id:"2x300W",nodes:altra_2x300},AltraScenario {id:"3x300W",nodes:altra_3x300},AltraScenario {id:"3x280W",nodes:altra_3x280}]
+
+data altra_connector_retained:Percent=percent(count:60)
+// Per-node branch limit in watts: three board inputs of the standard-terminal Mini-Fit Jr at the
+// declared retained fraction, at the ATX12V regulation floor (the conservative voltage for power).
+fn altra_branch_limit(rating:MiniFitJrTerminalRating,retained:Percent) -> Watt {
+ let per_input=ampere_count(a:rating.rated_current_per_circuit)*4*percent_count(p:retained)/100
+ watt(count:per_input*3*millivolt_count(v:atx12v_twelve_volt_regulation.minimum)/1000)
+}
+// The same loads through the existing pairing_screen, so branch limits and node assignments are
+// exercised, not only the total. usable_main is the one-module (largest-loss) figure.
+fn altra_pairing(nodes:List<AltraNode>,policy:OperatorSupplyPolicy) -> PairingScreen {
+ match one_module_rating(policy:policy) {
+  Absent=>PairingRefused
+  Present {value:one}=>{
+   let limit=altra_branch_limit(rating:mini_fit_jr_standard_terminal_rating,retained:altra_connector_retained)
+   let limits=map(nodes,n=>limit)
+   let assignments=map(nodes,n=>NodePowerAssignment {node:n.name,power_cassette:"altra-cassette",interface_id:"altra-protected-12v",branch:n.branch,load:n.load})
+   pairing_screen(supplies:[PowerCassetteBudget {id:"altra-cassette",interface_id:"altra-protected-12v",usable_main:available_main_power(modules:[one,one],path_limit:watt(count:2*watt_count(w:one)),state:LargestModuleUnavailable),branch_limits:limits,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve}],assignments:assignments)
+  }
+ }
+}
+
+// ---- per-branch protection (obligation 3) ----
+// The fuse window is a SIZING BOUND, not a part selection and not a clearing guarantee. Lower bound:
+// the constant-power current at the regulation floor that node_feed reports, shared over the populated
+// legs with a declared imbalance allowance (100 percent = equal sharing, which no source establishes).
+// Upper bound: the derated connector limit per leg, and the wire's ampacity when a source states it.
+type WireAmpacityStanding = WireAmpacityCited {limit_ma:Int,source:CitedFigureStanding} | WireAmpacityUnresolved {read_obligation:NonEmptyStr}
+data altra_wire_ampacity:WireAmpacityStanding=WireAmpacityUnresolved {read_obligation:"No chassis-wire ampacity table is cited in the corpus (extdeps.standards.awg carries resistance only, itself uncited); read the wire manufacturer's rating for the selected gauge and insulation at the cassette's ambient before a fuse is chosen."}
+data altra_leg_imbalance_allowance:Percent=percent(count:100)
+type ConnectionIntegrityRequirement = ConnectorFamilyKeyedLocking | TerminalRetention | CrimpSystem | StrainRelief
+type ConnectionIntegrityFinding {requirement:ConnectionIntegrityRequirement,evidence:EvidenceState}
+// A fuse does not terminate a high-resistance connection fault (operator-accepted review,
+// 2026-10-07): current below the fuse rating dissipates I^2 R in the bad contact and never opens it.
+// So these four are their own requirements, NOT discharged by the protection window below.
+data connection_integrity_findings:List<ConnectionIntegrityFinding> = [
+ ConnectionIntegrityFinding {requirement:ConnectorFamilyKeyedLocking,evidence:Unresolved {read_obligation:"Select the keyed locking node connector from a cited candidate field (connector_selection) and read the ALTRAD8UD header part."}},
+ ConnectionIntegrityFinding {requirement:TerminalRetention,evidence:Unresolved {read_obligation:"Read the connector vendor's terminal retention force and latch specification for the chosen terminal."}},
+ ConnectionIntegrityFinding {requirement:CrimpSystem,evidence:Unresolved {read_obligation:"Read the terminal vendor's crimp specification and tooling for the chosen gauge; crimp quality sets contact resistance."}},
+ ConnectionIntegrityFinding {requirement:StrainRelief,evidence:Unresolved {read_obligation:"Design and source strain relief and cable retention for the node harness inside the cassette."}},
+]
+// The operator-accepted illustration: 0.1 ohm. A declared example resistance, not a measured contact.
+data declared_example_contact_resistance_mohm:Int=100
+type ConnectionFaultExposure {fault_current_ma:Int,resistance_mohm:Int,dissipation_mw:Int,fuse_ma:Int,fuse_opens:Bool}
+fn connection_fault_exposure(fault_current_ma:Int,resistance_mohm:Int,fuse_ma:Int) -> ConnectionFaultExposure {
+ ConnectionFaultExposure {fault_current_ma:fault_current_ma,resistance_mohm:resistance_mohm,dissipation_mw:fault_current_ma*fault_current_ma*resistance_mohm/1000000,fuse_ma:fuse_ma,fuse_opens:fault_current_ma>fuse_ma}
+}
+type ProtectionRefusal = FeedRefused | WindowEmpty {lower_exclusive_ma:Int,upper_inclusive_ma:Int}
+type BranchProtection = ProtectionWindow {lower_exclusive_ma:Int,upper_inclusive_ma:Int,legs:Int,wire:WireAmpacityStanding,exposure_at_window_top:ConnectionFaultExposure,evidence:EvidenceState}
+ | ProtectionRefused {cause:ProtectionRefusal}
+fn branch_protection(reading:NodeFeedReading,wire:WireAmpacityStanding,imbalance:Percent) -> BranchProtection {
+ match reading {
+  NodeFeedRefused {cause:_}=>ProtectionRefused {cause:FeedRefused}
+  NodeFeedScreeningOnly {feed:f}=>{
+   let legs=f.inputs_populated as Int
+   let lower=((milliampere_count(i:f.node_current) as Int)*(percent_count(p:imbalance) as Int)+legs*100-1)/(legs*100)
+   let connector=milliampere_count(i:f.per_input_limit) as Int
+   let upper=match wire {WireAmpacityCited {limit_ma:w,source:_}=>if w<connector {w} else {connector} WireAmpacityUnresolved {read_obligation:_}=>connector}
+   if lower>=upper {ProtectionRefused {cause:WindowEmpty {lower_exclusive_ma:lower,upper_inclusive_ma:upper}}} else {ProtectionWindow {lower_exclusive_ma:lower,upper_inclusive_ma:upper,legs:legs,wire:wire,exposure_at_window_top:connection_fault_exposure(fault_current_ma:upper,resistance_mohm:declared_example_contact_resistance_mohm,fuse_ma:upper),evidence:ConservativeBound {basis:"sized between constant-power current at the 11.4 V floor and the derated connector limit with the declared sharing allowance; wire ampacity and fault clearing are not established"}}}
+  }
+ }
+}
+fn altra_node_feed_inputs(load:Watt,rating:MiniFitJrTerminalRating) -> NodeFeedInputs {
+ NodeFeedInputs {node_dc_load:load,connector_rating:rating,derating:declared_connector_derating(retained:altra_connector_retained),branch_gauge_awg:rating.wire_gauge_awg,branch_length:millimeter(count:500),station_setpoint:millivolt(count:12000),regulation:atx12v_twelve_volt_regulation}
+}
+fn altra_branch_protection(load:Watt) -> BranchProtection {
+ branch_protection(reading:node_feed(inputs:altra_node_feed_inputs(load:load,rating:mini_fit_jr_standard_terminal_rating)),wire:altra_wire_ampacity,imbalance:altra_leg_imbalance_allowance)
+}
+fn integrity_open_count() -> Int {count(filter(connection_integrity_findings,f=>!supports_electrical_approval(e:f.evidence)))}
+
+// ---- connector family and wire gauge as a selection (DESIGN 3d; obligation 4) ----
+// Candidates are cited terminal ratings coupled to the gauge they are rated on (the Molex table ties
+// the two). A candidate whose rating is uncited carries axis gaps instead of readings, so the
+// full field answers SelectionNeedsEvidence; the cited-only field is reported separately and is
+// SCOPED to that field: it is superseded the moment the withheld candidate's evidence is read.
+data altra_conn_module:String="product.printed_chassis.altra_power_distribution"
+data altra_conn_standard:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"altra_conn_standard")
+data altra_conn_hcs:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"altra_conn_hcs")
+data ax_feed_admitted:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"ax_feed_admitted")
+data ax_retained_margin_ma:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"ax_retained_margin_ma")
+data ax_inputs_populated:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"ax_inputs_populated")
+data altra_conn_axes:List<SelectionAxis> = [SelectionAxis {identity:ax_feed_admitted,goal:HigherIsBetter},SelectionAxis {identity:ax_retained_margin_ma,goal:HigherIsBetter},SelectionAxis {identity:ax_inputs_populated,goal:LowerIsBetter}]
+data altra_conn_feed_constraint:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"altra_conn_feed_constraint")
+data altra_conn_constraints_authority:DeclarationRef=decl_ref(module_path:altra_conn_module,decl_name:"altra_conn_constraints")
+data altra_conn_constraints:List<HardConstraint> = [HardConstraint {identity:altra_conn_feed_constraint,axis:ax_feed_admitted,bound_micro:1000000}]
+data altra_conn_evidence_snapshot:DeclarationRef=decl_ref(module_path:"extdeps.connector.molex_mini_fit_jr",decl_name:"mini_fit_jr_standard_terminal_rating")
+type NodeLoadCase {key:String,load:Watt}
+data altra_load_case_200:NodeLoadCase=NodeLoadCase {key:"200w",load:watt(count:200)}
+data altra_load_case_300:NodeLoadCase=NodeLoadCase {key:"300w",load:watt(count:300)}
+type ConnectorCandidate {identity:DeclarationRef,label:NonEmptyStr,rating:MiniFitJrTerminalRating}
+data altra_connector_candidates:List<ConnectorCandidate> = [
+ ConnectorCandidate {identity:altra_conn_standard,label:"Mini-Fit Jr standard terminal on 18 AWG",rating:mini_fit_jr_standard_terminal_rating},
+ ConnectorCandidate {identity:altra_conn_hcs,label:"Mini-Fit Jr HCS terminal on 16 AWG",rating:mini_fit_jr_hcs_terminal_rating},
+]
+fn rating_cited(r:MiniFitJrTerminalRating) -> Bool {match r.standing {CitedToAuthority {authority:_}=>true TranscribedUncited {read_obligation:_}=>false}}
+fn micro(b:Bool) -> Int {if b {1000000} else {0}}
+fn connector_entry(c:ConnectorCandidate,load:Watt) -> ParetoEntry {
+ if rating_cited(r:c.rating) {
+  let reading=node_feed(inputs:altra_node_feed_inputs(load:load,rating:c.rating))
+  let admitted=match reading {NodeFeedScreeningOnly {feed:_}=>true NodeFeedRefused {cause:_}=>false}
+  let margin=match reading {NodeFeedScreeningOnly {feed:f}=>((f.inputs_populated as Int)*(milliampere_count(i:f.per_input_limit) as Int))-(milliampere_count(i:f.node_current) as Int) NodeFeedRefused {cause:_}=>0}
+  let inputs=match reading {NodeFeedScreeningOnly {feed:f}=>f.inputs_populated as Int NodeFeedRefused {cause:_}=>0}
+  ParetoEntry {identity:c.identity,display_label:c.label,readings:[AxisReading {axis:ax_feed_admitted,interval_micro:degenerate_interval(point:micro(b:admitted))},AxisReading {axis:ax_retained_margin_ma,interval_micro:degenerate_interval(point:margin*1000000)},AxisReading {axis:ax_inputs_populated,interval_micro:degenerate_interval(point:inputs*1000000)}],missing_inputs:[]}
+ } else {
+  let cause="terminal rating is TranscribedUncited; read the vendor table before it can be compared" as NonEmptyStr
+  ParetoEntry {identity:c.identity,display_label:c.label,readings:[],missing_inputs:[AxisGap {axis:ax_feed_admitted,cause:cause},AxisGap {axis:ax_retained_margin_ma,cause:cause},AxisGap {axis:ax_inputs_populated,cause:cause}]}
+ }
+}
+fn conn_ref(case:NodeLoadCase,prefix:String) -> DeclarationRef {decl_ref(module_path:altra_conn_module,decl_name:prefix+"_"+case.key)}
+fn connector_assessment(case:NodeLoadCase) -> DecisionAssessment {
+ let subject_id=conn_ref(case:case,prefix:"altra_conn_subject")
+ let var_id=conn_ref(case:case,prefix:"altra_conn_variable")
+ let term_id=conn_ref(case:case,prefix:"altra_conn_term")
+ let param_id=conn_ref(case:case,prefix:"altra_conn_parameter")
+ DecisionAssessment {
+  subject:DecisionSubject {identity:subject_id,question:"which terminal family and wire gauge carry one node's 12 V feed" as NonEmptyStr,parameters:[ContextParameter {identity:param_id}],constraints:[DecisionConstraint {identity:altra_conn_feed_constraint}],
+   objective:ObjectiveMeasure {identity:conn_ref(case:case,prefix:"altra_conn_objective"),goal:HigherIsBetter,terms:[ObjectiveTerm {identity:term_id,ground:CitedToAuthority {authority:mini_fit_jr_current_table_authority}}]},
+   choice_domain:ChoiceDomain {identity:conn_ref(case:case,prefix:"altra_conn_domain"),variables:[DecisionVariable {identity:var_id}]}},
+  sensitivities:[VariesAlong {term:term_id,variable:var_id,region:DecisionRegion {identity:conn_ref(case:case,prefix:"altra_conn_region")},relation:RelationOtherwiseEstablished {note:"retained margin is inputs populated times the derated per-input limit minus the constant-power node current" as NonEmptyStr},coupling:CitedToAuthority {authority:mini_fit_jr_current_table_authority}}],
+  constraints:[ConstraintSatisfied {constraint:altra_conn_feed_constraint,evidence:"node_feed admits the load on the board's inputs at the declared retention" as NonEmptyStr}],
+  parameters:[ParameterBound {parameter:param_id,evidence:("per-node load case "+case.key) as NonEmptyStr}],
+  selected_candidate:Absent,term_drops:[],
+  physical_model:PhysicalModelEstablished {terms:[term_id]},
+  causal_model:CausalModelEstablished {couplings:[VendorDocumentedCoupling {authority:mini_fit_jr_current_table_authority,term:term_id,variable:var_id,subject:subject_id}]},
+ }
+}
+fn select_connector_in(case:NodeLoadCase,field:List<ConnectorCandidate>) -> RealizationSelectionResult<ParetoEntry> {
+ select_realization(assessment:connector_assessment(case:case),candidate_field_identity:conn_ref(case:case,prefix:"altra_conn_field"),field:map(field,c=>connector_entry(c:c,load:case.load)),axes:altra_conn_axes,constraints:altra_conn_constraints,constraint_authority:altra_conn_constraints_authority,policy:UniqueSurvivorRequired {identity:conn_ref(case:case,prefix:"altra_conn_policy")},evidence_snapshot:altra_conn_evidence_snapshot)
+}
+fn select_connector(case:NodeLoadCase) -> RealizationSelectionResult<ParetoEntry> {select_connector_in(case:case,field:altra_connector_candidates)}
+fn select_connector_cited_only(case:NodeLoadCase) -> RealizationSelectionResult<ParetoEntry> {select_connector_in(case:case,field:filter(altra_connector_candidates,c=>rating_cited(r:c.rating)))}
+fn selection_label(r:RealizationSelectionResult<ParetoEntry>) -> String {
+ match r {SelectedWithin {candidate:c,receipt:_}=>"SelectedWithin" CandidateFieldUnestablished {causes:_}=>"CandidateFieldUnestablished" NoFeasibleRealization {causes:_,scope:_}=>"NoFeasibleRealization" SelectionNeedsEvidence {needs:_}=>"SelectionNeedsEvidence" SelectionNeedsPolicy {survivors:_}=>"SelectionNeedsPolicy" RealizationSelectionRefused {defects:_}=>"RealizationSelectionRefused"}
+}
+fn selected_label(r:RealizationSelectionResult<ParetoEntry>) -> String {
+ match r {SelectedWithin {candidate:c,receipt:_}=>c.display_label as String CandidateFieldUnestablished {causes:_}=>"" NoFeasibleRealization {causes:_,scope:_}=>"" SelectionNeedsEvidence {needs:_}=>"" SelectionNeedsPolicy {survivors:_}=>"" RealizationSelectionRefused {defects:_}=>""}
+}
+
+// ---- the report member consumed by stack_mass_review ----
+fn evidence_json(e:EvidenceState) -> JsonValue {
+ json_string(s:evidence_state_label(e:e))
+}
+fn finding_json(f:ObligationFinding) -> JsonValue {json_object(members:[json_kv(key:"part",value:json_string(s:f.part as String)),json_kv(key:"evidence",value:evidence_json(e:f.evidence))])}
+fn disposition_json(d:ObligationDisposition) -> JsonValue {json_object(members:[json_kv(key:"established",value:json_bool(b:obligation_established(d:d))),json_kv(key:"findings",value:json_array(elements:map(d.findings,finding_json)))])}
+fn protection_json(p:BranchProtection) -> JsonValue {
+ match p {
+  ProtectionRefused {cause:_}=>json_object(members:[json_kv(key:"window",value:json_string(s:"refused"))])
+  ProtectionWindow {lower_exclusive_ma:l,upper_inclusive_ma:u,legs:g,wire:_,exposure_at_window_top:x,evidence:e}=>json_object(members:[json_kv(key:"legs",value:json_int(n:g)),json_kv(key:"fuse_above_ma",value:json_int(n:l)),json_kv(key:"fuse_at_most_ma",value:json_int(n:u)),json_kv(key:"evidence",value:evidence_json(e:e)),json_kv(key:"declared_example_contact_mohm",value:json_int(n:x.resistance_mohm)),json_kv(key:"dissipation_below_fuse_mw",value:json_int(n:x.dissipation_mw)),json_kv(key:"fuse_opens_on_that_fault",value:json_bool(b:x.fuse_opens))])
+ }
+}
+fn screen_json(s:AltraCapacityScreen) -> JsonValue {
+ json_object(members:[json_kv(key:"scenario",value:json_string(s:s.scenario as String)),json_kv(key:"nodes",value:json_int(n:s.nodes)),json_kv(key:"redundancy_within_one_module",value:json_bool(b:redundancy_holds(s:s))),json_kv(key:"adequate_with_both_modules",value:json_bool(b:s.all_modules_adequate)),json_kv(key:"electrical_approval",value:evidence_json(e:s.electrical_approval))])
+}
+fn altra_power_review() -> JsonValue {
+ let policy=altra_operator_policy
+ let dispositions=altra_obligation_dispositions()
+ json_object(members:[
+  json_kv(key:"operator_policy",value:json_string(s:(policy.decided_by as String)+" "+(policy.decided_on as String)+": "+(policy.supply_assembly as String)+"; out of scope: "+(policy.out_of_scope as String))),
+  json_kv(key:"scope",value:json_string(s:"capacity and sizing screens only; none is electrical approval")),
+  json_kv(key:"cited_supply_facts",value:json_object(members:[json_kv(key:"main_12v_min_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_main_12v.min_current) as Int)),json_kv(key:"main_12v_max_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_main_12v.max_current) as Int)),json_kv(key:"standby_12v_max_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_standby_12v.max_current) as Int)),json_kv(key:"module_total_w",value:json_int(n:watt_count(w:fsp800_50fs_total_power) as Int)),json_kv(key:"input_current_115v_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_input_current_115v) as Int)),json_kv(key:"pmbus_revision",value:json_string(s:fsp800_50fs_pmbus_revision as String)),json_kv(key:"pdb_supported_modules",value:json_int(n:fsp_ph51a_supported_crps_modules))])),
+  json_kv(key:"obligations_total",value:json_int(n:count(dispositions))),
+  json_kv(key:"obligations_established",value:json_int(n:count(filter(dispositions,obligation_established)))),
+  json_kv(key:"obligation_dispositions",value:json_array(elements:map(dispositions,disposition_json))),
+  json_kv(key:"station_control",value:json_string(s:match station_control_decision(plan:altra_station_control_plan) {StationControlSingleOwner {controller:c}=>"single owner: "+(c as String) StationControlRefused {cause:_}=>"refused"})),
+  json_kv(key:"capacity_scenarios",value:json_array(elements:map(altra_scenarios,s=>screen_json(s:altra_capacity_screen(scenario:s.id,node_loads:node_loads(nodes:s.nodes),policy:policy,path:altra_pdb_path_limit))))),
+  json_kv(key:"branch_protection_200w",value:protection_json(p:altra_branch_protection(load:altra_load_case_200.load))),
+  json_kv(key:"branch_protection_300w",value:protection_json(p:altra_branch_protection(load:altra_load_case_300.load))),
+  json_kv(key:"connection_integrity_open",value:json_int(n:integrity_open_count())),
+  json_kv(key:"connector_selection_300w",value:json_object(members:[json_kv(key:"full_field",value:json_string(s:selection_label(r:select_connector(case:altra_load_case_300)))),json_kv(key:"cited_only_field",value:json_string(s:selection_label(r:select_connector_cited_only(case:altra_load_case_300)))),json_kv(key:"cited_only_selected",value:json_string(s:selected_label(r:select_connector_cited_only(case:altra_load_case_300))))])),
+  json_kv(key:"pairing_2x300",value:json_string(s:match altra_pairing(nodes:altra_2x300,policy:policy) {PairingCapacityOnly=>"capacity only" PairingRefused=>"refused"})),
+ ])
+}

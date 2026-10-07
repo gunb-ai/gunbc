@@ -76,3 +76,9 @@ Use a station controller for shared supply enable. Do not wire multiple hosts' P
 3. Select and model the protected branch assembly and common node connector; bind each supported PSU adapter to its compatibility evidence and limits.
 4. Fold the selected assembly, harness and printed insert masses/positions into stack statics; evaluate local thermal exposure before selecting printed material.
 5. Generate/review adapter CAD and an unpowered assembly prototype. Current r06 tray printing remains a separate unpowered cassette fit exercise.
+
+## Altra power cassette: FSP800-50FS design (operator decisions 2026-10-07)
+
+Operator decisions: supply is the FSP800-50FS complete redundant assembly (two modules plus matched PDB, bought complete, 120 V-class site power); 2–3 ASRock ALTRAD8UD-1L2T nodes per cassette (3×200 W or 2×300 W); total load within ONE module's rating so either module carries everything; Mt. Collins out of scope. The model is `product.printed_chassis.altra_power_distribution`, reported under `altra_power_cassette` in `stack_mass_review`, with cited supply facts in `extdeps.power.fsp800_50fs` and `extdeps.power.fsp_ph51a`.
+
+Open and stated as such (each is a read obligation, never a typical value): the matched redundant PDB identity, pinout and order code (PH51A is single-module); PS_ON/sense, sharing, PMBus address/command map and output connector (absent from the FSP800-50FS datasheet); wire ampacity and HCS terminal rating (uncited); board inrush/capacitance and DC-in standby draw. A capacity pass is not electrical approval, and a fuse does not terminate a high-resistance connection fault, so connector family, retention, crimp system and strain relief remain separate requirements.
