@@ -18,8 +18,8 @@ import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nano
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
 import v2.std.collection { empty_map, map_get, map_insert }
-import v2.std.diagnostic { Accepted, Rejected }
-import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import std.optional { Absent, Present, Optional }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
 // once and serve to every planned claim that demands them.
@@ -377,10 +377,12 @@ fn unobserved_read_causes(reads: List<ClaimConsumerRead>) -> List<ConsumerReadCa
 // passes: the whole-value readers as a set, then per field the projecting claims that are NOT
 // whole-value readers, then each projected field whose demand -- whole readers plus those
 // projecting claims -- is exactly one. The seed emits each (claim, read) once, so a field's
-// projecting rows are distinct claims and a sole field appears once. A refused map lookup is
-// NEVER a count: it declines the identity as ConsumerReadUnknown { ShareMapLookupUnreadable }
-// (DESIGN section 5: a failure arm refuses, never widens). Absent is Missing (not a whole
-// reader; a missing field's count is zero).
+// projecting rows are distinct claims and a sole field appears once.
+//
+// A refused map lookup is NEVER a count and NEVER a miss (review 77161, DESIGN section 5:
+// a failure arm refuses, never widens). `share_map_lookup_causes` is the one match: Rejected
+// is ShareMapLookupUnreadable, Absent is a miss, Present is a hit. Count arithmetic runs
+// only after every lookup on the pass is Accepted.
 fn whole_value_readers(reads: List<ClaimConsumerRead>) -> Map<String, Bool> {
   reads |> fold(init: empty_map(), f: fn(acc, r) {
     match r.read {
@@ -391,51 +393,78 @@ fn whole_value_readers(reads: List<ClaimConsumerRead>) -> Map<String, Bool> {
   })
 }
 
+fn share_map_lookup_causes<T>(o: Outcome<Optional<T>>) -> List<ConsumerReadCause> {
+  match o {
+    Rejected { diagnostics: _ } => [ShareMapLookupUnreadable]
+    Accepted { value: _, diagnostics: _ } => []
+  }
+}
+
 fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
-  match map_get(wholes, claim) {
-    Accepted { value: Present { value: _ }, diagnostics: _ } => true
-    Accepted { value: Absent, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+  let o = map_get(wholes, claim)
+  if length(xs: share_map_lookup_causes(o: o)) > 0 {
+    false
+  } else {
+    match o {
+      Accepted { value: Present { value: _ }, diagnostics: _ } => true
+      Accepted { value: Absent, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
 fn projection_count(counts: Map<String, Int>, field: String) -> Int {
-  match map_get(counts, field) {
-    Accepted { value: Present { value: n }, diagnostics: _ } => n
-    Accepted { value: Absent, diagnostics: _ } => 0
-    Rejected { diagnostics: _ } => 0
+  let o = map_get(counts, field)
+  if length(xs: share_map_lookup_causes(o: o)) > 0 {
+    0
+  } else {
+    match o {
+      Accepted { value: Present { value: n }, diagnostics: _ } => n
+      Accepted { value: Absent, diagnostics: _ } => 0
+      Rejected { diagnostics: _ } => 0
+    }
   }
 }
 
-fn map_get_unreadable(m: Map<String, Bool>, key: String) -> List<ConsumerReadCause> {
-  match map_get(m, key) {
-    Rejected { diagnostics: _ } => [ShareMapLookupUnreadable]
-    Accepted { value: _, diagnostics: _ } => []
-  }
+type ShareCountState {
+  counts: Map<String, Int>
+  unread: List<ConsumerReadCause>
 }
 
-fn map_count_unreadable(m: Map<String, Int>, key: String) -> List<ConsumerReadCause> {
-  match map_get(m, key) {
-    Rejected { diagnostics: _ } => [ShareMapLookupUnreadable]
-    Accepted { value: _, diagnostics: _ } => []
-  }
-}
-
-fn share_map_lookup_unreadable_causes(wholes: Map<String, Bool>, counts: Map<String, Int>, reads: List<ClaimConsumerRead>) -> List<ConsumerReadCause> {
-  concat(
-    list_flat_map(xs: reads, f: fn(r) { map_get_unreadable(m: wholes, key: r.claim) }),
-    list_flat_map(xs: reads, f: fn(r) {
-      match r.read {
-        ProjectedField { field: f } => map_count_unreadable(m: counts, key: f)
-        WholeValue => []
-        ConsumerReadUnobserved { cause: _ } => []
+fn add_projection_count(state: ShareCountState, wholes: Map<String, Bool>, claim: String, field: String) -> ShareCountState {
+  let whole_o = map_get(wholes, claim)
+  let whole_unread = share_map_lookup_causes(o: whole_o)
+  if length(xs: whole_unread) > 0 {
+    ShareCountState { counts: state.counts, unread: concat(state.unread, whole_unread) }
+  } else if reads_whole_value(wholes: wholes, claim: claim) {
+    state
+  } else {
+    let count_o = map_get(state.counts, field)
+    let count_unread = share_map_lookup_causes(o: count_o)
+    if length(xs: count_unread) > 0 {
+      ShareCountState { counts: state.counts, unread: concat(state.unread, count_unread) }
+    } else {
+      ShareCountState {
+        counts: map_insert(state.counts, field, projection_count(counts: state.counts, field: field) + 1),
+        unread: state.unread
       }
-    })
-  )
+    }
+  }
 }
 
-fn sole_projections(reads: List<ClaimConsumerRead>) -> List<String> {
+fn share_count_state(reads: List<ClaimConsumerRead>) -> ShareCountState {
   let wholes = whole_value_readers(reads: reads)
+  reads |> fold(init: ShareCountState { counts: empty_map(), unread: [] }, f: fn(acc, r) {
+    match r.read {
+      ProjectedField { field: f } =>
+        add_projection_count(state: acc, wholes: wholes, claim: r.claim, field: f)
+      WholeValue => acc
+      ConsumerReadUnobserved { cause: _ } => acc
+    }
+  })
+}
+
+fn sole_projections_from_state(reads: List<ClaimConsumerRead>, counts: Map<String, Int>) -> List<String> {
   let whole_count = length(xs: filter(xs: reads, predicate: fn(r) {
     match r.read {
       WholeValue => true
@@ -443,22 +472,18 @@ fn sole_projections(reads: List<ClaimConsumerRead>) -> List<String> {
       ConsumerReadUnobserved { cause: _ } => false
     }
   }))
-  let counts = reads |> fold(init: empty_map(), f: fn(acc, r) {
-    match r.read {
-      ProjectedField { field: f } =>
-        if reads_whole_value(wholes: wholes, claim: r.claim) {
-          acc
-        } else {
-          map_insert(acc, f, projection_count(counts: acc, field: f) + 1)
-        }
-      WholeValue => acc
-      ConsumerReadUnobserved { cause: _ } => acc
-    }
-  })
   list_flat_map(xs: reads, f: fn(r) {
     match r.read {
       ProjectedField { field: f } =>
-        if whole_count + projection_count(counts: counts, field: f) == 1 { [f] } else { [] }
+        let count_o = map_get(counts, f)
+        let unread = share_map_lookup_causes(o: count_o)
+        if length(xs: unread) > 0 {
+          []
+        } else if whole_count + projection_count(counts: counts, field: f) == 1 {
+          [f]
+        } else {
+          []
+        }
       WholeValue => []
       ConsumerReadUnobserved { cause: _ } => []
     }
@@ -475,24 +500,11 @@ fn bundle_decline(claims: List<String>, reads: List<ClaimConsumerRead>) -> List<
     if length(xs: unobserved) > 0 {
       list_map(xs: unobserved, f: fn(k) { ConsumerReadUnknown { cause: k } })
     } else {
-      let wholes = whole_value_readers(reads: reads)
-      let counts = reads |> fold(init: empty_map(), f: fn(acc, r) {
-        match r.read {
-          ProjectedField { field: f } =>
-            if reads_whole_value(wholes: wholes, claim: r.claim) {
-              acc
-            } else {
-              map_insert(acc, f, projection_count(counts: acc, field: f) + 1)
-            }
-          WholeValue => acc
-          ConsumerReadUnobserved { cause: _ } => acc
-        }
-      })
-      let lookup_unread = share_map_lookup_unreadable_causes(wholes: wholes, counts: counts, reads: reads)
-      if length(xs: lookup_unread) > 0 {
-        list_map(xs: lookup_unread, f: fn(k) { ConsumerReadUnknown { cause: k } })
+      let state = share_count_state(reads: reads)
+      if length(xs: state.unread) > 0 {
+        list_map(xs: state.unread, f: fn(k) { ConsumerReadUnknown { cause: k } })
       } else {
-        let sole = sole_projections(reads: reads)
+        let sole = sole_projections_from_state(reads: reads, counts: state.counts)
         if length(xs: sole) > 0 {
           [BundleOfDisjointProjections { sole_projections: sole }]
         } else {

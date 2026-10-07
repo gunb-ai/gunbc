@@ -92,6 +92,53 @@ pub(crate) fn site_key_of(node: &Node) -> SiteKey {
     (node.span.file.to_string(), node.span.start, node.span.end)
 }
 
+/// Immediate projection (or typed Unread) for each call that is a field-access base.
+/// A field access whose base is not a readable call still marks every call child `Unread`
+/// (`ProjectionBaseUnreadable`) so the call cannot later default to `WholeValue`.
+pub(crate) fn immediate_consumer_projections(
+    nodes: &[Rc<Node>],
+    source_indices: Rc<SourceIndices>,
+) -> HashMap<SiteKey, ConsumerRead> {
+    let mut projections: HashMap<SiteKey, ConsumerRead> = HashMap::new();
+    for n in nodes {
+        if !matches!(n.expr_data.as_ref(), ExprData::ExprFieldAccess { .. }) {
+            continue;
+        }
+        let unread_call_children = |projections: &mut HashMap<SiteKey, ConsumerRead>| {
+            for child in n.children.iter() {
+                if matches!(child.expr_data.as_ref(), ExprData::ExprCall { .. }) {
+                    projections.insert(
+                        site_key_of(child),
+                        ConsumerRead::Unread(ConsumerReadCause::ProjectionBaseUnreadable),
+                    );
+                }
+            }
+        };
+        let Ok(base) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::v1_std_core::field_access_base(n.clone())
+        })) else {
+            unread_call_children(&mut projections);
+            continue;
+        };
+        if !matches!(base.expr_data.as_ref(), ExprData::ExprCall { .. }) {
+            unread_call_children(&mut projections);
+            continue;
+        }
+        let field = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::v1_std_core::field_access_field_at(n.clone(), source_indices.clone())
+        }));
+        let read = match field {
+            Err(_) => ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameUnreadable),
+            Ok(f) if f.is_empty() => {
+                ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameEmpty)
+            }
+            Ok(f) => ConsumerRead::ProjectedField(f),
+        };
+        projections.insert(site_key_of(&base), read);
+    }
+    projections
+}
+
 pub(crate) fn render_site(site: &SiteKey) -> String {
     format!("{}:{}-{}", site.0, site.1, site.2)
 }
@@ -437,46 +484,8 @@ impl<'a> CallSiteDemandObserver<'a> {
             }
             nodes.push(n);
         }
-        // The immediate projection off each call site whose result is a field access's base. Once
-        // the base is known to be a call, a field name that panics or reads empty is `Unread` with
-        // its cause, counted by the fold -- never defaulted to the whole value.
-        let mut projections: HashMap<SiteKey, ConsumerRead> = HashMap::new();
-        for n in &nodes {
-            if !matches!(n.expr_data.as_ref(), ExprData::ExprFieldAccess { .. }) {
-                continue;
-            }
-            // A field access with no readable base child has no call as its base, so no call site
-            // is projected by it.
-            let Ok(base) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                crate::v1_std_core::field_access_base(n.clone())
-            })) else {
-                // Unreadable base: the call child is still a site. Mark it Unread, never
-                // default it to WholeValue at the call (DESIGN section 5: refuse, never widen).
-                for child in n.children.iter() {
-                    if matches!(child.expr_data.as_ref(), ExprData::ExprCall { .. }) {
-                        projections.insert(
-                            site_key_of(child),
-                            ConsumerRead::Unread(ConsumerReadCause::ProjectionBaseUnreadable),
-                        );
-                    }
-                }
-                continue;
-            };
-            if !matches!(base.expr_data.as_ref(), ExprData::ExprCall { .. }) {
-                continue;
-            }
-            let field = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                crate::v1_std_core::field_access_field_at(n.clone(), self.source_indices.clone())
-            }));
-            let read = match field {
-                Err(_) => ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameUnreadable),
-                Ok(f) if f.is_empty() => {
-                    ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameEmpty)
-                }
-                Ok(f) => ConsumerRead::ProjectedField(f),
-            };
-            projections.insert(site_key_of(&base), read);
-        }
+        // Immediate projection, or Unread when the base cannot be read as a call.
+        let projections = immediate_consumer_projections(&nodes, self.source_indices.clone());
         let mut reads: BTreeSet<(String, String)> = BTreeSet::new();
         let mut sites: Vec<(SiteKey, SiteFact)> = Vec::new();
         for n in &nodes {
@@ -863,6 +872,57 @@ mod tests {
                 ),
             ],
             "{rows:?}"
+        );
+    }
+
+    // review 77161: a field access whose first child is not the call still has a call child;
+    // that call is Unread(ProjectionBaseUnreadable), never WholeValue via unwrap_or.
+    #[test]
+    fn an_unreadable_field_access_base_marks_the_call_child_unread() {
+        use crate::std_types::SourceSpan;
+        use crate::v1_std_core::{
+            make_expr_error_node, make_expr_node, ExprErrorKind, NodeOccurrenceIdentity,
+        };
+        let span = |start: i64, end: i64| {
+            Rc::new(SourceSpan {
+                file: "probe.dag".to_string(),
+                start,
+                end,
+            })
+        };
+        let err = make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            ExprErrorKind::InternalExprError,
+            "missing base".to_string(),
+            span(1, 2),
+        );
+        let call = make_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::ExprCall {
+                call_semantics: None,
+                descent_evidence: None,
+            }),
+            crate::v1_std_core::empty_node_list(),
+            None,
+            span(10, 20),
+        );
+        let access = make_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::ExprFieldAccess { summary: None }),
+            Rc::new(vec![err, call.clone()].into()),
+            None,
+            span(1, 30),
+        );
+        let projections =
+            immediate_consumer_projections(&[access, call.clone()], Rc::new(im::HashMap::new()));
+        let read = projections
+            .get(&site_key_of(&call))
+            .cloned()
+            .unwrap_or(ConsumerRead::WholeValue);
+        assert_eq!(
+            read,
+            ConsumerRead::Unread(ConsumerReadCause::ProjectionBaseUnreadable),
+            "{projections:?}"
         );
     }
 }

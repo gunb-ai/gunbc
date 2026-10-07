@@ -16,7 +16,8 @@ import v2.workflow.floor_pure_producer_share {
   ShareDerivationDecline, DemandedByOneClaim, ReachedByNoPlannedClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
   LadderOwesNoCarry, BundleOfDisjointProjections, ConsumerReadUnknown,
   ClaimConsumerRead, ConsumerRead, WholeValue, ProjectedField, ConsumerReadUnobserved,
-  ConsumerReadCause, ProjectionFieldNameUnreadable,
+  ConsumerReadCause, ProjectionFieldNameUnreadable, ProjectionFieldNameEmpty, ProjectionBaseUnreadable, ShareMapLookupUnreadable,
+  share_map_lookup_causes,
   ShareBasis, SharedByDeclaredDemand, SingleClaimFillDebt,
   SingleClaimFillDebtModule, SingleClaimFillDebtClaim, ActiveFillDebt, RetiredFillDebt, RestructuredPerWitnessRule,
   fill_debt_active_claims,
@@ -27,8 +28,9 @@ import v2.workflow.floor_pure_producer_share {
 }
 import std.computation_identity { ComputationIdentity, NormalizedIdentical, IdentityUnknown, MissingConcept }
 import std.types { List }
-import v2.std.algebra { list_map }
+import v2.std.algebra { any, list_map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic { outcome_rejected, module_unavailable_diagnostic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -450,4 +452,27 @@ test fn an_unreadable_consumer_is_declined_with_its_cause() -> Bool {
   (length(xs: d.admitted) == 0)
     && declined_as(d: d, producer: "v2.probe.bundle.unread", decline: ConsumerReadUnknown { cause: ProjectionFieldNameUnreadable })
     && cross_claim_share_derivation_reconciles(observations: [probe_reads(producer: "v2.probe.bundle.unread", reads: reads_of(first: WholeValue, second: ConsumerReadUnobserved { cause: ProjectionFieldNameUnreadable }))], derivation: d)
+}
+
+// review 77161: a refused map lookup is ShareMapLookupUnreadable, never a miss that drops the
+// field from the count and admits a bundle. The A/B case (each claim a private projection, both
+// lookups refused) is declined with that cause, not admitted.
+test fn a_rejected_share_map_lookup_is_unread_not_a_miss() -> Bool {
+  let causes = share_map_lookup_causes(o: outcome_rejected(d: module_unavailable_diagnostic(reason: ^share_map_lookup_unreadable, module_file: ^probe)))
+  (length(xs: causes) == 1)
+    && any(xs: causes, predicate: fn(c) {
+      match c {
+        ShareMapLookupUnreadable => true
+        ProjectionFieldNameUnreadable => false
+        ProjectionFieldNameEmpty => false
+        ProjectionBaseUnreadable => false
+      }
+    })
+}
+
+test fn two_claims_with_unreadable_projection_lookups_are_declined_not_admitted() -> Bool {
+  let reads = reads_of(first: ConsumerReadUnobserved { cause: ShareMapLookupUnreadable }, second: ConsumerReadUnobserved { cause: ShareMapLookupUnreadable })
+  let d = probe_derive(observations: [probe_reads(producer: "v2.probe.bundle.rejected_lookups", reads: reads)])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.bundle.rejected_lookups", decline: ConsumerReadUnknown { cause: ShareMapLookupUnreadable })
 }
