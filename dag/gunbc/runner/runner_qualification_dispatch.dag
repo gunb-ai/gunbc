@@ -28,7 +28,6 @@ import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -302,7 +301,8 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
 }
 
 // THE PURE JOIN, OVER A SUPPLIED WORKFLOW MODEL. Production reaches it only through
-// qualification_dispatch_subject, which supplies fleet_converge_workflow; the witness claims supply a
+// gunbc.runner.runner_qualification_production_subject qualification_dispatch_subject, which supplies
+// fleet_converge_workflow; the witness claims supply a
 // model carrying the floor job the boot leg's mode will add. An admit list constrains the call edge,
 // not where the result goes, so every admitted witness entry is a `test fn` returning Bool.
 fn qualification_dispatch_subject_over(
@@ -313,7 +313,7 @@ fn qualification_dispatch_subject_over(
   pin: QualificationRefPin,
 ) -> QualificationSubjectStanding
   admit_callers: [
-    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_production_subject", decl_name: "qualification_dispatch_subject"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
   ]
@@ -359,36 +359,6 @@ fn qualification_dispatch_subject_over(
     }
     other => QualificationSubjectRefused { refusal: SubjectCredentialNotDelivered { delivery: other } }
   }
-  }
-}
-
-// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model.
-//
-// THE DECLARED INPUTS ARE READ BEFORE THE WORKFLOW IS BUILT. The model's workflow_dispatch inputs are
-// their own declaration (gunbc.fleet_converge_workflow fleet_converge_dispatch_inputs), and the jobs
-// are built by fleet_converge_jobs(); evaluating the whole fleet_converge_workflow builds every job of
-// every mode, ~600k eval steps measured by the required floor, and the first check the mint makes
-// reads only the inputs. So the wrapper asks that check of the inputs declaration directly and builds
-// the workflow only when the inputs declare the attempt input -- the refusal is the same
-// SubjectAttemptInputUndeclared the mint would reach, without the construction it would never read.
-// Until the boot leg lands the qualification mode there, this refuses -- the wiring the route leg
-// owes, refused rather than faked.
-fn qualification_dispatch_subject(
-  dispatch: AuthorizedJitMintDispatch,
-  delivery: JitCredentialDelivery,
-  floor_job_id: NonEmptyStr,
-  pin: QualificationRefPin,
-) -> QualificationSubjectStanding {
-  if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
-    QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
-  } else {
-    qualification_dispatch_subject_over(
-      dispatch: dispatch,
-      delivery: delivery,
-      workflow: fleet_converge_workflow,
-      floor_job_id: floor_job_id,
-      pin: pin,
-    )
   }
 }
 

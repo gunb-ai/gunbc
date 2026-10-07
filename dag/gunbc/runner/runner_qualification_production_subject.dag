@@ -1,0 +1,48 @@
+module gunbc.runner.runner_qualification_production_subject
+
+import std.types { NonEmptyStr }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
+import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitCredentialDelivery }
+import gunbc.runner.runner_qualification_ref_pin { QualificationRefPin }
+import gunbc.runner.runner_qualification_dispatch {
+  QualificationSubjectStanding, QualificationSubjectRefused, SubjectAttemptInputUndeclared,
+  dispatch_inputs_declare, qualification_attempt_dispatch_input, qualification_dispatch_subject_over,
+}
+
+// THE PRODUCTION WIRING LIVES BESIDE THE FOLD, NOT INSIDE IT. gunbc.runner.runner_qualification_dispatch
+// is the pure plan/perform/readback fold; this module alone binds it to the generated fleet-converge
+// model. The split is a closure cut: fleet_converge_workflow reaches the host-effect realizations
+// (extdeps.gunbc shell operations a rust emission cannot realize), so a module that imports it
+// drags that reach into every fixture that imports the module. Keeping the import here keeps the
+// fold's closure free of it, and the one claim that inhabits the production route imports this module.
+//
+// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model.
+//
+// THE DECLARED INPUTS ARE READ BEFORE THE WORKFLOW IS BUILT. The model's workflow_dispatch inputs are
+// their own declaration (gunbc.fleet_converge_workflow fleet_converge_dispatch_inputs), and the jobs
+// are built by fleet_converge_jobs(); evaluating the whole fleet_converge_workflow builds every job of
+// every mode, ~600k eval steps measured by the required floor, and the first check the mint makes
+// reads only the inputs. So the wrapper asks that check of the inputs declaration directly and builds
+// the workflow only when the inputs declare the attempt input -- the refusal is the same
+// SubjectAttemptInputUndeclared the mint would reach, without the construction it would never read.
+// Until the boot leg lands the qualification mode there, this refuses -- the wiring the route leg
+// owes, refused rather than faked.
+fn qualification_dispatch_subject(
+  dispatch: AuthorizedJitMintDispatch,
+  delivery: JitCredentialDelivery,
+  floor_job_id: NonEmptyStr,
+  pin: QualificationRefPin,
+) -> QualificationSubjectStanding {
+  if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
+    QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
+  } else {
+    qualification_dispatch_subject_over(
+      dispatch: dispatch,
+      delivery: delivery,
+      workflow: fleet_converge_workflow,
+      floor_job_id: floor_job_id,
+      pin: pin,
+    )
+  }
+}
+
