@@ -49,7 +49,7 @@ test fn w_the_fp4_checkpoint_derives_a_profile_a_subject_a_fit_subject_and_a_pro
         checkpoint_revision: Present { value: "da920bb0b9f4a06727223a349e55468e38352348" as NonEmptyStr },
         runtime: GunbcGlm53DerivedKvplanV2Gb10, runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
         topology: FourSparkTp4, profile: p, deployment_env: [] as List<DockerEnvAssignment>, collective_transport: none)
-      (serving_subject_axis_value(s: subject, a: AxisWeightQuantization) as String) == "modelopt"
+      (serving_subject_axis_value(s: subject, a: AxisWeightQuantization) as String) == "nvfp4"
         && (match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53DerivedKvplanV2Gb10, topology: FourSparkTp4, profile: p) {
           ArmMemorySubjectRefused { cause: _ } => false
           ArmMemorySubjectReady { subject: mem } =>

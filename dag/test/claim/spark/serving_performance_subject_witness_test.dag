@@ -623,7 +623,7 @@ test fn w_the_weight_quantization_is_read_off_the_checkpoint_row() -> Bool {
     indexer_kv_dtype: fx_glm_group_b.indexer_kv_dtype,
     scheduler_admission: fx_glm_group_b.scheduler_admission, launch_profile_key: fx_glm_group_b.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   (serving_subject_axis_value(s: fx_glm_group_b, a: AxisWeightQuantization) as String) == "fp8"
-    && (serving_subject_axis_value(s: nvfp4, a: AxisWeightQuantization) as String) == "modelopt"
+    && (serving_subject_axis_value(s: nvfp4, a: AxisWeightQuantization) as String) == "nvfp4"
     && serving_subject_axis_list_contains(axes: serving_subject_differing_axes(left: fx_glm_group_b, right: nvfp4), a: AxisWeightQuantization)
 }
 

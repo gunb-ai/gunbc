@@ -236,37 +236,7 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
 // is a second checkpoint row with its own identity and provenance, not a placement field that has
 // quietly stopped being a function of the thing it names.
-// ── WHO SPELLS THE QUANTISATION: THE LAUNCH, OR THE CHECKPOINT ────────────────────────────────
-//
-// THIS WAS A `NonEmptyStr` BESIDE A BOOL ABOUT SOMETHING ELSE, and the two got joined by accident. The
-// launch renderer decided whether to pass `--quantization` by reading
-// `requires_upstream_glm53_integration` -- a fact about what the RUNTIME must support -- because the native
-// checkpoint happened to be the only row where both answers coincided. Two independent facts sharing one
-// carrier means the first row where they disagree silently renders the wrong argv.
-//
-// SO THE SCHEME AND ITS DECLARER ARE ONE VALUE. `exl3` must be spelled, because nothing in that checkpoint's
-// config tells the engine to load an EXL3 kernel; `fp8` must NOT be, because the checkpoint's config already
-// carries the scheme together with the block size and exclusion list that a bare flag would discard. That is
-// not a preference about verbosity: it changes which weights the engine builds.
-//
-// AND IT IS WHAT THE CONVERGENCE ASSESSOR NEEDS. An observed line missing `--quantization` used to read as
-// an UNKNOWN, which made the native deployment permanently unrecognisable -- the arm could never converge
-// because its own correct argv looked incomplete. With the declarer modelled, "the line spells no scheme" is
-// a state the desired identity can also be in, and the two match.
-type CheckpointQuantization
-  = QuantizationSpelledOnArgv { wire: NonEmptyStr }
-  | QuantizationResolvedFromCheckpointConfig { wire: NonEmptyStr, because: NonEmptyStr }
-
-// PRESENT ONLY WHERE THE LAUNCH ITSELF SAYS IT. This is the one projection both the renderer and the
-// convergence identity read, so they cannot disagree about whether a flag is on the line.
-fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
-  match q {
-    QuantizationSpelledOnArgv { wire: w } => Present { value: w }
-    QuantizationResolvedFromCheckpointConfig { wire: _, because: _ } => none
-  }
-}
-
-// THE WEIGHT SCHEME IS A SECOND FACT BESIDE THE QUANTIZATION DECLARER, NOT A SPELLING OF IT. The
+// THE WEIGHT SCHEME IS THE OTHER HALF OF CheckpointQuantization, NOT A SPELLING OF THE DECLARER. The
 // declarer's wire is what the engine is told or reads (quant_method), and for the ModelOpt rows that is
 // "modelopt" -- the tool that produced the checkpoint, not what its weights are. What a served name must
 // say is the WEIGHT FORMAT, which each checkpoint's own config states in its own place: quant_method fp8
@@ -289,13 +259,53 @@ fn checkpoint_weight_scheme_tag(s: CheckpointWeightScheme) -> NonEmptyStr {
   }
 }
 
+// ── WHO SPELLS THE QUANTISATION: THE LAUNCH, OR THE CHECKPOINT ────────────────────────────────
+//
+// THIS WAS A `NonEmptyStr` BESIDE A BOOL ABOUT SOMETHING ELSE, and the two got joined by accident. The
+// launch renderer decided whether to pass `--quantization` by reading
+// `requires_upstream_glm53_integration` -- a fact about what the RUNTIME must support -- because the native
+// checkpoint happened to be the only row where both answers coincided. Two independent facts sharing one
+// carrier means the first row where they disagree silently renders the wrong argv.
+//
+// SO THE SCHEME AND ITS DECLARER ARE ONE VALUE. `exl3` must be spelled, because nothing in that checkpoint's
+// config tells the engine to load an EXL3 kernel; `fp8` must NOT be, because the checkpoint's config already
+// carries the scheme together with the block size and exclusion list that a bare flag would discard. That is
+// not a preference about verbosity: it changes which weights the engine builds.
+//
+// AND IT IS WHAT THE CONVERGENCE ASSESSOR NEEDS. An observed line missing `--quantization` used to read as
+// an UNKNOWN, which made the native deployment permanently unrecognisable -- the arm could never converge
+// because its own correct argv looked incomplete. With the declarer modelled, "the line spells no scheme" is
+// a state the desired identity can also be in, and the two match.
+//
+// AND THE DECLARER IS HALF OF THE CHECKPOINT'S QUANTIZATION, NOT ALL OF IT. What format the weights are
+// (the scheme) and how the engine is told (the declarer) are one checkpoint's one quantization fact,
+// carried as one value -- the scheme beside the declarer here, never a second field on the row. They do
+// not collapse into one string: the NVFP4 rows' declarer wire is "modelopt", the tool that wrote them.
+type CheckpointQuantization {
+  scheme: CheckpointWeightScheme
+  declarer: QuantizationDeclarer
+}
+
+type QuantizationDeclarer
+  = QuantizationSpelledOnArgv { wire: NonEmptyStr }
+  | QuantizationResolvedFromCheckpointConfig { wire: NonEmptyStr, because: NonEmptyStr }
+
+// PRESENT ONLY WHERE THE LAUNCH ITSELF SAYS IT. This is the one projection both the renderer and the
+// convergence identity read, so they cannot disagree about whether a flag is on the line.
+fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
+  match q.declarer {
+    QuantizationSpelledOnArgv { wire: w } => Present { value: w }
+    QuantizationResolvedFromCheckpointConfig { wire: _, because: _ } => none
+  }
+}
+
 // THE BUILD-QUALIFIED SERVED NAME, DERIVED (operator ruling 2026-10-07, relayed by valiant-crab-775):
 // the model's served-name base, a colon, and the checkpoint's weight-scheme tag. Every arm that serves a
 // qualified name reads it here -- Group B's fp8 arm and Group A's nvfp4 arm call the same function, so
 // "glm-5.3-flash:fp8" and "glm-5.3-flash:nvfp4" are two derivations of one rule rather than two
 // hand-typed strings that agree today.
 fn checkpoint_served_name(base: NonEmptyStr, row: ServingCheckpointRow) -> NonEmptyStr {
-  join([base as String, ":", checkpoint_weight_scheme_tag(s: row.weight_scheme) as String], "") as NonEmptyStr
+  join([base as String, ":", checkpoint_weight_scheme_tag(s: row.quantization.scheme) as String], "") as NonEmptyStr
 }
 
 // A SERVED-NAME LIST WITH ONE NAME, for every arm that answers to a single name: it reports that name
@@ -348,7 +358,6 @@ type ServingCheckpointRow {
   architecture: NonEmptyStr
   weight_gib: Gibibyte
   quantization: CheckpointQuantization
-  weight_scheme: CheckpointWeightScheme
   parsers: CheckpointVllmParsers
   resident_beyond_weights: PoolResidentAllowance
   provenance: NonEmptyStr
@@ -361,8 +370,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: LocalDirectoryPlacement { host_path: join([spark_models_root as String, "/glm53-flash-exl3-2.05"], "") as NonEmptyStr },
   architecture: glm_5_3_flash_architecture_class,
   weight_gib: gibibyte(count: 80),
-  quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
-  weight_scheme: WeightExl3,
+  quantization: CheckpointQuantization { scheme: WeightExl3, declarer: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr } },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
@@ -375,8 +383,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
-  quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
-  weight_scheme: WeightFp8Block,
+  quantization: CheckpointQuantization { scheme: WeightFp8Block, declarer: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr } },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
@@ -394,8 +401,7 @@ data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_nvfp4_manifest),
-  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
-  weight_scheme: WeightNvfp4,
+  quantization: CheckpointQuantization { scheme: WeightNvfp4, declarer: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr } },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_manifest, read from the Hub API at that exact revision on 2026-10-02; the GiB figure is derived from those bytes. The architecture is the sole entry of `architectures` in config.json at the pin. NOT fetched, NOT launched and NOT measured on this fleet" as NonEmptyStr,
@@ -413,8 +419,7 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   architecture: glm_5_3_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_nvfp4_manifest),
-  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
-  weight_scheme: WeightNvfp4,
+  quantization: CheckpointQuantization { scheme: WeightNvfp4, declarer: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr } },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject, and gunbc.spark.serving_fit_projection is its consumer" as NonEmptyStr,
@@ -446,8 +451,7 @@ data deepseek_v41_flash_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: LocalDirectoryPlacement { host_path: spark_local_checkpoint_directory(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision) },
   architecture: deepseek_v4_1_flash_architecture_class,
   weight_gib: gibibyte_ceiling(b: deepseek_v4_1_flash_published_rows_bytes(rows: deepseek_v4_1_flash_weight_manifest_backbone_rows)),
-  quantization: QuantizationResolvedFromCheckpointConfig { wire: deepseek_v4_1_flash_quant_method, because: "the checkpoint's own config.json carries quant_method fp8 with its ue8m0 scale format, weight block size and fp4 expert dtype (extdeps.deepseek.deepseek_v4_1_flash); a bare --quantization flag would replace that structure with a scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
-  weight_scheme: WeightFp8WithFp4Experts,
+  quantization: CheckpointQuantization { scheme: WeightFp8WithFp4Experts, declarer: QuantizationResolvedFromCheckpointConfig { wire: deepseek_v4_1_flash_quant_method, because: "the checkpoint's own config.json carries quant_method fp8 with its ue8m0 scale format, weight block size and fp4 expert dtype (extdeps.deepseek.deepseek_v4_1_flash); a bare --quantization flag would replace that structure with a scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr } },
   parsers: CheckpointVllmParsers {
     tool_call_parser: vllm_recipe_deepseek_v4_1_flash_tool_call_parser,
     reasoning_parser: vllm_recipe_deepseek_v4_1_flash_reasoning_parser,

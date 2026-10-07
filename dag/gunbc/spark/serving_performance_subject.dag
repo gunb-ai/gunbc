@@ -15,7 +15,7 @@ import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
   ServingLaunchProfile, serving_checkpoint_row, serving_topology_rank_count, serving_launch_profile_key, serving_deployment_env_key,
-  QuantizationSpelledOnArgv, QuantizationResolvedFromCheckpointConfig,
+  checkpoint_weight_scheme_tag,
 }
 
 // ── A PERFORMANCE MEASUREMENT NAMES THE PROFILE IT WAS TAKEN AGAINST, OR IT IS NOT A MEASUREMENT ─
@@ -165,15 +165,14 @@ fn serving_subject_for_launch(
 // THE WEIGHT QUANTIZATION IS AN AXIS BUT NOT A FIELD: it is a fact about the checkpoint row
 // (gunbc.spark.serving_arm ServingCheckpointRow quantization), so storing it beside the checkpoint
 // would be a second authority that could disagree with the first. It is compared as its own axis, so
-// two subjects that differ in it say so by name; a checkpoint with no row reads as unread.
+// two subjects that differ in it say so by name; a checkpoint with no row reads as unread. It reads the
+// WEIGHT SCHEME, not the declarer's wire: the declarer said "modelopt" for both NVFP4 rows, which names
+// the tool that wrote them rather than what their weights are.
 fn subject_weight_quantization(s: ServingPerformanceSubject) -> NonEmptyStr? {
   match serving_checkpoint_row(c: s.checkpoint) {
     Absent => none
     Present { value: row } =>
-      match row.quantization {
-        QuantizationSpelledOnArgv { wire: w } => Present { value: w }
-        QuantizationResolvedFromCheckpointConfig { wire: w, because: _ } => Present { value: w }
-      }
+      Present { value: checkpoint_weight_scheme_tag(s: row.quantization.scheme) }
   }
 }
 
