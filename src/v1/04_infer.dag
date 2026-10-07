@@ -109,6 +109,7 @@ import v1.compiler.infer_types {
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   is_declared_container_alias_spelling, structural_carrier_template_name,
+  is_product_type,
   node_type_deps,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node, subtraction_refinement_of,
@@ -4058,6 +4059,7 @@ type InhabitanceUndecidableReason
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
+  | RefusedProductCoproductHeadMismatch
   | RefusedCollectionAtEstablishedIdentity
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
@@ -4352,8 +4354,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
   } else if record_at_scalar_needs_identity(declared: declared, produced: produced, scope: scope) {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
-  } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedProductCoproductHeadMismatch }
   } else {
     match refinement_inhabitance(declared: declared, produced: produced, scope: scope) {
       Present { value: RefinementWidensToDeclaredBase } => Inhabits
@@ -4534,13 +4536,22 @@ fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferS
     && type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
 }
 
-// Product-vs-coproduct is settled from exact type-head census identities. A second bare-name
-// declaration lookup can select a homonym and fabricate a refusal, so it is not an authority here.
-fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+// Product and coproduct are disjoint identities. The first spelling of this relation judged
+// only a COPRODUCT value at a PRODUCT formal, and it keyed that judgment on ProductHead /
+// CoproductHead exposures. A generic product APPLICATION exposes ApplicationHead, so
+// CarrierClosed<T> at a T coproduct (gunbc#13198: roadmap_standings_read at
+// issue_query_snapshot_for_projection.standings) matched neither side and the inhabitance
+// relation fell through to Inhabits. THE HEADS ARE THE SAME AUTHORITIES THE NOMINAL-PRODUCT
+// AND GENERIC-COPRODUCT ARMS ALREADY USE: a declared product, applied or not, and a declared
+// coproduct, applied or not — including a zero-field product (declaration kind Conj, not
+// child count) and an applied coproduct (ApplicationHead whose constructor peels to Disj).
+// A second leaf-name lookup is not an authority here. Either direction refuses;
+// same-declaration and transparent-alias pairs still abstain. The typed reason is
+// RefusedProductCoproductHeadMismatch, not RefusedKernelAtStructured: this is a head-kind
+// clash, not a kernel value at a structured formal.
+fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let declared_name = authored_name_at(source_indices: scope.type_env.source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: scope.type_env.source_indices, node: produced)
-  let declared_head = expected_type_head_exposure(formal: declared, scope: scope)
-  let produced_head = expected_type_head_exposure(formal: produced, scope: scope)
   if application_type_names_compatible(
       formal_name: declared_name, lit_name: produced_name,
       type_env: scope.type_env, module_name: scope.module_name,
@@ -4549,8 +4560,12 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
         index: scope.type_env.symbol_index, left: declared_name, right: produced_name) {
     false
   } else {
-    type_head_exposure_is_product(exposure: declared_head)
-      && type_head_exposure_is_coproduct(exposure: produced_head)
+    let declared_product = nominal_product_head_name(n: declared, scope: scope)
+    let produced_product = nominal_product_head_name(n: produced, scope: scope)
+    let declared_coproduct = nominal_coproduct_head_name(n: declared, scope: scope)
+    let produced_coproduct = nominal_coproduct_head_name(n: produced, scope: scope)
+    (declared_product != "" && produced_coproduct != "")
+      || (declared_coproduct != "" && produced_product != "")
   }
 }
 
@@ -4654,13 +4669,16 @@ fn declared_realizes_as_kernel_numeric(
 // MalformedApplicationHead identities are legitimate abstentions when resolution or arity checking
 // already owns the error (refusing again would cascade). Kernel scalars, collections and coproducts
 // are excluded because their dedicated judgments run before this arm. Optional values, callables,
-// anonymous records and zero-field products are REAL SHAPES but UNHANDLED HERE: respectively,
+// anonymous records are REAL SHAPES but UNHANDLED HERE: respectively,
 // `fn f() -> A? { B{..} }`, `fn f() -> fn(Int) -> Int { B{..} }`,
-// `fn f() -> A { { y: 1 } }`, and `fn f() -> EmptyA { EmptyB{} }` can still pass this relation
-// silently. Generic applications are likewise a separate, filed half of the inhabitance defect. An OpaqueTypeHead is
+// and `fn f() -> A { { y: 1 } }` can still pass this relation
+// silently. A declared zero-field product is a product by declaration kind (`is_product_type`
+// and not `is_where_refinement_type`), so `EmptyA` versus `EmptyB` and `Wrap<T> {}` at a
+// coproduct are judged. Generic applications are a separate, filed half of the inhabitance
+// defect. An OpaqueTypeHead is
 // not automatically unhandled: transparent aliases expose that view, so the declaration is peeled
 // through the existing alias authority and admitted to this arm only when the peel positively lands
-// on a nonempty product. This change closes concrete named products and their transparent aliases;
+// on a declared product. This change closes concrete named products and their transparent aliases;
 // it does not claim the unhandled shapes climbed with them.
 fn nominal_product_inhabitance_refusal(
   declared: Node,
@@ -4742,7 +4760,45 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
     Present { value: decl } =>
       let peeled = peel_nominal_alias_identity(
         n: decl, env: scope.type_env, module_name: scope.module_name)
-      if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
+      if is_product_type(n: peeled) && is_where_refinement_type(ty: peeled) == false { name } else { "" }
+    Absent => ""
+  }
+}
+
+// The coproduct dual of nominal_product_head_name: a declared coproduct, applied or not.
+// nominal_coproduct_application_head_name requires children and so answers "" for an
+// unapplied RoadmapStandings; type_head_exposure_is_coproduct misses an ApplicationHead
+// of a generic coproduct. This is the one head both of those questions share.
+fn nominal_coproduct_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        nominal_coproduct_head_name_if_declared_coproduct(name: name, scope: scope)
+      ExposedTypeHead { view: CoproductHead { type_identity: _ } } =>
+        nominal_coproduct_head_name_if_declared_coproduct(name: name, scope: scope)
+      OpaqueTypeHead { type_identity: _ } =>
+        nominal_coproduct_head_name_if_declared_coproduct(name: name, scope: scope)
+      _ => ""
+    }
+  }
+}
+
+fn nominal_coproduct_head_name_if_declared_coproduct(name: String, scope: InferScope) -> String {
+  let representative = transparent_alias_representative(
+    index: scope.type_env.symbol_index, name: name)
+  match lookup_type_by_name(env: scope.type_env, name: representative) {
+    Present { value: decl } =>
+      let peeled = peel_nominal_alias_identity(
+        n: decl, env: scope.type_env, module_name: scope.module_name)
+      if peeled.connective == Disj { name } else { "" }
     Absent => ""
   }
 }
@@ -5027,6 +5083,19 @@ fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool
 // non-blocking in v1.00_core is_interpreter_blocking_diagnostic and advisory in
 // is_discovery_corpus_advisory_typecheck_diagnostic, so this makes the residue visible without
 // reddening a corpus whose seams were never judged before this carrier existed either.
+fn inhabitance_refusal_position_label(
+  position: DeclaredTypePosition,
+  subject: String,
+  reason: InhabitanceRefusalReason
+) -> String {
+  let base = declared_type_position_label(position: position, subject: subject)
+  match reason {
+    RefusedProductCoproductHeadMismatch =>
+      concat(base, " [RefusedProductCoproductHeadMismatch]")
+    _ => base
+  }
+}
+
 fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
   match reason {
     UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone"
@@ -5077,10 +5146,11 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
         },
         module_name: scope.module_name
       )]
-    InhabitanceRefused { reason: _ } =>
+    InhabitanceRefused { reason: r } =>
       [make_error_node(
         diagnostic: DeclaredTypeNotInhabited {
-          position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
+          position: inhabitance_refusal_position_label(
+            position: obligation.position, subject: obligation.subject, reason: r),
           expected: obligation_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
           got: obligation_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
           span: obligation.span
