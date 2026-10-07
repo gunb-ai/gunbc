@@ -10,7 +10,10 @@ import gunbc.spark.serving_arm {
   group_b_fp8_served_names, glm_native_initial_profile, serving_launch_profile_key,
 }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines }
-import gunbc.spark.native_serving_apply { spark_native_arm_steps, NativeArmSteps, NativeArmStepsRefused, spark_native_front_door_served_test }
+import gunbc.spark.native_serving_apply {
+  spark_native_arm_steps, NativeArmSteps, NativeArmStepsRefused,
+  spark_native_front_door_names_reading, FrontDoorListsEveryName, FrontDoorMissesNames, FrontDoorListingUnreadable,
+}
 
 fn names_text(n: VllmServedModelNames) -> String {
   join(map(vllm_served_model_names_all(n: n), x => x as String), ",")
@@ -40,29 +43,52 @@ test fn w_group_b_launch_argv_renders_both_names() -> Bool {
   }
 }
 
-// ROUTE: THE APPLY'S READBACK requires every declared name. Each host step carries both names, and the
-// served test conjoins one grep per name, so a listing with only the plain name reads "no".
-test fn w_apply_readback_requires_every_name() -> Bool {
+// ROUTE: THE APPLY'S HOST STEPS carry both names, which is what the front-door verdict reads them against.
+test fn w_apply_steps_carry_every_name() -> Bool {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: ss, master_endpoint: _ } =>
       match ss.first() {
         Absent => false
-        Present { value: st } =>
-          let t = spark_native_front_door_served_test(names: st.served_names)
-          names_text(n: st.served_names) == "glm-5.3-flash,glm-5.3-flash:fp8"
-            && t.contains("\"id\":\"glm-5.3-flash\"")
-            && t.contains("\"id\":\"glm-5.3-flash:fp8\"")
-            && t.contains(" && ")
+        Present { value: st } => names_text(n: st.served_names) == "glm-5.3-flash,glm-5.3-flash:fp8"
       }
   }
 }
 
-// CONTROL: a single-name list renders one grep and no conjunction, and one argv word after the flag.
+data both_cards: String = "{\"object\":\"list\",\"data\":[{\"id\":\"glm-5.3-flash\",\"object\":\"model\",\"root\":\"/models/glm\",\"max_model_len\":262144},{\"id\":\"glm-5.3-flash:fp8\",\"object\":\"model\",\"root\":\"/models/glm\",\"max_model_len\":262144}]}"
+
+data plain_card_only: String = "{\"object\":\"list\",\"data\":[{\"id\":\"glm-5.3-flash\",\"object\":\"model\",\"root\":\"/models/glm\",\"max_model_len\":262144}]}"
+
+// THE VERDICT READS THE PARSED LISTING: both cards -> every name listed.
+test fn w_a_listing_with_every_name_is_accepted() -> Bool {
+  match spark_native_front_door_names_reading(names: group_b_fp8_served_names, listing: both_cards) {
+    FrontDoorListsEveryName => true
+    FrontDoorMissesNames { missing: _ } => false
+    FrontDoorListingUnreadable { cause: _ } => false
+  }
+}
+
+// RED: the old single-name arm still answering lists only the plain name, and the missing name is named.
+test fn w_a_listing_missing_the_qualified_name_refuses_naming_it() -> Bool {
+  match spark_native_front_door_names_reading(names: group_b_fp8_served_names, listing: plain_card_only) {
+    FrontDoorListsEveryName => false
+    FrontDoorMissesNames { missing: m } => count(m) == 1 && join(map(m, x => x as String), ",") == "glm-5.3-flash:fp8"
+    FrontDoorListingUnreadable { cause: _ } => false
+  }
+}
+
+// RED: a listing that does not parse is unread, never substring-matched.
+test fn w_an_unparseable_listing_is_unread() -> Bool {
+  match spark_native_front_door_names_reading(names: group_b_fp8_served_names, listing: "\"id\":\"glm-5.3-flash\" \"id\":\"glm-5.3-flash:fp8\"") {
+    FrontDoorListsEveryName => false
+    FrontDoorMissesNames { missing: _ } => false
+    FrontDoorListingUnreadable { cause: _ } => true
+  }
+}
+
+// CONTROL: a single-name list renders one argv word after the flag.
 test fn w_single_name_renders_as_before() -> Bool {
-  let one = served_name_only(name: "glm-5.3-flash" as NonEmptyStr)
-  !spark_native_front_door_served_test(names: one).contains(" && ")
-    && join(vllm_served_model_name_argv(n: one), " ") == "--served-model-name glm-5.3-flash"
+  join(vllm_served_model_name_argv(n: served_name_only(name: "glm-5.3-flash" as NonEmptyStr)), " ") == "--served-model-name glm-5.3-flash"
 }
 
 // A SINGLE-NAME PROFILE KEEPS ITS KEY TEXT, so subjects recorded before the list existed are not

@@ -1,6 +1,5 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
 
-import gunbc.spark.serving_arm { served_name_only }
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import product.host_identity { HostIdentity }
 
@@ -426,7 +425,7 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
     spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name),
     spark_native_commit_script(unit_name: unit, transaction_id: "T"),
     spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800)),
-    spark_native_front_door_script(port_text: "8000", served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), awaited: w_awaited_head, container: glm_native_container_name),
+    spark_native_front_door_script(port_text: "8000", awaited: w_awaited_head, container: glm_native_container_name),
   ]
   all(others, t => !string_contains(s: t, pattern: "reset-failed"))
 }
@@ -450,7 +449,7 @@ test fn w_the_transport_wait_captures_the_awaited_incarnation_and_prints_it() ->
 }
 
 test fn w_the_front_door_is_rendered_from_the_carried_incarnation() -> Bool {
-  let d = spark_native_front_door_script(port_text: "8000", served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), awaited: w_awaited_head, container: glm_native_container_name)
+  let d = spark_native_front_door_script(port_text: "8000", awaited: w_awaited_head, container: glm_native_container_name)
   string_contains(s: d, pattern: "incarnation='0f3a9c1d2e4b'")
     && string_contains(s: d, pattern: "deadline=1234567")
     && !string_contains(s: d, pattern: "StartedAt")
@@ -478,12 +477,13 @@ test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bo
 // `echo served|yes`, which the shell reads as a pipe into the `yes` command -- an endless writer that kept
 // the front-door leg's ssh channel open for 87 minutes after a successful probe, until the step timeout.
 // The field separator is a shell metacharacter, so every line that prints it must quote it. RED: the
-// unquoted spelling, or any separator outside quotes in the post-probe report.
+// unquoted spelling, or any separator outside quotes in the post-probe report (which since #13531 prints
+// the listing itself after a quoted prefix, the names decision being a .dag fold).
 test fn w_the_front_door_report_quotes_the_field_separator() -> Bool {
-  let d = spark_native_front_door_script(port_text: "8000", served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr), awaited: w_awaited_head, container: glm_native_container_name)
-  string_contains(s: d, pattern: "echo \"served|yes\"")
-    && string_contains(s: d, pattern: "echo \"served|no\"")
+  let d = spark_native_front_door_script(port_text: "8000", awaited: w_awaited_head, container: glm_native_container_name)
+  string_contains(s: d, pattern: "printf '%s' \"served|\"; ")
     && !string_contains(s: d, pattern: "echo served|")
+    && !string_contains(s: d, pattern: " served|")
 }
 
 // ── A WAIT LEG MAY NOT OUTLIVE ITS BOUND (valiant-crab-775, after run 37304585650) ───────────────────
@@ -502,8 +502,8 @@ test fn w_a_leg_the_bound_killed_is_its_own_outcome_and_the_front_door_refuses_i
   let killed_hard = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 137, stdout: began_only))
   (match killed { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
     && (match killed_hard { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
-    && all(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head]), r => string_contains(s: r, pattern: "outlived its bound of 441s"))
-    && count(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head])) == 1
+    && all(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head], steps: []), r => string_contains(s: r, pattern: "outlived its bound of 441s"))
+    && count(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head], steps: [])) == 1
 }
 
 // THE CONTROL: the script's own exit 124, REPORTED on its exit line, is the script's outcome, not the bound;
