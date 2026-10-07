@@ -1,0 +1,190 @@
+module gunbc.spark.glm53_staircase_steps
+
+import std.types { String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { token_count, basis_point }
+import std.optional { Present, Absent }
+import extdeps.vllm.engine_args { VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, VllmPrefixCachingRequest, PrefixCachingExplicit }
+import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_quant_algo }
+import gunbc.spark.serving_arm { ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
+import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization, group_b_restoration_window_tokens, group_b_restoration_max_batched_tokens, group_b_experiment_subject_seats }
+import gunbc.spark.pair_serving_observed { spark_pair_serve_port }
+import gunbc.native_serve { ascii_lower_code_point }
+import std.judgment_contract { string_from_code_points }
+
+// ── THE GLM-5.3-FLASH STAIRCASE'S STEPS AND THEIR LAUNCH PROFILES ──────────────────────────────
+//
+// Moved from gunbc.spark.glm53_arm_staircase so that gunbc.spark.serving_compatibility can name a step's
+// exact subject (all five fields, the launch profile included) without a cycle: the staircase module
+// sits above the compatibility roster, this one below it.
+
+// ── THE STEPS ARE A CLOSED SET PER CHECKPOINT (ruling of valiant-crab-775, 2026-10-02) ────────────
+//
+// A step outside these has no spelling: the workflow input selecting a step is a closed choice over
+// these variants, never a number typed at dispatch. Each step's ceiling is its own row below, and each
+// derives its envelope through serving_capacity_intent scheduler_envelope -- so a ceiling above the cold
+// floor exists only with the full-input gate on and the watermark stated, and one below it refuses.
+// THE CEILING SWEEP (valiant-crab-775, approved 2026-10-04): 32, 64 and 128 are the same launch with a
+// higher scheduler ceiling over the same cold floor and the same gpu_memory_utilization; their receipts
+// are ENGINE CHARACTERIZATION, NON-QUALIFYING -- they measure what the ceiling costs (KV blocks, capture
+// sizes, time to ready) and whether it launches at all, and nothing promotes from them.
+type Glm53Fp8StaircaseStep = Fp8Seats8 | Fp8Seats12 | Fp8Seats16 | Fp8Seats24 | Fp8Seats32 | Fp8Seats64 | Fp8Seats128
+type Glm53Nvfp4StaircaseStep = Nvfp4Seats8 | Nvfp4Seats16 | Nvfp4Seats24 | Nvfp4Seats32
+
+type Glm53StaircaseStep
+  = Glm53Fp8Step { step: Glm53Fp8StaircaseStep }
+  | Glm53Nvfp4Step { step: Glm53Nvfp4StaircaseStep }
+
+fn glm53_fp8_step_ceiling(s: Glm53Fp8StaircaseStep) -> Nat {
+  match s {
+    Fp8Seats8 => 8
+    Fp8Seats12 => 12
+    Fp8Seats16 => 16
+    Fp8Seats24 => 24
+    Fp8Seats32 => 32
+    Fp8Seats64 => 64
+    Fp8Seats128 => 128
+  }
+}
+
+fn glm53_nvfp4_step_ceiling(s: Glm53Nvfp4StaircaseStep) -> Nat {
+  match s {
+    Nvfp4Seats8 => 8
+    Nvfp4Seats16 => 16
+    Nvfp4Seats24 => 24
+    Nvfp4Seats32 => 32
+  }
+}
+
+fn glm53_step_ceiling(s: Glm53StaircaseStep) -> Nat {
+  match s {
+    Glm53Fp8Step { step: f } => glm53_fp8_step_ceiling(s: f)
+    Glm53Nvfp4Step { step: n } => glm53_nvfp4_step_ceiling(s: n)
+  }
+}
+
+fn glm53_step_checkpoint(s: Glm53StaircaseStep) -> ServingCheckpoint {
+  match s {
+    Glm53Fp8Step { step: _ } => Glm53NativeFp8
+    Glm53Nvfp4Step { step: _ } => Glm53FlashNvidiaNvfp4
+  }
+}
+
+fn glm53_step_policy(s: Glm53StaircaseStep) -> ModelLaunchPolicy {
+  match s {
+    Glm53Fp8Step { step: _ } => glm53_native_launch_policy
+    Glm53Nvfp4Step { step: _ } => glm53_flash_nvidia_nvfp4_launch_policy
+  }
+}
+
+// THE WIRE IS THE WORKFLOW INPUT'S VOCABULARY, one word per variant, and the parse below is its exact
+// inverse: an unknown word is no step.
+fn glm53_step_wire(s: Glm53StaircaseStep) -> NonEmptyStr {
+  match s {
+    Glm53Fp8Step { step: Fp8Seats8 } => "fp8-8" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats12 } => "fp8-12" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats16 } => "fp8-16" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats24 } => "fp8-24" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats32 } => "fp8-32" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats64 } => "fp8-64" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats128 } => "fp8-128" as NonEmptyStr
+    Glm53Nvfp4Step { step: Nvfp4Seats8 } => "nvfp4-8" as NonEmptyStr
+    Glm53Nvfp4Step { step: Nvfp4Seats16 } => "nvfp4-16" as NonEmptyStr
+    Glm53Nvfp4Step { step: Nvfp4Seats24 } => "nvfp4-24" as NonEmptyStr
+    Glm53Nvfp4Step { step: Nvfp4Seats32 } => "nvfp4-32" as NonEmptyStr
+  }
+}
+
+data glm53_staircase_steps: List<Glm53StaircaseStep> = [
+  Glm53Fp8Step { step: Fp8Seats8 }, Glm53Fp8Step { step: Fp8Seats12 }, Glm53Fp8Step { step: Fp8Seats16 }, Glm53Fp8Step { step: Fp8Seats24 },
+  Glm53Fp8Step { step: Fp8Seats32 }, Glm53Fp8Step { step: Fp8Seats64 }, Glm53Fp8Step { step: Fp8Seats128 },
+  Glm53Nvfp4Step { step: Nvfp4Seats8 }, Glm53Nvfp4Step { step: Nvfp4Seats16 }, Glm53Nvfp4Step { step: Nvfp4Seats24 }, Glm53Nvfp4Step { step: Nvfp4Seats32 },
+]
+
+fn glm53_step_of_wire(word: String) -> Glm53StaircaseStep? {
+  first(filter(glm53_staircase_steps, s => (glm53_step_wire(s: s) as String) == word))
+}
+
+// ── THE COLD GUARANTEE IS THE SAME AT EVERY STEP: 8 x 262144 ──────────────────────────────────
+//
+// THE FLOOR IS THE GLM ARM'S COLD SERVICE, IMPORTED, NOT RESTATED: its window, its eight cold seats and
+// the batched ceiling it runs them under on GB10s are gunbc.spark.group_b_serving_capacity's rows
+// (group_b_restoration_window_tokens, group_b_experiment_subject_seats,
+// group_b_restoration_max_batched_tokens), so the floor cannot drift from the service it guarantees
+// (review 74379). The staircase moves the CEILING, not the prefill shape, so a step's receipt differs from the
+// last in one axis.
+
+fn glm53_staircase_cold_intent() -> ServingCapacityIntent? {
+  match uniform_cold_seats(each: token_count(count: group_b_restoration_window_tokens), seats: group_b_experiment_subject_seats, max_batched_tokens: token_count(count: group_b_restoration_max_batched_tokens)) {
+    ServingCapacityIntentRefused { cause: _ } => none
+    ServingCapacityIntentAdmitted { intent: i } => Present { value: i }
+  }
+}
+
+// THE GATE ABOVE THE FLOOR IS STATED AT EVERY STEP, the floor step included, so the eight-seat step is
+// the same engine configuration as the others less the ceiling, and a difference between two steps'
+// receipts is the ceiling's. The full-input gate is ON: a best-effort seat is admitted only when the
+// allocator finds its whole current sequence fits. The watermark is ZERO, stated: preemption is the
+// admitted overflow behaviour for the seats above the floor (operator ruling 2026-10-02 relayed in
+// gunbc.spark.serving_capacity_intent), so nothing is held back against it, and a declared zero is a
+// value someone chose where an inherited default would be one nobody did.
+data glm53_staircase_scheduler_admission: VllmSchedulerAdmissionRequest = VllmSchedulerAdmissionRequest {
+  full_input_admission: FullInputAdmissionExplicit { enabled: true },
+  kv_watermark: KvWatermarkExplicit { fraction: basis_point(count: 0) },
+}
+
+type Glm53StepEnvelope
+  = Glm53StepEnvelopeAdmitted { envelope: SchedulerEnvelope }
+  | Glm53StepEnvelopeRefused { cause: String }
+
+fn glm53_step_envelope(s: Glm53StaircaseStep) -> Glm53StepEnvelope {
+  match glm53_staircase_cold_intent() {
+    Absent => Glm53StepEnvelopeRefused { cause: "the staircase's cold intent (8 x 262144) refused, so no step has a floor" }
+    Present { value: cold } =>
+      match scheduler_envelope(cold: cold, hard_max_num_seqs: glm53_step_ceiling(s: s), admission: glm53_staircase_scheduler_admission) {
+        SchedulerEnvelopeRefused { cause: c } => Glm53StepEnvelopeRefused { cause: c as String }
+        SchedulerEnvelopeAdmitted { envelope: e } => Glm53StepEnvelopeAdmitted { envelope: e }
+      }
+  }
+}
+
+// THE ROUTE'S PORT AND NAME ARE GROUP A'S ROUTE (gunbc.spark.pair_serving_realization
+// spark_pair_serve_port, which gunbc.serving.serving_enrollment reads for Group A), so a step serves
+// where Group A's clients already ask. The memory fraction is the GLM arm's decided figure on a GB10
+// (gunbc.spark.group_b_serving_capacity group_b_restoration_utilization) -- the same hardware and
+// engine, read rather than re-decided; the memory wall prices it per step. Prefix caching is on, as
+// the GLM arm serves.
+// THE SERVED NAME CARRIES THE QUANTIZATION THAT IS NOT THE MODEL'S OWN (valiant-crab-775, raised by
+// sunny-deer-146): both groups announcing glm-5.3-flash merged the operator's fp8-versus-nvfp4 comparison
+// in ctrl's router. The native FP8 checkpoint serves the model's name; the NVIDIA NVFP4 requantization
+// serves it suffixed with its quant_algo, lowercased from the cited upstream fact
+// (extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_quant_algo), never a hand-typed suffix.
+data glm53_staircase_model_name: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+
+fn glm53_ascii_lowercase(s: String) -> String {
+  string_from_code_points(cs: map(chars(s: s), c => ascii_lower_code_point(cp: c)))
+}
+
+fn glm53_step_served_alias(s: Glm53StaircaseStep) -> NonEmptyStr {
+  match s {
+    Glm53Fp8Step { step: _ } => glm53_staircase_model_name
+    Glm53Nvfp4Step { step: _ } => join([glm53_staircase_model_name as String, ":", glm53_ascii_lowercase(s: glm_5_3_flash_nvfp4_quant_algo as String)], "") as NonEmptyStr
+  }
+}
+data glm53_staircase_prefix_caching: VllmPrefixCachingRequest = PrefixCachingExplicit { enabled: true }
+
+fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
+  match glm53_step_envelope(s: s) {
+    Glm53StepEnvelopeRefused { cause: _ } => none
+    Glm53StepEnvelopeAdmitted { envelope: e } => Present { value: profile_for_envelope(
+      envelope: e,
+      policy: glm53_step_policy(s: s),
+      decided_gpu_memory_basis_points: group_b_restoration_utilization,
+      serve_port: spark_pair_serve_port,
+      served_alias: glm53_step_served_alias(s: s),
+      prefix_caching: glm53_staircase_prefix_caching,
+    ) }
+  }
+}
+

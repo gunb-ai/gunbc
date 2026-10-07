@@ -34,7 +34,7 @@ import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held
 import gunbc.spark.serving_promotion { no_promotion_receipts }
 import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key, serving_deployment_env_key }
 import gunbc.spark.serving_arm_launch { glm53_staircase_head_log_path, ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
-import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.pair_serving_observed { spark_pair_serve_port }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
 import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, spark_native_unresolved_rollback_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_step_wire, spark_native_apply_transaction }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_successor_may_launch }

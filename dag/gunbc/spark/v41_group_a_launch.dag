@@ -26,7 +26,7 @@ import gunbc.spark.serving_arm { ServingRuntime, GunbcDeepseekV41EngramProduced,
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender }
 import gunbc.spark.native_serving_apply { SparkNativeArmSteps, SparkNativeHostStep }
-import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.pair_serving_observed { spark_pair_serve_port }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority }
 import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused, v41_candidate, v41_candidate_recipe, V41IdentityStanding, V41IdentityKeyed, V41IdentityUnestablished, V41IdentityRefused, v41_runtime_artifact_key, v41_candidate_inputs, v41_candidate_partition }
 import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_production_produced_image, v41_produced_image_subject, V41ProbeJoinedToProducedImage, V41ProbeDescribesAnotherImage, V41ProbeIdentityUnreadable, V41ProbeIdentityNotRead, v41_probe_identity_join, v41_probe_identity_line }

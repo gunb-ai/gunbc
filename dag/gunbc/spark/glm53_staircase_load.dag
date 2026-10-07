@@ -21,7 +21,8 @@ import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
 import gunbc.spark.glm_serving_load { glm_native_sweep_dataset, glm_native_bench_seed }
 import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlanned, GroupArmLaunchRefused, group_arm_launch_plan }
 import gunbc.spark.group_arm_serving_load { read_group_rank_pressure, load_step_result, load_step_verdict_wire, floor_and_ceiling_concurrencies, load_requests, load_trace_digest, calibration_receipt }
-import gunbc.spark.glm53_arm_staircase { Glm53StaircaseStep, glm53_step_inputs, glm53_step_wire, glm53_step_ceiling, glm53_step_title }
+import gunbc.spark.glm53_arm_staircase { glm53_step_inputs, glm53_step_title }
+import gunbc.spark.glm53_staircase_steps { Glm53StaircaseStep, glm53_step_wire, glm53_step_ceiling }
 import gunbc.spark.group_b_serving_capacity { group_b_experiment_subject_seats }
 
 // ── THE GLM STAIRCASE STEP'S LOAD: THE ARM'S INPUTS TO THE ONE LOAD PATH (deforking cut 8b) ──────────

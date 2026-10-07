@@ -147,6 +147,11 @@ data first_pair_vllm_serve: VllmServeObserved = VllmServeObserved {
   tool_call_parser: "deepseek_v4" as NonEmptyStr,
 }
 
+// THE PORT THE PAIR SERVES ON, beside the observation it is read from. It lives here, not in
+// gunbc.spark.pair_serving_realization, because the GLM staircase's launch profile needs it below
+// gunbc.spark.serving_compatibility, which the realization module reaches.
+data spark_pair_serve_port: Port = first_pair_vllm_serve.port
+
 // The Ray head as spark-vllm-head.sh starts it inside the container. The node address is the
 // head's endpoint on the first pair's rail 0 (gunbc.spark.fabric_link_desired first_pair_fabric_rail0,
 // srv6 at 192.168.102.10); the worker joins that address. A zero monitor refresh is set and
