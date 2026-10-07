@@ -10,7 +10,8 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.managed_host {
   ManagedHost, ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
-  ManagedHostNotSecured, ManagedHostEndpointMismatch, managed_host_binding, managed_hosts,
+  ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding,
+  managed_membership_for,
 }
 import gunbc.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
@@ -157,7 +158,15 @@ fn megarac_host_admission_in(hosts: List<ManagedHost>, host: NonEmptyStr, operat
 }
 
 fn megarac_host_admission_for(host: NonEmptyStr, operation: MegaRacOperation) -> MegaRacHostAdmission {
-  megarac_host_admission_in(hosts: managed_hosts(), host: host, operation: operation)
+  match managed_membership_for(host: host as HostIdentity) {
+    Absent => MegaRacHostRefused { cause: MegaRacHostNotManaged { host: host } }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } => admit_megarac_host(host: h, operation: operation)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          admit_megarac_host(host: h, operation: operation)
+      }
+  }
 }
 
 fn megarac_operation_text(operation: MegaRacOperation) -> String {

@@ -373,6 +373,13 @@ fn membership_host(membership: ManagedHostMembership) -> ManagedHost {
   }
 }
 
+fn membership_is_host(membership: ManagedHostMembership, host: HostIdentity) -> Bool {
+  match membership {
+    OrdinaryMember { host: h } => (h.host as String) == (host as String)
+    MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } => (h.host as String) == (host as String)
+  }
+}
+
 fn mtcollins1_unit_hold() -> ResetUnitHold {
   ResetUnitHoldRequired { key: operator_host_mtcollins1 as NonEmptyStr, store_host: operator_host_srv1 as NonEmptyStr }
 }
@@ -423,11 +430,11 @@ fn current_subject_for_admission(record: ManagedHostAdmission) -> MachineIntakeS
   }
 }
 
-fn managed_hosts_projected(
+fn managed_host_memberships_projected(
   records: List<ManagedHostAdmission>,
   drops: List<RungDrop>,
   allocations: List<HostnameAllocation>,
-) -> List<ManagedHost> {
+) -> List<ManagedHostMembership> {
   fold(records, init: [], f: (acc, record) =>
     match project_managed_host_admission(
       record: record,
@@ -436,33 +443,50 @@ fn managed_hosts_projected(
       allocations: allocations,
     ) {
       Absent => acc
-      Present { value: m } => concat(acc, [membership_host(membership: m)])
+      Present { value: m } => concat(acc, [m])
     })
 }
 
+fn managed_hosts_projected(
+  records: List<ManagedHostAdmission>,
+  drops: List<RungDrop>,
+  allocations: List<HostnameAllocation>,
+) -> List<ManagedHost> {
+  fold(
+    managed_host_memberships_projected(records: records, drops: drops, allocations: allocations),
+    init: [],
+    f: (acc, m) => concat(acc, [membership_host(membership: m)]),
+  )
+}
+
 fn managed_host_memberships() -> List<ManagedHostMembership> {
-  fold(authored_managed_host_admissions(), init: [], f: (acc, record) =>
-    match project_managed_host_admission(
-      record: record,
-      current_subject: current_subject_for_admission(record: record),
-      drops: standing_rung_drops(),
-      allocations: gunbc_fleet_hostname_allocations,
-    ) {
-      Absent => acc
-      Present { value: m } => concat(acc, [m])
-    })
+  managed_host_memberships_projected(
+    records: authored_managed_host_admissions(),
+    drops: standing_rung_drops(),
+    allocations: gunbc_fleet_hostname_allocations,
+  )
+}
+
+fn managed_membership_for(host: HostIdentity) -> ManagedHostMembership? {
+  fold(
+    managed_host_memberships(),
+    init: none,
+    f: (acc, m) => match acc {
+      Present { value: _ } => acc
+      Absent => if membership_is_host(membership: m, host: host) { Present { value: m } } else { acc }
+    },
+  )
 }
 
 // A UNIT IS A MEMBER ONLY THROUGH A COMMITTED ManagedHostAdmission, projected here. Membership is
 // evidence, never a source roster: the record lives in the unit's observations; this module joins
 // completeness, the one-subject bind, allocation, hold, receipt identity, and currency against the
 // CURRENT subject (docs/plans/managed-host-untangle.md, cut O1c-3 PR a). mtjade1 has no record.
+// managed_hosts() is the host-row view of managed_host_memberships(); callers that read secure
+// standing, binding, reset, hold, boot, or MegaRAC admission walk the memberships and match
+// MemberUnderDeclaredDrop (DESIGN §4b(3): a declared drop may not reach consumers as silence).
 fn managed_hosts() -> List<ManagedHost> {
-  managed_hosts_projected(
-    records: authored_managed_host_admissions(),
-    drops: standing_rung_drops(),
-    allocations: gunbc_fleet_hostname_allocations,
-  )
+  fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, [membership_host(membership: m)]))
 }
 
 // A MANAGED HOST BY LABEL, AS ITS WHOLE BINDING STANDING. A caller that knows only a host's name reaches
@@ -473,9 +497,14 @@ type ManagedHostLookup
   | ManagedHostNotManaged { host: NonEmptyStr }
 
 fn managed_host_binding_for(host: NonEmptyStr) -> ManagedHostLookup {
-  match filter(managed_hosts(), h => (h.host as String) == (host as String)).first() {
+  match managed_membership_for(host: host as HostIdentity) {
     Absent => ManagedHostNotManaged { host: host }
-    Present { value: h } => ManagedHostFound { standing: managed_host_binding(host: h) }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } => ManagedHostFound { standing: managed_host_binding(host: h) }
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          ManagedHostFound { standing: managed_host_binding(host: h) }
+      }
   }
 }
 

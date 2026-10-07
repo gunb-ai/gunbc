@@ -16,8 +16,11 @@ import gunbc.managed_host {
   ManagedHostBound,
   ManagedHostEndpointMismatch,
   ManagedHostNotSecured,
+  ManagedHostMembership,
+  OrdinaryMember,
+  MemberUnderDeclaredDrop,
   managed_host_binding,
-  managed_hosts,
+  managed_host_memberships,
 }
 import gunbc.host_reset_boot_selection { reset_boot_selection }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
@@ -99,7 +102,15 @@ fn reset_subject_roster_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
 // gunbc.host_reset_return reset_dispatch_options, where an unmintable observer pairing refuses the
 // whole option list rather than quietly shrinking it.
 fn reset_subject_roster() -> List<NonEmptyStr> {
-  reset_subject_roster_of(hosts: managed_hosts())
+  fold(
+    managed_host_memberships(),
+    init: [],
+    f: (acc, m) => match m {
+      OrdinaryMember { host: h } => concat(acc, reset_subject_roster_of(hosts: [h]))
+      MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+        concat(acc, reset_subject_roster_of(hosts: [h]))
+    },
+  )
 }
 
 // THE PEERS THAT MAY OBSERVE A RESET are the executor fleet hosts, and this is the one place the two
@@ -116,11 +127,19 @@ fn reset_observer_peer_roster() -> List<NonEmptyStr> {
 // defaults.
 fn reset_subject_for(host: NonEmptyStr) -> AdmittedResetSubject? {
   fold(
-    admitted_reset_subjects(hosts: managed_hosts()),
+    managed_host_memberships(),
     init: none,
-    f: (acc, s) => match acc {
+    f: (acc, m) => match acc {
       Present { value: _ } => acc
-      Absent => if (s.binding.host.host as String) == (host as String) { Present { value: s } } else { acc }
+      Absent =>
+        match m {
+          OrdinaryMember { host: h } =>
+            fold(admitted_reset_subjects(hosts: [h]), init: none, f: (inner, s) =>
+              if (s.binding.host.host as String) == (host as String) { Present { value: s } } else { inner })
+          MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+            fold(admitted_reset_subjects(hosts: [h]), init: none, f: (inner, s) =>
+              if (s.binding.host.host as String) == (host as String) { Present { value: s } } else { inner })
+        }
     },
   )
 }

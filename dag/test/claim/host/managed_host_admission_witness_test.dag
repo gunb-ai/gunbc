@@ -26,6 +26,7 @@ import gunbc.managed_host {
   managed_host_memberships,
   managed_hosts,
   managed_hosts_projected,
+  managed_membership_for,
   mtcollins1_bmc_secure_standing_drop_ref,
   mtcollins1_managed_host_admission,
   project_managed_host_admission,
@@ -33,24 +34,8 @@ import gunbc.managed_host {
   ManagedHostFound,
 }
 import gunbc.machine_intake_mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
-import gunbc.host_reset_subject_roster { reset_subject_roster_of }
-import gunbc.managed_host {
-  AdmissionHoldDecided,
-  AdmissionHoldMissing,
-  MemberUnderDeclaredDrop,
-  OrdinaryMember,
-  managed_host_admission,
-  managed_host_admission_receipt,
-  managed_host_binding_for,
-  managed_host_memberships,
-  managed_hosts,
-  managed_hosts_projected,
-  mtcollins1_bmc_secure_standing_drop_ref,
-  mtcollins1_managed_host_admission,
-  project_managed_host_admission,
-  ManagedHostNotManaged,
-  ManagedHostFound,
-}
+import gunbc.host_reset_subject_roster { reset_subject_roster, reset_subject_roster_of }
+import gunbc.auth.managed_host_boot_federation { boot_federation_for, BootFederationProvisioned, BootFederationUnprovisioned }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -66,6 +51,24 @@ test fn w_mtcollins1_membership_is_under_the_declared_drop() -> Bool {
           && content_hash_equal(left: standing.subject.firmware_manifest_digest, right: current.subject.firmware_manifest_digest) == false
     })
     && count(managed_hosts()) == 1
+}
+
+test fn w_reset_roster_and_boot_federation_match_the_declared_drop_arm() -> Bool {
+  match managed_membership_for(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: _ } => false
+        MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
+          (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
+            && (h.host as String) == (operator_host_mtcollins1 as String)
+            && count(reset_subject_roster()) == 1
+            && match boot_federation_for(host: h.host) {
+              BootFederationProvisioned { federation: _ } => true
+              BootFederationUnprovisioned { host: _, cause: _ } => false
+            }
+      }
+  }
 }
 
 test fn w_a_record_whose_subject_is_current_is_an_ordinary_member() -> Bool {
