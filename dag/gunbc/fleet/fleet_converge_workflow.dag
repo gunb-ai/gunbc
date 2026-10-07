@@ -61,7 +61,7 @@ import gunbc.workflow_capability_closure {
 }
 import v2.std.algebra { list_map }
 import gunbc.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_spark_runtime_image_build_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_arm_mutation_group_deepseek_group_a, fleet_subject_mutation_group_approval_device_store, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_spark_runtime_image_build_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, fleet_subject_mutation_group_approval_device_store, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -1224,10 +1224,9 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // two coincide. `spark_native_serving_apply` does not: it reaches out from whichever executor was
 // selected and relaunches Group B's four cage-2 hosts, so two dispatches naming different executors
 // would land in different domains and queue behind nothing while reloading the same 328 GB arm. Its
-// group is therefore constant for the arm. `pair_serving_d0` and `spark_serving_apply` are the same
-// shape for Group A: the door moves Group A's authority and hosts from the broker host and the pair
-// apply rewrites Group A's units from any executor, so both land in Group A's arm group and queue
-// behind each other -- an apply that read Active before D0's suspension CAS cannot execute across it.
+// group is therefore constant for the arm. `spark_serving_apply` is keyed to the srv1 control-plane
+// group (gunbc.fleet_workflow_steps fleet_srv1_control_plane_mutation_group), so it queues behind every
+// srv1 mutation whichever executor it names.
 //
 // AND THIS IS BELT, NOT THE WALL, which is worth saying because a reader could take it for the
 // protection. Actions concurrency cannot help a direct CLI invocation, which is how this entry is
@@ -1245,7 +1244,7 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // A SUBJECT IS NOT ALWAYS AN ARM: the enrolment-code issue mutates only the approval device store,
 // which no other mode writes, so it carries that store's own group (gunbc.fleet_workflow_steps
 // fleet_subject_mutation_group_approval_device_store) and no longer queues behind -- or is cancelled
-// as a superseded pending by -- the Group A work that shares srv1's key. The keyring converge and the
+// as a superseded pending by -- the work that shares srv1's key. The keyring converge and the
 // broker install do NOT move.
 //
 // THE GROUP A MODES ARE GONE. D0, the V4.1 checkpoint/row-store/differential/load modes and the arm
@@ -1281,7 +1280,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmBootProbe => ExecutorDomain
     SparkGrants => ExecutorDomain
     SparkBootstrap => ExecutorDomain
-    SparkServingApply => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkServingApply => SubjectDomain { group: fleet_srv1_control_plane_mutation_group }
     SparkNativeServingApply => SubjectDomain { group: fleet_arm_mutation_group_glm_group_b_native }
     SparkRuntimeImageProbe => ExecutorDomain
     SparkWirelessLinkConverge => ExecutorDomain

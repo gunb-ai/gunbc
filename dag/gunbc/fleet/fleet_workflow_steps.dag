@@ -830,10 +830,10 @@ data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host
 // needed. This row stays the host-domain authority and is unchanged by that.
 data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
-// Group A's arm key IS srv1's host key (gunbc.fleet.fleet_converge_workflow: the D0 door has two
-// domains, the srv1 control plane and Group A, and a job carries one group), so the pair-serving
-// apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
-data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
+// THE srv1 CONTROL-PLANE KEY: srv1's host key, named for what it serialises. The pair-serving apply is
+// keyed here so it queues behind every srv1 mutation whichever executor it names. (It was Group A's arm
+// key while Group A and D0 existed; both were deleted on 2026-10-07.)
+data fleet_srv1_control_plane_mutation_group: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
 
 // A SUBJECT NARROWER THAN ITS HOST GETS ITS OWN KEY WHEN NO OTHER MODE MUTATES IT (operator request
 // 2026-10-03). The approval device store -- gunbc.auth.approval_device_redemption
