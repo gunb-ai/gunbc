@@ -988,3 +988,14 @@ fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLi
     prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
   )
 }
+
+fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_through_bmc_secure(
+    run: run,
+    subject: "mtjade1" as StepSubjectKey,
+    read: read_mtjade1_current_manager_read(),
+    inputs: mtjade1_identity_bind_inputs(),
+    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+    bmc: bmc,
+  )
+}

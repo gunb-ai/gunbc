@@ -1,6 +1,6 @@
 module test.claim.machine_intake_arrival_converge_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.scoped_authorization { AttemptIdentity }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -10,10 +10,10 @@ import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
 import product.host_identity { HostIdentity }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
-import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase }
+import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake_subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
-  FirmwareEntry, FirmwareManifest, UnitKey,
+  FirmwareEntry, FirmwareManifest, UnitKey, MachineIntakeSubject, IntakeAttemptId,
   qualification_subject_of,
 }
 import gunbc.machine_intake_mtjade1_access_observation {
@@ -71,11 +71,25 @@ import gunbc.machine_intake_arrival_converge {
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
-  converge_mtjade1_arrival_prefix, converge_arrival_prefix, mtjade1_identity_bind_inputs,
+  converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, mtjade1_identity_bind_inputs,
   bmc_secure_step_ref, arrival_bmc_secure_mutation_lanes, BmcSecureReceipt,
+  BmcSecureInputs, BmcSecureAuthorizationUndischarged,
   grant_discharges_bmc_secure_account_write,
   capability_discharges_bmc_secure_account_write,
 }
+import gunbc.machine_intake_bmc_secure {
+  BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, PublishedAccountRetired, ManagedCredentialReference, BmcSecurePhaseNoop, BmcSecurePhaseApplied,
+}
+import gunbc.deployment_risk { TestRisk }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.ipmi_channel {
+  IpmiControllerChannelCensus, IpmiMedium8023Lan, IpmiMediumSerialAsync, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator,
+  IpmiUserId, ipmi_controller_channel_census, ipmi_lan_channel_member, ipmi_non_lan_channel_member, ipmi_user_channel_access,
+}
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -218,6 +232,152 @@ test fn w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive() -> B
       }
     ArrivalPlanRefused { cause: _ } => false
     ArrivalPrefixUnstepped { phase: _ } => false
+  }
+}
+
+data mtjade1_bmc_read_at: EpochMs = 1791072000000
+data mtjade1_managed_ipmi_user: IpmiUserId = 3
+data mtjade1_published_ipmi_user: IpmiUserId = 2
+
+fn mtjade1_intake_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
+    attempt_id: "o1c1-witness-run-a" as IntakeAttemptId,
+  }
+}
+
+fn mtjade1_bmc_goal() -> BmcSecureGoal {
+  BmcSecureGoal {
+    managed: ManagedCredentialReference {
+      account: "gunbc",
+      role: AccountRoleAdministrator,
+      secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-gunbc", version: "1", hash_state: HashPending },
+      credential_epoch: 1,
+    },
+    published_break_glass: ManagedCredentialReference {
+      account: "admin",
+      role: AccountRoleAdministrator,
+      secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-admin", version: "4", hash_state: HashPending },
+      credential_epoch: 4,
+    },
+    policy: machine_qualification_policy(admits: TestRisk),
+  }
+}
+
+fn mtjade1_bmc_census(published_lan_privilege_closed: Bool) -> IpmiControllerChannelCensus {
+  let lan_privilege = if published_lan_privilege_closed { IpmiPrivilegeNoAccess } else { IpmiPrivilegeAdministrator }
+  ipmi_controller_channel_census(
+    members: [
+      ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 246)),
+      ipmi_non_lan_channel_member(channel: 2, medium: IpmiMediumSerialAsync),
+      ipmi_lan_channel_member(channel: 8, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 247)),
+    ],
+    user_access: [
+      ipmi_user_channel_access(channel: 1, user: mtjade1_published_ipmi_user, privilege: lan_privilege),
+      ipmi_user_channel_access(channel: 2, user: mtjade1_published_ipmi_user, privilege: IpmiPrivilegeNoAccess),
+      ipmi_user_channel_access(channel: 8, user: mtjade1_published_ipmi_user, privilege: lan_privilege),
+    ],
+  )
+}
+
+fn mtjade1_bmc_account_reading(users: List<BmcIpmiUser>, published_lan_privilege_closed: Bool) -> BmcAccountStateObservation {
+  let census_value = mtjade1_bmc_census(published_lan_privilege_closed: published_lan_privilege_closed)
+  let world = bmc_with_ipmi_user_access(
+    world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: users),
+    rows: census_value.user_access,
+  )
+  dry_read_bmc_account_state(
+    world: world,
+    subject: mtjade1_intake_subject(),
+    endpoint: BmcControllerEndpoint { host: "192.168.1.246" },
+    firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11.104000" as NonEmptyStr),
+    managed: mtjade1_bmc_goal().managed,
+    managed_user: mtjade1_managed_ipmi_user,
+    managed_password: "managed-generation-1!",
+    census: census_value,
+    published_user: mtjade1_published_ipmi_user,
+    published_password: "admin",
+    published_account: PublishedAccountRetired,
+    break_glass: mtjade1_bmc_goal().published_break_glass,
+    break_glass_password: "break-glass-generation-4!",
+    attempt: "o1c1-witness-run-a" as AttemptIdentity,
+    read_at_millis: mtjade1_bmc_read_at,
+  )
+}
+
+fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?) -> BmcSecureInputs {
+  BmcSecureInputs {
+    goal: mtjade1_bmc_goal(),
+    reading: reading,
+    host: operator_host_mtjade1,
+    grant: grant,
+    capability: none,
+    apply: none,
+  }
+}
+
+fn bmc_secure_noop_established(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: bmc_secure_step_ref)
+        && match r {
+          BmcSecureReceipt { receipt: b } =>
+            match b.phase.decision {
+              BmcSecurePhaseNoop { observation: _ } => true
+              BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => false
+            }
+          AccessDiscoverReceipt { receipt: _ } => false
+          IdentityBindReceipt { receipt: _ } => false
+          PriorLifeBoundaryReceipt { receipt: _ } => false
+        }
+    _ => false
+  }
+}
+
+test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool {
+  let reading = mtjade1_bmc_account_reading(
+    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "break-glass-generation-4!" }],
+    published_lan_privilege_closed: true,
+  )
+  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none)) {
+    ArrivalRunFolded { verdict: v } =>
+      match v {
+        RunConverged { run: r } =>
+          length(xs: r.ledger.instances) == 4
+            && match r.ledger.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
+            && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: identity_bind_provisional_step_ref)) |> first() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+            && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() { Present { value: s } => prior_life_archived_from_the_bound_subject(s: s)  Absent => false }
+            && match r.ledger.instances.last() { Present { value: s } => bmc_secure_noop_established(s: s)  Absent => false }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path() -> Bool {
+  let reading = mtjade1_bmc_account_reading(
+    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
+    published_lan_privilege_closed: false,
+  )
+  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none)) {
+    ArrivalRunFolded { verdict: v } =>
+      match v {
+        RunStopped { ledger: l, at: at } =>
+          declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceRefused { key: _, cause: c } => match c {
+                  DomainRefused { cause: d } => match d { BmcSecureAuthorizationUndischarged => true  _ => false }
+                  AuthorizationUndischarged => true
+                  _ => false
+                }
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
+    _ => false
   }
 }
 
