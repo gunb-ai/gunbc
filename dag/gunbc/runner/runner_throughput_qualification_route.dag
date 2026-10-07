@@ -326,7 +326,8 @@ fn route_bmc_write_count(route: List<QualificationStage>) -> Int {
   fold(route, init: 0, f: (acc, s) =>
     match stage_effect(stage: s) {
       BmcWrite { gate: _, boot: _, image: _ } => acc + 1
-      _ => acc
+      GitHubControlPlaneWrite { authority: _ } => acc
+      ObservationOnly => acc
     }
   )
 }
@@ -335,7 +336,8 @@ fn route_control_plane_write_count(route: List<QualificationStage>) -> Int {
   fold(route, init: 0, f: (acc, s) =>
     match stage_effect(stage: s) {
       GitHubControlPlaneWrite { authority: _ } => acc + 1
-      _ => acc
+      BmcWrite { gate: _, boot: _, image: _ } => acc
+      ObservationOnly => acc
     }
   )
 }
@@ -346,7 +348,8 @@ fn route_bmc_writes_are_gated(route: List<QualificationStage>) -> Bool {
     match stage_effect(stage: s) {
       BmcWrite { gate: g, boot: _, image: _ } =>
         (g.module_path as String) == "gunbc.auth.approval_decision_store" && (g.decl_name as String) == "grant_from_store"
-      _ => true
+      GitHubControlPlaneWrite { authority: _ } => true
+      ObservationOnly => true
     }
   )
 }
@@ -360,7 +363,10 @@ fn route_registers_one_slot(route: List<QualificationStage>) -> Bool {
   fold(route, init: 0, f: (acc, s) =>
     match s {
       RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => acc + 1
-      _ => acc
+      BootHostUnderApprovalGate { host: _, boot: _, image: _ } => acc
+      DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => acc
+      CollectInstruments { instruments: _ } => acc
+      DeregisterRunnerSlot { unit: _, deregistration: _ } => acc
     }
   ) == 1
 }
@@ -369,13 +375,19 @@ fn route_deregisters_what_it_registered(route: List<QualificationStage>) -> Bool
   let registered = fold(route, init: [], f: (acc, s) =>
     match s {
       RegisterEphemeralRunnerSlot { unit: u, labels: _, workspace: _, registration: _ } => list_push(acc, u as String)
-      _ => acc
+      BootHostUnderApprovalGate { host: _, boot: _, image: _ } => acc
+      DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => acc
+      CollectInstruments { instruments: _ } => acc
+      DeregisterRunnerSlot { unit: _, deregistration: _ } => acc
     }
   )
   let deregistered = fold(route, init: [], f: (acc, s) =>
     match s {
       DeregisterRunnerSlot { unit: u, deregistration: _ } => list_push(acc, u as String)
-      _ => acc
+      BootHostUnderApprovalGate { host: _, boot: _, image: _ } => acc
+      RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => acc
+      DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => acc
+      CollectInstruments { instruments: _ } => acc
     }
   )
   registered.length() == deregistered.length()
@@ -386,7 +398,10 @@ fn route_dispatch_selector_names_the_attempt(route: List<QualificationStage>, at
   route |> all(s =>
     match s {
       DispatchFloorToSlot { workload: _, selector: sel, dispatch: _ } => sel |> any(l => l == (attempt as String))
-      _ => true
+      BootHostUnderApprovalGate { host: _, boot: _, image: _ } => true
+      RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => true
+      CollectInstruments { instruments: _ } => true
+      DeregisterRunnerSlot { unit: _, deregistration: _ } => true
     }
   )
 }

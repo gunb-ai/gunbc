@@ -1021,7 +1021,35 @@ fn validation_receipt_string_member(
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
-        _ =>
+        JsonNull =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonBool { value: _ } =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonNumber { lexeme: _ } =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonArray { elements: _ } =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonObject { members: _ } =>
           ValidationReceiptMemberUnreadable {
             reason: concat(
               "validation receipt ",

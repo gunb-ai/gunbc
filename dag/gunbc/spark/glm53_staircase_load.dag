@@ -1,12 +1,15 @@
 module gunbc.spark.glm53_staircase_load
 
+import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmFlashinferAutotuneSkipOps }
+
 import std.types { String, List, NonEmptyStr }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
 import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint }
-import gunbc.spark.serving_arm { serving_checkpoint_row, serving_runtime_row, runtime_pin_reference }
+import gunbc.spark.serving_arm { serving_checkpoint_row, serving_runtime_row, runtime_pin_reference, serving_deployment_env_key }
 import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
 import gunbc.spark.model_snapshot_acquisition { HubCachePlacement, snapshot_install_path }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
@@ -55,6 +58,7 @@ fn glm53_step_performance_subject(inputs: GroupArmLaunchInputs) -> ServingPerfor
       runtime_image_reference: runtime_pin_reference(p: rt.artifact.pin),
       topology: inputs.assignment.topology,
       profile: inputs.profile,
+      deployment_env: inputs.deployment_env,
       collective_transport: none,
     ) }
   }
@@ -133,6 +137,19 @@ fn calibration_wire(r: WorkloadCalibrationReceipt) -> String {
 // floor and at the ceiling, judges each, and folds the calibration receipt. Converged means every load
 // ran and was judged; whether the step HELD is in the receipt, and is what the next step's admission
 // will read once the receipt is recorded.
+// THE AUTOTUNE POLICY IS STATED IN EVERY RECEIPT (side-chat ruling on #13319, finding 3), read off the
+// step's own deployment env rather than its checkpoint: with VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS set, rank 0
+// runs its tuned tactics and ranks 1-3 the heuristic ones, so the ranks are not kernel-identical and the
+// measured throughput is a LOWER BOUND for the fully tuned configuration -- which is a different subject
+// (its deployment env key differs), never this one re-measured.
+fn glm53_autotune_standing_wire(env: List<DockerEnvAssignment>) -> String {
+  let name = vllm_environment_variable_name(v: VllmFlashinferAutotuneSkipOps) as String
+  match first(filter(env, a => (a.name as String) == name)) {
+    Absent => "autotune: not skipped -- every rank runs its own autotune\n"
+    Present { value: a } => join(["autotune: ", name, "=", a.value, " -- rank 0 runs tuned tactics, ranks 1-3 heuristic ones; the ranks are not kernel-identical and this throughput is a LOWER BOUND for the fully tuned configuration\n"], "")
+  }
+}
+
 fn glm53_step_load_session(s: Glm53StaircaseStep, run_id: NonEmptyStr, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
   match glm53_step_load(s: s) {
     Glm53StepLoadRefused { cause: c } => SparkBuildHostWork { receipt: join(["load REFUSED: ", c, "\n"], ""), converged: false }
@@ -157,6 +174,8 @@ fn glm53_step_load_session(s: Glm53StaircaseStep, run_id: NonEmptyStr, ctx: Spar
                 join(map(results, r => load_step_verdict_wire(concurrency: r.concurrency, v: r.verdict)), ""),
                 calibration_wire(r: receipt),
                 "window: ", glm53_staircase_load_window_frontier, "\n",
+                glm53_autotune_standing_wire(env: inputs.deployment_env),
+                "deployment env key: ", serving_deployment_env_key(env: inputs.deployment_env), "\n",
               ], "")
               SparkBuildHostWork { receipt: serving_load_receipt_body(subject: subject, records: rs, extra: extra), converged: true }
             }

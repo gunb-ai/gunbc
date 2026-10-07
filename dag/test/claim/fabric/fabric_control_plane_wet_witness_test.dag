@@ -3,7 +3,7 @@ module test.claim.fabric.fabric_control_plane_wet_witness
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
 import std.measure { money_amount_micro }

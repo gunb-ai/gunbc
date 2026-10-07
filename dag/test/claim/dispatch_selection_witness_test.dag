@@ -110,6 +110,7 @@ import gunbc.dispatch_selection {
   fixture_codex_process_fingerprint_standing,
   CodexProcessFingerprintUnobserved,
   ClaudeStateRootRef,
+  claude_dispatch_credential,
   dispatch_claude_default_workflow_mode,
   NoDerivedSizingExpectation,
   DerivedSizingExpectation,
@@ -296,8 +297,12 @@ test fn witness_srv1_inventory_includes_claude() -> Bool {
   )
 }
 
-test fn witness_production_inventory_excludes_claude() -> Bool {
-  !inventory_includes_provider_kind(
+// The WorkerTurn-PR deferral is discharged (gunbc.dispatch_selection PRODUCTION WIRING): srv1's
+// live inventory now offers Claude. It does so at declared-unobserved standing, so this asserts the
+// row's presence only; witness_production_claude_row_admits_no_automatic_draw keeps the automatic
+// path off it.
+test fn witness_production_inventory_includes_claude() -> Bool {
+  inventory_includes_provider_kind(
     inventory: provider_inventory_for_instance(
       instance: srv1_live_dashboard_instance(),
     ),
@@ -565,9 +570,7 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
 
 test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
   let instance = srv1_live_dashboard_instance()
-  let request_credential = ClaudeStateRootRef {
-    root: "/managed/claude-enrollment" as FilePath,
-  }
+  let request_credential = claude_dispatch_credential()
   let request_model = ProviderModelPinned { model: "claude-managed-model" as NonEmptyStr }
   let claude_provider = ProviderInstance {
     kind: ClaudeCliProvider,
@@ -613,6 +616,56 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
         _ => false
       }
     DispatchSelectionRefused { requested_selection: _, reason: _ } => false
+  }
+}
+
+// A REQUEST NAMING A CREDENTIAL THE OFFER DOES NOT BIND REFUSES (review 76871): the receipt's
+// credential_binding is the requested credential, so admitting it would name one credential while
+// the process runs under another.
+test fn witness_select_claude_refuses_a_credential_the_offer_does_not_bind() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let request_credential = ClaudeStateRootRef {
+    root: "/managed/claude-enrollment" as FilePath,
+  }
+  let request_model = ProviderModelPinned { model: "claude-managed-model" as NonEmptyStr }
+  let claude_provider = ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+  }
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: instance,
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: claude_provider,
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    request: SelectClaude {
+      profile: ProfileAutomatic,
+      credential: request_credential,
+      model: request_model,
+      effort: ReasoningHigh,
+      workflow_mode: dispatch_claude_default_workflow_mode,
+    },
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason } =>
+      string_contains(s: reason as String, pattern: "is not the credential this offer binds")
   }
 }
 

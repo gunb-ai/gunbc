@@ -17,6 +17,6 @@ data an_unspawnable_program_aborts_the_run_instead_of_refusing: RecurringFailure
   evidence: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_capture"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_census_qemu_host_observe", decl_name: "qemu_banner_may_be_read"),
+    decl_ref(module_path: "gunbc.runner_qemu_host_standing", decl_name: "qemu_banner_may_be_read"),
   ],
 }
