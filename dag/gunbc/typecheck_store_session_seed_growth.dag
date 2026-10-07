@@ -1,0 +1,84 @@
+module gunbc.typecheck_store_session_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data typecheck_store_session_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "durable_typecheck_lookup",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "durable_typecheck_commit",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "with_session",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "open_door",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "store_receipt_line",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "own_payload_texts",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "own_from_payload_texts",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "own_of_result",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "observed_largest_entry_bytes",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "outcome_snapshot",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "outcome_reset",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "set_witness_root",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.typecheck_store_session",
+      decl_name: "count",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "reconcile_with_typed_cache",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "Serves the v2 self-host program under the v1 PURPOSE test (gunbc.v1_maintenance_standing): the seed typecheck path is the production consumer of gunbc.typecheck_module_store over extdeps.realization.materialization_store_local, so a cached typecheck of a module's OWN interface replaces recomputation on every run. Every decision is .dag: the request key, the own-interface entry, grant and door availability (open_typecheck_store_door), and restore (typecheck_module_restore in src/v1/04_infer.dag). The Rust declarations only marshal hex digests and the opening Value across the door, resolve the store closure through the caller's MultiEntryIndex, and count typed outcomes for the run receipt. Rust is still needed because the seed interpreter drives reconcile_with_typed_cache and holds the per-process index; no .dag fold can yet call the store door from inside that stage. The src/v1/stage0/src/v1_compiler_infer.rs growth is generated from 04_infer.dag and carries no hand authority.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete typecheck_store_session.rs and the durable_typecheck_lookup/durable_typecheck_commit call sites in reconcile_with_typed_cache when the typecheck stage is one .dag fold that opens the store door once, looks up by request key before collecting parent environments, restores or computes, commits, and returns its outcome counts as a value for the run receipt; the receipt line (store_receipt_line) must then be rendered from that value, so counting is not left in a Rust thread-local.",
+  current_boundary: "src/v1/04_infer.dag typecheck_module_restore / dag/gunbc/typecheck_module_store.dag seed_lookup_typecheck_opened_hex, seed_commit_typecheck_opened_hex -> src/v1/stage0/src/cli_run/typecheck_store_session.rs -> cli_run.rs reconcile_with_typed_cache"
+}
