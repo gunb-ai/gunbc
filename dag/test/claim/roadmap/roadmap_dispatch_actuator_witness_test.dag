@@ -5,7 +5,7 @@ import gunbc.roadmap_sizing {
 }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
 import v2.std.collection { List }
@@ -642,8 +642,11 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
     TmuxLsParsed { entries } => {
       let filtered = filter_dispatch_tmux_sessions(entries: entries)
       count(filtered) == 1
-        && filtered.first().session_name == "gunbc-dispatch-node-4"
-        && filtered.first().windows == 2
+        && match filtered.first() {
+             Present { value: entry } =>
+               entry.session_name == "gunbc-dispatch-node-4" && entry.windows == 2
+             Absent => false
+           }
     }
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
