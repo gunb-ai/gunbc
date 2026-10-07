@@ -1,0 +1,393 @@
+module test.claim.machine_intake_prior_life_boundary_witness
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { content_hash_equal }
+import std.measure { positive_millisecond, PositiveMeasureSuccessor }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { length }
+import extdeps.bmc.redfish_telemetry {
+  RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint, RedfishTemperatureCelsius, RedfishReadingValue, RedfishHealthOk, RedfishStateEnabled,
+}
+import extdeps.bmc.redfish_virtual_media {
+  RedfishVirtualMediaObservation, RedfishVirtualMediaLocator, UnderManager, MediaCd, MediaDvd, ConnectedViaNotConnected, ConnectedViaUri, redfish_virtual_media_resource_path,
+}
+import gunbc.bmc_model {
+  BmcWorld, BmcSelRecord, BmcPowerOn, BmcRecordSurfaces, bmc_world, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled,
+}
+import gunbc.clock_read { ObserverClockObserved, ObserverClockUnreadable, observer_clock_modeled }
+import gunbc.machine_intake_subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, AssemblyManifest, FirmwareManifest, qualification_subject_of }
+import gunbc.fleet.convergence_fold {
+  StepInstanceKey, ConvergenceRunId, StepSubjectKey, step_instance_key,
+  LegCompletedWithin, LegDeadlineElapsed, LegFinishedBeforeItStarted, LegCompletionUnobserved,
+  leg_budget, effect_leg_deadline, complete_effect_leg,
+}
+import gunbc.machine_intake_prior_life_boundary {
+  DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreKeepsWrites, DryArchiveStoreLosesWrites, DryArchiveStoreCorruptsWrites,
+  PriorLifePolicy, UnclearedBoundaryAdmitted, UnclearedBoundaryNotAdmitted, CarrierCaptured, CarrierGap, CarrierSurfaceUnmodeled, PowerStatePayload,
+  PriorLifeCarrier, PriorLifeBmcClock, PriorLifeSensorSnapshot,
+  PriorLifeAssessRefusal, RequiredCarrierNotArchivable, UnclearedBoundaryNotAdmittedByPolicy,
+  PriorLifeArchiveEstablished, PriorLifeArchiveRefused, PriorLifeArchiveIncomplete,
+  PriorLifePolicyAbsent, PriorLifeAssessmentRefused,
+  ArchiveWriteLegNotCompleted, ArchiveWrittenButNotReadBack, ArchiveReadBackDiffersFromWrite,
+  ArchiveAlreadyHeld, ArchiveWritten, LogsArchivedWithBaselineCursor,
+  DryPriorLifeStep, PriorLifeArchiveOutcome,
+  classify_prior_life_policy, dry_archive_prior_life, prior_life_carriers_all, prior_life_carrier_eq,
+  mt_collins_platform_ref, mt_jade_platform_ref,
+  prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_archive, prior_life_receipt_realization,
+  prior_life_archive_digest, prior_life_archive_body, baseline_cursor_sel_final_record, baseline_cursor_archive, baseline_cursor_log_services,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CUT O1c-2, THE PRIOR-LIFE ARCHIVE AT ITS OWN INTERFACE. These claims SUPPLY the phase's inputs --
+// the subject, the step keys, the dry world -- and call the domain's phase directly (each admitted by
+// name to gunbc.machine_intake_prior_life_boundary dry_archive_prior_life; no helper here calls it,
+// so no function of this module returns its sealed receipt). The pairing obligation's real path is
+// test.claim.machine_intake_arrival_converge_witness, whose route claim reaches this phase through
+// mtjade1's real AccessDiscover and IdentityBindProvisional and the fold. The worlds here model no
+// vendor: every value is a generic Redfish or IPMI record, and no world claims a controller family.
+
+data run_p: ConvergenceRunId = "o1c2-witness-run-p" as ConvergenceRunId
+
+data unit_p: StepSubjectKey = "dry-unit" as StepSubjectKey
+
+fn key_p() -> StepInstanceKey {
+  step_instance_key(run: run_p, step: decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"), subject: unit_p)
+}
+
+fn identity_p() -> StepInstanceKey {
+  step_instance_key(run: run_p, step: decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional"), subject: unit_p)
+}
+
+fn subject_p() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: "DRY-BOARD-0001" as UnitKey, assembly: AssemblyManifest { chassis_part_number: "dry-chassis", components: [] }, firmware: FirmwareManifest { entries: [], configuration_digests: [] }),
+    attempt_id: "o1c2-witness-run-p" as IntakeAttemptId,
+  }
+}
+
+// ── worlds ─────────────────────────────────────────────────────────────────────────────────────────
+
+data sel_records: List<BmcSelRecord> = [
+  BmcSelRecord { id_hex: "1", date: "01/01/2026", time: "00:00:01", sensor: "Power Unit", event: "AC lost", state: "Asserted" },
+  BmcSelRecord { id_hex: "2", date: "01/01/2026", time: "00:00:09", sensor: "System Event", event: "Timestamp Clock Sync", state: "Asserted" },
+]
+
+// Every surface the archive reads, modeled: a generic Redfish record set with one log service, one
+// account event, one virtual-media member and one sensor.
+data all_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
+  manager_date_time: Present { value: "2026-10-05T12:00:00+00:00" },
+  log_services: Present { value: [RedfishLogService { id: "EventLog", entries: [RedfishLogEntry { id: 1, severity: "OK", message: "service started" }, RedfishLogEntry { id: 2, severity: "Warning", message: "fan below threshold" }] }] },
+  account_events: Present { value: [RedfishLogEntry { id: 7, severity: "OK", message: "session opened" }] },
+  virtual_media: Present { value: [RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "bmc" }, media_id: "CD1" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }] },
+  sensors: Present { value: [RedfishTelemetryPoint { name: "CPU0 Temp", kind: RedfishTemperatureCelsius, reading: RedfishReadingValue { whole: 41 }, health: RedfishHealthOk, state: RedfishStateEnabled }] },
+}
+
+fn world_all_surfaces() -> BmcWorld {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: all_surfaces)
+}
+
+// The SEL and nothing else the archive needs: bmc_world() models no record surface.
+fn sel_world() -> BmcWorld {
+  let w = bmc_world(power: BmcPowerOn)
+  BmcWorld {
+    power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: sel_records,
+    sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
+    host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: bmc_record_surfaces_unmodeled,
+  }
+}
+
+data empty_store: DryArchiveStore = DryArchiveStore { objects: [], behaviour: DryArchiveStoreKeepsWrites }
+
+data t_read_p: EpochMs = 1791158400000
+
+// The write returns two seconds after the read, inside the thirty-second budget.
+data t_returned_p: EpochMs = 1791158402000
+
+// The write returns forty-five seconds after the read, past the thirty-second budget.
+data t_returned_late_p: EpochMs = 1791158445000
+
+fn dry_world(bmc: BmcWorld, store: DryArchiveStore) -> DryPriorLifeWorld {
+  DryPriorLifeWorld { bmc: bmc, store: store, read_at_millis: t_read_p, write_returned_at_millis: t_returned_p }
+}
+
+// THE SMALLEST WORLD THE ROUTE CLAIMS ARCHIVE: every surface modeled, so all eight carriers are
+// captured (an empty log is a capture, an unmodeled one a gap), and ONE SEL record, so the baseline
+// cursor the route asserts is a real position read from a real record rather than a degenerate empty
+// one. The encoder's cost is linear in the population (measured: about 720 eval steps per SEL record
+// at 1, 20 and 80 records), so the route claims shrink their input rather than the encoder; the
+// payload's fidelity over richer populations is this module's own subject.
+data one_sel_record: List<BmcSelRecord> = [
+  BmcSelRecord { id_hex: "1", date: "01/01/2026", time: "00:00:01", sensor: "Power Unit", event: "AC lost", state: "Asserted" },
+]
+
+data empty_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
+  manager_date_time: Present { value: "2026-10-05T12:00:00+00:00" },
+  log_services: Present { value: [] },
+  account_events: Present { value: [] },
+  virtual_media: Present { value: [] },
+  sensors: Present { value: [] },
+}
+
+fn prior_life_minimal_dry_world() -> DryPriorLifeWorld {
+  let w = bmc_world(power: BmcPowerOn)
+  let with_sel = BmcWorld {
+    power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: one_sel_record,
+    sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
+    host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: empty_surfaces,
+  }
+  dry_world(bmc: with_sel, store: empty_store)
+}
+
+// The full dry world the arrival route claim archives: every surface modeled, a store that keeps writes,
+// and a write that returns in two seconds.
+fn prior_life_full_dry_world() -> DryPriorLifeWorld {
+  dry_world(bmc: world_all_surfaces(), store: empty_store)
+}
+
+fn outcome_label(o: PriorLifeArchiveOutcome) -> String {
+  match o {
+    PriorLifeArchiveEstablished { receipt: _ } => "established"
+    PriorLifeArchiveRefused { cause: _ } => "refused"
+    PriorLifeArchiveIncomplete { cause: c } =>
+      match c {
+        ArchiveWriteLegNotCompleted { write: _, completion: k } =>
+          match k {
+            LegDeadlineElapsed { deadline: _, finished: _ } => "incomplete:deadline-elapsed"
+            LegFinishedBeforeItStarted { deadline: _, finished: _ } => "incomplete:finished-before-start"
+            LegCompletionUnobserved { deadline: _, detail: _ } => "incomplete:unobserved"
+            LegCompletedWithin { completed: _ } => "incomplete:within?"
+          }
+        ArchiveWrittenButNotReadBack { write: _, digest: _ } => "incomplete:not-read-back"
+        ArchiveReadBackDiffersFromWrite { write: _, digest: _, read: _ } => "incomplete:read-back-differs"
+      }
+  }
+}
+
+// ── controls ───────────────────────────────────────────────────────────────────────────────────────
+
+// THE PLAN'S NAMED CONTROL. Only the SEL -- whose final record id is all a bare cursor would carry --
+// with the other surfaces unmodeled is NOT established: the policy requires all eight carriers, the
+// first unmodeled one (the controller clock) is a typed gap, and the phase refuses before any write.
+// The same world with every surface modeled is established.
+test fn w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established() -> Bool {
+  let refused = match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: sel_world(), store: empty_store)).outcome {
+    PriorLifeArchiveRefused { cause: c } =>
+      match c {
+        PriorLifeAssessmentRefused { cause: a } =>
+          match a {
+            RequiredCarrierNotArchivable { carrier: k, cause: _ } => prior_life_carrier_eq(a: k, b: PriorLifeBmcClock)
+            UnclearedBoundaryNotAdmittedByPolicy { platform: _ } => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+  refused && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world()).outcome) == "established"
+}
+
+// A GAP IS A GAP FOR EVERY REQUIRED CARRIER, NOT ONLY THE FIRST: a world with every surface modeled
+// except the sensors refuses naming the sensor snapshot.
+test fn w_one_unmodeled_carrier_is_a_typed_gap_that_refuses() -> Bool {
+  let no_sensors = BmcRecordSurfaces {
+    manager_date_time: all_surfaces.manager_date_time,
+    log_services: all_surfaces.log_services,
+    account_events: all_surfaces.account_events,
+    virtual_media: all_surfaces.virtual_media,
+    sensors: none,
+  }
+  match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: dry_world(bmc: bmc_with_record_surfaces(world: sel_world(), surfaces: no_sensors), store: empty_store)).outcome {
+    PriorLifeArchiveRefused { cause: c } =>
+      match c {
+        PriorLifeAssessmentRefused { cause: a } =>
+          match a {
+            RequiredCarrierNotArchivable { carrier: k, cause: _ } => (match k { PriorLifeSensorSnapshot => true  _ => false })
+            UnclearedBoundaryNotAdmittedByPolicy { platform: _ } => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A POLICY THAT DOES NOT ADMIT THE UNCLEARED BOUNDARY REFUSES (SUPPLIED at the classifier: both
+// production rows admit it), the production rows require all eight carriers, and a platform with no
+// policy row refuses on the production path writing NOTHING: the store after the phase holds no object.
+test fn w_a_policy_refusal_writes_nothing() -> Bool {
+  let full_captures = map(prior_life_carriers_all, c => CarrierCaptured { carrier: c, payload: PowerStatePayload { power: BmcPowerOn } })
+  let not_admitting = PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryNotAdmitted }
+  let admitting = PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted }
+  let mitchell = decl_ref(module_path: "extdeps.ocp.mt_mitchell.subject", decl_name: "MtMitchellSpecificationRevision")
+  let step = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mitchell, world: prior_life_full_dry_world())
+  (match classify_prior_life_policy(policy: not_admitting, captures: full_captures) { Present { value: r } => (match r { UnclearedBoundaryNotAdmittedByPolicy { platform: _ } => true  _ => false })  Absent => false })
+    && (match classify_prior_life_policy(policy: admitting, captures: full_captures) { Present { value: _ } => false  Absent => true })
+    && (match step.outcome { PriorLifeArchiveRefused { cause: c } => (match c { PriorLifePolicyAbsent { platform: p } => declaration_ref_eq(a: p, b: mitchell)  _ => false })  _ => false })
+    && length(xs: step.store.objects) == 0
+}
+
+
+// AN ARCHIVE ALREADY HELD IS A NOOP AND IS NOT WRITTEN TWICE. The first run writes and reads back
+// (ArchiveWritten); the second, over the store the first left, finds the object at the archive's
+// digest and is established with ArchiveAlreadyHeld, leaving exactly one object in the store.
+test fn w_an_archive_already_held_is_a_noop_and_is_not_written_twice() -> Bool {
+  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world())
+  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: first.store))
+  (match first.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveWritten { write: _, within: _ } => true  ArchiveAlreadyHeld => false })  _ => false })
+    && (match second.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveAlreadyHeld => true  ArchiveWritten { write: _, within: _ } => false })  _ => false })
+    && length(xs: first.store.objects) == 1
+    && length(xs: second.store.objects) == 1
+}
+
+// INCOMPLETE IS NOT REFUSED. A store that loses the write, a store that corrupts it, and a write that
+// returns forty-five seconds after it started, past its thirty-second budget, are each INCOMPLETE -- the write was attempted and its readback does
+// not ground it -- and a write the store keeps, returning in two seconds, is established.
+test fn w_a_lost_corrupted_or_late_write_is_incomplete_not_refused() -> Bool {
+  let losing = DryArchiveStore { objects: [], behaviour: DryArchiveStoreLosesWrites }
+  let corrupting = DryArchiveStore { objects: [], behaviour: DryArchiveStoreCorruptsWrites }
+  outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: losing)).outcome) == "incomplete:not-read-back"
+    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: corrupting)).outcome) == "incomplete:read-back-differs"
+    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: DryPriorLifeWorld { bmc: world_all_surfaces(), store: empty_store, read_at_millis: t_read_p, write_returned_at_millis: t_returned_late_p }).outcome) == "incomplete:deadline-elapsed"
+    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world()).outcome) == "established"
+}
+
+// THE DEADLINE READS ITS OWN BUDGET (lesson 2: vary only that field). The same leg, the same start and
+// the same finish forty seconds later: under a thirty-second budget it ELAPSED, under a fifty-second
+// budget it COMPLETED WITHIN. A finish before the start, and a finish the clock could not read, are
+// neither.
+test fn w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed() -> Bool {
+  let leg = decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive")
+  let start = observer_clock_modeled(millis: 1791158400000, realization: "test.claim.machine_intake_prior_life_boundary_witness schedule" as NonEmptyStr)
+  let finish = observer_clock_modeled(millis: 1791158440000, realization: "test.claim.machine_intake_prior_life_boundary_witness schedule" as NonEmptyStr)
+  let short = effect_leg_deadline(budget: leg_budget(leg: leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 29999 })), started: start)
+  let long = effect_leg_deadline(budget: leg_budget(leg: leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 49999 })), started: start)
+  (match complete_effect_leg(deadline: short, finished: ObserverClockObserved { instant: finish }) { LegDeadlineElapsed { deadline: _, finished: _ } => true  _ => false })
+    && (match complete_effect_leg(deadline: long, finished: ObserverClockObserved { instant: finish }) { LegCompletedWithin { completed: _ } => true  _ => false })
+    && (match complete_effect_leg(deadline: effect_leg_deadline(budget: leg_budget(leg: leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 49999 })), started: finish), finished: ObserverClockObserved { instant: start }) { LegFinishedBeforeItStarted { deadline: _, finished: _ } => true  _ => false })
+    && (match complete_effect_leg(deadline: long, finished: ObserverClockUnreadable { detail: "clock refused" }) { LegCompletionUnobserved { deadline: _, detail: _ } => true  _ => false })
+}
+
+// THE CURSOR IS THE ARCHIVE'S: an established receipt's boundary is LogsArchivedWithBaselineCursor, its
+// cursor names the last SEL record the archive holds and the archive's own digest, and the receipt
+// names the dry realization it came from.
+test fn w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from() -> Bool {
+  match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: prior_life_full_dry_world()).outcome {
+    PriorLifeArchiveEstablished { receipt: r } =>
+      match prior_life_receipt_boundary(r: r) {
+        LogsArchivedWithBaselineCursor { cursor: c } =>
+          (match baseline_cursor_sel_final_record(c: c) { Present { value: id } => id == "2"  Absent => false })
+            && content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: r)))
+            && ((prior_life_receipt_realization(r: r) as NonEmptyStr) as String) == "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
+      }
+    _ => false
+  }
+}
+
+// ── THE ENCODING IS INJECTIVE (side-chat review of 31ef3dbe8c) ─────────────────────────────────────
+
+// A world that differs from the full world only in its one log service's entries.
+fn world_with_log(entries: List<RedfishLogEntry>) -> BmcWorld {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces {
+    manager_date_time: all_surfaces.manager_date_time,
+    log_services: Present { value: [RedfishLogService { id: "EventLog", entries: entries }] },
+    account_events: all_surfaces.account_events,
+    virtual_media: all_surfaces.virtual_media,
+    sensors: all_surfaces.sensors,
+  })
+}
+
+// A world that differs from the full world only in its one virtual-media member.
+fn world_with_media(member: RedfishVirtualMediaObservation) -> BmcWorld {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces {
+    manager_date_time: all_surfaces.manager_date_time,
+    log_services: all_surfaces.log_services,
+    account_events: all_surfaces.account_events,
+    virtual_media: Present { value: [member] },
+    sensors: all_surfaces.sensors,
+  })
+}
+
+fn final_event_log_entry(o: PriorLifeArchiveOutcome) -> Int? {
+  match o {
+    PriorLifeArchiveEstablished { receipt: r } =>
+      match prior_life_receipt_boundary(r: r) {
+        LogsArchivedWithBaselineCursor { cursor: c } =>
+          match baseline_cursor_log_services(c: c) |> first() {
+            Present { value: lc } => lc.final_entry
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+fn written_not_held(o: PriorLifeArchiveOutcome) -> Bool {
+  match o {
+    PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveWritten { write: _, within: _ } => true  ArchiveAlreadyHeld => false })
+    _ => false
+  }
+}
+
+fn digests_differ(a: PriorLifeArchiveOutcome, b: PriorLifeArchiveOutcome) -> Bool {
+  match a {
+    PriorLifeArchiveEstablished { receipt: ra } =>
+      match b {
+        PriorLifeArchiveEstablished { receipt: rb } =>
+          content_hash_equal(left: prior_life_archive_digest(a: prior_life_receipt_archive(r: ra)), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: rb))) == false
+            && ((prior_life_archive_body(a: prior_life_receipt_archive(r: ra)) as NonEmptyStr) as String) != ((prior_life_archive_body(a: prior_life_receipt_archive(r: rb)) as NonEmptyStr) as String)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE REVIEW'S TWO-LOG COUNTEREXAMPLE. One log service, two entries each; a delimiter-joined encoding
+// rendered both as the same three lines while A's last entry is 3 and B's is 2. Now A and B archive
+// to different bytes and digests; B observed over the store A's archive was written to is NOT held
+// (no ArchiveAlreadyHeld receipt with A's archive), so B is written and established with B's own
+// cursor, final entry 2, and A's with final entry 3.
+test fn w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly() -> Bool {
+  let a = [RedfishLogEntry { id: 1, severity: "OK", message: "a\n2|OK|b" }, RedfishLogEntry { id: 3, severity: "OK", message: "c" }]
+  let b = [RedfishLogEntry { id: 1, severity: "OK", message: "a" }, RedfishLogEntry { id: 2, severity: "OK", message: "b\n3|OK|c" }]
+  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: a), store: empty_store))
+  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: b), store: first.store))
+  digests_differ(a: first.outcome, b: second.outcome)
+    && written_not_held(o: second.outcome)
+    && final_event_log_entry(o: first.outcome) == Present { value: 3 }
+    && final_event_log_entry(o: second.outcome) == Present { value: 2 }
+}
+
+// EVERY MODELED VIRTUAL-MEDIA FIELD IS ARCHIVED: a member that differs only in connected_via, and one
+// that differs only in media_types, each archive to a different digest from the base member, and each
+// is written rather than read as held over the base member's store.
+test fn w_virtual_media_connected_via_and_media_types_are_archived() -> Bool {
+  let base = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "bmc" }, media_id: "CD1" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let via = RedfishVirtualMediaObservation { locator: base.locator, media_types: [MediaCd], connected_via: ConnectedViaUri, inserted: false, image: none }
+  let types = RedfishVirtualMediaObservation { locator: base.locator, media_types: [MediaCd, MediaDvd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let on_base = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: base), store: empty_store))
+  let on_via = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: via), store: on_base.store))
+  let on_types = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: types), store: on_base.store))
+  digests_differ(a: on_base.outcome, b: on_via.outcome)
+    && digests_differ(a: on_base.outcome, b: on_types.outcome)
+    && written_not_held(o: on_via.outcome)
+    && written_not_held(o: on_types.outcome)
+}
+
+// THE LOCATOR'S FIELD BOUNDARIES ARE ARCHIVED (side-chat review of 5143906158). These two locators
+// render the same resource path -- /redfish/v1/Managers/a/VirtualMedia/b/VirtualMedia/c -- because the
+// path joins a manager ID and a media ID that may themselves carry the separator. Held otherwise
+// constant, they archive to different bytes and digests, and B over the store A was written to is
+// written, not held. The unchanged locator over its own store is held (the positive).
+test fn w_two_locators_that_render_one_resource_path_archive_distinctly() -> Bool {
+  let a = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "a/VirtualMedia/b" }, media_id: "c" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let b = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "a" }, media_id: "b/VirtualMedia/c" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let on_a = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: empty_store))
+  let on_b = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: b), store: on_a.store))
+  let a_again = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: on_a.store))
+  redfish_virtual_media_resource_path(locator: a.locator) == redfish_virtual_media_resource_path(locator: b.locator)
+    && digests_differ(a: on_a.outcome, b: on_b.outcome)
+    && written_not_held(o: on_b.outcome)
+    && (match a_again.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveAlreadyHeld => true  ArchiveWritten { write: _, within: _ } => false })  _ => false })
+}

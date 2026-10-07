@@ -282,6 +282,45 @@ What the model holds:
 
 The convergence refuses at each step that is not yet grounded. It never widens.
 
+#### mtjade1's wet sequence (operator ruling, 2026-10-06)
+
+**The ruling.** Given by the operator directly in eager-gull-22's session and relayed in dashboard message `msg_7402f8df`: live operations on mtjade1 are authorized whenever and indefinitely, with no per-run approval. That covers BMC reads and writes (history archive, login and credential change), boots, and firmware qualification on Mt. Jade. **The scope is mtjade1 only**: mtcollins1's wet steps still need their own go-ahead.
+
+**Where it lives.** The ruling is recorded as a standing grant in `gunbc.auth.standing_operator_grant`, not here. That module's `StandingOperatorGrant` is scoped today by a Spark `FabricGroup`, so its scope is re-derived to also name a managed-host subject, with Group A's meaning unchanged. The grant carries only effects that a gate consumes (§3c). Each covered effect is classified by executing `gunbc.auth.authorization_pattern_selection` and gets its row in `gunbc.auth.privileged_effect_census`. An effect whose consuming gate has not landed is a declared frontier, not a row.
+
+**What the ruling does not change.** It discharges the per-run approval only. Every other wall stands:
+- the route standing;
+- the lockout guard before the first dangerous write;
+- the sealed, evidence-bound readbacks;
+- the per-build grounding;
+- **real readings only.** Anything unmeasured stays a refusal; nothing is defaulted or transcribed from another unit or another build.
+
+**Order.** Each step lands as a committed, digest-cited capture or receipt, taken from srv1 the way the 2026-10-04 Manager and FRU reads were. A step whose consuming code has not landed waits for it.
+
+| # | Step | Consumed by | Waits on |
+|---|---|---|---|
+| J0 | The standing grant row for mtjade1 | the gates below | its own PR (no hardware) |
+| J1 | Read-only probe at the current build (Wiwynn/AMI MegaRAC SPX, firmware `2.11.104000`): channel info for every LAN channel; user access and user name for every user id; SDR record names and readings; the controller clock | O1a route standing, O1b `BmcSecure` observe, `gunbc.megarac_operation_standing` `BuildReading` | J0 (reads only) |
+| J2 | **Prior-life archive**, read-only on the BMC: all eight carriers captured from the box, archived and read back by digest; the cursor derived from the archive | O1c-2 `PriorLifeBoundary` | #13419 landed |
+| J3 | **Per-build MegaRAC operation evidence** at `2.11.104000`: virtual-media attach, a KVM canvas still, SDR socket naming; each an executed receipt, never a recovered or transcribed one | `gunbc.machine_intake_megarac_operation_evidence`, `admit_megarac_host_at_current_build` | J1 |
+| J4 | **Login and credential change**: `BmcSecure` Apply through the route O1a grounds at this build, the lockout guard first, then the independent re-read from which `BmcSecure` is derived; then mtjade1's `ManagedHostAdmission` record | O1c-3 (the gate discharged by the J0 grant; the admission population) | O1c-3 landed, J1 grounding the routes |
+| J5 | **Board figure and BMC-stack readings measured on the box**: SMBIOS type 17 locators and the DIMM population; fan and sensor names | a Mt. Jade figure for cut 6's board selection, from the cited Mt. Jade guide joined to these readings; cut 5's family-selected fan policy | J1, and the board-identity decision below |
+| J6 | **Boots** | the host-generic boot run | cuts 4b-ii and 4d, then O2 |
+
+**mtjade1's board is not `GigabyteMp72Hb0`.** Its FRU capture (`artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt`) reads Board Mfg `WIWYNN`, Board Product `Mt.Jade Motherboard`, part `B81.03010.0041`. `extdeps.boards.types` `GigabyteMp72Hb0` is a different board: a candidate reference row with no fleet instance.
+
+Cut 6's selection is keyed by the closed `BaseboardModel`. `extdeps.ocp.mt_jade.platform` deliberately keeps Mt. Jade out of that enum: adding a board must not edit a generic product enum (§3, external upstream decomposition). So J5 has two prerequisites, and it does not add an enum arm:
+- **Board identity:** decide how a bound host's board identity reaches the per-board authority (`extdeps.ocp.mt_jade` and `extdeps.ampere.mt_jade_getting_started_guide`), read from that host's own FRU.
+- **Re-key the selection:** cut 6's figure selection moves to that identity. If it stays on the closed enum, the closed enum is a §3 hub.
+
+Until both are done, mtjade1's orientation refuses.
+
+**What stays a refusal until measured:**
+- Mt. Jade's DIMM figure: none is authored from the guide alone, and nothing comes from proprietary documents.
+- A MegaRAC operation not executed at `2.11.104000`.
+- A route not grounded at this build.
+- mtjade1's managed-host membership, until J4's record exists.
+
 #### `BmcSecure` as a desired state (O1b)
 
 Today `derive_bmc_secure` is rotation-event shaped. A rejected bootstrap credential is `PreviouslyRotatedCredentialRequired`, an accepted one with no rotation is `CredentialRotationNotApplied`, and only `RotationApplied` with an advanced epoch can mint `BmcSecured`. **So a correctly secured controller cannot be observed as a Noop through the existing fold.** The phase is therefore decomposed in `gunbc.machine_intake_bmc_secure`, with its conjunction unchanged:
