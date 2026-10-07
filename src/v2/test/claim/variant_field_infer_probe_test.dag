@@ -41,7 +41,7 @@ import v2.std.node {
 }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
 
