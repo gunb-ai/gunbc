@@ -11,7 +11,11 @@ import gunbc.machine_intake_arrival_interlock {
   admit_arrival_archive_interlock, admit_arrival_bmc_secure_interlock,
   ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
   ArrivalBmcSecureInterlockAdmitted, ArrivalBmcSecureInterlockRefused,
+  arrival_combine_prefix_and_release,
+  ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
 }
+import std.process { ExitSuccess, ExitFailure }
+import std.durable_compare_and_set { cas_generation_first }
 import gunbc.machine_intake_bmc_rotation_route { rotation_route_ungrounded }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
@@ -22,14 +26,16 @@ import gunbc.auth.mtjade1_arrival_federation {
 import gunbc.auth.authorization_pattern_selection {
   FederatedScopedGrant, OperatorApprovedCapability,
   PatternSelected, AuthorizationPatternSelection,
+  InterlockPending, InterlockedBy, UnconditionalStanding,
   select_authorization_pattern,
 }
 import gunbc.auth.privileged_effect_census { rulings_without_a_rostered_interlock }
 import gunbc.machine_intake_arrival_converge { grant_discharges_bmc_secure_account_write }
 import gunbc.auth.standing_operator_grant {
-  mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost,
+  mtjade1_live_standing_grant, standing_grant_covers, standing_grant_arm_interlock, StandingGrantHost,
   StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
 }
+import std.decl_ref { declaration_ref_display_key }
 import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 
 fn selected_federated(s: AuthorizationPatternSelection) -> Bool {
@@ -100,11 +106,53 @@ test fn w_ungrounded_route_refuses_bmc_secure_interlock() -> Bool {
   }
 }
 
+test fn w_release_failure_after_success_is_visible() -> Bool {
+  match arrival_combine_prefix_and_release(
+    prefix: ExitSuccess,
+    slot: ArrivalArchiveSlotReleaseRefused { cause: "arrival slot release was not eligible" as NonEmptyStr },
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "slot release refused")
+  }
+}
+
+test fn w_release_failure_after_prefix_failure_is_concatenated() -> Bool {
+  match arrival_combine_prefix_and_release(
+    prefix: ExitFailure { code: 2, reason: "prefix refused" },
+    slot: ArrivalArchiveSlotReleaseRefused { cause: "arrival slot release was not eligible" as NonEmptyStr },
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: c, reason: r } =>
+      c == 2 && string_contains(s: r, pattern: "prefix refused") && string_contains(s: r, pattern: "slot release refused")
+  }
+}
+
+test fn w_successful_release_keeps_the_prefix() -> Bool {
+  match arrival_combine_prefix_and_release(
+    prefix: ExitSuccess,
+    slot: ArrivalArchiveSlotReleased { generation: cas_generation_first() },
+  ) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
 test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
   selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
-    && selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
+    && selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
+    && !selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
     && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
     && mtjade1_arrival_principal_member() == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
     && mtjade1_arrival_secret_grants().length() == 1
-    && rulings_without_a_rostered_interlock().length() == 0
+    && rulings_without_a_rostered_interlock().length() == 1
+    && match rulings_without_a_rostered_interlock().first() {
+      Present { value: s } =>
+        declaration_ref_display_key(ref: s) == "gunbc.auth.mtjade1_arrival_federation::mtjade1_arrival_firmware_qualification_effect"
+      Absent => false
+    }
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
+      InterlockPending { obligation: _ } => true
+      InterlockedBy { hold: _ } => false
+      UnconditionalStanding { reason: _ } => false
+    }
 }

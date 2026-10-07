@@ -155,6 +155,11 @@ test fn w_the_ruling_text_is_the_operator_quote() -> Bool {
       InterlockPending { obligation: _ } => false
       UnconditionalStanding { reason: _ } => false
     }
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
+      InterlockPending { obligation: _ } => true
+      InterlockedBy { hold: _ } => false
+      UnconditionalStanding { reason: _ } => false
+    }
 }
 
 test fn w_the_selection_fold_over_true_mtjade1_session_attributes() -> Bool {

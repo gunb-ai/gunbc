@@ -365,7 +365,12 @@ test fn a_standing_ruling_does_not_discharge_a_wide_credential() -> Bool {
 
 // EVERY STANDING RULING IN THE CENSUS NAMES AN INTERLOCK ROSTERED AGAINST ITS OWN SITE.
 test fn every_standing_ruling_has_its_interlock_rostered() -> Bool {
-  (rulings_without_a_rostered_interlock() |> count) == 0
+  (rulings_without_a_rostered_interlock() |> count) == 1
+    && match rulings_without_a_rostered_interlock().first() {
+      Present { value: s } =>
+        declaration_ref_display_key(ref: s) == "gunbc.auth.mtjade1_arrival_federation::mtjade1_arrival_firmware_qualification_effect"
+      Absent => false
+    }
 }
 
 test fn pending_and_unconditional_rulings_do_not_invent_a_rostered_hold() -> Bool {

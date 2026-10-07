@@ -18,9 +18,8 @@ import gunbc.machine_intake_arrival_subject {
   ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
 }
 import gunbc.machine_intake_arrival_interlock {
-  arrival_archive_slot_acquire, arrival_archive_slot_release,
-  ArrivalArchiveSlotHeld, ArrivalArchiveSlotAcquired, ArrivalArchiveSlotAcquireRefused,
-  ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
+  arrival_archive_slot_acquire, arrival_release_after_prefix,
+  ArrivalArchiveSlotAcquired, ArrivalArchiveSlotAcquireRefused,
 }
 import gunbc.machine_intake_arrival_converge {
   converge_mtjade1_arrival_prefix, mtjade1_unobserved_prior_life_world, arrival_prefix_process_exit,
@@ -89,18 +88,6 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
               ),
             ),
           )
-      }
-  }
-}
-
-fn arrival_release_after_prefix(held: ArrivalArchiveSlotHeld, prefix: ProcessExit) -> ProcessExit {
-  match arrival_archive_slot_release(held: held) {
-    ArrivalArchiveSlotReleased { generation: _ } => prefix
-    ArrivalArchiveSlotReleaseRefused { cause: c } =>
-      match prefix {
-        ExitSuccess => exit_failure(reason: concat("arrival_converge: prefix held, then slot release refused: ", c as String))
-        ExitFailure { code: code, reason: reason } =>
-          ExitFailure { code: code, reason: concat(reason, concat("; then slot release refused: ", c as String)) }
       }
   }
 }

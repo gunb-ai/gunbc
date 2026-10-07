@@ -128,6 +128,7 @@ data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
 // needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead." Quote unchanged.
 // Grant grain stays InterlockPending (no blanket hold; unnamed classes such as J6 boot still refuse
 // to discharge). Landed arms are InterlockedBy named holds via standing_grant_arm_interlock.
+// StandingJadeFirmwareQualification stays InterlockPending until a held writer lands.
 // StandingBmcSecureAccountWrite's overlay hold is #13517's admit_rotation_apply. Mode, pool, SA and
 // secret names: operator sign-off msg_f03558d1.
 data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
@@ -151,8 +152,8 @@ fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect
     StandingJadeArrivalArchive => InterlockedBy {
       hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     }
-    StandingJadeFirmwareQualification => InterlockedBy {
-      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    StandingJadeFirmwareQualification => InterlockPending {
+      obligation: "firmware qualification writer is not in converge_mtjade1_arrival_prefix; discharge only when that writer runs under ArrivalArchiveSlotHeld from arrival_archive_slot_acquire" as NonEmptyStr,
     }
     StandingBmcSecureAccountWrite => InterlockedBy {
       hold: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply"),

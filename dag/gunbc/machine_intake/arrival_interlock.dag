@@ -1,6 +1,7 @@
 module gunbc.machine_intake_arrival_interlock
 
 import std.types { NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
 import gunbc.durable_exclusive_hold_file_store {
@@ -26,9 +27,9 @@ import gunbc.machine_intake_arrival_subject { ArrivalSubjectAdmitted }
 // admit_arrival_* are supplied-slot checks, not the live hold.
 //
 // Archive (J2) needs the exclusive slot only (reads, evidence write, no account rotation).
-// BmcSecure (J4) is InterlockedBy admit_rotation_apply (#13517). Firmware qualification's census
-// hold is the live arrival slot (arrival_archive_slot_acquire); the write is not in the prefix yet.
-// admit_arrival_* remain supplied-slot checks for witnesses. The store host is operator_host_srv1.
+// BmcSecure (J4) is InterlockedBy admit_rotation_apply (#13517). Firmware qualification stays
+// InterlockPending until a writer under ArrivalArchiveSlotHeld lands in the wet door; the prefix
+// is PriorLifeBoundary only. admit_arrival_* remain supplied-slot checks for witnesses.
 
 fn arrival_slot_key(subject_wire: NonEmptyStr) -> NonEmptyStr {
   join(["arrival:", subject_wire as String], "") as NonEmptyStr
@@ -145,4 +146,20 @@ fn arrival_archive_slot_release(held: ArrivalArchiveSlotHeld) -> ArrivalArchiveS
           ArrivalArchiveSlotReleaseRefused { cause: "arrival slot key not addressable on release" as NonEmptyStr }
       }
   }
+}
+
+fn arrival_combine_prefix_and_release(prefix: ProcessExit, slot: ArrivalArchiveSlotRelease) -> ProcessExit {
+  match slot {
+    ArrivalArchiveSlotReleased { generation: _ } => prefix
+    ArrivalArchiveSlotReleaseRefused { cause: c } =>
+      match prefix {
+        ExitSuccess => exit_failure(reason: concat("arrival_converge: prefix held, then slot release refused: ", c as String))
+        ExitFailure { code: code, reason: reason } =>
+          ExitFailure { code: code, reason: concat(reason, concat("; then slot release refused: ", c as String)) }
+      }
+  }
+}
+
+fn arrival_release_after_prefix(held: ArrivalArchiveSlotHeld, prefix: ProcessExit) -> ProcessExit {
+  arrival_combine_prefix_and_release(prefix: prefix, slot: arrival_archive_slot_release(held: held))
 }
