@@ -127,7 +127,24 @@ test fn a_declared_emit_only_basename_is_not_outside_the_dag() -> Bool {
     edge_provenances: chain_edge_provenances(),
     target_crate_count: 3
   ) {
-    EmittedWorkspacePlanned { plan: _ } => true
+    EmittedWorkspacePlanned { plan: plan } =>
+      plan.rows |> any(r => r.package_name == emitted_workspace_runtime_package && r.modules |> any(m => m == "dry_run"))
+    EmittedWorkspaceRefused { cause: _ } => false
+  }
+}
+
+// A closure the emitter wrote no dry_run for (no services) plans a runtime crate that names none.
+test fn the_runtime_crate_names_dry_run_only_when_the_emission_wrote_it() -> Bool {
+  match emitted_workspace_plan_over(
+    module_dag: chain_dag(),
+    emitted_basenames: chain_emitted_basenames(),
+    edge_froms: chain_edge_froms(),
+    edge_tos: chain_edge_tos(),
+    edge_provenances: chain_edge_provenances(),
+    target_crate_count: 3
+  ) {
+    EmittedWorkspacePlanned { plan: plan } =>
+      plan.rows |> any(r => r.package_name == emitted_workspace_runtime_package && !(r.modules |> any(m => m == "dry_run")))
     EmittedWorkspaceRefused { cause: _ } => false
   }
 }
