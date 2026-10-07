@@ -1,0 +1,93 @@
+module gunbc.native_product_shared_store
+
+import std.types { String, NonEmptyStr, Bool }
+import std.optional { Present, Absent }
+import std.content_hash { sha256_hex_digest }
+import std.fabric_blob { FabricBlobAddress, FabricBlobReading }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.fabric.fabric_blob_r2 {
+  FabricBlobGetResult, FabricBlobPutResult, get_cache_blob, put_cache_blob,
+}
+
+// THE SHARED REALIZATION OF THE NATIVE PRODUCT STORE (CI programme row R3), BEHIND THE SAME KEY.
+// The request is unchanged: std.materialization_provider ArtifactRequest::NativeCompilerArtifactRequest,
+// whose key the seed folds (v1_compiler.cli_run.native_product_cache derive_key) as the SHA-256 of
+// the six PreMaterializationIdentity axes. R2 is that request's REALIZATION (DESIGN section 3: the
+// interface is the keyed request, the realization is where its product lives): the address is the
+// request key itself, std.fabric_blob's admitted key, and the object is the whole publication,
+// created if absent and never overwritten, so concurrent writers cannot race and a reader never sees
+// half of one. Transport, bucket, release and the credential are gunbc.fabric.fabric_blob_r2's and
+// gunbc.cloudflare.r2_origin's, spelled here by no one.
+//
+// WHAT THIS MODULE OWNS IS THE ONE FACT NO OTHER HOME DOES: WHICH RUN MAY USE THE STORE, AND HOW.
+// A fork's pull request is handed no workload identity at all, so it has no access and falls back to
+// the per-host L1 alone. A same-repo pull request and the merge queue's composed revision may read
+// and write: a pull request's tree is not any merged tree, so a write from a pull request is the only
+// way a later run of that pull request hits. The residual this accepts is stated, not hidden: an
+// entry written by a same-repo pull request is verified on read only against its own manifest (the
+// executable re-hashed against it, the manifest against the key), which a same-repo writer
+// controls; the trust boundary is therefore "who may write", and it is this function's, not a check.
+//
+// DECLARED FRONTIER (DESIGN 3c), NOT YET CONSUMED BY EXECUTION. The named consumer is the seed's
+// preparation step (cli_run native_lane_runner prepare_emitted_compiler_for_entry), which today
+// reads and writes only the per-host L1 under GUNBC_NATIVE_CACHE_ROOT; that L1 keeps working, and
+// this module is the second tier behind it, never a second store of a different key. TRIGGER, the
+// capability and not an artifact: the cache-blobs read and write tokens are minted and pinned in
+// gunbc.cloudflare.r2_origin fabric_cache_blobs_standing (they are OriginCredentialUnminted, so
+// every transfer below refuses closed, naming the unminted credential) AND the required emit-build
+// job carries a workload identity (an id-token grant and the federation step) so an
+// AccessTokenSource of WorkloadIdentityToken is selectable there. Until both hold, the arms below
+// refuse and the run proceeds on the L1 and a rebuild; nothing here widens to a different store.
+
+type NativeProductRunStanding
+  = ForkPullRequestRun
+  | SameRepoPullRequestRun
+  | MergeGroupRun
+  | UnattributedRun
+
+type NativeProductStoreAccess
+  = NativeProductStoreReadWrite
+  | NativeProductStoreNoAccess { cause: NonEmptyStr }
+
+fn native_product_store_access(standing: NativeProductRunStanding) -> NativeProductStoreAccess {
+  match standing {
+    ForkPullRequestRun => NativeProductStoreNoAccess { cause: "a fork's pull request is handed no workload identity: the shared store is unreachable, the per-host store alone applies" as NonEmptyStr }
+    UnattributedRun => NativeProductStoreNoAccess { cause: "the run's origin is not one of fork pull request, same-repo pull request or merge group: no standing to read or publish a shared product" as NonEmptyStr }
+    SameRepoPullRequestRun => NativeProductStoreReadWrite
+    MergeGroupRun => NativeProductStoreReadWrite
+  }
+}
+
+// THE ADDRESS IS THE REQUEST KEY, NOT A DERIVATION OF IT: the seed's key is lower hex SHA-256, which
+// is exactly std.fabric_blob's Sha256Digest. A key that is not that shape has no address.
+fn native_product_blob_address(key_hex: String) -> FabricBlobAddress? {
+  match sha256_hex_digest(hex: key_hex) {
+    Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+    Absent => none
+  }
+}
+
+type NativeProductSharedGet
+  = NativeProductSharedGetNotAdmitted { cause: NonEmptyStr }
+  | NativeProductSharedGetAnswered { result: FabricBlobGetResult }
+
+type NativeProductSharedPut
+  = NativeProductSharedPutNotAdmitted { cause: NonEmptyStr }
+  | NativeProductSharedPutAnswered { result: FabricBlobPutResult }
+
+// THE ACCESS DECISION PRECEDES THE TRANSFER, so a run with no standing never reaches a credential.
+// What the bytes MEAN is the caller's to verify on read (executable against manifest against key),
+// exactly as std.fabric_blob leaves it.
+fn native_product_shared_get(standing: NativeProductRunStanding, address: FabricBlobAddress, token_source: AccessTokenSource) -> NativeProductSharedGet {
+  match native_product_store_access(standing: standing) {
+    NativeProductStoreNoAccess { cause: cause } => NativeProductSharedGetNotAdmitted { cause: cause }
+    NativeProductStoreReadWrite => NativeProductSharedGetAnswered { result: get_cache_blob(address: address, token_source: token_source) }
+  }
+}
+
+fn native_product_shared_put(standing: NativeProductRunStanding, address: FabricBlobAddress, reading: FabricBlobReading, token_source: AccessTokenSource) -> NativeProductSharedPut {
+  match native_product_store_access(standing: standing) {
+    NativeProductStoreNoAccess { cause: cause } => NativeProductSharedPutNotAdmitted { cause: cause }
+    NativeProductStoreReadWrite => NativeProductSharedPutAnswered { result: put_cache_blob(address: address, reading: reading, token_source: token_source) }
+  }
+}
