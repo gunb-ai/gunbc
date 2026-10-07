@@ -24800,12 +24800,12 @@ pub fn list_branch_meets_expected_list(
     text: Rc<TextJudgment>,
 ) -> bool {
     type_node_is_uninformed_accumulator(branch.clone(), source_indices.clone())
-        || crate::v1_compiler_infer_types::node_type_compatible(
-            branch,
-            expected,
-            source_indices,
+        || (crate::v1_compiler_infer_types::node_type_compatible(
+            branch.clone(),
+            expected.clone(),
+            source_indices.clone(),
             text,
-        )
+        ) && list_concat_elements_agree(branch, expected, source_indices))
 }
 
 pub fn concat_operand_is_open_generic(

@@ -14267,12 +14267,14 @@ fn list_element_is_kernel_string(n: Node, source_indices: Map<String, NewlineInd
     }
 }
 
-// AN IF-JOIN CHECKS EACH BRANCH AGAINST THE EXPECTED LIST. A branch meets it when it is
-// still unsolved or when it inhabits that list. A defaulted List<String> does not stand in
-// for a branded or refined expected element (DESIGN §4 / §5: no silent side).
+// AN IF-JOIN CHECKS EACH BRANCH AGAINST THE EXPECTED LIST. "Defaulted" here is only an
+// unsolved placeholder or empty literal that was never authored as String. An authored
+// ["foo"] is an informed List<String> and must not inhabit List<NonEmptyStr>
+// (node_type_compatible peels the brand; list_concat_elements_agree keeps it).
 fn list_branch_meets_expected_list(branch: Node, expected: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   type_node_is_uninformed_accumulator(n: branch, source_indices: source_indices)
-    || node_type_compatible(left: branch, right: expected, source_indices: source_indices, text: text)
+    || (node_type_compatible(left: branch, right: expected, source_indices: source_indices, text: text)
+      && list_concat_elements_agree(left: branch, right: expected, source_indices: source_indices))
 }
 
 fn list_element_type_node(n: Node) -> Node? {

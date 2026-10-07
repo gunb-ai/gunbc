@@ -139,3 +139,13 @@ data fold_list_string_element_is_char_source: String = "module probe_fold_string
 test fn fold_list_over_a_string_types_the_element_as_char() -> Bool {
   compiles_with_no_blocking_diagnostic(source: fold_list_string_element_is_char_source)
 }
+
+// AN AUTHORED ["foo"] IS NOT A DEFAULTED LIST. Expected List<NonEmptyStr> must refuse
+// it at an if-join (the empty branch is the only unsolved placeholder that may unify).
+data if_join_authored_string_list_vs_nonstr_source: String = "module probe_if_join_authored_str_vs_nonstr\nimport std.types { NonEmptyStr, String, List }\nfn bad(cond: Bool) -> List<NonEmptyStr> {\n  if cond { [\"foo\"] } else { [] }\n}\n"
+
+test fn if_join_authored_string_list_against_nonstr_refuses() -> Bool {
+  ((blocking_class_count_for(source: if_join_authored_string_list_vs_nonstr_source, wanted_class: "TypeMismatch") >= 1)
+    || (blocking_class_count_for(source: if_join_authored_string_list_vs_nonstr_source, wanted_class: "InternalError") >= 1))
+    && !compiles_with_no_blocking_diagnostic(source: if_join_authored_string_list_vs_nonstr_source)
+}
