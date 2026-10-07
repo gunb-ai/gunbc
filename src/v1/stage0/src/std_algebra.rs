@@ -1835,7 +1835,7 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 
 pub fn algebra_profile_generator(profile: AlgebraProfile) -> Option<String> {
     match profile.clone() {
-        AlgebraProfile::FreeMonoidScalarProfile => Some("Char".to_string()),
+        AlgebraProfile::FreeMonoidScalarProfile => Some("std.types.Char".to_string()),
         AlgebraProfile::OrderedRingProfile => std::option::Option::None,
         AlgebraProfile::OrderedSemiringProfile => std::option::Option::None,
         AlgebraProfile::ApproximateFieldProfile => std::option::Option::None,

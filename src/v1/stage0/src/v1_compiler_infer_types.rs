@@ -245,6 +245,27 @@ pub fn receiver_profile_generator(name: String) -> Option<String> {
     }
 }
 
+pub fn callback_element_type_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    {
+        let normed = normalize_access_type_node(n.clone());
+        if ((normed.children.clone().len() as i64) == 0) {
+            match receiver_profile_generator(container_kind_canonical(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), normed.clone()),
+            )) {
+                Some(g) => nominal_type_ref(g.clone()),
+                std::option::Option::None => {
+                    for_each_element_type_node(n.clone(), source_indices.clone())
+                }
+            }
+        } else {
+            for_each_element_type_node(n.clone(), source_indices.clone())
+        }
+    }
+}
+
 pub fn receiver_element_or_generator(
     base: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

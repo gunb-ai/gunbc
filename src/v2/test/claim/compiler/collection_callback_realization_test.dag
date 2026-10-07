@@ -176,15 +176,12 @@ fn ccr_all_binds_its_row() -> Bool {
   ccr_assembled_realizes(src: ccr_all_records, row: "std.algebra.collection_all_shape")
 }
 
-fn ccr_declared_any_lowers_no_loop() -> Bool {
+fn ccr_declared_any_refuses() -> Bool {
   match fmi_assemble(src: ccr_declared_any) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match ccr_loops(tree: tree) {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
+}
 }
 
 // (1) MAP OVER RECORDS READS A FIELD: the callback's binder `e` is the step's member formal, typed by the
@@ -213,14 +210,12 @@ test fn ccr_all_head_binds_its_row() -> Bool {
   ccr_all_binds_its_row()
 }
 
-// (3b) A HEAD A CORPUS DECLARATION BINDS STAYS AN ORDINARY CALL. filter and any are NOT realized,
-// because v2.std.algebra declares ordinary fns of those names and lowering classifies a head by spelling;
-// a realized row would lower such a call to a Loop that resolve refuses as shadowed
-// (gunbc.recurring_failure_mode collection_callback_operation_unrealized_in_v2_lowering). The guard: a
-// module declaring its own `any` and calling it positionally assembles, and lowers to no Loop. Adding
-// any's row to v2.compiler.fold_lowering collection_roster_rows makes this control red.
-test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
-  ccr_declared_any_lowers_no_loop()
+// (3b) A COLLECTION OPERATION'S NAME IS THE ROSTER'S (calm-boar-904, ruling B'): filter and any are realized, and
+// lowering classifies a head by spelling, so a module that declares its OWN `any` and calls it is lowered to the
+// roster's Loop, which resolve refuses as shadowed. RED: that module refuses, typed -- it never binds one of the two
+// silently. (This control was the guard that any had NO row; it flipped to a refusal when the row landed.)
+test fn ccr_declared_any_refuses_rather_than_binding_silently() -> Bool {
+  ccr_declared_any_refuses()
 }
 
 // (4) THE STRUCTURAL COST CONTROL: map's synthesized step body is a construct whose `tail` is the step's

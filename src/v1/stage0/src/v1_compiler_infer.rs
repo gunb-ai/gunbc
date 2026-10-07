@@ -246,16 +246,16 @@ use crate::v1_compiler_infer_types::TextNotAskedReason::{
     TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
 };
 pub use crate::v1_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
-    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
-    template_return_is_receiver_self,
+    bare_map_node, bare_set_node, callable_inferred, callable_return_type,
+    callback_element_type_node, child_type_node, emit_map_has, extract_optional_inner_node,
+    for_each_element_type_node, infer_binop_type_node, infer_literal_node,
+    is_declared_container_alias_spelling, is_fully_resolved, is_type_expr_annotation,
+    kernel_profile_lookup, make_callable_type, make_container_type, method_receiver_element_node,
+    node_is_collection, node_is_element_collection, node_is_keyed_collection,
+    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
+    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
+    resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
+    subtraction_refinement_of, template_return_has_variables, template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_infer_types::{KernelTypeBuild, TextJudgment, TextNotAskedReason};
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -13140,7 +13140,7 @@ Rc::new(InferResult {
                                                 crate::v1_compiler_infer_types::resolved_type(
                                                     first_result.typed.clone(),
                                                 );
-                                            let elem_type = crate::v1_compiler_infer_types::for_each_element_type_node(first_type.clone(), scope.type_env.clone().source_indices.clone());
+                                            let elem_type = crate::v1_compiler_infer_types::callback_element_type_node(first_type.clone(), scope.type_env.clone().source_indices.clone());
                                             let call_elem_provenance = derive_element_provenance(
                                                 first_result.typed.clone(),
                                                 elem_type.clone(),
@@ -14007,7 +14007,7 @@ Rc::new(InferResult {
                         crate::v1_compiler_infer_types::resolved_type(recv_typed.clone()),
                         scope.type_env.clone(),
                     );
-                    let recv_elem_type = crate::v1_compiler_infer_types::for_each_element_type_node(
+                    let recv_elem_type = crate::v1_compiler_infer_types::callback_element_type_node(
                         recv_rt.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     );

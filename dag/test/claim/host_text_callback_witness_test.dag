@@ -2,7 +2,6 @@ module test.claim.host_text_callback_witness_test
 
 import std.types { Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.process { ProcessExit, exit_failure }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -60,13 +59,3 @@ test fn htc_char_predicate_is_not_blocking() -> Bool {
   !htc_blocking(source: concat("module test.claim.htc_char_probe\n", htc_char_fns, "fn probe(s: String) -> Bool \{ any(xs: s, predicate: fn(c) \{ is_a(c: c) \}) \}\n"))
 }
 
-// TEMPORARY DISCOVERY (removed before ready): the blocking rows of the Char-predicate fixture.
-fn htc_debug_blocking_rows() -> ProcessExit {
-  match compile_dag_diagnostic_census(concat("module test.claim.htc_char_probe\n", htc_char_fns, "fn probe(s: String) -> Bool \{ any(xs: s, predicate: fn(c) \{ is_a(c: c) \}) \}\n")) {
-    CensusObserved { rows: rows } => {
-      let rs: List<CompileDiagnosticCensusRow> = rows
-      exit_failure(reason: join(rs |> filter(r => r.blocking) |> map(r => concat(r.subject_name, concat(" :: ", to_string(r.diagnostic_class)))), " ;; "))
-    }
-    CensusNotRunnable { cause: _ } => exit_failure(reason: "NOT-RUNNABLE")
-  }
-}

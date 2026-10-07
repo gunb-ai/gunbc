@@ -29275,8 +29275,8 @@ pub fn emit_rust_higher_order_method(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    if (is_string_typed_expr(
-        receiver.clone(),
+    if (is_host_text_carrier_type(
+        crate::v1_compiler_infer_types::resolved_type(receiver.clone()),
         scope.type_env.clone().source_indices.clone(),
     ) && ((ho_spec.method_name.clone() == "filter".to_string())
         || (ho_spec.method_name.clone() == "any".to_string())))
