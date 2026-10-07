@@ -12105,8 +12105,21 @@ pub fn type_is_bare_collection_carrier(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    formal_type_is_unary_container(n.clone(), source_indices)
+    if formal_type_is_unary_container(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) != 1)
+    {
+        true
+    } else if (n.children.clone().len() as i64) == 1 {
+        match n.children.clone().iter().cloned().next() {
+            Some(c) => type_is_bare_collection_carrier(
+                crate::v1_compiler_infer_types::child_type_node(c),
+                source_indices,
+            ),
+            std::option::Option::None => false,
+        }
+    } else {
+        false
+    }
 }
 
 pub fn fold_step_callable(acc_type: Rc<Node>, element_type: Rc<Node>) -> Rc<Node> {
