@@ -1,4 +1,5 @@
 module std.realization_schedule
+import std.optional { Absent, Present }
 
 import std.types { CommitSha, NonEmptyStr, Bool, String, List, Int, brand }
 import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }

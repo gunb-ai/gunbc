@@ -2,7 +2,7 @@ module v2.std.algebra
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Conj, Edge, Authored, Node, TypeNode }
-import v2.std.optional { Optional, optional_absent, optional_present }
+import std.optional { Optional, optional_absent, optional_present }
 import std.algebra {
   AbelianGroup,
   BooleanAlgebra,

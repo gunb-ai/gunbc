@@ -1,4 +1,5 @@
 module std.types
+import std.optional { Absent, Present }
 
 import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map }
 import std.unicode.types { unicode_scalar }

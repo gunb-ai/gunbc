@@ -37,7 +37,7 @@ import v2.std.leaf_model_verification {
   TargetCompileVerdict
 }
 import v2.std.node { Node, Symbol, node_subtree_count }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.resolve { ResolvedTree }
 

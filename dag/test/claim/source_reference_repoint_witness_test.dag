@@ -1,0 +1,73 @@
+module test.claim.source_reference_repoint_witness_test
+
+import std.types { Bool, Int, List, String }
+import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.source_reference_repoint {
+  SourceEdit, ReferenceRepoint,
+  apply_source_edits, module_path_repoint_edits, repointed_source_text
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CLAIMS OVER THE REWRITE AT ITS OWN INTERFACE: source text in, source text out. The inputs are
+// supplied strings; the real path (every file under the roots) is the repoint entry itself, whose
+// output is the tree this file is committed with.
+
+fn optional_move() -> ReferenceRepoint {
+  ReferenceRepoint { from_path: "v2.std.optional", to_path: "std.optional" }
+}
+
+fn rewritten(text: String) -> String {
+  repointed_source_text(path: "probe.dag", text: text, repoints: [optional_move()])
+}
+
+test fn an_import_path_is_repointed() -> Bool {
+  rewritten(text: "module p.m\nimport v2.std.optional \{ Present, Absent \}\n")
+    == "module p.m\nimport std.optional \{ Present, Absent \}\n"
+}
+
+test fn a_qualified_name_keeps_its_remainder() -> Bool {
+  rewritten(text: "module p.m\nfn f(o: v2.std.optional.Optional<Int>) -> Int \{ 0 \}\n")
+    == "module p.m\nfn f(o: std.optional.Optional<Int>) -> Int \{ 0 \}\n"
+}
+
+test fn a_declaration_ref_row_is_repointed() -> Bool {
+  rewritten(text: "module p.m\ndata r: DeclarationRef = decl_ref(module_path: \"v2.std.optional\", decl_name: \"Optional\")\n")
+    == "module p.m\ndata r: DeclarationRef = decl_ref(module_path: \"std.optional\", decl_name: \"Optional\")\n"
+}
+
+// A path inside a string that is not a module_path argument is source TEXT, not a reference, and a
+// comment is not a token at all. Both survive; the import beside them does not.
+test fn a_string_and_a_comment_are_not_references() -> Bool {
+  rewritten(text: "module p.m\n// see v2.std.optional\nimport v2.std.optional \{ Present \}\ndata s: String = \"import v2.std.optional\"\n")
+    == "module p.m\n// see v2.std.optional\nimport std.optional \{ Present \}\ndata s: String = \"import v2.std.optional\"\n"
+}
+
+// Whole segments decide: a sibling module whose last segment only starts with the moved one, and a
+// module the moved path is a suffix of, are different modules.
+test fn a_neighbouring_module_path_is_left_alone() -> Bool {
+  let text = "module p.m\nimport v2.std.optional_extra \{ A \}\nimport x.v2.std.optional \{ B \}\n"
+  rewritten(text: text) == text
+}
+
+// The unit is the code point. A non-ASCII character ahead of the edit is more than one byte, so an
+// applier slicing by byte would cut the wrong span here.
+test fn a_non_ascii_prefix_does_not_shift_the_edit() -> Bool {
+  rewritten(text: "module p.m\ndata d: String = \"é—✓\"\nimport v2.std.optional \{ Present \}\n")
+    == "module p.m\ndata d: String = \"é—✓\"\nimport std.optional \{ Present \}\n"
+}
+
+// Idempotence, stated as the thing that makes a rebase a re-run: the rewritten text yields no edit.
+test fn a_second_run_produces_no_edit() -> Bool {
+  let once = rewritten(text: "module p.m\nimport v2.std.optional \{ Present \}\nfn f(o: v2.std.optional.Optional<Int>) -> Int \{ 0 \}\n")
+  count(module_path_repoint_edits(tokens: parsed_import_observation_live(file: "probe.dag", source: once).tokens, repoint: optional_move())) == 0
+    && rewritten(text: once) == once
+}
+
+test fn edits_are_applied_in_position_order() -> Bool {
+  apply_source_edits(text: "abcdef", edits: [
+    SourceEdit { start: 4, end: 5, replacement: "X" },
+    SourceEdit { start: 1, end: 2, replacement: "YY" }
+  ]) == "aYYcdXf"
+}

@@ -32,7 +32,7 @@ import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Rejected,
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.node { Node, Symbol, is_empty_conj_root, symbol_lexeme }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
 import v2.std.text { String }
 

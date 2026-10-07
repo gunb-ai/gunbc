@@ -129,7 +129,7 @@ test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
 // generation of the on-disk envelope must refuse -- naming both generations -- when the disk now
 // holds another, instead of silently clobbering the newer envelope. The guard's pure decision is
 // witnessed over supplied generations; the end-to-end arms drive the real guarded save over the
-// committed v8 fixture below.
+// committed v9 fixture below.
 //
 // HOW THE END-TO-END CLAIMS STAY HERMETIC, and where they do not. The stale arm performs no write
 // -- encode (pure), observe (a read of a checkout path, the carve-out this file's header already
@@ -140,11 +140,16 @@ test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
 // and runs on the local-repo wet lane, leaving every claim in this file hermetic.
 // ------------------------------------------------------------------------------------------------
 
-// A COMMITTED v8 ENVELOPE, re-cut from the v7 one when the sharded writer moved to v8. Empty
-// store, zero shards -- the guard's subject is the index document alone. The checked-in bytes ARE
-// the serializer's output (asserted by test.claim.scm.scm_affected_set_capture_witness_test
-// the_committed_v8_fixture_is_the_writers_bytes), which is what makes the fresh-save claim's
-// idempotent rewrite possible.
+// A COMMITTED v9 ENVELOPE, re-cut from the v8 one when the sharded writer moved to v9 (the typed
+// intake record). Empty store, zero shards, no commits -- the guard's subject is the index document
+// alone. The checked-in bytes ARE the serializer's output (asserted by
+// test.claim.scm.scm_affected_set_capture_witness_test the_committed_v9_fixture_is_the_writers_bytes),
+// which is what makes the fresh-save claim's idempotent rewrite possible.
+data scm_sv_v9_fixture_path: String = "dag/test/fixture/scm_repository_save/v9_empty_envelope.gunbc-repository.json"
+
+// THE v8 PREDECESSOR, kept READ-ONLY for the same reason the v7 one below is: the writer no longer
+// emits it, and it remains the committed v8 bytes test.claim.scm.scm_affected_set_capture_witness_test
+// the_committed_v8_fixture_is_the_writers_bytes compares the frozen v8 encoder against.
 data scm_sv_v8_fixture_path: String = "dag/test/fixture/scm_repository_save/v8_empty_envelope.gunbc-repository.json"
 
 // THE v7 PREDECESSOR, kept READ-ONLY: the sharded writer now emits v8 (object roster), so the v7
@@ -156,7 +161,7 @@ data scm_sv_v7_fixture_path: String = "dag/test/fixture/scm_repository_save/v7_e
 // THE FIXTURE'S DECODED FORM, loaded through the real read path: the repository a stale writer
 // would hold after loading the fixture.
 fn scm_sv_fixture_envelope() -> RepositoryEnvelope? {
-  match load_repository(path: scm_sv_v8_fixture_path) {
+  match load_repository(path: scm_sv_v9_fixture_path) {
     RepositoryLoaded { path: _, envelope, generation: _ } => Present { value: envelope }
     RepositoryLoadRefused { cause: _ } => none
   }
@@ -212,18 +217,18 @@ test fn scm_sv_an_appeared_envelope_refuses_an_absent_expectation() -> Bool {
 // the generation actually on disk (re-derived here from a direct read of the fixture bytes, so the
 // claim checks the guard's observation rather than trusting it).
 test fn scm_sv_a_stale_generation_save_refuses_naming_both_identities() -> Bool {
-  let on_disk = repository_generation_of_content(content: Filesystem.Read(path: scm_sv_v8_fixture_path).content)
+  let on_disk = repository_generation_of_content(content: Filesystem.Read(path: scm_sv_v9_fixture_path).content)
   let bogus = scm_sv_bogus_generation()
   match scm_sv_fixture_envelope() {
     Absent => false
     Present { value: envelope } =>
       match save_repository_sharded_guarded(
-        path: scm_sv_v8_fixture_path,
+        path: scm_sv_v9_fixture_path,
         repo: envelope,
         expected: GenerationExpected(bogus),
       ) {
         RepositoryStaleGenerationRefused { path: p, expected: e, found: f } =>
-          p == scm_sv_v8_fixture_path
+          p == scm_sv_v9_fixture_path
             && content_hash_eq_structural(left: f, right: on_disk)
             && match e {
               GenerationExpected(wanted) => content_hash_eq_structural(left: wanted, right: bogus)
@@ -239,12 +244,12 @@ test fn scm_sv_a_stale_generation_save_refuses_naming_both_identities() -> Bool 
 // save equal the bytes before it. The refused path performs no write (encode, observe, refuse),
 // so this is the read-before/read-after form of the file's header claim, over a file that exists.
 test fn scm_sv_a_refused_stale_save_leaves_the_envelope_byte_identical() -> Bool {
-  let before = Filesystem.Read(path: scm_sv_v8_fixture_path).content
+  let before = Filesystem.Read(path: scm_sv_v9_fixture_path).content
   let refused = match scm_sv_fixture_envelope() {
     Absent => false
     Present { value: envelope } =>
       match save_repository_sharded_guarded(
-        path: scm_sv_v8_fixture_path,
+        path: scm_sv_v9_fixture_path,
         repo: envelope,
         expected: GenerationExpected(scm_sv_bogus_generation()),
       ) {
@@ -253,6 +258,6 @@ test fn scm_sv_a_refused_stale_save_leaves_the_envelope_byte_identical() -> Bool
         RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
       }
   }
-  refused && Filesystem.Read(path: scm_sv_v8_fixture_path).content == before
+  refused && Filesystem.Read(path: scm_sv_v9_fixture_path).content == before
 }
 

@@ -13,7 +13,7 @@ import v2.std.algebra {
 }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.algebra { Cons, Empty }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.dependency { DependencyRelation }
 import v2.std.integer { Int }
 import v2.std.text { String }

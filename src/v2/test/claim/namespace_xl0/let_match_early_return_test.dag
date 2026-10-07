@@ -17,6 +17,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { List }
 import v2.std.integer { Int }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
@@ -26,10 +27,11 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -151,7 +153,7 @@ fn lme_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional
     xs: context.file_refusals,
     empty: optional_absent(),
     cons: fn(acc, refusal) {
-      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+      if refusal.path == unit { optional_present(value: native_test_file_refusal_fatal_reason(fr: refusal)) } else { acc }
     }
   )
 }

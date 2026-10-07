@@ -5,7 +5,7 @@ import gunbc.fleet_converge_terminal { fleet_converge_apply_terminal_wire, Fully
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
 import std.content_hash { serialize_content_hash }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,

@@ -3,7 +3,7 @@ module gunbc.auth.approval_gate
 import std.decl_ref { decl_ref }
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
 import std.measure { Second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.scoped_authorization {
   AuthorizationRequest, ScopedAuthorization, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
