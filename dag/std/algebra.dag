@@ -1053,11 +1053,12 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
 }
 
 // THE GENERATOR A PROFILE'S CARRIER IS FREE OVER, where the carrier names no element of its own: the host text
-// is free over Unicode scalars (std.types Char). A container carrier's element is its own type argument, so it
+// is free over Unicode scalars, named QUALIFIED (std.types.Char) for the reason the size rows name std.nat.Nat:
+// a bare template name resolves at the call site. A container carrier's element is its own type argument, so it
 // answers Absent here; a carrier with no generator answers Absent.
 fn algebra_profile_generator(profile: AlgebraProfile) -> String? {
   match profile {
-    FreeMonoidScalarProfile => Present { value: "Char" }
+    FreeMonoidScalarProfile => Present { value: "std.types.Char" }
     OrderedRingProfile => Absent
     OrderedSemiringProfile => Absent
     ApproximateFieldProfile => Absent
