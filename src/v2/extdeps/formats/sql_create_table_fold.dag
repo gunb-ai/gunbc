@@ -32,7 +32,7 @@ import v2.std.collection {
   list_nth,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

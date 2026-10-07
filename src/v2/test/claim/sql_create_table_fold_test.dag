@@ -32,7 +32,7 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.collection {
   Map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,

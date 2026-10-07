@@ -9,7 +9,7 @@ import gunbc.fci1_bounded_execution_context {
   Fci1MemoryHighExceedsMax,
   fci1_bounded_execution_context,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.systemd { WorkingDirectoryProperty, RuntimeDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 
 type Fci1BoundedExecutionContextEmission
