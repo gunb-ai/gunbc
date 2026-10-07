@@ -21,7 +21,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, node_subtree_nodes }
 import v2.std.node_query { construct_tag_path_optional }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_init, qualified_name_snoc }
 import v2.std.symbol_index {
   CallersAdmitted,

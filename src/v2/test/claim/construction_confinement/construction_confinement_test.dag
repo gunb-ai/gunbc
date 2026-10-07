@@ -18,7 +18,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Authored, CastTargetEdge, ComputationNode, Conj, ConstructTagEdge, Edge, Node, Symbol, Transform, TypeNode, core_edge_label }
 import v2.compiler.construction_confinement { construction_confinement_member }
 import v2.std.diagnostic { None, Some }
-import v2.std.optional { optional_present }
+import std.optional { optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.std.symbol_index { CallersAdmitted, ConstructionSealedToModule, empty_symbol_index, symbol_index_mark_construction_confinement }
 import std.occurrence_identity { OccurrenceSynthetic }
