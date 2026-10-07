@@ -53,6 +53,7 @@ import gunbc.target_binding {
   V2NativeCensusProducer, RefusalCensusReading, TypeDeclarationUseReading,
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
+  RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -491,6 +492,18 @@ fn generic_identity_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "generic-identity-census" } }
 }
 
+// ONE STAGE0 REGEN ROUND, PRICED BY PHASE ON TWO CLOCKS (gunbc.regen_round_cost), followed by the
+// one-mirror discriminator: the same producer over the same corpus with exactly one mirror
+// selected, so compile.emit's cost can be attributed to per-module rendering or to closure-wide
+// re-derivation. Run by name and ON-DEMAND ONLY, through instrument-dispatch on a memory-bounded
+// fleet slot; no required job runs it. Its consumer is the fast-regen emit repair, which reads its
+// figures at its own head rather than transcribing them. It builds claim_executor and writes under
+// target/; on a tree whose mirrors already match it installs nothing.
+// `gunbc test //gunbc/instruments:regen-round-cost`.
+fn regen_round_cost_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "regen-round-cost" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -577,6 +590,10 @@ fn dependency_demand_census_binding() -> TargetBinding {
 
 fn generic_identity_census_binding() -> TargetBinding {
   TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
+}
+
+fn regen_round_cost_binding() -> TargetBinding {
+  TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -761,6 +778,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(),
+    regen_round_cost_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
@@ -778,6 +796,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(),
+    regen_round_cost_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),

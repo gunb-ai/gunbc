@@ -459,7 +459,10 @@ fn ingest_expression(src: String) -> Expression? {
 
 fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
   let parts = split(s: src, delimiter: sp.interp_open)
-  let lead = parts.first()
+  let lead = match parts.first() {
+    Present { value: l } => l
+    Absent => ""
+  }
   let lead_segs = if lead == "" { [] } else { [ LiteralText { text: lead } ] }
   let built = fold(parts.skip(n: 1), init: Present { value: lead_segs }, f: (acc, part) => match acc {
     Absent => none
