@@ -4267,9 +4267,11 @@ mod run_relaying_as_it_runs_tests {
     // same counts as the same bytes decoded directly.
     #[test]
     fn a_relayed_census_stdout_decodes_to_the_same_verdict() {
-        let out = "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
-                   {\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
-                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let out =
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
+                   {\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
+                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0,\
+                   \"roots\":0,\"inferred\":3,\"infer_refused\":0,\"type_census\":\"held\"}\n";
         let mut c = Command::new("printf");
         c.arg("%s").arg(out);
         let relayed = run_relaying_as_it_runs(c).expect("spawn");
