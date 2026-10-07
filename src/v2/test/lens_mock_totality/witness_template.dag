@@ -38,7 +38,7 @@ fn mock_totality_handled_by(
   published: List<PublishedMockCase>,
   consumer_handles: fn(PublishedMockCase) -> Bool
 ) -> List<PublishedMockCase> {
-  filter(xs: published, predicate: consumer_handles)
+  filter(xs: published, predicate: c => consumer_handles(c))
 }
 
 fn mock_totality_green_holds(

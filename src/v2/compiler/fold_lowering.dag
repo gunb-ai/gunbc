@@ -32,6 +32,8 @@ import std.algebra {
   Cons,
   Empty,
   collection_all_shape,
+  collection_any_shape,
+  collection_filter_shape,
   collection_concat_shape,
   collection_fold_shape,
   collection_map_shape,
@@ -176,11 +178,28 @@ fn fold_row_position(position: Int?) -> Optional<Int> {
 
 // A roster operation's slots, positions read off its template row. A callback row (map, all) has no accumulator parameter, so template_accumulator_position answers Absent and its init slot
 // is absent: the template itself says there is no authored init.
-fn collection_fold_slots(t: AlgebraFieldTemplate) -> FoldSlots {
+fn collection_fold_slots(t: AlgebraFieldTemplate, form: CollectionRosterForm) -> FoldSlots {
   FoldSlots {
     collection: FoldSlot { name: optional_present(value: ^xs), position: fold_row_position(position: template_receiver_position(t: t)) },
     init: FoldSlot { name: optional_present(value: ^init), position: fold_row_position(position: template_accumulator_position(t: t)) },
-    step: FoldSlot { name: optional_present(value: ^f), position: fold_row_position(position: template_step_position(t: t)) }
+    step: FoldSlot { name: optional_present(value: collection_step_slot_name(form: form)), position: fold_row_position(position: template_step_position(t: t)) }
+  }
+}
+
+// THE CALLBACK'S ARGUMENT NAME, one arm per realization, beside the step shape it names (and the same declared
+// frontier: the template row carries positions, not parameter names). A predicate is `predicate` -- the name the
+// retired v2.std.algebra filter/any declared, which their callers write -- and a mapping or a fold step is `f`.
+fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
+  match form {
+    RosterCallbackStep { realization: r } =>
+      match r {
+        CallbackMapsToCons => ^f
+        CallbackAllByAnd => ^f
+        CallbackFiltersByCondition => ^predicate
+        CallbackAnyByOr => ^predicate
+      }
+    RosterAuthoredStep => ^f
+    RosterFreeMonoidPrimitiveCall => ^f
   }
 }
 
@@ -191,6 +210,10 @@ fn collection_fold_slots(t: AlgebraFieldTemplate) -> FoldSlots {
 // v2.std.algebra list_map):
 //   map(xs, e => B)     init Empty, step (acc, e) => Cons { head: B, tail: acc }
 //   all(xs, e => B)     init true,  step (acc, e) => acc && B
+//   filter(xs, e => B)  init Empty, step (acc, e) => if B { Cons { head: e, tail: acc } } else { acc }
+//   any(xs, e => B)     init false, step (acc, e) => acc || B
+// filter conses the KEPT member, so like map it is order-preserving only right to left; any is all's dual
+// and, like all, the same in either order.
 // Each step is O(1) per member: it conses one cell onto the carrier or joins one Bool into it, and never
 // copies it (no snoc, no append), which is the template's ShapeIterateBody at linear cost (DESIGN
 // section 6).
@@ -199,15 +222,18 @@ fn collection_fold_slots(t: AlgebraFieldTemplate) -> FoldSlots {
 // as the corpus declarations' slots above are: the template row carries the operation's signature and
 // cost, not a body. Its trigger is a realization body readable off the row.
 //
-// WHAT IS NOT HERE, BY NAME: filter and any (v2.std.algebra DECLARES ordinary fns of those names, which
-// dozens of modules import; lowering classifies a head by spelling without a binding, so realizing the
-// row would lower those calls to a Loop that resolve then refuses as shadowed), flat_map (its step is
+// filter and any were the v2.std.algebra declarations of those names; they are RETIRED onto these rows
+// (calm-boar-904, ruling B': the roster row is the one typing authority for a collection operation), the
+// declarations deleted and their imports dropped by tools.source_reference_repoint's retire-member mode.
+// WHAT IS NOT HERE, BY NAME: flat_map (its step is
 // itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). Their rows
 // are named in std.algebra and their calls stay unrealized; gunbc.recurring_failure_mode
 // collection_callback_operation_unrealized_in_v2_lowering is the counted frontier with each trigger.
 type CallbackRealization
   = CallbackMapsToCons
   | CallbackAllByAnd
+  | CallbackFiltersByCondition
+  | CallbackAnyByOr
 
 // A ROSTER ROW IS EITHER REALIZED AS A FOLD (an authored or synthesized step over the one Loop encoding)
 // or IS A PRIMITIVE CALL: concat is not an iteration, so its call stays a call, its unbound bare head binds
@@ -249,6 +275,8 @@ data collection_roster_rows: List<CollectionRosterRow> = [
   collection_roster_row(t: collection_fold_shape(), decl_name: "collection_fold_shape", form: RosterAuthoredStep),
   collection_roster_row(t: collection_map_shape(), decl_name: "collection_map_shape", form: RosterCallbackStep { realization: CallbackMapsToCons }),
   collection_roster_row(t: collection_all_shape(), decl_name: "collection_all_shape", form: RosterCallbackStep { realization: CallbackAllByAnd }),
+  collection_roster_row(t: collection_filter_shape(), decl_name: "collection_filter_shape", form: RosterCallbackStep { realization: CallbackFiltersByCondition }),
+  collection_roster_row(t: collection_any_shape(), decl_name: "collection_any_shape", form: RosterCallbackStep { realization: CallbackAnyByOr }),
   collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall)
 ]
 
@@ -408,7 +436,7 @@ fn fold_family_realization(head: Symbol) -> Optional<FoldRealization> {
       optional_present(value: FoldRealizesRosterOperation {
         template: r.template,
         row: r.row,
-        slots: collection_fold_slots(t: r.template)
+        slots: collection_fold_slots(t: r.template, form: r.form)
       })
     Absent =>
       if head == ^fold_list {
@@ -1135,6 +1163,8 @@ fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldItera
   match r {
     CallbackMapsToCons => IteratesRightToLeft
     CallbackAllByAnd => IteratesLeftToRight
+    CallbackFiltersByCondition => IteratesRightToLeft
+    CallbackAnyByOr => IteratesLeftToRight
   }
 }
 

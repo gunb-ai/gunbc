@@ -473,7 +473,7 @@ fn tsic_window_coverage_outcome() -> WindowCoverage {
     RawTreeNotEstablished { cause: _ } => WindowCoverage { established: false, text_import_read: false, literal_at_annotation: false, plus_concatenation: false, primitive_call: false, method_call: false, literal_argument: false, binder_argument: false, structural_other: false, structural_call_argument: false, structural_literal_argument: false }
     RawTreeEstablished { root: root, spans: _, text: _ } => {
       let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
-      let has = fn(pred) { any(xs: w.sites, predicate: pred) }
+      let has = fn(pred) { any(xs: w.sites, predicate: s => pred(s)) }
       WindowCoverage {
         established: true,
         text_import_read: w.imports_text_string,

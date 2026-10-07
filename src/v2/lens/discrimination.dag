@@ -42,11 +42,11 @@ fn claim_asserts_red(c: TestClaim) -> Bool {
 }
 
 fn unit_greens(unit: List<TestClaim>) -> List<TestClaim> {
-  filter(xs: unit, predicate: claim_asserts_green)
+  filter(xs: unit, predicate: c => claim_asserts_green(c))
 }
 
 fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
-  filter(xs: unit, predicate: claim_asserts_red)
+  filter(xs: unit, predicate: c => claim_asserts_red(c))
 }
 
 fn red_coincides_with_a_green(unit: List<TestClaim>) -> Bool {

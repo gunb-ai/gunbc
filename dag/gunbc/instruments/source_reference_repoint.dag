@@ -293,7 +293,12 @@ fn retired_source_text(path: String, text: String, retirements: List<ImportMembe
 
 // THE MEMBERS THIS TREE HAS RETIRED THROUGH THIS INSTRUMENT. Re-running is a no-op: the rewritten
 // text names no retired member, so no edit is produced.
-data source_import_member_retirements: List<ImportMemberRetirement> = []
+// v2.std.algebra filter and any: retired onto the collection roster's callback form (calm-boar-904, ruling B';
+// v2.compiler.fold_lowering collection_roster_rows), so a bare call binds the row and the import has no member.
+data source_import_member_retirements: List<ImportMemberRetirement> = [
+  ImportMemberRetirement { module_path: "v2.std.algebra", member: "filter" },
+  ImportMemberRetirement { module_path: "v2.std.algebra", member: "any" }
+]
 
 // Every rewrite this instrument knows, in one pass per file: moves first, then retirements.
 fn rewritten_source_text(path: String, text: String) -> String {
