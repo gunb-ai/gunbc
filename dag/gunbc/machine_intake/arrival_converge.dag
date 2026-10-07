@@ -170,8 +170,6 @@ import gunbc.fleet.convergence_fold {
   step_outcome_receipt,
   ungated_readonly_step,
   StepGatedOnAuthorization,
-  PrincipalRequired,
-  StepMutatesSubject,
   InstanceAuthorization,
   instance_authorization,
 }
@@ -677,7 +675,6 @@ type BmcSecureApplyInputs {
 type BmcSecureInputs {
   goal: BmcSecureGoal
   reading: BmcAccountStateObservation
-  host: HostIdentity
   grant: StandingOperatorGrant?
   capability: Redemption?
   apply: BmcSecureApplyInputs?
@@ -780,6 +777,7 @@ fn bmc_secure_bound(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
   ]
 {
   if (identity_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
@@ -865,8 +863,6 @@ fn arrival_step_of_phase(phase: ArrivalPhase) -> ConvergenceStep<IntakePhase>? {
       order_member: Arrival { phase: BmcSecure },
       preconditions: [SameSubject { step: prior_life_boundary_step_ref }],
       gate: StepGatedOnAuthorization,
-      principal: PrincipalRequired,
-      mutation: StepMutatesSubject,
     } }
     BootDeliveryEstablish => none
     DiagnosticBootAttest => none
