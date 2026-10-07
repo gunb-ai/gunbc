@@ -2,7 +2,7 @@ module gunbc.harness.harness_guidance
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_schema, submission_text, submission_readiness_key,
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,

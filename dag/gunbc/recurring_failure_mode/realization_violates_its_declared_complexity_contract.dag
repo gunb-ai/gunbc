@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.realization_violates_its_declared_complexity_contract
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data realization_violates_its_declared_complexity_contract: RecurringFailureMode = RecurringFailureMode {
+  identity: "realization_violates_its_declared_complexity_contract" as NonEmptyStr,
+
+  receipts: [
+    "**a primitive's realization costs more than its declared complexity contract, and every algorithm built on the contract inherits the difference silently** INVALID STATE: `std.primitives` `concat_contract` declares concat at log(n + m) on the persistent carrier, and the comment beside the `rc_*` ops in `v1.compiler.runtime_rust` `rt_rc_container_ops` states the same for every update. Yet `rc_list_concat` realized concat as `Rc::make_mut(&mut a).extend(b.iter().cloned())`, one push_back per element of `b`, so a concat cost the length of its right operand. The interpreter's free `concat` arm had the same shape, worse: it copied BOTH operands into a fresh vector.",
+
+    "HARM: a .dag author reasoning correctly from the declared contract writes an algorithm that is linear under it and quadratic under the realization, and nothing reports the gap. SPECIMEN: `v2.std.node` `node_subtree_nodes` is a bottom-up fold whose step is `concat(acc, sub)` -- O(n log n) under the contract, O(n * depth) as realized -- and `v2.compiler.normalize` `normalize_with` calls it on every parse tree. A comma list parses as a right-nested repeat chain about N deep, so normalize of `extdeps.cpu.ampere_altra_package_table4_raw` (one 4,926-row list literal) took 161 s on the emitted compiler, and the v2 native census of the whole tree ran for hours and read as a hang (runs 37348196148 and 37197235156).",
+
+    "HOW IT WAS FOUND, AND WHY THE INTERPRETER HID IT. Eval steps on the interpreter were LINEAR in list size with the call memo off (Int list 400 to 800: x2.00) while CPU per step grew -- the cost lived inside one counted step, which is exactly what a step budget cannot see. Only perf on the emitted binary named it: 96.6% inclusive under `node_subtree_nodes`, 82% under `rc_list_concat`, self time in im chunk make_mut, drop_slow and Rrb push_back. A READING of the carrier had also cleared it: `gunbc.build_target` `aggregate_findings` carried an annotation that checked `rc_list_concat` against both realizations and concluded the spine was shared -- true of the clone, false of the extend that followed it. The contract was stated twice and executed by nothing.",
+
+    "DISTINCT FROM `primitive_operation_carries_two_cost_authorities`, which is two DECLARATIONS of one operation's cost that disagree. Here the declarations agree and the REALIZATION disagrees with both; deciding which declaration wins would not have found it. Distinct from `memo_key_cost_proportional_to_argument_size`, where the cost is in a memo's key, not in the primitive.",
+
+    "RUNG FOUND AT: mitigatable -- found by a profiler after the harm, with no gate. ATTAINABLE CEILING: mechanically preventable, NOT structural. The complexity of a host realization is a property of target code the .dag cannot represent, so no accepted .dag program can be made to exclude it; what can be enforced is a scaling control per declared contract, run on the realization that ships.",
+
+    "NEXT-RUNG TRIGGER, naming the capability: a scaling control enrolled per `PrimitiveContract` with a declared persistent cost, executed on the EMITTED realization (not the interpreter, whose step counter cannot see work inside a step) at two sizes, refusing when the measured ratio exceeds the contract's -- sufficient that a realization of any contracted primitive that walks an operand reds before a consumer is built on it. Explicitly NOT discharged by: an annotation reading the carrier; an eval-step budget; or repairing concat alone, since the population is every contracted primitive.",
+
+    "UNCERTAINTY CARRIED: the audit of the list ops in `rt_rc_container_ops` and the bare-Vec prelude (push, snoc, concat, list_concat) found the extend shape only in concat and list_concat, both repaired; map and set merges iterate their overlay and are outside the list contract audited here. The other contracted primitives have NOT been measured.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.primitives", decl_name: "concat_contract", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node", decl_name: "node_subtree_nodes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.normalize", decl_name: "normalize_with", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.build_target", decl_name: "aggregate_findings", field: WholeDeclaration },
+  ],
+}
