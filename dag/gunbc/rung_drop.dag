@@ -196,9 +196,20 @@ import gunbc.guarantee_rung {
 // therefore real and named: a row whose paragraph announces retirement while its field still
 // says Standing would drift exactly as the list did. What this change removes is the SECOND
 // authority for the standing list, not the gap between a paragraph and its field.
+//
+// SUPERSEDED IS THE THIRD STANDING, AND IT IS NOT A KIND OF RETIRED. 4b(3) retires a drop by its
+// trigger and by nothing else, so a ruling that ends a drop WITHOUT its trigger firing cannot be
+// written as Retired: every consumer reads Retired as "the trigger fired", and the projection says
+// so. gunbc.rung_drop_amendment reserved this arm for the first real superseding ruling; that is
+// gunbc.rung_drop rust_unit_tests_over_their_cap (2026-10-06). The arm carries what makes a
+// supersession honest rather than a quiet retirement: the RULING that removed the population from
+// the subject, the DECISION RECORD that admitted it, and the LOSS HOLDER -- the standing drop that
+// now carries whatever the superseded row's trigger would have restored, so the loss is not
+// dropped with the row.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
+  | Superseded { ruling: NonEmptyStr, decision_record: NonEmptyStr, loss_holder: NonEmptyStr }
 
 // THE REASON A RUNG FELL, A CLOSED COPRODUCT BECAUSE THE REASONS ARE A SMALL NAMED SET AND NAMING
 // THEM IS WHAT LETS THE SAME CLASS BE RECOGNISED TWICE.

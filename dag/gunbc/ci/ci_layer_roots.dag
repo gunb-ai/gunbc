@@ -377,6 +377,10 @@ data excl_install_media_reason: String = "real host-effect execution witness (sh
 
 data excl_local_repo_wet_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY -- refused by the hermetic envelope, so excluded from the discovery corpus, and executed instead by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). This row is NOT the dark bin-wet class: every function in the named file is on that schedule, the floor decodes it, runs each member wet, and joins the observed terminals back to the roster at identity grain, so a member that stops executing refuses rather than reading as covered."
 
+data excl_local_repo_wet_browser_ready_label_reason: String = "real host-effect execution witness whose effect is ARGV EXECUTION THAT WRITES INSIDE A THROWAWAY TEMP DIRECTORY -- the readiness-label converge (gunbc.runner_browser_toolchain browser_ready_labels_converge_wet) driven over LocalShell with the unprivileged posture parameterization against a mktemp scratch root: dd writes the scratch drop-in, cat reads it back, rm -f removes it, the scratch is removed. Refused by the hermetic envelope (shell.Exec over argv and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. IT IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: unlike excl_local_repo_wet_tempdir_write_reason the writes go through EXECUTED ARGV (dd/cat/rm over the host-effect transport), not a Filesystem.Write call; unlike excl_local_repo_wet_bash_materialized_reason a file IS written and read; unlike excl_local_repo_wet_host_probe_reason the probe writes. What admits it to the same lane is the shared negative half: no network, no cargo, no remote host, no install media, no sudo (the unprivileged posture skips daemon-reload with a typed cause), and nothing outside a directory the witness created and removes. The production FLEET route is a different row's subject: the declared stall is rostered as gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall."
+
+data excl_local_repo_wet_browser_ready_label_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the argv-over-host-effect-transport legs and shell.Mktemp.Dir, sufficient for the converge's write-then-proceed and remove-then-proceed folds to be asserted under fixed mocks at the scratch destination; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. The FleetSsh production route's own stall (gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall) is NOT this row's trigger: the receipts keep executing over LocalShell regardless of when the shared transport admits that arm.")
+
 data excl_local_repo_wet_tempdir_write_reason: String = "real host-effect execution witness whose effect is a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY -- refused by the hermetic envelope (Filesystem.Write and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT FROM BOTH NEIGHBOURS AND IS NAMED RATHER THAN FOLDED INTO EITHER: it is not excl_local_repo_wet_reason's throwaway REPOSITORY property -- no repository is built and no git operation runs -- and it is not excl_local_repo_wet_host_probe_reason, which admits read-only probes that write NOTHING. What admits it to the same lane is the negative half those rows share: no network, no cargo, no remote host, no install media, and nothing outside a directory the witness created and removes. IT IS ENROLLED IN THE IDENTITY-GRAIN LANE DELIBERATELY rather than in the dark bin-wet class, because the whole purpose of the witness is that a wall which stops executing must REFUSE rather than read as covered -- enrolling a witness about silent absence somewhere it could be silently absent would reproduce its own subject."
 
 // Capture verification hashes the supplied bytes through stdin. The capture
@@ -1243,6 +1247,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "browser_ready_label_real_path_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_browser_ready_label_reason,
+    dissolution: excl_local_repo_wet_browser_ready_label_dissolve,
+  },
   WitnessExclusionRow {
     pattern: "roadmap_belt_base_advance_wet_witness_test.dag",
     classification: LocalRepoWetLane,
