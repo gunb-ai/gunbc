@@ -59,14 +59,9 @@ data fold_init_concat_informing_source: String = "module probe_fold_init_concat\
 // element is String; the acc element is not. concat must not stay String.
 data fold_list_if_concat_coproduct_source: String = "module probe_fold_list_if_concat_rel\nimport v2.std.algebra { fold_list }\ntype Rel = RelA | RelB { name: String }\nfn rel_from(raw: String) -> Rel {\n  if raw == \"a\" { RelA } else { RelB { name: raw } }\n}\nfn parse_rels(raw: String) -> List<Rel> {\n  fold_list(xs: split(s: raw, delimiter: \" \"), empty: [], cons: fn(acc, tok) {\n    if tok == \"\" { acc } else { concat(acc, [rel_from(raw: tok)]) }\n  })\n}\n"
 
-// fold_list<T,A>(xs: FreeMonoid<T>, ...) MUST BIND T FROM XS. Peeling through child_type_node
-// used to turn the TypeVariable leaf into error_type, so edge.label compiled as a field on T
-// (type_declaration_use_census emit-build).
-data fold_list_xs_element_field_source: String = "module probe_fold_list_xs_field\nimport v2.std.algebra { fold_list }\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n"
-
 // IMPORTED fold_list HAS A DECLARED SIG. The fold-arg path used to leave call_subst empty, so A
-// was never substituted into the return (review 77497). Bare fold_list is BuiltinCallableResolved
-// and never hits that arm.
+// was never substituted into the return (review 77497). The same source used to be compiled twice
+// as a "bare" twin; isolated census of bare fold_list is not that route (review 77724).
 data fold_list_imported_return_source: String = "module probe_imported_fold_list\nimport v2.std.algebra { fold_list }\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n"
 
 // Empty AS THE ACC SEED MUST NOT BIND T. fold_list(xs: rows, empty: Empty, …) then a second
@@ -117,10 +112,6 @@ test fn fold_init_concat_informs_the_list_element() -> Bool {
 
 test fn fold_list_if_concat_coproduct_does_not_join_as_string() -> Bool {
   compiles_with_no_blocking_diagnostic(source: fold_list_if_concat_coproduct_source)
-}
-
-test fn fold_list_binds_element_from_xs_for_field_access() -> Bool {
-  compiles_with_no_blocking_diagnostic(source: fold_list_xs_element_field_source)
 }
 
 test fn imported_fold_list_substitutes_the_accumulator_return() -> Bool {
