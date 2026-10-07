@@ -708,9 +708,17 @@ mod real_module_round_trip {
         // cold index also holds the store closure's ~two hundred modules from the session
         // prepare, and serializing each of those in full is the test's own cost, not the
         // product's.
-        let largest_full = cold
+        // Only the few modules with the largest own tails are serialized in full: the maximum over
+        // a subset can only be smaller than the true maximum, so the bound below is at least as
+        // strict, and serializing every restored module in full was a quarter of this test's wall.
+        let mut committed_modules: Vec<_> = cold
             .iter()
             .filter(|(k, _)| warm.iter().any(|(kw, _)| kw == k))
+            .collect();
+        committed_modules.sort_by_key(|(_, r)| std::cmp::Reverse(own_of_result(r).items.len()));
+        let largest_full = committed_modules
+            .into_iter()
+            .take(3)
             .map(|(_, r)| {
                 let mut w = CountingWriter(0);
                 serde_json::to_writer(&mut w, &**r).expect("serialize result");
