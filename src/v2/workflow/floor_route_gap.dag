@@ -2,6 +2,7 @@ module v2.workflow.floor_route_gap
 
 import std.types { List }
 import v2.std.algebra { Cons, Empty, list_flat_map }
+import v2.std.collection { Map, map_contains_key }
 
 // THE EXPECTATION IS TYPED AT THE TWO FACTS THE INTERPRETER OBSERVES. An identity-only row
 // says merely that some route gap once existed; it cannot object when the witness reaches a
@@ -62,6 +63,27 @@ type FloorRouteGapExpectation = {
 //   forgotten.
 // - Enrolled, and the identity did not execute at all: reds the build. The reverse join is
 //   what keeps a renamed or deleted identity from sitting here forever, unobserved.
+//
+// THE GATE-BOUNDED AMENDMENT (2026-10, declared when the required floor's admission partition
+// started recording it per identity; the gate cut itself is 2026-08-29). A gate-bounded fold
+// loads only the gate closure, so two further arms exist and the four above decide only over
+// the gate-inside remainder:
+//
+// - Enrolled, and the identity's module is outside the required gate (or the identity is
+//   withheld by the cost-debt roster, or declined as no-CI-wet-lane): the run cannot observe
+//   it, and the required floor names it per identity with that ground and holds it as NEITHER
+//   agreement NOR stale — dormancy is the gate cut's declared decision, and this roster does
+//   not own it. Observability returns exactly when the gate roster admits the module; there
+//   is no other observation point (no whole-corpus receipts run exists, and a receipt-only
+//   run outside the required path does not retire rows).
+// - Enrolled, and the tree declares no such identity: REFUSES the required run. Suppression
+//   removes the row before the reverse join, so the stale arm above can never fire for it;
+//   an enrollment nothing can observe must refuse rather than count as dormant.
+//
+// WHAT ADMISSION DOES NOT OWN: an out-of-gate enrollment still demands the route it names.
+// The register is the demand list for hermetic route arms, and unobserved demand is what a
+// rung drop must name — a module the gate readmits brings its enrollments straight back under
+// the four arms above.
 //
 // THE ORACLE THIS ROSTER IS ALLOWED TO BE (DESIGN §5, the 2026-08-01 ruling on numeric
 // literals). It is a monotone debt contract, and it is legitimate only because all four of that
@@ -2050,6 +2072,41 @@ fn floor_route_gap_expectation_chunk_40() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// The test.claim.runner.browser_ready_label_real_path_witness identities: the readiness-label
+// converge driven for real over LocalShell against a mktemp scratch root (the unprivileged posture
+// parameterization; gunbc#13401's review round). First effect without a hermetic arm is
+// shell.Mktemp.DirWithTemplate (no mock_response). Triple enrollment as for chunk_30: these
+// expectations, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// LocalRepoWetLane row for browser_ready_label_real_path_witness_test.dag. The production fleet
+// route's own stall is rostered as gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall,
+// not here.
+fn floor_route_gap_expectation_chunk_41() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.browser_ready_label_real_path_witness.grant_executes_the_dropin_write_for_real_on_a_scratch_root", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+      head: FloorRouteGapExpectation { identity: "test.claim.runner.browser_ready_label_real_path_witness.revoke_executes_the_dropin_removal_for_real_on_a_scratch_root", operation: "DirWithTemplate", ground: NoMockResponse {} },
+      tail: Empty {}
+    }
+  }
+}
+
+// The two wet witnesses of the workspace source pack: test.claim.seeded_filler_real_execution (the
+// seeded filler by real truncate/openssl) and test.claim.workspace_source_pack_archive_real_execution
+// (the two-root tar and its digest readback). Each first mints a directory with shell.Mktemp.Dir,
+// which the hermetic route has no arm for. Triple enrollment as for chunk_31: these expectations, a
+// WetScheduledClaim row per function in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// LocalRepoWetLane rows for both files.
+fn floor_route_gap_expectation_chunk_42() -> List<FloorRouteGapExpectation> {
+  [
+    FloorRouteGapExpectation { identity: "test.claim.seeded_filler_real_execution.a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.seeded_filler_real_execution.two_seeds_give_different_fillers_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.seeded_filler_real_execution.a_zero_stand_in_compresses_and_the_filler_does_not_red_control_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.the_two_root_archive_carries_the_placeholder_and_reads_back_clean_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution", operation: "Dir", ground: NoMockResponse {} }
+  ]
+}
+
 // The test.claim.scm_repository_save_real_execution_witness identity: the guarded save's one real
 // write over the committed v7 fixture. First effect without a hermetic arm is Filesystem.Write (no
 // mock_response). Triple enrollment as for chunk_30: this expectation, a WetScheduledClaim row in
@@ -2168,7 +2225,7 @@ fn floor_route_gap_expectation_chunk_33() -> List<FloorRouteGapExpectation> {
 
 // test.claim.roadmap.roadmap_dogfood_route_wet_witness (gunbc#13077): every claim builds a fresh
 // instance layout under shell.Mktemp.DirWithTemplate, which declares no mock_response, so the nominal
-// floor refuses there and each identity is held; the local-repo wet schedule carries all four.
+// floor refuses there and each identity is held; the local-repo wet schedule carries every one.
 fn floor_route_gap_expectation_chunk_34() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_unconverged_store_root_refuses_the_start_record", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -2180,8 +2237,10 @@ fn floor_route_gap_expectation_chunk_34() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.a_receipt_pinning_another_instances_evidence_is_not_a_start_here", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.the_issue_query_surface_renders_over_the_carrier_standings_read", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }
+  }  }  }  }  }  }
 }
 
 // The #12505 workspace lifecycle storage witnesses: their first effect is shell.Mktemp.Dir with no
@@ -2271,7 +2330,7 @@ fn floor_route_gap_expectation_chunk_37() -> List<FloorRouteGapExpectation> {
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Cons { head: floor_route_gap_expectation_chunk_32(), tail: Cons { head: floor_route_gap_expectation_chunk_33(), tail: Cons { head: floor_route_gap_expectation_chunk_34(), tail: Cons { head: floor_route_gap_expectation_chunk_35(), tail: Cons { head: floor_route_gap_expectation_chunk_36(), tail: Cons { head: floor_route_gap_expectation_chunk_37(), tail: Cons { head: floor_route_gap_expectation_chunk_38(), tail: Cons { head: floor_route_gap_expectation_chunk_39(), tail: Cons { head: floor_route_gap_expectation_chunk_40(), tail: Cons { head: floor_route_gap_expectation_chunk_41(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Cons { head: floor_route_gap_expectation_chunk_32(), tail: Cons { head: floor_route_gap_expectation_chunk_33(), tail: Cons { head: floor_route_gap_expectation_chunk_34(), tail: Cons { head: floor_route_gap_expectation_chunk_35(), tail: Cons { head: floor_route_gap_expectation_chunk_36(), tail: Cons { head: floor_route_gap_expectation_chunk_37(), tail: Cons { head: floor_route_gap_expectation_chunk_38(), tail: Cons { head: floor_route_gap_expectation_chunk_39(), tail: Cons { head: floor_route_gap_expectation_chunk_40(), tail: Cons { head: floor_route_gap_expectation_chunk_41(), tail: Cons { head: floor_route_gap_expectation_chunk_42(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }}
 }
 
 
@@ -2358,19 +2417,62 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
   } } }
 }
 
-// The two wet witnesses of the workspace source pack: test.claim.seeded_filler_real_execution (the
-// seeded filler by real truncate/openssl) and test.claim.workspace_source_pack_archive_real_execution
-// (the two-root tar and its digest readback). Each first mints a directory with shell.Mktemp.Dir,
-// which the hermetic route has no arm for. Triple enrollment as for chunk_31: these expectations, a
-// WetScheduledClaim row per function in local_repo_wet_schedule, and the gunbc.ci_layer_roots
-// LocalRepoWetLane rows for both files.
-fn floor_route_gap_expectation_chunk_41() -> List<FloorRouteGapExpectation> {
-  [
-    FloorRouteGapExpectation { identity: "test.claim.seeded_filler_real_execution.a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    FloorRouteGapExpectation { identity: "test.claim.seeded_filler_real_execution.two_seeds_give_different_fillers_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    FloorRouteGapExpectation { identity: "test.claim.seeded_filler_real_execution.a_zero_stand_in_compresses_and_the_filler_does_not_red_control_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.the_two_root_archive_carries_the_placeholder_and_reads_back_clean_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution", operation: "Dir", ground: NoMockResponse {} }
-  ]
+// THE ADMISSION PARTITION, MODELED ON THE AUTHORITY THAT OWNS THE REGISTER. This is the single
+// implementation of the route-gap admission decision, membership test included: the required
+// floor's runner marshals the run's real values -- the identities suppression removed, each
+// with the ground that removed it, and the discovery walk's declared-identity index AS A KEYED
+// MAP -- into this relation through the hermetic frame it already holds. Nothing re-derives the
+// membership judgment in Rust: a runner-side contains_key would BE the refuse-if-undeclared
+// decision made outside this authority, the shape the changed-selection capability documented
+// at v2.workflow.required_floor's dissolve-on note retires. Here the relation asks the map
+// itself, per row, whether the tree declares the identity -- and what each arm MEANS is the
+// authority's, not the marshal's.
+//
+// COST, NAMED, AND SHAPE-FIXED: the relation is one call per required run, LINEAR in the
+// suppressed population, and it never scans a corpus-sized list. The declared index arrives as
+// a keyed Map (the runner's disposition index marshaled whole), so the membership test is a
+// keyed lookup per suppressed row -- O(1) amortized per identity in the eval's map substrate --
+// and flattening the universe into a list for a linear contains was the corpus-sized join this
+// shape retires: on the required-run census the plan doc cites (declared in the tens of
+// thousands, suppressed in the hundreds), a per-row linear scan is millions of interpreted
+// comparisons per required run, a proven cost-shape defect that DESIGN.md's §6 says is always
+// fixed, not retired on "n is small here".
+//
+// THE GROUND IS A DECLARED COPRODUCT, NOT A LABEL. Suppression grounds are a closed set -- the
+// floor removes a row as outside the required gate, as withheld cost debt, or as declined for
+// want of a CI wet lane -- so the field carries that set, and a fabricated ground is a
+// construction of a type the runner cannot produce, not a free string. The arms are spelled
+// arm-for-arm after the floor's suppression vocabulary as the seed realizes it
+// (`v1.expected_red_roster_join`'s suppression ground, generated into the runner as a Rust enum
+// whose marshal decodes it here by spelling): the eval universe's discovery roots are `dag` +
+// `src/v2`, so the seed-side type cannot be imported here, and name-alignment is what keeps the
+// two spellings one vocabulary -- a rename on either side breaks the pairing witness
+// (src/v2/test/fixture/route_gap_admission_partition.dag) instead of forking silently.
+type FloorRouteGapSuppressionGround = OutsideRequiredGate | WithheldCostDebt | DeclinedNoCiWetLane
+
+type FloorRouteGapSuppressedRow = {
+  identity: String,
+  ground: FloorRouteGapSuppressionGround,
+}
+
+// THE TWO ARMS AT IDENTITY GRAIN. A declared suppressed row is MEASUREMENT: it keeps its ground
+// and the run names it, and for identities whose module the 2026-08-29 gate cut withdrew that
+// record closes nothing. An undeclared row REFUSES: suppression removed it before the reverse
+// join, so no other guard can see it, and an enrollment nothing can observe must never pass as
+// a count.
+type FloorRouteGapAdmissionRow =
+    FloorRouteGapAdmissionMeasuredRow { identity: String, ground: FloorRouteGapSuppressionGround }
+  | FloorRouteGapAdmissionRefusedRow { identity: String }
+
+fn floor_route_gap_admission_partition(
+  suppressed: List<FloorRouteGapSuppressedRow>,
+  declared: Map<String, String>,
+) -> List<FloorRouteGapAdmissionRow> {
+  map(
+    suppressed,
+    row => match map_contains_key(m: declared, key: row.identity) {
+      true => FloorRouteGapAdmissionMeasuredRow { identity: row.identity, ground: row.ground }
+      false => FloorRouteGapAdmissionRefusedRow { identity: row.identity }
+    },
+  )
 }
