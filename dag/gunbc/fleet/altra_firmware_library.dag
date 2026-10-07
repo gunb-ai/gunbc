@@ -73,7 +73,7 @@ type AltraFirmwareReferenceReport {
   qualification: AltraFixQualification
 }
 
-type AltraFixQualification = AwaitingAffectedBehaviorTest
+type AltraFixQualification = | AwaitingAffectedBehaviorTest
 
 type AltraBmcBetaVersionComparison {
   observation: BmcFirmwareObservation

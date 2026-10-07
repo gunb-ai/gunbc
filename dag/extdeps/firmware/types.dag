@@ -88,10 +88,10 @@ type FirmwareTarget
 // PicmgHpmImage is an image packaged as a PICMG HPM.1 upgrade file (extdeps.standards.picmg_hpm1):
 // uploaded to and activated by the BMC over IPMI with the host powered off, so like OpenBmcWebUiTar it
 // passes through the BMC and unlike InstantFlashRom it needs no host that can POST.
+// ASRock also publishes SCP .slim payloads applied through host Instant Flash.
 type FirmwareImageKind
   = OpenBmcWebUiTar
   | InstantFlashRom
-  // ASRock SCP .slim payload applied through host Instant Flash.
   | InstantFlashSlim
   | PicmgHpmImage
 

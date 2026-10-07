@@ -67,7 +67,7 @@ data altra_ssif_v6_patches: List<AltraSsifPatch> = [
   },
 ]
 
-type SsifPatchVendorUsage = DevelopmentAndTesting
+type SsifPatchVendorUsage = | DevelopmentAndTesting
 
 // V6 is the bundle revision, independent of the kernel versions each member targets.
 type AltraSsifPatchBundle {
