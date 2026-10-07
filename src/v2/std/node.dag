@@ -832,8 +832,8 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 // metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
 // skip every arrow_named_edge_is_contract edge.
 
-// THE DECLARED PERMITTED-CALLERS EDGE, restored with its consumer for gunbc.rung_drop
-// admit_callers_discarded_on_the_native_route. A fn Arrow built from a signature that declared an
+// THE DECLARED PERMITTED-CALLERS EDGE, restored with its consumer for the former drop
+// gunbc.rung_drop.admit_callers_discarded_on_the_native_route. A fn Arrow built from a signature that declared an
 // admit_callers clause carries the clause's STRUCTURED ROSTER under the core marker AdmitCallersEdge
 // (v2.compiler body_lowering_fold body_lower_fn_admit_clause_edges: the carrier consumes the authored
 // spine at lowering and re-hangs each entry as a positional record conj), and the consumer reads the

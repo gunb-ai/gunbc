@@ -1,5 +1,5 @@
-// caller_admission_native_wall_test -- HERMETIC WALL WITNESSES (gunbc.rung_drop
-// admit_callers_discarded_on_the_native_route).
+// caller_admission_native_wall_test -- HERMETIC WALL WITNESSES for the former drop
+// gunbc.rung_drop.admit_callers_discarded_on_the_native_route.
 //
 // The wall's contract is judged over VALUES, so these claims build the roster records, the marker
 // atoms, and the caller coordinates by hand (the parameter_reference_test idiom: minted occurrence

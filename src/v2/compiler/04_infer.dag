@@ -6523,11 +6523,12 @@ fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
 // ===================================================================
 // CALLER ADMISSION — the admit_callers wall.
 //
-// Restoration of gunbc.rung_drop admit_callers_discarded_on_the_native_route: a v2 stage (this
-// one) now checks caller admission on the native route from the fn's declared admit_callers
-// list, refusing a call from a declaration outside it. The clause was parsed by the v2 grammar
-// and carried onto the Arrow by v2.compiler.body_lowering_fold body_lower_fn_admit_clause_edges
-// — the carrier added together with this consumer, as that drop's trigger requires.
+// Restoration of the former drop gunbc.rung_drop.admit_callers_discarded_on_the_native_route:
+// a v2 stage (this one) now checks caller admission on the native route from the fn's declared
+// admit_callers list, refusing a call from a declaration outside it. The clause was parsed by
+// the v2 grammar and carried onto the Arrow by v2.compiler.body_lowering_fold
+// body_lower_fn_admit_clause_edges — the carrier added together with this consumer, as that
+// former drop's trigger requires.
 //
 // THE SEMANTICS ARE THE SEED'S, copied symbol for symbol from v1's wall
 // (src/v1/stage0/src/v1_compiler_infer.rs constructor_call_admission_diags, gated by

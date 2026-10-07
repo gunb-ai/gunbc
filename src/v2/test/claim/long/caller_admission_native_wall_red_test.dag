@@ -1,5 +1,5 @@
-// caller_admission_native_wall_red_test -- THE ONE REAL-PATH INHABITANCE CLAIM for
-// gunbc.rung_drop admit_callers_discarded_on_the_native_route, in the LONG HOME
+// caller_admission_native_wall_red_test -- THE ONE REAL-PATH INHABITANCE CLAIM for the
+// former drop gunbc.rung_drop.admit_callers_discarded_on_the_native_route, in the LONG HOME
 // (module v2.test.claim.long.* is structurally too expensive for the armed line: the interpreter's
 // parse of even a trivial source dominates -- 496,179 eval steps / 1421ms cpu for a two-module
 // fixture against the 72,300 new-witness budget, CI floor run at 8528a59b45 -- so the whole-pipeline

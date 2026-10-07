@@ -1025,11 +1025,11 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
   Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds", tail: Empty {} }
 }
 
-// PROVEN: reached its verdict (passed) at 496,179 eval steps against the 72,300 new-witness
-// budget and 1421ms cpu against the 500ms line on the required floor of record at 8528a59b45
-// (floor run 2026-10-06T14:35Z; the same gate re-measured it at run 37499673683 / floor job
-// 112393139664, head d4ec92f) -- the only real-path inhabitance
-// claim for gunbc.rung_drop admit_callers_discarded_on_the_native_route. Row admitted by
+// PROVEN: reached its verdict (passed) over the new-witness budget on the required floor of
+// record at 8528a59b45 (floor run 2026-10-06T14:35Z; the same gate re-measured it at run
+// 37499673683 / floor job 112393139664, head d4ec92f) -- the figures live in those runs, not
+// here. The only real-path inhabitance claim for the former drop
+// gunbc.rung_drop.admit_callers_discarded_on_the_native_route. Row admitted by
 // operator escalation, default-approved (lively-ram-153 relaying, 2026-10-07). The cost is the
 // interpreter's realization of the parse+lower pipeline, not the claim's shape: 02_parse
 // documents that parsing even a trivial source dominates under the tree-walking v1
