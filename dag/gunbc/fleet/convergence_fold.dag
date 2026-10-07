@@ -47,9 +47,7 @@ import gunbc.host_convergence_census {
 // instance whose receipt declares that authorization was required (the Apply arm) refuses without a
 // discharge for that (run, step, subject); Noop does not require one (parent D4). A discharge's
 // principal is NonEmptyStr at the sole constructor, so the fold does not re-check emptiness.
-// Mutation lanes are derived from StepMutatesSubject instances' subjects -- the executor that
-// dispatches is not a lane key. The pattern itself is selected before the fold (DESIGN §3d); the
-// fold only checks discharge.
+// The pattern itself is selected before the fold (DESIGN §3d); the fold only checks discharge.
 //
 // WHAT IT STILL DOES NOT CARRY, because no consumer exercises it yet and a designed fixture is not an
 // inhabitant (DESIGN §3 pairing obligation): pending with re-attach across runs, subject quantifiers
@@ -605,18 +603,6 @@ fn fold_convergence_run<M, R, C, I>(
         LineIncompleteAt { at: k } => RunIncomplete { ledger: ledger, at: k }
       }
     }
-  }
-}
-
-type MutationLane {
-  mutated_subject: StepSubjectKey
-}
-
-fn mutation_lanes<M>(plan: AdmittedConvergencePlan<M>, subject: StepSubjectKey) -> List<MutationLane> {
-  if plan.steps |> any(s => match s.step.mutation { StepMutatesSubject => true  StepDoesNotMutate => false }) {
-    [MutationLane { mutated_subject: subject }]
-  } else {
-    []
   }
 }
 
