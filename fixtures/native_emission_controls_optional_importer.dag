@@ -15,7 +15,8 @@ fn imported_optional_value(o: Optional) -> Int {
 // THE COLLISION WALL'S DISCRIMINATING RED
 // (gunbc.recurring_failure_mode.import_collides_with_a_kernel_name). This module imports the
 // non-kernel Optional of gunbc.instruments.native_emission_controls_optional_collision BY NAME.
-// v1.compiler.resolve imported_type_collides_with_kernel_mint refuses that import
+// std.literal_elaboration kernel_named_import_standing / v1.compiler.resolve
+// kernel_named_import_diags refuse that import
 // (ImportCollidesWithKernelName). test.claim.infer_kernel_import_collision_witness
 // importing_a_non_mint_optional_refuses_at_the_import compiles these fixture bytes and asserts that
 // class. The file is not a dual-typing emit specimen: the colliding import is unwritable, so the

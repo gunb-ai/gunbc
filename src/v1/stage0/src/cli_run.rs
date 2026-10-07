@@ -22115,16 +22115,143 @@ fn extract_bool_witness_transport(
     (entry, function)
 }
 
-fn defining_module_for_resolved_type(
+fn module_from_qualified_identity(identity: &str) -> Option<String> {
+    let (module, name) = identity.rsplit_once('.')?;
+    if module.is_empty() || name.is_empty() {
+        None
+    } else {
+        Some(module.to_string())
+    }
+}
+
+fn defining_module_for_variant(
     variant_to_enum: &im::HashMap<String, String>,
-    type_name: &str,
+    variant_name: &str,
 ) -> Option<String> {
-    // variant_to_enum names the owning enum by its declaration identity, `<module>.<name>`.
+    // variant_to_enum is keyed by VARIANT leaf. Values are owner identities `<module>.<name>`.
     // No row, the collision sentinel "", or an unqualified identity has no module part:
     // return None so the caller refuses. Do not scan type environments for a leaf match.
-    let parent_enum = variant_to_enum.get(type_name)?;
-    let (module, _) = parent_enum.rsplit_once('.')?;
-    Some(module.to_string())
+    let parent_enum = variant_to_enum.get(variant_name)?;
+    module_from_qualified_identity(parent_enum)
+}
+
+fn defining_module_for_type_identity(
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    identity: &str,
+) -> Option<String> {
+    // Exact declaration key only. type_summary_lookup / type_summary_by_leaf are leaf scans.
+    if !identity.contains('.') {
+        return None;
+    }
+    match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
+        type_summaries.clone(),
+        identity.to_string(),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
+            module_from_qualified_identity(&summary.key)
+        }
+        _ => None,
+    }
+}
+
+fn defining_module_for_type_expr(
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    type_expr: &Rc<Node>,
+) -> Option<String> {
+    match (*crate::v1_compiler_infer_emit_info::type_summary_of_reference(
+        type_summaries.clone(),
+        type_decls.clone(),
+        type_expr.clone(),
+        Rc::new(source_indices.clone()),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
+            module_from_qualified_identity(&summary.key)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod defining_module_lookup_tests {
+    use super::*;
+
+    #[test]
+    fn bool_witness_claim_variant_resolves_to_verification_module() {
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        variant_to_enum.insert(
+            "NodeCorpus".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
+            Some("v2.std.verification".to_string()),
+            "the owned-data BoolWitnessClaim path keys variant_to_enum by the variant leaf"
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "UnifiedTestClaim"),
+            None,
+            "the coproduct leaf is not a variant key"
+        );
+    }
+
+    #[test]
+    fn unqualified_or_sentinel_variant_identity_refuses() {
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert("NoDot".to_string(), "UnifiedTestClaim".to_string());
+        variant_to_enum.insert("Sentinel".to_string(), "".to_string());
+        assert_eq!(defining_module_for_variant(&variant_to_enum, "NoDot"), None);
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "Sentinel"),
+            None
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "Missing"),
+            None
+        );
+    }
+
+    #[test]
+    fn type_identity_uses_exact_summary_key_not_a_leaf() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+        let summary = Rc::new(TypeSummary {
+            name: "UnifiedTestClaim".to_string(),
+            key: "v2.std.verification.UnifiedTestClaim".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            empty_type_summary_index(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+            "UnifiedTestClaim".to_string(),
+            summary,
+        );
+        assert_eq!(
+            defining_module_for_type_identity(&index, "v2.std.verification.UnifiedTestClaim"),
+            Some("v2.std.verification".to_string())
+        );
+        assert_eq!(
+            defining_module_for_type_identity(&index, "UnifiedTestClaim"),
+            None,
+            "a bare type leaf must not scan keys_by_leaf"
+        );
+    }
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
@@ -22151,23 +22278,33 @@ fn declared_type_name_from_annotation(
 
 fn resolved_decl_ref_from_type_name(
     variant_to_enum: &im::HashMap<String, String>,
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_resolved_type(variant_to_enum, name)
+    let module = defining_module_for_variant(variant_to_enum, name)
+        .or_else(|| defining_module_for_type_identity(type_summaries, name))
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
+    let stored_name = crate::v1_std_core::qualified_last_segment(name.to_string());
     Ok(ResolvedDeclRef {
         module,
-        name: name.to_string(),
+        name: if stored_name.is_empty() {
+            name.to_string()
+        } else {
+            stored_name
+        },
     })
 }
 
 fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    variant_to_enum: &im::HashMap<String, String>,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
     body: &Rc<Node>,
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
+    let variant_to_enum = emit_info.variant_to_enum.as_ref();
+    let type_summaries = &emit_info.type_summaries;
+    let type_decls = &emit_info.type_decl_items;
     let si = Rc::new(source_indices.clone());
     if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
         if let Some(parent_name) = parent_enum.as_deref() {
@@ -22197,11 +22334,11 @@ fn resolved_initializer_decl_ref(
                     variant_name, parent_name
                 ));
             }
-            let module = defining_module_for_resolved_type(variant_to_enum, parent_name)
-                .ok_or_else(|| {
+            let module =
+                defining_module_for_variant(variant_to_enum, &variant_name).ok_or_else(|| {
                     format!(
-                        "no defining module for resolved coproduct '{}'",
-                        parent_name
+                        "no defining module for resolved coproduct variant '{}'",
+                        variant_name
                     )
                 })?;
             return Ok(ResolvedDeclRef {
@@ -22232,11 +22369,39 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        return resolved_decl_ref_from_type_name(variant_to_enum, &name);
+        if let Some(module) = defining_module_for_variant(variant_to_enum, &name)
+            .or_else(|| defining_module_for_type_identity(type_summaries, &name))
+        {
+            return Ok(ResolvedDeclRef {
+                module,
+                name: crate::v1_std_core::qualified_last_segment(name),
+            });
+        }
+        if let Some(InferredNode::Resolved { node }) = body.inferred.as_deref() {
+            if let Some(module) =
+                defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
+            {
+                return Ok(ResolvedDeclRef {
+                    module,
+                    name: crate::v1_std_core::qualified_last_segment(name),
+                });
+            }
+        }
+        return Err(format!("no defining module for resolved type '{}'", name));
     }
     if let Some(ann) = type_annotation {
+        if let Some(module) =
+            defining_module_for_type_expr(type_summaries, type_decls, source_indices, ann)
+        {
+            let name = declared_type_name_from_annotation(source_indices, ann)
+                .unwrap_or_else(|| "type".to_string());
+            return Ok(ResolvedDeclRef {
+                module,
+                name: crate::v1_std_core::qualified_last_segment(name),
+            });
+        }
         if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(variant_to_enum, &name);
+            return resolved_decl_ref_from_type_name(variant_to_enum, type_summaries, &name);
         }
     }
     Err(
@@ -22456,15 +22621,13 @@ pub fn discover_owned_data_decls(
         // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
         // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
         // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
-        let variant_to_enum = v1_compiler_infer::build_emit_graph_info(
+        let emit_info = v1_compiler_infer::build_emit_graph_info(
             graph.modules.clone(),
             graph.item_registry.clone(),
-        )
-        .variant_to_enum
-        .clone();
+        );
         for (entry, entry_module, marker_count) in group.entries {
             let records =
-                owned_data_decls_for_entry(&graph, &si, &variant_to_enum, &entry, &entry_module)?;
+                owned_data_decls_for_entry(&graph, &si, &emit_info, &entry, &entry_module)?;
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
