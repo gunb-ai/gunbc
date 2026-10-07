@@ -384,10 +384,10 @@ fn compiler_gate_unit_test_capability_closure_holds() -> Bool {
 }
 
 // THE UNIT LANE RUNS ON merge_group AND workflow_dispatch ONLY (operator 2026-10-06, CI short-term
-// relief): it is non-blocking under gunbc.rung_drop rust_unit_tests_over_their_cap, so a per-push
-// pull_request run paid a runner for a verdict nothing read. The pull_request exclusion is part of
-// that drop's population; the queue's composed revision still runs it. Fork pull requests are
-// excluded by the same clause.
+// relief), declared as gunbc.rung_drop rust_unit_tests_off_pull_requests: a failing unit test is
+// caught at the queue's composed revision, not on the pull request. The aggregate excuses the skip
+// only on a pull_request event (GateArmSkippedOnPullRequest). Fork pull requests are excluded by the
+// same clause.
 fn compiler_gate_unit_test_job_condition() -> String {
   join(["github.event_name != '", github_event_name_pull_request, "'"], "")
 }

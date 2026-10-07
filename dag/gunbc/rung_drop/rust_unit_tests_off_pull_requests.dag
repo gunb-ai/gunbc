@@ -22,7 +22,7 @@ data rust_unit_tests_off_pull_requests: RungDrop = RungDrop {
   standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
-    temporary: MechanicallyPreventable,
+    temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "per-push runner cost of the CI programme (docs/plans/ci-end-to-end-accounting.md) brought below the point where the unit lane can run on every pull request"
     },
