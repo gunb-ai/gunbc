@@ -88,6 +88,8 @@ import gunbc.machine_intake_bmc_rotation_route {
   ObservedSurfaceRead,
   rotation_route_candidate,
   redfish_account_password_write,
+  rotation_apply_authority,
+  canonical_component,
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
@@ -129,6 +131,7 @@ import gunbc.auth.standing_operator_grant {
   standing_grant_covers,
 }
 import product.host_identity { HostIdentity }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
@@ -664,9 +667,12 @@ type BmcSecureInputs {
   host: HostIdentity
   grant: StandingOperatorGrant?
   capability: Redemption?
-  federated_principal: NonEmptyStr?
   apply: BmcSecureApplyInputs?
 }
+
+// A federated principal is not a discharge input. StandingBmcSecureAccountWrite on the operator-ssh
+// units is WorkloadIdentityUnbindable, so FederatedScopedGrant is not a selected pattern for this
+// effect. A NonEmptyStr here was a silent widen (review 38602): any string minted Apply.
 
 fn bmc_secure_apply_interlock_hold() -> DeclarationRef {
   decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply")
@@ -681,6 +687,24 @@ fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: Hos
     }
 }
 
+fn rotation_apply_revision_prefix(host: HostIdentity) -> String {
+  join(["gunbc.bmc.rotation-route/v1;", canonical_component(text: host as String)], "")
+}
+
+fn capability_discharges_bmc_secure_account_write(r: Redemption, host: HostIdentity, key: StepInstanceKey) -> Bool {
+  match r {
+    RedemptionRefused { cause: _ } => false
+    RedemptionAdmitted { claims: cl, decided_by: _ } =>
+      match cl.decision {
+        ProposeDeny => false
+        ProposeApprove =>
+          cl.authority == rotation_apply_authority
+            && (cl.attempt as NonEmptyStr) == (key.run as NonEmptyStr)
+            && starts_with(s: cl.request_revision as String, prefix: rotation_apply_revision_prefix(host: host))
+      }
+  }
+}
+
 fn discharge_bmc_secure_apply(key: StepInstanceKey, inputs: BmcSecureInputs) -> InstanceAuthorization? {
   match inputs.grant {
     Present { value: g } =>
@@ -692,15 +716,15 @@ fn discharge_bmc_secure_apply(key: StepInstanceKey, inputs: BmcSecureInputs) -> 
     Absent =>
       match inputs.capability {
         Present { value: r } =>
-          match r {
-            RedemptionAdmitted { claims: _, decided_by: _ } => Present { value: instance_authorization(key: key, principal: "operator-approved-capability" as NonEmptyStr) }
-            RedemptionRefused { cause: _ } => none
+          if capability_discharges_bmc_secure_account_write(r: r, host: inputs.host, key: key) {
+            match r {
+              RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
+              RedemptionRefused { cause: _ } => none
+            }
+          } else {
+            none
           }
-        Absent =>
-          match inputs.federated_principal {
-            Present { value: p } => Present { value: instance_authorization(key: key, principal: p) }
-            Absent => none
-          }
+        Absent => none
       }
   }
 }

@@ -8,6 +8,7 @@ import v2.std.algebra { filter, length }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
+import product.host_identity { HostIdentity }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase }
 import gunbc.machine_intake_subject {
@@ -24,6 +25,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   RedfishAccountPasswordWrite, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead, PublicStandardOperation,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded,
   rotation_apply_authority, rotation_route_request_identity, rotation_route_is_grounded, admit_rotation_apply,
+  canonical_component, route_qualification_authority,
 }
 import gunbc.host_convergence_census {
   HostConvergenceCensus, CensusWellFormed, host_convergence_census_rows, host_convergence_census_standing,
@@ -72,6 +74,7 @@ import gunbc.machine_intake_arrival_converge {
   converge_mtjade1_arrival_prefix, converge_arrival_prefix, mtjade1_identity_bind_inputs,
   bmc_secure_step_ref, arrival_bmc_secure_mutation_lanes, BmcSecureReceipt,
   grant_discharges_bmc_secure_account_write,
+  capability_discharges_bmc_secure_account_write,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -621,6 +624,61 @@ test fn w_bmc_secure_apply_pending_interlock_refuses_at_discharge() -> Bool {
 
 test fn w_mtcollins1_is_not_discharged_by_the_mtjade1_grant() -> Bool {
   grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1) == false
+}
+
+fn rotation_capability_for(host: HostIdentity, attempt_text: String, authority: NonEmptyStr) -> Redemption {
+  RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: authority,
+      escalation_id: "o1c3b-witness" as NonEmptyStr,
+      request_revision: join(["gunbc.bmc.rotation-route/v1;", canonical_component(text: host as String)], "") as NonEmptyStr,
+      decision: ProposeApprove,
+      attempt: attempt_text as AttemptIdentity,
+      issued_at: "2026-10-04T00:00:00Z",
+      expires_at: "2026-10-04T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
+  }
+}
+
+fn bmc_secure_apply_key() -> StepInstanceKey {
+  step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+}
+
+test fn w_bmc_secure_apply_capability_for_another_authority_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_a as String, authority: route_qualification_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_capability_for_another_host_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtcollins1, attempt_text: run_a as String, authority: rotation_apply_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_capability_for_another_run_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_b as String, authority: rotation_apply_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_admitted_capability_for_this_host_and_rotation_authority_discharges() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_a as String, authority: rotation_apply_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  )
 }
 
 test fn w_bmc_secure_apply_discharge_for_another_run_refuses() -> Bool {
