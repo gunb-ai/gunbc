@@ -79,6 +79,7 @@ import gunbc.machine_intake_arrival_converge {
   capability_discharges_bmc_secure_account_write,
   bmc_secure_application_joins_this_instance,
   discharge_bmc_secure_apply,
+  bmc_secure_bound,
 }
 import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
@@ -1106,27 +1107,59 @@ test fn w_bmc_secure_apply_discharge_for_another_unit_refuses() -> Bool {
   apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
 }
 
+// Apply/discharge consume identity.subject and the instance keys, not the Manager/FRU/SMBIOS
+// parses. Those producers are inhabited on main by
+// w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive (through PriorLifeBoundary).
+// This claim supplies that boundary and runs bmc_secure Apply and the fold for real.
 test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
+  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc_key = bmc_secure_apply_key()
   match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
-    Present { value: apply } =>
-      match converge_mtjade1_arrival_through_bmc_secure(
-        run: run_a,
-        prior_life: prior_life_minimal_dry_world(),
-        bmc: mtjade1_bmc_inputs(
-          reading: apply.application.plan.diverged,
-          grant: Present { value: mtjade1_live_standing_grant },
-          apply: Present { value: apply },
-          host: operator_host_mtjade1,
-        ),
-      ) {
-        ArrivalRunFolded { verdict: v } =>
-          match v {
-            RunConverged { run: r } => length(xs: r.ledger.instances) == 4
-            _ => false
+    Present { value: apply } => {
+      let inputs = mtjade1_bmc_inputs(
+        reading: apply.application.plan.diverged,
+        grant: Present { value: mtjade1_live_standing_grant },
+        apply: Present { value: apply },
+        host: operator_host_mtjade1,
+      )
+      match bmc_secure_bound(key: bmc_key, identity_key: identity, identity_subject: mtjade1_intake_subject(), prior_key: prior, inputs: inputs) {
+        StepEstablished { receipt: r } =>
+          match r {
+            BmcSecureReceipt { receipt: _ } =>
+              match discharge_bmc_secure_apply(
+                key: bmc_key,
+                inputs: inputs,
+                standing: apply.application.plan.managed_write.route,
+                request: apply.application.plan.managed_write.request,
+              ) {
+                Absent => false
+                Present { value: d } => {
+                  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+                    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
+                    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
+                    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
+                    StepEstablished { receipt: ProbeReceipt { key: bmc_key, consumed: [prior] } },
+                  ]
+                  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+                    ConvergencePlanAdmitted { plan: p } =>
+                      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: [d]) {
+                        RunConverged { run: ledger } => length(xs: ledger.ledger.instances) == 4
+                        _ => false
+                      }
+                    ConvergencePlanRefused { cause: _ } => false
+                  }
+                }
+              }
+            AccessDiscoverReceipt { receipt: _ } => false
+            IdentityBindReceipt { receipt: _ } => false
+            PriorLifeBoundaryReceipt { receipt: _ } => false
           }
         _ => false
       }
+    }
   }
 }
 
