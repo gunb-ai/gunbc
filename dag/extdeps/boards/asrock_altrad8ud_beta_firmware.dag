@@ -1,6 +1,9 @@
 module extdeps.boards.asrock_altrad8ud_beta_firmware
 
 import std.types { NonEmptyStr, List, EpochMs }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import extdeps.firmware.types {
   FirmwareTarget, FirmwareSemanticVersion, FirmwareImageKind,
   HostBios, BmcController, ScpFirmware, InstantFlashRom, InstantFlashSlim,
@@ -19,7 +22,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // Consumer: gunbc.altra_firmware_library reference_report, for operator discovery.
 type AsrockAltrad8udBetaFirmwareListing {
   target: FirmwareTarget
-  version: FirmwareSemanticVersion
+  version: AsrockBetaFirmwareVersion
   listed_on: EpochMs
   packages: List<AsrockBetaFirmwarePackage>
   description: NonEmptyStr
@@ -27,7 +30,21 @@ type AsrockAltrad8udBetaFirmwareListing {
 
 type AsrockBetaFirmwarePackage {
   image_kind: FirmwareImageKind
-  displayed_size: NonEmptyStr
+  displayed_size: AsrockUnresolvedDisplaySize
+}
+
+// SCP's trailing component is a YYYYMMDD build date, not a semver patch.
+type AsrockBetaFirmwareVersion
+  = SemanticFirmwareVersion { value: FirmwareSemanticVersion }
+  | ScpBuildVersion { major: Nat, minor: Nat, build_date: Iso8601CivilDate }
+
+// The page labels MB/KB without establishing decimal versus binary scaling.
+// These fields encode the decimal interpretation and the printed increment;
+// neither is an exact archive byte count. The distinct carrier preserves that
+// unresolved basis instead of silently comparing a rounded label with a ZIP.
+type AsrockUnresolvedDisplaySize {
+  decimal_interpretation: ByteSize
+  decimal_increment: ByteSize
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -44,30 +61,30 @@ data asrock_altrad8ud_beta_disclaimer: NonEmptyStr = "Beta firmware is still und
 data asrock_altrad8ud_beta_firmware_listings: List<AsrockAltrad8udBetaFirmwareListing> = [
   AsrockAltrad8udBetaFirmwareListing {
     target: HostBios,
-    version: firmware_semantic_version(major: 4, minor: 1, patch: 0),
+    version: SemanticFirmwareVersion { value: firmware_semantic_version(major: 4, minor: 1, patch: 0) },
     listed_on: 1776124800000,
     packages: [
-      AsrockBetaFirmwarePackage { image_kind: InstantFlashRom, displayed_size: "5.11MB" },
-      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: "5.11MB" },
+      AsrockBetaFirmwarePackage { image_kind: InstantFlashRom, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
     ],
     description: "Updated RC to 0ACRB_022",
   },
   AsrockAltrad8udBetaFirmwareListing {
     target: BmcController,
-    version: asrock_altrad8ud_bmc_3_22_00_release.version,
+    version: SemanticFirmwareVersion { value: asrock_altrad8ud_bmc_3_22_00_release.version },
     listed_on: 1772064000000,
     packages: [
-      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: "27.71MB" },
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 27710000), decimal_increment: byte_size(count: 10000) } },
     ],
     description: "A password change is enforced upon the first login to the WebUI",
   },
   AsrockAltrad8udBetaFirmwareListing {
     target: ScpFirmware,
-    version: firmware_semantic_version(major: 2, minor: 10, patch: 20260210),
+    version: ScpBuildVersion { major: 2, minor: 10, build_date: Iso8601CivilDate { year: 2026, month: 2, day: 10 } },
     listed_on: 1776729600000,
     packages: [
-      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: "165.25KB" },
-      AsrockBetaFirmwarePackage { image_kind: InstantFlashSlim, displayed_size: "165.01KB" },
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165250), decimal_increment: byte_size(count: 10) } },
+      AsrockBetaFirmwarePackage { image_kind: InstantFlashSlim, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165010), decimal_increment: byte_size(count: 10) } },
     ],
     description: "Ampere SCP firmware",
   },

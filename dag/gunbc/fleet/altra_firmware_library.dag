@@ -1,17 +1,20 @@
 module gunbc.altra_firmware_library
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Bool }
 import std.measure { ByteSize, byte_size }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.uri { Uri, uri_https }
-import extdeps.firmware.types { FirmwareReleaseRow }
+import extdeps.firmware.types { FirmwareReleaseRow, BmcController }
+import extdeps.bmc.capability { BmcFirmwareObservation }
+import gunbc.fleet_bmc_observation { srv3_bmc_firmware_observation, srv4_bmc_firmware_observation }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_bios_3_10_instant_flash_release,
   asrock_altrad8ud_bmc_3_22_00_release, asrock_altrad8ud_download_authority,
 }
 import extdeps.boards.asrock_altrad8ud_beta_firmware {
   AsrockAltrad8udBetaFirmwareListing, asrock_altrad8ud_beta_firmware_listings,
-  asrock_altrad8ud_beta_disclaimer,
+  asrock_altrad8ud_beta_disclaimer, AsrockBetaFirmwareVersion,
+  SemanticFirmwareVersion, ScpBuildVersion,
 }
 import extdeps.ampere.altra_ssif_patch {
   AltraSsifPatchBundle, altra_ssif_patch_authority, altra_ssif_v6,
@@ -65,7 +68,38 @@ type AltraFirmwareReferenceReport {
   beta_reference: Uri
   beta_disclaimer: NonEmptyStr
   beta_listings: List<AsrockAltrad8udBetaFirmwareListing>
-  qualification: NonEmptyStr
+  bmc_version_comparisons: List<AltraBmcBetaVersionComparison>
+  qualification: AltraFixQualification
+}
+
+type AltraFixQualification = AwaitingAffectedBehaviorTest
+
+type AltraBmcBetaVersionComparison {
+  observation: BmcFirmwareObservation
+  beta_version: AsrockBetaFirmwareVersion
+  same_version: Bool
+}
+
+// Version equality is only a join of recorded identities, never proof that the
+// affected behavior was fixed or that the underlying image bytes are identical.
+fn beta_bmc_version_comparisons(
+  observations: List<BmcFirmwareObservation>,
+) -> List<AltraBmcBetaVersionComparison> {
+  flat_map(
+    filter(asrock_altrad8ud_beta_firmware_listings, row => row.target == BmcController),
+    fn(row) {
+      map(observations, fn(observation) {
+        AltraBmcBetaVersionComparison {
+          observation: observation,
+          beta_version: row.version,
+          same_version: match row.version {
+            SemanticFirmwareVersion { value } => value == observation.firmware.version
+            ScpBuildVersion { major: _, minor: _, build_date: _ } => false
+          },
+        }
+      })
+    },
+  )
 }
 
 // Operator discovery entry: gunbc run --source-root dag --source-root src/v2
@@ -78,6 +112,9 @@ fn reference_report() -> AltraFirmwareReferenceReport {
     beta_reference: asrock_altrad8ud_download_authority.uri,
     beta_disclaimer: asrock_altrad8ud_beta_disclaimer,
     beta_listings: asrock_altrad8ud_beta_firmware_listings,
-    qualification: "The beta BMC listing is the same 3.22.00 version already recorded in gunbc.fleet_bmc_observation for srv3 and srv4, not evidence of a newer BMC fix. BIOS RC 0ACRB_022 and SCP 2.10.20260210 are separate targets. Neither the beta listings nor the SSIF readme establish that our observed BMC issues are fixed; qualification requires testing the affected behavior on the exact installed image/kernel.",
+    bmc_version_comparisons: beta_bmc_version_comparisons(
+      observations: [srv3_bmc_firmware_observation, srv4_bmc_firmware_observation],
+    ),
+    qualification: AwaitingAffectedBehaviorTest,
   }
 }

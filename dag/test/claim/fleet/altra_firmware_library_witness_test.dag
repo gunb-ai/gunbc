@@ -1,0 +1,24 @@
+module test.claim.fleet.altra_firmware_library_witness
+
+import std.types { Bool }
+import gunbc.altra_firmware_library { beta_bmc_version_comparisons }
+import gunbc.fleet_bmc_observation {
+  srv3_bmc_firmware_2_07_00_observation,
+  srv3_bmc_firmware_3_22_00_observation,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Same interface, two supplied historical observations. A constant answer in
+// either direction fails one control. One result is owed for the one supplied
+// observation and the one BMC listing in the operator's transcribed beta table.
+test fn beta_bmc_matches_recorded_3_22_00() -> Bool {
+  let rows = beta_bmc_version_comparisons(observations: [srv3_bmc_firmware_3_22_00_observation])
+  length(rows) == 1 && fold(rows, init: true, f: fn(ok, row) { ok && row.same_version })
+}
+
+test fn beta_bmc_does_not_match_recorded_2_07_00() -> Bool {
+  let rows = beta_bmc_version_comparisons(observations: [srv3_bmc_firmware_2_07_00_observation])
+  length(rows) == 1 && fold(rows, init: true, f: fn(ok, row) { ok && !row.same_version })
+}

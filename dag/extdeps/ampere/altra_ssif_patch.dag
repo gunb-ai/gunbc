@@ -2,6 +2,9 @@ module extdeps.ampere.altra_ssif_patch
 
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { Microsecond, microsecond, measure_le }
+import std.interval { IntervalConstruction, closed_interval }
+import std.optional { Present, Absent }
 import extdeps.version { VersionConstraint }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -31,42 +34,61 @@ type AltraSsifPatch {
   archive_member: NonEmptyStr
   lineage: SsifPatchKernelLineage
   kernel_constraint: VersionConstraint
+  removed_abort_hook: NonEmptyStr?
 }
 
-data altra_ssif_v6_purpose: NonEmptyStr = "Ampere Altra and Altra Max SSIF host timeout patches: drivers/i2c/busses/i2c-designware-common.c __i2c_dw_disable aborts active master activity and waits 50-100 ms before disabling; the Ampere SRP variant moves the existing abort out of i2c_dw_wait_bus_not_busy. These are host Linux I2C driver changes, not BMC images. Development and testing use, with production testing requested by the vendor."
+data altra_ssif_v6_purpose: NonEmptyStr = "SSIF host timeouts on Ampere Altra and Altra Max processors."
 
 data altra_ssif_v6_patches: List<AltraSsifPatch> = [
   AltraSsifPatch {
     archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18.patch",
     lineage: GeneralLinux, kernel_constraint: "4.18+" as VersionConstraint,
+    removed_abort_hook: Absent,
   },
   AltraSsifPatch {
     archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18-Ampere.patch",
     lineage: AmpereSrpCentos8, kernel_constraint: "4.18" as VersionConstraint,
+    removed_abort_hook: Present { value: "i2c_dw_wait_bus_not_busy" },
   },
   AltraSsifPatch {
     archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_5.10.patch",
     lineage: GeneralLinux, kernel_constraint: "5.10+" as VersionConstraint,
+    removed_abort_hook: Absent,
   },
   AltraSsifPatch {
     archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18_c8_365_el8.patch",
     lineage: Centos8, kernel_constraint: "4.18_365+" as VersionConstraint,
+    removed_abort_hook: Absent,
   },
   AltraSsifPatch {
     archive_member: "SSIF_PATCH_V6/Ampere-Altra-family-SSIF-patch-for-kernel-6.1.patch",
     lineage: GeneralLinux, kernel_constraint: "6.x" as VersionConstraint,
+    removed_abort_hook: Absent,
   },
 ]
+
+type SsifPatchVendorUsage = DevelopmentAndTesting
 
 // V6 is the bundle revision, independent of the kernel versions each member targets.
 type AltraSsifPatchBundle {
   revision: Nat
   purpose: NonEmptyStr
+  driver_source: NonEmptyStr
+  abort_before_disable_hook: NonEmptyStr
+  abort_wait: IntervalConstruction<Microsecond>
+  vendor_usage: SsifPatchVendorUsage
   patches: List<AltraSsifPatch>
 }
 
 data altra_ssif_v6: AltraSsifPatchBundle = AltraSsifPatchBundle {
   revision: 6,
   purpose: altra_ssif_v6_purpose,
+  driver_source: "drivers/i2c/busses/i2c-designware-common.c",
+  abort_before_disable_hook: "__i2c_dw_disable",
+  abort_wait: closed_interval(
+    low: microsecond(count: 50000), high: microsecond(count: 100000),
+    le: fn(a, b) { measure_le(a: a, b: b) },
+  ),
+  vendor_usage: DevelopmentAndTesting,
   patches: altra_ssif_v6_patches,
 }
