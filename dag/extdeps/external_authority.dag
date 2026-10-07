@@ -14,14 +14,23 @@ type ExternalAuthority {
 // TwoDpcRateCeilingTable.evidence and std.decision ObjectiveTerm.ground are the same warrant kind:
 // either the figure points at ExternalAuthority, or it carries uncitedness as a read_obligation
 // naming what would ground it. Relocated here so a second CitedToAuthority cannot be minted.
+//
+// THE THIRD ARM IS A FIGURE THIS REPOSITORY OBSERVED. Neither of the first two says "confirmed by our
+// own reading", and that is the strongest of the three when it holds: a vendor's page asserts, a
+// receipt was executed and is re-derived by running its instrument again. receipt names the
+// declaration that carries the reading, and that declaration lives DOWNSTREAM, in the observing
+// product or workflow layer (DESIGN 3, External upstream decomposition) -- this module points at it
+// by reference and never imports it, so an upstream module never holds what we observed.
 type CitedFigureStanding
   = CitedToAuthority { authority: ExternalAuthority }
   | TranscribedUncited { read_obligation: NonEmptyStr }
+  | ObservedByReceipt { receipt: DeclarationRef }
 
 fn cited_figure_read_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   match standing {
     CitedToAuthority { authority: _ } => Absent
     TranscribedUncited { read_obligation: o } => Present { value: o }
+    ObservedByReceipt { receipt: _ } => Absent
   }
 }
 

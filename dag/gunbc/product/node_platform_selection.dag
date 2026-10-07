@@ -25,7 +25,7 @@ import std.decision {
   CausalModelPopulation,
   CausalModelEstablished,
   CausalModelUnestablished,
-  VendorDocumentedCoupling,
+  VendorDocumentedCoupling, FleetObservedCoupling,
   CausalCoupling,
   HardConstraint,
   SelectionPolicy,
@@ -45,7 +45,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.external_authority {
   ExternalAuthority,
   CitedFigureStanding,
-  CitedToAuthority,
+  CitedToAuthority, ObservedByReceipt,
   TranscribedUncited,
   cited_figure_read_obligation,
 }
@@ -323,6 +323,7 @@ fn route_power(r: NodeRoute) -> RoutePower {
     FactoryServer { candidate: _, server: srv, configuration: _, standing: _ } =>
       match srv.figure_standing {
         TranscribedUncited { read_obligation: o } => PowerUnread { cause: o }
+        ObservedByReceipt { receipt: r } => PowerUnread { cause: join(["the server's figures are observed by ", r.module_path as String, " ", r.decl_name as String, ", and a power ceiling here is carried only with the external authority that states it"], "") as NonEmptyStr }
         CitedToAuthority { authority: auth } =>
           match server_supply_ceiling_at(row: srv, mains_vac: operator_site_mains_vac) {
             Present { value: w } => PowerCited { ceiling: w, authority: auth }
@@ -489,6 +490,14 @@ fn memory_coupling(term: ObjectiveTerm) -> CausalCoupling {
 fn node_platform_causal_model(routes: List<NodeRoute>) -> CausalModelPopulation {
   match power_ground(routes: routes) {
     TranscribedUncited { read_obligation: o } => CausalModelUnestablished { subject: node_platform_subject_identity, read_obligation: o }
+    ObservedByReceipt { receipt: r } => CausalModelEstablished {
+      couplings: [
+        memory_coupling(term: term_gpu_local_capacity),
+        memory_coupling(term: term_gpu_local_bandwidth),
+        memory_coupling(term: term_coherent_capacity),
+        FleetObservedCoupling { receipt: r, term: node_power_ceiling_axis, variable: var_node_platform.identity, subject: node_platform_subject_identity },
+      ],
+    }
     CitedToAuthority { authority: a } => CausalModelEstablished {
       couplings: [
         memory_coupling(term: term_gpu_local_capacity),

@@ -8,8 +8,8 @@ import std.fabric_storage {
   FabricHeadObserved, FabricHeadReadRefused, FabricStoreUnreachable, FabricStoreRefused,
 }
 import extdeps.object_storage { ObjectEntityTag, PutIfAbsent, PutIfMatch }
-import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
-import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url, r2_conditional_put_race_receipt }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url, r2_conditional_put_linearizability }
 import gunbc.secret_provision { fleet_secret_ref }
 import extdeps.shell.exec { process_observation }
 import gunbc.cloudflare.r2_staged_transfer {
@@ -198,17 +198,28 @@ test fn a_binding_reads_and_writes_one_locator_with_two_credentials() -> Bool {
     && (wt.access_key_id as String) == "write-key"
 }
 
-// THE RECEIPT ADMITS THE PROJECTION: both halves of the ground are cited -- the supported-header fact to
-// Cloudflare's page, the concurrency guarantee to the race probe's receipt (extdeps.cloudflare.r2
-// r2_conditional_put_race_receipt) -- so the sealed admission is minted. Its refusal arm stays exercised
-// by the supplied NotGrounded admission in test.claim.workspace_checkpoint_instrument.
+// THE RECEIPT ADMITS THE PROJECTION. The headers are cited to Cloudflare's page; the concurrency
+// guarantee is still a bet upstream (extdeps.cloudflare.r2 r2_conditional_put_linearizability), and is
+// grounded instead by this repository's own race probe receipt, referenced from the observing layer.
+// So the sealed admission is minted. Its refusal arm stays exercised by the supplied NotGrounded
+// admission in test.claim.workspace_checkpoint_instrument.
 test fn the_r2_cas_is_admitted_on_the_race_probe_receipt() -> Bool {
   let g = r2_head_cas_ground()
-  let headers_cited = match r2_head_cas_ground_headers(ground: g) { CitedToAuthority { authority: _ } => true  TranscribedUncited { read_obligation: _ } => false }
-  let race_cited_to_receipt = match r2_head_cas_ground_linearizability(ground: g) {
-    CitedToAuthority { authority: a } => a.uri.locator == r2_conditional_put_race_receipt.uri.locator
+  let headers_cited = match r2_head_cas_ground_headers(ground: g) {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { receipt: _ } => false
+  }
+  let upstream_still_a_bet = match r2_conditional_put_linearizability {
+    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { receipt: _ } => false
+  }
+  let observed_by_the_receipt = match r2_head_cas_ground_linearizability(ground: g) {
+    ObservedByReceipt { receipt: r } => (r.module_path as String) == "gunbc.cloudflare.r2_conditional_put_race_probe" && (r.decl_name as String) == "r2_conditional_put_race_receipt"
+    CitedToAuthority { authority: _ } => false
     TranscribedUncited { read_obligation: _ } => false
   }
   let admitted = match r2_head_cas_admission(ground: g) { R2HeadCasAdmittedArm { admitted: _ } => true  R2HeadCasNotGrounded { read_obligation: _ } => false }
-  headers_cited && race_cited_to_receipt && admitted
+  headers_cited && upstream_still_a_bet && observed_by_the_receipt && admitted
 }

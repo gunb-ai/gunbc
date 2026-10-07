@@ -22,7 +22,10 @@ import extdeps.tools.curl {
   curl_trace_transfer_sending, curl_trace_instants, CurlTraceSendData, CurlTraceRecvHeader,
 }
 import extdeps.version.semver { semver_version_label }
-import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator, r2_object_url, r2_s3_endpoint_host, r2_s3_sigv4_region }
+import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator, r2_object_url, r2_s3_endpoint_host, r2_s3_sigv4_region, r2_conditional_put_linearizability }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { decl_ref }
 import gunbc.host_cli_dependency { observe_host_cli_dependency, HostCliDependencyPresent, HostCliDependencyAbsent }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
@@ -71,6 +74,40 @@ data race_writer_a: NonEmptyStr = "writer-a"
 data race_writer_b: NonEmptyStr = "writer-b"
 
 data race_probe_limit_line: String = "limit=a round counts as raced when both PUTs were sent before either was answered, on one client-side clock (the curl trace); this is not the order the requests arrived at the store"
+
+// ── THE RECEIPT, AND THE STANDING IT GROUNDS ───────────────────────────────────────────────────
+//
+// A RECEIPT THIS INSTRUMENT PRODUCED, NAMED BY WHERE IT CAN BE READ: the dispatched run and the
+// artifact it uploaded. The reading is the artifact's own lines (transport, declared and observed
+// rounds, each round's statuses, overlap fact and verdict, cleanup, final verdict); none of them is
+// restated here, and re-running the fleet-converge mode re-derives a fresh one.
+type RaceProbeReceipt {
+  run: Uri
+  artifact: NonEmptyStr
+}
+
+// The run whose receipt met the admission bar set before it was dispatched: the transport at or above
+// curl_trace_ids_cli_tool's floor, every declared round observed, verdict passed, no inconclusive round.
+data r2_conditional_put_race_receipt: RaceProbeReceipt = RaceProbeReceipt {
+  run: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/actions/runs/37659103953"
+  }
+  artifact: "r2-conditional-put-race-probe-receipt"
+}
+
+// WHAT GROUNDS THE CONCURRENT IF-MATCH GUARANTEE, DECIDED IN THE OBSERVING LAYER. The upstream row
+// (extdeps.cloudflare.r2 r2_conditional_put_linearizability) says what Cloudflare publishes; while it is
+// only a bet, this repository's receipt grounds the guarantee. A citation upstream would be preferred if
+// Cloudflare ever published one, which is why the row is read rather than bypassed.
+fn r2_conditional_put_linearizability_ground() -> CitedFigureStanding {
+  match r2_conditional_put_linearizability {
+    CitedToAuthority { authority: a } => CitedToAuthority { authority: a }
+    ObservedByReceipt { receipt: r } => ObservedByReceipt { receipt: r }
+    TranscribedUncited { read_obligation: _ } =>
+      ObservedByReceipt { receipt: decl_ref(module_path: "gunbc.cloudflare.r2_conditional_put_race_probe", decl_name: "r2_conditional_put_race_receipt") }
+  }
+}
 
 // ── THE VERDICT: A PURE FOLD OVER WHAT THE STORE ANSWERED ──────────────────────────────────────
 

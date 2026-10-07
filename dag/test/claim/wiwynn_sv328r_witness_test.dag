@@ -25,7 +25,7 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.memory.types { Registered }
 import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController, OcpNic3 }
 import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -56,6 +56,7 @@ test fn w_cooling_is_six_60_by_56_and_power_is_dual_crps_with_owed_inlet() -> Bo
       TranscribedUncited { read_obligation } =>
         string_contains(s: read_obligation as String, pattern: "C14 vs C20")
       CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { receipt: _ } => false
     }
 }
 
@@ -98,5 +99,6 @@ test fn w_storage_and_ocp_slot_match_the_sheet() -> Bool {
     && match sv328r_ocp_slot_occupancy {
       TranscribedUncited { read_obligation: _ } => true
       CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { receipt: _ } => false
     }
 }

@@ -35,7 +35,7 @@ import std.measure {
 }
 import extdeps.external_authority {
   CitedFigureStanding,
-  CitedToAuthority,
+  CitedToAuthority, ObservedByReceipt,
   TranscribedUncited,
 }
 import extdeps.cpu.types { CpuModelCatalogRow }
@@ -190,6 +190,8 @@ fn rank_specific_2dpc_clock(
         cause: RankSpecificRateUncited { read_obligation: obligation },
       }
       CitedToAuthority { authority: _ } =>
+        ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
+      ObservedByReceipt { receipt: _ } =>
         ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
     }
   }

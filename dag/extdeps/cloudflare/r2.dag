@@ -44,26 +44,14 @@ data r2_consistency_authority: ExternalAuthority = ExternalAuthority {
 
 data r2_put_object_conditional_standing: CitedFigureStanding = CitedToAuthority { authority: r2_s3_api_citation }
 
-// WHAT NEITHER PAGE STATES, AND WHAT GROUNDS IT INSTEAD: that two concurrent PutObject requests carrying
-// If-Match on the same entity tag cannot both succeed. A compare-and-set is exactly that property, so a
-// head linearized on R2 rests on it; supported headers and read-after-write do not imply it. It was a
-// typed bet until the discriminating run its read obligation named was receipted, and the authority is
-// that receipt. THE INSTRUMENT, which re-derives it: gunbc.cloudflare.r2_conditional_put_race_probe
-// run_r2_conditional_put_race_probe under the fleet-converge mode r2_conditional_put_race_probe. THE
-// READING: the run below, artifact r2-conditional-put-race-probe-receipt, whose transport line,
-// declared and observed rounds, per-round statuses and verdict are the evidence and are not restated here.
-//
-// WHAT THE CITATION DOES NOT CARRY. "Raced" is read on the client's clock (the curl trace), not the
-// order requests arrived at the store, and the reading is one run against one bucket. A later
-// falsifying receipt from the same instrument supersedes this one.
-data r2_conditional_put_race_receipt: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "github.com/gunb-ai/gunbc/actions/runs/37659103953"
-  }
+// WHAT NEITHER PAGE STATES, TYPED AS A BET (DESIGN 4d): that two concurrent PutObject requests
+// carrying If-Match on the same entity tag cannot both succeed. A compare-and-set is exactly that
+// property, so a head linearized on R2 rests on it; supported headers and read-after-write do not
+// imply it. It is grounded by a discriminating run, not by reading: two writers racing one tag
+// against the live bucket, exactly one 2xx and one 412, repeated.
+data r2_conditional_put_linearizability: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Run two concurrent If-Match PutObject requests on one entity tag against a live R2 bucket, repeated; exactly one may answer 2xx and every other 412. Until that run is receipted, an R2 head is not cited as a linearization point.",
 }
-
-data r2_conditional_put_linearizability: CitedFigureStanding = CitedToAuthority { authority: r2_conditional_put_race_receipt }
 
 data r2_data_location_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
