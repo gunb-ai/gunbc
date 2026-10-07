@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bare_name_resolved_by_proximity_standing_in_for_resolution: RecurringFailureMode = RecurringFailureMode {
+  identity: "bare_name_resolved_by_proximity_standing_in_for_resolution" as NonEmptyStr,
+
+  receipts: [
+    "**bare name resolved by proximity, standing in for resolution** (the reference-edge reader in `v1_compiler.cli_run` `entry_resolve` binds a bare name in an IMPORT-LESS file by 'proximity disambiguation' -- the longest shared module-path prefix with a pool declarer -- yielding a UniqueBare or AmbiguousBare edge. A heuristic standing where lexical resolution (locals plus imports) is the authority; DESIGN §4: in a closed system a heuristic is never necessary.)",
+
+    "INVALID STATE: a dependency edge from a module to a declarer it does not lexically bind. The edge widens closures and affected-set selection and can name a homonym the source never meant, silently, with no refusal.",
+
+    "SPECIMEN (gunbc#13526): a planted fixture declaring `Present` in `test.fixture.planted` beside `std.optional { Present }` produced an edge from an importer of `std.optional` to the planted module while the reader still resolved by proximity. #13526 closed the arm for import-BEARING files (bare names there are lexically bound, only qualified chains become edges) and kept the proximity tier for import-less files only.",
+
+    "RUNG: found at 1, mitigation -- the edge is typed (UniqueBare/AmbiguousBare, strict selection drops AmbiguousBare) but the guess stays writable. CEILING 3, structurally guaranteed: bare names are decidable by lexical resolution, so the reader can resolve them lexically or refuse with a typed cause; no grounding is missing.",
+
+    "NEXT-RUNG TRIGGER: bare names resolve lexically (locals plus imports) or the reader refuses with a typed cause, so a bare name in an import-less file with no lexical binding is a located refusal rather than a proximity-ranked edge. The proximity tier is deleted, and the RED (planted homonym) stays enrolled as the permanent control.",
+
+    "REVIEW TELL: a reader or resolver that ranks candidate declarers by path similarity, shared prefix or 'closest' instead of refusing; an edge whose only justification is that one pool declarer exists.",
+  ],
+
+  evidence: [],
+}
