@@ -7776,6 +7776,49 @@ fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? 
   }
 }
 
+fn subst_from_typed_call_args(
+  results: List<ArgInferResult>,
+  call_args: List<Node>,
+  value_params: List<Node>,
+  formals: List<ResolvedFormal>,
+  generic_names: List<String>,
+  scope: InferScope
+) -> Map<String, Node> {
+  if (generic_names |> count) == 0 {
+    empty_map()
+  } else {
+    fold(results |> enumerate, init: empty_map(), f: (st, pair) =>
+      let formal_selection = select_formal_for_call_argument(
+        argument: match call_args |> skip(pair.first) |> first {
+          Present { value: a } => a
+          Absent => pair.second.typed_arg
+        },
+        argument_index: pair.first,
+        arguments: call_args,
+        value_params: value_params,
+        source_indices: scope.type_env.source_indices
+      )
+      let formal_raw = match formal_selection {
+        CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+          Present { value: carried } => carried.substitution_basis
+          Absent => error_type
+        }
+        CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+      }
+      let typed = arg_value(n: pair.second.typed_arg)
+      if is_lambda_expr(e: typed) {
+        unify_lambda_solves(
+          solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
+          generic_names: generic_names,
+          acc: st
+        )
+      } else {
+        unify_generics(formal: formal_raw, actual: resolved_type(n: typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
+      }
+    )
+  }
+}
+
 fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
@@ -8640,7 +8683,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         )
       } else if has_lambda && call_args |> count >= 2 && (sig == none || callee_is_collection_fold(name: func_name)) {
-        ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
+        let fold_results = match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
@@ -8653,7 +8696,20 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             )
           Absent =>
             []
-        } }
+        }
+        let fold_subst = if sig == none {
+          empty_map()
+        } else {
+          subst_from_typed_call_args(
+            results: fold_results,
+            call_args: call_args,
+            value_params: call_sig_split.value_params,
+            formals: resolved_formals,
+            generic_names: call_sig_split.generic_names,
+            scope: scope
+          )
+        }
+        ArgGenericFoldState { subst: fold_subst, results: fold_results }
       } else {
 
         let value_params = call_sig_split.value_params

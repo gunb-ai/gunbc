@@ -56,6 +56,11 @@ data fold_init_concat_informing_source: String = "module probe_fold_init_concat\
 // (type_declaration_use_census emit-build).
 data fold_list_xs_element_field_source: String = "module probe_fold_list_xs_field\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n"
 
+// IMPORTED fold_list HAS A DECLARED SIG. The fold-arg path used to leave call_subst empty, so A
+// was never substituted into the return (review 77497). Bare fold_list is BuiltinCallableResolved
+// and never hits that arm.
+data fold_list_imported_return_source: String = "module probe_imported_fold_list\nimport v2.std.algebra { fold_list }\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n"
+
 fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => (census_blocking_rows(rows: rows) |> count) == 0
@@ -96,4 +101,8 @@ test fn fold_init_concat_informs_the_list_element() -> Bool {
 
 test fn fold_list_binds_element_from_xs_for_field_access() -> Bool {
   compiles_with_no_blocking_diagnostic(source: fold_list_xs_element_field_source)
+}
+
+test fn imported_fold_list_substitutes_the_accumulator_return() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: fold_list_imported_return_source)
 }

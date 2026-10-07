@@ -11753,6 +11753,87 @@ pub fn formal_code_point_view_peeled(
     }
 }
 
+pub fn subst_from_typed_call_args(
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    call_args: Rc<Vec<Rc<Node>>>,
+    value_params: Rc<Vec<Rc<Node>>>,
+    formals: Rc<Vec<Rc<ResolvedFormal>>>,
+    generic_names: Rc<Vec<String>>,
+    scope: Rc<InferScope>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    if ((generic_names.clone().len() as i64) == 0) {
+        v1_rt::rc_empty_map::<String, Rc<Node>>()
+    } else {
+        let mut st = v1_rt::rc_empty_map::<String, Rc<Node>>();
+        for pair in results
+            .clone()
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, v)| (i as i64, v))
+            .collect::<Vec<_>>()
+        {
+            let argument = match call_args
+                .clone()
+                .iter()
+                .cloned()
+                .skip(pair.0 as usize)
+                .next()
+            {
+                Some(a) => a,
+                std::option::Option::None => pair.1.typed_arg.clone(),
+            };
+            let formal_selection = select_formal_for_call_argument(
+                argument,
+                pair.0,
+                call_args.clone(),
+                value_params.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            let formal_raw = match (*formal_selection.clone()).clone() {
+                CallArgumentFormalSelection::CallArgumentFormalSelected {
+                    formal_index, ..
+                } => match formals
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(formal_index.clone() as usize)
+                    .next()
+                {
+                    Some(carried) => carried.substitution_basis.clone(),
+                    std::option::Option::None => error_type(),
+                },
+                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                    type_variable_node("callable_param".to_string())
+                }
+            };
+            let typed = crate::v1_std_core::arg_value(pair.1.typed_arg.clone());
+            st = if is_lambda_expr(typed.clone()) {
+                unify_lambda_solves(
+                    unify_generics(
+                        formal_raw,
+                        lambda_callable_type(typed),
+                        generic_names.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                    ),
+                    generic_names.clone(),
+                    st,
+                )
+            } else {
+                unify_generics(
+                    formal_raw,
+                    crate::v1_compiler_infer_types::resolved_type(typed),
+                    generic_names.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    st,
+                )
+            };
+        }
+        st
+    }
+}
+
 pub fn infer_call_arguments_generic_pass(
     call_args: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
@@ -13181,9 +13262,7 @@ Rc::new(InferResult {
                                 && ((sig.clone() == std::option::Option::None)
                                     || callee_is_collection_fold(func_name.clone())))
                             {
-                                Rc::new(ArgGenericFoldState {
-                                    subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                                    results: match call_args.clone().first().cloned() {
+                                let fold_results = match call_args.clone().first().cloned() {
                                         Some(first_arg) => {
                                             let first_result = infer_expr(
                                                 crate::v1_std_core::arg_value(first_arg.clone()),
@@ -13232,7 +13311,22 @@ Rc::new(InferResult {
                                             )
                                         }
                                         std::option::Option::None => Rc::new(vec![]),
-                                    },
+                                    };
+                                let fold_subst = if (sig.clone() == std::option::Option::None) {
+                                    v1_rt::rc_empty_map::<String, Rc<Node>>()
+                                } else {
+                                    subst_from_typed_call_args(
+                                        fold_results.clone(),
+                                        call_args.clone(),
+                                        call_sig_split.value_params.clone(),
+                                        resolved_formals.clone(),
+                                        call_sig_split.generic_names.clone(),
+                                        scope.clone(),
+                                    )
+                                };
+                                Rc::new(ArgGenericFoldState {
+                                    subst: fold_subst,
+                                    results: fold_results,
                                 })
                             } else {
                                 {
