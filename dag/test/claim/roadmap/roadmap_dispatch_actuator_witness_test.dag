@@ -5,7 +5,7 @@ import gunbc.roadmap_sizing {
 }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
-import std.optional { Present, Absent }
+import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
 import v2.std.collection { List }
