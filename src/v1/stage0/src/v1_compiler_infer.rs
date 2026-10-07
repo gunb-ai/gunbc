@@ -11812,84 +11812,98 @@ pub fn bind_unbound_collection_element_generic(
     }
 }
 
-pub fn subst_from_typed_call_args(
-    results: Rc<Vec<Rc<ArgInferResult>>>,
-    call_args: Rc<Vec<Rc<Node>>>,
-    value_params: Rc<Vec<Rc<Node>>>,
-    formals: Rc<Vec<Rc<ResolvedFormal>>>,
-    generic_names: Rc<Vec<String>>,
-    scope: Rc<InferScope>,
-) -> Rc<HashMap<String, Rc<Node>>> {
-    if ((generic_names.clone().len() as i64) == 0) {
-        v1_rt::rc_empty_map::<String, Rc<Node>>()
+pub fn formal_type_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.inferred.clone() {
+        Some(inf) => match (*inf).clone() {
+            InferredNode::TypeVariable { id } => id,
+            InferredNode::Resolved { node: inner } => {
+                formal_type_key(inner, source_indices)
+            }
+            _ => crate::v1_std_core::qualified_last_segment(type_node_label(
+                n,
+                source_indices,
+            )),
+        },
+        std::option::Option::None => crate::v1_std_core::qualified_last_segment(
+            type_node_label(n, source_indices),
+        ),
+    }
+}
+
+pub fn collection_fold_step_binds_accumulator(
+    coll: Rc<ResolvedFormal>,
+    acc: Rc<ResolvedFormal>,
+    step: Rc<ResolvedFormal>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let step_ty = if formal_type_is_fold_step(step.declared_type.clone(), source_indices.clone())
+    {
+        step.declared_type.clone()
     } else {
-        let mut st = v1_rt::rc_empty_map::<String, Rc<Node>>();
-        for pair in results
-            .clone()
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(i, v)| (i as i64, v))
-            .collect::<Vec<_>>()
-        {
-            let argument = match call_args
-                .clone()
-                .iter()
-                .cloned()
-                .skip(pair.0 as usize)
-                .next()
-            {
-                Some(a) => a,
-                std::option::Option::None => pair.1.typed_arg.clone(),
-            };
-            let formal_selection = select_formal_for_call_argument(
-                argument,
-                pair.0,
-                call_args.clone(),
-                value_params.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            );
-            let formal_raw = match (*formal_selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected {
-                    formal_index, ..
-                } => match formals
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(formal_index.clone() as usize)
-                    .next()
-                {
-                    Some(carried) => carried.substitution_basis.clone(),
-                    std::option::Option::None => error_type(),
-                },
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                    type_variable_node("callable_param".to_string())
-                }
-            };
-            let typed = crate::v1_std_core::arg_value(pair.1.typed_arg.clone());
-            st = if is_lambda_expr(typed.clone()) {
-                unify_lambda_solves(
-                    unify_generics(
-                        formal_raw,
-                        lambda_callable_type(typed),
-                        generic_names.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        step.substitution_basis.clone()
+    };
+    let acc_ty = if formal_type_key(acc.declared_type.clone(), source_indices.clone()) != ""
+    {
+        acc.declared_type.clone()
+    } else {
+        acc.substitution_basis.clone()
+    };
+    let coll_ty = if formal_type_is_unary_container(
+        coll.declared_type.clone(),
+        source_indices.clone(),
+    ) {
+        coll.declared_type.clone()
+    } else {
+        coll.substitution_basis.clone()
+    };
+    let sig = callable_signature_view(step_ty);
+    let params = callable_value_params(sig.clone(), source_indices.clone());
+    match params.clone().iter().cloned().next() {
+        std::option::Option::None => false,
+        Some(p0) => match params.clone().iter().cloned().skip(1).next() {
+            std::option::Option::None => false,
+            Some(p1) => {
+                let acc_key = formal_type_key(acc_ty, source_indices.clone());
+                let step_acc =
+                    formal_type_key(callable_param_type(p0), source_indices.clone());
+                let step_elem =
+                    formal_type_key(callable_param_type(p1), source_indices.clone());
+                let step_ret = formal_type_key(
+                    crate::v1_compiler_infer_types::resolved_type(sig),
+                    source_indices.clone(),
+                );
+                let coll_elem = formal_type_key(
+                    crate::v1_compiler_infer_types::for_each_element_type_node(
+                        coll_ty,
+                        source_indices.clone(),
                     ),
-                    generic_names.clone(),
-                    st,
-                )
-            } else {
-                unify_generics(
-                    formal_raw,
-                    crate::v1_compiler_infer_types::resolved_type(typed),
-                    generic_names.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                    st,
-                )
-            };
+                    source_indices.clone(),
+                );
+                acc_key != ""
+                    && acc_key == step_acc
+                    && acc_key == step_ret
+                    && step_elem != ""
+                    && step_elem == coll_elem
+            }
+        },
+    }
+}
+
+pub fn argument_is_empty_collection_intro(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*e.expr_data.clone()).clone() {
+        ExprData::ExprListLit => (e.children.clone().len() as i64) == 0,
+        _ => {
+            expression_is_uppercase_constructor_reference(e.clone(), source_indices.clone())
+                && crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::expr_var_name_at(e, source_indices),
+                ) == "Empty".to_string()
         }
-        st
     }
 }
 
@@ -11982,11 +11996,29 @@ pub fn collection_fold_roles(
         .map(|(i, _)| i as i64)
         .collect();
     if collections.len() == 1 && steps.len() == 1 && accs.len() == 1 {
-        Some(Rc::new(CollectionFoldRoles {
-            collection_formal_index: collections[0],
-            acc_formal_index: accs[0],
-            step_formal_index: steps[0],
-        }))
+        match (
+            formals.clone().iter().cloned().skip(collections[0] as usize).next(),
+            formals.clone().iter().cloned().skip(accs[0] as usize).next(),
+            formals.clone().iter().cloned().skip(steps[0] as usize).next(),
+        ) {
+            (Some(coll), Some(acc), Some(step)) => {
+                if collection_fold_step_binds_accumulator(
+                    coll,
+                    acc,
+                    step,
+                    source_indices.clone(),
+                ) {
+                    Some(Rc::new(CollectionFoldRoles {
+                        collection_formal_index: collections[0],
+                        acc_formal_index: accs[0],
+                        step_formal_index: steps[0],
+                    }))
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        }
     } else {
         std::option::Option::None
     }
@@ -12329,7 +12361,12 @@ pub fn infer_call_arguments_generic_pass(
                         formal_index: fi,
                         ..
                     } => {
-                        if fi == roles.acc_formal_index.clone() {
+                        if fi == roles.acc_formal_index.clone()
+                            && argument_is_empty_collection_intro(
+                                crate::v1_std_core::arg_value(a.clone()),
+                                scope.type_env.clone().source_indices.clone(),
+                            )
+                        {
                             collection_fold_acc_expected(
                                 st.results.clone(),
                                 call_args.clone(),
@@ -13694,20 +13731,8 @@ Rc::new(InferResult {
                                         }
                                         std::option::Option::None => Rc::new(vec![]),
                                     };
-                                let fold_subst = if (sig.clone() == std::option::Option::None) {
-                                    v1_rt::rc_empty_map::<String, Rc<Node>>()
-                                } else {
-                                    subst_from_typed_call_args(
-                                        fold_results.clone(),
-                                        call_args.clone(),
-                                        call_sig_split.value_params.clone(),
-                                        resolved_formals.clone(),
-                                        call_sig_split.generic_names.clone(),
-                                        scope.clone(),
-                                    )
-                                };
                                 Rc::new(ArgGenericFoldState {
-                                    subst: fold_subst,
+                                    subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                     results: fold_results,
                                 })
                             } else {

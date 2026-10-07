@@ -7519,6 +7519,36 @@ fn formal_carries_fold_step(f: ResolvedFormal, source_indices: Map<String, Newli
     || formal_type_is_fold_step(n: f.declared_type, source_indices: source_indices)
 }
 
+fn formal_type_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: TypeVariable { id: id } } => id
+    Present { value: Resolved { node: inner } } => formal_type_key(n: inner, source_indices: source_indices)
+    _ => qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices))
+  }
+}
+
+fn collection_fold_step_binds_accumulator(coll: ResolvedFormal, acc: ResolvedFormal, step: ResolvedFormal, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let step_ty = if formal_type_is_fold_step(n: step.declared_type, source_indices: source_indices) { step.declared_type } else { step.substitution_basis }
+  let acc_ty = if formal_type_key(n: acc.declared_type, source_indices: source_indices) != "" { acc.declared_type } else { acc.substitution_basis }
+  let coll_ty = if formal_type_is_unary_container(n: coll.declared_type, source_indices: source_indices) { coll.declared_type } else { coll.substitution_basis }
+  let sig = callable_signature_view(n: step_ty)
+  let params = callable_value_params(arrow: sig, source_indices: source_indices)
+  match params |> first {
+    Absent => false
+    Present { value: p0 } =>
+      match params |> skip(1) |> first {
+        Absent => false
+        Present { value: p1 } =>
+          let acc_key = formal_type_key(n: acc_ty, source_indices: source_indices)
+          let step_acc = formal_type_key(n: callable_param_type(p: p0), source_indices: source_indices)
+          let step_elem = formal_type_key(n: callable_param_type(p: p1), source_indices: source_indices)
+          let step_ret = formal_type_key(n: resolved_type(n: sig), source_indices: source_indices)
+          let coll_elem = formal_type_key(n: for_each_element_type_node(n: coll_ty, source_indices: source_indices), source_indices: source_indices)
+          acc_key != "" && acc_key == step_acc && acc_key == step_ret && step_elem != "" && step_elem == coll_elem
+      }
+  }
+}
+
 fn collection_fold_roles(formals: List<ResolvedFormal>, source_indices: Map<String, NewlineIndex>) -> CollectionFoldRoles? {
   let collections = formals |> enumerate |> filter(p => formal_carries_unary_container(f: p.second, source_indices: source_indices))
   let steps = formals |> enumerate |> filter(p => !formal_carries_unary_container(f: p.second, source_indices: source_indices) && formal_carries_fold_step(f: p.second, source_indices: source_indices))
@@ -7533,7 +7563,9 @@ fn collection_fold_roles(formals: List<ResolvedFormal>, source_indices: Map<Stri
             match accs |> first {
               Absent => none
               Present { value: a } =>
-                Present { value: CollectionFoldRoles { collection_formal_index: c.first, acc_formal_index: a.first, step_formal_index: s.first } }
+                if collection_fold_step_binds_accumulator(coll: c.second, acc: a.second, step: s.second, source_indices: source_indices) {
+                  Present { value: CollectionFoldRoles { collection_formal_index: c.first, acc_formal_index: a.first, step_formal_index: s.first } }
+                } else { none }
             }
         }
     }
@@ -7892,46 +7924,12 @@ fn bind_unbound_collection_element_generic(
   }
 }
 
-fn subst_from_typed_call_args(
-  results: List<ArgInferResult>,
-  call_args: List<Node>,
-  value_params: List<Node>,
-  formals: List<ResolvedFormal>,
-  generic_names: List<String>,
-  scope: InferScope
-) -> Map<String, Node> {
-  if (generic_names |> count) == 0 {
-    empty_map()
-  } else {
-    fold(results |> enumerate, init: empty_map(), f: (st, pair) =>
-      let formal_selection = select_formal_for_call_argument(
-        argument: match call_args |> skip(pair.first) |> first {
-          Present { value: a } => a
-          Absent => pair.second.typed_arg
-        },
-        argument_index: pair.first,
-        arguments: call_args,
-        value_params: value_params,
-        source_indices: scope.type_env.source_indices
-      )
-      let formal_raw = match formal_selection {
-        CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
-          Present { value: carried } => carried.substitution_basis
-          Absent => error_type
-        }
-        CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
-      }
-      let typed = arg_value(n: pair.second.typed_arg)
-      if is_lambda_expr(e: typed) {
-        unify_lambda_solves(
-          solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
-          generic_names: generic_names,
-          acc: st
-        )
-      } else {
-        unify_generics(formal: formal_raw, actual: resolved_type(n: typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
-      }
-    )
+fn argument_is_empty_collection_intro(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match e.expr_data {
+    ExprListLit => (e.children |> count) == 0
+    _ =>
+      expression_is_uppercase_constructor_reference(n: e, source_indices: source_indices)
+        && qualified_last_segment(name: expr_var_name_at(texpr: e, source_indices: source_indices)) == "Empty"
   }
 }
 
@@ -8038,7 +8036,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       Present { value: roles } =>
         match formal_selection {
           CallArgumentFormalSelected { formal_index: fi, formal: _ } =>
-            if fi == roles.acc_formal_index {
+            if fi == roles.acc_formal_index && argument_is_empty_collection_intro(e: arg_value(n: a), source_indices: scope.type_env.source_indices) {
               collection_fold_acc_expected(results: st.results, call_args: call_args, value_params: value_params, roles: roles, source_indices: scope.type_env.source_indices)
             } else { none }
           CallArgumentFormalUnavailable => none
@@ -8890,19 +8888,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent =>
             []
         }
-        let fold_subst = if sig == none {
-          empty_map()
-        } else {
-          subst_from_typed_call_args(
-            results: fold_results,
-            call_args: call_args,
-            value_params: call_sig_split.value_params,
-            formals: resolved_formals,
-            generic_names: call_sig_split.generic_names,
-            scope: scope
-          )
-        }
-        ArgGenericFoldState { subst: fold_subst, results: fold_results }
+        ArgGenericFoldState { subst: empty_map(), results: fold_results }
       } else {
 
         let value_params = call_sig_split.value_params
