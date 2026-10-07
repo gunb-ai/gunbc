@@ -2195,7 +2195,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().iter().cloned().skip(1 as usize).next()
+        n.children.clone().get((1) as usize).cloned()
     } else {
         std::option::Option::None
     }
@@ -2272,7 +2272,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().iter().cloned().skip(1 as usize).next()
+        n.children.clone().get((1) as usize).cloned()
     } else {
         std::option::Option::None
     }
@@ -2544,10 +2544,8 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr
         .children
         .clone()
-        .iter()
+        .get((index.clone()) as usize)
         .cloned()
-        .skip(index.clone() as usize)
-        .next()
     {
         Some(v) => v.clone(),
         std::option::Option::None => make_expr_error_node(
@@ -2805,13 +2803,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(2 as usize)
-        .next()
+    texpr.children.clone().get((2) as usize).cloned()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -2819,15 +2811,7 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -2927,15 +2911,7 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn expr_method_name_at(
@@ -2965,17 +2941,9 @@ pub fn lambda_param_names_at(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(
-            texpr
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
+        for n in Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
+            .iter()
+            .cloned()
         {
             __result.push(authored_name_at(source_indices.clone(), n.clone()));
         }
@@ -2988,13 +2956,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(1 as usize)
-        .next()
+    texpr.children.clone().get((1) as usize).cloned()
 }
 
 pub fn let_binding_name_at(
@@ -5081,10 +5043,8 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             match index
                 .offsets
                 .clone()
-                .iter()
+                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
                 .cloned()
-                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
-                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => 0,
@@ -5107,10 +5067,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             match index
                 .offsets
                 .clone()
-                .iter()
+                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
                 .cloned()
-                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
-                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => src_len.clone(),
@@ -5119,10 +5077,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
         let line_end = match index
             .offsets
             .clone()
-            .iter()
+            .get((v1_rt::int_sub(line.clone(), 1)) as usize)
             .cloned()
-            .skip(v1_rt::int_sub(line.clone(), 1) as usize)
-            .next()
         {
             Some(o) => o.clone(),
             std::option::Option::None => src_len.clone(),
