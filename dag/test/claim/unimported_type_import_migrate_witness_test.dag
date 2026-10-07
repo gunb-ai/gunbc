@@ -157,5 +157,5 @@ test fn splice_import_edits_uses_the_repoint_applier() -> Bool {
   splice_import_edits(
     source: "import std.types { Bool }",
     edits: [extend_existing_provider_edit(rbrace_start: 24, name: "Char")]
-  ) == "import std.types { Bool, Char }"
+  ) == "import std.types { Bool , Char}"
 }
