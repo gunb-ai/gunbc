@@ -71,7 +71,7 @@ import gunbc.machine_intake_arrival_converge {
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
-  converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, mtjade1_identity_bind_inputs,
+  converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, converge_arrival_through_bmc_secure, mtjade1_identity_bind_inputs,
   bmc_secure_step_ref, BmcSecureReceipt,
   BmcSecureInputs, BmcSecureApplyInputs, BmcSecureAuthorizationUndischarged, BmcSecureApplyInputsMissing,
   BmcSecureApplicationForAnotherInstance,
@@ -493,6 +493,24 @@ fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperat
     grant: grant,
     capability: capability,
     apply: apply,
+  }
+}
+
+fn bmc_secure_applied_established(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: bmc_secure_step_ref)
+        && match r {
+          BmcSecureReceipt { receipt: b } =>
+            match b.phase.decision {
+              BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => true
+              BmcSecurePhaseNoop { observation: _ } => false
+            }
+          AccessDiscoverReceipt { receipt: _ } => false
+          IdentityBindReceipt { receipt: _ } => false
+          PriorLifeBoundaryReceipt { receipt: _ } => false
+        }
+    _ => false
   }
 }
 
@@ -1113,59 +1131,38 @@ test fn w_bmc_secure_apply_discharge_for_another_unit_refuses() -> Bool {
   apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
 }
 
-// Apply/discharge consume identity.subject and the instance keys, not the Manager/FRU/SMBIOS
-// parses. Those producers are inhabited on main by
-// w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive (through PriorLifeBoundary).
-// This claim supplies that boundary and runs bmc_secure Apply and the fold for real.
+// PAIRING: the census first_consumer mints the Apply discharge list. Hard-coding discharges: []
+// there must redden this claim. Prefix captures are the production readers; this claim supplies
+// Apply+grant and runs converge_arrival_through_bmc_secure, not a probe fold beside it.
 test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
-  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
-  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
-  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
-  let bmc_key = bmc_secure_apply_key()
   match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
-    Present { value: apply } => {
-      let inputs = mtjade1_bmc_inputs(
-        reading: apply.application.plan.diverged,
-        grant: Present { value: mtjade1_live_standing_grant },
-        apply: Present { value: apply },
-        capability: none,
-      )
-      match bmc_secure_bound(key: bmc_key, identity_key: identity, identity_subject: mtjade1_intake_subject(), prior_key: prior, inputs: inputs) {
-        StepEstablished { receipt: r } =>
-          match r {
-            BmcSecureReceipt { receipt: _ } =>
-              match discharge_bmc_secure_apply(
-                key: bmc_key,
-                inputs: inputs,
-                standing: apply.application.plan.managed_write.route,
-                request: apply.application.plan.managed_write.request,
-              ) {
-                Absent => false
-                Present { value: d } => {
-                  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
-                    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
-                    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
-                    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
-                    StepEstablished { receipt: ProbeReceipt { key: bmc_key, consumed: [prior] } },
-                  ]
-                  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
-                    ConvergencePlanAdmitted { plan: p } =>
-                      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: [d]) {
-                        RunConverged { run: ledger } => length(xs: ledger.ledger.instances) == 4
-                        _ => false
-                      }
-                    ConvergencePlanRefused { cause: _ } => false
-                  }
-                }
-              }
-            AccessDiscoverReceipt { receipt: _ } => false
-            IdentityBindReceipt { receipt: _ } => false
-            PriorLifeBoundaryReceipt { receipt: _ } => false
+    Present { value: apply } =>
+      match converge_arrival_through_bmc_secure(
+        run: run_a,
+        subject: mtjade1_key,
+        read: read_mtjade1_current_manager_read(),
+        inputs: mtjade1_identity_bind_inputs(),
+        prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
+        bmc: mtjade1_bmc_inputs(
+          reading: apply.application.plan.diverged,
+          grant: Present { value: mtjade1_live_standing_grant },
+          apply: Present { value: apply },
+          capability: none,
+        ),
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunConverged { run: r } =>
+              length(xs: r.ledger.instances) == 4
+                && match r.ledger.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
+                && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: identity_bind_provisional_step_ref)) |> first() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+                && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() { Present { value: s } => prior_life_archived_from_the_bound_subject(s: s)  Absent => false }
+                && match r.ledger.instances.last() { Present { value: s } => bmc_secure_applied_established(s: s)  Absent => false }
+            _ => false
           }
         _ => false
       }
-    }
   }
 }
 
