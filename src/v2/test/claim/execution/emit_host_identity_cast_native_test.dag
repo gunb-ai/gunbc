@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // module reads the same verdict the required-gate inhabitance already asserted, then builds and
 // runs it. The last merge-time execution of the door is
 // v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds,
-// under gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost — not this module.
+// not this module.
 //
 // STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
 // (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every

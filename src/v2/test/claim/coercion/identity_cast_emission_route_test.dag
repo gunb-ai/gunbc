@@ -24,14 +24,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CLOSURE DOOR'S REPORT SHAPE FOR AN IDENTITY CAST, AND THE INTERFACES THE FLOOR ROWS INSPECT.
 // identity_cast_route_verdict runs v2.compiler.self_host.closure_emission
 // emit_closure_from_ingest_located under the production Rust model (the door v2.cli.compile_cli
-// drives). That call is ingest, resolve, infer, discharge and emit. Two rows discriminate at
-// coercion_cast_crossing over supplied Int/Bool atoms (DESIGN section 3). The inhabitance that the
-// real door still emits `fn f(x: i32) -> i32` — and refuses Int-as-Bool at
-// find_witness_reason_no_candidate — stays on this module, on the required gate, under
-// gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost. Relocating that inhabitance off
-// the gate does not retire that drop (DESIGN section 4b: a drop is retired by its trigger and by
-// nothing else). The native partner builds and runs the emitted text; it is not the last execution
-// of the door.
+// drives). Two rows discriminate at coercion_cast_crossing over supplied Int/Bool atoms (DESIGN
+// section 3). Two inhabitance rows still drive the door on this module, on the required gate.
+// gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost retired when those inhabitance
+// identities billed inside the new-witness eval-step budget on gunbc#13489 required floor run
+// 37522243686 (artifact required-floor-claim-cost). The native partner builds and runs the emitted
+// text; it is not the last execution of the door.
 data identity_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Int { x as Int }\n"
 
 data refused_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Bool { x as Bool }\n"
@@ -140,8 +138,7 @@ test fn an_int_to_bool_cast_has_no_witness_holds() -> Bool {
   }
 }
 
-// INHABITANCE OF THE CLOSURE DOOR, ON THE REQUIRED GATE. Deleting this claim, supplying its
-// emission, or moving it off the gate does not retire identity_cast_route_new_witness_eval_step_cost.
+// INHABITANCE OF THE CLOSURE DOOR, ON THE REQUIRED GATE.
 test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Bool {
   identity_cast_route_admitted_holds(v: identity_cast_route_verdict())
 }

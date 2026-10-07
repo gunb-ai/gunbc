@@ -853,12 +853,11 @@ fn required_gate_prefixes() -> List<String> {
 // THE EIGHTH ROW IS THE IDENTITY-CAST ROUTE'S CLAIMS (gunbc#12443; operator escalation
 // msg_a5787a77; gunbc#13489). Two rows judge an Int identity crossing and a witness-less Int-to-Bool
 // refusal at coercion_cast_crossing over supplied atoms. Two inhabitance rows still drive
-// emit_closure_from_ingest_located on every required run: the admitted identity stays under
-// gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost (measured at that identity on
-// required floor runs 37486290875 and 37493248052). Relocating those inhabitance rows off the gate
-// does not retire that drop. The native partner is deliberately NOT a gate row: every one of its
-// runs spawns the host build tool, so it executes only as a changed witness, as that module states.
-// The module declares SubstrateInputsOnly.
+// emit_closure_from_ingest_located on every required run. Their billed eval_steps on gunbc#13489
+// required floor run 37522243686 (artifact required-floor-claim-cost, job 112483273531) sit inside
+// the new-witness budget, so identity_cast_route_new_witness_eval_step_cost is retired. The native
+// partner is deliberately NOT a gate row: every one of its runs spawns the host build tool, so it
+// executes only as a changed witness, as that module states. The module declares SubstrateInputsOnly.
 // THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
