@@ -185,11 +185,6 @@ data self_host_wet_roster_coverage: CoverageNotEstablished = CoverageNotEstablis
   restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierSelfHostWet) returns true, which is the separate operator agreement std.witness_admission witness_cadence_has_scheduled_route_note reserves" as NonEmptyStr,
 }
 
-data substrate_long_lane_coverage: CoverageNotEstablished = CoverageNotEstablished {
-  lost_with: FalsifierSubstrateLongLane,
-  restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierSubstrateLongLane) returns true" as NonEmptyStr,
-}
-
 // A COVERAGE OF ITS OWN RATHER THAN THE SHARED `bin_wet_template_coverage`, because the shared
 // row's trigger is a ROUTE FLAG and this row needs a stronger thing than a flag. DESIGN section
 // 4b(3): a drop retires by its trigger and nothing else, so a trigger naming less than the
@@ -391,13 +386,6 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
       standing: PremiseInvalidated {
         affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
         current_coverage: self_host_wet_roster_coverage,
-      },
-    },
-    DeletedCadenceReference {
-      site: decl_ref(module_path: "test.claim.instrument_sandbox_witness", decl_name: "fixture_line_remaining"),
-      standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows"),
-        current_coverage: substrate_long_lane_coverage,
       },
     },
     DeletedCadenceReference {

@@ -1358,7 +1358,7 @@ pub(crate) fn reconstruct_base_index(
     // THE KERNEL HALF. `declaring_candidates` consults this binary's own `kernel_type_set`, a head
     // fact, so one map serves exactly when the base declares the same kernel NAMES. That is decided
     // at the grain of the name set, not the declaring file's bytes; distinct sets refuse.
-    match kernel_set_serves_both(&workspace, &base, &head, &live) {
+    match kernel_set_serves_both(&workspace, &base, &head) {
         Ok(true) => {}
         Ok(false) => {
             return Ok(BaselineReconstruction::NotEvaluated {
@@ -1650,6 +1650,15 @@ pub enum EnvironmentLoadRefusal {
     EnvironmentModuleMissing { revision: String, path: String },
     /// The materialized corpus did not resolve, or the item did not evaluate.
     ClosureNotEvaluable { revision: String, cause: String },
+    /// Walking the revision's OWN closure reached an import no file at that revision declares.
+    ///
+    /// Carried as data -- the missing module and the file that imports it -- because the closure
+    /// walk is what found it: no refusal text is parsed to learn which module was absent.
+    ClosureMemberMissing {
+        revision: String,
+        module: String,
+        imported_by: String,
+    },
     /// `ENVIRONMENT_ITEM` is not declared by `ENVIRONMENT_MODULE` at this revision.
     ///
     /// Separate from `ClosureNotEvaluable` because it is the HOMONYM refusal: the interpreter
@@ -1711,6 +1720,14 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
         EnvironmentLoadRefusal::KernelSetNotReadable { revision, cause } => format!(
             "the kernel-name set declared at revision {revision} could not be read: {cause}"
         ),
+        EnvironmentLoadRefusal::ClosureMemberMissing {
+            revision,
+            module,
+            imported_by,
+        } => format!(
+            "{imported_by} imports {module} at revision {revision}, and no file at that revision \
+             declares it, so the revision's own closure cannot be formed"
+        ),
     }
 }
 
@@ -1771,39 +1788,170 @@ pub fn blob_id_at(
     }
 }
 
-/// Materialize one revision's ENVIRONMENT CLOSURE under `dest`, in a single git invocation.
+/// Materialize under `dest` the closure of `entry_rel` AS THE REVISION ITSELF DECLARES IT.
 ///
-/// ONLY THE CLOSURE, NEVER THE WHOLE TREE, and the reason is the class this loader exists to
-/// repair, met one level down. The module index that resolves the environment parses every `.dag`
-/// file it is shown with THIS binary's grammar. Materializing the whole `dag/` tree therefore
-/// parsed every base-side file under the head's grammar in order to learn the base's grammar --
-/// and a base file written in the base's grammar refused inside the loader before the environment
-/// was ever evaluated. The grammar-differs witness caught exactly that. So the index is shown only
-/// the files the environment's declaring closure consists of.
+/// THE CLOSURE IS A FACT ABOUT THE REVISION, so it is read from the revision. An earlier shape took
+/// the closure from the LIVE (head) tree and archived those paths at the base: a head that added a
+/// member to the closure asked the base for a file the base never had and refused at `git archive`
+/// (gunbc#13378's floor: `pathspec 'dag/std/unicode/scalar.dag' did not match`), and a base whose
+/// closure had a member the head dropped was materialized incomplete. Neither is the base's closure.
+///
+/// ONLY THE CLOSURE IS SHOWN TO THE INDEX, NEVER THE WHOLE TREE, and the reason is the class this
+/// loader exists to repair, met one level down. The module index that resolves the environment parses
+/// every `.dag` file it is shown with THIS binary's grammar. Materializing the whole `dag/` tree for
+/// the index therefore parsed every base-side file under the head's grammar in order to learn the
+/// base's grammar -- and a base file written in the base's grammar refused inside the loader before
+/// the environment was ever evaluated. The grammar-differs witness caught exactly that.
+///
+/// So the closure is WALKED WITHOUT PARSING: the revision's `dag/` tree is extracted to a scan
+/// directory, each file's module identity is read from its header by `extract_module_path` -- the
+/// reader the live-tree index itself uses to learn a file's module -- and imports are followed with
+/// `extract_import_paths`, the reader `import_closure_dag_files` walks. Only the files that walk
+/// reaches are copied into `dest` for the index. An import no file at the revision declares refuses
+/// as `ClosureMemberMissing`, carrying the module and its importer as data.
+///
+/// COST, STATED: the scan extracts the revision's whole `dag/` tree in one `git archive`, because a
+/// module's declaring file is known only from the files' own headers. This route runs only when the
+/// two revisions' environments differ (or the kernel-name file differs), never on the ordinary pull
+/// request, which `environment_agreement` settles by object identity first.
 ///
 /// THE HONEST BOUNDARY THIS DRAWS: the loader can read a base whose grammar differs from the head's
 /// so long as the base's ENVIRONMENT CLOSURE is itself readable under the head's grammar. A change
 /// that alters the grammar AND uses the altered grammar inside `std.syntax`'s own closure is outside
 /// any head-built loader's reach -- the same bootstrap boundary the compiler itself has -- and it
-/// refuses as `ClosureNotEvaluable`, never answering under the wrong rules.
-///
-/// `git archive | tar -x` over the named paths rather than a read per file: acquisition cost must
-/// not scale with the corpus (section 6, bare minimum cost). `dest` is the caller's to remove.
-fn materialize_environment_closure_at(
+/// refuses as `ClosureNotEvaluable`, never answering under the wrong rules. `dest` is the caller's
+/// to remove.
+fn materialize_revision_closure_at(
     repo: &std::path::Path,
     revision: &str,
+    entry_rel: &str,
     dest: &std::path::Path,
-    closure_paths: &BTreeSet<String>,
 ) -> Result<(), EnvironmentLoadRefusal> {
-    let paths: Vec<&str> = closure_paths.iter().map(String::as_str).collect();
-    materialize_revision_paths(repo, revision, dest, &paths)?;
-    if !dest.join(ENVIRONMENT_MODULE_PATH).exists() {
+    let scan = revision_scratch_root("closure-scan");
+    let outcome = materialize_revision_paths(repo, revision, &scan, &[DAG_SOURCE_ROOT])
+        .and_then(|()| revision_closure_paths_in(&scan, revision, entry_rel))
+        .and_then(|closure| {
+            for rel in &closure {
+                let to = dest.join(rel);
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        EnvironmentLoadRefusal::RevisionUnreadable {
+                            revision: revision.to_string(),
+                            step: "create closure directory".to_string(),
+                            cause: format!("{}: {e}", parent.display()),
+                        }
+                    })?;
+                }
+                std::fs::copy(scan.join(rel), &to).map_err(|e| {
+                    EnvironmentLoadRefusal::RevisionUnreadable {
+                        revision: revision.to_string(),
+                        step: "copy closure member".to_string(),
+                        cause: format!("{rel}: {e}"),
+                    }
+                })?;
+            }
+            Ok(())
+        });
+    let _ = std::fs::remove_dir_all(&scan);
+    outcome?;
+    if !dest.join(entry_rel).exists() {
         return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
             revision: revision.to_string(),
-            path: ENVIRONMENT_MODULE_PATH.to_string(),
+            path: entry_rel.to_string(),
         });
     }
     Ok(())
+}
+
+/// The repository-relative files of `entry_rel`'s import closure AS `revision` DECLARES IT: the
+/// same walk `materialize_revision_closure_at` performs, answered without materializing the result.
+pub fn revision_closure_paths(
+    repo: &std::path::Path,
+    revision: &str,
+    entry_rel: &str,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let scan = revision_scratch_root("closure-scan");
+    let outcome = materialize_revision_paths(repo, revision, &scan, &[DAG_SOURCE_ROOT])
+        .and_then(|()| revision_closure_paths_in(&scan, revision, entry_rel));
+    let _ = std::fs::remove_dir_all(&scan);
+    outcome
+}
+
+/// The repository-relative files of `entry_rel`'s import closure inside an extracted revision tree,
+/// walked by header (module identity and imports) with no parse.
+fn revision_closure_paths_in(
+    root: &std::path::Path,
+    revision: &str,
+    entry_rel: &str,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    if !root.join(entry_rel).exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: entry_rel.to_string(),
+        });
+    }
+    let unreadable = |step: &str, cause: String| EnvironmentLoadRefusal::RevisionUnreadable {
+        revision: revision.to_string(),
+        step: step.to_string(),
+        cause,
+    };
+    let mut declaring: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut pending = vec![root.join(DAG_SOURCE_ROOT)];
+    while let Some(dir) = pending.pop() {
+        let entries = std::fs::read_dir(&dir)
+            .map_err(|e| unreadable("list revision tree", format!("{}: {e}", dir.display())))?;
+        for entry in entries {
+            let path = entry
+                .map_err(|e| unreadable("list revision tree", format!("{}: {e}", dir.display())))?
+                .path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if path.extension().map(|e| e != "dag").unwrap_or(true) {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).map_err(|e| {
+                unreadable("read revision file", format!("{}: {e}", path.display()))
+            })?;
+            let Some(module) = super::extract_module_path(&content) else {
+                continue;
+            };
+            let rel = path
+                .strip_prefix(root)
+                .map_err(|e| unreadable("relativize revision file", e.to_string()))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if let Some(prior) = declaring.insert(module.clone(), rel.clone()) {
+                return Err(EnvironmentLoadRefusal::ClosureNotEvaluable {
+                    revision: revision.to_string(),
+                    cause: format!("module {module} is declared by both {prior} and {rel}"),
+                });
+            }
+        }
+    }
+    let mut closure = BTreeSet::new();
+    let mut queue = vec![entry_rel.to_string()];
+    while let Some(rel) = queue.pop() {
+        if !closure.insert(rel.clone()) {
+            continue;
+        }
+        let content = std::fs::read_to_string(root.join(&rel))
+            .map_err(|e| unreadable("read closure member", format!("{rel}: {e}")))?;
+        for module in super::extract_import_paths(&content) {
+            match declaring.get(&module) {
+                Some(member) => queue.push(member.clone()),
+                None => {
+                    return Err(EnvironmentLoadRefusal::ClosureMemberMissing {
+                        revision: revision.to_string(),
+                        module,
+                        imported_by: rel.clone(),
+                    })
+                }
+            }
+        }
+    }
+    Ok(closure)
 }
 
 /// Materialize the named paths of one revision under `dest`: one `git archive`, one `tar -x`.
@@ -1966,27 +2114,10 @@ pub fn load_parse_environment_at(
     repo: &std::path::Path,
     revision: &str,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let closure = environment_closure_paths()?;
-    load_parse_environment_with_closure(repo, revision, &closure)
-}
-
-/// The loader over an ALREADY-RESOLVED closure.
-///
-/// `environment_agreement` resolves the closure to decide whether the grammars differ and then, on
-/// the differing path, loads the base's environment -- the same closure, same inputs, with the
-/// caller already holding the answer. Section 2: carry the first value rather than recompute it at
-/// the least common ancestor. This is that carried value; `load_parse_environment_at` resolves once
-/// for callers that hold nothing.
-pub fn load_parse_environment_with_closure(
-    repo: &std::path::Path,
-    revision: &str,
-    closure: &BTreeSet<String>,
-) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
     let dest = revision_scratch_root("parse-env");
-    // If the base's closure has a member the head's does not, the materialized set is incomplete
-    // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
-    let carried = closure_members_carried_at(repo, revision, closure)?;
-    let outcome = materialize_environment_closure_at(repo, revision, &dest, &carried)
+    // The closure is the REVISION'S, walked out of the revision's own tree: never the live tree's
+    // closure archived at another revision.
+    let outcome = materialize_revision_closure_at(repo, revision, ENVIRONMENT_MODULE_PATH, &dest)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
@@ -2021,9 +2152,11 @@ pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRe
 }
 
 /// The live `dag` tree's index, built on FIRST DEMAND and carried by its owner to every closure it
-/// answers. The parse-environment closure and the kernel-types closure are two demands on one name
-/// set; building a fresh index per demand parsed every live-tree file once per closure, which
-/// `MultiEntryIndexBuiltTwiceForOneNameSet` refuses. Carried, not placed in the thread's shared
+/// answers (gunbc#12848: building a fresh index per demand parsed every live-tree file once per
+/// closure, which `MultiEntryIndexBuiltTwiceForOneNameSet` refuses). It answers LIVE-TREE closures
+/// only -- the head side of `environment_agreement`'s identity check. A REVISION's closure is
+/// walked out of that revision's own tree (`materialize_revision_closure_at`), never taken from
+/// this index, so the kernel-types load no longer demands it. Carried, not placed in the thread's shared
 /// slot: that slot holds the floor's own `dag` + `src/v2` index, and a `dag`-only demand there
 /// evicts it (`SharedIndexRebuiltAfterEviction`).
 pub struct LiveDagIndex {
@@ -2049,29 +2182,6 @@ impl Default for LiveDagIndex {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// The members of a LIVE-TREE closure that `revision` carries.
-///
-/// Every closure here is resolved over the live tree, which is the head, and is then materialized
-/// at another revision, usually the base. A file the revision does not carry cannot belong to that
-/// revision's closure, so handing it to `git archive` only refused the whole read as a missing
-/// pathspec: every module newly imported into the environment or the kernel-types closure turned the
-/// base reconstruction into NotEvaluated. Comparisons that decide agreement still run over the full
-/// closure, where an absent base blob differs from any head blob. A base member the head's closure
-/// no longer names is not recovered here; resolution then refuses, located, as before.
-fn closure_members_carried_at(
-    repo: &std::path::Path,
-    revision: &str,
-    closure: &BTreeSet<String>,
-) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    let mut carried = BTreeSet::new();
-    for path in closure {
-        if blob_id_at(repo, revision, path)?.is_some() {
-            carried.insert(path.clone());
-        }
-    }
-    Ok(carried)
 }
 
 /// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
@@ -2145,7 +2255,7 @@ pub fn environment_agreement(
         return Ok(EnvironmentAgreement::Identical);
     }
     Ok(EnvironmentAgreement::Differs {
-        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
+        base_environment: load_parse_environment_at(repo, base)?,
         differing_paths: differing,
     })
 }
@@ -2173,7 +2283,6 @@ pub fn kernel_set_serves_both(
     repo: &std::path::Path,
     base: &str,
     head: &str,
-    live: &LiveDagIndex,
 ) -> Result<bool, EnvironmentLoadRefusal> {
     let base_blob =
         blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
@@ -2195,7 +2304,7 @@ pub fn kernel_set_serves_both(
         .keys()
         .cloned()
         .collect();
-    Ok(kernel_names_at(repo, base, live)? == head_names)
+    Ok(kernel_names_at(repo, base)? == head_names)
 }
 
 /// The kernel names `std.types` declares at `revision`, read from that revision's own tree.
@@ -2205,33 +2314,27 @@ pub fn kernel_set_serves_both(
 pub fn kernel_names_at(
     repo: &std::path::Path,
     revision: &str,
-    live: &LiveDagIndex,
 ) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    let closure =
-        closure_members_carried_at(repo, revision, &closure_paths_of(KERNEL_TYPES_PATH, live)?)?;
     let dest = revision_scratch_root("kernel-set");
-    let outcome = materialize_revision_paths(
-        repo,
-        revision,
-        &dest,
-        &closure.iter().map(String::as_str).collect::<Vec<_>>(),
-    )
-    .and_then(|()| {
-        let (value, ctx) =
-            evaluate_owned_item_in(&dest, KERNEL_TYPES_PATH, KERNEL_TYPES_ITEM, revision)?;
-        let wire = super::value_to_wire_json(&value, &ctx).map_err(|e| {
-            EnvironmentLoadRefusal::KernelSetNotReadable {
-                revision: revision.to_string(),
-                cause: format!("wire-encode {KERNEL_TYPES_ITEM}: {e}"),
-            }
-        })?;
-        serde_json::from_value::<std::collections::BTreeMap<String, bool>>(wire)
-            .map(|m| m.into_keys().collect())
-            .map_err(|e| EnvironmentLoadRefusal::KernelSetNotReadable {
-                revision: revision.to_string(),
-                cause: format!("{KERNEL_TYPES_ITEM} is not a Map<String, Bool>: {e}"),
-            })
-    });
+    // The REVISION'S closure of the kernel-types file, walked out of its own tree (see
+    // materialize_revision_closure_at), never the live tree's closure archived at another revision.
+    let outcome = materialize_revision_closure_at(repo, revision, KERNEL_TYPES_PATH, &dest)
+        .and_then(|()| {
+            let (value, ctx) =
+                evaluate_owned_item_in(&dest, KERNEL_TYPES_PATH, KERNEL_TYPES_ITEM, revision)?;
+            let wire = super::value_to_wire_json(&value, &ctx).map_err(|e| {
+                EnvironmentLoadRefusal::KernelSetNotReadable {
+                    revision: revision.to_string(),
+                    cause: format!("wire-encode {KERNEL_TYPES_ITEM}: {e}"),
+                }
+            })?;
+            serde_json::from_value::<std::collections::BTreeMap<String, bool>>(wire)
+                .map(|m| m.into_keys().collect())
+                .map_err(|e| EnvironmentLoadRefusal::KernelSetNotReadable {
+                    revision: revision.to_string(),
+                    cause: format!("{KERNEL_TYPES_ITEM} is not a Map<String, Bool>: {e}"),
+                })
+        });
     let _ = std::fs::remove_dir_all(&dest);
     // ONE SUBJECT, ONE REFUSAL ARM. The shared route reports its failures in the parse
     // environment's vocabulary; left as-is, an unreadable kernel set would reach the operator
