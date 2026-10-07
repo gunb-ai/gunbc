@@ -1105,8 +1105,8 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
   )
 }
 
-// No committed prior-life capture for mtjade1: the archive arm reads this dry world. The wet
-// door supplies it while holding the arrival slot (review 77435).
+// No committed prior-life capture for mtjade1. Witnesses and dry prefix folds supply this world.
+// The production wet door must not (review 77746): it refuses until an observed world is bound.
 fn mtjade1_unobserved_prior_life_world() -> DryPriorLifeWorld {
   DryPriorLifeWorld {
     bmc: bmc_world(power: BmcPowerOn),

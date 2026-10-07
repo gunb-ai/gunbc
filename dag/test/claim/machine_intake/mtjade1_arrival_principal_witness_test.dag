@@ -32,6 +32,7 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.privileged_effect_census { rulings_without_a_rostered_interlock }
 import gunbc.machine_intake_arrival_converge { grant_discharges_bmc_secure_account_write }
+import gunbc.machine_intake_arrival_run { arrival_wet_prefix_from_unobserved_world }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, standing_grant_arm_interlock, StandingGrantHost,
   StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
@@ -174,4 +175,12 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
       InterlockedBy { hold: h } => (h.decl_name as String) == "admit_rotation_apply"
       InterlockPending { obligation: _ } => false
     }
+}
+
+test fn w_wet_door_refuses_unobserved_prior_life_world() -> Bool {
+  match arrival_wet_prefix_from_unobserved_world() {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "unobserved PriorLifeBoundary")
+  }
 }

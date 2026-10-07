@@ -20,18 +20,20 @@ import gunbc.machine_intake_arrival_subject {
 import gunbc.machine_intake_arrival_interlock {
   arrival_archive_slot_acquire, arrival_after_acquire,
 }
-import gunbc.machine_intake_arrival_converge {
-  converge_mtjade1_arrival_prefix, mtjade1_unobserved_prior_life_world, arrival_prefix_process_exit,
-}
-import gunbc.fleet.convergence_fold { ConvergenceRunId }
 
-// THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435). Re-runs credential-free admit so WIF
-// cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted WIF bearer,
-// in-process — not interpolated onto argv), takes arrival_archive_slot_acquire, runs the
-// mtjade1 PriorLifeBoundary prefix while the slot is held, then arrival_archive_slot_release.
-// BMC account writes and the pinned bmc-mtjade1-gunbc accessor stay behind this door: the locus
-// is SecretLocusReservedNotOnAccessorRoster until FamilyObserved, and version 1 does not exist
-// until secret_provision mints it.
+// THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435, review 77746). Re-runs credential-free
+// admit so WIF cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted
+// WIF bearer, in-process — not interpolated onto argv), takes arrival_archive_slot_acquire, and
+// arrival_archive_slot_release. It does NOT fold mtjade1_unobserved_prior_life_world into
+// ExitSuccess: that world is unobserved, and a green converge from it is fabricated plausible
+// output (DESIGN §5). Until a live BMC/archive observation is bound as the prefix input, the
+// held door refuses with a typed cause. Witnesses still supply the dry world to
+// converge_mtjade1_arrival_prefix. BMC account writes and the pinned bmc-mtjade1-gunbc accessor
+// stay behind this door: the locus is SecretLocusReservedNotOnAccessorRoster until FamilyObserved.
+
+fn arrival_wet_prefix_from_unobserved_world() -> ProcessExit {
+  exit_failure(reason: "arrival_converge refuses unobserved PriorLifeBoundary: mtjade1_unobserved_prior_life_world is not a production observation")
+}
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
   match arrival_admit_executor() {
@@ -77,12 +79,7 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
           owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
         ),
         body: fn() {
-          arrival_prefix_process_exit(
-            v: converge_mtjade1_arrival_prefix(
-              run: run_id as ConvergenceRunId,
-              prior_life: mtjade1_unobserved_prior_life_world(),
-            ),
-          )
+          arrival_wet_prefix_from_unobserved_world()
         },
       )
   }
