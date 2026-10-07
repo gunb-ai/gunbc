@@ -11871,22 +11871,13 @@ pub fn collection_fold_step_binds_accumulator(
                     formal_type_key(callable_param_type(p0), source_indices.clone());
                 let step_elem =
                     formal_type_key(callable_param_type(p1), source_indices.clone());
-                let step_ret = formal_type_key(
-                    crate::v1_compiler_infer_types::resolved_type(sig),
-                    source_indices.clone(),
-                );
-                let coll_elem = formal_type_key(
-                    crate::v1_compiler_infer_types::for_each_element_type_node(
-                        coll_ty,
-                        source_indices.clone(),
-                    ),
-                    source_indices.clone(),
-                );
+                let step_ret = arrow_return_key(sig, source_indices.clone());
+                let coll_elem =
+                    unary_container_element_key(coll_ty, source_indices.clone());
                 acc_key != ""
                     && acc_key == step_acc
                     && acc_key == step_ret
-                    && step_elem != ""
-                    && step_elem == coll_elem
+                    && (coll_elem == "" || coll_elem == step_elem)
             }
         },
     }
@@ -11899,25 +11890,79 @@ pub struct CollectionFoldRoles {
     pub step_formal_index: i64,
 }
 
-pub fn formal_type_is_unary_container(
+pub fn formal_type_is_container_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (n.children.clone().len() as i64) != 1 {
-        false
-    } else if crate::v1_compiler_infer_types::node_is_element_collection(
+    if crate::v1_compiler_infer_types::node_is_element_collection(
         n.clone(),
         source_indices.clone(),
     ) {
         true
     } else {
-        let leaf = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
-        );
+        let leaf = crate::v1_std_core::qualified_last_segment(type_node_label(
+            n,
+            source_indices,
+        ));
         match container_template_algebra(leaf.clone()) {
             Some(_) => true,
-            std::option::Option::None => leaf.clone() == "FreeMonoid".to_string(),
+            std::option::Option::None => {
+                leaf.clone() == "FreeMonoid".to_string() || leaf.clone() == "List".to_string()
+            }
         }
+    }
+}
+
+pub fn formal_type_is_unary_container(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    formal_type_is_container_name(n.clone(), source_indices)
+        && ((n.children.clone().len() as i64) <= 1)
+}
+
+pub fn unary_container_element_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.children.clone().iter().cloned().next() {
+        Some(c) => formal_type_key(c, source_indices),
+        std::option::Option::None => match n.params.clone().iter().cloned().next() {
+            Some(p) => {
+                let from_ty = formal_type_key(
+                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                    source_indices.clone(),
+                );
+                if from_ty != "" {
+                    from_ty
+                } else {
+                    crate::v1_std_core::param_node_name_at(p, source_indices)
+                }
+            }
+            std::option::Option::None => "".to_string(),
+        },
+    }
+}
+
+pub fn arrow_return_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let sig = callable_signature_view(n);
+    let from_inferred = match sig.inferred.clone() {
+        Some(inf) => match (*inf).clone() {
+            InferredNode::TypeVariable { id } => id,
+            InferredNode::Resolved { node: inner } => {
+                formal_type_key(inner, source_indices.clone())
+            }
+            _ => "".to_string(),
+        },
+        std::option::Option::None => "".to_string(),
+    };
+    if from_inferred != "" {
+        from_inferred
+    } else {
+        formal_type_key(sig, source_indices)
     }
 }
 

@@ -7489,18 +7489,44 @@ type CollectionFoldRoles {
   step_formal_index: Int
 }
 
-fn formal_type_is_unary_container(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if (n.children |> count) != 1 {
-    false
-  } else if node_is_element_collection(n: n, source_indices: source_indices) {
+fn formal_type_is_container_name(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if node_is_element_collection(n: n, source_indices: source_indices) {
     true
   } else {
-    let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
+    let leaf = qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices))
     match container_template_algebra(name: leaf) {
       Present { value: _ } => true
-      Absent => leaf == "FreeMonoid"
+      Absent => leaf == "FreeMonoid" || leaf == "List"
     }
   }
+}
+
+fn formal_type_is_unary_container(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  formal_type_is_container_name(n: n, source_indices: source_indices)
+    && (n.children |> count) <= 1
+}
+
+fn unary_container_element_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.children |> first {
+    Present { value: c } => formal_type_key(n: c, source_indices: source_indices)
+    Absent =>
+      match n.params |> first {
+        Present { value: p } =>
+          let from_ty = formal_type_key(n: param_node_type_expr(n: p), source_indices: source_indices)
+          if from_ty != "" { from_ty } else { param_node_name_at(n: p, source_indices: source_indices) }
+        Absent => ""
+      }
+  }
+}
+
+fn arrow_return_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let sig = callable_signature_view(n: n)
+  let from_inferred = match sig.inferred {
+    Present { value: TypeVariable { id: id } } => id
+    Present { value: Resolved { node: inner } } => formal_type_key(n: inner, source_indices: source_indices)
+    _ => ""
+  }
+  if from_inferred != "" { from_inferred } else { formal_type_key(n: sig, source_indices: source_indices) }
 }
 
 fn formal_type_is_fold_step(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -7542,9 +7568,10 @@ fn collection_fold_step_binds_accumulator(coll: ResolvedFormal, acc: ResolvedFor
           let acc_key = formal_type_key(n: acc_ty, source_indices: source_indices)
           let step_acc = formal_type_key(n: callable_param_type(p: p0), source_indices: source_indices)
           let step_elem = formal_type_key(n: callable_param_type(p: p1), source_indices: source_indices)
-          let step_ret = formal_type_key(n: resolved_type(n: sig), source_indices: source_indices)
-          let coll_elem = formal_type_key(n: for_each_element_type_node(n: coll_ty, source_indices: source_indices), source_indices: source_indices)
-          acc_key != "" && acc_key == step_acc && acc_key == step_ret && step_elem != "" && step_elem == coll_elem
+          let step_ret = arrow_return_key(n: sig, source_indices: source_indices)
+          let coll_elem = unary_container_element_key(n: coll_ty, source_indices: source_indices)
+          acc_key != "" && acc_key == step_acc && acc_key == step_ret
+            && (coll_elem == "" || coll_elem == step_elem)
       }
   }
 }
