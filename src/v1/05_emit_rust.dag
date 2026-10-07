@@ -20117,9 +20117,7 @@ fn emit_main_pipeline_fns(crate_name: String, pipeline_module: String) -> String
   concat(
     emit_collect_dag_files_fn(),
     emit_extract_module_path_fn(),
-    emit_extract_import_paths_fn(),
     emit_dep_pool_type_and_fns(),
-    emit_resolve_transitively_fn(crate_name: crate_name, pipeline_mod: pipeline_mod),
     emit_compile_target_helpers(crate_name: crate_name, pipeline_mod: pipeline_mod, artifact_mod: artifact_mod))
 }
 
@@ -20241,25 +20239,6 @@ fn emit_extract_module_path_fn() -> String {
     "}\n\n")
 }
 
-fn emit_extract_import_paths_fn() -> String {
-  concat(
-    "/// Extract import module paths from a .dag file's import declarations.\n",
-    "fn extract_import_paths(content: &str) -> Vec<String> {\n",
-    "    let mut imports = Vec::new();\n",
-    "    for line in content.lines() {\n",
-    "        let trimmed = line.trim();\n",
-    "        if trimmed.starts_with(\"import \") {\n",
-    "            let rest = trimmed[\"import \".len()..].trim();\n",
-    "            let module_path = rest.split('{').next().unwrap_or(rest).trim();\n",
-    "            if !module_path.is_empty() {\n",
-    "                imports.push(module_path.to_string());\n",
-    "            }\n",
-    "        }\n",
-    "    }\n",
-    "    imports\n",
-    "}\n\n")
-}
-
 fn emit_dep_pool_type_and_fns() -> String {
   concat(
     "#[derive(Clone, Copy, PartialEq, Eq)]\nenum DependencyPoolIndex {\n    Strict,\n    PrimaryPrecedence,\n}\n\n",
@@ -20329,31 +20308,6 @@ fn emit_dep_pool_type_and_fns() -> String {
     "        }\n",
     "    }\n",
     "    index\n",
-    "}\n\n")
-}
-
-fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> String {
-  concat(
-    "/// Compile-subject closure of entry modules (import, qualified, and bare references).\n",
-    "/// Fail-closed: panics if the closure authority refuses.\n",
-    "/// Returns sources sorted by path for deterministic fixed-point convergence.\n",
-    "fn resolve_transitively_with_seen(\n",
-    "    entry_sources: Vec<(String, String)>,\n",
-    "    _index: &HashMap<String, std::path::PathBuf>,\n",
-    "    seen: HashMap<String, Rc<", crate_name, "::", pipeline_mod, "::SourceFile>>,\n",
-    "    source_roots: &[String],\n",
-    ") -> Vec<Rc<", crate_name, "::", pipeline_mod, "::SourceFile>> {\n",
-    "    let mut seeds: Vec<Rc<", crate_name, "::", pipeline_mod, "::SourceFile>> = entry_sources\n",
-    "        .into_iter()\n",
-    "        .map(|(path, content)| {\n",
-    "            Rc::new(", crate_name, "::", pipeline_mod, "::SourceFile { path, content })\n",
-    "        })\n",
-    "        .collect();\n",
-    "    seeds.extend(seen.into_iter().map(|(_, v)| v));\n",
-    "    let mut closed = ", crate_name, "::cli_run::resolve_seeded_compile_closure(seeds, source_roots)\n",
-    "        .unwrap_or_else(|e| panic!(\"compile-subject closure: {e}\"));\n",
-    "    closed.sort_by(|a, b| a.path.cmp(&b.path));\n",
-    "    closed\n",
     "}\n\n")
 }
 
