@@ -312,12 +312,6 @@ pub(crate) fn durable_typecheck_commit(
         return Ok(());
     }
     let (interface_text, diagnostics_text) = own_payload_texts(own)?;
-    let bytes = (interface_text.len() + diagnostics_text.len()) as u64;
-    OBSERVED_LARGEST_ENTRY.with(|c| {
-        if bytes > c.get() {
-            c.set(bytes);
-        }
-    });
     let imports = list_value(
         import_interface_hexes
             .iter()
@@ -363,6 +357,17 @@ pub(crate) fn durable_typecheck_commit(
         };
         if ctx.sym_eq(*variant_name, "SeedTypecheckCommitted") {
             count(|c| c.commit_committed += 1);
+            // The stored object's size as the store sizes it (local_store_object_bytes), read
+            // back from the door: the grain the budget frontier names.
+            let stored = match ctx.field(fields, "stored_bytes") {
+                Some(Value::Int(n)) if *n >= 0 => *n as u64,
+                other => return Err(format!("stored_bytes not a count: {other:?}")),
+            };
+            OBSERVED_LARGEST_ENTRY.with(|c| {
+                if stored > c.get() {
+                    c.set(stored);
+                }
+            });
             return Ok(());
         }
         if ctx.sym_eq(*variant_name, "SeedTypecheckCommitMissedOpen") {

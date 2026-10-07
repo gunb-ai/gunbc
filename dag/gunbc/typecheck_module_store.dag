@@ -3,7 +3,7 @@ module gunbc.typecheck_module_store
 import std.types { List, String, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, fnv1a64_structural_hex_digest }
 import std.interface_summary { InterfaceHash }
-import std.measure { ByteSize }
+import std.measure { ByteSize, measure_count }
 import std.materialization_provider {
   ArtifactRequest,
   TypecheckModuleRequest,
@@ -25,7 +25,6 @@ import std.materialization_object {
   store_lookup_refusal_tag,
 }
 import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
-import std.decl_ref { decl_ref, DeclarationRef }
 import extdeps.realization.materialization_store_local {
   LocalStoreCapability,
   LocalStoreOpening,
@@ -186,10 +185,6 @@ fn initialize_witness_typecheck_store(root: WitnessScratchRoot) -> LocalStoreIni
   )
 }
 
-fn open_witness_typecheck_store(root: WitnessScratchRoot) -> LocalStoreOpening {
-  local_store_open(root: root, budgets: materialization_store_durable_family_budgets)
-}
-
 type TypecheckModuleServe
   = TypecheckModuleHit { lookup: StoreLookup }
   | TypecheckModuleMiss { lookup: StoreLookup }
@@ -233,26 +228,6 @@ fn typecheck_module_materialize(capability: LocalStoreCapability, req: ArtifactR
   }
 }
 
-fn typecheck_lookup_refused_integrity(l: StoreLookup) -> Bool {
-  let tag = store_lookup_refusal_tag(l: l)
-  tag != "hit" && tag != "miss"
-}
-
-data ensure_durable_typecheck_store_ref: DeclarationRef = decl_ref(
-  module_path: "gunbc.typecheck_module_store",
-  decl_name: "ensure_durable_typecheck_store"
-)
-
-data lookup_typecheck_module_ref: DeclarationRef = decl_ref(
-  module_path: "gunbc.typecheck_module_store",
-  decl_name: "lookup_typecheck_module"
-)
-
-data commit_typecheck_module_ref: DeclarationRef = decl_ref(
-  module_path: "gunbc.typecheck_module_store",
-  decl_name: "commit_typecheck_module"
-)
-
 // Seed-facing operations (distinct from typecheck_module): hex digests in, typed store outcome
 // out; the opening is passed in, opened once per session (open_typecheck_store_door).
 
@@ -264,7 +239,7 @@ type SeedTypecheckLookup
   | SeedTypecheckDigestRefused { which: String }
 
 type SeedTypecheckCommit
-  = SeedTypecheckCommitted
+  = SeedTypecheckCommitted { stored_bytes: Int }
   | SeedTypecheckCommitMissedOpen { root_path: String }
   | SeedTypecheckCommitRefused
   | SeedTypecheckCommitDigestRefused { which: String }
@@ -301,7 +276,12 @@ fn seed_commit_typecheck_opened(
     LocalStoreUnavailable { root_path: p, cause: _ } => SeedTypecheckCommitMissedOpen { root_path: p }
     LocalStoreOpened { capability: c, durability: _ } =>
       match commit_typecheck_module(capability: c, req: req, interface_text: interface_text, diagnostics_text: diagnostics_text).commit {
-        StoreCommitSettled { receipt: _ } => SeedTypecheckCommitted
+        StoreCommitSettled { receipt: _ } => SeedTypecheckCommitted {
+          stored_bytes: match typecheck_module_entry_bytes(req: req, payloads: typecheck_module_payloads(interface: interface_text, diagnostics: diagnostics_text)) {
+            Present { value: b } => measure_count(m: b)
+            Absent => 0
+          }
+        }
         StoreCommitRefused { key: _, refusal: _ } => SeedTypecheckCommitRefused
       }
   }
