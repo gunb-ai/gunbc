@@ -163,3 +163,15 @@ fn arrival_combine_prefix_and_release(prefix: ProcessExit, slot: ArrivalArchiveS
 fn arrival_release_after_prefix(held: ArrivalArchiveSlotHeld, prefix: ProcessExit) -> ProcessExit {
   arrival_combine_prefix_and_release(prefix: prefix, slot: arrival_archive_slot_release(held: held))
 }
+
+// Acquire, body, release as a composition over a supplied outcome. The refused arm must not
+// evaluate the body (review 5441282428 / warm-crane msg_644b617c). Body is fn() so a refused
+// arm need not mint ArrivalArchiveSlotHeld (sole_constructor is FileHoldAcquired only).
+fn arrival_after_acquire(outcome: ArrivalArchiveSlotAcquire, body: fn() -> ProcessExit) -> ProcessExit {
+  match outcome {
+    ArrivalArchiveSlotAcquireRefused { cause: c } =>
+      exit_failure(reason: concat("arrival_converge: ", c as String))
+    ArrivalArchiveSlotAcquired { held: h } =>
+      arrival_release_after_prefix(held: h, prefix: body())
+  }
+}

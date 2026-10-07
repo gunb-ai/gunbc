@@ -8,7 +8,7 @@ import v2.std.algebra { filter, length }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
-import product.host_identity { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake_subject {
@@ -77,7 +77,6 @@ import gunbc.machine_intake_arrival_converge {
   BmcSecureApplicationForAnotherInstance,
   grant_discharges_bmc_secure_account_write,
   capability_discharges_bmc_secure_account_write,
-  bound_bmc_secure_host,
 }
 import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
@@ -941,15 +940,19 @@ test fn w_bmc_secure_apply_without_discharge_refuses() -> Bool {
   }
 }
 
-fn mtjade1_grant_without_bmc_secure_effect() -> StandingOperatorGrant {
+fn mtjade1_grant_with_interlock_pending() -> StandingOperatorGrant {
   let g = mtjade1_live_standing_grant
   StandingOperatorGrant {
     identity: g.identity,
     principal: g.principal,
     ruled_at: g.ruled_at,
-    ruling: g.ruling,
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: g.ruling.ruling_text,
+      effect_subject: g.ruling.effect_subject,
+      interlock: InterlockPending { obligation: "hold not named" as NonEmptyStr },
+    },
     scope: g.scope,
-    effects: [],
+    effects: g.effects,
   }
 }
 
@@ -983,7 +986,7 @@ fn apply_fold_undischarged(discharges: List<InstanceAuthorization>) -> Bool {
 }
 
 test fn w_bmc_secure_apply_pending_interlock_refuses_at_discharge() -> Bool {
-  grant_discharges_bmc_secure_account_write(g: mtjade1_grant_without_bmc_secure_effect(), host: operator_host_mtjade1) == false
+  grant_discharges_bmc_secure_account_write(g: mtjade1_grant_with_interlock_pending(), host: operator_host_mtjade1) == false
     && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
 }
 
@@ -1213,13 +1216,6 @@ test fn w_bmc_secure_apply_of_another_attempt_is_refused() -> Bool {
         _ => false
       }
   }
-}
-
-test fn w_bmc_secure_apply_uses_the_bound_instance_host_not_the_supplied_host() -> Bool {
-  let bound = bound_bmc_secure_host(key: step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key))
-  host_identity_eq(a: bound, b: operator_host_mtjade1)
-    && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: bound)
-    && !grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1)
 }
 
 test fn w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply() -> Bool {

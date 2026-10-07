@@ -11,10 +11,11 @@ import gunbc.machine_intake_arrival_interlock {
   admit_arrival_archive_interlock, admit_arrival_bmc_secure_interlock,
   ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
   ArrivalBmcSecureInterlockAdmitted, ArrivalBmcSecureInterlockRefused,
-  arrival_combine_prefix_and_release,
+  arrival_combine_prefix_and_release, arrival_after_acquire,
   ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
+  ArrivalArchiveSlotAcquireRefused,
 }
-import std.process { ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.durable_compare_and_set { cas_generation_first }
 import gunbc.machine_intake_bmc_rotation_route { rotation_route_ungrounded }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
@@ -124,6 +125,21 @@ test fn w_release_failure_after_prefix_failure_is_concatenated() -> Bool {
     ExitSuccess => false
     ExitFailure { code: c, reason: r } =>
       c == 2 && string_contains(s: r, pattern: "prefix refused") && string_contains(s: r, pattern: "slot release refused")
+  }
+}
+
+fn body_that_runs_marks_exit() -> ProcessExit {
+  ExitFailure { code: 9, reason: "BODY_RAN" }
+}
+
+test fn w_failed_acquire_runs_no_body() -> Bool {
+  match arrival_after_acquire(
+    outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
+    body: fn() { body_that_runs_marks_exit() },
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "slot occupied") && !string_contains(s: r, pattern: "BODY_RAN")
   }
 }
 
