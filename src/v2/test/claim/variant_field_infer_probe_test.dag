@@ -852,13 +852,28 @@ fn vfp_probe_anchor(d: Diagnostic) -> String {
   }
 }
 
+fn vfp_last_diag(xs: List<Diagnostic>) -> Optional<Diagnostic> {
+  match xs {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      match vfp_last_diag(xs: t) {
+        Absent => Present { value: h }
+        Present { value: last } => Present { value: last }
+      }
+  }
+}
+
 fn vfp_decode_refusal_locus() -> CliWireResponse {
   match vfp_fixture_resolved() {
     Rejected { diagnostics: _ } => CliWirePrintable { bytes: "resolve-refused", exit: ExitSuccess }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
         Rejected { diagnostics: r } =>
-          CliWirePrintable { bytes: symbol_lexeme(sym: r.head.reason) + " @" + vfp_probe_anchor(d: r.head), exit: ExitSuccess }
+          match vfp_last_diag(xs: r.tail) {
+            Absent => CliWirePrintable { bytes: symbol_lexeme(sym: r.head.reason) + " @" + vfp_probe_anchor(d: r.head), exit: ExitSuccess }
+            Present { value: d } =>
+              CliWirePrintable { bytes: symbol_lexeme(sym: d.reason) + " @" + vfp_probe_anchor(d: d), exit: ExitSuccess }
+          }
         Accepted { value: _, diagnostics: _ } => CliWirePrintable { bytes: "infer-ok", exit: ExitSuccess }
       }
   }
