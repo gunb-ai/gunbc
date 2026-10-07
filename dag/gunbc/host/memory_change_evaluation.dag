@@ -72,7 +72,7 @@ fn evaluate_memory_change(proposal: MemoryChangeProposal, evidence: MemoryEvalua
       powered_off: state.powered_off, ordinal: state.ordinal + 1, readback_planned: false,
       initializations: state.initializations,
       violations: if state.powered_off { state.violations }
-        else { concat(state.violations, ["memory replacement scheduled while powered on"]) },
+        else { concat(state.violations, ["memory replacement scheduled while powered on" as NonEmptyStr]) },
     }
     MemoryInitialize => MemoryWorkflowState {
       configuration: state.configuration, powered_off: false, ordinal: state.ordinal + 1,

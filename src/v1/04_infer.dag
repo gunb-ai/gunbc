@@ -9704,7 +9704,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_uninformed = type_node_is_uninformed_accumulator(n: else_rt, source_indices: scope.type_env.source_indices)
           let else_is_informed_list = node_is_list_concat_operand(n: else_rt, source_indices: scope.type_env.source_indices) && !unify_binding_is_uninformative(n: else_rt)
           let then_is_informed_list = node_is_list_concat_operand(n: then_rt, source_indices: scope.type_env.source_indices) && !unify_binding_is_uninformative(n: then_rt)
-          let unified = if then_uninformed && else_is_informed_list {
+          let expected_informed_list = match expected {
+            Present { value: exp } => concat_operand_is_informed_list(n: exp, source_indices: scope.type_env.source_indices)
+            Absent => false
+          }
+          let expected_list = match expected {
+            Present { value: exp } => exp
+            Absent => then_rt
+          }
+          let then_meets_expected = !expected_informed_list || list_branch_meets_expected_list(branch: then_rt, expected: expected_list, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
+          let else_meets_expected = !expected_informed_list || list_branch_meets_expected_list(branch: else_rt, expected: expected_list, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
+          let unified = if expected_informed_list && then_meets_expected && else_meets_expected {
+            expected_list
+          } else if then_uninformed && else_is_informed_list {
             else_rt
           } else if else_uninformed && then_is_informed_list {
             then_rt
@@ -9716,7 +9728,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) || (then_uninformed && else_is_informed_list) || (else_uninformed && then_is_informed_list) {
+          ) || (then_uninformed && else_is_informed_list) || (else_uninformed && then_is_informed_list)
+            || (expected_informed_list && then_meets_expected && else_meets_expected) {
             []
           } else {
             [inference_error(
@@ -14218,6 +14231,28 @@ type ConcatUnify {
 
 fn concat_operand_is_informed_list(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   node_is_list_concat_operand(n: n, source_indices: source_indices) && !unify_binding_is_uninformative(n: n)
+}
+
+fn list_element_is_kernel_string(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_list_concat_operand(n: n, source_indices: source_indices)
+    && match n.children |> first {
+      Present { value: el } => type_node_label(n: child_type_node(ch: el), source_indices: source_indices) == "String"
+        && (child_type_node(ch: el).children |> count) == 0
+      Absent => false
+    }
+}
+
+// AN IF-JOIN CHECKS EACH BRANCH AGAINST THE EXPECTED LIST, not by picking String. A branch
+// meets the expected list when it is still unsolved, when it inhabits that list, or when it
+// is the defaulted List<String> standing where the expected element is a declared brand or
+// refinement (DESIGN §4: String does not implicitly inhabit the brand; the empty acc is not
+// a String list of values).
+fn list_branch_meets_expected_list(branch: Node, expected: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  type_node_is_uninformed_accumulator(n: branch, source_indices: source_indices)
+    || node_type_compatible(left: branch, right: expected, source_indices: source_indices, text: text)
+    || (list_element_is_kernel_string(n: branch, source_indices: source_indices)
+        && concat_operand_is_informed_list(n: expected, source_indices: source_indices)
+        && !list_element_is_kernel_string(n: expected, source_indices: source_indices))
 }
 
 // AN UNSOLVED CONCAT OPERAND UNIFIES WITH THE INFORMATIVE LIST, or the call refuses.

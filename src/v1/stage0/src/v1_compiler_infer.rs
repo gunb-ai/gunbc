@@ -15385,17 +15385,48 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             then_rt.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         ) && !unify_binding_is_uninformative(then_rt.clone());
-                    let unified = if then_uninformed && else_is_informed_list {
-                        else_rt.clone()
-                    } else if else_uninformed && then_is_informed_list {
-                        then_rt.clone()
-                    } else {
-                        crate::v1_compiler_infer_types::prefer_specific_type(
-                            then_rt.clone(),
-                            else_rt.clone(),
+                    let expected_informed_list = match expected.clone() {
+                        Some(exp) => concat_operand_is_informed_list(
+                            exp.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                        )
+                        ),
+                        std::option::Option::None => false,
                     };
+                    let expected_list = match expected.clone() {
+                        Some(exp) => exp,
+                        std::option::Option::None => then_rt.clone(),
+                    };
+                    let expected_text = Rc::new(TextJudgment::TextJudgedIn {
+                        env: scope.type_env.clone(),
+                    });
+                    let then_meets_expected = !expected_informed_list
+                        || list_branch_meets_expected_list(
+                            then_rt.clone(),
+                            expected_list.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            expected_text.clone(),
+                        );
+                    let else_meets_expected = !expected_informed_list
+                        || list_branch_meets_expected_list(
+                            else_rt.clone(),
+                            expected_list.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            expected_text.clone(),
+                        );
+                    let unified =
+                        if expected_informed_list && then_meets_expected && else_meets_expected {
+                            expected_list.clone()
+                        } else if then_uninformed && else_is_informed_list {
+                            else_rt.clone()
+                        } else if else_uninformed && then_is_informed_list {
+                            then_rt.clone()
+                        } else {
+                            crate::v1_compiler_infer_types::prefer_specific_type(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            )
+                        };
                     let branch_diags = if crate::v1_compiler_infer_types::node_type_compatible(
                         then_rt.clone(),
                         else_rt.clone(),
@@ -15405,6 +15436,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         }),
                     ) || (then_uninformed && else_is_informed_list)
                         || (else_uninformed && then_is_informed_list)
+                        || (expected_informed_list && then_meets_expected && else_meets_expected)
                     {
                         Rc::new(vec![])
                     } else {
@@ -15805,8 +15837,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 ) || node_is_list_concat_operand(
                     right_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ))
-            {
+                )) {
                 list_concat_result_from_other_value(
                     right_typed.clone(),
                     left_rt.clone(),
@@ -24675,6 +24706,41 @@ pub fn concat_operand_is_informed_list(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     node_is_list_concat_operand(n.clone(), source_indices) && !unify_binding_is_uninformative(n)
+}
+
+pub fn list_element_is_kernel_string(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if !node_is_list_concat_operand(n.clone(), source_indices.clone()) {
+        return false;
+    }
+    match n.children.clone().first().cloned() {
+        Some(el) => {
+            let elem = crate::v1_compiler_infer_types::child_type_node(el);
+            type_node_label(elem.clone(), source_indices) == "String".to_string()
+                && ((elem.children.clone().len() as i64) == 0)
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn list_branch_meets_expected_list(
+    branch: Rc<Node>,
+    expected: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    type_node_is_uninformed_accumulator(branch.clone(), source_indices.clone())
+        || crate::v1_compiler_infer_types::node_type_compatible(
+            branch.clone(),
+            expected.clone(),
+            source_indices.clone(),
+            text,
+        )
+        || (list_element_is_kernel_string(branch, source_indices.clone())
+            && concat_operand_is_informed_list(expected.clone(), source_indices.clone())
+            && !list_element_is_kernel_string(expected, source_indices))
 }
 
 pub fn concat_operand_is_open_generic(
