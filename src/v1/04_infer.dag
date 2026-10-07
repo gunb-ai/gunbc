@@ -7981,7 +7981,7 @@ fn collection_fold_lambda_expected(results: List<ArgInferResult>, call_args: Lis
         match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.acc_formal_index, source_indices: source_indices) {
           Absent => Present { value: fold_step_callable(acc_type: type_variable_node(id: "FoldAccumulator"), element_type: elem) }
           Present { value: acc_ty } =>
-            let acc = if unify_binding_is_uninformative(n: acc_ty) || type_is_bare_collection_carrier(n: acc_ty) {
+            let acc = if type_is_bare_collection_carrier(n: acc_ty) {
               type_variable_node(id: "FoldAccumulator")
             } else { acc_ty }
             Present { value: fold_step_callable(acc_type: acc, element_type: elem) }

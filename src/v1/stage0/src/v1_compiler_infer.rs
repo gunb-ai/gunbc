@@ -12193,9 +12193,7 @@ pub fn collection_fold_lambda_expected(
                         elem,
                     )),
                     Some(acc_ty) => {
-                        let acc = if unify_binding_is_uninformative(acc_ty.clone())
-                            || type_is_bare_collection_carrier(acc_ty.clone())
-                        {
+                        let acc = if type_is_bare_collection_carrier(acc_ty.clone()) {
                             type_variable_node("FoldAccumulator".to_string())
                         } else {
                             acc_ty
