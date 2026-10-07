@@ -53,12 +53,16 @@ data empty_list_at_undeclared_type_source: String = "module probe_empty_list_und
 // LANGUAGE FOLD(init: []) WHOSE STEP IS acc + [string] MUST INFORM THE ACCUMULATOR. The
 // leftover unify pass was a second bind authority (review 77302) and is gone; list concat
 // must take the informative right list so a declared List<String> return stays accepted.
-data fold_init_concat_informing_source: String = "module probe_fold_init_concat\nfn labels() -> List<String> { [\"a\"] }\nfn gained_plus() -> List<String> {\n  fold(labels(), init: [], f: (acc, s) => acc + [s])\n}\nfn gained_concat() -> List<String> {\n  fold(labels(), init: [], f: (acc, s) => concat(acc, [s]))\n}\nfn fold_list_if_concat(raw: String) -> List<String> {\n  fold_list(xs: split(s: raw, delimiter: \" \"), empty: [], cons: fn(acc, tok) {\n    if tok == \"\" { acc } else { concat(acc, [tok]) }\n  })\n}\n"
+data fold_init_concat_informing_source: String = "module probe_fold_init_concat\nimport v2.std.algebra { fold_list }\nfn labels() -> List<String> { [\"a\"] }\nfn gained_plus() -> List<String> {\n  fold(labels(), init: [], f: (acc, s) => acc + [s])\n}\nfn gained_concat() -> List<String> {\n  fold(labels(), init: [], f: (acc, s) => concat(acc, [s]))\n}\nfn fold_list_if_concat(raw: String) -> List<String> {\n  fold_list(xs: split(s: raw, delimiter: \" \"), empty: [], cons: fn(acc, tok) {\n    if tok == \"\" { acc } else { concat(acc, [tok]) }\n  })\n}\n"
+
+// rfc_8288 parse_relation_tokens: empty: [] then concat(acc, [coproduct]). The xs
+// element is String; the acc element is not. concat must not stay String.
+data fold_list_if_concat_coproduct_source: String = "module probe_fold_list_if_concat_rel\nimport v2.std.algebra { fold_list }\ntype Rel = RelA | RelB { name: String }\nfn rel_from(raw: String) -> Rel {\n  if raw == \"a\" { RelA } else { RelB { name: raw } }\n}\nfn parse_rels(raw: String) -> List<Rel> {\n  fold_list(xs: split(s: raw, delimiter: \" \"), empty: [], cons: fn(acc, tok) {\n    if tok == \"\" { acc } else { concat(acc, [rel_from(raw: tok)]) }\n  })\n}\n"
 
 // fold_list<T,A>(xs: FreeMonoid<T>, ...) MUST BIND T FROM XS. Peeling through child_type_node
 // used to turn the TypeVariable leaf into error_type, so edge.label compiled as a field on T
 // (type_declaration_use_census emit-build).
-data fold_list_xs_element_field_source: String = "module probe_fold_list_xs_field\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n"
+data fold_list_xs_element_field_source: String = "module probe_fold_list_xs_field\nimport v2.std.algebra { fold_list }\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n"
 
 // IMPORTED fold_list HAS A DECLARED SIG. The fold-arg path used to leave call_subst empty, so A
 // was never substituted into the return (review 77497). Bare fold_list is BuiltinCallableResolved
@@ -67,7 +71,7 @@ data fold_list_imported_return_source: String = "module probe_imported_fold_list
 
 // Empty AS THE ACC SEED MUST NOT BIND T. fold_list(xs: rows, empty: Empty, …) then a second
 // fold that places the element in a product field is native_demand_census (authored: a).
-data fold_list_empty_acc_product_element_source: String = "module probe_fold_empty_acc_product\ntype Row { n: String }\ntype Box { authored: Row }\nfn wrap(rows: List<Row>) -> List<Box> {\n  let mine = fold_list(xs: rows, empty: Empty, cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) })\n  fold_list(xs: mine, empty: Empty, cons: fn(acc, row) {\n    list_snoc_item(xs: acc, item: Box { authored: row })\n  })\n}\n"
+data fold_list_empty_acc_product_element_source: String = "module probe_fold_empty_acc_product\nimport v2.std.algebra { fold_list }\nimport std.algebra { Empty, list_snoc_item }\ntype Row { n: String }\ntype Box { authored: Row }\nfn wrap(rows: List<Row>) -> List<Box> {\n  let mine = fold_list(xs: rows, empty: Empty, cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) })\n  fold_list(xs: mine, empty: Empty, cons: fn(acc, row) {\n    list_snoc_item(xs: acc, item: Box { authored: row })\n  })\n}\n"
 
 fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
   match compile_dag_diagnostic_census(source) {
@@ -109,6 +113,10 @@ test fn empty_list_against_an_undeclared_type_name_still_refuses() -> Bool {
 
 test fn fold_init_concat_informs_the_list_element() -> Bool {
   compiles_with_no_blocking_diagnostic(source: fold_init_concat_informing_source)
+}
+
+test fn fold_list_if_concat_coproduct_does_not_join_as_string() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: fold_list_if_concat_coproduct_source)
 }
 
 test fn fold_list_binds_element_from_xs_for_field_access() -> Bool {

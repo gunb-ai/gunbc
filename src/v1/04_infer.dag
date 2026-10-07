@@ -6842,6 +6842,21 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       }
     }
     Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, concat(wrong_union_other_diags, concat(mismatch_diags, build_diags))) }
+  } else if func_name == "concat" {
+    let left_ty = match typed_args |> first {
+      Present { value: a } => resolved_type(n: arg_value(n: a))
+      Absent => unit_type
+    }
+    let fallback_concat = resolve_builtin_call_type(name: func_name)
+    let unified = match typed_args |> skip(1) |> first {
+      Present { value: a } => concat_unify_operands(left: left_ty, right: resolved_type(n: arg_value(n: a)), fallback: fallback_concat, source_indices: scope.type_env.source_indices)
+      Absent => ConcatUnify { result: fallback_concat, refuse: none }
+    }
+    let refuse_diags = match unified.refuse {
+      Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+      Absent => []
+    }
+    Tier2bBt { bt: unified.result, kernel_diags: refuse_diags }
   } else {
     Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
   }
@@ -9115,11 +9130,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               _ => KernelTypeBuild { ty: base_result_type, diagnostics: rest_result.diagnostics }
             }
           }
-          let concat_other = match remaining |> first {
-            Present { value: other } => resolved_type(n: arg_value(n: other))
-            Absent => unit_type
+          let bridge_result_type = match remaining |> first {
+            Present { value: other } => list_concat_result_from_other_value(other_value: arg_value(n: other), left: first_arg_type, fallback: method_tv.ty, source_indices: scope.type_env.source_indices)
+            Absent => method_tv.ty
           }
-          let bridge_result_type = informative_list_concat_result(left: first_arg_type, right: concat_other, fallback: method_tv.ty, source_indices: scope.type_env.source_indices)
           let template_subst_diags = method_tv.diagnostics
           let returns_receiver_self = if method_resolution.semantics == none { false } else {
             match method_resolution.semantics.value {
@@ -9491,11 +9505,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
         }
       }
-      let mc_concat_other = match typed_mc_args |> first {
-        Present { value: other } => resolved_type(n: arg_value(n: other))
-        Absent => unit_type
+      let result_type = match typed_mc_args |> first {
+        Present { value: other } => list_concat_result_from_other_value(other_value: arg_value(n: other), left: recv_rt, fallback: method_tv_mc.ty, source_indices: scope.type_env.source_indices)
+        Absent => method_tv_mc.ty
       }
-      let result_type = informative_list_concat_result(left: recv_rt, right: mc_concat_other, fallback: method_tv_mc.ty, source_indices: scope.type_env.source_indices)
       let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Present { value: PlainMethodSemantics } }
       let typed_mc_arg_nodes = typed_mc_args
@@ -9687,13 +9700,23 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
-          let unified = prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          let then_uninformed = type_node_is_uninformed_accumulator(n: then_rt, source_indices: scope.type_env.source_indices)
+          let else_uninformed = type_node_is_uninformed_accumulator(n: else_rt, source_indices: scope.type_env.source_indices)
+          let else_is_informed_list = node_is_list_concat_operand(n: else_rt, source_indices: scope.type_env.source_indices) && !unify_binding_is_uninformative(n: else_rt)
+          let then_is_informed_list = node_is_list_concat_operand(n: then_rt, source_indices: scope.type_env.source_indices) && !unify_binding_is_uninformative(n: then_rt)
+          let unified = if then_uninformed && else_is_informed_list {
+            else_rt
+          } else if else_uninformed && then_is_informed_list {
+            then_rt
+          } else {
+            prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          }
           let branch_diags = if node_type_compatible(
             left: then_rt,
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) {
+          ) || (then_uninformed && else_is_informed_list) || (else_uninformed && then_is_informed_list) {
             []
           } else {
             [inference_error(
@@ -9873,8 +9896,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let left_rt = resolved_type(n: left_typed)
       let right_rt = resolved_type(n: right_typed)
       let binop_info = infer_binop_type_node(op: op, left_type: left_rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
-      let binop_result = if (op == Add) {
-        informative_list_concat_result(left: left_rt, right: right_rt, fallback: binop_info.result_type, source_indices: scope.type_env.source_indices)
+      let binop_result = if (op == Add)
+          && (node_is_list_concat_operand(n: left_rt, source_indices: scope.type_env.source_indices)
+              || node_is_list_concat_operand(n: right_rt, source_indices: scope.type_env.source_indices)) {
+        list_concat_result_from_other_value(other_value: right_typed, left: left_rt, fallback: binop_info.result_type, source_indices: scope.type_env.source_indices)
       } else { binop_info.result_type }
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
       let refinement_diags = match op {
@@ -14166,17 +14191,98 @@ fn unify_binding_is_uninformative(n: Node) -> Bool {
   }
 }
 
+// A FOLD ACCUMULATOR THAT IS STILL THE CALLEE GENERIC is a leaf named T/A, not always a
+// TypeVariable. concat(acc, [rel]) then took the string algebra (builtin concat returns
+// String) and the if-join reported Primitive(T) vs Primitive(String)
+// (extdeps.standards.rfc_8288 parse_relation_tokens).
+fn type_node_is_uninformed_accumulator(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  unify_binding_is_uninformative(n: n)
+    || produced_is_unsolved_generic_at_conformance(n: n, source_indices: source_indices)
+    || is_type_variable_name(name: type_node_label(n: n, source_indices: source_indices))
+}
+
+fn node_is_list_concat_operand(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_element_collection(n: n, source_indices: source_indices)
+    || (n.connective == Disj && formal_type_is_container_name(n: n, source_indices: source_indices))
+}
+
 // LIST APPEND WHOSE LEFT ELEMENT IS STILL UNKNOWN takes the right list. fold(init: []) steps as
 // concat(acc, [x]) or acc + [x]; both were left-typed and left List<empty_list_element> against
 // a declared List<String> (stage0_crate_layout, reference_binding_provenance_calibration).
+// A String fallback is informative and is NOT a list: keeping it when the right operand
+// already names the element was the T-vs-String join (the fallback conjunct hid the list).
+type ConcatUnify {
+  result: Node
+  refuse: String?
+}
+
+fn concat_operand_is_informed_list(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_list_concat_operand(n: n, source_indices: source_indices) && !unify_binding_is_uninformative(n: n)
+}
+
+// AN UNSOLVED CONCAT OPERAND UNIFIES WITH THE INFORMATIVE LIST, or the call refuses.
+// It must not pick the String overload because a side is unknown, and must not default T
+// (DESIGN §5; same rule as the no-default fold_list accumulator control). Both unsolved
+// is `cannot infer`. An already-solved list (List<NonEmptyStr> beside [String]) keeps
+// the existing fallback — the unsolved arm is not a second bind over a known acc.
+fn concat_operand_is_open_generic(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let name = type_node_label(n: n, source_indices: source_indices)
+  is_type_variable_name(name: name)
+    || produced_is_unsolved_generic_at_conformance(n: n, source_indices: source_indices)
+    || name == "A"
+    || name == "R"
+    || (match n.inferred {
+      Present { value: TypeVariable { id: _ } } => true
+      _ => false
+    })
+}
+
+fn concat_operand_is_bare_unsolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  (type_node_is_uninformed_accumulator(n: n, source_indices: source_indices)
+    || concat_operand_is_open_generic(n: n, source_indices: source_indices))
+    && !node_is_list_concat_operand(n: n, source_indices: source_indices)
+}
+
+fn concat_unify_operands(left: Node, right: Node, fallback: Node, source_indices: Map<String, NewlineIndex>) -> ConcatUnify {
+  let left_unsolved = concat_operand_is_bare_unsolved(n: left, source_indices: source_indices)
+    || (type_node_is_uninformed_accumulator(n: left, source_indices: source_indices)
+        && !concat_operand_is_informed_list(n: left, source_indices: source_indices))
+  let right_unsolved = concat_operand_is_bare_unsolved(n: right, source_indices: source_indices)
+    || (type_node_is_uninformed_accumulator(n: right, source_indices: source_indices)
+        && !concat_operand_is_informed_list(n: right, source_indices: source_indices))
+  let left_list = concat_operand_is_informed_list(n: left, source_indices: source_indices)
+  let right_list = concat_operand_is_informed_list(n: right, source_indices: source_indices)
+  if left_unsolved && right_list {
+    ConcatUnify { result: right, refuse: none }
+  } else if right_unsolved && left_list {
+    ConcatUnify { result: left, refuse: none }
+  } else if left_list && right_list {
+    if concat_operand_is_informed_list(n: fallback, source_indices: source_indices) {
+      ConcatUnify { result: fallback, refuse: none }
+    } else {
+      ConcatUnify { result: left, refuse: none }
+    }
+  } else if left_unsolved && right_unsolved {
+    if concat_operand_is_open_generic(n: left, source_indices: source_indices) {
+      ConcatUnify { result: left, refuse: none }
+    } else if concat_operand_is_open_generic(n: right, source_indices: source_indices) {
+      ConcatUnify { result: right, refuse: none }
+    } else {
+      ConcatUnify { result: error_type, refuse: Present { value: "cannot infer concat operands" } }
+    }
+  } else if left_unsolved || right_unsolved {
+    ConcatUnify { result: fallback, refuse: none }
+  } else {
+    ConcatUnify { result: fallback, refuse: none }
+  }
+}
+
+fn list_concat_result_from_other_value(other_value: Node, left: Node, fallback: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  concat_unify_operands(left: left, right: resolved_type(n: other_value), fallback: fallback, source_indices: source_indices).result
+}
+
 fn informative_list_concat_result(left: Node, right: Node, fallback: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if (node_is_element_collection(n: left, source_indices: source_indices)
-      && node_is_element_collection(n: right, source_indices: source_indices)
-      && unify_binding_is_uninformative(n: left)
-      && !unify_binding_is_uninformative(n: right)
-      && unify_binding_is_uninformative(n: fallback)) {
-    right
-  } else { fallback }
+  concat_unify_operands(left: left, right: right, fallback: fallback, source_indices: source_indices).result
 }
 
 fn should_unify_record_lit_generics(formal: Node, arg_expr: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
