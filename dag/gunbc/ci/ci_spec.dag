@@ -823,6 +823,16 @@ data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcR
   function: "run_workspace_object_write",
 }
 
+data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_cache_object_read",
+}
+
+data gunbc_ci_r2_cache_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_cache_object_write",
+}
+
 data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fabric/workspace_source.dag",
   function: "workspace_source_pack_wet",
@@ -1368,6 +1378,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_r2_workspace_object_read_mint_target,
     gunbc_ci_r2_workspace_object_write_mint_target,
+    gunbc_ci_r2_cache_object_read_mint_target,
+    gunbc_ci_r2_cache_object_write_mint_target,
     gunbc_ci_workspace_source_pack_target,
     gunbc_ci_workspace_checkpoint_measure_target,
     gunbc_ci_workspace_checkpoint_restore_target,
@@ -2671,6 +2683,26 @@ fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_r2_workspace_object_write_mint_target.entry,
     function: gunbc_ci_r2_workspace_object_write_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_cache_object_read_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_cache_object_read_mint_target.entry,
+    function: gunbc_ci_r2_cache_object_read_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_cache_object_write_mint_target.entry,
+    function: gunbc_ci_r2_cache_object_write_mint_target.function,
     claim_run: false,
     receipt_rel: none
   )
