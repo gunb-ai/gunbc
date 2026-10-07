@@ -12,7 +12,7 @@ import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
 import gunbc.spark.glm53_staircase_steps { Fp8Seats128, Nvfp4Seats32, Fp8Seats12, Fp8Seats16, Fp8Seats24, Fp8Seats32, Fp8Seats64, Fp8Seats8, Glm53Fp8StaircaseStep, Glm53Fp8Step, Glm53Nvfp4StaircaseStep, Glm53Nvfp4Step, Glm53StaircaseStep, Glm53StepEnvelope, Glm53StepEnvelopeAdmitted, Glm53StepEnvelopeRefused, Nvfp4Seats16, Nvfp4Seats24, Nvfp4Seats8, glm53_fp8_step_ceiling, glm53_nvfp4_step_ceiling, glm53_staircase_cold_intent, glm53_staircase_prefix_caching, glm53_staircase_served_alias, glm53_staircase_scheduler_admission, glm53_staircase_steps, glm53_step_ceiling, glm53_step_checkpoint, glm53_step_envelope, glm53_step_of_wire, glm53_step_policy, glm53_step_profile, glm53_step_wire }
-import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ArmOperatorQualificationServing, glm53_nvfp4_8_operator_qualification, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ArmOperatorQualificationServing, OperatorQualificationRuling, operator_qualification_ruling, OperatorQualificationVerdictRecorded, PromotionReceiptProducersLand, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size, glm53_staircase_container_name, glm53_staircase_head_log_path }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
@@ -59,16 +59,35 @@ data glm53_staircase_container: ArmContainerIdentity = ArmContainerIdentity {
 // EVERY STEP IS A BOUNDED EXPERIMENT -- one attempt, RuntimeMaxSec, an unproved fit admitted only under
 // that intent -- EXCEPT nvfp4-8, which the operator ruled (2026-10-07, relayed by valiant-crab-775) may
 // serve PERSISTENTLY for the operator's own qualification against GLM-5.3-Flash fp8 on Group B, without
-// the promotion receipts that cannot be produced today. The ruling (gunbc.spark.serving_arm
-// glm53_nvfp4_8_operator_qualification, minted only there) names exactly this subject.
+// the promotion receipts that cannot be produced today. The ruling is minted over this step's exact
+// realization key (gunbc.spark.serving_arm operator_qualification_ruling), so it admits no other step.
 
-fn glm53_step_intent(s: Glm53StaircaseStep) -> ArmIntent {
+fn glm53_nvfp4_8_operator_qualification() -> OperatorQualificationRuling? {
+  let step = Glm53Nvfp4Step { step: Nvfp4Seats8 }
+  match glm53_step_profile(s: step) {
+    Absent => none
+    Present { value: p } => operator_qualification_ruling(
+      ruled_by: "the operator" as NonEmptyStr, ruled_on: "2026-10-07" as NonEmptyStr, relayed_by: "valiant-crab-775" as NonEmptyStr,
+      subject_label: join(["the GLM-5.3-Flash Group A staircase step ", glm53_step_wire(s: step) as String], "") as NonEmptyStr,
+      ends_when: [OperatorQualificationVerdictRecorded, PromotionReceiptProducersLand],
+      checkpoint: glm53_step_checkpoint(s: step), runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupA,
+      profile: p, deployment_env: glm53_step_deployment_env(s: step))
+  }
+}
+
+// A STEP WHOSE INTENT CANNOT BE STATED HAS NO INPUTS: nvfp4-8 with no ruling (an unkeyed subject) is not
+// silently demoted to a bounded experiment.
+fn glm53_step_intent(s: Glm53StaircaseStep) -> ArmIntent? {
   match s {
-    Glm53Nvfp4Step { step: Nvfp4Seats8 } => ArmOperatorQualificationServing { ruling: glm53_nvfp4_8_operator_qualification }
-    Glm53Nvfp4Step { step: Nvfp4Seats16 } => ArmBoundedExperiment
-    Glm53Nvfp4Step { step: Nvfp4Seats24 } => ArmBoundedExperiment
-    Glm53Nvfp4Step { step: Nvfp4Seats32 } => ArmBoundedExperiment
-    Glm53Fp8Step { step: _ } => ArmBoundedExperiment
+    Glm53Nvfp4Step { step: Nvfp4Seats8 } =>
+      match glm53_nvfp4_8_operator_qualification() {
+        Absent => none
+        Present { value: r } => Present { value: ArmOperatorQualificationServing { ruling: r } }
+      }
+    Glm53Nvfp4Step { step: Nvfp4Seats16 } => Present { value: ArmBoundedExperiment }
+    Glm53Nvfp4Step { step: Nvfp4Seats24 } => Present { value: ArmBoundedExperiment }
+    Glm53Nvfp4Step { step: Nvfp4Seats32 } => Present { value: ArmBoundedExperiment }
+    Glm53Fp8Step { step: _ } => Present { value: ArmBoundedExperiment }
   }
 }
 
@@ -102,15 +121,19 @@ fn glm53_step_deployment_env(s: Glm53StaircaseStep) -> List<DockerEnvAssignment>
 fn glm53_step_inputs(s: Glm53StaircaseStep) -> GroupArmLaunchInputs? {
   match glm53_step_profile(s: s) {
     Absent => none
-    Present { value: p } => Present { value: GroupArmLaunchInputs {
+    Present { value: p } =>
+  match glm53_step_intent(s: s) {
+    Absent => none
+    Present { value: i } => Present { value: GroupArmLaunchInputs {
       assignment: glm53_step_assignment(s: s),
       profile: p,
-      intent: glm53_step_intent(s: s),
+      intent: i,
       deployment_env: glm53_step_deployment_env(s: s),
       container: glm53_staircase_container,
       units: glm53_staircase_units,
       purpose: join(["the GLM-5.3-Flash Group A staircase step ", glm53_step_wire(s: s) as String], "") as NonEmptyStr,
     } }
+  }
   }
 }
 

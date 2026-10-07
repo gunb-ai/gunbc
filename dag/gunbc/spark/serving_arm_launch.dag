@@ -55,8 +55,10 @@ import gunbc.spark.serving_arm {
   ServingLaunchProfile,
 }
 import gunbc.spark.serving_promotion {
-  ServingPromotionReceipts, serving_promotion_standing, promotion_evidence, serving_promotion_policy,
-  PromotionAdmitsNormalServing, PromotionRefused, PromotionMeasurementServeOnly, promotion_standing_text,
+  ServingPromotionReceipts, promotion_evidence, serving_promotion_policy,
+  PromotionMeasurementServeOnly, promotion_standing_text,
+  PromotionShortfallReading, PromotionShortfallRefused, PromotionShortfalls, promotion_shortfall_reading,
+  operator_qualification_promotion_refusal,
 }
 import gunbc.spark.serving_performance_subject { serving_subject_for_launch }
 import gunbc.spark.arm_memory_fit {
@@ -625,10 +627,10 @@ fn launch_compatibility_subject(
 // an ArmLaunchPlan, which forced the admitting arms to invent a lines list and a master address they
 // had no business holding -- a fabricated value standing in for "no objection". Absent IS the
 // admission, and there is nothing to make up.
-fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> NonEmptyStr? {
+fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> NonEmptyStr? {
   match intent {
     ArmOperatorQualificationServing { ruling: r } =>
-      match operator_qualification_subject_refusal(ruling: r, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group) {
+      match operator_qualification_subject_refusal(ruling: r, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env) {
         Present { value: c } => Present { value: c }
         Absent => compatibility_intent_refusal(admission: admission, intent: intent)
       }
@@ -679,7 +681,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   } else if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
   } else {
-  match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group) {
+  match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env) {
     Present { value: c } => ArmLaunchRefused { cause: c }
     Absent =>
   match serving_arm_admits_under(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: Present { value: profile }) {
@@ -783,34 +785,42 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
   }
 }
 
-// AN OPERATOR-QUALIFICATION SERVE WAIVES RECEIPTS 3-5 (cache fit, quality, calibration) and only those:
-// receipt 1 (execution compatibility) is intent_refusal's and receipt 2 (memory fit) is
-// arm_memory_launch_gate's, both enforced on its plan. The waiver is the declared drop
-// gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts.
+// THE PROMOTION READING OF THIS LAUNCH'S OWN SUBJECT: the compatibility and memory verdicts the wall
+// computes itself, beside the receipts the caller holds. Both the normal-serving and the
+// operator-qualification judgments read this one reading.
+fn launch_promotion_reading(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> PromotionShortfallReading {
+  match serving_checkpoint_row(c: checkpoint) {
+    Absent => PromotionShortfallRefused { cause: "no checkpoint row, so no promotion subject derives" as NonEmptyStr }
+    Present { value: crow } =>
+      match serving_runtime_row(r: runtime) {
+        Absent => PromotionShortfallRefused { cause: "no runtime row, so no promotion subject derives" as NonEmptyStr }
+        Present { value: rrow } => {
+          let subject = serving_subject_for_launch(
+            checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
+            runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
+            deployment_env: deployment_env, collective_transport: none)
+          let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
+          promotion_shortfall_reading(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
+        }
+      }
+  }
+}
+
+// NORMAL SERVING NEEDS EVERY REQUIREMENT MET. AN OPERATOR-QUALIFICATION SERVE IS JUDGED BY THE CLOSED
+// DISPOSITION OF EACH REQUIREMENT (gunbc.spark.serving_promotion operator_qualification_disposition):
+// receipts 3-5 waived, compatibility and memory owned by their own gates, and any requirement placed
+// RequiredUnderTheRuling refusing. A bounded experiment needs none.
 fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
   match intent {
     ArmBoundedExperiment => none
-    ArmOperatorQualificationServing { ruling: _ } => none
+    ArmOperatorQualificationServing { ruling: _ } =>
+      operator_qualification_promotion_refusal(reading: launch_promotion_reading(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env, verdict: verdict, receipts: receipts))
     ArmNormalServing =>
-      match serving_checkpoint_row(c: checkpoint) {
-        Absent => Present { value: "no checkpoint row, so no promotion subject derives" as NonEmptyStr }
-        Present { value: crow } =>
-          match serving_runtime_row(r: runtime) {
-            Absent => Present { value: "no runtime row, so no promotion subject derives" as NonEmptyStr }
-            Present { value: rrow } => {
-              let subject = serving_subject_for_launch(
-                checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
-                runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
-                deployment_env: deployment_env, collective_transport: none)
-              let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
-              let standing = serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
-              match standing {
-                PromotionAdmitsNormalServing => none
-                PromotionRefused { cause: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
-                PromotionMeasurementServeOnly { missing: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
-              }
-            }
-          }
+      match launch_promotion_reading(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env, verdict: verdict, receipts: receipts) {
+        PromotionShortfallRefused { cause: c } => Present { value: c }
+        PromotionShortfalls { shortfalls: ss } =>
+          if length(ss) == 0 { none }
+          else { Present { value: promotion_standing_text(st: PromotionMeasurementServeOnly { missing: map(ss, sh => sh.cause) }) as NonEmptyStr } }
       }
   }
 }

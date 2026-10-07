@@ -3,11 +3,18 @@ module test.claim.spark.operator_qualification_serving_witness_test
 import std.types { Bool, String, List, NonEmptyStr }
 import std.measure { byte_size }
 import std.optional { Present, Absent }
+import extdeps.docker.cli { DockerEnvAssignment }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_arm {
-  ArmIntent, ArmBoundedExperiment, ArmNormalServing, ArmOperatorQualificationServing,
-  Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4,
-  operator_qualification_subject_refusal, glm53_nvfp4_8_operator_qualification,
+  ArmIntent, ArmBoundedExperiment, ArmNormalServing, ArmOperatorQualificationServing, OperatorQualificationRuling,
+  Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53KvplanV2GroupAProduced, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  ServingLaunchProfile, operator_qualification_subject_refusal,
+}
+import gunbc.spark.serving_arm_launch { intent_refusal }
+import gunbc.spark.serving_promotion {
+  PromotionRequirement, PromotionShortfall, PromotionShortfalls, PromotionShortfallRefused, operator_qualification_promotion_refusal,
+  RequirementExecutionCompatibility, RequirementMemoryFit, RequirementResolvedLayoutCacheFit,
+  RequirementQualityOnTheAcceptanceSet, RequirementWorkloadCalibration,
 }
 import gunbc.spark.arm_memory_fit { arm_memory_launch_gate, ArmMemoryFitUnestablished, ArmMemoryFitRefused, ArmPhaseModelLoad }
 import gunbc.spark.native_serving_realization {
@@ -15,65 +22,152 @@ import gunbc.spark.native_serving_realization {
   glm_native_launch_lines_for, arm_host_unit_file_for, glm_native_arm_units,
 }
 import gunbc.spark.serving_compatibility { measured_admission_for, serving_compatibility_subject, spark_gb10_accelerator, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing }
-import gunbc.spark.glm53_staircase_steps { Glm53Nvfp4Step, Glm53Fp8Step, Nvfp4Seats8, Nvfp4Seats16, Fp8Seats8, glm53_step_profile, glm53_step_checkpoint }
-import gunbc.spark.glm53_arm_staircase { glm53_step_intent }
+import gunbc.spark.glm53_staircase_steps { Glm53StaircaseStep, Glm53Nvfp4Step, Glm53Fp8Step, Nvfp4Seats8, Nvfp4Seats16, Nvfp4Seats32, Fp8Seats8, glm53_step_profile, glm53_step_checkpoint }
+import gunbc.spark.glm53_arm_staircase { glm53_step_intent, glm53_nvfp4_8_operator_qualification, glm53_step_deployment_env }
 
 // ── THE OPERATOR-QUALIFICATION SERVE (operator ruling 2026-10-07, relayed by valiant-crab-775) ──────
 //
-// It is its own intent, admitted only with the ruling for exactly its subject, persistent like normal
-// serving but never named normal serving, and it waives promotion receipts 3-5 only (the declared drop
-// gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts). Each claim runs the real
-// function the launch calls.
+// The ruling is minted over nvfp4-8's exact realization key, so it admits that step and nothing else, and
+// it waives exactly the requirements its closed disposition names. Each claim runs the real function the
+// launch calls. The fourth control the side-chat review asked for -- an outside caller has no spelling for
+// pairing a ruling with another subject -- is held by OperatorQualificationRuling's sole_constructor: a
+// literal outside gunbc.spark.serving_arm refuses at resolve (sole_constructor type cannot be constructed
+// outside its defining module), and the key is sealed inside the value.
 
-data w_qualification: ArmIntent = ArmOperatorQualificationServing { ruling: glm53_nvfp4_8_operator_qualification }
+data w_nvfp4_8: Glm53StaircaseStep = Glm53Nvfp4Step { step: Nvfp4Seats8 }
+data w_nvfp4_16: Glm53StaircaseStep = Glm53Nvfp4Step { step: Nvfp4Seats16 }
 
-fn w_intent_is_qualification(i: ArmIntent) -> Bool {
-  match i { ArmOperatorQualificationServing { ruling: _ } => true  ArmBoundedExperiment => false  ArmNormalServing => false }
+fn w_intent_is_qualification(i: ArmIntent?) -> Bool {
+  match i {
+    Absent => false
+    Present { value: v } => match v { ArmOperatorQualificationServing { ruling: _ } => true  ArmBoundedExperiment => false  ArmNormalServing => false }
+  }
 }
 
-// ONLY nvfp4-8 serves under the ruling; every other step stays a bounded experiment.
+fn w_is_bounded(i: ArmIntent?) -> Bool {
+  match i {
+    Absent => false
+    Present { value: v } => match v { ArmOperatorQualificationServing { ruling: _ } => false  ArmBoundedExperiment => true  ArmNormalServing => false }
+  }
+}
+
+// THE RULING'S SUBJECT AGAINST A LAUNCH OF step, WITH env AS ITS DEPLOYMENT ENVIRONMENT: none = admitted.
+fn w_ruling_refusal_for(step: Glm53StaircaseStep, env: List<DockerEnvAssignment>, checkpoint_from: Glm53StaircaseStep) -> String? {
+  match glm53_nvfp4_8_operator_qualification() {
+    Absent => Present { value: "NO RULING MINTED" }
+    Present { value: r } =>
+      match glm53_step_profile(s: step) {
+        Absent => Present { value: "NO PROFILE" }
+        Present { value: p } =>
+          match operator_qualification_subject_refusal(ruling: r, checkpoint: glm53_step_checkpoint(s: checkpoint_from), runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupA, profile: p, deployment_env: env) {
+            Absent => none
+            Present { value: c } => Present { value: c as String }
+          }
+      }
+  }
+}
+
+fn w_refused_by_the_ruling(r: String?) -> Bool {
+  match r { Absent => false  Present { value: c } => string_contains(s: c, pattern: "admits only the GLM-5.3-Flash Group A staircase step nvfp4-8") }
+}
+
+// ONLY nvfp4-8 carries the qualification intent; nvfp4-16 and fp8-8 stay bounded experiments.
 test fn w_only_nvfp4_8_carries_the_qualification_intent() -> Bool {
-  w_intent_is_qualification(i: glm53_step_intent(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }))
-    && !w_intent_is_qualification(i: glm53_step_intent(s: Glm53Nvfp4Step { step: Nvfp4Seats16 }))
-    && !w_intent_is_qualification(i: glm53_step_intent(s: Glm53Fp8Step { step: Fp8Seats8 }))
+  w_intent_is_qualification(i: glm53_step_intent(s: w_nvfp4_8))
+    && w_is_bounded(i: glm53_step_intent(s: w_nvfp4_16))
+    && w_is_bounded(i: glm53_step_intent(s: Glm53Fp8Step { step: Fp8Seats8 }))
 }
 
-// RED: the ruling admits exactly its subject. Another checkpoint, or the same subject on Group B, refuses
-// naming both; its own subject is admitted.
-test fn w_the_ruling_admits_exactly_its_own_subject() -> Bool {
-  let r = glm53_nvfp4_8_operator_qualification
-  (match operator_qualification_subject_refusal(ruling: r, checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupA) { Absent => true  Present { value: _ } => false })
-    && (match operator_qualification_subject_refusal(ruling: r, checkpoint: Glm53NativeFp8, runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupA) { Absent => false  Present { value: c } => string_contains(s: c as String, pattern: "admits") })
-    && (match operator_qualification_subject_refusal(ruling: r, checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupB) { Absent => false  Present { value: _ } => true })
+// CONTROL 1: nvfp4-8 with its exact profile, artifact, checkpoint, group and environment is admitted.
+test fn w_the_ruling_admits_nvfp4_8_exactly() -> Bool {
+  match w_ruling_refusal_for(step: w_nvfp4_8, env: glm53_step_deployment_env(s: w_nvfp4_8), checkpoint_from: w_nvfp4_8) { Absent => true  Present { value: _ } => false }
+}
+
+fn w_intent_refuses_on_the_ruling(r: OperatorQualificationRuling, s: Glm53StaircaseStep) -> Bool {
+  match glm53_step_profile(s: s) {
+    Absent => false
+    Present { value: p } => match intent_refusal(admission: AdmitsNormalServing, intent: ArmOperatorQualificationServing { ruling: r }, checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupA, profile: p, deployment_env: glm53_step_deployment_env(s: s)) {
+      Absent => false
+      Present { value: c } => string_contains(s: c as String, pattern: "admits only the GLM-5.3-Flash Group A staircase step nvfp4-8")
+    }
+  }
+}
+
+// CONTROL 2 (RED): the same ruling paired with the nvfp4-16 or nvfp4-32 profile refuses BECAUSE THE RULING
+// MISMATCHES, through intent_refusal itself with execution compatibility supplied as established.
+test fn w_the_eight_seat_ruling_refuses_sixteen_and_thirty_two_seats_even_when_compatible() -> Bool {
+  match glm53_nvfp4_8_operator_qualification() {
+    Absent => false
+    Present { value: r } => w_intent_refuses_on_the_ruling(r: r, s: w_nvfp4_16) && w_intent_refuses_on_the_ruling(r: r, s: Glm53Nvfp4Step { step: Nvfp4Seats32 })
+  }
+}
+
+// CONTROL 3 (RED): a changed deployment environment, checkpoint (another repository at another revision),
+// runtime artifact or group refuses on the ruling.
+test fn w_a_changed_environment_checkpoint_artifact_or_group_refuses() -> Bool {
+  let env8 = glm53_step_deployment_env(s: w_nvfp4_8)
+  let no_skip_ops = glm53_step_deployment_env(s: Glm53Fp8Step { step: Fp8Seats8 })
+  w_refused_by_the_ruling(r: w_ruling_refusal_for(step: w_nvfp4_8, env: no_skip_ops, checkpoint_from: w_nvfp4_8))
+    && w_refused_by_the_ruling(r: w_ruling_refusal_for(step: w_nvfp4_8, env: env8, checkpoint_from: Glm53Fp8Step { step: Fp8Seats8 }))
+    && (match glm53_nvfp4_8_operator_qualification() {
+      Absent => false
+      Present { value: r } => match glm53_step_profile(s: w_nvfp4_8) {
+        Absent => false
+        Present { value: p } =>
+          (match operator_qualification_subject_refusal(ruling: r, checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, group: FabricGroupA, profile: p, deployment_env: env8) { Absent => false  Present { value: c } => string_contains(s: c as String, pattern: "admits only") })
+            && (match operator_qualification_subject_refusal(ruling: r, checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, group: FabricGroupB, profile: p, deployment_env: env8) { Absent => false  Present { value: c } => string_contains(s: c as String, pattern: "admits only") })
+      }
+    })
+}
+
+fn w_shortfall(r: PromotionRequirement) -> PromotionShortfall {
+  PromotionShortfall { requirement: r, cause: "missing" as NonEmptyStr }
+}
+
+// THE WAIVER IS THE CLOSED SET: shortfalls in cache fit, quality and calibration (and an unestablished
+// memory fit, which its own gate owns) are admitted; an outright refusal still refuses.
+test fn w_the_waiver_is_exactly_its_closed_disposition() -> Bool {
+  (match operator_qualification_promotion_refusal(reading: PromotionShortfalls { shortfalls: [
+      w_shortfall(r: RequirementMemoryFit), w_shortfall(r: RequirementResolvedLayoutCacheFit), w_shortfall(r: RequirementQualityOnTheAcceptanceSet), w_shortfall(r: RequirementWorkloadCalibration)] }) { Absent => true  Present { value: _ } => false })
+    && (match operator_qualification_promotion_refusal(reading: PromotionShortfallRefused { cause: "the weights do not fit" as NonEmptyStr }) { Absent => false  Present { value: c } => (c as String) == "the weights do not fit" })
 }
 
 // The memory wall under the ruling: an unestablished fit is admitted, a refused one still refuses.
 test fn w_the_memory_wall_admits_unestablished_and_still_refuses_refused() -> Bool {
-  (match arm_memory_launch_gate(intent: w_qualification, verdict: ArmMemoryFitUnestablished { obligations: ["the KV pool at 262144 is unmeasured" as NonEmptyStr] }, experiment: none) { Absent => true  Present { value: _ } => false })
-    && (match arm_memory_launch_gate(intent: w_qualification, verdict: ArmMemoryFitRefused { rank: 0, phase: ArmPhaseModelLoad, demand_lower: byte_size(count: 2), supply_upper: byte_size(count: 1), cause: "the weights do not fit" as NonEmptyStr }, experiment: none) { Absent => false  Present { value: c } => (c as String) == "the weights do not fit" })
+  match glm53_step_intent(s: w_nvfp4_8) {
+    Absent => false
+    Present { value: q } =>
+      (match arm_memory_launch_gate(intent: q, verdict: ArmMemoryFitUnestablished { obligations: ["the KV pool at 262144 is unmeasured" as NonEmptyStr] }, experiment: none) { Absent => true  Present { value: _ } => false })
+        && (match arm_memory_launch_gate(intent: q, verdict: ArmMemoryFitRefused { rank: 0, phase: ArmPhaseModelLoad, demand_lower: byte_size(count: 2), supply_upper: byte_size(count: 1), cause: "the weights do not fit" as NonEmptyStr }, experiment: none) { Absent => false  Present { value: c } => (c as String) == "the weights do not fit" })
+  }
 }
 
 // The units are persistent and enrolled, like normal serving, and say what they are.
 test fn w_the_units_are_persistent_enrolled_and_named_for_what_they_are() -> Bool {
-  let rs = map(glm_native_launch_lines_for(intent: ArmBoundedExperiment), l =>
-    arm_host_unit_file_for(intent: w_qualification, launch: l, units: glm_native_arm_units, served_alias: "glm-5.3-flash" as NonEmptyStr))
-  count(rs) > 0 && all(rs, r => match r {
-    GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
-    GlmNativeUnitRendered { unit_name: _, text: t } =>
-      string_contains(s: t, pattern: "Restart=always")
-        && !string_contains(s: t, pattern: "RuntimeMaxSec")
-        && string_contains(s: t, pattern: "WantedBy=multi-user.target")
-        && string_contains(s: t, pattern: "OPERATOR-QUALIFICATION SERVE (not normal serving")
-  })
+  match glm53_step_intent(s: w_nvfp4_8) {
+    Absent => false
+    Present { value: q } => {
+      let rs = map(glm_native_launch_lines_for(intent: ArmBoundedExperiment), l =>
+        arm_host_unit_file_for(intent: q, launch: l, units: glm_native_arm_units, served_alias: "glm-5.3-flash" as NonEmptyStr))
+      count(rs) > 0 && all(rs, r => match r {
+        GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
+        GlmNativeUnitRendered { unit_name: _, text: t } =>
+          string_contains(s: t, pattern: "Restart=always")
+            && !string_contains(s: t, pattern: "RuntimeMaxSec")
+            && string_contains(s: t, pattern: "WantedBy=multi-user.target")
+            && string_contains(s: t, pattern: "OPERATOR-QUALIFICATION SERVE (not normal serving")
+      })
+    }
+  }
 }
 
 // EXECUTION COMPATIBILITY STILL GATES, AND THE nvfp4-8 SUBJECT EARNED IT: the real roster admits the exact
 // subject the step launches (all five fields), so the ruling waives no execution evidence.
 test fn w_the_nvfp4_8_subject_is_execution_compatible_in_the_roster() -> Bool {
-  match glm53_step_profile(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) {
+  match glm53_step_profile(s: w_nvfp4_8) {
     Absent => false
     Present { value: p } =>
-      match measured_admission_for(subject: serving_compatibility_subject(checkpoint: glm53_step_checkpoint(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }), runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, accelerator: spark_gb10_accelerator, profile: p)) {
+      match measured_admission_for(subject: serving_compatibility_subject(checkpoint: glm53_step_checkpoint(s: w_nvfp4_8), runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4, accelerator: spark_gb10_accelerator, profile: p)) {
         AdmitsNormalServing => true
         AdmitsBoundedExperimentOnly => false
         AdmitsNothing { because: _ } => false

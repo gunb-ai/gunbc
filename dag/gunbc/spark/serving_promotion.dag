@@ -213,30 +213,103 @@ type ServingPromotionStanding
   | PromotionMeasurementServeOnly { missing: List<NonEmptyStr> }
   | PromotionRefused { cause: NonEmptyStr }
 
+// ── THE REQUIREMENTS, A CLOSED ROSTER ────────────────────────────────────────────────────────────
+//
+// Each shortfall the fold reports names the requirement it belongs to, so a consumer that treats
+// requirements differently (an operator waiver) judges them by this closed set rather than by the fold's
+// prose. Adding a requirement is a new variant, and every exhaustive consumer must then decide it.
+type PromotionRequirement
+  = RequirementExecutionCompatibility
+  | RequirementMemoryFit
+  | RequirementResolvedLayoutCacheFit
+  | RequirementQualityOnTheAcceptanceSet
+  | RequirementWorkloadCalibration
+
+type PromotionShortfall {
+  requirement: PromotionRequirement
+  cause: NonEmptyStr
+}
+
+type PromotionShortfallReading
+  = PromotionShortfallRefused { cause: NonEmptyStr }
+  | PromotionShortfalls { shortfalls: List<PromotionShortfall> }
+
+fn shortfalls_of(requirement: PromotionRequirement, causes: List<NonEmptyStr>) -> List<PromotionShortfall> {
+  map(causes, c => PromotionShortfall { requirement: requirement, cause: c })
+}
+
 // ── THE FOLD ─────────────────────────────────────────────────────────────────────────────────────
 fn serving_promotion_standing(subject: ServingPerformanceSubject, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy) -> ServingPromotionStanding {
+  match promotion_shortfall_reading(subject: subject, evidence: evidence, policy: policy) {
+    PromotionShortfallRefused { cause: c } => PromotionRefused { cause: c }
+    PromotionShortfalls { shortfalls: ss } =>
+      if length(ss) == 0 { PromotionAdmitsNormalServing } else { PromotionMeasurementServeOnly { missing: map(ss, s => s.cause) } }
+  }
+}
+
+fn promotion_shortfall_reading(subject: ServingPerformanceSubject, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy) -> PromotionShortfallReading {
   let key = serving_subject_key(s: subject)
   let ceiling = parse_int(s: serving_subject_axis_value(s: subject, a: AxisMaxNumSeqs) as String)
   match evidence.compatibility {
-    AdmitsNothing { because: b } => PromotionRefused { cause: b }
+    AdmitsNothing { because: b } => PromotionShortfallRefused { cause: b }
     AdmitsBoundedExperimentOnly => promotion_fold(key: key, ceiling: ceiling, evidence: evidence, policy: policy, compatibility_missing: ["execution compatibility: this subject has no execution receipt" as NonEmptyStr])
     AdmitsNormalServing => promotion_fold(key: key, ceiling: ceiling, evidence: evidence, policy: policy, compatibility_missing: [])
   }
 }
 
-fn promotion_fold(key: ServingSubjectKey, ceiling: Int?, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy, compatibility_missing: List<NonEmptyStr>) -> ServingPromotionStanding {
+fn promotion_fold(key: ServingSubjectKey, ceiling: Int?, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy, compatibility_missing: List<NonEmptyStr>) -> PromotionShortfallReading {
   match memory_refusal(m: evidence.memory) {
-    Present { value: c } => PromotionRefused { cause: c }
+    Present { value: c } => PromotionShortfallRefused { cause: c }
     Absent =>
       match cache_refusal(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan) {
-        Present { value: c } => PromotionRefused { cause: c }
-        Absent => {
-          let missing = concat(compatibility_missing, concat(memory_missing(m: evidence.memory), concat(cache_missing(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan),
-            concat(quality_missing(key: key, q: evidence.quality, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_quality, policy: policy),
-              calibration_missing(key: key, ceiling: ceiling, c: evidence.calibration, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_calibration, policy: policy)))))
-          if length(missing) == 0 { PromotionAdmitsNormalServing } else { PromotionMeasurementServeOnly { missing: missing } }
-        }
+        Present { value: c } => PromotionShortfallRefused { cause: c }
+        Absent => PromotionShortfalls { shortfalls: concat(shortfalls_of(requirement: RequirementExecutionCompatibility, causes: compatibility_missing),
+          concat(shortfalls_of(requirement: RequirementMemoryFit, causes: memory_missing(m: evidence.memory)),
+          concat(shortfalls_of(requirement: RequirementResolvedLayoutCacheFit, causes: cache_missing(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan)),
+          concat(shortfalls_of(requirement: RequirementQualityOnTheAcceptanceSet, causes: quality_missing(key: key, q: evidence.quality, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_quality, policy: policy)),
+            shortfalls_of(requirement: RequirementWorkloadCalibration, causes: calibration_missing(key: key, ceiling: ceiling, c: evidence.calibration, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_calibration, policy: policy)))))) }
       }
+  }
+}
+
+// ── WHAT THE OPERATOR-QUALIFICATION RULING DOES WITH EACH REQUIREMENT (operator ruling 2026-10-07) ──────
+//
+// EXHAUSTIVE, so a sixth requirement cannot inherit the 2026-10-07 waiver: its author must place it here.
+// Receipts 3-5 are waived (the declared drop
+// gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts). Execution compatibility is
+// enforced by its own gate, which requires an ExecutionCompatible row for an operator-qualification serve
+// exactly as for normal serving (gunbc.spark.serving_arm_launch intent_refusal). The memory fit is enforced
+// by its own gate too (gunbc.spark.arm_memory_fit arm_memory_launch_gate), which refuses a refused fit and,
+// under the ruling, admits an unestablished one.
+type OperatorQualificationDisposition
+  = WaivedByOperatorRuling
+  | EnforcedByItsOwnGate { gate: NonEmptyStr }
+  | RequiredUnderTheRuling
+
+fn operator_qualification_disposition(r: PromotionRequirement) -> OperatorQualificationDisposition {
+  match r {
+    RequirementExecutionCompatibility => EnforcedByItsOwnGate { gate: "gunbc.spark.serving_arm_launch intent_refusal" as NonEmptyStr }
+    RequirementMemoryFit => EnforcedByItsOwnGate { gate: "gunbc.spark.arm_memory_fit arm_memory_launch_gate" as NonEmptyStr }
+    RequirementResolvedLayoutCacheFit => WaivedByOperatorRuling
+    RequirementQualityOnTheAcceptanceSet => WaivedByOperatorRuling
+    RequirementWorkloadCalibration => WaivedByOperatorRuling
+  }
+}
+
+// A SHORTFALL THE RULING DOES NOT WAIVE AND NO OTHER GATE OWNS REFUSES THE QUALIFICATION SERVE, and so does
+// any outright refusal (a refused memory fit, a refused cache fit).
+fn operator_qualification_promotion_refusal(reading: PromotionShortfallReading) -> NonEmptyStr? {
+  match reading {
+    PromotionShortfallRefused { cause: c } => Present { value: c }
+    PromotionShortfalls { shortfalls: ss } => {
+      let required = filter(ss, s => match operator_qualification_disposition(r: s.requirement) {
+        WaivedByOperatorRuling => false
+        EnforcedByItsOwnGate { gate: _ } => false
+        RequiredUnderTheRuling => true
+      })
+      if length(required) == 0 { none }
+      else { Present { value: join(["the operator-qualification ruling does not waive: ", join(map(required, s => s.cause as String), "; ")], "") as NonEmptyStr } }
+    }
   }
 }
 

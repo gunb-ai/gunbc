@@ -15,6 +15,10 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // under its own intent, ArmOperatorQualificationServing (gunbc.spark.serving_arm), so the operator can
 // qualify it personally against GLM-5.3-Flash FP8 on Group B.
 //
+// WHICH RECEIPTS, AS A CLOSED SET: gunbc.spark.serving_promotion operator_qualification_disposition places
+// every PromotionRequirement exhaustively -- these three WaivedByOperatorRuling, compatibility and memory
+// EnforcedByItsOwnGate -- so a requirement added later is not waived unless its author places it so.
+//
 // WHAT IS NOT DROPPED. Execution compatibility still gates (the subject's ExecutionCompatible row in
 // gunbc.spark.serving_compatibility, earned on hardware), and so do the memory wall (a FitRefused verdict
 // still refuses; FitUnestablished is admitted only under the ruling), the transport readback and the front
@@ -31,9 +35,9 @@ data operator_qualification_serve_waives_promotion_receipts: RungDrop = RungDrop
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: OperatorWaiver { ruling: "the operator, 2026-10-07 (relayed by valiant-crab-775): Group A may serve GLM-5.3-Flash nvfp4-8 persistently for the operator's own qualification against GLM-5.3-Flash fp8 on Group B, as gunbc.spark.serving_arm ArmOperatorQualificationServing with the ruling gunbc.spark.serving_arm glm53_nvfp4_8_operator_qualification" },
+    reason: OperatorWaiver { ruling: "the operator, 2026-10-07 (relayed by valiant-crab-775): Group A may serve GLM-5.3-Flash nvfp4-8 persistently for the operator's own qualification against GLM-5.3-Flash fp8 on Group B, as gunbc.spark.serving_arm ArmOperatorQualificationServing with the ruling gunbc.spark.glm53_arm_staircase glm53_nvfp4_8_operator_qualification, minted by gunbc.spark.serving_arm operator_qualification_ruling over that step's exact realization key" },
     population: [
-      "gunbc.spark.glm53_arm_staircase glm53_step_intent at Glm53Nvfp4Step Nvfp4Seats8 on FabricGroupA (checkpoint Glm53FlashNvidiaNvfp4, runtime GunbcGlm53KvplanV2GroupAProduced, topology FourSparkTp4): the only subject the ruling admits",
+      "gunbc.spark.glm53_arm_staircase glm53_step_intent at Glm53Nvfp4Step Nvfp4Seats8: the one realization key the ruling admits (gunbc.spark.serving_arm arm_realization_key over the KVPLAN-v2 Group A artifact, the NVIDIA NVFP4 checkpoint at its revision, FourSparkTp4, FabricGroupA, the eight-seat launch profile and its deployment environment); nvfp4-16, nvfp4-24 and nvfp4-32 are outside it",
     ],
     restoration_trigger: "the gunbc.spark.serving_promotion producers of the resolved-layout cache-fit, quality and workload-calibration receipts land, SUFFICIENT FOR promoting this subject through gunbc.spark.serving_arm_launch normal_serving_promotion_refusal; at that point the subject serves as ArmNormalServing or not at all, and this intent's arm for it is deleted -- or, earlier, the operator records the qualification verdict, which also ends the ruling",
   }

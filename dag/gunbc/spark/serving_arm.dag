@@ -4,6 +4,8 @@ import extdeps.docker.cli { DockerEnvAssignment }
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
+import std.content_hash { ContentHash, content_hash_atom, content_hash_equal, serialize_content_hash }
+import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, gibibyte_ceiling, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_checkpoint_manifest_gibibytes }
@@ -511,8 +513,11 @@ type ArmIntent
 // section 3, meaning forks): it serves persistently, like normal serving, but WITHOUT the promotion
 // receipts normal serving requires, so the operator can qualify the subject personally. Calling it normal
 // serving would let one name carry two obligation sets. It is admitted ONLY with the ruling as a typed
-// carrier: who ruled, when, and EXACTLY which subject (checkpoint, runtime, topology, fabric group) -- a
-// ruling about one subject admits no other -- and the named conditions that end it. What it waives is
+// carrier: who ruled, when, and EXACTLY which subject -- the subject's realization key (arm_realization_key:
+// runtime artifact, checkpoint revision, topology, group, launch profile, deployment environment), so a
+// ruling about one staircase step admits no other step, artifact, revision or environment -- and the named
+// conditions that end it. The key is sealed inside the ruling: no caller can re-pair a ruling with another
+// subject, and minting one for another subject is a new ruling, authored as such. What it waives is
 // declared as a section 4b(3) rung drop (gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts);
 // every other gate (execution compatibility, the memory wall, the transport readback, the front door)
 // stands. A FitUnestablished memory verdict is admitted under the ruling, as a bounded experiment's is; a
@@ -521,10 +526,8 @@ type OperatorQualificationRuling sole_constructor {
   ruled_by: NonEmptyStr
   ruled_on: NonEmptyStr
   relayed_by: NonEmptyStr
-  checkpoint: ServingCheckpoint
-  runtime: ServingRuntime
-  topology: ServingTopology
-  group: FabricGroup
+  subject_label: NonEmptyStr
+  subject_key: ContentHash
   ends_when: List<OperatorQualificationEnd>
 }
 
@@ -534,28 +537,70 @@ type OperatorQualificationEnd
   = OperatorQualificationVerdictRecorded
   | PromotionReceiptProducersLand
 
-// THE ONE RULING ON RECORD: the operator, 2026-10-07 (relayed by valiant-crab-775) -- GLM-5.3-Flash NVFP4
-// on Group A at four-rank TP4 on the KVPLAN-v2 Group A build, for the operator's qualification against fp8.
-data glm53_nvfp4_8_operator_qualification: OperatorQualificationRuling = OperatorQualificationRuling {
-  ruled_by: "the operator" as NonEmptyStr,
-  ruled_on: "2026-10-07" as NonEmptyStr,
-  relayed_by: "valiant-crab-775" as NonEmptyStr,
-  checkpoint: Glm53FlashNvidiaNvfp4,
-  runtime: GunbcGlm53KvplanV2GroupAProduced,
-  topology: FourSparkTp4,
-  group: FabricGroupA,
-  ends_when: [OperatorQualificationVerdictRecorded, PromotionReceiptProducersLand],
+// ── THE REALIZATION KEY OF AN ARM WHOSE RUNTIME AND CHECKPOINT ARE ROWS ──────────────────────────
+//
+// WHAT A SUSPENSION IS GRANTED TO, AND WHAT AN OPERATOR-QUALIFICATION RULING NAMES (ruling of
+// valiant-crab-775, 2026-10-02; side-chat review of #13534, 2026-10-07): the arm's own identity -- the
+// runtime artifact key (pin, source standing and patch set, runtime_artifact_key), the checkpoint's
+// repository at its revision, the topology, the group, the launch profile's own key (the staircase step's
+// ceiling, cold floor and scheduler gate) and the deployment environment's key. Composed by
+// std.artifact_store artifact_realization_digest, the fold the V4.1 candidate is keyed by, so two arms
+// differing in ANY of those are two identities: a grant or a ruling for one step never admits another. An
+// arm whose runtime has no row, or whose artifact has no pin, has no key: an unpinned image is not an
+// identity a grant or a ruling could name.
+type ArmSuccessorStanding
+  = ArmSuccessorKeyed { key: ContentHash }
+  | ArmSuccessorUnkeyed { causes: List<String> }
+
+fn realization_input(identity: String, value: String) -> ArtifactRealizationInput {
+  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
 }
 
-// THE RULING ADMITS EXACTLY ITS OWN SUBJECT. A launch whose checkpoint, runtime, topology or group differs
-// from the ruling's is refused, naming both.
-fn operator_qualification_subject_refusal(ruling: OperatorQualificationRuling, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> NonEmptyStr? {
-  if serving_checkpoint_wire(c: ruling.checkpoint) == serving_checkpoint_wire(c: checkpoint)
-    && serving_runtime_wire(r: ruling.runtime) == serving_runtime_wire(r: runtime)
-    && serving_topology_wire(t: ruling.topology) == serving_topology_wire(t: topology)
-    && fabric_group_wire(g: ruling.group) == fabric_group_wire(g: group) { none }
-  else {
-    Present { value: join(["the operator-qualification ruling of ", ruling.ruled_on as String, " admits ", serving_checkpoint_wire(c: ruling.checkpoint) as String, " on ", serving_runtime_wire(r: ruling.runtime) as String, " / ", serving_topology_wire(t: ruling.topology) as String, " / ", fabric_group_wire(g: ruling.group) as String, " only, and this launch is ", serving_checkpoint_wire(c: checkpoint) as String, " on ", serving_runtime_wire(r: runtime) as String, " / ", serving_topology_wire(t: topology) as String, " / ", fabric_group_wire(g: group) as String], "") as NonEmptyStr }
+fn arm_realization_key(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> ArmSuccessorStanding {
+  match serving_runtime_row(r: runtime) {
+    Absent => ArmSuccessorUnkeyed { causes: ["the runtime has no row, so it has no artifact identity to key a successor by"] }
+    Present { value: rt } => {
+      let rk = runtime_artifact_key(a: rt.artifact)
+      if starts_with(s: rk, prefix: "<unpinned:") {
+        ArmSuccessorUnkeyed { causes: [join(["the runtime artifact is unpinned (", rk, "), and an unpinned image is not an identity a grant could name"], "")] }
+      } else {
+        match serving_checkpoint_row(c: checkpoint) {
+          Absent => ArmSuccessorUnkeyed { causes: ["the checkpoint has no row, so it has no revision to key a successor by"] }
+          Present { value: ck } => ArmSuccessorKeyed { key: artifact_realization_digest(inputs: [
+            realization_input(identity: "runtime_artifact", value: rk),
+            realization_input(identity: "checkpoint", value: join([ck.repo.path as String, "@", ck.revision as String], "")),
+            realization_input(identity: "topology", value: serving_topology_wire(t: topology) as String),
+            realization_input(identity: "group", value: fabric_group_wire(g: group) as String),
+            realization_input(identity: "launch_profile", value: serving_launch_profile_key(p: profile)),
+            realization_input(identity: "deployment_env", value: serving_deployment_env_key(env: deployment_env)),
+          ]) }
+        }
+      }
+    }
+  }
+}
+
+// THE ONLY CONSTRUCTOR. A ruling is minted over the exact launch identity it admits; a subject with no
+// realization key (no runtime or checkpoint row, an unpinned artifact) cannot be ruled on, and the
+// constructor says so rather than minting a ruling over a partial identity.
+fn operator_qualification_ruling(ruled_by: NonEmptyStr, ruled_on: NonEmptyStr, relayed_by: NonEmptyStr, subject_label: NonEmptyStr, ends_when: List<OperatorQualificationEnd>, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> OperatorQualificationRuling? {
+  match arm_realization_key(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env) {
+    ArmSuccessorUnkeyed { causes: _ } => none
+    ArmSuccessorKeyed { key: k } => Present { value: OperatorQualificationRuling {
+      ruled_by: ruled_by, ruled_on: ruled_on, relayed_by: relayed_by, subject_label: subject_label, subject_key: k, ends_when: ends_when,
+    } }
+  }
+}
+
+// THE RULING ADMITS EXACTLY ITS OWN SUBJECT: the launch's realization key must equal the key the ruling was
+// minted over. Any difference -- another staircase step's profile, another artifact, another checkpoint
+// revision, another deployment environment, another group -- refuses, naming the ruled subject.
+fn operator_qualification_subject_refusal(ruling: OperatorQualificationRuling, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> NonEmptyStr? {
+  match arm_realization_key(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env) {
+    ArmSuccessorUnkeyed { causes: cs } => Present { value: join(["the operator-qualification ruling of ", ruling.ruled_on as String, " admits only ", ruling.subject_label as String, ", and this launch has no realization key to compare (", join(cs, "; "), ")"], "") as NonEmptyStr }
+    ArmSuccessorKeyed { key: k } =>
+      if content_hash_equal(left: k, right: ruling.subject_key) { none }
+      else { Present { value: join(["the operator-qualification ruling of ", ruling.ruled_on as String, " admits only ", ruling.subject_label as String, " (realization key ", serialize_content_hash(hash: ruling.subject_key) as String, "), and this launch's realization key is ", serialize_content_hash(hash: k) as String, ": another step, artifact, checkpoint revision, environment or group"], "") as NonEmptyStr } }
   }
 }
 

@@ -32,7 +32,7 @@ import gunbc.spark.fabric_serving_assignment { FabricServingAssignment }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held_by_subject_among, spark_serving_admissible_hosts }
 import gunbc.spark.serving_promotion { no_promotion_receipts }
-import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key, serving_deployment_env_key }
+import gunbc.spark.serving_arm { ArmSuccessorStanding, ArmSuccessorKeyed, ArmSuccessorUnkeyed, arm_realization_key, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key, serving_deployment_env_key }
 import gunbc.spark.serving_arm_launch { glm53_staircase_head_log_path, ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
 import gunbc.spark.pair_serving_observed { spark_pair_serve_port }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
@@ -213,49 +213,11 @@ fn group_arm_read_units(units: ArmUnitIdentity, incumbent: ArmDeclaredIncumbent)
 //       reading at all refuses: absence is not vacancy.
 // The arm may add its own causes (V4.1: the produced image's specification key must be its candidate's);
 // they are supplied, so this fold judges them without knowing what they are about.
-type ArmSuccessorStanding
-  = ArmSuccessorKeyed { key: ContentHash }
-  | ArmSuccessorUnkeyed { causes: List<String> }
-
-// ── THE SUCCESSOR KEY OF AN ARM WHOSE RUNTIME AND CHECKPOINT ARE ROWS ────────────────────────────
-//
-// WHAT A SUSPENSION IS GRANTED TO (ruling of valiant-crab-775, 2026-10-02): the arm's own identity --
-// the runtime artifact key (pin, source standing and patch set, gunbc.spark.serving_arm
-// runtime_artifact_key), the checkpoint's repository at its revision, the topology, the group, and the
-// launch profile's own key, which carries the staircase step's ceiling, its cold floor and its scheduler
-// gate. Composed by std.artifact_store artifact_realization_digest, the fold the V4.1 candidate is keyed
-// by (gunbc.spark.v41_runtime_candidate), so two arms differing in ANY of those are two successors and a
-// grant for one step never admits another. An arm whose runtime has no row, or whose artifact has no pin
-// (runtime_artifact_key renders an unpinned image as <unpinned:...>), has no key: an unpinned image is
-// not an identity a grant could name. V4.1's runtime is produced at run time and keys its candidate
-// through its own authority instead.
-fn realization_input(identity: String, value: String) -> ArtifactRealizationInput {
-  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
-}
-
+// The successor key of an arm whose runtime and checkpoint are rows is gunbc.spark.serving_arm
+// arm_realization_key -- the same identity an operator-qualification ruling names. V4.1's runtime is
+// produced at run time and keys its candidate through its own authority instead.
 fn group_arm_row_successor(inputs: GroupArmLaunchInputs) -> ArmSuccessorStanding {
-  let a = inputs.assignment
-  match serving_runtime_row(r: a.runtime) {
-    Absent => ArmSuccessorUnkeyed { causes: ["the runtime has no row, so it has no artifact identity to key a successor by"] }
-    Present { value: rt } => {
-      let rk = runtime_artifact_key(a: rt.artifact)
-      if starts_with(s: rk, prefix: "<unpinned:") {
-        ArmSuccessorUnkeyed { causes: [join(["the runtime artifact is unpinned (", rk, "), and an unpinned image is not an identity a grant could name"], "")] }
-      } else {
-        match serving_checkpoint_row(c: a.checkpoint) {
-          Absent => ArmSuccessorUnkeyed { causes: ["the checkpoint has no row, so it has no revision to key a successor by"] }
-          Present { value: ck } => ArmSuccessorKeyed { key: artifact_realization_digest(inputs: [
-            realization_input(identity: "runtime_artifact", value: rk),
-            realization_input(identity: "checkpoint", value: join([ck.repo.path as String, "@", ck.revision as String], "")),
-            realization_input(identity: "topology", value: serving_topology_wire(t: a.topology) as String),
-            realization_input(identity: "group", value: fabric_group_wire(g: a.group) as String),
-            realization_input(identity: "launch_profile", value: serving_launch_profile_key(p: inputs.profile)),
-            realization_input(identity: "deployment_env", value: serving_deployment_env_key(env: inputs.deployment_env)),
-          ]) }
-        }
-      }
-    }
-  }
+  arm_realization_key(checkpoint: inputs.assignment.checkpoint, runtime: inputs.assignment.runtime, topology: inputs.assignment.topology, group: inputs.assignment.group, profile: inputs.profile, deployment_env: inputs.deployment_env)
 }
 
 fn arm_successor_wire(s: ArmSuccessorStanding) -> String {
