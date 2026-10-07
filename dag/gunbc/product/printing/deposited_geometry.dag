@@ -2,7 +2,7 @@ module product.printing.deposited_geometry
 import std.types {String}
 import std.dissolution {DissolutionCondition, unbound_dissolution}
 
-data printed_chassis_python_kernel_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the plate-pack call, G-code readback parser and archived-process observer are expressed in .dag (G-code read as a modeled grammar fold; CadQuery/OrcaSlicer reached only as declared external-tool realizations). Tracked as roadmap node printed-chassis-python-kernel-retirement.")
+data printed_chassis_python_kernel_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the plate-pack call, G-code readback parser and archived-process observer are expressed in .dag (G-code read as a modeled grammar fold; CadQuery/OrcaSlicer reached only as declared external-tool realizations). Operator-approved scaffold 2026-10-06 (option A on review 77164 finding 2); tracked as roadmap node printed-chassis-python-kernel-retirement.")
 
 // Generic readback of functional and sacrificial deposition, independent of part IDs.
 // Support geometry is exact motion centerlines (including arcs), not a solid scaffold
