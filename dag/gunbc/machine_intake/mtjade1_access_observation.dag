@@ -772,8 +772,8 @@ type RmediaGeneralResidueGap
   = ResidueCaptureUnreadable { error: String }
   | ResidueDigestMismatch { expected: NonEmptyStr, observed: String }
   | ResidueJsonUnreadable { gap: String }
-  | ResidueFieldUnread { field: NonEmptyStr, cause: String }
   | ResidueShareIncomplete { role: NonEmptyStr, share: MegaRacObservedShare }
+  | ResidueCaptureHttpNotSuccess { trailer: String }
   | ResidueManagerUnread { cause: String }
   | ResiduePutEchoOrPersistMismatch { cause: String }
 
@@ -785,10 +785,50 @@ type ObservedShareRead
   = ObservedShareHeld { share: MegaRacObservedShare }
   | ObservedShareRefused { gap: RmediaGeneralResidueGap }
 
-fn media_general_json_text(content: String) -> String {
-  match split(s: content, delimiter: "\n").first() {
-    Absent => content
-    Present { value: line } => line
+type MediaGeneralCaptureBody
+  = MediaGeneralJsonBody { json: String }
+  | MediaGeneralCaptureTrailerUnread { trailer: String }
+  | MediaGeneralCaptureHttpFailed { trailer: String }
+
+fn media_general_nonempty_lines(content: String) -> List<String> {
+  split(s: content, delimiter: "\n") |> filter(l => trim(l) != "")
+}
+
+fn http_trailer_is_success(trailer: String) -> Bool {
+  let t = trim(trailer)
+  t == "HTTP_CODE:200" || t == "HTTP:200"
+}
+
+fn media_general_capture_body(content: String) -> MediaGeneralCaptureBody {
+  let lines = media_general_nonempty_lines(content: content)
+  if length(lines) == 1 {
+    match lines.first() {
+      Absent => MediaGeneralCaptureTrailerUnread { trailer: "" }
+      Present { value: json } => MediaGeneralJsonBody { json: json }
+    }
+  } else {
+    if length(lines) == 2 {
+      match lines.first() {
+        Absent => MediaGeneralCaptureTrailerUnread { trailer: "" }
+        Present { value: json } => {
+          let trailer = match lines.skip(n: 1).first() {
+            Absent => ""
+            Present { value: t } => t
+          }
+          if http_trailer_is_success(trailer: trailer) {
+            MediaGeneralJsonBody { json: json }
+          } else {
+            if starts_with(trim(trailer), "HTTP") {
+              MediaGeneralCaptureHttpFailed { trailer: trailer }
+            } else {
+              MediaGeneralCaptureTrailerUnread { trailer: trailer }
+            }
+          }
+        }
+      }
+    } else {
+      MediaGeneralCaptureTrailerUnread { trailer: join(lines, "\n") }
+    }
   }
 }
 
@@ -817,9 +857,14 @@ fn observed_share_of_capture(content: String, expected_sha256: NonEmptyStr) -> O
   match digest_held(content: content, expected: expected_sha256) {
     Present { value: g } => ObservedShareRefused { gap: g }
     Absent =>
-      match observe_media_general_share(body: media_general_json_text(content: content)) {
-        MediaGeneralShareUnreadable { detail: d } => ObservedShareRefused { gap: ResidueJsonUnreadable { gap: d } }
-        MediaGeneralShareObserved { observed: s } => ObservedShareHeld { share: s }
+      match media_general_capture_body(content: content) {
+        MediaGeneralCaptureTrailerUnread { trailer: t } => ObservedShareRefused { gap: ResidueJsonUnreadable { gap: concat("unread media/general trailer: ", t) } }
+        MediaGeneralCaptureHttpFailed { trailer: t } => ObservedShareRefused { gap: ResidueCaptureHttpNotSuccess { trailer: t } }
+        MediaGeneralJsonBody { json: json } =>
+          match observe_media_general_share(body: json) {
+            MediaGeneralShareUnreadable { detail: d } => ObservedShareRefused { gap: ResidueJsonUnreadable { gap: d } }
+            MediaGeneralShareObserved { observed: s } => ObservedShareHeld { share: s }
+          }
       }
   }
 }

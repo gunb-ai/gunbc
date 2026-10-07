@@ -12,7 +12,7 @@ import gunbc.machine_intake_mtjade1_access_observation {
   ResidueShareIncomplete,
   ResidueCaptureUnreadable,
   ResidueDigestMismatch,
-  ResidueFieldUnread,
+  ResidueCaptureHttpNotSuccess,
   ResidueJsonUnreadable,
   ResidueManagerUnread,
   ResiduePutEchoOrPersistMismatch,
@@ -76,7 +76,7 @@ test fn w_a_digest_mismatch_on_the_restore_get_refuses_the_residue() -> Bool {
       ResidueDigestMismatch { expected: _, observed: _ } => true
       ResidueCaptureUnreadable { error: _ } => false
       ResidueJsonUnreadable { gap: _ } => false
-      ResidueFieldUnread { field: _, cause: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
       ResidueShareIncomplete { role: _, share: _ } => false
       ResidueManagerUnread { cause: _ } => false
       ResiduePutEchoOrPersistMismatch { cause: _ } => false
@@ -104,7 +104,7 @@ test fn w_occupied_before_refuses_this_lane_residue() -> Bool {
       ResidueCaptureUnreadable { error: _ } => false
       ResidueDigestMismatch { expected: _, observed: _ } => false
       ResidueJsonUnreadable { gap: _ } => false
-      ResidueFieldUnread { field: _, cause: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
       ResidueManagerUnread { cause: _ } => false
       ResiduePutEchoOrPersistMismatch { cause: _ } => false
     }
@@ -182,7 +182,7 @@ test fn w_partial_before_is_not_an_empty_baseline() -> Bool {
       ResidueCaptureUnreadable { error: _ } => false
       ResidueDigestMismatch { expected: _, observed: _ } => false
       ResidueJsonUnreadable { gap: _ } => false
-      ResidueFieldUnread { field: _, cause: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
       ResidueManagerUnread { cause: _ } => false
       ResiduePutEchoOrPersistMismatch { cause: _ } => false
     }
@@ -200,20 +200,48 @@ test fn w_partial_after_is_not_factory_empty() -> Bool {
       ResidueCaptureUnreadable { error: _ } => false
       ResidueDigestMismatch { expected: _, observed: _ } => false
       ResidueJsonUnreadable { gap: _ } => false
-      ResidueFieldUnread { field: _, cause: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
       ResidueManagerUnread { cause: _ } => false
       ResiduePutEchoOrPersistMismatch { cause: _ } => false
     }
   }
 }
 
-test fn w_server_alone_empty_must_not_classify_factory_empty() -> Bool {
-  match decode_supplied(before: empty_general_json(), get: partial_empty_server_retained_path()) {
+fn partial_empty_server_empty_path_typed() -> String {
+  "{ \"cd_remote_server_address\": \"\", \"cd_remote_source_path\": \"\", \"cd_remote_share_type\": \"nfs\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+}
+
+test fn w_empty_server_and_path_with_type_is_not_factory_empty() -> Bool {
+  match decode_supplied(before: empty_general_json(), get: partial_empty_server_empty_path_typed()) {
     RmediaGeneralResidueObserved { residue: r } => match r.origin {
       FactoryEmpty { before_path: _, before_sha256: _ } => false
       StickyAfterEmptyBefore { before_path: _, before_sha256: _, incident_receipt_path: _, incident_receipt_sha256: _ } => false
     }
-    RmediaGeneralResidueRefused { gap: _ } => true
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueShareIncomplete { role: r, share: s } => (r as String) == "after" && s.share_type == "nfs" && s.server_address == "" && s.source_path == ""
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+  }
+}
+
+test fn w_http_500_trailer_refuses_the_share_decode() -> Bool {
+  let body = join([empty_general_json(), "HTTP_CODE:500"], "\n")
+  match decode_supplied(before: body, get: empty_general_json()) {
+    RmediaGeneralResidueObserved { residue: _ } => false
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueCaptureHttpNotSuccess { trailer: t } => t == "HTTP_CODE:500"
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueShareIncomplete { role: _, share: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
   }
 }
 
@@ -243,7 +271,7 @@ test fn w_put_standing_refuses_when_get_matches_request() -> Bool {
       ResidueCaptureUnreadable { error: _ } => false
       ResidueDigestMismatch { expected: _, observed: _ } => false
       ResidueJsonUnreadable { gap: _ } => false
-      ResidueFieldUnread { field: _, cause: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
       ResidueShareIncomplete { role: _, share: _ } => false
       ResidueManagerUnread { cause: _ } => false
     }
