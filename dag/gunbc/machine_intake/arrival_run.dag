@@ -15,6 +15,7 @@ import gunbc.auth.access_token_source {
 import gunbc.machine_intake_arrival_admission { arrival_admit_executor }
 import gunbc.machine_intake_arrival_subject {
   admit_arrival_subject, ArrivalSubjectAdmitted, ArrivalSubjectInPopulation,
+  ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
 }
 import gunbc.machine_intake_arrival_interlock {
   arrival_archive_interlock_from_live_slot,
@@ -46,8 +47,12 @@ fn arrival_converge_after_admit() -> ProcessExit {
         ActionsVariablePresent { value: wire } =>
           match admit_arrival_subject(wire: wire) {
             ArrivalSubjectInPopulation { subject: s } => arrival_converge_under_archive_interlock(subject: s)
-            _ =>
-              exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(wire, "' after admit")))
+            ArrivalSubjectUnknown { wire: w } =>
+              exit_failure(reason: concat("arrival_converge refuses unknown arrival_subject '", concat(w, "' after admit")))
+            ArrivalSubjectIsManagedHostExecutorConfusion { wire: w } =>
+              exit_failure(reason: concat("arrival_converge refuses executor/host as arrival_subject '", concat(w, "' after admit")))
+            ArrivalSubjectOutsideGrant { wire: w } =>
+              exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(w, "' outside the standing grant after admit")))
           }
       }
     AccessTokenSourceSelected { source: GcloudPrintToken } =>
