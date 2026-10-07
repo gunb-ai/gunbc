@@ -1,6 +1,7 @@
 module test.claim.r2_conditional_put_race_probe
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
 import extdeps.object_storage { ObjectEntityTag, PutIfMatch }
 import extdeps.exec.command { argv_words }
@@ -16,8 +17,13 @@ import gunbc.cloudflare.r2_conditional_put_race_probe {
   RaceOverlap, RaceOverlapEstablished, RaceOverlapUnestablished, race_overlap_of_trace,
   RaceRoundConsistent, RaceRoundBothSucceeded, RaceRoundInconclusive, race_round_verdict,
   RaceProbePassed, RaceProbeFalsified, RaceProbeInconclusive, race_probe_verdict,
-  race_writer_a, race_writer_b,
+  race_writer_a, race_writer_b, race_probe_rounds,
+  r2_conditional_put_race_receipt, race_receipt_reading, RaceReceiptRead, RaceReceiptUnreadable,
+  r2_conditional_put_linearizability_ground_of,
 }
+import std.nat { nat_range_inclusive }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 // Supplied values at the verdict's own interface: what curl reported for each writer, and the trace
 // it wrote, are constructed here. The real producer is run_r2_conditional_put_race_probe under the
@@ -285,4 +291,65 @@ test fn only_a_lower_bound_constraint_names_a_floor() -> Bool {
   let range = match semver_minimum_of_constraint(constraint: "< 9") { Absent => true  Present { value: _ } => false }
   let four = match semver_core_of_dotted(text: "1.2.3.4") { Absent => true  Present { value: _ } => false }
   floor && range && four
+}
+
+// ── THE GROUND IS THE FOLD OVER THE RECEIPT'S BYTES ─────────────────────────────────────────────
+
+fn receipt_ref() -> DeclarationRef { decl_ref(module_path: "gunbc.cloudflare.r2_conditional_put_race_probe", decl_name: "r2_conditional_put_race_receipt") }
+
+fn bet() -> CitedFigureStanding { TranscribedUncited { read_obligation: "upstream publishes no concurrency guarantee" } }
+
+fn ground_of_text(text: String) -> CitedFigureStanding {
+  r2_conditional_put_linearizability_ground_of(upstream: bet(), receipt_ref: receipt_ref(), reading: race_receipt_reading(text: text))
+}
+
+fn observed(s: CitedFigureStanding) -> Bool {
+  match s { ObservedByReceipt { receipt: _ } => true  CitedToAuthority { authority: _ } => false  TranscribedUncited { read_obligation: _ } => false }
+}
+
+fn uncited_saying(s: CitedFigureStanding, words: String) -> Bool {
+  match s { TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: words)  CitedToAuthority { authority: _ } => false  ObservedByReceipt { receipt: _ } => false }
+}
+
+// A receipt in the probe's own line shapes: every declared round consistent, except the one at
+// odd_round, which carries odd_line's observed part.
+fn synthetic_receipt(transport: String, declared: Int, odd_round: Int, odd: String) -> String {
+  let rounds = map(nat_range_inclusive(lo: 1, hi: race_probe_rounds), r => join(["round ", to_string(r), " ", if r == odd_round { odd } else { "a=200 b=412 overlap=raced -> consistent" }], ""))
+  join(concat(concat(["instrument=gunbc.cloudflare.r2_conditional_put_race_probe run_r2_conditional_put_race_probe", join(["declared_rounds=", to_string(declared), " key=probe/x"], ""), transport, "limit=x"], rounds), ["cleanup=probe key deleted", "verdict=passed"]), "\n")
+}
+
+data good_transport: String = "transport=curl 8.5.0 meets >= 8.2"
+
+// THE POSITIVE CONTROL ON THE REAL BYTES: the committed receipt reads back through the instrument's
+// vocabulary, and the fold over it grounds the guarantee by naming the receipt declaration.
+test fn the_committed_receipt_folds_to_a_pass_and_grounds_the_guarantee() -> Bool {
+  let read_whole = match race_receipt_reading(text: r2_conditional_put_race_receipt.text) {
+    RaceReceiptRead { transport_meets_floor: t, declared_rounds: d, observations: obs } => t && d == race_probe_rounds && length(obs) == race_probe_rounds
+    RaceReceiptUnreadable { cause: _ } => false
+  }
+  read_whole && observed(s: ground_of_text(text: r2_conditional_put_race_receipt.text))
+}
+
+// The synthetic builder is itself controlled: an all-consistent full-length receipt passes.
+test fn a_synthetic_all_consistent_receipt_grounds_it() -> Bool {
+  observed(s: ground_of_text(text: synthetic_receipt(transport: good_transport, declared: race_probe_rounds, odd_round: 0, odd: "")))
+}
+
+// THE GATE CANNOT BE OPENED BY A RECEIPT THAT DID NOT PASS: one double success, one unraced split, a
+// refused transport, a different declared count, and an unparseable round each leave it uncited.
+test fn a_receipt_that_did_not_pass_never_grounds_the_guarantee() -> Bool {
+  uncited_saying(s: ground_of_text(text: synthetic_receipt(transport: good_transport, declared: race_probe_rounds, odd_round: 7, odd: "a=200 b=200 overlap=raced -> FALSIFIES: both writers succeeded")), words: "FALSIFIES")
+    && uncited_saying(s: ground_of_text(text: synthetic_receipt(transport: good_transport, declared: race_probe_rounds, odd_round: 7, odd: "a=200 b=412 overlap=not-raced: one writer was answered before the other had finished sending -> inconclusive: x")), words: "inconclusive")
+    && uncited_saying(s: ground_of_text(text: synthetic_receipt(transport: "transport=REFUSED curl 7.81.0 is below >= 8.2 (--trace-ids)", declared: race_probe_rounds, odd_round: 0, odd: "")), words: "transport")
+    && uncited_saying(s: ground_of_text(text: synthetic_receipt(transport: good_transport, declared: race_probe_rounds - 1, odd_round: 0, odd: "")), words: "round count")
+    && uncited_saying(s: ground_of_text(text: synthetic_receipt(transport: good_transport, declared: race_probe_rounds, odd_round: 7, odd: "a=two hundred b=412 overlap=raced -> consistent")), words: "could not be read back")
+}
+
+// An upstream citation, should Cloudflare ever publish one, is preferred over our receipt.
+test fn an_upstream_citation_is_preferred_over_the_receipt() -> Bool {
+  match r2_conditional_put_linearizability_ground_of(upstream: CitedToAuthority { authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/x" } } }, receipt_ref: receipt_ref(), reading: race_receipt_reading(text: r2_conditional_put_race_receipt.text)) {
+    CitedToAuthority { authority: _ } => true
+    ObservedByReceipt { receipt: _ } => false
+    TranscribedUncited { read_obligation: _ } => false
+  }
 }

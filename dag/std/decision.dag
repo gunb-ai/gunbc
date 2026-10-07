@@ -192,10 +192,11 @@ fn physical_model_read_obligations(physical: PhysicalModelPopulation) -> List<No
 }
 
 // A RECEIPT GRADES BY CONSTRUCTION FOR THE REASON A FLEET-OBSERVED COUPLING IS ADMITTED BESIDE A
-// VENDOR-DOCUMENTED ONE IN CausalCoupling: it was executed, and its acquiring declaration re-derives it
-// on demand, so nothing about it rests on convention. It is not ranked ABOVE a citation here, because
-// LifecycleGrade is two-valued and a cell needs only "grounded"; what it adds over a citation (the
-// figure was read, not asserted) is carried by the arm itself for any consumer that needs it.
+// VENDOR-DOCUMENTED ONE IN CausalCoupling: the reading was executed, and its acquiring declaration holds
+// it. The arm is meant to be minted by a fold over that reading (as gunbc.cloudflare.r2_conditional_put_race_probe
+// race_receipt_standing does), never typed beside a reference, so the grade rests on executed evidence.
+// It is not ranked ABOVE a citation, because LifecycleGrade is two-valued and a cell needs only
+// "grounded"; what it adds over a citation (the figure was read, not asserted) is carried by the arm.
 fn cited_figure_lifecycle(standing: CitedFigureStanding) -> LifecycleGrade {
   match standing {
     CitedToAuthority { authority: _ } => LifecycleByConstruction
