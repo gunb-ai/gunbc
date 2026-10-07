@@ -12105,7 +12105,11 @@ pub fn type_is_bare_collection_carrier(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if crate::v1_std_core::qualified_last_segment(type_node_label(
+    if (n.connective.clone() == Connective::Disj)
+        && formal_type_is_container_name(n.clone(), source_indices.clone())
+    {
+        true
+    } else if crate::v1_std_core::qualified_last_segment(type_node_label(
         n.clone(),
         source_indices.clone(),
     )) == "Empty".to_string()
