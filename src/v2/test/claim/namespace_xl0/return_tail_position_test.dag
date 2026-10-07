@@ -24,6 +24,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

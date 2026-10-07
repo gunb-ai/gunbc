@@ -2538,6 +2538,7 @@ pub struct NativeServeProgramRun {
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
+    pub served_exit_status: Option<i32>,
     pub stderr: String,
 }
 
@@ -2545,8 +2546,10 @@ pub struct NativeServeProgramRun {
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
     vec![
+        "--request-deadline-ms".to_string(),
+        request_deadline_ms.to_string(),
         "--host".to_string(),
         "127.0.0.1".to_string(),
         "--port".to_string(),
@@ -2560,10 +2563,14 @@ fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
 fn native_serve_refused_launch(
     binary: &Path,
     refused_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(refused_revision))
+        .args(native_serve_launch_args(
+            refused_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2619,6 +2626,7 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
+    request_deadline_ms: &str,
     requests: &[String],
 ) -> Result<NativeServeProgramRun, String> {
     use std::io::{BufRead, Read};
@@ -2629,9 +2637,12 @@ pub fn run_native_serve_program(
         prepared.binary_path.display()
     );
     let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
     let mut child = Command::new(&prepared.binary_path)
-        .args(native_serve_launch_args(release_revision))
+        .args(native_serve_launch_args(
+            release_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2666,8 +2677,23 @@ pub fn run_native_serve_program(
             .collect(),
         None => Vec::new(),
     };
-    let _ = child.kill();
-    let _ = child.wait();
+    // The last case drives the service past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status.
+    let started = std::time::Instant::now();
+    let served_exit_status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
     let stderr = reader.join().unwrap_or_default();
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
@@ -2678,6 +2704,7 @@ pub fn run_native_serve_program(
         responses,
         refused_status,
         refused_stderr,
+        served_exit_status,
         stderr,
     })
 }
