@@ -7950,7 +7950,10 @@ fn bind_unbound_collection_element_generic(
 }
 
 fn type_is_bare_collection_carrier(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if n.connective == Disj && formal_type_is_container_name(n: n, source_indices: source_indices) {
+  if n.connective == NoConnective && (n.children |> count) == 0
+      && qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices)) == "String" {
+    false
+  } else if n.connective == Disj && formal_type_is_container_name(n: n, source_indices: source_indices) {
     true
   } else if qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices)) == "Empty" {
     true
