@@ -36,6 +36,7 @@ import v2.std.node {
   StructuralLabel,
   Symbol,
   TypeNode,
+  symbol_eq,
   symbol_lexeme
 }
 import std.optional { Absent, Optional, Present }
