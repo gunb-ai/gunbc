@@ -538,6 +538,7 @@ type BmcSecureStepEstablished sole_constructor {
 fn bmc_secure_step_established(key: StepInstanceKey, consumed_prior_life: StepInstanceKey, phase: BmcSecurePhaseReceipt) -> BmcSecureStepEstablished
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure"),
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure_bound"),
   ]
 {
   BmcSecureStepEstablished { key: key, consumed_prior_life: consumed_prior_life, phase: phase }
@@ -768,20 +769,34 @@ fn bmc_secure_application_joins_this_instance(
   }
 }
 
-fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: PriorLifeBoundaryEstablished, inputs: BmcSecureInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
-  if (identity.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
-    StepRefused { key: key, cause: BmcSecureIdentityForAnotherInstance { identity: identity.key } }
-  } else if (prior_life_receipt_key(r: prior).run as NonEmptyStr) != (key.run as NonEmptyStr) || (prior_life_receipt_key(r: prior).subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
-    StepRefused { key: key, cause: BmcSecureIdentityForAnotherInstance { identity: prior_life_receipt_key(r: prior) } }
+// Apply and discharge consume the bound subject's identity and the instance keys, not the
+// AccessDiscover/IdentityBind capture parses. Those steps remain the prefix; this is the BMC
+// grain after PriorLifeBoundary.
+fn bmc_secure_bound(
+  key: StepInstanceKey,
+  identity_key: StepInstanceKey,
+  identity_subject: MachineIntakeSubject,
+  prior_key: StepInstanceKey,
+  inputs: BmcSecureInputs,
+) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+  ]
+{
+  if (identity_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: BmcSecureIdentityForAnotherInstance { identity: identity_key } }
+  } else if (prior_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (prior_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: BmcSecureIdentityForAnotherInstance { identity: prior_key } }
   } else {
-    match inspect_bmc_secure_state(subject: identity.subject, goal: inputs.goal, reading: inputs.reading) {
+    match inspect_bmc_secure_state(subject: identity_subject, goal: inputs.goal, reading: inputs.reading) {
       BmcSecureStateUnobserved { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
       BmcSecureStateInspected { observed: _, assessment: a, decision: d } =>
         match d {
           Noop =>
-            match bmc_secure_phase_noop(subject: identity.subject, goal: inputs.goal, reading: inputs.reading) {
+            match bmc_secure_phase_noop(subject: identity_subject, goal: inputs.goal, reading: inputs.reading) {
               BmcSecurePhaseConverged { receipt: phase } =>
-                StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_life_receipt_key(r: prior), phase: phase) } }
+                StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_key, phase: phase) } }
               BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
             }
           Refuse { reason: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
@@ -790,7 +805,7 @@ fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: P
               Absent => StepRefused { key: key, cause: BmcSecureApplyInputsMissing }
               Present { value: ap } =>
                 match bmc_secure_application_joins_this_instance(
-                  identity_subject: identity.subject,
+                  identity_subject: identity_subject,
                   due_label: bmc_secure_state_finding_label(finding: due.deviation),
                   application: ap.application,
                 ) {
@@ -806,7 +821,7 @@ fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: P
                       Present { value: _ } =>
                         match bmc_secure_phase_applied(application: ap.application, post_read: ap.post_read) {
                           BmcSecurePhaseConverged { receipt: phase } =>
-                            StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_life_receipt_key(r: prior), phase: phase) } }
+                            StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_key, phase: phase) } }
                           BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
                         }
                     }
@@ -815,6 +830,16 @@ fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: P
         }
     }
   }
+}
+
+fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: PriorLifeBoundaryEstablished, inputs: BmcSecureInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  bmc_secure_bound(
+    key: key,
+    identity_key: identity.key,
+    identity_subject: identity.subject,
+    prior_key: prior_life_receipt_key(r: prior),
+    inputs: inputs,
+  )
 }
 
 // ── THE PLAN: a prefix of the authority's order, never a second list ───────────────────────────
