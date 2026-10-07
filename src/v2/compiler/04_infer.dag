@@ -6865,14 +6865,17 @@ fn infer_caller_admission_application_diags(
 // THE CALLEE'S DECLARATION FROM THE RESOLVED-DECLARATIONS INDEX: a cross-module callee's facts are
 // never in the subject's gather (the gather walks the subject root), so the wall reads the callee's
 // own declaration node from resolved_declarations -- declarations WITH RESOLVED BODIES, imported
-// modules included. Absent when the operator's child is not a declaration reference or names no
-// declaration: a callee that names no declaration is NOT a declared callee, no clause can exist for
-// it, and the wall imposes nothing -- the ordinary grounding machinery owns the call. The fail-closed
-// arm lives at the arrow read, not at the lookup: a FOUND declaration whose arrow cannot be read is
-// an undetermined check and refuses (infer_reason_caller_admission_callee_unreadable) rather than
-// admit. Refusing on the lookup miss instead would conflate "not declared" (a determination) with
-// "declared but unreadable" (a failure), and would refuse every call in a grounding context whose
-// declarations are stripped -- the corpus runs such contexts on purpose.
+// modules included. THE BOUNDARY BETWEEN NO JUDGMENT AND REFUSAL: an operator child that is not
+// marked as a declaration reference is no judgment -- the ordinary grounding machinery owns that
+// call, no clause can exist for it, the wall imposes nothing (NotMarkedReference). But a child
+// MARKED as a declaration reference (MarkedReference{DeclarationReferenceKind}) whose path has no
+// entry in the index is NOT "not declared": the mark asserts a declaration stands behind the
+// reference, so an unavailable one is an unresolved admission authority and the caller admission
+// REFUSES on it (RosterLookupUnresolved -> infer_reason_caller_admission_callee_unresolved, fail
+// closed). A FOUND declaration whose arrow cannot be read is the same kind of failure one step
+// later and refuses separately (infer_reason_caller_admission_callee_unreadable). The two are
+// distinct facts about the world -- the declaration missing versus the declaration present but
+// unreadable -- and both refuse; neither shortens the roster nor admits.
 fn infer_callee_declaration_from_declarations(declarations: SymbolIndex, callee_ref: Node) -> Optional<Node> {
   match declaration_reference_path_optional(node: callee_ref) {
     Absent => optional_absent()

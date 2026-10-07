@@ -675,12 +675,12 @@ test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requ
 // THE WALL'S EDGE IS A CLOSED-LIST MARKER (side chat review 5439746794). The caller-admission
 // carrier AdmitCallersEdge rides core_edge_labels(), the closed list this codec decodes markers
 // through -- the same list object_table_json's decode_object_table folds when it reads a
-// "structural_core" edge's marker lexeme. A marker the list does not name refuses as an unknown
-// label, which is exactly what the wall's edge would hit if AdmitCallersEdge were dropped from
-// core_edge_labels(): the entry encodes, the store accepts it, and the decode silently drops the
-// edge -- serialization discarding the wall without a sound. So the control is here, in the codec's
-// own witness: an entry carrying the wall's marker must decode, and the marker must come home as
-// itself -- edge_is_core names it -- not merely fail to refuse.
+// "structural_core" edge's marker lexeme. A marker the list does not name is a LOUD, typed
+// refusal: the decoder answers NodeEntryUnknownLabelTag and the whole entry fails to decode --
+// a round-trip/compatibility refusal, not silent edge loss, and exactly what the wall's edge
+// would hit if AdmitCallersEdge were dropped from core_edge_labels(). So the control is here, in
+// the codec's own witness: an entry carrying the wall's marker must decode, and the marker must
+// come home as itself -- edge_is_core names it -- not merely fail to refuse.
 fn ot_admit_edge_entry(marker: String) -> JsonValue {
   json_object(
     members: [

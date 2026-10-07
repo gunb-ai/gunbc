@@ -221,9 +221,10 @@ test fn a_well_formed_roster_reads_as_the_authored_coordinates_holds() -> Bool {
 // (6) FAIL CLOSED: a DECLARED callee whose arrow cannot be read refuses with a typed,
 // located cause carrying the looked-up key -- never an admit. The declaration is present in
 // resolved_declarations (keyed by the reference's own qualified path) but is not an Arrow, so
-// the arrow read fails: undetermined check, refusal. A callee that names no declaration at all
-// is NOT judged -- the ordinary grounding machinery owns it (claims (1)-(2) exercise the
-// lookup's success paths).
+// the arrow read fails: undetermined check, refusal. The boundary: a child not marked as a
+// declaration reference is no judgment (the ordinary grounding machinery owns it); a child
+// MARKED as a declaration reference with no index entry is unresolved and refuses (the seam
+// claims below pin that boundary).
 // ---------------------------------------------------------------------------
 
 data wall_decl_ref_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 915 } }
@@ -356,4 +357,34 @@ test fn an_unmarked_callee_is_not_judged_holds() -> Bool {
     None => true
     Some { diagnostics: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// (8) THE FACTS-PRESENT DISCRIMINATOR (side chat review 5442100127): the wrapper's first branch
+// (facts Absent) refuses on its own; the JUDGED path must refuse too when the facts DO supply a
+// callee Arrow -- one that carries no carrier edge -- and the resolved-declarations index lacks
+// the marked callee. The shared judged helper is called in exactly that state: roster lookup
+// Absent (no edge on the arrow), child0 marked, declaration missing -> RosterLookupUnresolved ->
+// the typed refusal. Collapsing RosterLookupUnresolved back into RosterLookupAbsent (the
+// fail-open seam) turns exactly this claim red.
+// ---------------------------------------------------------------------------
+fn wall_arrow_without_the_carrier_edge() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn a_facts_arrow_without_the_carrier_edge_and_an_unresolved_declaration_refuses_holds() -> Bool {
+  diagnostics_has_reason(
+    d: infer_caller_admission_judged_diags(
+      application: wall_unreadable_callee_application(),
+      caller: optional_present(value: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller }),
+      module_symbol: optional_present(value: ^bcb),
+      arrow: wall_arrow_without_the_carrier_edge(),
+      declarations: empty_symbol_index()
+    ),
+    reason: ^infer_reason_caller_admission_callee_unresolved
+  )
 }
