@@ -164,8 +164,6 @@ import gunbc.fleet.convergence_fold {
   StepMutatesSubject,
   InstanceAuthorization,
   instance_authorization,
-  mutation_lanes,
-  MutationLane,
 }
 
 // THE ARRIVAL CONVERGENCE PREFIX (docs/plans/managed-host-untangle.md, cuts O1c-1 through O1c-3): the
@@ -1029,13 +1027,6 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
       }
       fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc), discharges: discharges)
     }
-  }
-}
-
-fn arrival_bmc_secure_mutation_lanes(run: ConvergenceRunId, subject: StepSubjectKey) -> List<MutationLane> {
-  match admit_convergence_plan(planning: arrival_planning_authority(), steps: match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) { ArrivalPrefixStepped { steps: s } => s  ArrivalPrefixPhaseUnstepped { phase: _ } => [] }) {
-    ConvergencePlanRefused { cause: _ } => []
-    ConvergencePlanAdmitted { plan: plan } => mutation_lanes(plan: plan, subject: subject)
   }
 }
 

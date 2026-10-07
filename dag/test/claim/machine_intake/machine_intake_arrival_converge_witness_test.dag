@@ -42,7 +42,7 @@ import gunbc.fleet.convergence_fold {
   admit_convergence_plan, classify_convergence_plan, PlanClassifiedAdmissible, PlanClassifiedRefused,
   ConvergenceReceiptProjection, convergence_receipt_projection,
   fold_convergence_run, step_instance_key, step_outcome_receipt, step_outcome_refusal,
-  ungated_readonly_step, AuthorizationUndischarged, mutation_lanes, instance_authorization,
+  ungated_readonly_step, AuthorizationUndischarged, instance_authorization,
   step_instance_key_eq, InstanceAuthorization,
 }
 import gunbc.machine_intake_prior_life_boundary {
@@ -72,7 +72,7 @@ import gunbc.machine_intake_arrival_converge {
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
   converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, mtjade1_identity_bind_inputs,
-  bmc_secure_step_ref, arrival_bmc_secure_mutation_lanes, BmcSecureReceipt,
+  bmc_secure_step_ref, BmcSecureReceipt,
   BmcSecureInputs, BmcSecureApplyInputs, BmcSecureAuthorizationUndischarged, BmcSecureApplyInputsMissing,
   BmcSecureApplicationForAnotherInstance,
   grant_discharges_bmc_secure_account_write,
@@ -887,15 +887,6 @@ test fn w_the_four_step_plan_through_bmc_secure_is_admitted() -> Bool {
     ConvergencePlanAdmitted { plan: _ } => length(xs: four_steps()) == 4
     ConvergencePlanRefused { cause: _ } => false
   }
-}
-
-test fn w_mutation_lanes_name_the_instance_subject_not_the_executor() -> Bool {
-  let lanes = arrival_bmc_secure_mutation_lanes(run: run_a, subject: mtjade1_key)
-  length(xs: lanes) == 1
-    && match lanes.first() {
-      Present { value: l } => ((l.mutated_subject as NonEmptyStr) as String) == "mtjade1"
-      Absent => false
-    }
 }
 
 test fn w_bmc_secure_noop_needs_no_discharge() -> Bool {
