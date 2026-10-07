@@ -27,6 +27,7 @@ pub struct ExternalAuthority {
 pub enum CitedFigureStanding {
     CitedToAuthority { authority: Rc<ExternalAuthority> },
     TranscribedUncited { read_obligation: NonEmptyStr },
+    ObservedByReceipt { receipt: Rc<DeclarationRef> },
 }
 
 pub fn cited_figure_read_obligation(standing: Rc<CitedFigureStanding>) -> Option<String> {
@@ -35,6 +36,7 @@ pub fn cited_figure_read_obligation(standing: Rc<CitedFigureStanding>) -> Option
         CitedFigureStanding::TranscribedUncited {
             read_obligation: o, ..
         } => Some(o.clone()),
+        CitedFigureStanding::ObservedByReceipt { receipt: _, .. } => std::option::Option::None,
     }
 }
 
