@@ -26,7 +26,6 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.node {
-  Arrow,
   ArrowBodyEdge,
   Atom,
   Authored,
@@ -39,7 +38,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   core_edge_label,
-  fold_node
+  fold_node,
+  node_is_arrow
 }
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -317,14 +317,6 @@ fn mandatory_tag_decl_name(d: Node) -> MandatoryTagDeclName {
 // ArrowBodyEdge target. The root lens grain runs over the inferred tree, so this is the shape the
 // compile door actually hands this gate; a reader of only the parse and emit shapes finds no
 // declaration and reports every well-tagged module as missing its tag.
-fn mandatory_tag_is_arrow(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Arrow } => true
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-
 type MandatoryTagPositionalScan {
   seen: Int
   second: Optional<Node>
@@ -362,7 +354,7 @@ fn mandatory_tag_lowered_member(module_node: Node, required_name: Symbol) -> Opt
       fold(body.children, init: optional_absent(), f: fn(acc, e) {
         match e.label {
           Authored { name: nm } =>
-            if (nm == required_name) && mandatory_tag_is_arrow(n: e.target) {
+            if (nm == required_name) && node_is_arrow(n: e.target) {
               optional_present(value: e.target)
             } else {
               acc
@@ -375,7 +367,7 @@ fn mandatory_tag_lowered_member(module_node: Node, required_name: Symbol) -> Opt
 }
 
 fn mandatory_tag_decl_type_node(d: Node) -> Optional<Node> {
-  if mandatory_tag_is_arrow(n: d) {
+  if node_is_arrow(n: d) {
     mandatory_tag_lowered_codomain(d: d)
   } else {
   match find_named_child(root: d, name: ^dag_surface_data_decl_type) {
@@ -386,7 +378,7 @@ fn mandatory_tag_decl_type_node(d: Node) -> Optional<Node> {
 }
 
 fn mandatory_tag_decl_value_node(d: Node) -> Optional<Node> {
-  if mandatory_tag_is_arrow(n: d) {
+  if node_is_arrow(n: d) {
     mandatory_tag_lowered_body(d: d)
   } else {
   match find_named_child(root: d, name: ^dag_surface_data_decl_expr) {
@@ -513,7 +505,7 @@ fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<Dia
       )
       match value_hits {
         Empty =>
-          if mandatory_tag_is_arrow(n: d) || mandatory_tag_subtree_has_production(n: v, want: ^dag_surface_expr) {
+          if node_is_arrow(n: d) || mandatory_tag_subtree_has_production(n: v, want: ^dag_surface_expr) {
             [mandatory_tag_value_unreadable_diagnostic(d: d)]
           } else {
             []
