@@ -1,6 +1,7 @@
 module gunbc.machine_intake_arrival_converge
 
-import std.types { List, NonEmptyStr, String }
+import std.types { EpochMs, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import product.host_identity { HostIdentity }
 import gunbc.auth.standing_operator_grant {
@@ -99,7 +100,11 @@ import gunbc.machine_intake_bmc_rotation_route {
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
+import gunbc.bmc_model { bmc_world, BmcPowerOn }
 import gunbc.machine_intake_prior_life_boundary {
+  ArchivedObject,
+  DryArchiveStore,
+  DryArchiveStoreKeepsWrites,
   DryPriorLifeWorld,
   PriorLifeBoundaryEstablished,
   PriorLifeRefusal,
@@ -131,6 +136,10 @@ import gunbc.fleet.convergence_fold {
   StepIncomplete,
   ConvergenceReceiptProjection,
   ConvergenceRunVerdict,
+  RunConverged,
+  RunStopped,
+  RunIncomplete,
+  RunOutcomesRefused,
   admit_convergence_plan,
   fold_convergence_run,
   step_instance_key,
@@ -764,4 +773,31 @@ fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLi
     inputs: mtjade1_identity_bind_inputs(),
     prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
   )
+}
+
+// No committed prior-life capture for mtjade1: the archive arm reads this dry world. The wet
+// door supplies it while holding the arrival slot (review 77435).
+fn mtjade1_unobserved_prior_life_world() -> DryPriorLifeWorld {
+  DryPriorLifeWorld {
+    bmc: bmc_world(power: BmcPowerOn),
+    store: DryArchiveStore { objects: [] as List<ArchivedObject>, behaviour: DryArchiveStoreKeepsWrites },
+    read_at_millis: 0 as EpochMs,
+    write_returned_at_millis: 1 as EpochMs,
+  }
+}
+
+fn arrival_prefix_process_exit(v: ArrivalPrefixVerdict) -> ProcessExit {
+  match v {
+    ArrivalPrefixUnstepped { phase: _ } =>
+      exit_failure(reason: "arrival_converge: a prefix phase was unstepped")
+    ArrivalPlanRefused { cause: _ } =>
+      exit_failure(reason: "arrival_converge: the arrival plan was refused")
+    ArrivalRunFolded { verdict: RunConverged { run: _ } } => ExitSuccess
+    ArrivalRunFolded { verdict: RunStopped { ledger: _, at: _ } } =>
+      exit_failure(reason: "arrival_converge: prefix run stopped")
+    ArrivalRunFolded { verdict: RunIncomplete { ledger: _, at: _ } } =>
+      exit_failure(reason: "arrival_converge: prefix run incomplete")
+    ArrivalRunFolded { verdict: RunOutcomesRefused { cause: _ } } =>
+      exit_failure(reason: "arrival_converge: prefix outcomes refused")
+  }
 }

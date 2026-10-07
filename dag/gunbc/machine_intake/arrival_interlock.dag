@@ -2,6 +2,7 @@ module gunbc.machine_intake_arrival_interlock
 
 import std.types { NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.durable_compare_and_set { CasGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
@@ -20,15 +21,17 @@ import gunbc.machine_intake_arrival_subject { ArrivalSubjectAdmitted }
 // ── THE INTERLOCK AN MTJADE1 ARRIVAL WRITE TAKES ──────────────────────────────────────────────
 // The standing grant's words cover the class; this is the physical-safety / route-ground fact the
 // run must observe. It is not UnitHoldProof: mtjade1 has no ManagedHost unit-hold row until J4
-// admission. The store host is srv1 (the same runner the arrival job pins). A wet acquire of the
-// slot is file_hold_acquire on arrival_slot_key; this module admits the conjunction the write may
-// proceed under, and is the DeclarationRef rostered against the census sites.
+// admission. The store host is operator_host_srv1 (the same runner the arrival job pins). A wet
+// acquire is arrival_archive_slot_acquire (file_hold_acquire on arrival_slot_key); the caller
+// runs the gated effect while ArrivalArchiveSlotHeld is in hand, then arrival_archive_slot_release.
+// admit_arrival_* are supplied-slot checks, not the live hold.
 //
 // Archive (J2) needs the exclusive slot only (reads, evidence write, no account rotation).
 // BmcSecure (J4) and firmware qualification need the slot AND a grounded rotation route
-// (admit_rotation_apply's premise).
-
-data arrival_interlock_store_host: NonEmptyStr = "srv1" as NonEmptyStr
+// (admit_rotation_apply's premise). The wet arrival door today gates the PriorLifeBoundary prefix
+// under the live slot; firmware/BmcSecure still use the supplied-slot admit until their effect
+// is wired under the same held value. The store host is operator_host_srv1 (fleet_converge_workflow
+// runner labels and concurrency group cite that identity; no second srv1 literal here).
 
 fn arrival_slot_key(subject_wire: NonEmptyStr) -> NonEmptyStr {
   join(["arrival:", subject_wire as String], "") as NonEmptyStr
@@ -89,50 +92,71 @@ fn arrival_slot_acquire_refusal(outcome: FileHoldAcquireOutcome) -> NonEmptyStr 
   }
 }
 
-fn arrival_archive_interlock_from_live_slot(subject: ArrivalSubjectAdmitted, owner: DurableHoldOwnerRef) -> ArrivalArchiveInterlockStanding {
+type ArrivalArchiveSlotHeld sole_constructor {
+  subject: ArrivalSubjectAdmitted
+  slot_key: NonEmptyStr
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+}
+
+type ArrivalArchiveSlotAcquire
+  = ArrivalArchiveSlotAcquired { held: ArrivalArchiveSlotHeld }
+  | ArrivalArchiveSlotAcquireRefused { cause: NonEmptyStr }
+
+type ArrivalArchiveSlotRelease
+  = ArrivalArchiveSlotReleased { generation: CasGeneration }
+  | ArrivalArchiveSlotReleaseRefused { cause: NonEmptyStr }
+
+fn arrival_archive_slot_acquire(subject: ArrivalSubjectAdmitted, owner: DurableHoldOwnerRef) -> ArrivalArchiveSlotAcquire {
   let key = arrival_slot_key(subject_wire: subject.wire)
   match file_hold_acquire(root: unit_hold_store_root, slot_key: key, requested_owner: owner) {
     FileHoldOccupied { slot_key: k, holder: h, generation: g } =>
-      ArrivalArchiveInterlockRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldOccupied { slot_key: k, holder: h, generation: g }) }
+      ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldOccupied { slot_key: k, holder: h, generation: g }) }
     FileHoldAcquireLost { slot_key: k } =>
-      ArrivalArchiveInterlockRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldAcquireLost { slot_key: k }) }
+      ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldAcquireLost { slot_key: k }) }
     FileHoldAcquireStoreUnavailable { slot_key: k, cause: c } =>
-      ArrivalArchiveInterlockRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldAcquireStoreUnavailable { slot_key: k, cause: c }) }
+      ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldAcquireStoreUnavailable { slot_key: k, cause: c }) }
     FileHoldSlotUndecodable { slot_key: k, generation: g, detail: d } =>
-      ArrivalArchiveInterlockRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldSlotUndecodable { slot_key: k, generation: g, detail: d }) }
+      ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldSlotUndecodable { slot_key: k, generation: g, detail: d }) }
     FileHoldKeyNotSlotAddressable { slot_key: k } =>
-      ArrivalArchiveInterlockRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldKeyNotSlotAddressable { slot_key: k }) }
+      ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldKeyNotSlotAddressable { slot_key: k }) }
     FileHoldAcquired { slot_key: k, owner: o, generation: g } =>
       match admit_arrival_archive_interlock(subject: subject, slot: ArrivalSlotHeld { subject: subject }) {
-        ArrivalArchiveInterlockRefused { cause: c } => ArrivalArchiveInterlockRefused { cause: c }
+        ArrivalArchiveInterlockRefused { cause: c } => ArrivalArchiveSlotAcquireRefused { cause: c }
         ArrivalArchiveInterlockAdmitted { subject: s } =>
-          match file_hold_release_assess(
-            root: unit_hold_store_root,
-            slot_key: k,
-            owner: o,
-            acquired_generation: g,
-            released_by: "arrival-converge-archive-interlock" as DurableHoldReleaseRef,
-          ) {
-            FileHoldReleaseNotEligible { slot_key: _, refusal: _ } =>
-              ArrivalArchiveInterlockRefused { cause: "arrival slot was acquired but release was not eligible" as NonEmptyStr }
-            FileHoldReleasePlanned { plan: p } =>
-              match file_hold_release_commit(plan: p) {
-                FileHoldReleased { slot_key: _, generation: _ } => ArrivalArchiveInterlockAdmitted { subject: s }
-                FileHoldReleaseLost { slot_key: _ } =>
-                  ArrivalArchiveInterlockRefused { cause: "arrival slot release lost the race" as NonEmptyStr }
-                FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } =>
-                  ArrivalArchiveInterlockRefused { cause: "arrival slot store unavailable on release" as NonEmptyStr }
-                FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } =>
-                  ArrivalArchiveInterlockRefused { cause: "arrival slot key not addressable on release" as NonEmptyStr }
-              }
+          ArrivalArchiveSlotAcquired {
+            held: ArrivalArchiveSlotHeld { subject: s, slot_key: k, owner: o, generation: g },
           }
+      }
+  }
+}
+
+fn arrival_archive_slot_release(held: ArrivalArchiveSlotHeld) -> ArrivalArchiveSlotRelease {
+  match file_hold_release_assess(
+    root: unit_hold_store_root,
+    slot_key: held.slot_key,
+    owner: held.owner,
+    acquired_generation: held.generation,
+    released_by: "arrival-converge-archive-interlock" as DurableHoldReleaseRef,
+  ) {
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } =>
+      ArrivalArchiveSlotReleaseRefused { cause: "arrival slot release was not eligible" as NonEmptyStr }
+    FileHoldReleasePlanned { plan: p } =>
+      match file_hold_release_commit(plan: p) {
+        FileHoldReleased { slot_key: _, generation: g } => ArrivalArchiveSlotReleased { generation: g }
+        FileHoldReleaseLost { slot_key: _ } =>
+          ArrivalArchiveSlotReleaseRefused { cause: "arrival slot release lost the race" as NonEmptyStr }
+        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } =>
+          ArrivalArchiveSlotReleaseRefused { cause: "arrival slot store unavailable on release" as NonEmptyStr }
+        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } =>
+          ArrivalArchiveSlotReleaseRefused { cause: "arrival slot key not addressable on release" as NonEmptyStr }
       }
   }
 }
 
 data arrival_archive_interlock_ref: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake_arrival_interlock",
-  decl_name: "admit_arrival_archive_interlock",
+  decl_name: "arrival_archive_slot_acquire",
 )
 
 data arrival_bmc_secure_interlock_ref: DeclarationRef = decl_ref(

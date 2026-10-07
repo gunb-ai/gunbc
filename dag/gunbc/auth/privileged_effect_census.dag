@@ -435,16 +435,25 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
-    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock"),
-    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock"),
-    premise: "the PriorLifeBoundary archive takes the arrival subject's exclusive slot on the store host before it writes evidence" as NonEmptyStr,
-    hold_owning_roots: [] as List<InterlockRoot>,
+    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and keeps ArrivalArchiveSlotHeld across converge_mtjade1_arrival_prefix before arrival_archive_slot_release" as NonEmptyStr,
+    hold_owning_roots: [
+      InterlockRoot {
+        root: site(module_path: "gunbc.machine_intake_arrival_run", decl_name: "arrival_converge_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+        operations: ["prior-life archive write" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_release"),
+        ],
+      },
+    ],
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
     hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
-    premise: "firmware qualification takes the same arrival slot and grounded route as BmcSecure" as NonEmptyStr,
+    premise: "supplied-slot conjunction (slot standing plus grounded rotation route), not a live file_hold; firmware qualification is not executed under ArrivalArchiveSlotHeld. The live exclusive slot today wraps only the PriorLifeBoundary prefix via arrival_archive_slot_acquire" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
 ]

@@ -18,25 +18,31 @@ import gunbc.machine_intake_arrival_subject {
   ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
 }
 import gunbc.machine_intake_arrival_interlock {
-  arrival_archive_interlock_from_live_slot,
-  ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
+  arrival_archive_slot_acquire, arrival_archive_slot_release,
+  ArrivalArchiveSlotHeld, ArrivalArchiveSlotAcquired, ArrivalArchiveSlotAcquireRefused,
+  ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
 }
+import gunbc.machine_intake_arrival_converge {
+  converge_mtjade1_arrival_prefix, mtjade1_unobserved_prior_life_world, arrival_prefix_process_exit,
+}
+import gunbc.fleet.convergence_fold { ConvergenceRunId }
 
-// THE ARRIVAL JOB'S WET DOOR (review 77263). Re-runs credential-free admit so WIF cannot
-// outrun a refused subject, then requires WorkloadIdentityToken (the minted WIF bearer,
-// in-process — not interpolated onto argv) and takes the archive interlock by a live
-// file_hold_acquire of arrival_slot_key. BMC account writes and the pinned bmc-mtjade1-gunbc
-// accessor stay behind this door: the locus is SecretLocusReservedNotOnAccessorRoster until
-// FamilyObserved, and version 1 does not exist until secret_provision mints it.
+// THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435). Re-runs credential-free admit so WIF
+// cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted WIF bearer,
+// in-process — not interpolated onto argv), takes arrival_archive_slot_acquire, runs the
+// mtjade1 PriorLifeBoundary prefix while the slot is held, then arrival_archive_slot_release.
+// BMC account writes and the pinned bmc-mtjade1-gunbc accessor stay behind this door: the locus
+// is SecretLocusReservedNotOnAccessorRoster until FamilyObserved, and version 1 does not exist
+// until secret_provision mints it.
 
-fn arrival_converge_wet() -> ProcessExit {
+fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
   match arrival_admit_executor() {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
     ExitSuccess => arrival_converge_after_admit()
   }
 }
 
-fn arrival_converge_after_admit() -> ProcessExit {
+fn arrival_converge_after_admit() -> ProcessExit uses fs: std.resources.Filesystem {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: c } =>
       exit_failure(reason: concat("arrival_converge: ", c as String))
@@ -62,18 +68,39 @@ fn arrival_converge_after_admit() -> ProcessExit {
   }
 }
 
-fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> ProcessExit {
+fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> ProcessExit uses fs: std.resources.Filesystem {
   match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
       exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
     ActionsVariablePresent { value: run_id } =>
-      match arrival_archive_interlock_from_live_slot(
+      match arrival_archive_slot_acquire(
         subject: subject,
         owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
       ) {
-        ArrivalArchiveInterlockAdmitted { subject: _ } => ExitSuccess
-        ArrivalArchiveInterlockRefused { cause: c } =>
+        ArrivalArchiveSlotAcquireRefused { cause: c } =>
           exit_failure(reason: concat("arrival_converge: ", c as String))
+        ArrivalArchiveSlotAcquired { held: h } =>
+          arrival_release_after_prefix(
+            held: h,
+            prefix: arrival_prefix_process_exit(
+              v: converge_mtjade1_arrival_prefix(
+                run: run_id as ConvergenceRunId,
+                prior_life: mtjade1_unobserved_prior_life_world(),
+              ),
+            ),
+          )
+      }
+  }
+}
+
+fn arrival_release_after_prefix(held: ArrivalArchiveSlotHeld, prefix: ProcessExit) -> ProcessExit {
+  match arrival_archive_slot_release(held: held) {
+    ArrivalArchiveSlotReleased { generation: _ } => prefix
+    ArrivalArchiveSlotReleaseRefused { cause: c } =>
+      match prefix {
+        ExitSuccess => exit_failure(reason: concat("arrival_converge: prefix held, then slot release refused: ", c as String))
+        ExitFailure { code: code, reason: reason } =>
+          ExitFailure { code: code, reason: concat(reason, concat("; then slot release refused: ", c as String)) }
       }
   }
 }

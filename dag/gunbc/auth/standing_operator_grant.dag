@@ -146,7 +146,7 @@ fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect
     StandingArmLaunch => g.ruling.interlock
     StandingHostEffectRecover => g.ruling.interlock
     StandingJadeArrivalArchive => InterlockedBy {
-      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock"),
+      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     }
     StandingJadeFirmwareQualification => InterlockedBy {
       hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),

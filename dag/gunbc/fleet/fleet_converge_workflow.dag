@@ -11,7 +11,6 @@ import gunbc.auth.mtjade1_arrival_pair {
   mtjade1_arrival_environment, mtjade1_arrival_provider_resource, mtjade1_arrival_service_account,
 }
 import gunbc.machine_intake_arrival_subject { arrival_converge_subject_options }
-import gunbc.machine_intake_arrival_interlock { arrival_interlock_store_host }
 import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time }
 
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
@@ -124,7 +123,7 @@ import gunbc.managed_host_unit_hold {
   UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
   unit_hold_admission_for, unit_hold_host_admission_refusal,
 }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
@@ -5108,7 +5107,7 @@ fn fleet_converge_arrival_converge_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", arrival_interlock_store_host as String] },
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
     environment: Present { value: mtjade1_arrival_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(),
@@ -5157,7 +5156,7 @@ fn fleet_converge_arrival_converge_job() -> Job {
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
-        group: join([fleet_host_mutation_group_prefix, arrival_interlock_store_host as String], ""),
+        group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], ""),
         cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
         explicit_single: none
       }
