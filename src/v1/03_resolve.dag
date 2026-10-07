@@ -223,13 +223,11 @@ type ImportResolveResult {
 // (`carrier_by_spelling` for String). Census before the cut: zero production modules import a
 // non-mint type named Optional; 359 import Optional from std.optional and stay accepted.
 fn module_type_declaration_names(module: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
-  module_items(n: module) |> fold(init: empty_map(), f: fn(acc, item) {
-    if item.module_item_kind == ModuleItemTypeDeclaration {
-      let name = authored_name_at(source_indices: source_indices, node: item)
-      map_insert(acc, name, true)
-    } else {
-      acc
-    }
+  let type_names = module_items(n: module)
+    |> filter(item => item.module_item_kind == ModuleItemTypeDeclaration)
+    |> map(item => authored_name_at(source_indices: source_indices, node: item))
+  type_names |> fold(init: empty_map(), f: fn(acc, name) {
+    map_insert(acc, name, true)
   })
 }
 
