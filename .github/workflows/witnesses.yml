@@ -686,6 +686,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the floor's admission roster
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-disposition
+          path: required_floor_disposition.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
     env:
       MALLOC_ARENA_MAX: "2"
       GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
