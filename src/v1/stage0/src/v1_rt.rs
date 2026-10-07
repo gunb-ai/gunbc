@@ -265,7 +265,7 @@ impl V2Concat for String {
 
 impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
-        self.extend(other);
+        self.append(other);
         self
     }
 }
@@ -749,7 +749,7 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
 }
 
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
-    a.extend(b);
+    a.append(b);
     a
 }
 
@@ -850,7 +850,7 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
-    Rc::make_mut(&mut result).extend(b.iter().cloned());
+    Rc::make_mut(&mut result).append((*b).clone());
     result
 }
 
