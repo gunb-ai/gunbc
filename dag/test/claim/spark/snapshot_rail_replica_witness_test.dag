@@ -3,8 +3,8 @@ module test.claim.spark.snapshot_rail_replica_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import gunbc.spark.snapshot_rail_replica { snapshot_entry_of, is_sha256_name, first_failure, snapshot_hub_paths }
-import gunbc.spark.group_checkpoint_materialize { checkpoint_snapshot }
-import gunbc.spark.serving_arm { Glm53NativeFp8 }
+import gunbc.spark.serving_arm { ServingCheckpoint, Glm53NativeFp8, serving_checkpoint_row, serving_checkpoint_wire }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned }
 
 // ── THE SNAPSHOT MAP, AT ITS INTERFACE ───────────────────────────────────────────────────────────────
 //
@@ -31,9 +31,24 @@ test fn the_first_failure_is_the_first_nonempty_cause() -> Bool {
     && (match first_failure(causes: ["", "b", "c"]) { Present { value: x } => x == "b"  Absent => false })
 }
 
+// THE SNAPSHOT A CHECKPOINT ROW PINS, SUPPLIED AT THIS INTERFACE (the group materialization that derived it
+// was decommissioned with Group A on 2026-10-07).
+fn w_checkpoint_snapshot(c: ServingCheckpoint) -> ModelSnapshotDesired? {
+  match serving_checkpoint_row(c: c) {
+    Absent => none
+    Present { value: row } => Present { value: ModelSnapshotPinned {
+      identity: serving_checkpoint_wire(c: c),
+      repo: row.repo,
+      revision: row.revision,
+      placement: row.placement,
+      revision_provenance: row.provenance,
+    } }
+  }
+}
+
 // THE GLM FP8 CHECKPOINT IS A HUB-CACHE SNAPSHOT, SO IT HAS THE TWO PATHS THE REPLICA WORKS IN.
 test fn the_glm_fp8_checkpoint_resolves_its_hub_cache_paths() -> Bool {
-  match checkpoint_snapshot(c: Glm53NativeFp8) {
+  match w_checkpoint_snapshot(c: Glm53NativeFp8) {
     Absent => false
     Present { value: s } => match snapshot_hub_paths(snapshot: s) {
       Absent => false
