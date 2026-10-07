@@ -1025,8 +1025,26 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
   Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds", tail: Empty {} }
 }
 
+// PROVEN: reached its verdict (passed) at 496,179 eval steps against the 72,300 new-witness
+// budget and 1421ms cpu against the 500ms line on the required floor of record at 8528a59b45
+// (floor run 2026-10-06T14:35Z; the same gate re-measured it at run 37499673683 / floor job
+// 112393139664, head d4ec92f) -- the only real-path inhabitance
+// claim for gunbc.rung_drop admit_callers_discarded_on_the_native_route. Row admitted by
+// operator escalation, default-approved (lively-ram-153 relaying, 2026-10-07). The cost is the
+// interpreter's realization of the parse+lower pipeline, not the claim's shape: 02_parse
+// documents that parsing even a trivial source dominates under the tree-walking v1
+// interpreter, and every cheaper shape (hand-built parse shells) was rejected by review 77470
+// as fixture-standing. Owner: the long-home changed-witness lane, where required_floor
+// long_home_prefixes admit module v2.test.claim.long.* as ChangedCostDebtVerdictOnly; the
+// claim also PASSES when run for its verdict without the eval budget (runner receipt, PR
+// #13108). It leaves when the native emitter stops billing claims for the interpreter's
+// pipeline.
+fn floor_cost_debt_proven_chunk_22() -> List<String> {
+  Cons { head: "v2.test.claim.long.caller_admission_native_wall_red.the_native_route_refuses_an_outside_cross_module_call_holds", tail: Empty {} }
+}
+
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Empty {} } } } } } } } } } } }}}}}}}}}}}}
+  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Cons { head: floor_cost_debt_proven_chunk_22(), tail: Empty {} } } } } } } } } } } }}}}}}}}}}}}
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
