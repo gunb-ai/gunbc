@@ -48,15 +48,14 @@ data r2_put_object_conditional_standing: CitedFigureStanding = CitedToAuthority 
 // If-Match on the same entity tag cannot both succeed. A compare-and-set is exactly that property, so a
 // head linearized on R2 rests on it; supported headers and read-after-write do not imply it. It was a
 // typed bet until the discriminating run its read obligation named was receipted, and the authority is
-// that receipt: gunbc.cloudflare.r2_conditional_put_race_probe run_r2_conditional_put_race_probe, under
-// the fleet-converge mode r2_conditional_put_race_probe, GitHub Actions run 37659103953 on c0688c4f40,
-// artifact r2-conditional-put-race-probe-receipt. The receipt states curl 8.5.0 against the 8.2 floor,
-// declared_rounds=200, rounds=200 and verdict=passed, with no inconclusive and no falsifying round: in
-// every round one writer answered 2xx and the other 412, over requests sent before either was answered.
+// that receipt. THE INSTRUMENT, which re-derives it: gunbc.cloudflare.r2_conditional_put_race_probe
+// run_r2_conditional_put_race_probe under the fleet-converge mode r2_conditional_put_race_probe. THE
+// READING: the run below, artifact r2-conditional-put-race-probe-receipt, whose transport line,
+// declared and observed rounds, per-round statuses and verdict are the evidence and are not restated here.
 //
 // WHAT THE CITATION DOES NOT CARRY. "Raced" is read on the client's clock (the curl trace), not the
-// order requests arrived at the store, and the run is 200 rounds against one bucket at one time. A
-// later falsifying receipt from the same instrument supersedes this one; rerunning the mode re-derives it.
+// order requests arrived at the store, and the reading is one run against one bucket. A later
+// falsifying receipt from the same instrument supersedes this one.
 data r2_conditional_put_race_receipt: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
