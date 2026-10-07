@@ -1531,12 +1531,12 @@ type CompilerGateLaneStanding
 // hand-written fourth line is what let the script drift from the roster. Since the 2026-09-28 ruling
 // every blocking lane is a fleet lane, so today no live row carries GateArmStrict (emit-build left it when it moved),
 // and a hosted lane cannot turn blocking without moving (compiler_gate_merge_path_runs_on_the_fleet).
+// GateArmSkippedOnPullRequest is a lane that does not run on pull_request at all (operator 2026-10-06,
+// gunbc.rung_drop rust_unit_tests_off_pull_requests): a skip is excused only when the event IS
+// pull_request, and it blocks on merge_group and workflow_dispatch like any blocking lane.
 type CompilerGateArm
   = GateArmStrict
   | GateArmSkippableOnFork { notice: String, unobserved_error: String }
-  // A lane that does not run on pull_request at all (operator 2026-10-06, gunbc.rung_drop
-  // rust_unit_tests_off_pull_requests): a skip is excused only when the event IS pull_request, and
-  // it blocks on merge_group and workflow_dispatch like any blocking lane.
   | GateArmSkippedOnPullRequest { notice: String, unobserved_error: String }
 
 type CompilerGateLaneRow {

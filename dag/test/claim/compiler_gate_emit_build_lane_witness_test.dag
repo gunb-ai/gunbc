@@ -508,3 +508,12 @@ test fn every_emit_build_subject_step_passes_the_fault_experiment_input() -> Boo
 test fn w_RED_the_unit_test_lane_condition_excludes_pull_request() -> Bool {
   compiler_gate_unit_test_job_condition() == "github.event_name != 'pull_request'"
 }
+
+// THE RUNNER'S COPY OF THE SKIP CONTRACT IS PINNED TO THE .dag ROWS (review 77571): renaming the env
+// var or the skip value on one side alone reds here instead of leaving the runner silently ignoring
+// the workflow's input.
+test fn the_seed_fault_experiment_input_is_the_dag_rows() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  string_contains(s: runner, pattern: rust_str_const_line(name: "FAULT_EXPERIMENT_ENV", value: native_fault_experiment_env_name))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "FAULT_EXPERIMENT_SKIP_VALUE", value: native_fault_experiment_skip_value))
+}

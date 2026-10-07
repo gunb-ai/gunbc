@@ -46,6 +46,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
+/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
+const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -522,11 +528,7 @@ fn prepare_emitted_compiler_for_entry(
     // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
     // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
     // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
-    if std::env::var("GUNBC_NATIVE_FAULT_EXPERIMENT")
-        .ok()
-        .as_deref()
-        == Some("skip_pull_request")
-    {
+    if std::env::var(FAULT_EXPERIMENT_ENV).ok().as_deref() == Some(FAULT_EXPERIMENT_SKIP_VALUE) {
         eprintln!(
             "v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request \
              (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, \
