@@ -8,7 +8,7 @@ import extdeps.external_authority {TranscribedUncited}
 import product.printed_chassis.server_power_interface {reference_main_power,server_power_interface_obligations,PairingCapacityOnly,PairingRefused}
 import product.printed_chassis.node_power_feed {node_feed}
 import product.printed_chassis.altra_power_distribution {
- altra_operator_policy,altra_capacity_screen,redundancy_holds,RedundancyRefused,LoadExceedsOneModule,NodeCountOutsidePolicy,AltraCapacityScreen,RedundancyWithinOneModule,
+ altra_operator_policy,altra_capacity_screen,module_rating_covers_load,redundancy_established,RedundancyRefused,LoadExceedsOneModule,NodeCountOutsidePolicy,AltraCapacityScreen,ModuleRatingCoversLoad,
  altra_pdb_path_limit,PathLimitStated,altra_3x200,altra_2x300,altra_3x300,altra_3x280,node_loads,altra_pairing,altra_node,
  EvidenceState,Unresolved,ConservativeBound,MeasuredUnder,EstablishedOverEnvelope,supports_electrical_approval,evidence_state_label,
  altra_obligation_dispositions,dispositions_cover_every_obligation,obligation_established,pdb_pair_evidence,
@@ -22,16 +22,16 @@ fn screen(nodes:List<product.printed_chassis.altra_power_distribution.AltraNode>
  altra_capacity_screen(scenario:"witness",node_loads:node_loads(nodes:nodes),policy:altra_operator_policy,path:altra_pdb_path_limit)
 }
 fn refused_for_load(s:AltraCapacityScreen) -> Bool {
- match s.claim {RedundancyRefused {cause:LoadExceedsOneModule {required:_,one_module:_}}=>true RedundancyRefused {cause:_}=>false RedundancyWithinOneModule {required:_,one_module:_,headroom:_}=>false}
+ match s.claim {RedundancyRefused {cause:LoadExceedsOneModule {required:_,one_module:_}}=>true RedundancyRefused {cause:_}=>false ModuleRatingCoversLoad {required:_,one_module:_,headroom:_,path:_}=>false}
 }
 fn refused_for_count(s:AltraCapacityScreen) -> Bool {
- match s.claim {RedundancyRefused {cause:NodeCountOutsidePolicy {nodes:_}}=>true RedundancyRefused {cause:_}=>false RedundancyWithinOneModule {required:_,one_module:_,headroom:_}=>false}
+ match s.claim {RedundancyRefused {cause:NodeCountOutsidePolicy {nodes:_}}=>true RedundancyRefused {cause:_}=>false ModuleRatingCoversLoad {required:_,one_module:_,headroom:_,path:_}=>false}
 }
 test fn module_rating_agrees_with_datasheet_780w_at_120v() -> Bool {
  match reference_main_power(reference:fsp800_50fs_reference,input:volt(count:120)) {Present {value:w}=>watt_count(w:w)==watt_count(w:fsp800_50fs_main_12v_power) Absent=>false}
 }
 test fn three_by_200_and_two_by_300_hold_within_one_module() -> Bool {
- redundancy_holds(s:screen(nodes:altra_3x200)) && redundancy_holds(s:screen(nodes:altra_2x300))
+ module_rating_covers_load(s:screen(nodes:altra_3x200)) && module_rating_covers_load(s:screen(nodes:altra_2x300))
  && screen(nodes:altra_3x200).all_modules_adequate && screen(nodes:altra_2x300).all_modules_adequate
 }
 test fn three_by_300_refuses_redundancy() -> Bool {
@@ -47,7 +47,7 @@ test fn node_count_outside_policy_refuses() -> Bool {
 }
 test fn capacity_pass_is_never_approval() -> Bool {
  let s=screen(nodes:altra_2x300)
- redundancy_holds(s:s) && !supports_electrical_approval(e:s.electrical_approval)
+ module_rating_covers_load(s:s) && !supports_electrical_approval(e:s.electrical_approval)
 }
 test fn pairing_screen_agrees_with_the_capacity_screen() -> Bool {
  let ok=match altra_pairing(nodes:altra_2x300,policy:altra_operator_policy) {PairingCapacityOnly=>true PairingRefused=>false}
@@ -109,4 +109,13 @@ test fn connector_selection_needs_evidence_for_the_full_field_and_selects_within
  let cited200=match select_connector_cited_only(case:altra_load_case_200) {SelectedWithin {candidate:c,receipt:_}=>selected_label(r:select_connector_cited_only(case:altra_load_case_200))=="Mini-Fit Jr standard terminal on 18 AWG" _=>false}
  let cited300=match select_connector_cited_only(case:altra_load_case_300) {SelectedWithin {candidate:c,receipt:_}=>true _=>false}
  full200 && full300 && cited200 && cited300
+}
+
+test fn unresolved_pdb_path_never_establishes_redundancy() -> Bool {
+ module_rating_covers_load(s:screen(nodes:altra_2x300)) && !redundancy_established(s:screen(nodes:altra_2x300))
+}
+test fn stated_pdb_path_establishes_redundancy_and_a_low_path_refuses() -> Bool {
+ let ok=altra_capacity_screen(scenario:"stated",node_loads:node_loads(nodes:altra_2x300),policy:altra_operator_policy,path:PathLimitStated {limit:watt(count:1560)})
+ let low=altra_capacity_screen(scenario:"low",node_loads:node_loads(nodes:altra_2x300),policy:altra_operator_policy,path:PathLimitStated {limit:watt(count:500)})
+ redundancy_established(s:ok) && refused_for_load(s:low) && !redundancy_established(s:low)
 }

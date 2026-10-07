@@ -1,6 +1,6 @@
 module product.printed_chassis.altra_power_distribution
 import std.types {Int,List,NonEmptyStr,String,Bool}
-import std.measure {Watt,Milliohm,milliohm,milliohm_count,Milliwatt,milliwatt,milliwatt_count,watt,watt_count,Volt,volt,milliampere,milliampere_count,millivolt,millivolt_count,Milliampere,Percent,percent,percent_count,millimeter,ampere_count}
+import std.measure {Watt,Milliohm,milliohm,milliohm_count,Milliwatt,milliwatt,milliwatt_count,watt,watt_count,Volt,volt,milliampere,milliampere_count,millivolt,millivolt_count,Milliampere,Millisecond,millisecond_count,celsius_count,Percent,percent,percent_count,millimeter,ampere_count}
 import std.nat {Nat}
 import std.optional {Present,Absent}
 import std.decl_ref {DeclarationRef,decl_ref}
@@ -120,8 +120,8 @@ data altra_station_control_plan:StationControlPlan=StationControlPlan {shared_su
 // ---- capacity and redundancy screen (obligation 6) ----
 type PathLimitStanding = PathLimitStated {limit:Watt} | PathLimitUnresolved {read_obligation:NonEmptyStr}
 data altra_pdb_path_limit:PathLimitStanding=PathLimitUnresolved {read_obligation:"The matched redundant PDB's output rating is unidentified (fsp_ph51a is a single-module board); the screen applies no PDB or bus bound until FSP's PDB datasheet is read."}
-type RedundancyRefusal = NodeCountOutsidePolicy {nodes:Int} | ModuleRatingUnstatedAtSiteInput | LoadExceedsOneModule {required:Watt,one_module:Watt} | CapacityUndecidable
-type RedundancyClaim = RedundancyWithinOneModule {required:Watt,one_module:Watt,headroom:Watt} | RedundancyRefused {cause:RedundancyRefusal}
+type RedundancyRefusal = NodeCountOutsidePolicy {nodes:Int} | ModuleRatingUnstatedAtSiteInput | LoadExceedsOneModule {required:Watt,one_module:Watt}
+type RedundancyClaim = ModuleRatingCoversLoad {required:Watt,one_module:Watt,headroom:Watt,path:PathLimitStanding} | RedundancyRefused {cause:RedundancyRefusal}
 // CAPACITY ONLY. The claim is arithmetic against the datasheet module rating at the site input and
 // the declared overhead and reserve. electrical_approval is carried as an evidence state, not a Bool:
 // it stays Unresolved however much headroom this screen finds.
@@ -144,12 +144,16 @@ fn altra_capacity_screen(scenario:NonEmptyStr,node_loads:List<Watt>,policy:Opera
    let required=required_station_power(node_loads:node_loads,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve)
    let all_ok=adequacy_ok(a:capacity_screen(node_loads:node_loads,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve,available:both))
    let one_ok=adequacy_ok(a:capacity_screen(node_loads:node_loads,overhead:altra_cassette_overhead,reserve:altra_cassette_reserve,available:single))
-   let claim=if !in_policy {RedundancyRefused {cause:NodeCountOutsidePolicy {nodes:n}}} else {if one_ok {RedundancyWithinOneModule {required:required,one_module:single,headroom:watt(count:watt_count(w:single)-watt_count(w:required))}} else {RedundancyRefused {cause:LoadExceedsOneModule {required:required,one_module:single}}}}
+   let claim=if !in_policy {RedundancyRefused {cause:NodeCountOutsidePolicy {nodes:n}}} else {if one_ok {ModuleRatingCoversLoad {required:required,one_module:single,headroom:watt(count:watt_count(w:single)-watt_count(w:required)),path:path}} else {RedundancyRefused {cause:LoadExceedsOneModule {required:required,one_module:single}}}}
    AltraCapacityScreen {scenario:scenario,nodes:n,claim:claim,path_limit:path,all_modules_adequate:all_ok,electrical_approval:capacity_is_not_approval}
   }
  }
 }
-fn redundancy_holds(s:AltraCapacityScreen) -> Bool {match s.claim {RedundancyWithinOneModule {required:_,one_module:_,headroom:_}=>true RedundancyRefused {cause:_}=>false}}
+fn module_rating_covers_load(s:AltraCapacityScreen) -> Bool {match s.claim {ModuleRatingCoversLoad {required:_,one_module:_,headroom:_,path:_}=>true RedundancyRefused {cause:_}=>false}}
+// Redundancy is ESTABLISHED only when the module arithmetic holds AND the PDB path limit is stated
+// and bound the screen; with the path unresolved the screen is a module-rating claim and no more.
+fn redundancy_established(s:AltraCapacityScreen) -> Bool {match s.claim {ModuleRatingCoversLoad {required:_,one_module:_,headroom:_,path:p}=>match p {PathLimitStated {limit:_}=>true PathLimitUnresolved {read_obligation:_}=>false} RedundancyRefused {cause:_}=>false}}
+fn path_label(p:PathLimitStanding) -> String {match p {PathLimitStated {limit:_}=>"stated" PathLimitUnresolved {read_obligation:_}=>"unresolved"}}
 type AltraNode {name:NonEmptyStr,branch:Int,load:Watt}
 fn altra_node(name:NonEmptyStr,branch:Int,w:Int) -> AltraNode {AltraNode {name:name,branch:branch,load:watt(count:w)}}
 fn node_loads(nodes:List<AltraNode>) -> List<Watt> {map(nodes,n=>n.load)}
@@ -313,7 +317,7 @@ fn protection_json(p:BranchProtection) -> JsonValue {
  }
 }
 fn screen_json(s:AltraCapacityScreen) -> JsonValue {
- json_object(members:[json_kv(key:"scenario",value:json_string(s:s.scenario as String)),json_kv(key:"nodes",value:json_int(n:s.nodes)),json_kv(key:"redundancy_within_one_module",value:json_bool(b:redundancy_holds(s:s))),json_kv(key:"adequate_with_both_modules",value:json_bool(b:s.all_modules_adequate)),json_kv(key:"electrical_approval",value:evidence_json(e:s.electrical_approval))])
+ json_object(members:[json_kv(key:"scenario",value:json_string(s:s.scenario as String)),json_kv(key:"nodes",value:json_int(n:s.nodes)),json_kv(key:"module_rating_covers_load",value:json_bool(b:module_rating_covers_load(s:s))),json_kv(key:"pdb_path_limit",value:json_string(s:path_label(p:s.path_limit))),json_kv(key:"redundancy_established",value:json_bool(b:redundancy_established(s:s))),json_kv(key:"adequate_with_both_modules",value:json_bool(b:s.all_modules_adequate)),json_kv(key:"electrical_approval",value:evidence_json(e:s.electrical_approval))])
 }
 fn altra_power_review() -> JsonValue {
  let policy=altra_operator_policy
@@ -321,7 +325,7 @@ fn altra_power_review() -> JsonValue {
  json_object(members:[
   json_kv(key:"operator_policy",value:json_string(s:(policy.decided_by as String)+" "+(policy.decided_on as String)+": "+(policy.supply_assembly as String)+"; out of scope: "+(policy.out_of_scope as String))),
   json_kv(key:"scope",value:json_string(s:"capacity and sizing screens only; none is electrical approval")),
-  json_kv(key:"cited_supply_facts",value:json_object(members:[json_kv(key:"main_12v_min_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_main_12v.min_current) as Int)),json_kv(key:"main_12v_max_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_main_12v.max_current) as Int)),json_kv(key:"standby_12v_max_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_standby_12v.max_current) as Int)),json_kv(key:"module_total_w",value:json_int(n:watt_count(w:fsp800_50fs_total_power) as Int)),json_kv(key:"input_current_115v_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_input_current_115v) as Int)),json_kv(key:"pmbus_revision",value:json_string(s:fsp800_50fs_pmbus_revision as String)),json_kv(key:"pdb_supported_modules",value:json_int(n:fsp_ph51a_supported_crps_modules))])),
+  json_kv(key:"cited_supply_facts",value:json_object(members:[json_kv(key:"main_12v_min_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_main_12v.min_current) as Int)),json_kv(key:"main_12v_max_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_main_12v.max_current) as Int)),json_kv(key:"standby_12v_max_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_standby_12v.max_current) as Int)),json_kv(key:"module_total_w",value:json_int(n:watt_count(w:fsp800_50fs_total_power) as Int)),json_kv(key:"input_current_115v_ma",value:json_int(n:milliampere_count(i:fsp800_50fs_input_current_115v) as Int)),json_kv(key:"holdup_12v_ms",value:json_int(n:millisecond_count(m:fsp800_50fs_holdup_12v) as Int)),json_kv(key:"operating_ambient_max_c",value:json_int(n:celsius_count(c:fsp800_50fs_operating_ambient_max))),json_kv(key:"pmbus_revision",value:json_string(s:fsp800_50fs_pmbus_revision as String)),json_kv(key:"pdb_supported_modules",value:json_int(n:fsp_ph51a_supported_crps_modules))])),
   json_kv(key:"obligations_total",value:json_int(n:count(dispositions))),
   json_kv(key:"obligations_established",value:json_int(n:count(filter(dispositions,obligation_established)))),
   json_kv(key:"obligation_dispositions",value:json_array(elements:map(dispositions,disposition_json))),
@@ -331,6 +335,6 @@ fn altra_power_review() -> JsonValue {
   json_kv(key:"branch_protection_300w",value:protection_json(p:altra_branch_protection(load:altra_load_case_300.load))),
   json_kv(key:"connection_integrity_open",value:json_int(n:integrity_open_count())),
   json_kv(key:"connector_selection_300w",value:json_object(members:[json_kv(key:"full_field",value:json_string(s:selection_label(r:select_connector(case:altra_load_case_300)))),json_kv(key:"cited_only_field",value:json_string(s:selection_label(r:select_connector_cited_only(case:altra_load_case_300)))),json_kv(key:"cited_only_selected",value:json_string(s:selected_label(r:select_connector_cited_only(case:altra_load_case_300))))])),
-  json_kv(key:"pairing_2x300",value:json_string(s:match altra_pairing(nodes:altra_2x300,policy:policy) {PairingCapacityOnly=>"capacity only" PairingRefused=>"refused"})),
+  json_kv(key:"pairing_2x300",value:json_string(s:match altra_pairing(nodes:altra_2x300,policy:policy) {PairingCapacityOnly=>"capacity only; PDB path "+path_label(p:altra_pdb_path_limit) PairingRefused=>"refused"})),
  ])
 }
