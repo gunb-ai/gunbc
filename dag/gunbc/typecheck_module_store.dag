@@ -259,8 +259,7 @@ data commit_typecheck_module_ref: DeclarationRef = decl_ref(
 data typecheck_materialization_seed_path_note: DissolutionCondition = unbound_dissolution(description: "TRIGGER: v1_compiler.cli_run reconcile_with_typed_cache looks up through lookup_typecheck_module and commits through commit_typecheck_module after constructing TypecheckModuleRequest from source-content, import-interface and compiler digests (typecheck_module_request_from_hex). SUFFICIENT FOR: a verified store hit skips typecheck_module compute; a stale or tampered object refuses rather than serving; the durable open is ensure_durable_typecheck_store. This row is retired by that executing consumer and nothing else." as NonEmptyStr)
 
 // Seed-facing operations (distinct from typecheck_module): hex digests in, typed store outcome
-// out. ensure_durable_typecheck_store is inside these folds so reconcile does not take a store
-// argument.
+// out; the opening is passed in, opened once per session (open_typecheck_store_door).
 
 type SeedTypecheckLookup
   = SeedTypecheckHit { interface_text: String, diagnostics_text: String }
@@ -313,7 +312,24 @@ fn seed_commit_typecheck_opened(
   }
 }
 
-fn seed_lookup_typecheck_hex(
+// The opening (grant check, marker converge, budget catalog) is ONE fact per process (DESIGN 2: a
+// shared ancestor): the session opens once through open_typecheck_store_door and passes the opening
+// to every lookup and commit below. A refused opening makes every lookup in that session
+// SeedTypecheckUnavailable from the one refusal; nothing re-opens per module.
+fn open_typecheck_store_door() -> LocalStoreOpening {
+  ensure_durable_typecheck_store()
+}
+
+fn open_typecheck_store_witness_door(root_path: String) -> LocalStoreOpening {
+  match initialize_witness_typecheck_store(root: WitnessScratchRoot { root: root_path }) {
+    LocalStoreInitialized { opening: o } => o
+    LocalStoreInitializationRefused { root_path: p, cause: c } =>
+      LocalStoreUnavailable { root_path: p, cause: c }
+  }
+}
+
+fn seed_lookup_typecheck_opened_hex(
+  opening: LocalStoreOpening,
   source_digest_hex: String,
   import_interface_hexes: List<String>,
   compiler_digest_hex: String
@@ -324,11 +340,12 @@ fn seed_lookup_typecheck_hex(
     compiler_digest_hex: compiler_digest_hex
   ) {
     TypecheckModuleRequestDigestRefused { which: w } => SeedTypecheckDigestRefused { which: w }
-    TypecheckModuleRequestBuilt { req: req } => seed_lookup_typecheck_opened(opening: ensure_durable_typecheck_store(), req: req)
+    TypecheckModuleRequestBuilt { req: req } => seed_lookup_typecheck_opened(opening: opening, req: req)
   }
 }
 
-fn seed_commit_typecheck_hex(
+fn seed_commit_typecheck_opened_hex(
+  opening: LocalStoreOpening,
   source_digest_hex: String,
   import_interface_hexes: List<String>,
   compiler_digest_hex: String,
@@ -342,48 +359,6 @@ fn seed_commit_typecheck_hex(
   ) {
     TypecheckModuleRequestDigestRefused { which: w } => SeedTypecheckCommitDigestRefused { which: w }
     TypecheckModuleRequestBuilt { req: req } =>
-      seed_commit_typecheck_opened(opening: ensure_durable_typecheck_store(), req: req, interface_text: interface_text, diagnostics_text: diagnostics_text)
-  }
-}
-
-// Witness doors: the SAME bodies over a WitnessScratchRoot, so an executing control round-trips a
-// real typecheck entry without touching the granted durable volume.
-fn seed_lookup_typecheck_witness_hex(
-  root_path: String,
-  source_digest_hex: String,
-  import_interface_hexes: List<String>,
-  compiler_digest_hex: String
-) -> SeedTypecheckLookup {
-  match typecheck_module_request_from_hex(
-    source_digest_hex: source_digest_hex,
-    import_interface_hexes: import_interface_hexes,
-    compiler_digest_hex: compiler_digest_hex
-  ) {
-    TypecheckModuleRequestDigestRefused { which: w } => SeedTypecheckDigestRefused { which: w }
-    TypecheckModuleRequestBuilt { req: req } => match initialize_witness_typecheck_store(root: WitnessScratchRoot { root: root_path }) {
-      LocalStoreInitialized { opening: o } => seed_lookup_typecheck_opened(opening: o, req: req)
-      LocalStoreInitializationRefused { root_path: p, cause: c } => SeedTypecheckUnavailable { root_path: p }
-    }
-  }
-}
-
-fn seed_commit_typecheck_witness_hex(
-  root_path: String,
-  source_digest_hex: String,
-  import_interface_hexes: List<String>,
-  compiler_digest_hex: String,
-  interface_text: String,
-  diagnostics_text: String
-) -> SeedTypecheckCommit {
-  match typecheck_module_request_from_hex(
-    source_digest_hex: source_digest_hex,
-    import_interface_hexes: import_interface_hexes,
-    compiler_digest_hex: compiler_digest_hex
-  ) {
-    TypecheckModuleRequestDigestRefused { which: w } => SeedTypecheckCommitDigestRefused { which: w }
-    TypecheckModuleRequestBuilt { req: req } => match initialize_witness_typecheck_store(root: WitnessScratchRoot { root: root_path }) {
-      LocalStoreInitialized { opening: o } => seed_commit_typecheck_opened(opening: o, req: req, interface_text: interface_text, diagnostics_text: diagnostics_text)
-      LocalStoreInitializationRefused { root_path: p, cause: c } => SeedTypecheckCommitMissedOpen { root_path: p }
-    }
+      seed_commit_typecheck_opened(opening: opening, req: req, interface_text: interface_text, diagnostics_text: diagnostics_text)
   }
 }

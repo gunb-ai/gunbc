@@ -35,7 +35,7 @@ type TypecheckStoreFamilyEntryBet {
   standing: CitedFigureStanding
 }
 
-data typecheck_store_family_entry_size_read_obligation: NonEmptyStr = "v1_compiler.cli_run typecheck_store_session observed_largest_entry_bytes after seed_commit_typecheck_hex of TypecheckModuleRequest objects constructed on reconcile_with_typed_cache (interface_text plus diagnostics_text of the module's OWN typecheck_module_items tail, never the import-derived closure), reported on the run receipt line by typecheck_store_session store_receipt_line as largest_entry_bytes. Cite that producer; do not transcribe a count into this module."
+data typecheck_store_family_entry_size_read_obligation: NonEmptyStr = "v1_compiler.cli_run typecheck_store_session observed_largest_entry_bytes after seed_commit_typecheck_opened_hex of TypecheckModuleRequest objects constructed on reconcile_with_typed_cache (interface_text plus diagnostics_text of the module's OWN typecheck_module_items tail, never the import-derived closure), reported on the run receipt line by typecheck_store_session store_receipt_line as largest_entry_bytes. Cite that producer; do not transcribe a count into this module."
 
 data typecheck_store_family_entry_bet: TypecheckStoreFamilyEntryBet = TypecheckStoreFamilyEntryBet {
   bytes: typed_module_bytes_per_entry_estimate,
@@ -63,4 +63,4 @@ data materialization_store_local_facts: CacheInterfaceCatalogFacts = materializa
 // C2's production consumer is the seed typecheck path (gunbc.typecheck_module_store
 // typecheck_materialization_seed_path_note). Binding this row to a declaration that merely
 // exists would fire before any run opens the durable root.
-data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets from the seed typecheck path (ensure_durable_typecheck_store, lookup_typecheck_module, commit_typecheck_module). SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)
+data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets from the seed typecheck path (open_typecheck_store_door once per session, seed_lookup_typecheck_opened_hex, seed_commit_typecheck_opened_hex). SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)

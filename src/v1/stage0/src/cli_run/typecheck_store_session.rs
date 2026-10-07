@@ -14,7 +14,7 @@ const STORE_MODULE: &str = "gunbc.typecheck_module_store";
 
 thread_local! {
     static PREPARING: Cell<bool> = const { Cell::new(false) };
-    static SESSION: RefCell<Option<v1_interpreter::InterpContext>> = const { RefCell::new(None) };
+    static SESSION: RefCell<Option<(v1_interpreter::InterpContext, Value)>> = const { RefCell::new(None) };
     static OBSERVED_LARGEST_ENTRY: Cell<u64> = const { Cell::new(0) };
     /// Test-only: route the session through the witness door over a scratch root instead of the
     /// granted durable volume. Same .dag bodies, different opening (`*_witness_hex`).
@@ -27,20 +27,17 @@ pub(crate) fn set_witness_root(root: Option<String>) {
     WITNESS_ROOT.with(|w| *w.borrow_mut() = root);
 }
 
-/// (function, leading root arg) the session calls: production door, or the witness door in tests.
-fn door(
-    production: &'static str,
-    witness: &'static str,
-) -> (&'static str, Vec<(Option<String>, Value)>) {
+/// The opening door: the production grant, or (tests) the witness scratch root. Both are .dag
+/// functions returning a `LocalStoreOpening`; the session calls one exactly once.
+fn open_door() -> (&'static str, Vec<(Option<String>, Value)>) {
     #[cfg(test)]
     if let Some(root) = WITNESS_ROOT.with(|w| w.borrow().clone()) {
         return (
-            witness,
+            "open_typecheck_store_witness_door",
             vec![(Some("root_path".to_string()), str_value(root))],
         );
     }
-    let _ = witness;
-    (production, Vec::new())
+    ("open_typecheck_store_door", Vec::new())
 }
 
 /// What the store handed back for one module: the module's OWN tail (the entry never holds the
@@ -65,12 +62,17 @@ struct OutcomeCounts {
     reentry_commit: u64,
     unreachable_lookup: u64,
     unreachable_commit: u64,
+    /// Times the store was opened (grant check, marker converge, catalog): one per session.
+    store_openings: u64,
+    /// Openings the .dag door refused; every lookup in that session is then a counted Unavailable.
+    open_refused: u64,
 }
 
 thread_local! {
     static OUTCOMES: Cell<OutcomeCounts> = const { Cell::new(OutcomeCounts {
         hit: 0, miss: 0, unavailable: 0, commit_committed: 0, commit_missed_open: 0,
         reentry_lookup: 0, reentry_commit: 0, unreachable_lookup: 0, unreachable_commit: 0,
+        store_openings: 0, open_refused: 0,
     }) };
 }
 
@@ -87,6 +89,7 @@ fn count(f: impl FnOnce(&mut OutcomeCounts)) {
 pub(crate) fn store_receipt_line() -> Option<String> {
     let c = OUTCOMES.with(|c| c.get());
     let degraded = c.unavailable
+        + c.open_refused
         + c.commit_missed_open
         + c.reentry_lookup
         + c.reentry_commit
@@ -97,7 +100,7 @@ pub(crate) fn store_receipt_line() -> Option<String> {
         return None;
     }
     Some(format!(
-        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} largest_entry_bytes={}",
+        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} store_openings={} open_refused={} largest_entry_bytes={}",
         c.hit,
         c.miss,
         c.commit_committed,
@@ -107,6 +110,8 @@ pub(crate) fn store_receipt_line() -> Option<String> {
         c.reentry_commit,
         c.unreachable_lookup,
         c.unreachable_commit,
+        c.store_openings,
+        c.open_refused,
         observed_largest_entry_bytes()
     ))
 }
@@ -151,7 +156,7 @@ pub(crate) fn own_of_result(result: &TypecheckModuleResult) -> TypecheckModuleOw
 /// file is absent): the caller counts it as a typed Unavailable, never a Miss and never a panic.
 fn with_session<T>(
     index: &MultiEntryIndex,
-    f: impl FnOnce(&v1_interpreter::InterpContext) -> Result<T, String>,
+    f: impl FnOnce(&v1_interpreter::InterpContext, &Value) -> Result<T, String>,
 ) -> Result<Option<T>, String> {
     if PREPARING.with(|c| c.get()) {
         return Err("typecheck-store session prepare re-entered".to_string());
@@ -175,13 +180,26 @@ fn with_session<T>(
             })();
             PREPARING.with(|c| c.set(false));
             match prepared {
-                Ok(ctx) => *slot.borrow_mut() = Some(ctx),
+                Ok(ctx) => {
+                    // The opening is one fact per session: opened here, passed to every call.
+                    let (function, args) = open_door();
+                    let opening =
+                        v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+                            .map_err(|e| format!("{function}: {e}"))?;
+                    count(|c| c.store_openings += 1);
+                    if let Value::Variant { variant_name, .. } = &opening {
+                        if ctx.sym_eq(*variant_name, "LocalStoreUnavailable") {
+                            count(|c| c.open_refused += 1);
+                        }
+                    }
+                    *slot.borrow_mut() = Some((ctx, opening));
+                }
                 Err(e) => return Err(e),
             }
         }
         let borrow = slot.borrow();
-        let ctx = borrow.as_ref().expect("session installed");
-        f(ctx).map(Some)
+        let (ctx, opening) = borrow.as_ref().expect("session installed");
+        f(ctx, opening).map(Some)
     })
 }
 
@@ -214,10 +232,8 @@ pub(crate) fn durable_typecheck_lookup(
             .map(str_value)
             .collect::<Vector<_>>(),
     );
-    let (function, mut args) = door(
-        "seed_lookup_typecheck_hex",
-        "seed_lookup_typecheck_witness_hex",
-    );
+    let function = "seed_lookup_typecheck_opened_hex";
+    let mut args: Vec<(Option<String>, Value)> = Vec::new();
     args.extend([
         (
             Some("source_digest_hex".to_string()),
@@ -229,9 +245,11 @@ pub(crate) fn durable_typecheck_lookup(
             str_value(compiler_digest_hex),
         ),
     ]);
-    let got = with_session(index, |ctx| {
+    let got = with_session(index, |ctx, opening| {
+        let mut args = args;
+        args.insert(0, (Some("opening".to_string()), opening.clone()));
         let result = v1_interpreter::run_in_context_with_args(ctx, function, &args, false)
-            .map_err(|e| format!("seed_lookup_typecheck_hex: {e}"))?;
+            .map_err(|e| format!("seed_lookup_typecheck_opened_hex: {e}"))?;
         let Value::Variant {
             variant_name,
             fields,
@@ -239,7 +257,7 @@ pub(crate) fn durable_typecheck_lookup(
         } = &result
         else {
             return Err(format!(
-                "seed_lookup_typecheck_hex not a variant: {result:?}"
+                "seed_lookup_typecheck_opened_hex not a variant: {result:?}"
             ));
         };
         if ctx.sym_eq(*variant_name, "SeedTypecheckMiss") {
@@ -268,7 +286,7 @@ pub(crate) fn durable_typecheck_lookup(
             return Ok(DurableTypecheckGet::Hit(own));
         }
         Err(format!(
-            "seed_lookup_typecheck_hex unknown variant {}",
+            "seed_lookup_typecheck_opened_hex unknown variant {}",
             ctx.resolve(*variant_name)
         ))
     })?;
@@ -307,10 +325,8 @@ pub(crate) fn durable_typecheck_commit(
             .map(str_value)
             .collect::<Vector<_>>(),
     );
-    let (function, mut args) = door(
-        "seed_commit_typecheck_hex",
-        "seed_commit_typecheck_witness_hex",
-    );
+    let function = "seed_commit_typecheck_opened_hex";
+    let mut args: Vec<(Option<String>, Value)> = Vec::new();
     args.extend([
         (
             Some("source_digest_hex".to_string()),
@@ -330,9 +346,11 @@ pub(crate) fn durable_typecheck_commit(
             str_value(diagnostics_text),
         ),
     ]);
-    let got = with_session(index, |ctx| {
+    let got = with_session(index, |ctx, opening| {
+        let mut args = args;
+        args.insert(0, (Some("opening".to_string()), opening.clone()));
         let result = v1_interpreter::run_in_context_with_args(ctx, function, &args, false)
-            .map_err(|e| format!("seed_commit_typecheck_hex: {e}"))?;
+            .map_err(|e| format!("seed_commit_typecheck_opened_hex: {e}"))?;
         let Value::Variant {
             variant_name,
             fields,
@@ -340,7 +358,7 @@ pub(crate) fn durable_typecheck_commit(
         } = &result
         else {
             return Err(format!(
-                "seed_commit_typecheck_hex not a variant: {result:?}"
+                "seed_commit_typecheck_opened_hex not a variant: {result:?}"
             ));
         };
         if ctx.sym_eq(*variant_name, "SeedTypecheckCommitted") {
@@ -359,7 +377,7 @@ pub(crate) fn durable_typecheck_commit(
             return Err(format!("typecheck-store commit digest refused ({which})"));
         }
         Err(format!(
-            "seed_commit_typecheck_hex unknown variant {}",
+            "seed_commit_typecheck_opened_hex unknown variant {}",
             ctx.resolve(*variant_name)
         ))
     })?;
@@ -424,6 +442,7 @@ mod real_module_round_trip {
         v
     }
 
+    #[ignore = "live-corpus: resolves and typechecks the live dag+src/v2 closure (minutes); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn restore_equals_compute_and_entry_excludes_parent_envs() {
         let scratch =
@@ -443,6 +462,13 @@ mod real_module_round_trip {
             "every miss commits ({miss0} miss, {committed0} committed): {:?}",
             store_receipt_line()
         );
+        // The opening is one fact per session: every lookup and commit of the cold run (hundreds
+        // of modules) shared one opening.
+        let opened = OUTCOMES.with(|c| c.get());
+        assert_eq!(
+            opened.store_openings, 1,
+            "N module lookups must initialize the store exactly once"
+        );
         let cold = typed_results(&cold_index);
         assert!(!cold.is_empty());
 
@@ -456,6 +482,11 @@ mod real_module_round_trip {
         assert!(
             hit1 >= miss0,
             "every module hit ({hit1} hit, {miss0} cold misses)"
+        );
+        assert_eq!(
+            OUTCOMES.with(|c| c.get()).store_openings,
+            1,
+            "the warm run reuses the session's opening"
         );
         let warm = typed_results(&warm_index);
         // The cold run also typechecked the store's own closure inside the session prepare
@@ -551,6 +582,7 @@ mod session_reach {
 
     /// The caller's real pool holds the store: the lookup resolves through that same index from a
     /// foreign cwd, so no second pool is built and nothing is resolved cwd-relative.
+    #[ignore = "live-corpus: resolves and typechecks the live dag+src/v2 closure (minutes); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn the_callers_pool_serves_the_session_from_a_foreign_cwd() {
         let root = workspace_root();
