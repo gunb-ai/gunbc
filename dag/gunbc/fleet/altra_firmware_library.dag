@@ -1,8 +1,10 @@
 module gunbc.altra_firmware_library
 
-import std.types { NonEmptyStr, List, Bool }
+import std.types { NonEmptyStr, List, Bool, String }
 import std.measure { ByteSize, byte_size }
 import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.uri { Uri, uri_https }
 import extdeps.firmware.types { FirmwareReleaseRow, BmcController }
@@ -103,9 +105,7 @@ fn beta_bmc_version_comparisons(
   )
 }
 
-// Operator discovery entry: gunbc run --source-root dag --source-root src/v2
-// --entry dag/gunbc/fleet/altra_firmware_library.dag --function reference_report
-// Returns typed references without selecting a release or authorizing a flash.
+// Typed discovery report; write_reference_report is the operator CLI boundary.
 fn reference_report() -> AltraFirmwareReferenceReport {
   AltraFirmwareReferenceReport {
     drive_archives: altra_firmware_drive_archives,
@@ -117,5 +117,18 @@ fn reference_report() -> AltraFirmwareReferenceReport {
       observations: [srv3_bmc_firmware_observation, srv4_bmc_firmware_observation],
     ),
     qualification: AwaitingAffectedBehaviorTest,
+  }
+}
+
+// gunbc run --source-root dag --source-root src/v2
+// --entry dag/gunbc/fleet/altra_firmware_library.dag --function write_reference_report
+// --arg path=/tmp/altra-firmware-references.txt
+// A successful exit establishes only that the reference report was written.
+fn write_reference_report(path: String) -> ProcessExit {
+  let wrote = Filesystem.Write(path: path, content: to_string(reference_report()))
+  if wrote.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: wrote.error)
   }
 }
