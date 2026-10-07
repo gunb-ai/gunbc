@@ -382,41 +382,44 @@ pub struct ImportResolveResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn module_declares_type_named(
+pub fn module_type_declaration_names(
     module: Rc<Node>,
-    name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+) -> Rc<HashMap<String, bool>> {
     {
-        let mut __found = false;
-        for item in crate::v1_std_core::module_items(module.clone())
+        let type_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in crate::v1_std_core::module_items(module.clone())
+                    .iter()
+                    .cloned()
+                {
+                    if (item.module_item_kind.clone()
+                        == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                    {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
             .iter()
             .cloned()
-        {
-            if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-                && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
-                    == name.clone()))
             {
-                __found = true;
-                break;
+                __result.push(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    item.clone(),
+                ));
             }
-        }
-        __found
+            __result
+        });
+        type_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        )
     }
-}
-
-pub fn imported_type_collides_with_kernel_mint(
-    name: String,
-    import_path: String,
-    target_module: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelNamedImportStanding> {
-    crate::std_literal_elaboration::kernel_named_import_standing(
-        name.clone(),
-        import_path.clone(),
-        module_declares_type_named(target_module.clone(), name.clone(), source_indices.clone()),
-        kernel_mint_declaration_rows(),
-    )
 }
 
 pub fn kernel_name_collision_diag(
@@ -455,6 +458,30 @@ pub fn kernel_mint_ambiguous_import_diag(
         }),
         importing_module.clone(),
     )
+}
+
+pub fn kernel_named_import_child_diags(
+    child: Rc<Node>,
+    import_path: String,
+    type_decl_names: Rc<HashMap<String, bool>>,
+    importing_module: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
+        kernel_named_import_diags(
+            crate::std_literal_elaboration::kernel_named_import_standing(
+                name.clone(),
+                import_path.clone(),
+                map_has(type_decl_names.clone(), name.clone()),
+                kernel_mint_declaration_rows(),
+            ),
+            name.clone(),
+            import_path.clone(),
+            importing_module.clone(),
+            child.span.clone(),
+        )
+    }
 }
 
 pub fn kernel_named_import_diags(
@@ -607,41 +634,21 @@ pub fn resolve_import(
                         __result
                     })
                 };
+                let type_decl_names =
+                    module_type_declaration_names(target_mod.clone(), source_indices.clone());
                 let kernel_collision_diags = if crate::v1_std_core::import_is_all(import.clone()) {
                     Rc::new({
                         let mut __result = Vec::new();
-                        for item in Rc::new({
-                            let mut __result = Vec::new();
-                            for item in crate::v1_std_core::module_items(target_mod.clone())
-                                .iter()
-                                .cloned()
-                            {
-                                if (item.module_item_kind.clone()
-                                    == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-                                {
-                                    __result.push(item);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
+                        for name in Rc::new(v1_rt::map_keys(&type_decl_names)).iter().cloned() {
                             __result.extend(
                                 (*kernel_named_import_diags(
-                                    imported_type_collides_with_kernel_mint(
-                                        crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            item.clone(),
-                                        ),
+                                    crate::std_literal_elaboration::kernel_named_import_standing(
+                                        name.clone(),
                                         import_path.clone(),
-                                        target_mod.clone(),
-                                        source_indices.clone(),
+                                        true,
+                                        kernel_mint_declaration_rows(),
                                     ),
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        item.clone(),
-                                    ),
+                                    name.clone(),
                                     import_path.clone(),
                                     importing_module.clone(),
                                     import.span.clone(),
@@ -657,23 +664,12 @@ pub fn resolve_import(
                         let mut __result = Vec::new();
                         for child in import.children.clone().iter().cloned() {
                             __result.extend(
-                                (*kernel_named_import_diags(
-                                    imported_type_collides_with_kernel_mint(
-                                        crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            child.clone(),
-                                        ),
-                                        import_path.clone(),
-                                        target_mod.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        child.clone(),
-                                    ),
+                                (*kernel_named_import_child_diags(
+                                    child.clone(),
                                     import_path.clone(),
+                                    type_decl_names.clone(),
                                     importing_module.clone(),
-                                    child.span.clone(),
+                                    source_indices.clone(),
                                 ))
                                 .iter()
                                 .cloned(),
