@@ -9985,7 +9985,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                             );
                         let unified = match typed_args.clone().iter().cloned().skip(1).next() {
                             Some(a) => concat_unify_operands(
-                                left_ty,
+                                left_ty.clone(),
                                 crate::v1_compiler_infer_types::resolved_type(
                                     crate::v1_std_core::arg_value(a.clone()),
                                 ),
@@ -9998,8 +9998,20 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                             },
                         };
                         let refuse_diags = match unified.refuse.clone() {
-                            Some(msg) => Rc::new(vec![inference_error(
-                                msg,
+                            Some(_) => Rc::new(vec![type_mismatch_error(
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    left_ty.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                match typed_args.clone().iter().cloned().skip(1).next() {
+                                    Some(a) => crate::v1_compiler_infer_types::node_type_shape(
+                                        crate::v1_compiler_infer_types::resolved_type(
+                                            crate::v1_std_core::arg_value(a),
+                                        ),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ),
+                                    None => "unknown".to_string(),
+                                },
                                 span.clone(),
                                 scope.module_name.clone(),
                             )]),
@@ -14234,6 +14246,26 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                             }
                                         };
                                         let bridge_result_type = bridge_unified.result.clone();
+                                        let concat_refuse_diags = match bridge_unified.refuse.clone() {
+                                            Some(_) => Rc::new(vec![type_mismatch_error(
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    first_arg_type.clone(),
+                                                    scope.type_env.clone().source_indices.clone(),
+                                                ),
+                                                match remaining.clone().iter().cloned().next() {
+                                                    Some(other) => crate::v1_compiler_infer_types::node_type_shape(
+                                                        crate::v1_compiler_infer_types::resolved_type(
+                                                            crate::v1_std_core::arg_value(other),
+                                                        ),
+                                                        scope.type_env.clone().source_indices.clone(),
+                                                    ),
+                                                    None => "unknown".to_string(),
+                                                },
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )]),
+                                            None => Rc::new(vec![]),
+                                        };
                                         let template_subst_diags = method_tv.diagnostics.clone();
                                         let returns_receiver_self = if (method_resolution
                                             .semantics
@@ -14339,13 +14371,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                             ),
                                             diagnostics: v1_rt::concat(
                                                 arg_diags.clone(),
-                                                relocated_algebra_evidence_diags(
-                                                    v1_rt::concat(
-                                                        method_resolution.diagnostics.clone(),
-                                                        template_subst_diags.clone(),
+                                                v1_rt::concat(
+                                                    concat_refuse_diags.clone(),
+                                                    relocated_algebra_evidence_diags(
+                                                        v1_rt::concat(
+                                                            method_resolution.diagnostics.clone(),
+                                                            template_subst_diags.clone(),
+                                                        ),
+                                                        span.clone(),
+                                                        scope.module_name.clone(),
                                                     ),
-                                                    span.clone(),
-                                                    scope.module_name.clone(),
                                                 ),
                                             ),
                                         })
@@ -14885,6 +14920,26 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         }
                     };
                     let result_type = mc_concat.result.clone();
+                    let mc_concat_refuse = match mc_concat.refuse.clone() {
+                        Some(_) => Rc::new(vec![type_mismatch_error(
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                recv_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            match typed_mc_args.clone().iter().cloned().next() {
+                                Some(other) => crate::v1_compiler_infer_types::node_type_shape(
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        crate::v1_std_core::arg_value(other),
+                                    ),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                None => "unknown".to_string(),
+                            },
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]),
+                        None => Rc::new(vec![]),
+                    };
                     let mc_template_diags = method_tv_mc.diagnostics.clone();
                     let method_semantics =
                         if (method_resolution.semantics.clone() != std::option::Option::None) {
@@ -14913,7 +14968,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         typed: mc_texpr.clone(),
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(recv_diags.clone(), mc_arg_diags.clone()),
+                                v1_rt::concat(
+                                    v1_rt::concat(recv_diags.clone(), mc_arg_diags.clone()),
+                                    mc_concat_refuse.clone(),
+                                ),
                                 relocated_algebra_evidence_diags(
                                     pipe_fb.kernel_diags.clone(),
                                     span.clone(),
@@ -15859,7 +15917,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.type_env.clone().source_indices.clone(),
                 scope.type_env.clone(),
             );
-            let binop_result = if (op.clone() == BinOp::Add)
+            let add_unify = if (op.clone() == BinOp::Add)
                 && (node_is_list_concat_operand(
                     left_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
@@ -15867,14 +15925,33 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     right_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 )) {
-                list_concat_result_from_other_value(
-                    right_typed.clone(),
+                concat_unify_operands(
                     left_rt.clone(),
+                    right_rt.clone(),
                     binop_info.result_type.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 )
             } else {
-                binop_info.result_type.clone()
+                ConcatUnify {
+                    result: binop_info.result_type.clone(),
+                    refuse: None,
+                }
+            };
+            let binop_result = add_unify.result.clone();
+            let add_concat_refuse = match add_unify.refuse.clone() {
+                Some(_) => Rc::new(vec![type_mismatch_error(
+                    crate::v1_compiler_infer_types::node_type_shape(
+                        left_rt.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                    crate::v1_compiler_infer_types::node_type_shape(
+                        right_rt.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                    span.clone(),
+                    scope.module_name.clone(),
+                )]),
+                None => Rc::new(vec![]),
             };
             let eq_wall_diags = equality_admission_diags(
                 op.clone(),
@@ -15907,10 +15984,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 typed: bo_texpr.clone(),
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(left_diags.clone(), right_diags.clone()),
-                        eq_wall_diags.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat(left_diags.clone(), right_diags.clone()),
+                            eq_wall_diags.clone(),
+                        ),
+                        refinement_diags.clone(),
                     ),
-                    refinement_diags.clone(),
+                    add_concat_refuse.clone(),
                 ),
             })
         }
@@ -24760,17 +24840,26 @@ pub fn list_concat_elements_agree(
 ) -> bool {
     match (list_element_type_node(left.clone()), list_element_type_node(right.clone())) {
         (Some(le), Some(re)) => {
-            type_node_label(le.clone(), source_indices.clone())
-                == type_node_label(re.clone(), source_indices)
+            let peeled_eq = type_node_label(le.clone(), source_indices.clone())
+                == type_node_label(re.clone(), source_indices.clone())
                 && ((le.children.clone().len() as i64) == (re.children.clone().len() as i64))
-                && (le.connective.clone() == re.connective.clone())
-                && match (
+                && (le.connective.clone() == re.connective.clone());
+            if !peeled_eq {
+                false
+            } else if type_node_label(le, source_indices.clone()) != "String" {
+                true
+            } else {
+                match (
                     left.children.clone().first().cloned(),
                     right.children.clone().first().cloned(),
                 ) {
-                    (Some(lraw), Some(rraw)) => list_element_ctor_name(lraw) == list_element_ctor_name(rraw),
+                    (Some(lraw), Some(rraw)) => {
+                        is_where_refinement_type(lraw.clone()) == is_where_refinement_type(rraw.clone())
+                            && list_element_ctor_name(lraw) == list_element_ctor_name(rraw)
+                    }
                     _ => false,
                 }
+            }
         }
         _ => false,
     }
@@ -24862,7 +24951,9 @@ pub fn concat_unify_operands(
                 result: left,
                 refuse: None,
             }
-        } else {
+        } else if list_element_is_kernel_string(left.clone(), source_indices.clone())
+            && list_element_is_kernel_string(right.clone(), source_indices.clone())
+        {
             ConcatUnify {
                 result: crate::v1_std_core::error_type(),
                 refuse: Some(v1_rt::concat(
@@ -24878,6 +24969,11 @@ pub fn concat_unify_operands(
                     ),
                     crate::v1_compiler_infer_types::node_type_shape(right, source_indices),
                 )),
+            }
+        } else {
+            ConcatUnify {
+                result: left,
+                refuse: None,
             }
         }
     } else if left_unsolved && right_unsolved {

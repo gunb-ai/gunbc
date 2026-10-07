@@ -6853,7 +6853,15 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       Absent => ConcatUnify { result: fallback_concat, refuse: none }
     }
     let refuse_diags = match unified.refuse {
-      Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+      Present { value: _ } => [type_mismatch_error(
+        expected: node_type_shape(n: left_ty, source_indices: scope.type_env.source_indices),
+        got: match typed_args |> skip(1) |> first {
+          Present { value: a } => node_type_shape(n: resolved_type(n: arg_value(n: a)), source_indices: scope.type_env.source_indices)
+          Absent => "unknown"
+        },
+        span: span,
+        module_name: scope.module_name
+      )]
       Absent => []
     }
     Tier2bBt { bt: unified.result, kernel_diags: refuse_diags }
@@ -9140,7 +9148,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
           let bridge_result_type = bridge_unified.result
           let concat_refuse_diags = match bridge_unified.refuse {
-            Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+            Present { value: _ } => [type_mismatch_error(
+              expected: node_type_shape(n: first_arg_type, source_indices: scope.type_env.source_indices),
+              got: match remaining |> first {
+                Present { value: other } => node_type_shape(n: resolved_type(n: arg_value(n: other)), source_indices: scope.type_env.source_indices)
+                Absent => "unknown"
+              },
+              span: span,
+              module_name: scope.module_name
+            )]
             Absent => []
           }
           let template_subst_diags = method_tv.diagnostics
@@ -9524,7 +9540,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let result_type = mc_concat.result
       let mc_concat_refuse = match mc_concat.refuse {
-        Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+        Present { value: _ } => [type_mismatch_error(
+          expected: node_type_shape(n: recv_rt, source_indices: scope.type_env.source_indices),
+          got: match typed_mc_args |> first {
+            Present { value: other } => node_type_shape(n: resolved_type(n: arg_value(n: other)), source_indices: scope.type_env.source_indices)
+            Absent => "unknown"
+          },
+          span: span,
+          module_name: scope.module_name
+        )]
         Absent => []
       }
       let mc_template_diags = method_tv_mc.diagnostics
@@ -9936,7 +9960,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let binop_result = add_unify.result
       let add_concat_refuse = match add_unify.refuse {
-        Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+        Present { value: _ } => [type_mismatch_error(
+          expected: node_type_shape(n: left_rt, source_indices: scope.type_env.source_indices),
+          got: node_type_shape(n: right_rt, source_indices: scope.type_env.source_indices),
+          span: span,
+          module_name: scope.module_name
+        )]
         Absent => []
       }
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
@@ -14295,17 +14324,25 @@ fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<Strin
       match list_element_type_node(n: right) {
         Absent => false
         Present { value: re } =>
-          type_node_label(n: le, source_indices: source_indices) == type_node_label(n: re, source_indices: source_indices)
+          let peeled_eq = type_node_label(n: le, source_indices: source_indices) == type_node_label(n: re, source_indices: source_indices)
             && (le.children |> count) == (re.children |> count)
             && le.connective == re.connective
-            && match left.children |> first {
+          if !peeled_eq {
+            false
+          } else if type_node_label(n: le, source_indices: source_indices) != "String" {
+            true
+          } else {
+            match left.children |> first {
               Absent => false
               Present { value: lraw } =>
                 match right.children |> first {
                   Absent => false
-                  Present { value: rraw } => list_element_ctor_name(el: lraw) == list_element_ctor_name(el: rraw)
+                  Present { value: rraw } =>
+                    is_where_refinement_type(ty: lraw) == is_where_refinement_type(ty: rraw)
+                      && list_element_ctor_name(el: lraw) == list_element_ctor_name(el: rraw)
                 }
             }
+          }
       }
   }
 }
@@ -14349,7 +14386,8 @@ fn concat_unify_operands(left: Node, right: Node, fallback: Node, source_indices
   } else if left_list && right_list {
     if list_concat_elements_agree(left: left, right: right, source_indices: source_indices) {
       ConcatUnify { result: left, refuse: none }
-    } else {
+    } else if list_element_is_kernel_string(n: left, source_indices: source_indices)
+        && list_element_is_kernel_string(n: right, source_indices: source_indices) {
       ConcatUnify {
         result: error_type,
         refuse: Present { value: concat(
@@ -14359,6 +14397,8 @@ fn concat_unify_operands(left: Node, right: Node, fallback: Node, source_indices
           node_type_shape(n: right, source_indices: source_indices)
         ) }
       }
+    } else {
+      ConcatUnify { result: left, refuse: none }
     }
   } else if left_unsolved && right_unsolved {
     if concat_operand_is_open_generic(n: left, source_indices: source_indices) {
