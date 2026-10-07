@@ -2,7 +2,6 @@ module test.claim.native_product_shared_store
 
 import std.types { String, Bool }
 import std.optional { Present, Absent }
-import std.fabric_blob { FabricBlobGetUnavailable, FabricBlobUnauthorized }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.native_product_shared_store {
   ForkPullRequestRun, SameRepoPullRequestRun, MergeGroupRun, UnattributedRun,
@@ -30,10 +29,9 @@ test fn the_product_key_is_the_address_and_a_malformed_key_has_none() -> Bool {
   ok && bad
 }
 
-// A fork's read is refused before any credential is reached; a standing run's read refuses CLOSED while
-// the cache-blobs credential is unminted (the frontier's trigger), as an Unauthorized fault, never a miss
-// that would be mistaken for an absent entry.
-test fn a_read_without_standing_or_credential_refuses_closed() -> Bool {
+// A fork's read is refused before any credential is reached. The standing arm is not exercised live
+// here: with the credential pinned it would reach the network.
+test fn a_read_without_standing_is_refused_before_any_credential() -> Bool {
   match native_product_blob_address(key_hex: live_key) {
     Absent => false
     Present { value: addr } => {
@@ -41,15 +39,7 @@ test fn a_read_without_standing_or_credential_refuses_closed() -> Bool {
         NativeProductSharedGetNotAdmitted { cause: _ } => true
         NativeProductSharedGetAnswered { result: _ } => false
       }
-      let unminted = match native_product_shared_get(standing: MergeGroupRun, address: addr, token_source: WorkloadIdentityToken) {
-        NativeProductSharedGetAnswered { result: r } =>
-          match r.verdict {
-            FabricBlobGetUnavailable { address: _, fault: FabricBlobUnauthorized { cause: _ } } => true
-            _ => false
-          }
-        NativeProductSharedGetNotAdmitted { cause: _ } => false
-      }
-      fork && unminted
+      fork
     }
   }
 }
