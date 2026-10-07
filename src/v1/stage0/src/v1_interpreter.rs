@@ -8706,15 +8706,18 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 }
             }
             _ => {
-                if let (Some(mut a), Some(b)) =
-                    (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                // A persistent RRB append, never an element copy: a `Value::List` operand is
+                // shared as-is and only a free-monoid chain is materialized (and charged).
+                if let (Some((a_items, a_copied)), Some((b_items, b_copied))) =
+                    (value_to_list_carrier(&left), value_to_list_carrier(&right))
                 {
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += (a.len() + b.len()) as u64;
+                    counters.list_concat_items_copied += a_copied + b_copied;
                     drop(counters);
-                    a.extend(b);
-                    return Ok(list_value((a)));
+                    let mut result = (*a_items).clone();
+                    result.append((*b_items).clone());
+                    return Ok(list_value(result));
                 }
             }
         }
@@ -23691,15 +23694,15 @@ macro_rules! v1_builtin_arms {
                             }
                             None => Ok(None),
                         },
-                        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
-                            (Some(mut a_items), Some(b_items)) => {
+                        _ => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
+                            (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
                                 let mut counters = $ctx.mutation_counters.borrow_mut();
                                 counters.list_concat_calls += 1;
-                                counters.list_concat_items_copied +=
-                                    (a_items.len() + b_items.len()) as u64;
+                                counters.list_concat_items_copied += a_copied + b_copied;
                                 drop(counters);
-                                a_items.extend(b_items);
-                                Ok(Some(list_value((a_items))))
+                                let mut result = (*a_items).clone();
+                                result.append((*b_items).clone());
+                                Ok(Some(list_value(result)))
                             }
                             _ => Ok(None),
                         },
