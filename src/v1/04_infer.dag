@@ -13732,7 +13732,8 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 
 // A CONTAINER SLOT MAY NOT BE THE RAW CHILD. Normalize first (type-annotation wrappers), bind
 // the raw child (first/filter's T), then peel through for_each_element_type_node (fold_list's
-// FreeMonoid<T> against a kernel List).
+// FreeMonoid<T> against a kernel List). child_type_node must keep a TypeVariable leaf: treating
+// inferred != none as Resolved made T into error_type and left fold_list's T unbound.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective

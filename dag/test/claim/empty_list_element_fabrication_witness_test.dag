@@ -51,6 +51,11 @@ data empty_list_at_named_product_source: String = "module probe_empty_list_at_um
 // must take the informative right list so a declared List<String> return stays accepted.
 data fold_init_concat_informing_source: String = "module probe_fold_init_concat\nfn labels() -> List<String> { [\"a\"] }\nfn gained_plus() -> List<String> {\n  fold(labels(), init: [], f: (acc, s) => acc + [s])\n}\nfn gained_concat() -> List<String> {\n  fold(labels(), init: [], f: (acc, s) => concat(acc, [s]))\n}\nfn fold_list_if_concat(raw: String) -> List<String> {\n  fold_list(xs: split(s: raw, delimiter: \" \"), empty: [], cons: fn(acc, tok) {\n    if tok == \"\" { acc } else { concat(acc, [tok]) }\n  })\n}\n"
 
+// fold_list<T,A>(xs: FreeMonoid<T>, ...) MUST BIND T FROM XS. Peeling through child_type_node
+// used to turn the TypeVariable leaf into error_type, so edge.label compiled as a field on T
+// (type_declaration_use_census emit-build).
+data fold_list_xs_element_field_source: String = "module probe_fold_list_xs_field\ntype Edge { label: String }\nfn members() -> List<Edge> { [Edge { label: \"a\" }] }\nfn labels() -> List<String> {\n  fold_list(xs: members(), empty: [], cons: fn(acc, edge) {\n    concat(acc, [edge.label])\n  })\n}\n""
+
 fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => (census_blocking_rows(rows: rows) |> count) == 0
@@ -87,4 +92,8 @@ test fn empty_list_against_a_named_product_still_refuses() -> Bool {
 
 test fn fold_init_concat_informs_the_list_element() -> Bool {
   compiles_with_no_blocking_diagnostic(source: fold_init_concat_informing_source)
+}
+
+test fn fold_list_binds_element_from_xs_for_field_access() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: fold_list_xs_element_field_source)
 }
