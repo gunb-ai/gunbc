@@ -5078,17 +5078,11 @@ mod policy_entry_closure_sources_controls {
     use std::collections::HashSet;
 
     const ENTRY: &str = "entry.dag";
-    const MID: &str = "mid.dag";
     const PROVIDER: &str = "provider.dag";
     const BROKEN: &str = "broken.dag";
 
     const ENTRY_SRC: &str = "module policy.closure.entry\n\
-import policy.closure.mid { mid_ok }\n\
-fn use_mid() -> Int { mid_ok() }\n";
-
-    const MID_SRC: &str = "module policy.closure.mid\n\
-fn mid_ok() -> Int { 1 }\n\
-fn uses_provider() -> policy.closure.provider.ProviderToken {\n\
+fn use_provider() -> policy.closure.provider.ProviderToken {\n\
   policy.closure.provider.ProviderToken { n: 1 }\n\
 }\n";
 
@@ -5098,24 +5092,23 @@ type ProviderToken {\n\
 }\n";
 
     const BROKEN_SRC: &str = "module policy.closure.broken\n\
-import policy.closure.mid { mid_ok }\n\
-fn broken() -> Int { no_such_function_anywhere() }\n";
+fn broken() -> policy.closure.provider.ProviderToken {\n\
+  no_such_function_anywhere()\n\
+}\n";
 
-    fn fixture_tree() -> PathBuf {
-        let dir = process_workspace_root().join("target").join(format!(
-            "policy_entry_closure_{}_{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
-        std::fs::write(dir.join(MID), MID_SRC).unwrap();
-        std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
-        std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
-        dir
+    fn fixture_tree() -> &'static Path {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = process_workspace_root()
+                .join("target")
+                .join(format!("policy_entry_closure_{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+            std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+            std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+            dir
+        })
+        .as_path()
     }
 
     fn provider_path(dir: &Path) -> String {
@@ -5194,7 +5187,6 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
             "provider {provider} missing from {:?}",
             paths(&closed)
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -5209,7 +5201,6 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
             "the import-only mutant must omit {provider}; got {:?}",
             paths(&mutant)
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -5231,7 +5222,6 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 || refusal.contains("blocking_diagnostics"),
             "refusal must name the real error, got: {refusal}"
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
