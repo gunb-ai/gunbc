@@ -89,9 +89,14 @@ test fn witness_every_producer_row_reaches_the_union() -> Bool {
   fold(produced, init: true, f: fn(acc, t) { acc && contains_str(xs: edge_targets, want: t) })
 }
 
+// consumer_imported imports provider_imported AND reaches it by a qualified reference, so BOTH
+// producers carry that edge: the overlap is constructed, not asserted in prose. Deleting the dedup
+// makes the union carry it twice and this reds.
 test fn witness_union_has_no_duplicate_target() -> Bool {
   let edge_targets = targets_of(edges: fixture_edges())
-  count_of(xs: edge_targets, want: imported_provider) == 1
+  contains_str(xs: fact_targets(facts: fixture_import_facts()), want: imported_provider)
+    && contains_str(xs: fact_targets(facts: fixture_reference_facts()), want: imported_provider)
+    && count_of(xs: edge_targets, want: imported_provider) == 1
     && count_of(xs: edge_targets, want: referenced_provider) == 1
 }
 
