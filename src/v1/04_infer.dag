@@ -9130,9 +9130,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               _ => KernelTypeBuild { ty: base_result_type, diagnostics: rest_result.diagnostics }
             }
           }
-          let bridge_result_type = match remaining |> first {
-            Present { value: other } => list_concat_result_from_other_value(other_value: arg_value(n: other), left: first_arg_type, fallback: method_tv.ty, source_indices: scope.type_env.source_indices)
-            Absent => method_tv.ty
+          let bridge_unified = if func_name == "concat" {
+            match remaining |> first {
+              Present { value: other } => concat_unify_operands(left: first_arg_type, right: resolved_type(n: arg_value(n: other)), fallback: method_tv.ty, source_indices: scope.type_env.source_indices)
+              Absent => ConcatUnify { result: method_tv.ty, refuse: none }
+            }
+          } else {
+            ConcatUnify { result: method_tv.ty, refuse: none }
+          }
+          let bridge_result_type = bridge_unified.result
+          let concat_refuse_diags = match bridge_unified.refuse {
+            Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+            Absent => []
           }
           let template_subst_diags = method_tv.diagnostics
           let returns_receiver_self = if method_resolution.semantics == none { false } else {
@@ -9167,7 +9176,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
+            diagnostics: concat(arg_diags, concat(concat_refuse_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name)))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) {
           let bare_m = bare_map_node()
@@ -9505,9 +9514,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
         }
       }
-      let result_type = match typed_mc_args |> first {
-        Present { value: other } => list_concat_result_from_other_value(other_value: arg_value(n: other), left: recv_rt, fallback: method_tv_mc.ty, source_indices: scope.type_env.source_indices)
-        Absent => method_tv_mc.ty
+      let mc_concat = if method_name == "concat" {
+        match typed_mc_args |> first {
+          Present { value: other } => concat_unify_operands(left: recv_rt, right: resolved_type(n: arg_value(n: other)), fallback: method_tv_mc.ty, source_indices: scope.type_env.source_indices)
+          Absent => ConcatUnify { result: method_tv_mc.ty, refuse: none }
+        }
+      } else {
+        ConcatUnify { result: method_tv_mc.ty, refuse: none }
+      }
+      let result_type = mc_concat.result
+      let mc_concat_refuse = match mc_concat.refuse {
+        Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+        Absent => []
       }
       let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Present { value: PlainMethodSemantics } }
@@ -9521,7 +9539,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name)), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name))
+        diagnostics: concat(concat(concat(concat(recv_diags, mc_arg_diags), mc_concat_refuse), relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name)), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name))
       }
       }
 
@@ -9909,11 +9927,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let left_rt = resolved_type(n: left_typed)
       let right_rt = resolved_type(n: right_typed)
       let binop_info = infer_binop_type_node(op: op, left_type: left_rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
-      let binop_result = if (op == Add)
+      let add_unify = if (op == Add)
           && (node_is_list_concat_operand(n: left_rt, source_indices: scope.type_env.source_indices)
               || node_is_list_concat_operand(n: right_rt, source_indices: scope.type_env.source_indices)) {
-        list_concat_result_from_other_value(other_value: right_typed, left: left_rt, fallback: binop_info.result_type, source_indices: scope.type_env.source_indices)
-      } else { binop_info.result_type }
+        concat_unify_operands(left: left_rt, right: right_rt, fallback: binop_info.result_type, source_indices: scope.type_env.source_indices)
+      } else {
+        ConcatUnify { result: binop_info.result_type, refuse: none }
+      }
+      let binop_result = add_unify.result
+      let add_concat_refuse = match add_unify.refuse {
+        Present { value: msg } => [inference_error(message: msg, span: span, module_name: scope.module_name)]
+        Absent => []
+      }
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
       let refinement_diags = match op {
         Sub =>
@@ -9929,7 +9954,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: left_rt, scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_result } }, span: span)
       InferResult {
         typed: bo_texpr,
-        diagnostics: concat(concat(concat(left_diags, right_diags), eq_wall_diags), refinement_diags)
+        diagnostics: concat(concat(concat(concat(left_diags, right_diags), eq_wall_diags), refinement_diags), add_concat_refuse)
       }
 
     ExprUnaryOp { op: op } =>
@@ -14242,24 +14267,40 @@ fn list_element_is_kernel_string(n: Node, source_indices: Map<String, NewlineInd
     }
 }
 
-// AN IF-JOIN CHECKS EACH BRANCH AGAINST THE EXPECTED LIST, not by picking String. A branch
-// meets the expected list when it is still unsolved, when it inhabits that list, or when it
-// is the defaulted List<String> standing where the expected element is a declared brand or
-// refinement (DESIGN §4: String does not implicitly inhabit the brand; the empty acc is not
-// a String list of values).
+// AN IF-JOIN CHECKS EACH BRANCH AGAINST THE EXPECTED LIST. A branch meets it when it is
+// still unsolved or when it inhabits that list. A defaulted List<String> does not stand in
+// for a branded or refined expected element (DESIGN §4 / §5: no silent side).
 fn list_branch_meets_expected_list(branch: Node, expected: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   type_node_is_uninformed_accumulator(n: branch, source_indices: source_indices)
     || node_type_compatible(left: branch, right: expected, source_indices: source_indices, text: text)
-    || (list_element_is_kernel_string(n: branch, source_indices: source_indices)
-        && concat_operand_is_informed_list(n: expected, source_indices: source_indices)
-        && !list_element_is_kernel_string(n: expected, source_indices: source_indices))
+}
+
+fn list_element_type_node(n: Node) -> Node? {
+  match n.children |> first {
+    Present { value: el } => Present { value: child_type_node(ch: el) }
+    Absent => none
+  }
+}
+
+fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match list_element_type_node(n: left) {
+    Absent => false
+    Present { value: le } =>
+      match list_element_type_node(n: right) {
+        Absent => false
+        Present { value: re } =>
+          type_node_label(n: le, source_indices: source_indices) == type_node_label(n: re, source_indices: source_indices)
+            && (le.children |> count) == (re.children |> count)
+            && le.connective == re.connective
+      }
+  }
 }
 
 // AN UNSOLVED CONCAT OPERAND UNIFIES WITH THE INFORMATIVE LIST, or the call refuses.
 // It must not pick the String overload because a side is unknown, and must not default T
 // (DESIGN §5; same rule as the no-default fold_list accumulator control). Both unsolved
-// is `cannot infer`. An already-solved list (List<NonEmptyStr> beside [String]) keeps
-// the existing fallback — the unsolved arm is not a second bind over a known acc.
+// is `cannot infer`. Two informed lists must have equal element types; a silent keep-left
+// when they disagree is a fabricated join.
 fn concat_operand_is_open_generic(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = type_node_label(n: n, source_indices: source_indices)
   is_type_variable_name(name: name)
@@ -14292,10 +14333,18 @@ fn concat_unify_operands(left: Node, right: Node, fallback: Node, source_indices
   } else if right_unsolved && left_list {
     ConcatUnify { result: left, refuse: none }
   } else if left_list && right_list {
-    if concat_operand_is_informed_list(n: fallback, source_indices: source_indices) {
-      ConcatUnify { result: fallback, refuse: none }
-    } else {
+    if list_concat_elements_agree(left: left, right: right, source_indices: source_indices) {
       ConcatUnify { result: left, refuse: none }
+    } else {
+      ConcatUnify {
+        result: error_type,
+        refuse: Present { value: concat(
+          "concat operands have incompatible element types: ",
+          node_type_shape(n: left, source_indices: source_indices),
+          " vs ",
+          node_type_shape(n: right, source_indices: source_indices)
+        ) }
+      }
     }
   } else if left_unsolved && right_unsolved {
     if concat_operand_is_open_generic(n: left, source_indices: source_indices) {

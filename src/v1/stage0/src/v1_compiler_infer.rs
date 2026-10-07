@@ -14208,16 +14208,32 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                                         };
-                                        let bridge_result_type =
+                                        let bridge_unified = if func_name.clone()
+                                            == "concat".to_string()
+                                        {
                                             match remaining.clone().iter().cloned().next() {
-                                                Some(other) => list_concat_result_from_other_value(
-                                                    crate::v1_std_core::arg_value(other.clone()),
+                                                Some(other) => concat_unify_operands(
                                                     first_arg_type.clone(),
+                                                    crate::v1_compiler_infer_types::resolved_type(
+                                                        crate::v1_std_core::arg_value(
+                                                            other.clone(),
+                                                        ),
+                                                    ),
                                                     method_tv.ty.clone(),
                                                     scope.type_env.clone().source_indices.clone(),
                                                 ),
-                                                std::option::Option::None => method_tv.ty.clone(),
-                                            };
+                                                std::option::Option::None => ConcatUnify {
+                                                    result: method_tv.ty.clone(),
+                                                    refuse: None,
+                                                },
+                                            }
+                                        } else {
+                                            ConcatUnify {
+                                                result: method_tv.ty.clone(),
+                                                refuse: None,
+                                            }
+                                        };
+                                        let bridge_result_type = bridge_unified.result.clone();
                                         let template_subst_diags = method_tv.diagnostics.clone();
                                         let returns_receiver_self = if (method_resolution
                                             .semantics
@@ -14847,15 +14863,28 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                     };
-                    let result_type = match typed_mc_args.clone().iter().cloned().next() {
-                        Some(other) => list_concat_result_from_other_value(
-                            crate::v1_std_core::arg_value(other.clone()),
-                            recv_rt.clone(),
-                            method_tv_mc.ty.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ),
-                        std::option::Option::None => method_tv_mc.ty.clone(),
+                    let mc_concat = if method_name.clone() == "concat".to_string() {
+                        match typed_mc_args.clone().iter().cloned().next() {
+                            Some(other) => concat_unify_operands(
+                                recv_rt.clone(),
+                                crate::v1_compiler_infer_types::resolved_type(
+                                    crate::v1_std_core::arg_value(other.clone()),
+                                ),
+                                method_tv_mc.ty.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            std::option::Option::None => ConcatUnify {
+                                result: method_tv_mc.ty.clone(),
+                                refuse: None,
+                            },
+                        }
+                    } else {
+                        ConcatUnify {
+                            result: method_tv_mc.ty.clone(),
+                            refuse: None,
+                        }
                     };
+                    let result_type = mc_concat.result.clone();
                     let mc_template_diags = method_tv_mc.diagnostics.clone();
                     let method_semantics =
                         if (method_resolution.semantics.clone() != std::option::Option::None) {
@@ -24708,6 +24737,30 @@ pub fn concat_operand_is_informed_list(
     node_is_list_concat_operand(n.clone(), source_indices) && !unify_binding_is_uninformative(n)
 }
 
+pub fn list_element_type_node(n: Rc<Node>) -> std::option::Option<Rc<Node>> {
+    n.children
+        .clone()
+        .first()
+        .cloned()
+        .map(crate::v1_compiler_infer_types::child_type_node)
+}
+
+pub fn list_concat_elements_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (list_element_type_node(left), list_element_type_node(right)) {
+        (Some(le), Some(re)) => {
+            type_node_label(le.clone(), source_indices.clone())
+                == type_node_label(re.clone(), source_indices)
+                && ((le.children.clone().len() as i64) == (re.children.clone().len() as i64))
+                && (le.connective.clone() == re.connective.clone())
+        }
+        _ => false,
+    }
+}
+
 pub fn list_element_is_kernel_string(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -24733,14 +24786,11 @@ pub fn list_branch_meets_expected_list(
 ) -> bool {
     type_node_is_uninformed_accumulator(branch.clone(), source_indices.clone())
         || crate::v1_compiler_infer_types::node_type_compatible(
-            branch.clone(),
-            expected.clone(),
-            source_indices.clone(),
+            branch,
+            expected,
+            source_indices,
             text,
         )
-        || (list_element_is_kernel_string(branch, source_indices.clone())
-            && concat_operand_is_informed_list(expected.clone(), source_indices.clone())
-            && !list_element_is_kernel_string(expected, source_indices))
 }
 
 pub fn concat_operand_is_open_generic(
@@ -24792,15 +24842,27 @@ pub fn concat_unify_operands(
             refuse: None,
         }
     } else if left_list && right_list {
-        if concat_operand_is_informed_list(fallback.clone(), source_indices.clone()) {
+        if list_concat_elements_agree(left.clone(), right.clone(), source_indices.clone()) {
             ConcatUnify {
-                result: fallback,
+                result: left,
                 refuse: None,
             }
         } else {
             ConcatUnify {
-                result: left,
-                refuse: None,
+                result: crate::v1_std_core::error_type(),
+                refuse: Some(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "concat operands have incompatible element types: ".to_string(),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                left,
+                                source_indices.clone(),
+                            ),
+                        ),
+                        " vs ".to_string(),
+                    ),
+                    crate::v1_compiler_infer_types::node_type_shape(right, source_indices),
+                )),
             }
         }
     } else if left_unsolved && right_unsolved {

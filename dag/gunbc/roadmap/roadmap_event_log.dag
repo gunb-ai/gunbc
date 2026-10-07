@@ -552,7 +552,7 @@ fn roadmap_event_heads(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnv
 }
 
 fn roadmap_event_missing_parents(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventId> {
-  fold(envs, init: [], f: (acc, e) => match e.event.parent {
+  fold(envs, init: [] as List<RoadmapEventId>, f: (acc, e) => match e.event.parent {
     Absent => acc
     Present { value: p } => if envelope_has_id(envs: envs, id: p) { acc } else { concat(acc, [p]) }
   })

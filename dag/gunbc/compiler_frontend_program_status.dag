@@ -1,6 +1,6 @@
 module gunbc.compiler_frontend_program_status
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -884,7 +884,7 @@ fn prerequisite_names_by_class(m: ProgramMilestone, want: MilestoneStandingClass
   fold(milestone_prerequisites(m: m), init: [], f: fn(acc, p) {
     if standing_class_label(c: standing_class(s: milestone_status(m: p)))
        == standing_class_label(c: want) {
-      concat(acc, [milestone_label(m: p)])
+      concat(acc, [milestone_label(m: p) as String])
     } else {
       acc
     }
@@ -1035,7 +1035,7 @@ data conditionally_awaited_instruments: List<MissingInstrument> = []
 fn milestones_awaiting(i: MissingInstrument) -> List<String> {
   fold(program_milestones, init: [], f: fn(acc, m) {
     if any(milestone_missing_instruments(m: m), other => missing_instrument_eq(a: other, b: i)) {
-      concat(acc, [milestone_label(m: m)])
+      concat(acc, [milestone_label(m: m) as String])
     } else {
       acc
     }
