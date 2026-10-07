@@ -814,11 +814,8 @@ fn vfp_bool_text(b: Bool) -> String {
   }
 }
 
-fn vfp_probe_kids(n: Node, depth: Int) -> String {
-  match depth {
-    0 => ""
-    _ =>
-      fold(n.children, init: "", f: fn(acc, e) {
+fn vfp_probe_kids(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
         let tag = match e.label {
           CoreMarker { marker: m } => "core:" + symbol_lexeme(sym: m)
           Authored { name: nm } => "fld:" + symbol_lexeme(sym: nm)
@@ -828,14 +825,13 @@ fn vfp_probe_kids(n: Node, depth: Int) -> String {
         }
         let tgt = match e.target.kind {
           TypeNode { connective: Atom { identity: id } } => "atom(" + symbol_lexeme(sym: id) + "|occ" + "?" + ")"
-          TypeNode { connective: Conj } => "conj(o" + "?" + "[" + vfp_probe_kids(n: e.target, depth: sub_int(a: depth, b: 1)) + "])"
+          TypeNode { connective: Conj } => "conj(occ?)"
           ComputationNode { behavior: Match } => "MATCH(o" + "?" + ")"
           ComputationNode { behavior: _ } => "comp(o" + "?" + ")"
           _ => "node(o" + "?" + ")"
         }
         acc + " " + tag + "->" + tgt
       })
-  }
 }
 
 fn vfp_probe_anchor(d: Diagnostic) -> String {
@@ -843,13 +839,13 @@ fn vfp_probe_anchor(d: Diagnostic) -> String {
     NodeLocus { anchor: a } =>
       match a.at.kind {
         TypeNode { connective: Atom { identity: id } } =>
-          "atom:" + symbol_lexeme(sym: id) + "|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 2) + "]"
+          "atom:" + symbol_lexeme(sym: id) + "|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
         TypeNode { connective: Conj } =>
-          "conj|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 2) + "]"
+          "conj|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
         ComputationNode { behavior: Match } =>
-          "MATCH|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 1) + "]"
+          "MATCH|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
         ComputationNode { behavior: _ } =>
-          "comp|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 1) + "]"
+          "comp|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
         _ => "node|o" + "?"
       }
     DeclarationLocus { declaration: dd } => "decl"
