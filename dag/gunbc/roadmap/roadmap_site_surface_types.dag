@@ -84,10 +84,8 @@ type RoadmapSiteSurfaceBundle {
   subject_identity: Fnv1a64Structural
   producer_identity: Fnv1a64Structural
   bundle_identity: Fnv1a64Structural
-  roadmap_md: RoadmapSiteSurfaceArtifact
   dispatch_json: RoadmapSiteSurfaceArtifact
   daily_html: RoadmapSiteSurfaceArtifact
-  full_html: RoadmapSiteSurfaceArtifact
   dispatch_js: RoadmapSiteSurfaceArtifact
   healthz_body: String
 }
