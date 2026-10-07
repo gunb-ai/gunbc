@@ -12144,6 +12144,17 @@ pub fn build_live_read_selection_manifest(
 }
 
 impl MultiEntryIndex {
+    #[cfg(test)]
+    pub(crate) fn typed_module_cache_for_tests(
+        &self,
+    ) -> Vec<(String, Rc<v1_compiler_infer::TypecheckModuleResult>)> {
+        self.typed_module_cache
+            .borrow()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
     /// This index's opaque identity, for checking a manifest against the index about to consume it.
     pub fn generation(&self) -> u64 {
         self.generation

@@ -25,7 +25,7 @@ import gunbc.typecheck_module_store {
   typecheck_materialization_seed_path_note,
 }
 import std.measure { measure_count }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 
 fn h(v: String) -> Fnv1a64Structural {

@@ -337,3 +337,119 @@ pub(crate) fn durable_typecheck_commit(
 pub(crate) fn observed_largest_entry_bytes() -> u64 {
     OBSERVED_LARGEST_ENTRY.with(|c| c.get())
 }
+
+#[cfg(test)]
+pub(crate) fn outcome_snapshot() -> (u64, u64, u64) {
+    let c = OUTCOMES.with(|c| c.get());
+    (c.hit, c.miss, c.commit_committed)
+}
+
+#[cfg(test)]
+pub(crate) fn outcome_reset() {
+    OUTCOMES.with(|c| c.set(OutcomeCounts::default()));
+}
+
+/// Executing controls over REAL modules (DESIGN 3 pairing obligation): the production
+/// `reconcile_with_typed_cache` commits each module's OWN tail through the .dag door, and a fresh
+/// index (empty in-process cache) restores every module from the store via
+/// `typecheck_module_restore` to a result byte-equal to the computed one.
+#[cfg(test)]
+mod real_module_round_trip {
+    use super::*;
+    use crate::cli_run::{build_multi_entry_index, resolve_entry_with_index, workspace_root};
+
+    fn entry_and_roots() -> (String, Vec<String>) {
+        // The resolver reads repo-relative paths from the process cwd.
+        std::env::set_current_dir(workspace_root()).expect("enter workspace root");
+        (
+            "dag/std/optional.dag".to_string(),
+            vec!["dag".to_string(), "src/v2".to_string()],
+        )
+    }
+
+    struct CountingWriter(u64);
+    impl std::io::Write for CountingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len() as u64;
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// The typed results by content key. Compared with the derived structural `PartialEq`
+    /// (map-order-insensitive): serialized text is not canonical because HashMap iteration order
+    /// differs between two builds of the same map.
+    fn typed_results(
+        index: &crate::cli_run::MultiEntryIndex,
+    ) -> Vec<(String, std::rc::Rc<TypecheckModuleResult>)> {
+        let mut v = index.typed_module_cache_for_tests();
+        v.sort_by(|a, b| a.0.cmp(&b.0));
+        v
+    }
+
+    #[test]
+    fn restore_equals_compute_and_entry_excludes_parent_envs() {
+        let scratch =
+            std::path::PathBuf::from(format!("/tmp/gunbc_tcstore_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).unwrap();
+        set_witness_root(Some(scratch.to_string_lossy().into_owned()));
+        outcome_reset();
+        let (entry, roots) = entry_and_roots();
+
+        let cold_index = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&cold_index, &entry).expect("cold resolve");
+        let (hit0, miss0, committed0) = outcome_snapshot();
+        assert_eq!(hit0, 0, "a cold store cannot hit");
+        assert!(
+            miss0 > 0 && committed0 >= miss0,
+            "every miss commits ({miss0} miss, {committed0} committed): {:?}",
+            store_receipt_line()
+        );
+        let cold = typed_results(&cold_index);
+        assert!(!cold.is_empty());
+
+        let warm_index = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&warm_index, &entry).expect("warm resolve");
+        let (hit1, miss1, _) = outcome_snapshot();
+        assert_eq!(
+            miss1, miss0,
+            "warm run must not miss: every module restores"
+        );
+        assert!(
+            hit1 >= miss0,
+            "every module hit ({hit1} hit, {miss0} cold misses)"
+        );
+        let warm = typed_results(&warm_index);
+        assert_eq!(warm.len(), cold.len());
+        for ((k, a), (kb, b)) in cold.iter().zip(warm.iter()) {
+            assert_eq!(k, kb);
+            assert!(
+                a == b,
+                "restore(head, stored own tail) != computed result for module key {k}"
+            );
+        }
+
+        // size control: the entry is the module's own tail; the closure snapshot (parent envs)
+        // is what made the deleted store multi-GB.
+        let largest_full = cold
+            .iter()
+            .map(|(_, r)| {
+                let mut w = CountingWriter(0);
+                serde_json::to_writer(&mut w, &**r).expect("serialize result");
+                w.0
+            })
+            .max()
+            .unwrap();
+        let largest_entry = observed_largest_entry_bytes();
+        assert!(largest_entry > 0);
+        assert!(
+            largest_entry * 2 < largest_full,
+            "entry {largest_entry} bytes is not materially smaller than the full result {largest_full}: parent envs leaked in"
+        );
+        set_witness_root(None);
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+}

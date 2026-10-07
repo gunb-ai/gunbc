@@ -53,7 +53,7 @@ import gunbc.clock_read {
   ObserverClockObserved,
   ObserverClockUnreadable,
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 fn fresh_root_path() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path

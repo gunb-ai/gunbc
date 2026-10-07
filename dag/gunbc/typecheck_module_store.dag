@@ -43,7 +43,7 @@ import extdeps.realization.materialization_store_local {
   local_store_object_bytes,
 }
 import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // THE TYPECHECK-MODULE CONSUMER OF THE LOCAL STORE (C2). TypecheckModuleRequest keys are DERIVED
 // (std.materialization_provider request_key / std.interface_summary typed_module_key). Callers

@@ -14,6 +14,7 @@ use self::LiteralBoundary::*;
 use self::PeanoPatternReading::*;
 use self::RefinementInhabitance::*;
 use self::ServiceConfigFieldJudgment::*;
+use self::TypecheckModuleHead::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
@@ -30645,7 +30646,28 @@ pub fn ground_kernel_views(
     }
 }
 
-pub fn typecheck_module(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypecheckModuleHead {
+    TypecheckHeadAbandoned {
+        result: Rc<TypecheckModuleResult>,
+    },
+    TypecheckHeadReady {
+        env_result: Rc<BuildTypeEnvResult>,
+        module_name: String,
+        ctx: Rc<ModuleContext>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypecheckModuleOwn {
+    pub items: Rc<Vec<Rc<Node>>>,
+    pub func_local: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn typecheck_module_head(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
@@ -30653,7 +30675,7 @@ pub fn typecheck_module(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<TypecheckModuleResult> {
+) -> Rc<TypecheckModuleHead> {
     {
         let env_result = build_type_env(
             resolved.clone(),
@@ -30676,36 +30698,38 @@ pub fn typecheck_module(
         });
         let seed_diags = crate::v1_compiler_infer_method::builtin_kernel_seed_diagnostics();
         if ((env_errors.clone().len() as i64) > 0) {
-            return Rc::new(TypecheckModuleResult {
-                typed: Rc::new(TypedModule {
-                    progress: ModuleTypecheckProgress::AbandonedBeforeItems,
-                    module: resolved.module.clone(),
-                    items: Rc::new(vec![]),
-                    type_env: env.clone(),
-                    type_env_cache: env_cache.clone(),
-                    interface: build_module_interface(
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
+            return Rc::new(TypecheckModuleHead::TypecheckHeadAbandoned {
+                result: Rc::new(TypecheckModuleResult {
+                    typed: Rc::new(TypedModule {
+                        progress: ModuleTypecheckProgress::AbandonedBeforeItems,
+                        module: resolved.module.clone(),
+                        items: Rc::new(vec![]),
+                        type_env: env.clone(),
+                        type_env_cache: env_cache.clone(),
+                        interface: build_module_interface(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                resolved.module.clone(),
+                            ),
                             resolved.module.clone(),
-                        ),
-                        resolved.module.clone(),
-                        env.clone(),
-                        env_cache.clone(),
-                        source_indices.clone(),
-                    ),
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: crate::v1_std_core::authored_name_at(
+                            env.clone(),
+                            env_cache.clone(),
                             source_indices.clone(),
-                            resolved.module.clone(),
                         ),
-                        local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-                        parents: Rc::new(vec![]),
+                        func_env: Rc::new(ResolvedFuncEnv {
+                            name: crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                resolved.module.clone(),
+                            ),
+                            local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                            parents: Rc::new(vec![]),
+                        }),
+                        item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                        occurrence_transport: Some(resolved.occurrence_transport.clone()),
                     }),
-                    item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-                    occurrence_transport: Some(resolved.occurrence_transport.clone()),
+                    diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
+                    binding_forks: env_result.binding_forks.clone(),
                 }),
-                diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
-                binding_forks: env_result.binding_forks.clone(),
             });
         }
         let resolved_module_name =
@@ -30733,39 +30757,65 @@ pub fn typecheck_module(
             resolved_module_name.clone(),
             global_variant_base.clone(),
         );
-        let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
-            ctx.locals.clone(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
-                if ((((item.body.clone() != std::option::Option::None)
-                    && ((item.params.clone().len() as i64) == 0))
-                    && (item.inferred.clone() == std::option::Option::None))
-                    && (item.type_annotation.clone() != std::option::Option::None))
-                {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-                        Rc::new(TypeBinding {
-                            name: crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                item.clone(),
-                            ),
-                            resolved: item.type_annotation.clone().clone().unwrap(),
-                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
-                        }),
-                    )
-                } else {
-                    acc.clone()
-                }
-            },
-        );
+        Rc::new(TypecheckModuleHead::TypecheckHeadReady {
+            env_result: env_result.clone(),
+            module_name: resolved_module_name.clone(),
+            ctx: ctx.clone(),
+        })
+    }
+}
+
+pub fn typecheck_module_data_locals(
+    ctx: Rc<ModuleContext>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    ctx.resolved_items.clone().iter().cloned().fold(
+        ctx.locals.clone(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
+            if ((((item.body.clone() != std::option::Option::None)
+                && ((item.params.clone().len() as i64) == 0))
+                && (item.inferred.clone() == std::option::Option::None))
+                && (item.type_annotation.clone() != std::option::Option::None))
+            {
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                    Rc::new(TypeBinding {
+                        name: crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            item.clone(),
+                        ),
+                        resolved: item.type_annotation.clone().clone().unwrap(),
+                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        alias_rhs: std::option::Option::None,
+                    }),
+                )
+            } else {
+                acc.clone()
+            }
+        },
+    )
+}
+
+pub fn typecheck_module_items(
+    resolved: Rc<ResolvedModule>,
+    env_result: Rc<BuildTypeEnvResult>,
+    module_name: String,
+    ctx: Rc<ModuleContext>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypecheckModuleOwn> {
+    {
+        let env = env_result.env.clone();
+        let env_diags = env_result.diagnostics.clone();
+        let seed_diags = crate::v1_compiler_infer_method::builtin_kernel_seed_diagnostics();
+        let data_locals = typecheck_module_data_locals(ctx.clone(), source_indices.clone());
         let infer_scope = Rc::new(InferScope {
             type_env: env.clone(),
             func_env: ctx.func_env.clone(),
             locals: data_locals.clone(),
             body_locals: v1_rt::rc_empty_map::<String, bool>(),
             match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
-            module_name: resolved_module_name.clone(),
+            module_name: module_name.clone(),
             service_registry: ctx.svc_registry.clone(),
             item_registry: ctx.item_registry.clone(),
             caller_decl_name: "".to_string(),
@@ -30842,53 +30892,19 @@ pub fn typecheck_module(
             }
             __result
         });
-        let grounded = ground_kernel_views(
-            reannotated_items.clone(),
-            env.clone(),
-            resolved_module_name.clone(),
-        );
-        let module_type_env_cache = Rc::new(TypeEnvCache {
-            deps_map: env_cache.deps_map.clone(),
-            str_bindings: env_cache.str_bindings.clone(),
-            cycle_set_str: env_cache.cycle_set_str.clone(),
-            variant_locals: ctx.variant_locals.clone(),
-        });
-        let typed_base = crate::v1_std_core::module_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            resolved_module_name.clone(),
-            crate::v1_std_core::module_imports(resolved.module.clone()),
-            ctx.resolved_items.clone(),
-            resolved.module.clone().span.clone(),
-        );
-        let typed_module = Rc::new(Node {
-            ident_span: resolved.module.clone().ident_span.clone(),
-            ..(*typed_base.clone()).clone()
-        });
-        Rc::new(TypecheckModuleResult {
-            typed: Rc::new(TypedModule {
-                progress: ModuleTypecheckProgress::ItemsChecked,
-                module: typed_module.clone(),
-                items: grounded.items.clone(),
-                type_env: env.clone(),
-                type_env_cache: module_type_env_cache.clone(),
-                interface: build_module_interface(
-                    resolved_module_name.clone(),
-                    typed_module.clone(),
-                    env.clone(),
-                    module_type_env_cache.clone(),
-                    source_indices.clone(),
-                ),
-                func_env: updated_func_env.clone(),
-                item_registry: refresh_direct_service_names(
-                    ctx.item_registry.clone(),
-                    grounded.items.clone(),
-                    source_indices.clone(),
-                    resolved_module_name.clone(),
-                ),
-                occurrence_transport: Some(resolved.occurrence_transport.clone()),
-            }),
+        let grounded =
+            ground_kernel_views(reannotated_items.clone(), env.clone(), module_name.clone());
+        Rc::new(TypecheckModuleOwn {
+            items: grounded.items.clone(),
+            func_local: updated_func_env.local.clone(),
+            item_registry: refresh_direct_service_names(
+                ctx.item_registry.clone(),
+                grounded.items.clone(),
+                source_indices.clone(),
+                module_name.clone(),
+            ),
             diagnostics: frontier_occurrence_budget_checked(
-                resolved_module_name.clone(),
+                module_name.clone(),
                 resolved.module.clone().span.clone(),
                 v1_rt::concat(
                     v1_rt::concat(
@@ -30901,15 +30917,150 @@ pub fn typecheck_module(
                         ),
                         kernel_mint_shape_diagnostics(
                             env.clone(),
-                            resolved_module_name.clone(),
+                            module_name.clone(),
                             resolved.module.clone().span.clone(),
                         ),
                     ),
                     seed_diags.clone(),
                 ),
             ),
+        })
+    }
+}
+
+pub fn typecheck_module_assemble(
+    resolved: Rc<ResolvedModule>,
+    env_result: Rc<BuildTypeEnvResult>,
+    module_name: String,
+    ctx: Rc<ModuleContext>,
+    own: Rc<TypecheckModuleOwn>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypecheckModuleResult> {
+    {
+        let env = env_result.env.clone();
+        let module_type_env_cache = Rc::new(TypeEnvCache {
+            deps_map: env_result.cache.clone().deps_map.clone(),
+            str_bindings: env_result.cache.clone().str_bindings.clone(),
+            cycle_set_str: env_result.cache.clone().cycle_set_str.clone(),
+            variant_locals: ctx.variant_locals.clone(),
+        });
+        let typed_base = crate::v1_std_core::module_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            module_name.clone(),
+            crate::v1_std_core::module_imports(resolved.module.clone()),
+            ctx.resolved_items.clone(),
+            resolved.module.clone().span.clone(),
+        );
+        let typed_module = Rc::new(Node {
+            ident_span: resolved.module.clone().ident_span.clone(),
+            ..(*typed_base.clone()).clone()
+        });
+        Rc::new(TypecheckModuleResult {
+            typed: Rc::new(TypedModule {
+                progress: ModuleTypecheckProgress::ItemsChecked,
+                module: typed_module.clone(),
+                items: own.items.clone(),
+                type_env: env.clone(),
+                type_env_cache: module_type_env_cache.clone(),
+                interface: build_module_interface(
+                    module_name.clone(),
+                    typed_module.clone(),
+                    env.clone(),
+                    module_type_env_cache.clone(),
+                    source_indices.clone(),
+                ),
+                func_env: Rc::new(ResolvedFuncEnv {
+                    name: ctx.func_env.clone().name.clone(),
+                    local: own.func_local.clone(),
+                    parents: ctx.func_env.clone().parents.clone(),
+                }),
+                item_registry: own.item_registry.clone(),
+                occurrence_transport: Some(resolved.occurrence_transport.clone()),
+            }),
+            diagnostics: own.diagnostics.clone(),
             binding_forks: env_result.binding_forks.clone(),
         })
+    }
+}
+
+pub fn typecheck_module(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<TypecheckModuleResult> {
+    match (*typecheck_module_head(
+        resolved.clone(),
+        parent_index.clone(),
+        variant_surfaces.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        symbol_index.clone(),
+        global_variant_base.clone(),
+    ))
+    .clone()
+    {
+        TypecheckModuleHead::TypecheckHeadAbandoned { result: r, .. } => r.clone(),
+        TypecheckModuleHead::TypecheckHeadReady {
+            env_result: er,
+            module_name: name,
+            ctx,
+            ..
+        } => typecheck_module_assemble(
+            resolved.clone(),
+            er.clone(),
+            name.clone(),
+            ctx.clone(),
+            typecheck_module_items(
+                resolved.clone(),
+                er.clone(),
+                name.clone(),
+                ctx.clone(),
+                source_indices.clone(),
+            ),
+            source_indices.clone(),
+        ),
+    }
+}
+
+pub fn typecheck_module_restore(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    own: Rc<TypecheckModuleOwn>,
+) -> Rc<TypecheckModuleResult> {
+    match (*typecheck_module_head(
+        resolved.clone(),
+        parent_index.clone(),
+        variant_surfaces.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        symbol_index.clone(),
+        global_variant_base.clone(),
+    ))
+    .clone()
+    {
+        TypecheckModuleHead::TypecheckHeadAbandoned { result: r, .. } => r.clone(),
+        TypecheckModuleHead::TypecheckHeadReady {
+            env_result: er,
+            module_name: name,
+            ctx,
+            ..
+        } => typecheck_module_assemble(
+            resolved.clone(),
+            er.clone(),
+            name.clone(),
+            ctx.clone(),
+            own.clone(),
+            source_indices.clone(),
+        ),
     }
 }
 
