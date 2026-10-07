@@ -514,7 +514,7 @@ data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
 
 // THE NAMING CONVENTION IS THE SELECTOR OF A READING. Every Engram tensor at this revision carries
 // `.engram.` in its name; a selection over the full index by that selector is an observation
-// (DeepseekV41IndexEngramSelection, read by gunbc.spark.v41_index_engram_selection), and the rows
+// (DeepseekV41IndexEngramSelection, read by gunbc.spark.v41_index_engram_selection until it was deleted with Group A, 2026-10-07), and the rows
 // below are the ones read from the two shard headers. Until a reading is supplied, the closure here
 // stays scoped to those rows.
 data deepseek_v4_1_flash_index_tensor_count: Nat = 96085
@@ -564,7 +564,7 @@ data deepseek_v4_1_flash_engram_entries_layer_14: List<SafetensorsEntry> = [
 // THE SHAPE OF A SELECTION OVER THE INDEX: the file the selection was read from, how many weight_map
 // names it covered, the selector, and the names it selected with their shards. This module OBSERVES
 // nothing and carries no live selection (DESIGN section 3: an observation is a receipt in the observing
-// layer, not a fact the upstream owns); the reading is gunbc.spark.v41_index_engram_selection's, and
+// layer, not a fact the upstream owns); the reading was gunbc.spark.v41_index_engram_selection's (deleted with Group A, 2026-10-07), and
 // this module owns only the fold that decides whether a reading closes membership at this revision.
 type DeepseekV41IndexEngramSelection sole_constructor {
   index: DeepseekV41PublishedFile
@@ -685,7 +685,7 @@ data deepseek_v4_1_flash_engram_shards: List<DeepseekV41EngramShard> = [
 // These are the publisher's DECLARED digests, cited to the tree API at the revision; a fleet-side
 // reading over bytes present on a Spark is the same declared frontier as the Engram rows
 // (DSV41-10). The ADMITTED manifest is what the V4.1 candidate's weights axis is keyed by:
-// gunbc.spark.v41_runtime_candidate digests its canonical text and never the raw rows.
+// gunbc.spark.v41_runtime_candidate (deleted with Group A, 2026-10-07) digested its canonical text and never the raw rows.
 // A PUBLISHED FILE AT THIS REVISION: its path, whole-file size and the publisher's sha256. One
 // record for every file the candidate is keyed by -- the weight shards and the tokenizer files --
 // and one canonical serialization (deepseek_v4_1_flash_published_manifest_text) for both lists.
@@ -878,7 +878,7 @@ data deepseek_v4_1_flash_index_reading: DeepseekV41IndexReading = DeepseekV41Ind
 // population equal to the files'. Only an admitted manifest has a canonical text, and that text
 // carries the INDEX FILE as a row beside the shards -- the index is the weight map, so an index
 // that changes is a different model source even over the same shard bytes; the candidate
-// (gunbc.spark.v41_runtime_candidate) consumes this standing, never the raw row list, so a
+// (gunbc.spark.v41_runtime_candidate, deleted with Group A on 2026-10-07) consumed this standing, never the raw row list, so a
 // defective population is an unestablished model source rather than a differently keyed one.
 type DeepseekV41WeightManifestStanding
   = WeightManifestAdmitted { files: List<DeepseekV41PublishedFile>, index: DeepseekV41PublishedFile, canonical_text: String }
