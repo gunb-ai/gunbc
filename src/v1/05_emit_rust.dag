@@ -13475,6 +13475,41 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
 }
 
 fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  if is_string_typed_expr(e: receiver, source_indices: scope.type_env.source_indices) && (ho_spec.method_name == "filter" || ho_spec.method_name == "any") {
+    emit_rust_host_text_callback(method_name: ho_spec.method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  } else {
+    emit_rust_higher_order_method_over_list(ho_spec: ho_spec, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
+}
+
+// HOST TEXT INHABITS THE FREE MONOID OVER Char (ruling B): filter/any over a String iterate its Unicode SCALARS
+// (`.chars()`, never bytes), binding each as the Char it is (the kernel integer code point), and filter keeps the
+// String carrier. A predicate that is not a lambda is passed the same Char.
+fn emit_rust_host_text_callback(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let pred = match args |> first {
+    Present { value: a } =>
+      match arg_value(n: a).expr_data {
+        ExprLambda =>
+          let bd = match arg_value(n: a).children |> first { Present { value: v } => v  Absent => arg_value(n: a) }
+          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_indices: scope.type_env.source_indices)
+          let p = emit_ident(name: match ps |> first { Present { value: n } => n  Absent => "__x" }, target: Rust)
+          let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
+          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          concat("{ let ", p, ": i64 = __ch as i64; ", body_str, " }")
+        _ => concat("(", first_arg_str, ")(__ch as i64)")
+      }
+    Absent => "compile_error!(\"missing predicate\")"
+  }
+  if method_name == "any" {
+    concat("{ let mut __found = false; for __ch in (", recv_str, ").chars() { if ", pred, " { __found = true; break; } } __found }")
+  } else {
+    concat("{ let mut __kept = String::new(); for __ch in (", recv_str, ").chars() { if ", pred, " { __kept.push(__ch); } } __kept }")
+  }
+}
+
+fn emit_rust_higher_order_method_over_list(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)

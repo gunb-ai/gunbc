@@ -13997,7 +13997,22 @@ macro_rules! v1_algebra_method_arms {
                     .map(|v| list_value((v)))
             }),
 
-            arm "method_call.filter" { "filter" } => {
+            // HOST TEXT INHABITS THE FREE MONOID OVER Char (calm-boar-904, ruling B; std.algebra
+            // free_monoid_scalar_templates carries filter/any for the String profile). A Str receiver is iterated
+            // by its Unicode scalars -- a Rust &str is valid UTF-8 by construction, so every element is a scalar
+            // and there is no lossy path -- and filter keeps the String carrier. Seed growth:
+            // gunbc.seed_growth host_text_callback_method_arms.
+            arm "method_call.filter" { "filter" } => if let Value::Str(s) = &$receiver {
+                str_method_with_char_closure("filter", s, $args, $env, $ctx, |chars, f, $env, $ctx| {
+                    let mut kept = String::new();
+                    for c in chars {
+                        if apply_closure(f, &[char_value(c)], $env, $ctx)?.is_truthy() {
+                            kept.push(c);
+                        }
+                    }
+                    Ok(str_value(kept))
+                })
+            } else {
                 list_method_with_closure("filter", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
                     let mut result = Vec::new();
                     for item in items.iter() {
@@ -14050,14 +14065,25 @@ macro_rules! v1_algebra_method_arms {
                 },
             ),
 
-            arm "method_call.any" { "any" } => list_method_with_closure("any", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
-                for item in items.iter() {
-                    if apply_closure(f, &[item.clone()], $env, $ctx)?.is_truthy() {
-                        return Ok(Value::Bool(true));
+            arm "method_call.any" { "any" } => if let Value::Str(s) = &$receiver {
+                str_method_with_char_closure("any", s, $args, $env, $ctx, |chars, f, $env, $ctx| {
+                    for c in chars {
+                        if apply_closure(f, &[char_value(c)], $env, $ctx)?.is_truthy() {
+                            return Ok(Value::Bool(true));
+                        }
                     }
-                }
-                Ok(Value::Bool(false))
-            }),
+                    Ok(Value::Bool(false))
+                })
+            } else {
+                list_method_with_closure("any", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
+                    for item in items.iter() {
+                        if apply_closure(f, &[item.clone()], $env, $ctx)?.is_truthy() {
+                            return Ok(Value::Bool(true));
+                        }
+                    }
+                    Ok(Value::Bool(false))
+                })
+            },
 
             arm "method_call.all" { "all" } => list_method_with_closure("all", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
                 for item in items.iter() {
@@ -25452,6 +25478,24 @@ where
         msg: format!("{} requires a closure argument", method_name),
     })?;
     f(&items, closure, env, ctx)
+}
+
+// The host-text twin of list_method_with_closure: the receiver's Unicode scalars, in order.
+fn str_method_with_char_closure<F>(
+    method_name: &str,
+    receiver: &str,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+    f: F,
+) -> InterpResult<Value>
+where
+    F: FnOnce(std::str::Chars<'_>, &Value, &Rc<Env>, &InterpContext) -> InterpResult<Value>,
+{
+    let closure = args.first().ok_or_else(|| InterpError::TypeError {
+        msg: format!("{} requires a closure argument", method_name),
+    })?;
+    f(receiver.chars(), closure, env, ctx)
 }
 
 thread_local! {

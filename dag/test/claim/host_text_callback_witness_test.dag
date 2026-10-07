@@ -1,0 +1,60 @@
+module test.claim.host_text_callback_witness_test
+
+import std.types { Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: filter and any over HOST TEXT on the seed route (calm-boar-904, ruling B: host text inhabits the free monoid
+// over Char). The seed types the callback's element from std.algebra algebra_profile_generator (Char), reached through
+// the same collection template rows as a list (free_monoid_scalar_templates), and the emitter iterates the text's
+// Unicode SCALARS. The probes compile whole modules because the seed's compile is the interface under test.
+
+fn htc_blocking(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      rs |> any(r => r.blocking)
+    }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+data htc_char_fns: String = "import std.types { Char }\nfn is_a(c: Char) -> Bool { true }\nfn is_flag(b: Bool) -> Bool { b }\n"
+
+// POSITIVE: any over host text with a Char predicate compiles, and the emitted Rust walks `.chars()`, never bytes.
+test fn htc_any_over_text_iterates_chars() -> Bool {
+  compile_dag_rust_emit_check(
+    concat("module test.claim.htc_any_probe\n", htc_char_fns, "fn probe(s: String) -> Bool { any(xs: s, predicate: fn(c) { is_a(c: c) }) }\n"),
+    "src/test_claim_htc_any_probe.rs",
+    [".chars()"],
+    [".bytes()", "compile_error!"]
+  )
+}
+
+// POSITIVE: filter over host text keeps the String carrier, built from the kept scalars.
+test fn htc_filter_over_text_keeps_the_string_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    concat("module test.claim.htc_filter_probe\n", htc_char_fns, "fn probe(s: String) -> String { filter(xs: s, predicate: fn(c) { is_a(c: c) }) }\n"),
+    "src/test_claim_htc_filter_probe.rs",
+    [".chars()", "__kept.push("],
+    [".bytes()", "compile_error!"]
+  )
+}
+
+// RED: the element is a Char, so a predicate that hands it to a Bool parameter refuses. Before the generator was
+// read, the element was an unconstrained type variable and this was accepted.
+test fn htc_non_char_predicate_refuses() -> Bool {
+  htc_blocking(source: concat("module test.claim.htc_nonchar_probe\n", htc_char_fns, "fn probe(s: String) -> Bool { any(xs: s, predicate: fn(c) { is_flag(b: c) }) }\n"))
+}
+
+// RED: a receiver that is not a collection (an Int) has no any; the free call refuses, typed, rather than guessing.
+test fn htc_non_collection_receiver_refuses() -> Bool {
+  htc_blocking(source: "module test.claim.htc_noncollection_probe\nfn probe() -> Bool { any(xs: 3, predicate: fn(c) { true }) }\n")
+}
+
+// POSITIVE CONTROL FOR THE REDS: the same module shape with a Char predicate is NOT blocking.
+test fn htc_char_predicate_is_not_blocking() -> Bool {
+  !htc_blocking(source: concat("module test.claim.htc_char_probe\n", htc_char_fns, "fn probe(s: String) -> Bool { any(xs: s, predicate: fn(c) { is_a(c: c) }) }\n"))
+}

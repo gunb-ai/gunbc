@@ -9,7 +9,7 @@ import std.types { SourceSpan, is_container_type, container_expected_arity, cont
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, FinitePowerSetProfile,
-  FreeMonoidScalarProfile,
+  FreeMonoidScalarProfile, algebra_profile_generator,
   FreeMonoidCollectionProfile, PartialFunctionProfile, FinitelySupportedFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
@@ -145,6 +145,26 @@ fn container_kind_canonical(name: String) -> String {
             Absent => last
           }
         Absent => last
+      }
+  }
+}
+
+// THE ELEMENT OF A RECEIVER THAT NAMES NONE OF ITS OWN: its profile's generator (std.algebra
+// algebra_profile_generator) -- the host text is free over Char -- read from the algebra, never a name list here.
+fn receiver_profile_generator(name: String) -> String? {
+  match kernel_profile_lookup(name: name) {
+    Present { value: p } => algebra_profile_generator(profile: p)
+    Absent => Absent
+  }
+}
+
+fn receiver_element_or_generator(base: Node, source_indices: Map<String, NewlineIndex>) -> KernelTypeBuild {
+  match base.children |> first {
+    Present { value: _ } => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
+    Absent =>
+      match receiver_profile_generator(name: container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: base))) {
+        Present { value: g } => KernelTypeBuild { ty: nominal_type_ref(name: g), diagnostics: [] }
+        Absent => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
       }
   }
 }
@@ -507,7 +527,7 @@ fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: Strin
 fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_indices: Map<String, NewlineIndex>) -> KernelTypeBuild {
   match template {
     ReceiverSelf => KernelTypeBuild { ty: base, diagnostics: [] }
-    ReceiverElement => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
+    ReceiverElement => receiver_element_or_generator(base: base, source_indices: source_indices)
     ReceiverKey => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "K")
     ReceiverValue => algebra_child_or_placeholder(base: base, child_index: 1, placeholder: "V")
     NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
@@ -691,6 +711,9 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             Present { value: elem } => KernelTypeBuild { ty: elem, diagnostics: [] }
             Absent =>
               let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
+              match receiver_profile_generator(name: rname) {
+                Present { value: g } => KernelTypeBuild { ty: nominal_type_ref(name: g), diagnostics: [] }
+                Absent =>
               match container_param_name(kind_name: rname, index: 0) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>
@@ -698,6 +721,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
                     ty: missing_kernel_container_profile_type(kind_name: rname),
                     diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: rname)]
                   }
+              }
               }
           }
       }

@@ -38,6 +38,7 @@ import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_see
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
 import gunbc.exit_failure_outcome_seed_growth { exit_failure_outcome_seed_growth_justification }
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
+import gunbc.host_text_callback_method_arms_seed_growth { host_text_callback_method_arms_seed_growth_justification }
 import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
 import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
 import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
@@ -325,6 +326,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     emitted_closure_compile_seed_growth_justification,
     exit_failure_outcome_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,
+    host_text_callback_method_arms_seed_growth_justification,
     floor_memory_instrumentation_seed_growth_justification,
     portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,

@@ -1,0 +1,18 @@
+module gunbc.host_text_callback_method_arms_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the seed interpreter's filter/any over HOST TEXT: the Str branch of the
+// method_call.filter and method_call.any arms in v1_compiler.v1_interpreter and the helper they share.
+data host_text_callback_method_arms_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "str_method_with_char_closure", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST: the seed interpreter's algebra method arms are hand Rust (v1_compiler.v1_interpreter), and a callback over text must invoke a closure, which only a method arm can (a free-call arm is given no environment). Ruling B (calm-boar-904) has host text inhabit the free monoid over Char, and the XL-2 retirement of v2.std.algebra filter/any (ruling B') moved v2.std.text's any over a String from a generic declaration onto that inhabitance, so the arm must iterate a Str's Unicode scalars. A Rust &str is valid UTF-8, so every element is a scalar and there is no lossy path. The typing half is NOT here: it is std.algebra free_monoid_scalar_templates (the same collection template rows) and algebra_profile_generator (Char), read by v1.compiler.infer_types receiver_element_or_generator.\n\nWHY ADMITTED AGAINST THE v1 FREEZE (gunbc.v1_maintenance_standing v1_seed_standing, PURPOSE): it serves the v2 single-authority retirement -- without it, deleting v2.std.algebra filter/any leaves the seed unable to compile v2.std.text. NewLanguageBehavior: element ops over text are ruling B's, not a seed invention. NewEscapeHatchOrAdmissionRow: no. PublicSurfaceGrowth: no new pub item beyond the private helper.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the Str branches and str_method_with_char_closure when the seed interpreter's algebra method arms are realized from the std.algebra template rows (an iteration body read off the row, over any carrier whose profile declares a generator) rather than hand-written per carrier -- the CAPABILITY of a carrier-generic callback iteration, not a rewrite of these two arms.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs (the method_call.filter and method_call.any arms' Str branch, and str_method_with_char_closure); dag/gunbc/host_text_callback_method_arms_seed_growth.dag"
+}
