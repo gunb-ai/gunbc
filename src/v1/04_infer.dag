@@ -7776,6 +7776,46 @@ fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? 
   }
 }
 
+fn bind_unbound_collection_element_generic(
+  formal: Node,
+  actual: Node,
+  generic_names: List<String>,
+  subst: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Node> {
+  let fnorm = normalize_access_type_node(n: formal)
+  if (fnorm.children |> count) != 1 {
+    subst
+  } else {
+    match fnorm.children |> first {
+      Absent => subst
+      Present { value: fc } =>
+        let slot = match fc.inferred {
+          Present { value: TypeVariable { id: _ } } => fc
+          _ => child_type_node(ch: fc)
+        }
+        let name = type_node_label(n: slot, source_indices: source_indices)
+        if !(generic_names |> any(g => g == name)) {
+          subst
+        } else {
+          let need = match map_get(subst, name) {
+            Absent => true
+            Present { value: prev } => unify_binding_is_uninformative(n: prev)
+          }
+          if !need {
+            subst
+          } else {
+            let el = for_each_element_type_node(n: actual, source_indices: source_indices)
+            if (type_node_label(n: el, source_indices: source_indices) != type_node_label(n: actual, source_indices: source_indices)
+                || (el.children |> count) != (actual.children |> count)) {
+              map_insert(subst, name, el)
+            } else { subst }
+          }
+        }
+    }
+  }
+}
+
 fn subst_from_typed_call_args(
   results: List<ArgInferResult>,
   call_args: List<Node>,
@@ -7886,7 +7926,13 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
       unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
     } else {
-      unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
+      bind_unbound_collection_element_generic(
+        formal: formal_raw,
+        actual: resolved_type(n: ar.typed),
+        generic_names: generic_names,
+        subst: unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst),
+        source_indices: scope.type_env.source_indices
+      )
     }
     ArgGenericFoldState {
       results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
@@ -8682,7 +8728,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }])
           }
         )
-      } else if has_lambda && call_args |> count >= 2 && (sig == none || callee_is_collection_fold(name: func_name)) {
+      } else if has_lambda && call_args |> count >= 2 && sig == none {
         let fold_results = match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)

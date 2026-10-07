@@ -11753,6 +11753,65 @@ pub fn formal_code_point_view_peeled(
     }
 }
 
+pub fn bind_unbound_collection_element_generic(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    let fnorm = crate::v1_compiler_infer_types::normalize_access_type_node(formal.clone());
+    if ((fnorm.children.clone().len() as i64) != 1) {
+        subst.clone()
+    } else {
+        match fnorm.children.clone().first().cloned() {
+            std::option::Option::None => subst.clone(),
+            Some(fc) => {
+                let slot = match fc.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: _, .. }) => fc.clone(),
+                    _ => crate::v1_compiler_infer_types::child_type_node(fc.clone()),
+                };
+                let name = type_node_label(slot, source_indices.clone());
+                let in_names = {
+                    let mut __found = false;
+                    for g in generic_names.iter().cloned() {
+                        if (g.clone() == name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                if !in_names {
+                    subst.clone()
+                } else {
+                    let need = match v1_rt::map_get(&subst, name.clone()) {
+                        std::option::Option::None => true,
+                        Some(prev) => unify_binding_is_uninformative(prev),
+                    };
+                    if !need {
+                        subst.clone()
+                    } else {
+                        let el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                            actual.clone(),
+                            source_indices.clone(),
+                        );
+                        if (type_node_label(el.clone(), source_indices.clone())
+                            != type_node_label(actual.clone(), source_indices.clone())
+                            || ((el.children.clone().len() as i64)
+                                != (actual.children.clone().len() as i64)))
+                        {
+                            v1_rt::rc_map_insert(subst.clone(), name, el)
+                        } else {
+                            subst.clone()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn subst_from_typed_call_args(
     results: Rc<Vec<Rc<ArgInferResult>>>,
     call_args: Rc<Vec<Rc<Node>>>,
@@ -12039,12 +12098,18 @@ pub fn infer_call_arguments_generic_pass(
                             st.subst.clone(),
                         )
                     } else {
-                        unify_generics(
+                        bind_unbound_collection_element_generic(
                             formal_raw.clone(),
                             crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
                             generic_names.clone(),
+                            unify_generics(
+                                formal_raw.clone(),
+                                crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
+                                generic_names.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                                st.subst.clone(),
+                            ),
                             scope.type_env.clone().source_indices.clone(),
-                            st.subst.clone(),
                         )
                     }
                 }
@@ -13259,8 +13324,7 @@ Rc::new(InferResult {
                             )
                         } else {
                             if ((has_lambda.clone() && ((call_args.clone().len() as i64) >= 2))
-                                && ((sig.clone() == std::option::Option::None)
-                                    || callee_is_collection_fold(func_name.clone())))
+                                && (sig.clone() == std::option::Option::None))
                             {
                                 let fold_results = match call_args.clone().first().cloned() {
                                         Some(first_arg) => {
