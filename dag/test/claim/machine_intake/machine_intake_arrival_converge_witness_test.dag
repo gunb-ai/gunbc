@@ -1,6 +1,6 @@
 module test.claim.machine_intake_arrival_converge_witness
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.scoped_authorization { AttemptIdentity }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -25,7 +25,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   RedfishAccountPasswordWrite, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead, PublicStandardOperation,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded,
   rotation_apply_authority, rotation_route_request_identity, rotation_route_is_grounded, admit_rotation_apply,
-  canonical_component, route_qualification_authority,
+  rotation_route_ungrounded, rotation_route_from_citation, route_qualification_authority,
 }
 import gunbc.host_convergence_census {
   HostConvergenceCensus, CensusWellFormed, host_convergence_census_rows, host_convergence_census_standing,
@@ -73,16 +73,25 @@ import gunbc.machine_intake_arrival_converge {
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
   converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, mtjade1_identity_bind_inputs,
   bmc_secure_step_ref, arrival_bmc_secure_mutation_lanes, BmcSecureReceipt,
-  BmcSecureInputs, BmcSecureAuthorizationUndischarged,
+  BmcSecureInputs, BmcSecureApplyInputs, BmcSecureAuthorizationUndischarged, BmcSecureApplyInputsMissing,
+  BmcSecureApplicationForAnotherInstance,
   grant_discharges_bmc_secure_account_write,
   capability_discharges_bmc_secure_account_write,
 }
 import gunbc.machine_intake_bmc_secure {
-  BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, PublishedAccountRetired, ManagedCredentialReference, BmcSecurePhaseNoop, BmcSecurePhaseApplied,
+  BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
+  BmcAccountPlanned, BmcAccountPlanRefused, PublishedAccountRetired, ManagedCredentialReference,
+  BmcSecurePhaseNoop, BmcSecurePhaseApplied,
+  admit_stored_generation, admit_fetched_generation, dry_bmc_account_instant,
+  GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused, ManagedCredentialGenerationFetched,
 }
+import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { uri_https }
 import gunbc.deployment_risk { TestRisk }
 import extdeps.bmc.types { AccountRoleAdministrator }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.ipmi_channel {
   IpmiControllerChannelCensus, IpmiMedium8023Lan, IpmiMediumSerialAsync, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator,
   IpmiUserId, ipmi_controller_channel_census, ipmi_lan_channel_member, ipmi_non_lan_channel_member, ipmi_user_channel_access,
@@ -236,14 +245,59 @@ test fn w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive() -> B
 }
 
 data mtjade1_bmc_read_at: EpochMs = 1791072000000
+data mtjade1_bmc_plan_at: EpochMs = 1791072030000
+data mtjade1_bmc_apply_at: EpochMs = 1791072040000
+data mtjade1_bmc_readback_at: EpochMs = 1791072050000
 data mtjade1_managed_ipmi_user: IpmiUserId = 3
 data mtjade1_published_ipmi_user: IpmiUserId = 2
+data mtjade1_managed_password_v2: String = "managed-generation-2!"
+data mtjade1_route_fixture_citation: ExternalAuthority = ExternalAuthority {
+  uri: uri_https(locator: "fixture-not-an-authority.invalid/test.claim.machine_intake_arrival_converge_witness/mtjade1-route" as NonEmptyStr),
+}
 
-fn mtjade1_intake_subject() -> MachineIntakeSubject {
+fn mtjade1_intake_subject_for(attempt: IntakeAttemptId) -> MachineIntakeSubject {
   MachineIntakeSubject {
     subject: qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
-    attempt_id: "o1c1-witness-run-a" as IntakeAttemptId,
+    attempt_id: attempt,
   }
+}
+
+fn mtjade1_intake_subject() -> MachineIntakeSubject {
+  mtjade1_intake_subject_for(attempt: "o1c1-witness-run-a" as IntakeAttemptId)
+}
+
+fn mtjade1_bmc_endpoint() -> BmcControllerEndpoint {
+  BmcControllerEndpoint { host: "192.168.1.246" }
+}
+
+fn mtjade1_bmc_firmware() -> BmcFirmwareReleaseIdentity {
+  bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11.104000" as NonEmptyStr)
+}
+
+fn cited_mtjade1_managed_route() -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+  ]
+{
+  rotation_route_from_citation(
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: mtjade1_bmc_firmware(),
+    request: IpmiSetUserPassword { user: mtjade1_managed_ipmi_user },
+    citation: mtjade1_route_fixture_citation,
+  )
+}
+
+fn cited_mtjade1_published_route() -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+  ]
+{
+  rotation_route_from_citation(
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: mtjade1_bmc_firmware(),
+    request: IpmiSetUserPassword { user: mtjade1_published_ipmi_user },
+    citation: mtjade1_route_fixture_citation,
+  )
 }
 
 fn mtjade1_bmc_goal() -> BmcSecureGoal {
@@ -280,17 +334,77 @@ fn mtjade1_bmc_census(published_lan_privilege_closed: Bool) -> IpmiControllerCha
   )
 }
 
-fn mtjade1_bmc_account_reading(users: List<BmcIpmiUser>, published_lan_privilege_closed: Bool) -> BmcAccountStateObservation {
+fn mtjade1_account_world(users: List<BmcIpmiUser>, published_lan_privilege_closed: Bool) -> BmcWorld {
   let census_value = mtjade1_bmc_census(published_lan_privilege_closed: published_lan_privilege_closed)
-  let world = bmc_with_ipmi_user_access(
+  bmc_with_ipmi_user_access(
     world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: users),
     rows: census_value.user_access,
   )
-  dry_read_bmc_account_state(
+}
+
+fn mtjade1_version_identity(secret: String, version: String) -> SmResolvedVersionIdentity {
+  join(["projects/gunbai-secrets/secrets/", secret, "/versions/", version], "") as SmResolvedVersionIdentity
+}
+
+fn mtjade1_ready(secret: String, version: String, bytes: String) -> SecretCredentialFetch {
+  SecretCredentialReady { credential: bytes as Secret, resolved_version: mtjade1_version_identity(secret: secret, version: version) }
+}
+
+fn mtjade1_fetched_generation(
+  current: ManagedCredentialReference,
+  secret: String,
+  version: String,
+  bytes: String,
+) -> ManagedCredentialGenerationFetched? {
+  let store_at = dry_bmc_account_instant(millis: 1791072010000)
+  let fetch_at = dry_bmc_account_instant(millis: 1791072020000)
+  match admit_stored_generation(current: current, added: mtjade1_version_identity(secret: secret, version: version), stored_at: store_at) {
+    GenerationStoreRefused { cause: _ } => none
+    GenerationStored { stored: st } =>
+      match admit_fetched_generation(stored: st, fetch: mtjade1_ready(secret: secret, version: version, bytes: bytes), fetched_at: fetch_at) {
+        GenerationFetchRefused { cause: _ } => none
+        GenerationFetched { fetched: f } => Present { value: f }
+      }
+  }
+}
+
+fn mtjade1_rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> Redemption {
+  RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: rotation_apply_authority,
+      escalation_id: "o1c3b-apply-witness" as NonEmptyStr,
+      request_revision: rotation_route_request_identity(standing: s, request: IpmiSetUserPassword { user: user }),
+      decision: ProposeApprove,
+      attempt: "o1c1-witness-run-a" as AttemptIdentity,
+      issued_at: "2026-10-04T00:00:00Z",
+      expires_at: "2026-10-04T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
+  }
+}
+
+fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInputs?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uses_the_bound_instance_host_not_the_supplied_host"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
+  ]
+{
+  let census_value = mtjade1_bmc_census(published_lan_privilege_closed: true)
+  let world = mtjade1_account_world(
+    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
+    published_lan_privilege_closed: true,
+  )
+  let reading = dry_read_bmc_account_state(
     world: world,
-    subject: mtjade1_intake_subject(),
-    endpoint: BmcControllerEndpoint { host: "192.168.1.246" },
-    firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11.104000" as NonEmptyStr),
+    subject: subject,
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: mtjade1_bmc_firmware(),
     managed: mtjade1_bmc_goal().managed,
     managed_user: mtjade1_managed_ipmi_user,
     managed_password: "managed-generation-1!",
@@ -300,19 +414,80 @@ fn mtjade1_bmc_account_reading(users: List<BmcIpmiUser>, published_lan_privilege
     published_account: PublishedAccountRetired,
     break_glass: mtjade1_bmc_goal().published_break_glass,
     break_glass_password: "break-glass-generation-4!",
-    attempt: "o1c1-witness-run-a" as AttemptIdentity,
+    attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
   )
+  match mtjade1_fetched_generation(current: mtjade1_bmc_goal().managed, secret: "bmc-lab-o1b-gunbc", version: "2", bytes: mtjade1_managed_password_v2) {
+    Absent => none
+    Present { value: mg } =>
+      match mtjade1_fetched_generation(
+        current: ManagedCredentialReference {
+          account: "admin",
+          role: AccountRoleAdministrator,
+          secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-admin", version: "3", hash_state: HashPending },
+          credential_epoch: 3,
+        },
+        secret: "bmc-lab-o1b-admin",
+        version: "4",
+        bytes: "break-glass-generation-4!",
+      ) {
+        Absent => none
+        Present { value: bg } =>
+          match plan_bmc_account_action(
+            subject: subject,
+            goal: mtjade1_bmc_goal(),
+            reading: reading,
+            managed_user: mtjade1_managed_ipmi_user,
+            managed_route: cited_mtjade1_managed_route(),
+            managed_approval: mtjade1_rotation_approval(s: cited_mtjade1_managed_route(), user: mtjade1_managed_ipmi_user),
+            managed_generation: mg,
+            published_route: cited_mtjade1_published_route(),
+            published_approval: mtjade1_rotation_approval(s: cited_mtjade1_published_route(), user: mtjade1_published_ipmi_user),
+            published_generation: bg,
+            channel_close: none,
+            planned_at: dry_bmc_account_instant(millis: mtjade1_bmc_plan_at),
+          ) {
+            BmcAccountPlanRefused { cause: _ } => none
+            BmcAccountPlanned { plan: p } => {
+              let step = dry_apply_bmc_account_plan(
+                world: world,
+                plan: p,
+                managed_fetch: mtjade1_ready(secret: "bmc-lab-o1b-gunbc", version: "2", bytes: mtjade1_managed_password_v2),
+                published_fetch: mtjade1_ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: "break-glass-generation-4!"),
+                applied_at_millis: mtjade1_bmc_apply_at,
+              )
+              let post_read = dry_read_bmc_account_state(
+                world: step.world,
+                subject: subject,
+                endpoint: mtjade1_bmc_endpoint(),
+                firmware: mtjade1_bmc_firmware(),
+                managed: p.goal.managed,
+                managed_user: mtjade1_managed_ipmi_user,
+                managed_password: mtjade1_managed_password_v2,
+                census: census_value,
+                published_user: mtjade1_published_ipmi_user,
+                published_password: "admin",
+                published_account: PublishedAccountRetired,
+                break_glass: p.goal.published_break_glass,
+                break_glass_password: "break-glass-generation-4!",
+                attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
+                read_at_millis: mtjade1_bmc_readback_at,
+              )
+              Present { value: BmcSecureApplyInputs { application: step.application, post_read: post_read } }
+            }
+          }
+      }
+  }
 }
 
-fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?) -> BmcSecureInputs {
+fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, host: HostIdentity) -> BmcSecureInputs {
   BmcSecureInputs {
     goal: mtjade1_bmc_goal(),
     reading: reading,
-    host: operator_host_mtjade1,
+    host: host,
     grant: grant,
     capability: none,
-    apply: none,
+    apply: apply,
   }
 }
 
@@ -335,11 +510,28 @@ fn bmc_secure_noop_established(s: StepInstanceStanding<ArrivalStepReceipt, Arriv
 }
 
 test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool {
-  let reading = mtjade1_bmc_account_reading(
-    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "break-glass-generation-4!" }],
-    published_lan_privilege_closed: true,
+  let census_value = mtjade1_bmc_census(published_lan_privilege_closed: true)
+  let reading = dry_read_bmc_account_state(
+    world: mtjade1_account_world(
+      users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "break-glass-generation-4!" }],
+      published_lan_privilege_closed: true,
+    ),
+    subject: mtjade1_intake_subject(),
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: mtjade1_bmc_firmware(),
+    managed: mtjade1_bmc_goal().managed,
+    managed_user: mtjade1_managed_ipmi_user,
+    managed_password: "managed-generation-1!",
+    census: census_value,
+    published_user: mtjade1_published_ipmi_user,
+    published_password: "admin",
+    published_account: PublishedAccountRetired,
+    break_glass: mtjade1_bmc_goal().published_break_glass,
+    break_glass_password: "break-glass-generation-4!",
+    attempt: "o1c1-witness-run-a" as AttemptIdentity,
+    read_at_millis: mtjade1_bmc_read_at,
   )
-  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none)) {
+  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none, apply: none, host: operator_host_mtjade1)) {
     ArrivalRunFolded { verdict: v } =>
       match v {
         RunConverged { run: r } =>
@@ -355,11 +547,28 @@ test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool
 }
 
 test fn w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path() -> Bool {
-  let reading = mtjade1_bmc_account_reading(
-    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
-    published_lan_privilege_closed: false,
+  let census_value = mtjade1_bmc_census(published_lan_privilege_closed: true)
+  let reading = dry_read_bmc_account_state(
+    world: mtjade1_account_world(
+      users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
+      published_lan_privilege_closed: true,
+    ),
+    subject: mtjade1_intake_subject(),
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: mtjade1_bmc_firmware(),
+    managed: mtjade1_bmc_goal().managed,
+    managed_user: mtjade1_managed_ipmi_user,
+    managed_password: "managed-generation-1!",
+    census: census_value,
+    published_user: mtjade1_published_ipmi_user,
+    published_password: "admin",
+    published_account: PublishedAccountRetired,
+    break_glass: mtjade1_bmc_goal().published_break_glass,
+    break_glass_password: "break-glass-generation-4!",
+    attempt: "o1c1-witness-run-a" as AttemptIdentity,
+    read_at_millis: mtjade1_bmc_read_at,
   )
-  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none)) {
+  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none, apply: none, host: operator_host_mtjade1)) {
     ArrivalRunFolded { verdict: v } =>
       match v {
         RunStopped { ledger: l, at: at } =>
@@ -367,8 +576,8 @@ test fn w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path() 
             && match l.instances.last() {
               Present { value: s } => match s {
                 InstanceRefused { key: _, cause: c } => match c {
-                  DomainRefused { cause: d } => match d { BmcSecureAuthorizationUndischarged => true  _ => false }
-                  AuthorizationUndischarged => true
+                  DomainRefused { cause: d } => match d { BmcSecureApplyInputsMissing => true  _ => false }
+                  AuthorizationUndischarged => false
                   _ => false
                 }
                 _ => false
@@ -782,7 +991,31 @@ test fn w_mtcollins1_is_not_discharged_by_the_mtjade1_grant() -> Bool {
   grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1) == false
 }
 
-fn rotation_capability_for(host: HostIdentity, attempt_text: String, authority: NonEmptyStr) -> Redemption {
+fn mtjade1_capability_standing() -> BmcRotationRouteStanding {
+  rotation_route_ungrounded(endpoint: mtjade1_bmc_endpoint(), firmware: mtjade1_bmc_firmware())
+}
+
+fn mtjade1_stale_capability_standing() -> BmcRotationRouteStanding {
+  rotation_route_ungrounded(
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.32" as NonEmptyStr),
+  )
+}
+
+fn mtjade1_managed_write_request() -> BmcAccountWriteRequest {
+  IpmiSetUserPassword { user: mtjade1_managed_ipmi_user }
+}
+
+fn mtjade1_published_write_request() -> BmcAccountWriteRequest {
+  IpmiSetUserPassword { user: mtjade1_published_ipmi_user }
+}
+
+fn rotation_capability_for(
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+  attempt_text: String,
+  authority: NonEmptyStr,
+) -> Redemption {
   RedemptionAdmitted {
     claims: ApprovalCapabilityClaims {
       protocol: approval_capability_protocol,
@@ -790,7 +1023,7 @@ fn rotation_capability_for(host: HostIdentity, attempt_text: String, authority: 
       audience: "srv1" as NonEmptyStr,
       authority: authority,
       escalation_id: "o1c3b-witness" as NonEmptyStr,
-      request_revision: join(["gunbc.bmc.rotation-route/v1;", canonical_component(text: host as String)], "") as NonEmptyStr,
+      request_revision: rotation_route_request_identity(standing: standing, request: request),
       decision: ProposeApprove,
       attempt: attempt_text as AttemptIdentity,
       issued_at: "2026-10-04T00:00:00Z",
@@ -807,34 +1040,50 @@ fn bmc_secure_apply_key() -> StepInstanceKey {
 
 test fn w_bmc_secure_apply_capability_for_another_authority_does_not_discharge() -> Bool {
   capability_discharges_bmc_secure_account_write(
-    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_a as String, authority: route_qualification_authority),
-    host: operator_host_mtjade1,
+    r: rotation_capability_for(standing: mtjade1_capability_standing(), request: mtjade1_managed_write_request(), attempt_text: run_a as String, authority: route_qualification_authority),
+    standing: mtjade1_capability_standing(),
+    request: mtjade1_managed_write_request(),
     key: bmc_secure_apply_key(),
   ) == false
 }
 
-test fn w_bmc_secure_apply_capability_for_another_host_does_not_discharge() -> Bool {
+test fn w_bmc_secure_apply_capability_for_another_request_does_not_discharge() -> Bool {
   capability_discharges_bmc_secure_account_write(
-    r: rotation_capability_for(host: operator_host_mtcollins1, attempt_text: run_a as String, authority: rotation_apply_authority),
-    host: operator_host_mtjade1,
+    r: rotation_capability_for(standing: mtjade1_capability_standing(), request: mtjade1_managed_write_request(), attempt_text: run_a as String, authority: rotation_apply_authority),
+    standing: mtjade1_capability_standing(),
+    request: mtjade1_published_write_request(),
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_capability_for_another_build_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(standing: mtjade1_capability_standing(), request: mtjade1_managed_write_request(), attempt_text: run_a as String, authority: rotation_apply_authority),
+    standing: mtjade1_stale_capability_standing(),
+    request: mtjade1_managed_write_request(),
     key: bmc_secure_apply_key(),
   ) == false
 }
 
 test fn w_bmc_secure_apply_capability_for_another_run_does_not_discharge() -> Bool {
   capability_discharges_bmc_secure_account_write(
-    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_b as String, authority: rotation_apply_authority),
-    host: operator_host_mtjade1,
+    r: rotation_capability_for(standing: mtjade1_capability_standing(), request: mtjade1_managed_write_request(), attempt_text: run_b as String, authority: rotation_apply_authority),
+    standing: mtjade1_capability_standing(),
+    request: mtjade1_managed_write_request(),
     key: bmc_secure_apply_key(),
   ) == false
 }
 
-test fn w_bmc_secure_apply_admitted_capability_for_this_host_and_rotation_authority_discharges() -> Bool {
-  capability_discharges_bmc_secure_account_write(
-    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_a as String, authority: rotation_apply_authority),
-    host: operator_host_mtjade1,
-    key: bmc_secure_apply_key(),
-  )
+test fn w_bmc_secure_apply_admitted_capability_for_the_canonical_rotation_identity_discharges() -> Bool {
+  let standing = mtjade1_capability_standing()
+  let request = mtjade1_managed_write_request()
+  (rotation_route_request_identity(standing: standing, request: request) as String) != ""
+    && capability_discharges_bmc_secure_account_write(
+      r: rotation_capability_for(standing: standing, request: request, attempt_text: run_a as String, authority: rotation_apply_authority),
+      standing: standing,
+      request: request,
+      key: bmc_secure_apply_key(),
+    )
 }
 
 test fn w_bmc_secure_apply_discharge_for_another_run_refuses() -> Bool {
@@ -847,26 +1096,166 @@ test fn w_bmc_secure_apply_discharge_for_another_unit_refuses() -> Bool {
   apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
 }
 
-test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
-  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
-  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
-  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
-  let bmc = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
-  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
-    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
-    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
-    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
-    StepEstablished { receipt: ProbeReceipt { key: bmc, consumed: [prior] } },
+fn mtjade1_diverged_reading(subject: MachineIntakeSubject) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uses_the_bound_instance_host_not_the_supplied_host"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
   ]
-  let covered = standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
-  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
-    ConvergencePlanAdmitted { plan: p } =>
-      covered && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1) && match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: [instance_authorization(key: bmc, principal: mtjade1_live_standing_grant.principal)]) {
-        RunConverged { run: r } => length(xs: r.ledger.instances) == 4
+{
+  let census_value = mtjade1_bmc_census(published_lan_privilege_closed: true)
+  dry_read_bmc_account_state(
+    world: mtjade1_account_world(
+      users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
+      published_lan_privilege_closed: true,
+    ),
+    subject: subject,
+    endpoint: mtjade1_bmc_endpoint(),
+    firmware: mtjade1_bmc_firmware(),
+    managed: mtjade1_bmc_goal().managed,
+    managed_user: mtjade1_managed_ipmi_user,
+    managed_password: "managed-generation-1!",
+    census: census_value,
+    published_user: mtjade1_published_ipmi_user,
+    published_password: "admin",
+    published_account: PublishedAccountRetired,
+    break_glass: mtjade1_bmc_goal().published_break_glass,
+    break_glass_password: "break-glass-generation-4!",
+    attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
+    read_at_millis: mtjade1_bmc_read_at,
+  )
+}
+
+fn bmc_secure_applied_established(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: bmc_secure_step_ref)
+        && match r {
+          BmcSecureReceipt { receipt: b } =>
+            match b.phase.decision {
+              BmcSecurePhaseNoop { observation: _ } => false
+              BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => true
+            }
+          AccessDiscoverReceipt { receipt: _ } => false
+          IdentityBindReceipt { receipt: _ } => false
+          PriorLifeBoundaryReceipt { receipt: _ } => false
+        }
+    _ => false
+  }
+}
+
+test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
+  let subject = mtjade1_intake_subject()
+  match mtjade1_dry_applied_bmc(subject: subject) {
+    Absent => false
+    Present { value: apply } =>
+      match converge_mtjade1_arrival_through_bmc_secure(
+        run: run_a,
+        prior_life: prior_life_minimal_dry_world(),
+        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: subject), grant: Present { value: mtjade1_live_standing_grant }, apply: Present { value: apply }, host: operator_host_mtjade1),
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunConverged { run: r } =>
+              length(xs: r.ledger.instances) == 4
+                && match r.ledger.instances.last() { Present { value: s } => bmc_secure_applied_established(s: s)  Absent => false }
+            _ => false
+          }
         _ => false
       }
-    ConvergencePlanRefused { cause: _ } => false
   }
+}
+
+test fn w_bmc_secure_apply_of_another_attempt_is_refused() -> Bool {
+  let own = mtjade1_intake_subject()
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject_for(attempt: "o1c1-witness-run-b" as IntakeAttemptId)) {
+    Absent => false
+    Present { value: apply } =>
+      match converge_mtjade1_arrival_through_bmc_secure(
+        run: run_a,
+        prior_life: prior_life_minimal_dry_world(),
+        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: own), grant: Present { value: mtjade1_live_standing_grant }, apply: Present { value: apply }, host: operator_host_mtjade1),
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunStopped { ledger: l, at: at } =>
+              declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
+                && match l.instances.last() {
+                  Present { value: s } => match s {
+                    InstanceRefused { key: _, cause: c } => match c {
+                      DomainRefused { cause: d } => match d { BmcSecureApplicationForAnotherInstance { subject: _ } => true  _ => false }
+                      _ => false
+                    }
+                    _ => false
+                  }
+                  Absent => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn w_bmc_secure_apply_uses_the_bound_instance_host_not_the_supplied_host() -> Bool {
+  let subject = mtjade1_intake_subject()
+  match mtjade1_dry_applied_bmc(subject: subject) {
+    Absent => false
+    Present { value: apply } =>
+      match converge_mtjade1_arrival_through_bmc_secure(
+        run: run_a,
+        prior_life: prior_life_minimal_dry_world(),
+        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: subject), grant: Present { value: mtjade1_live_standing_grant }, apply: Present { value: apply }, host: operator_host_mtcollins1),
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunConverged { run: r } =>
+              length(xs: r.ledger.instances) == 4
+                && match r.ledger.instances.last() { Present { value: s } => bmc_secure_applied_established(s: s)  Absent => false }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply() -> Bool {
+  let subject = mtjade1_intake_subject()
+  match mtjade1_dry_applied_bmc(subject: subject) {
+    Absent => false
+    Present { value: apply } =>
+      match converge_mtjade1_arrival_through_bmc_secure(
+        run: run_a,
+        prior_life: prior_life_minimal_dry_world(),
+        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: subject), grant: none, apply: Present { value: apply }, host: operator_host_mtjade1),
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunStopped { ledger: l, at: at } =>
+              declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
+                && match l.instances.last() {
+                  Present { value: s } => match s {
+                    InstanceRefused { key: _, cause: c } => match c {
+                      DomainRefused { cause: d } => match d { BmcSecureAuthorizationUndischarged => true  _ => false }
+                      _ => false
+                    }
+                    _ => false
+                  }
+                  Absent => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn w_a_bound_mtcollins1_instance_is_not_covered_by_the_mtjade1_grant() -> Bool {
+  grant_discharges_bmc_secure_account_write(
+    g: mtjade1_live_standing_grant,
+    host: (step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: "mtcollins1" as StepSubjectKey).subject as NonEmptyStr) as HostIdentity,
+  ) == false
 }
 
 test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> Bool {
