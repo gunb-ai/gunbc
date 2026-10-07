@@ -90,7 +90,7 @@ mod compiler_tests {
             .collect();
         let pool: Vec<String> = roots.iter().map(|r| (*r).to_string()).collect();
         let mut result = crate::cli_run::resolve_seeded_compile_closure(seeds, &pool)
-            .unwrap_or_else(|e| panic!("resolve_source_closure: {e}"));
+            .unwrap_or_else(|e| panic!("resolve_source_closure: {}", e));
         result.sort_by(|a, b| a.path.cmp(&b.path));
         result
     }
