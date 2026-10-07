@@ -82,7 +82,7 @@ fn probe_source(expr: String) -> String {
 }
 
 data forge_expr: String = "DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence { digest: h } }"
-data sanctioned_expr: String = "spark_pair_declared_head_digest(group: FabricGroupB)"
+data sanctioned_expr: String = "spark_pair_declared_head_digest(group: FabricGroupB {})"
 
 fn seal_violations(expr: String) -> Int {
   keyed_count(
