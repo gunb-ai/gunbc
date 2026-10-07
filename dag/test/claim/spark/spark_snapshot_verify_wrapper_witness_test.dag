@@ -6,7 +6,7 @@ import gunbc.spark.model_snapshot_materialize { spark_transfer_restart_propertie
 import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_unset }
 import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root, HubCachePlacement }
 import std.types { List, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.model_snapshot_materialize {
   sentinel_command_line, read_instrument,
   InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,

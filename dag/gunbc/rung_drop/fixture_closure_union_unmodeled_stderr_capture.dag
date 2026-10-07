@@ -1,0 +1,50 @@
+module gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.stderr_capture_gap_exclusion { exclusion, StderrCaptureGapExclusion }
+
+// THE FIXTURE-CLOSURE UNION RENDERS EVERY RECORDED MEMBER THROUGH THE RUST EMITTER. After
+// #13437 the walker closes by reference, so a fixture that reaches extdeps.gunbc compiles
+// gunbc.WitnessBin.Run into the union. That operation declares stderr_truncated /
+// stderr_total_bytes / stderr_retained_bytes, which v1.compiler.emit shell_channel_realized_by_target
+// refuses for rust: the emitted Command body implements no WitnessStderrCapturePolicy.
+// emit_artifact then returns no files for the WHOLE union, so those three diagnostics abort
+// every other member's render and refuse unrelated floors (specimen: #13420).
+//
+// THE EARLIEST UNJUSTIFIED BOUNDARY IS THE UNION, NOT THE WALL. The wall is the honest
+// capability gap (05_emit names the next-rung trigger: the emitted realization implementing
+// the declared policy). std.shell_stream_capture still homes the policy on the interpreter
+// drain until that trigger fires. Binding a fabricating rust handler (truncated=false) is the
+// fail-open 05_emit already refuses. So the union must not render the unmodeled operation:
+// a typed exclusion keyed on that diagnostic fact, never a silent skip, and a real emit error
+// in a member the union still renders still refuses.
+
+fn capture_gap_exclusion_population() -> StderrCaptureGapExclusion {
+  exclusion
+}
+
+data fixture_closure_union_unmodeled_stderr_capture: RungDrop = RungDrop {
+  identity: "fixture_closure_union_unmodeled_stderr_capture" as NonEmptyStr,
+
+  subject: "fixture-closure union rust emit of a shell operation whose modeled capture-accounting channels the rust target cannot realize",
+
+  declared: "2026-10-06",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+
+    temporary: Mitigatable,
+
+    reason: ReplacementStaged { replacement: "the rust emitted realization implementing the declared WitnessStderrCapturePolicy, the same next-rung trigger v1.compiler.emit shell_channel_realized_by_target already names" },
+
+    population: [
+      "exactly gunbc.stderr_capture_gap_exclusion.exclusion (consumed here as capture_gap_exclusion_population): gunbc.WitnessBin.Run in extdeps.gunbc. Output channels stderr_truncated, stderr_total_bytes, stderr_retained_bytes, each a TransportEmissionNotModeled ShellChannelNotRealizedByTarget for target rust. A later shell operation with the same capture-gap fact is NOT a member: the union still renders it and still refuses. The union compiles and evaluates that record; deleting either this module or the carrier refuses the seed compile",
+    ],
+
+    restoration_trigger: "THE CAPABILITY: the rust emitted shell realization implements the operation's declared WitnessStderrCapturePolicy, sufficient for v1.compiler.emit shell_channel_realized_by_target to return true for ShellChanStderrTruncated, ShellChanStderrTotalBytes and ShellChanStderrRetainedBytes. WHAT THAT MUST BE SUFFICIENT FOR: those operations emit for rust without TransportEmissionNotModeled, this exclusion has an empty population and this row and the union's strip of those services delete together. Answering the channels as untruncated whole-stream lengths does NOT discharge it. Deleting the channels from the interface does NOT discharge it. Silently omitting the module from the union without naming this cause does NOT discharge it.",
+  }
+}

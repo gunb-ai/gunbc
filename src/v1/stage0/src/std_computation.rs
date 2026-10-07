@@ -14,6 +14,7 @@ use crate::std_algebra::AlgebraProfile::{
     OrderedRingProfile, OrderedSemiringProfile, PartialFunctionProfile,
     PointwisePowerCollectionProfile,
 };
+pub use crate::std_optional::Optional;
 pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};

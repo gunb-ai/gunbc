@@ -1,7 +1,7 @@
 module test.claim.spark.pair_serving_capacity_floor_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count, ByteSize, byte_size }

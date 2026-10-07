@@ -34,7 +34,7 @@ import v2.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v2.std.optional {
+import std.optional {
   Optional
 }
 import v2.std.compilers.lexing {

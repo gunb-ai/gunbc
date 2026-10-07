@@ -6,7 +6,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
