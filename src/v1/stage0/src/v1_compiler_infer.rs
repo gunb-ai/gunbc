@@ -11305,6 +11305,10 @@ pub fn extract_fold_init_info(
                             a.clone(),
                             "init".to_string(),
                             scope.type_env.clone().source_indices.clone(),
+                        ) || arg_has_name(
+                            a.clone(),
+                            "empty".to_string(),
+                            scope.type_env.clone().source_indices.clone(),
                         ) {
                             __result.push(a);
                         }
@@ -11428,7 +11432,7 @@ pub fn infer_method_args_with_fold(
                 __result.push({
             let a = idx_pair.1.clone();
 let idx = idx_pair.0.clone();
-let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.clone().source_indices.clone()) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()) == std::option::Option::None) && (idx.clone() == 0)));
+let is_init_arg = ((arg_has_name(a.clone(), "init".to_string(), scope.type_env.clone().source_indices.clone()) || arg_has_name(a.clone(), "empty".to_string(), scope.type_env.clone().source_indices.clone())) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()) == std::option::Option::None) && (idx.clone() == 0)));
 if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && is_init_arg.clone()) {
                 match fold_info.clone() {
     Some(fi) => fi.clone(),
@@ -13676,8 +13680,20 @@ Rc::new(InferResult {
                                 .collect::<Vec<_>>(),
                         );
                         let call_method_name = Some(func_name.clone());
+                        let call_fold_seed_name = match (*call_target.clone()).clone() {
+                            CallTargetOutcome::BuiltinCallableResolved { primitive_name: n } => {
+                                if (n.clone() == "fold_list".to_string())
+                                    || (n.clone() == "fold_list_right".to_string())
+                                {
+                                    Some("fold".to_string())
+                                } else {
+                                    call_method_name.clone()
+                                }
+                            }
+                            _ => call_method_name.clone(),
+                        };
                         let call_fold_info = extract_fold_init_info(
-                            call_method_name.clone(),
+                            call_fold_seed_name.clone(),
                             call_method_args.clone(),
                             2,
                             scope.clone(),
@@ -13766,7 +13782,7 @@ Rc::new(InferResult {
                                                 scope.clone(),
                                             );
                                             let remaining_results = infer_method_args_with_fold(
-                                                call_method_name.clone(),
+                                                call_fold_seed_name.clone(),
                                                 call_method_args.clone(),
                                                 call_fold_info.clone(),
                                                 call_fold_acc_type.clone(),

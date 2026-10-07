@@ -7634,6 +7634,7 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
   if is_fold && method_args |> count >= min_args {
     let init_arg = match method_args |> filter(a =>
       arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)
+        || arg_has_name(arg: a, name: "empty", source_indices: scope.type_env.source_indices)
     ) |> first {
       Present { value: a } => Present { value: a }
       Absent => method_args |> first
@@ -7678,6 +7679,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
     let a = idx_pair.second
     let idx = idx_pair.first
     let is_init_arg = arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)
+      || arg_has_name(arg: a, name: "empty", source_indices: scope.type_env.source_indices)
       || (arg_name_at(n: a, source_indices: scope.type_env.source_indices) == none && idx == 0)
     if is_fold && fold_info != none && is_init_arg {
       match fold_info {
@@ -8882,7 +8884,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
-      let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
+      let call_fold_seed_name = match call_target {
+        BuiltinCallableResolved { primitive_name: n } =>
+          if n == "fold_list" || n == "fold_list_right" { Present { value: "fold" } } else { call_method_name }
+        DeclaredCallableResolved { sig: _, declared: _ } => call_method_name
+        DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => call_method_name
+        LocallyBoundCallee { name: _, binding: _ } => call_method_name
+        CallableUnresolved { name: _ } => call_method_name
+        CallableAmbiguous { candidates: _ } => call_method_name
+        LocallyBoundBindingMissing { name: _ } => call_method_name
+      }
+      let call_fold_info = extract_fold_init_info(method_name: call_fold_seed_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
       let call_fold_acc_type = match call_fold_info {
         Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         Absent => error_type
@@ -8914,7 +8926,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_fold_seed_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
