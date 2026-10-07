@@ -36347,6 +36347,8 @@ mod peel_alias_fixpoint_termination {
                 services: crate::v1_rt::rc_empty_map(),
                 transparent_alias_rep: crate::v1_rt::rc_empty_map(),
                 type_head_exposures: crate::v1_rt::rc_empty_map(),
+                file_modules: crate::v1_rt::rc_empty_map(),
+                module_named_imports: crate::v1_rt::rc_empty_map(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
