@@ -808,7 +808,8 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // #13545 made it resolve they ran and red on the stale literals: 6 sudo grants, 6 authorization grants, 7 preflight
 // steps. POPULATION: exactly these 3 identities. TRIGGER: the owner replaces each literal with an identity join
 // against the authoritative grant / preflight-step rosters (or an expectation derived from them), never a
-// re-transcribed number. Owner: the deploy-access lane (calm-deer-391, the derived sudoers grant).
+// re-transcribed number. Owner: the deploy-access lane; its author (calm-deer-391, the derived sudoers grant,
+// #12124) is archived, so the repair is routed through lively-crane-656 (XL-2) to the lane's current owner.
 fn floor_expected_red_chunk_grounded_principal_transcribed_counts() -> List<String> {
   Cons { head: "test.claim.grounded_principal_witness.witness_ci_runner_sudo_grants_derive_privileged_commands", tail: Cons { head: "test.claim.grounded_principal_witness.witness_deploy_authorization_query_grounds_expected_principal", tail: Cons { head: "test.claim.grounded_principal_witness.witness_deploy_preflight_plan_has_whoami_plus_privileged_probes", tail: Empty {} } } }
 }
