@@ -8637,18 +8637,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } else {
           first_pass
         }
-        ArgGenericFoldState {
-          results: bound_pass.results,
-          subst: bind_uninformative_generic_leftovers(
-            results: bound_pass.results,
-            call_args: call_args,
-            value_params: value_params,
-            formals: resolved_formals,
-            generic_names: generic_names,
-            subst: bound_pass.subst,
-            scope: scope
-          )
-        }
+        bound_pass
       }
       let arg_infer_results = variant_tag_reference_argument_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
 
@@ -9566,7 +9555,20 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_result = operands.right
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
+      let left_rt = resolved_type(n: left_typed)
+      let right_rt = resolved_type(n: right_typed)
+      let binop_info = infer_binop_type_node(op: op, left_type: left_rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+      // LIST CONCAT IS LEFT-TYPED. `acc + [x]` with acc still List<empty_list_element> would
+      // keep that placeholder as the fold result, so `-> List<String> { fold(..., init: []) }`
+      // TypeMismatched a ground list against an uninformative one (floor
+      // unimported_bare_provider_roster_edit). An informative right list is the element.
+      let binop_result = if op == Add
+          && node_is_element_collection(n: left_rt, source_indices: scope.type_env.source_indices)
+          && node_is_element_collection(n: right_rt, source_indices: scope.type_env.source_indices)
+          && unify_binding_is_uninformative(n: left_rt)
+          && !unify_binding_is_uninformative(n: right_rt) {
+        right_rt
+      } else { binop_info.result_type }
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
       let refinement_diags = match op {
         Sub =>
@@ -9579,7 +9581,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         _ => []
       }
-      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
+      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: left_rt, scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_result } }, span: span)
       InferResult {
         typed: bo_texpr,
         diagnostics: concat(concat(concat(left_diags, right_diags), eq_wall_diags), refinement_diags)
@@ -13744,71 +13746,6 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
       Present { value: fc } =>
         match actual.children |> first {
           Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
-          Absent => acc
-        }
-      Absent => acc
-    }
-  } else { acc }
-}
-
-// LEFTOVER FILL if the informative pass left a generic Absent. Early bind of [] as
-// List<empty_list_element> plus unify_lambda_solves override is the informing-cons path
-// (concat / if acc else concat). This pass is a backstop when no lambda ran.
-fn bind_uninformative_generic_leftovers(
-  results: List<ArgInferResult>,
-  call_args: List<Node>,
-  value_params: List<Node>,
-  formals: List<ResolvedFormal>,
-  generic_names: List<String>,
-  subst: Map<String, Node>,
-  scope: InferScope
-) -> Map<String, Node> {
-  if (generic_names |> count) == 0 {
-    subst
-  } else {
-    fold(results |> enumerate, init: subst, f: (st, pair) =>
-      let formal_selection = select_formal_for_call_argument(
-        argument: match call_args |> skip(pair.first) |> first {
-          Present { value: a } => a
-          Absent => pair.second.typed_arg
-        },
-        argument_index: pair.first,
-        arguments: call_args,
-        value_params: value_params,
-        source_indices: scope.type_env.source_indices
-      )
-      let formal_raw = match formal_selection {
-        CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
-          Present { value: carried } => carried.substitution_basis
-          Absent => error_type
-        }
-        CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
-      }
-      leftover_unify_generics(
-        formal: formal_raw,
-        actual: resolved_type(n: arg_value(n: pair.second.typed_arg)),
-        generic_names: generic_names,
-        source_indices: scope.type_env.source_indices,
-        acc: st
-      )
-    )
-  }
-}
-
-fn leftover_unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
-  let bind_name = type_node_label(n: formal, source_indices: source_indices)
-  let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
-  if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
-    && (generic_names |> any(g => g == bind_name)) {
-    match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, actual)
-      Present { value: _ } => acc
-    }
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => leftover_unify_generics(formal: child_type_node(ch: fc), actual: child_type_node(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
       Absent => acc
