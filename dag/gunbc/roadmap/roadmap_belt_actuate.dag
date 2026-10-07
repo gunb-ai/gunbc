@@ -35,12 +35,13 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_credential_snapshot_path_for_instance, dispatch_credential_snapshot_discard,
   filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_argv,
+  dispatch_review_unit_name, dispatch_review_unit_command,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
-  dispatch_audit_unit_name, dispatch_audit_unit_argv,
-  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_argv,
-  dispatch_supervisor_attempt_identity,
+  dispatch_audit_unit_name, dispatch_audit_unit_command,
+  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
+  dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
 }
+import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
   roadmap_acceptance_event_history_load,
@@ -119,7 +120,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_run,
+  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_command,
   dispatch_attempt_unit_name,
   attempt_unit_observation,
   worker_process_from_attempt_unit,
@@ -1393,10 +1394,15 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  belt_exec_steps(
-                    steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_worker_unit_run(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) }],
-                    workdir: workdir,
-                  )
+                  match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
+                    SystemdRunCommandRefused { cause: why } =>
+                      ExecStepFailed { step: "harness-unit-start", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+                    SystemdRunCommandReady { command: command } =>
+                      belt_exec_steps(
+                        steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
+                        workdir: workdir,
+                      )
+                  }
               }
           }
         }
@@ -2679,9 +2685,7 @@ fn belt_supervisor_convene(
               match metering_roster_admit(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, role: MeteredSupervisor { turn: escalation.turn }) {
                 RosterAdmissionRefused { cause: roster_cause } => SpawnFailed { node_id: node.node as String, step: "supervisor-roster", detail: join(["the supervisor was not launched: ", roster_cause], ""), provider: provider_wire_label, launch: launch }
                 RosterAdmitted =>
-                  match belt_exec(
-                  cmd: dispatch_supervisor_unit_argv(
-                    systemd_run_program: systemd_run,
+                  match dispatch_supervisor_unit_command(
                     instance: instance,
                     node_id: nid,
                     attempt_key: escalation.attempt_key,
@@ -2696,33 +2700,42 @@ fn belt_supervisor_convene(
                         history_line: belt_supervisor_history_line(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, turn: escalation.turn),
                       ),
                     ),
-                  ),
-                  workdir: worktree,
-                ) {
-                  ExecOk { stdout: _ } =>
-                    SupervisorConvened {
-                      node_id: node.node as String,
-                      unit: unit as String,
-                      provider: provider_wire_label,
-                      launch: launch,
-                    }
-                  ExecFailed { program: _, exit_code, stderr } =>
-                    SpawnFailed {
-                      node_id: node.node as String,
-                      step: "supervisor-unit-start",
-                      detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
-                      provider: provider_wire_label,
-                      launch: launch,
-                    }
-                  ExecRefused { program: _, reason } =>
-                    SpawnFailed {
-                      node_id: node.node as String,
-                      step: "supervisor-unit-start",
-                      detail: reason,
-                      provider: provider_wire_label,
-                      launch: launch,
-                    }
-                }
+                  ) {
+                    SystemdRunCommandRefused { cause: why } =>
+                      SpawnFailed {
+                        node_id: node.node as String,
+                        step: "supervisor-unit-start",
+                        detail: systemd_run_option_words_refused_cause_detail(cause: why),
+                        provider: provider_wire_label,
+                        launch: launch,
+                      }
+                    SystemdRunCommandReady { command: command } =>
+                      match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+                        ExecOk { stdout: _ } =>
+                          SupervisorConvened {
+                            node_id: node.node as String,
+                            unit: unit as String,
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                        ExecFailed { program: _, exit_code, stderr } =>
+                          SpawnFailed {
+                            node_id: node.node as String,
+                            step: "supervisor-unit-start",
+                            detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                        ExecRefused { program: _, reason } =>
+                          SpawnFailed {
+                            node_id: node.node as String,
+                            step: "supervisor-unit-start",
+                            detail: reason,
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                      }
+                  }
               }
           }
         }
@@ -10921,14 +10934,16 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
               match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
                 RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
                 RosterAdmitted =>
-                  match belt_exec(
-                  cmd: dispatch_audit_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head),
-                  workdir: worktree,
-                ) {
-                  ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
-                  ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-                  ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
-                }
+              match dispatch_audit_unit_command(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head) {
+                SystemdRunCommandRefused { cause: why } =>
+                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+                SystemdRunCommandReady { command: command } =>
+                  match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+                    ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
+                    ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+                    ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
+                  }
+              }
               }
             }
           }
@@ -11180,14 +11195,16 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
         RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
         RosterAdmitted =>
-          match belt_exec(
-          cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key),
-          workdir: worktree,
-        ) {
-          ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
-          ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-          ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
-        }
+      match dispatch_review_unit_command(instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key) {
+        SystemdRunCommandRefused { cause: why } =>
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+        SystemdRunCommandReady { command: command } =>
+          match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+            ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
+            ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+            ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
+          }
+      }
       }
     }
   }
