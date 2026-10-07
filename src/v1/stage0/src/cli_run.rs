@@ -118,6 +118,7 @@ mod entry_resolve;
 pub mod pre_entry_phase;
 mod required_lane_resolution_census;
 pub(crate) use active_workset::*;
+pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
     entry_closure_module_identities, required_floor_nominal_subject_module_identities,
@@ -4111,7 +4112,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
+        std::collections::HashMap<String, Result<EmitCheckRead, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
