@@ -12199,7 +12199,12 @@ pub fn collection_fold_lambda_expected(
                 xs_ty.clone(),
                 source_indices.clone(),
             );
-            if unify_binding_is_uninformative(xs_ty.clone())
+            let peeled = type_node_label(elem.clone(), source_indices.clone())
+                != type_node_label(xs_ty.clone(), source_indices.clone())
+                || ((elem.children.clone().len() as i64)
+                    != (xs_ty.children.clone().len() as i64));
+            if !peeled
+                || unify_binding_is_uninformative(xs_ty.clone())
                 || unify_binding_is_uninformative(elem.clone())
                 || type_is_bare_collection_carrier(xs_ty.clone(), source_indices.clone())
                 || type_is_bare_collection_carrier(elem.clone(), source_indices.clone())

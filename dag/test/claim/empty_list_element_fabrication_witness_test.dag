@@ -122,3 +122,12 @@ test fn imported_fold_list_substitutes_the_accumulator_return() -> Bool {
 test fn fold_list_empty_acc_does_not_type_the_element_as_empty() -> Bool {
   compiles_with_no_blocking_diagnostic(source: fold_list_empty_acc_product_element_source)
 }
+
+// fold_list OVER A KERNEL STRING. for_each_element_type_node answers String for a 0-child
+// String, which is not Char. Overlaying that as T makes CharFound { value: c } a TypeMismatch
+// (v2.workflow.bash_emit bash_emit_program_last_char).
+data fold_list_string_element_is_char_source: String = "module probe_fold_string_char\nimport v2.std.text { CharAbsent, CharFound, CharResult }\nfn last_char(program: String) -> CharResult {\n  fold_list(xs: program, empty: CharAbsent, cons: fn(_, c) { CharFound { value: c } })\n}\n"
+
+test fn fold_list_over_a_string_types_the_element_as_char() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: fold_list_string_element_is_char_source)
+}
