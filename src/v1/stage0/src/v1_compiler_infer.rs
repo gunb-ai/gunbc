@@ -11892,21 +11892,6 @@ pub fn collection_fold_step_binds_accumulator(
     }
 }
 
-pub fn argument_is_empty_collection_intro(
-    e: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match (*e.expr_data.clone()).clone() {
-        ExprData::ExprListLit => (e.children.clone().len() as i64) == 0,
-        _ => {
-            expression_is_uppercase_constructor_reference(e.clone(), source_indices.clone())
-                && crate::v1_std_core::qualified_last_segment(
-                    crate::v1_std_core::expr_var_name_at(e, source_indices),
-                ) == "Empty".to_string()
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CollectionFoldRoles {
     pub collection_formal_index: i64,
@@ -12119,33 +12104,6 @@ pub fn fold_step_callable(acc_type: Rc<Node>, element_type: Rc<Node>) -> Rc<Node
     })
 }
 
-pub fn collection_fold_acc_expected(
-    results: Rc<Vec<Rc<ArgInferResult>>>,
-    call_args: Rc<Vec<Rc<Node>>>,
-    value_params: Rc<Vec<Rc<Node>>>,
-    roles: Rc<CollectionFoldRoles>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match typed_arg_type_for_formal(
-        results.clone(),
-        call_args.clone(),
-        value_params.clone(),
-        roles.collection_formal_index.clone(),
-        source_indices.clone(),
-    ) {
-        std::option::Option::None => std::option::Option::None,
-        Some(xs_ty) => {
-            if formal_type_is_unary_container(xs_ty.clone(), source_indices.clone())
-                && !unify_binding_is_uninformative(xs_ty.clone())
-            {
-                Some(xs_ty)
-            } else {
-                std::option::Option::None
-            }
-        }
-    }
-}
-
 pub fn collection_fold_lambda_expected(
     results: Rc<Vec<Rc<ArgInferResult>>>,
     call_args: Rc<Vec<Rc<Node>>>,
@@ -12176,8 +12134,18 @@ pub fn collection_fold_lambda_expected(
                     roles.acc_formal_index.clone(),
                     source_indices.clone(),
                 ) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(acc_ty) => Some(fold_step_callable(acc_ty, elem)),
+                    std::option::Option::None => Some(fold_step_callable(
+                        type_variable_node("FoldAccumulator".to_string()),
+                        elem,
+                    )),
+                    Some(acc_ty) => {
+                        let acc = if unify_binding_is_uninformative(acc_ty.clone()) {
+                            type_variable_node("FoldAccumulator".to_string())
+                        } else {
+                            acc_ty
+                        };
+                        Some(fold_step_callable(acc, elem))
+                    }
                 }
             }
         }
@@ -12354,41 +12322,10 @@ pub fn infer_call_arguments_generic_pass(
                     }
                 }
             };
-            let fold_acc_expected = match fold_roles.clone() {
-                std::option::Option::None => std::option::Option::None,
-                Some(roles) => match (*formal_selection.clone()).clone() {
-                    CallArgumentFormalSelection::CallArgumentFormalSelected {
-                        formal_index: fi,
-                        ..
-                    } => {
-                        if fi == roles.acc_formal_index.clone()
-                            && argument_is_empty_collection_intro(
-                                crate::v1_std_core::arg_value(a.clone()),
-                                scope.type_env.clone().source_indices.clone(),
-                            )
-                        {
-                            collection_fold_acc_expected(
-                                st.results.clone(),
-                                call_args.clone(),
-                                value_params.clone(),
-                                roles.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            )
-                        } else {
-                            std::option::Option::None
-                        }
-                    }
-                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                        std::option::Option::None
-                    }
-                },
-            };
             let expected = if !has_formal.clone() {
                 std::option::Option::None
             } else if (fold_step_expected.clone() != std::option::Option::None) {
                 fold_step_expected.clone()
-            } else if (fold_acc_expected.clone() != std::option::Option::None) {
-                fold_acc_expected.clone()
             } else if (direct_call_formal_has_unbound_type_variable(formal_raw.clone())
                 && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
                 && !(formal_is_code_point_sequence.clone() && argument_is_literal.clone())

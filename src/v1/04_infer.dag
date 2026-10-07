@@ -7924,15 +7924,6 @@ fn bind_unbound_collection_element_generic(
   }
 }
 
-fn argument_is_empty_collection_intro(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match e.expr_data {
-    ExprListLit => (e.children |> count) == 0
-    _ =>
-      expression_is_uppercase_constructor_reference(n: e, source_indices: source_indices)
-        && qualified_last_segment(name: expr_var_name_at(texpr: e, source_indices: source_indices)) == "Empty"
-  }
-}
-
 fn fold_step_callable(acc_type: Node, element_type: Node) -> Node {
   let fold_params = [
     make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: acc_type, default_value: none, span: no_span(), name_span: no_span()),
@@ -7947,16 +7938,6 @@ fn fold_step_callable(acc_type: Node, element_type: Node) -> Node {
   }
 }
 
-fn collection_fold_acc_expected(results: List<ArgInferResult>, call_args: List<Node>, value_params: List<Node>, roles: CollectionFoldRoles, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.collection_formal_index, source_indices: source_indices) {
-    Absent => none
-    Present { value: xs_ty } =>
-      if formal_type_is_unary_container(n: xs_ty, source_indices: source_indices) && !unify_binding_is_uninformative(n: xs_ty) {
-        Present { value: xs_ty }
-      } else { none }
-  }
-}
-
 fn collection_fold_lambda_expected(results: List<ArgInferResult>, call_args: List<Node>, value_params: List<Node>, roles: CollectionFoldRoles, source_indices: Map<String, NewlineIndex>) -> Node? {
   match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.collection_formal_index, source_indices: source_indices) {
     Absent => none
@@ -7966,9 +7947,10 @@ fn collection_fold_lambda_expected(results: List<ArgInferResult>, call_args: Lis
         none
       } else {
         match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.acc_formal_index, source_indices: source_indices) {
-          Absent => none
+          Absent => Present { value: fold_step_callable(acc_type: type_variable_node(id: "FoldAccumulator"), element_type: elem) }
           Present { value: acc_ty } =>
-            Present { value: fold_step_callable(acc_type: acc_ty, element_type: elem) }
+            let acc = if unify_binding_is_uninformative(n: acc_ty) { type_variable_node(id: "FoldAccumulator") } else { acc_ty }
+            Present { value: fold_step_callable(acc_type: acc, element_type: elem) }
         }
       }
   }
@@ -8031,23 +8013,10 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
           }
         }
     }
-    let fold_acc_expected = match fold_roles {
-      Absent => none
-      Present { value: roles } =>
-        match formal_selection {
-          CallArgumentFormalSelected { formal_index: fi, formal: _ } =>
-            if fi == roles.acc_formal_index && argument_is_empty_collection_intro(e: arg_value(n: a), source_indices: scope.type_env.source_indices) {
-              collection_fold_acc_expected(results: st.results, call_args: call_args, value_params: value_params, roles: roles, source_indices: scope.type_env.source_indices)
-            } else { none }
-          CallArgumentFormalUnavailable => none
-        }
-    }
     let expected = if !has_formal {
       none
     } else if fold_step_expected != none {
       fold_step_expected
-    } else if fold_acc_expected != none {
-      fold_acc_expected
     } else if (direct_call_formal_has_unbound_type_variable(n: formal_raw)
         && !is_lambda_expr(e: arg_value(n: a))
         && !(formal_is_code_point_sequence && argument_is_literal)
