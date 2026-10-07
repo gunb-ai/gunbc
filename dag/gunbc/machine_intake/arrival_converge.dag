@@ -134,7 +134,7 @@ import gunbc.auth.standing_operator_grant {
 }
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_named }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
 import gunbc.fleet.convergence_fold {
@@ -709,12 +709,30 @@ fn capability_discharges_bmc_secure_account_write(
 }
 
 fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity? {
-  if ((key.subject as NonEmptyStr) as String) == (operator_host_mtjade1 as String) {
-    Present { value: operator_host_mtjade1 }
-  } else if ((key.subject as NonEmptyStr) as String) == (operator_host_mtcollins1 as String) {
-    Present { value: operator_host_mtcollins1 }
-  } else {
-    none
+  operator_host_named(label: key.subject as NonEmptyStr)
+}
+
+fn capability_discharge(
+  key: StepInstanceKey,
+  inputs: BmcSecureInputs,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+) -> InstanceAuthorization?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "discharge_bmc_secure_apply"),
+  ]
+{
+  match inputs.capability {
+    Present { value: r } =>
+      if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
+        match r {
+          RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
+          RedemptionRefused { cause: _ } => none
+        }
+      } else {
+        none
+      }
+    Absent => none
   }
 }
 
@@ -731,46 +749,13 @@ fn discharge_bmc_secure_apply(
           if grant_discharges_bmc_secure_account_write(g: g, host: host) {
             Present { value: instance_authorization(key: key, principal: g.principal) }
           } else {
-            match inputs.capability {
-              Present { value: r } =>
-                if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
-                  match r {
-                    RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
-                    RedemptionRefused { cause: _ } => none
-                  }
-                } else {
-                  none
-                }
-              Absent => none
-            }
+            capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
           }
         Absent =>
-          match inputs.capability {
-            Present { value: r } =>
-              if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
-                match r {
-                  RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
-                  RedemptionRefused { cause: _ } => none
-                }
-              } else {
-                none
-              }
-            Absent => none
-          }
+          capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
       }
     Absent =>
-      match inputs.capability {
-        Present { value: r } =>
-          if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
-            match r {
-              RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
-              RedemptionRefused { cause: _ } => none
-            }
-          } else {
-            none
-          }
-        Absent => none
-      }
+      capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
   }
 }
 

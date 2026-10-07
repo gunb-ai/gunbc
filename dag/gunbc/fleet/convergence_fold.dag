@@ -360,6 +360,7 @@ type InstanceAuthorization sole_constructor {
 fn instance_authorization(key: StepInstanceKey, principal: NonEmptyStr) -> InstanceAuthorization
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "discharge_bmc_secure_apply"),
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "capability_discharge"),
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_through_bmc_secure"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
