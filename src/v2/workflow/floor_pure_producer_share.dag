@@ -1329,10 +1329,10 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse",
     claims: [
       SingleClaimFillDebtClaim { claim: "braced_pattern_binder_still_normalizes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "leading_pipe_multiline_coproduct_parses_and_normalizes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "leading_pipe_normalizes_to_the_same_alternatives_as_without_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "leading_pipe_multiline_coproduct_parses_and_normalizes_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "leading_pipe_normalizes_to_the_same_alternatives_as_without_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "positional_pattern_binder_normalizes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "positional_payload_variants_parse_and_normalize_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "positional_payload_variants_parse_and_normalize_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "positional_payload_without_leading_pipe_with_construction_normalizes_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "positional_wildcard_pattern_still_normalizes_holds", standing: ActiveFillDebt }
     ]
