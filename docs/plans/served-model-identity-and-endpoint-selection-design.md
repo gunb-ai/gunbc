@@ -262,7 +262,8 @@ and provenance are part of the first delivery that executes, not a later one.
 3. **Pricing and presentation.**
    - Offer-specific cost comparison.
    - Identity-keyed shadow pricing for self-hosted models: ctrl `lib/model_pricing.mjs` currently
-     strips the `:suffix` and prices nvfp4 at the fp8 reference. Where no honest reference exists
+     strips the `:suffix` and prices every build of a model at one model-level catalogue
+     reference, whatever its weight scheme. Where no honest reference exists
      for an identity, the answer is "no reference".
    - Reporting that keeps reported charges apart from estimates.
 
