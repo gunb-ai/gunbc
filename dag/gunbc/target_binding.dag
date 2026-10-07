@@ -53,6 +53,7 @@ type TargetProducer
   | DependencyDemandCensusProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
+  | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String }
   | NativeServeProgramProducer { entry: String }
 
