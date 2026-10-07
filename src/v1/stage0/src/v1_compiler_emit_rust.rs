@@ -29275,6 +29275,171 @@ pub fn emit_rust_higher_order_method(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
+    if (is_string_typed_expr(
+        receiver.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) && ((ho_spec.method_name.clone() == "filter".to_string())
+        || (ho_spec.method_name.clone() == "any".to_string())))
+    {
+        emit_rust_host_text_callback(
+            ho_spec.method_name.clone(),
+            receiver.clone(),
+            args.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        )
+    } else {
+        emit_rust_higher_order_method_over_list(
+            ho_spec.clone(),
+            receiver.clone(),
+            args.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        )
+    }
+}
+
+pub fn emit_rust_host_text_callback(
+    method_name: String,
+    receiver: Rc<Node>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let recv_str = emit_typed_expr(
+            receiver.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            1024,
+        );
+        let first_arg_str = emit_typed_first_arg(
+            args.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        );
+        let pred = match args.clone().first().cloned() {
+            Some(a) => {
+                match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda => {
+                        let bd = match crate::v1_std_core::arg_value(a.clone())
+                            .children
+                            .clone()
+                            .first()
+                            .cloned()
+                        {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => crate::v1_std_core::arg_value(a.clone()),
+                        };
+                        let ps = crate::v1_std_core::lambda_param_names_at(
+                            crate::v1_std_core::arg_value(a.clone()),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        let p = crate::v1_compiler_emit::emit_ident(
+                            match ps.clone().first().cloned() {
+                                Some(n) => n.clone(),
+                                std::option::Option::None => "__x".to_string(),
+                            },
+                            RenderTarget::Rust,
+                        );
+                        let lambda_scope = lambda_scope_from_children(
+                            scope.clone(),
+                            ps.clone(),
+                            Rc::new(
+                                crate::v1_std_core::arg_value(a.clone())
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        );
+                        let body_str = emit_typed_expr(
+                            bd.clone(),
+                            registry.clone(),
+                            lambda_scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            1024,
+                        );
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("{ let ".to_string(), p.clone()),
+                                    ": i64 = __ch as i64; ".to_string(),
+                                ),
+                                body_str.clone(),
+                            ),
+                            " }".to_string(),
+                        )
+                    }
+                    _ => v1_rt::concat(
+                        v1_rt::concat("(".to_string(), first_arg_str.clone()),
+                        ")(__ch as i64)".to_string(),
+                    ),
+                }
+            }
+            std::option::Option::None => "compile_error!(\"missing predicate\")".to_string(),
+        };
+        if (method_name.clone() == "any".to_string()) {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "{ let mut __found = false; for __ch in (".to_string(),
+                            recv_str.clone(),
+                        ),
+                        ").chars() { if ".to_string(),
+                    ),
+                    pred.clone(),
+                ),
+                " { __found = true; break; } } __found }".to_string(),
+            )
+        } else {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "{ let mut __kept = String::new(); for __ch in (".to_string(),
+                            recv_str.clone(),
+                        ),
+                        ").chars() { if ".to_string(),
+                    ),
+                    pred.clone(),
+                ),
+                " { __kept.push(__ch); } } __kept }".to_string(),
+            )
+        }
+    }
+}
+
+pub fn emit_rust_higher_order_method_over_list(
+    ho_spec: Rc<HigherOrderMethodSpec>,
+    receiver: Rc<Node>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
     {
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing

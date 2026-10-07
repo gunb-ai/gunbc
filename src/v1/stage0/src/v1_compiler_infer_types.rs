@@ -14,7 +14,9 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
+pub use crate::std_algebra::{
+    algebra_profile_generator, algebra_templates_for_profile, kernel_algebra_profile,
+};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
@@ -233,6 +235,33 @@ pub fn container_kind_canonical(name: String) -> String {
                 }
             }
         }
+    }
+}
+
+pub fn receiver_profile_generator(name: String) -> Option<String> {
+    match kernel_profile_lookup(name.clone()) {
+        Some(p) => crate::std_algebra::algebra_profile_generator(p.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn receiver_element_or_generator(
+    base: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<KernelTypeBuild> {
+    match base.children.clone().first().cloned() {
+        Some(_) => algebra_child_or_placeholder(base.clone(), 0, "T".to_string()),
+        std::option::Option::None => match receiver_profile_generator(container_kind_canonical(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), base.clone()),
+        )) {
+            Some(g) => Rc::new(KernelTypeBuild {
+                ty: nominal_type_ref(g.clone()),
+                diagnostics: Rc::new(vec![]),
+            }),
+            std::option::Option::None => {
+                algebra_child_or_placeholder(base.clone(), 0, "T".to_string())
+            }
+        },
     }
 }
 
@@ -1229,7 +1258,7 @@ pub fn instantiate_algebra_type(
                 diagnostics: Rc::new(vec![]),
             }),
             AlgebraTypeTemplate::ReceiverElement => {
-                algebra_child_or_placeholder(base.clone(), 0, "T".to_string())
+                receiver_element_or_generator(base.clone(), source_indices.clone())
             }
             AlgebraTypeTemplate::ReceiverKey => {
                 algebra_child_or_placeholder(base.clone(), 0, "K".to_string())
@@ -1850,17 +1879,32 @@ pub fn apply_type_substitution(
                                         source_indices.clone(),
                                         receiver.clone(),
                                     ));
-                                match crate::std_types::container_param_name(rname.clone(), 0) {
-                                    Some(n) => Rc::new(KernelTypeBuild {
-                                        ty: type_variable_node(n.clone()),
+                                match receiver_profile_generator(rname.clone()) {
+                                    Some(g) => Rc::new(KernelTypeBuild {
+                                        ty: nominal_type_ref(g.clone()),
                                         diagnostics: Rc::new(vec![]),
                                     }),
-                                    std::option::Option::None => Rc::new(KernelTypeBuild {
-                                        ty: missing_kernel_container_profile_type(rname.clone()),
-                                        diagnostics: Rc::new(vec![
-                                            kernel_container_profile_miss_diagnostic(rname.clone()),
-                                        ]),
-                                    }),
+                                    std::option::Option::None => {
+                                        match crate::std_types::container_param_name(
+                                            rname.clone(),
+                                            0,
+                                        ) {
+                                            Some(n) => Rc::new(KernelTypeBuild {
+                                                ty: type_variable_node(n.clone()),
+                                                diagnostics: Rc::new(vec![]),
+                                            }),
+                                            std::option::Option::None => Rc::new(KernelTypeBuild {
+                                                ty: missing_kernel_container_profile_type(
+                                                    rname.clone(),
+                                                ),
+                                                diagnostics: Rc::new(vec![
+                                                    kernel_container_profile_miss_diagnostic(
+                                                        rname.clone(),
+                                                    ),
+                                                ]),
+                                            }),
+                                        }
+                                    }
                                 }
                             }
                         }

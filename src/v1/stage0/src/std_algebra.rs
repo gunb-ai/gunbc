@@ -1828,7 +1828,24 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: std::option::Option::None,
             callback_element_position: std::option::Option::None,
         }),
+        collection_filter_shape(),
+        collection_any_shape(),
     ])
+}
+
+pub fn algebra_profile_generator(profile: AlgebraProfile) -> Option<String> {
+    match profile.clone() {
+        AlgebraProfile::FreeMonoidScalarProfile => Some("Char".to_string()),
+        AlgebraProfile::OrderedRingProfile => std::option::Option::None,
+        AlgebraProfile::OrderedSemiringProfile => std::option::Option::None,
+        AlgebraProfile::ApproximateFieldProfile => std::option::Option::None,
+        AlgebraProfile::BooleanAlgebraProfile => std::option::Option::None,
+        AlgebraProfile::FinitePowerSetProfile => std::option::Option::None,
+        AlgebraProfile::PointwisePowerCollectionProfile => std::option::Option::None,
+        AlgebraProfile::FreeMonoidCollectionProfile => std::option::Option::None,
+        AlgebraProfile::PartialFunctionProfile => std::option::Option::None,
+        AlgebraProfile::FinitelySupportedFunctionProfile => std::option::Option::None,
+    }
 }
 
 pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
