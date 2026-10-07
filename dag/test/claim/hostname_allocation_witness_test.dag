@@ -5,7 +5,34 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn allocation_fixture(slot: String, hostname: String) -> HostnameAllocation {
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
-    canonical_hostname: hostname as DnsLabel,
+    name: LegacyHostname { label: hostname as DnsLabel },
+  }
+}
+
+fn drawn_fixture(slot: String, name: HumanName, entropy: Int) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: DrawnHumanName { name: name, draw: HumanNameDraw { entropy: entropy } },
+  }
+}
+
+fn human_name_eq(a: HumanName, b: HumanName) -> Bool {
+  (human_name_canonical_hostname(name: a) as String) == (human_name_canonical_hostname(name: b) as String)
+}
+
+type RecordedDrawCheck {
+  prior: List<HostnameAllocation>
+  reproduced: Bool
+}
+
+fn recorded_draw_reproduces(row: HostnameAllocation, prior: List<HostnameAllocation>) -> Bool {
+  match row.name {
+    LegacyHostname { label: _ } => true
+    DrawnHumanName { name: recorded, draw: d } => match draw_human_name(draw: d, existing: prior) {
+      HumanNameDrawn { name: drawn } => human_name_eq(a: drawn, b: recorded)
+      HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+      HumanNameDrawRefused { reason: _ } => false
+    }
   }
 }
 
@@ -99,5 +126,111 @@ test fn witness_lookup_of_unallocated_slot_is_absent_not_reconstructed() -> Bool
   match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as HostIdentity) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// THE RECORDED NAMES ARE THE ALLOCATOR'S, NOT HAND-PICKED. Every drawn row in the production roster
+// is re-drawn by the real allocator against the rows allocated before it, and must yield exactly the
+// recorded name; at least one drawn row must exist, so an empty set cannot pass vacuously.
+test fn witness_every_recorded_draw_is_what_the_allocator_yields() -> Bool {
+  let drawn = filter(gunbc_fleet_hostname_allocations, r => match r.name {
+    DrawnHumanName { name: _, draw: _ } => true
+    LegacyHostname { label: _ } => false
+  })
+  let check = fold_list(
+    xs: gunbc_fleet_hostname_allocations,
+    empty: RecordedDrawCheck { prior: [], reproduced: true },
+    cons: fn(acc, r) {
+      RecordedDrawCheck {
+        prior: append(acc.prior, [r]),
+        reproduced: acc.reproduced && recorded_draw_reproduces(row: r, prior: acc.prior),
+      }
+    }
+  )
+  drawn.length() >= 2 && check.reproduced
+}
+
+// A collision lengthens the SAME name. 707054856316 draws cheryl / brooks / ernest; with "cheryl"
+// already answered to, the allocator must yield cheryl-brooks, and with that taken too,
+// cheryl-ernest-brooks -- never a different first name.
+test fn witness_collision_lengthens_the_drawn_name() -> Bool {
+  let d = HumanNameDraw { entropy: 707054856316 }
+  let taken_first = [allocation_fixture(slot: "a", hostname: "cheryl")]
+  let taken_two = append(taken_first, [allocation_fixture(slot: "b", hostname: "cheryl-brooks")])
+  let one = match draw_human_name(draw: d, existing: []) {
+    HumanNameDrawn { name: n } => (human_name_canonical_hostname(name: n) as String) == "cheryl"
+    HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+    HumanNameDrawRefused { reason: _ } => false
+  }
+  let two = match draw_human_name(draw: d, existing: taken_first) {
+    HumanNameDrawn { name: n } => (human_name_canonical_hostname(name: n) as String) == "cheryl-brooks"
+    HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+    HumanNameDrawRefused { reason: _ } => false
+  }
+  let three = match draw_human_name(draw: d, existing: taken_two) {
+    HumanNameDrawn { name: n } => (human_name_canonical_hostname(name: n) as String) == "cheryl-ernest-brooks"
+    HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+    HumanNameDrawRefused { reason: _ } => false
+  }
+  one && two && three
+}
+
+test fn witness_exhausted_draw_refuses_rather_than_suffixing() -> Bool {
+  let taken = [
+    allocation_fixture(slot: "a", hostname: "cheryl"),
+    allocation_fixture(slot: "b", hostname: "cheryl-brooks"),
+    allocation_fixture(slot: "c", hostname: "cheryl-ernest-brooks"),
+  ]
+  match draw_human_name(draw: HumanNameDraw { entropy: 707054856316 }, existing: taken) {
+    HumanNameDrawExhausted { entropy: e, taken_forms: forms } => e == 707054856316 && forms.length() == 3
+    HumanNameDrawn { name: _ } => false
+    HumanNameDrawRefused { reason: _ } => false
+  }
+}
+
+// Stable identity, drawn name and (legacy) hostname all differ, and each resolves to the same host.
+test fn witness_identity_and_name_resolve_to_one_host() -> Bool {
+  let by_name = match resolve_host_selector(selector: "cheryl") {
+    HostSelectorResolved { host: h } => (h as String) == (operator_host_183527 as String)
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  let by_identity = match resolve_host_selector(selector: "host-183527") {
+    HostSelectorResolved { host: h } => (h as String) == (operator_host_183527 as String)
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  let legacy = match resolve_host_selector(selector: "srv3") {
+    HostSelectorResolved { host: h } => (h as String) == (operator_host_srv3 as String)
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  by_name && by_identity && legacy
+}
+
+test fn witness_ambiguous_short_name_selects_nothing() -> Bool {
+  let roster = [
+    drawn_fixture(slot: "x1", name: FirstLast { first: "ada" as DnsLabel, last: "smith" as DnsLabel }, entropy: 1),
+    drawn_fixture(slot: "x2", name: FirstLast { first: "ada" as DnsLabel, last: "jones" as DnsLabel }, entropy: 2),
+  ]
+  let short = match resolve_host_selector_in(allocations: roster, selector: "ada") {
+    HostSelectorAmbiguous { selector: _, candidates: c } =>
+      c.length() == 2 && any(c, x => (x as String) == "ada-smith") && any(c, x => (x as String) == "ada-jones")
+    HostSelectorResolved { host: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  let full = match resolve_host_selector_in(allocations: roster, selector: "ada-jones") {
+    HostSelectorResolved { host: h } => (h as String) == "x2"
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  short && full
+}
+
+test fn witness_unknown_selector_is_unknown() -> Bool {
+  match resolve_host_selector(selector: "nobody-here") {
+    HostSelectorUnknown { selector: s } => s == "nobody-here"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
 }

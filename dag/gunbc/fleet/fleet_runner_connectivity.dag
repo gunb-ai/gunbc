@@ -16,6 +16,7 @@ import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import gunbc.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
@@ -547,16 +548,7 @@ fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunn
 }
 
 fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
-  concat(
-    local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
-    concat(
-      local_incarnations_for_host(host: operator_host_srv2, width: materialized_width_for_host(host: operator_host_srv2)),
-      concat(
-        local_incarnations_for_host(host: operator_host_srv3, width: materialized_width_for_host(host: operator_host_srv3)),
-        local_incarnations_for_host(host: operator_host_srv4, width: materialized_width_for_host(host: operator_host_srv4))
-      )
-    )
-  )
+  flat_map(fleet_hosts(), h => local_incarnations_for_host(host: h, width: materialized_width_for_host(host: h)))
 }
 
 fn partial_roster_unseen_reason(observed_count: Int, authority_total: Int) -> String {
@@ -693,8 +685,11 @@ fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegis
   )
 }
 
+// The intended runner population, derived from the enrollment root rather than listed here. A host
+// enrolled for CI whose execution is not admitted still belongs to this population; whether it
+// commits slots is the width's question, not membership's.
 fn fleet_hosts() -> List<HostIdentity> {
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+  hosts_enrolled_for(wanted: CiRunnerParticipation)
 }
 
 // THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT. This

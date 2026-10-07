@@ -2,25 +2,28 @@ module test.claim.host_phase_status
 
 import gunbc.host_standup { PhaseDisposition }
 import v2.std.live_tree { LiveTreeDisposition }
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
 import std.upsert_decision { Conflict, Inaccessible, UnknownRefused }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.fleet_reach_endpoint { fleet_reach_probe_targets }
 import gunbc.host_assimilation_program {
+  assimilation_program_for,
+  fleet_participation_canonical_roster,
+  fleet_participation_in_canonical_roster,
+  program_step_count,
+  step_serves_participation,
+}
+import gunbc.fleet_host_backing { OwnedMachine }
+import gunbc.fleet_enrollment {
   CiRunnerParticipation,
   HostEnrollmentIntent,
   InferenceServingParticipation,
-  assimilation_program_for,
+  ci_runner_and_session_enrollment_participation,
   ci_runner_enrollment_participation,
-  fleet_participation_in_canonical_roster,
   inference_serving_enrollment_participation,
-  program_step_count,
-  step_serves_participation,
 }
 import gunbc.host_phase_status {
   HostPhaseCell,
   HostPhaseCellStatus,
-  fleet_subsumption_enrollments,
   fleet_subsumption_hosts,
   host_fleet_phase_matrix,
   host_phase_cell_has_live_producer,
@@ -38,6 +41,7 @@ import gunbc.host_phase_status {
   host_phase_verdict_gate_accepts,
   observation_verdict_eq,
 }
+import gunbc.fleet_enrollment { fleet_enrollments }
 import gunbc.host_standup {
   DeclaredGap,
   ModeledCompose,
@@ -246,16 +250,16 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
 // equality over a rectangle: it could not distinguish a correct matrix from one that gave every
 // host every step, and DESIGN.md §5 rules that completeness is an identity join, not a count.
 test fn witness_matrix_is_exact_join_over_participation_programs() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let matched = filter(
-    fleet_subsumption_enrollments,
+    fleet_enrollments,
     e => {
       let owed = program_step_count(program: assimilation_program_for(intent: e))
       let got = filter(matrix, c => c.cell.host == e.host).length()
       got == owed
     },
   )
-  matched.length() == fleet_subsumption_enrollments.length()
+  matched.length() == fleet_enrollments.length()
 }
 
 // Re-derived DELIBERATELY on the join-4 flip (run 31300640122): the executed fleet reach
@@ -263,14 +267,14 @@ test fn witness_matrix_is_exact_join_over_participation_programs() -> Bool {
 // cells — so the frontier is the authored srv3 cell plus 2 cells per probed host,
 // DERIVED from the probe target roster rather than pinned as a tree-copied literal.
 test fn witness_live_observation_frontier_is_one_cell() -> Bool {
-  host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) == 1 + 2 * fleet_reach_probe_targets.length()
+  host_phase_observation_coverage_count(enrollments: fleet_enrollments) == 1 + 2 * fleet_reach_probe_targets.length()
 }
 
 // Cross-check between two independent producers over the same cells rather than a rectangle: the
 // counter walks the enrollments, the join filters the derived matrix by disposition. A rectangle
 // assertion here would go green even if the gap steps landed on the wrong hosts.
 test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let gap_cells = filter(
     matrix,
     c => match c.disposition {
@@ -278,7 +282,7 @@ test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
       ModeledCompose { authorities: _ } => false
     },
   )
-  host_phase_unmodeled_count(enrollments: fleet_subsumption_enrollments) == gap_cells.length()
+  host_phase_unmodeled_count(enrollments: fleet_enrollments) == gap_cells.length()
 }
 
 // Remaining work is the reconcile's own upsert count, and it must equal every cell that is not
@@ -288,9 +292,9 @@ test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
 // count and the lane would look one item closer to done than it is.
 
 test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
-  let remaining = host_phase_remaining_work_count(enrollments: fleet_subsumption_enrollments)
-  let total = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
-  let finished = host_phase_finished_cell_count(enrollments: fleet_subsumption_enrollments)
+  let remaining = host_phase_remaining_work_count(enrollments: fleet_enrollments)
+  let total = host_fleet_phase_matrix(enrollments: fleet_enrollments).length()
+  let finished = host_phase_finished_cell_count(enrollments: fleet_enrollments)
   remaining == total - finished
 }
 
@@ -304,11 +308,13 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
 data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: inference_serving_enrollment_participation,
+  backing: OwnedMachine,
 }
 
 data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: ci_runner_enrollment_participation,
+  backing: OwnedMachine,
 }
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
@@ -321,9 +327,18 @@ fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
   l == "P0:host-identity-converge" || l == "P0:reach-secrets-network" || l == "P2:compute-fabric-enroll" || l == "P5:assimilation-complete-gate"
 }
 
+// The whole spine is owed by a host that both runs CI and hosts interactive sessions -- srv1-srv4's
+// enrollment -- and a CI-ONLY host owes exactly one step fewer: session placement, which belongs to
+// the session participation since sessions stopped being assumed of every CI host.
 test fn witness_ci_program_selects_the_whole_spine() -> Bool {
-  let selected = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
-  selected == host_standup_spine.length()
+  let both = HostEnrollmentIntent {
+    host: synthetic_ci_enrollment.host,
+    participation: ci_runner_and_session_enrollment_participation,
+    backing: OwnedMachine,
+  }
+  let ci_only = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
+  program_step_count(program: assimilation_program_for(intent: both)) == host_standup_spine.length()
+    && ci_only == host_standup_spine.length() - 1
 }
 
 test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
@@ -334,16 +349,19 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
 data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [InferenceServingParticipation, CiRunnerParticipation],
+  backing: OwnedMachine,
 }
 
 data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, InferenceServingParticipation],
+  backing: OwnedMachine,
 }
 
 data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
+  backing: OwnedMachine,
 }
 
 // Participation is a set wearing a list's carrier, so the three enrollments below must be one
@@ -419,7 +437,7 @@ test fn witness_inference_enrollment_keeps_the_shared_obligations() -> Bool {
 }
 
 test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
-  let unclaimed = filter(host_standup_spine, s => !step_serves_participation(step: s, wanted: CiRunnerParticipation) && !step_serves_participation(step: s, wanted: InferenceServingParticipation))
+  let unclaimed = filter(host_standup_spine, s => !any(fleet_participation_canonical_roster, p => step_serves_participation(step: s, wanted: p)))
   unclaimed.length() == 0
 }
 
@@ -428,9 +446,9 @@ test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
 // program is still the whole spine — asserted per enrollment, so it stays true no matter how many
 // non-runner hosts join the roster.
 test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let runners = filter(
-    fleet_subsumption_enrollments,
+    fleet_enrollments,
     e => {
       let owed = program_step_count(program: assimilation_program_for(intent: e))
       owed == host_standup_spine.length()
@@ -444,7 +462,7 @@ test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
 }
 
 test fn witness_fleet_matrix_has_no_duplicated_cells() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let duplicated = filter(
     matrix,
     c => filter(matrix, d => host_phase_cell_key(c: d) == host_phase_cell_key(c: c)).length() > 1,
@@ -453,7 +471,7 @@ test fn witness_fleet_matrix_has_no_duplicated_cells() -> Bool {
 }
 
 test fn witness_matrix_hosts_are_exactly_the_enrolled_roster() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let covered = filter(
     fleet_subsumption_hosts,
     h => filter(matrix, c => c.cell.host == h).length() > 0,
@@ -470,7 +488,7 @@ test fn witness_matrix_hosts_are_exactly_the_enrolled_roster() -> Bool {
 // runner-only one. Enrolled is not converged — every one of these eight cells is honestly
 // unobserved, and nothing here claims identity convergence, reach, compute enrolment, or serving.
 test fn witness_enrolled_sparks_carry_exactly_the_shared_obligations() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let sparks = filter(
     matrix,
     c => c.cell.host == operator_host_srv5 || c.cell.host == operator_host_srv6,
@@ -487,7 +505,7 @@ test fn witness_enrolled_sparks_carry_exactly_the_shared_obligations() -> Bool {
 // NOT satisfied), and every non-P0 Spark cell stays unobserved. The witness now pins
 // that exact split so a producer landing on any further Spark cell still reds here.
 test fn witness_enrolled_spark_cells_are_all_unobserved() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let sparks = filter(
     matrix,
     c => c.cell.host == operator_host_srv5 || c.cell.host == operator_host_srv6,
@@ -520,7 +538,7 @@ test fn witness_spine_actually_carries_gap_phases() -> Bool {
 // something, or "the Sparks carry no runner-only obligation" is satisfied by a predicate that
 // matches nothing. The runner hosts are where those obligations live.
 test fn witness_runner_only_obligations_exist_on_runner_hosts() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
+  let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let runner_only = filter(matrix, c => cell_label_is_runner_only(c: c))
   let on_sparks = filter(
     runner_only,
@@ -586,7 +604,7 @@ test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
 // -- including when a genuinely executed producer is wired, which is the outcome this lane wants.
 test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
   let covered = filter(
-    host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments),
+    host_fleet_phase_matrix(enrollments: fleet_enrollments),
     c => host_phase_cell_has_live_producer(c: c),
   )
   let authored = filter(
@@ -597,7 +615,7 @@ test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
     covered,
     c => c.cell.phase_label == "P0:reach-secrets-network" || c.cell.phase_label == "P0:host-identity-converge",
   )
-  let metric = host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments)
+  let metric = host_phase_observation_coverage_count(enrollments: fleet_enrollments)
   metric == covered.length()
     && covered.length() == authored.length() + probe_deduced.length()
     && authored.length() == 1

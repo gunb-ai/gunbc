@@ -42,7 +42,16 @@ import gunbc.host_standup {
   assimilation_complete_input_eq,
   assimilation_input_is_required,
 }
-import product.host_identity { HostIdentity }
+import gunbc.fleet_enrollment {
+  FleetParticipation,
+  CiRunnerParticipation,
+  InferenceServingParticipation,
+  InteractiveSessionParticipation,
+  HostEnrollmentIntent,
+  fleet_participation_label,
+  participation_list_contains,
+  ci_runner_enrollment_participation,
+}
 
 // WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host_phase_status crossed
 // every enrolled host with all of it. That was correct while every enrolled host was the same kind
@@ -59,35 +68,6 @@ import product.host_identity { HostIdentity }
 // exist at all, so an obligation that does not apply is not a cell with a label -- it is not a
 // cell.
 
-// Participation is what a host DOES for the fleet, and it is a LIST because the axes are
-// independent rather than exclusive: nothing in the model forbids a host that both runs CI and
-// serves inference, and a coproduct would have forced a third fused variant the first time that
-// happened. It is deliberately NOT a host KIND enum (AltraRunner | SparkAppliance) -- kind is
-// hardware, participation is role, and binding obligations to hardware would mean a future Altra
-// dedicated to serving inherits BMC obligations because of what it is made of rather than what it
-// is for. srv5 and srv6 stay opaque host identities for the same reason: the identity survives a
-// role change or a hardware replacement, and DGX Spark remains a product fact recorded elsewhere,
-// never part of the host's permanent name.
-
-type FleetParticipation
-  = CiRunnerParticipation
-  | InferenceServingParticipation
-
-fn fleet_participation_label(p: FleetParticipation) -> String {
-  match p {
-    CiRunnerParticipation => "ci-runner"
-    InferenceServingParticipation => "inference-serving"
-  }
-}
-
-fn fleet_participation_eq(a: FleetParticipation, b: FleetParticipation) -> Bool {
-  fleet_participation_label(p: a) == fleet_participation_label(p: b)
-}
-
-type HostEnrollmentIntent {
-  host: HostIdentity
-  participation: List<FleetParticipation>
-}
 
 // The one place a standup phase is bound to the participations that require it, kept HERE rather
 // than as a field on HostStandupStep on purpose. Adding the field would reshape fourteen rows in
@@ -137,7 +117,7 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
     CodexRuntimeProvision => [CiRunnerParticipation]
     ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
     GreenPlaceReadiness => [CiRunnerParticipation]
-    SessionPlacementEnrollment => [CiRunnerParticipation]
+    SessionPlacementEnrollment => [InteractiveSessionParticipation]
     StandupAssimilationComplete => [CiRunnerParticipation, InferenceServingParticipation]
   }
 }
@@ -149,13 +129,6 @@ fn host_phase_participations(phase: HostStandupPhase) -> List<FleetParticipation
   }
 }
 
-fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetParticipation) -> Bool {
-  fold_list(
-    xs: ps,
-    empty: false,
-    cons: fn(acc, p) { if acc { true } else { fleet_participation_eq(a: p, b: wanted) } }
-  )
-}
 
 fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) -> Bool {
   participation_list_contains(ps: host_phase_participations(phase: step.phase), wanted: wanted)
@@ -213,6 +186,7 @@ fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationPro
 data fleet_participation_canonical_roster: List<FleetParticipation> = [
   CiRunnerParticipation,
   InferenceServingParticipation,
+  InteractiveSessionParticipation,
 ]
 
 fn fleet_participation_in_canonical_roster(p: FleetParticipation) -> Bool {
@@ -221,6 +195,8 @@ fn fleet_participation_in_canonical_roster(p: FleetParticipation) -> Bool {
       participation_list_contains(ps: fleet_participation_canonical_roster, wanted: CiRunnerParticipation)
     InferenceServingParticipation =>
       participation_list_contains(ps: fleet_participation_canonical_roster, wanted: InferenceServingParticipation)
+    InteractiveSessionParticipation =>
+      participation_list_contains(ps: fleet_participation_canonical_roster, wanted: InteractiveSessionParticipation)
   }
 }
 
@@ -239,21 +215,6 @@ fn program_step_count(program: HostAssimilationProgram) -> Int {
   program.steps.length()
 }
 
-// The CI-runner program is the identity anchor for the refactor: it must select the WHOLE spine,
-// because every phase authored to date exists to serve runner hosts. If a later phase is added that
-// no participation claims, or one that CI does not claim, this equality breaks and the witness reds
-// -- which is the intended alarm, not a maintenance burden. It is the discriminating control that
-// distinguishes 'the refactor preserved srv1-srv4 exactly' from 'the refactor produced a
-// plausible-looking matrix'.
-
-data ci_runner_enrollment_participation: List<FleetParticipation> = [CiRunnerParticipation]
-
-data inference_serving_enrollment_participation: List<FleetParticipation> = [InferenceServingParticipation]
-
-data both_participation_enrollment_participation: List<FleetParticipation> = [
-  InferenceServingParticipation,
-  CiRunnerParticipation,
-]
 
 // Completion inputs derive as the union over enrolled participations, deduplicated by
 // AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host
@@ -327,6 +288,8 @@ fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<Assimil
     CiRunnerParticipation =>
       append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
     InferenceServingParticipation =>
+      shared_completion_inputs
+    InteractiveSessionParticipation =>
       shared_completion_inputs
   }
 }

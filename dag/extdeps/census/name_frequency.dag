@@ -1,0 +1,90 @@
+module extdeps.census.name_frequency
+
+import std.types { List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The U.S. Census Bureau's published name-frequency tables, the public-domain corpus the fleet's
+// human host names are drawn from (gunbc.hostname_allocation). Two tables, two vintages, one
+// publisher: the given names come from the 1990 decennial census tables, the only given-name
+// frequency list the Bureau publishes, and the surnames from the 2010 decennial census table.
+// The SSA baby-names list was the operator's first choice (2026-10-07); its download refused an
+// automated read, and the Census given-name table is the same kind of fact from the same kind of
+// authority, so it stands here rather than a hand-transcribed copy of the SSA list.
+//
+// WHAT IS VENDORED: lowercase spellings, in published rank order. Given names interleave the
+// female and male tables rank by rank (top 100 of each, first occurrence kept); surnames are the
+// top 200 alphabetic entries of the 2010 table. Every entry is a lowercase ASCII letter string,
+// so each is a legal DNS label on its own. The ORDER is part of the fact: a recorded draw indexes
+// these lists, so reordering or extending them changes what an old draw denotes -- a later
+// vintage is a new pair of rows beside these, never an edit to them.
+
+data census_1990_given_name_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www2.census.gov/topics/genealogy/1990surnames/dist.female.first"
+  }
+}
+
+data census_1990_male_given_name_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www2.census.gov/topics/genealogy/1990surnames/dist.male.first"
+  }
+}
+
+data census_2010_surname_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www2.census.gov/topics/genealogy/2010surnames/names.zip"
+  }
+}
+
+data census_1990_given_names_top200: List<NonEmptyStr> = [
+  "mary", "james", "patricia", "john", "linda", "robert", "barbara", "michael", "elizabeth",
+  "william", "jennifer", "david", "maria", "richard", "susan", "charles", "margaret", "joseph",
+  "dorothy", "thomas", "lisa", "christopher", "nancy", "daniel", "karen", "paul", "betty", "mark",
+  "helen", "donald", "sandra", "george", "donna", "kenneth", "carol", "steven", "ruth", "edward",
+  "sharon", "brian", "michelle", "ronald", "laura", "anthony", "sarah", "kevin", "kimberly",
+  "jason", "deborah", "matthew", "jessica", "gary", "shirley", "timothy", "cynthia", "jose",
+  "angela", "larry", "melissa", "jeffrey", "brenda", "frank", "amy", "scott", "anna", "eric",
+  "rebecca", "stephen", "virginia", "andrew", "kathleen", "raymond", "pamela", "gregory", "martha",
+  "joshua", "debra", "jerry", "amanda", "dennis", "stephanie", "walter", "carolyn", "patrick",
+  "christine", "peter", "marie", "harold", "janet", "douglas", "catherine", "henry", "frances",
+  "carl", "ann", "arthur", "joyce", "ryan", "diane", "roger", "alice", "joe", "julie", "juan",
+  "heather", "jack", "teresa", "albert", "doris", "jonathan", "gloria", "justin", "evelyn",
+  "terry", "jean", "gerald", "cheryl", "keith", "mildred", "samuel", "katherine", "willie", "joan",
+  "ralph", "ashley", "lawrence", "judith", "nicholas", "rose", "roy", "janice", "benjamin",
+  "kelly", "bruce", "nicole", "brandon", "judy", "adam", "christina", "harry", "kathy", "fred",
+  "theresa", "wayne", "beverly", "billy", "denise", "steve", "tammy", "louis", "irene", "jeremy",
+  "jane", "aaron", "lori", "randy", "rachel", "howard", "marilyn", "eugene", "andrea", "carlos",
+  "kathryn", "russell", "louise", "bobby", "sara", "victor", "anne", "martin", "jacqueline",
+  "ernest", "wanda", "phillip", "bonnie", "todd", "julia", "jesse", "ruby", "craig", "lois",
+  "alan", "tina", "shawn", "phyllis", "clarence", "norma", "sean", "paula", "philip", "diana",
+  "chris", "annie", "johnny", "lillian", "earl", "emily", "jimmy", "robin", "antonio"
+]
+
+data census_2010_surnames_top200: List<NonEmptyStr> = [
+  "smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis", "rodriguez",
+  "martinez", "hernandez", "lopez", "gonzalez", "wilson", "anderson", "thomas", "taylor", "moore",
+  "jackson", "martin", "lee", "perez", "thompson", "white", "harris", "sanchez", "clark",
+  "ramirez", "lewis", "robinson", "walker", "young", "allen", "king", "wright", "scott", "torres",
+  "nguyen", "hill", "flores", "green", "adams", "nelson", "baker", "hall", "rivera", "campbell",
+  "mitchell", "carter", "roberts", "gomez", "phillips", "evans", "turner", "diaz", "parker",
+  "cruz", "edwards", "collins", "reyes", "stewart", "morris", "morales", "murphy", "cook",
+  "rogers", "gutierrez", "ortiz", "morgan", "cooper", "peterson", "bailey", "reed", "kelly",
+  "howard", "ramos", "kim", "cox", "ward", "richardson", "watson", "brooks", "chavez", "wood",
+  "james", "bennett", "gray", "mendoza", "ruiz", "hughes", "price", "alvarez", "castillo",
+  "sanders", "patel", "myers", "long", "ross", "foster", "jimenez", "powell", "jenkins", "perry",
+  "russell", "sullivan", "bell", "coleman", "butler", "henderson", "barnes", "gonzales", "fisher",
+  "vasquez", "simmons", "romero", "jordan", "patterson", "alexander", "hamilton", "graham",
+  "reynolds", "griffin", "wallace", "moreno", "west", "cole", "hayes", "bryant", "herrera",
+  "gibson", "ellis", "tran", "medina", "aguilar", "stevens", "murray", "ford", "castro",
+  "marshall", "owens", "harrison", "fernandez", "mcdonald", "woods", "washington", "kennedy",
+  "wells", "vargas", "henry", "chen", "freeman", "webb", "tucker", "guzman", "burns", "crawford",
+  "olson", "simpson", "porter", "hunter", "gordon", "mendez", "silva", "shaw", "snyder", "mason",
+  "dixon", "munoz", "hunt", "hicks", "holmes", "palmer", "wagner", "black", "robertson", "boyd",
+  "rose", "stone", "salazar", "fox", "warren", "mills", "meyer", "rice", "schmidt", "garza",
+  "daniels", "ferguson", "nichols", "stephens", "soto", "weaver", "ryan", "gardner", "payne",
+  "grant", "dunn", "kelley", "spencer", "hawkins"
+]

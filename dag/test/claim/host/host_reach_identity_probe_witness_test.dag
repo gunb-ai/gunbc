@@ -33,16 +33,16 @@ import gunbc.host_reach_identity_probe {
 }
 import gunbc.host_phase_status {
   observe_host_phase,
-  fleet_subsumption_enrollments,
   host_phase_observation_coverage_count,
 }
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import gunbc.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet_enrollment { HostEnrollmentIntent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_subject() -> HostEnrollmentIntent? {
-  fleet_subsumption_enrollments.first()
+  fleet_enrollments.first()
 }
 
 // The four wire classes land in four distinct outcome arms, fail-closed: an
@@ -133,7 +133,7 @@ test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
           Present { value: _ } => false
           _ => true
         }
-        && host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) > 1
+        && host_phase_observation_coverage_count(enrollments: fleet_enrollments) > 1
     }
   }
 }

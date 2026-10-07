@@ -1,0 +1,42 @@
+module gunbc.fleet_host_backing
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.measure { ByteSize, HardwareThreadCount }
+import extdeps.toolchain.types { Architecture }
+import product.fabric.provider_route { ProviderRoute }
+
+// WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
+// service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
+// to converge and an OS to install -- and the assumption made a rented guest owe operations it has no
+// subject for. Backing answers only "what physical or provider resource is this host", and the
+// facts a rented guest is entitled to travel WITH it, because they are the provider's offer rather
+// than anything this repository observes: an Altra package's thread count is not a CAX guest's vCPU
+// allocation, and nested virtualization is a property of the provider's product, not of the silicon
+// underneath it. What the running guest actually exposes is an observation, carried downstream of
+// adoption, never authored here.
+//
+// This module enumerates no provider. A provider's adapter (gunbc.hetzner_cloud_guest) builds a
+// GuestEntitlement from that provider's cited catalog row, so adding a provider is a new adapter
+// beside the others and never a new arm here.
+
+type GuestEntitlement {
+  offer: DeclarationRef
+  architecture: Architecture
+  vcpus: HardwareThreadCount
+  memory: ByteSize
+  disk: ByteSize
+  nested_virtualization: Bool
+}
+
+// THE EXACT PROVIDER RESOURCE. An operation is bound to a provider's resource identifier, never to
+// the display name the provider shows, because a display name can be edited, reused or duplicated.
+// A host enrolled before the identifier has been read carries that as a typed obligation naming what
+// would ground it (DESIGN section 4d), so adoption refuses on it instead of guessing.
+type ProviderResourceBinding
+  = ProviderResourceAwaited { read_obligation: NonEmptyStr }
+  | ProviderResourceBound { resource_id: NonEmptyStr }
+
+type HostBacking
+  = OwnedMachine
+  | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }

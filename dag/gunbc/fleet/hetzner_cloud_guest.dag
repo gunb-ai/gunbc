@@ -1,0 +1,20 @@
+module gunbc.hetzner_cloud_guest
+
+import std.decl_ref { DeclarationRef }
+import extdeps.cloud.hetzner { HetznerCloudServerCatalogRow, hetzner_cloud_nested_virtualization_available }
+import gunbc.fleet_host_backing { GuestEntitlement }
+
+// Hetzner Cloud's adapter onto the generic guest entitlement. Every figure is read off the cited
+// catalog row it is handed, and nested virtualization off the cited product fact, so the entitlement
+// cannot drift from the offer it names. The row's own declaration is passed alongside as `offer`
+// because a value does not carry the name it was declared under, and the entitlement must cite it.
+fn hetzner_cloud_guest_entitlement(row: HetznerCloudServerCatalogRow, offer: DeclarationRef) -> GuestEntitlement {
+  GuestEntitlement {
+    offer: offer,
+    architecture: row.cpu_architecture,
+    vcpus: row.vcpus,
+    memory: row.memory_bytes,
+    disk: row.disk_bytes,
+    nested_virtualization: hetzner_cloud_nested_virtualization_available,
+  }
+}

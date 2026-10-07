@@ -7,10 +7,12 @@ import gunbc.bmc_onboarding { FactoryCredentialActive, RotatedCredentialActive }
 import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
 import gunbc.host_assimilation_program {
   assimilation_completion_inputs_for,
-  both_participation_enrollment_participation,
-  ci_runner_enrollment_participation,
   host_standup_default_assimilation_gate_unsatisfied,
   host_standup_p3_fail_closed_blocks_complete,
+}
+import gunbc.fleet_enrollment {
+  both_participation_enrollment_participation,
+  ci_runner_enrollment_participation,
   inference_serving_enrollment_participation,
 }
 import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }

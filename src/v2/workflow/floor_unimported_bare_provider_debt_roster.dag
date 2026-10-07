@@ -1279,7 +1279,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_receipt_collector_witness_test.dag", name: "converge_revision_observed_hex", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_receipt_collector_witness_test.dag", name: "converge_verdict_label", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_receipt_collector_witness_test.dag", name: "fleet_convergence_verdict", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_receipt_collector_witness_test.dag", name: "fleet_subsumption_enrollments", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_receipt_collector_witness_test.dag", name: "fleet_subsumption_enrollments", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_receipt_collector_witness_test.dag", name: "parse_converge_receipt_line", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/fleet/fleet_work_energy_cost_witness_test.dag", name: "filter", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/floor/incremental_floor_authority_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },

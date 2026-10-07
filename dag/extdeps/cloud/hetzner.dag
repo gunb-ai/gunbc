@@ -34,6 +34,20 @@ data hetzner_data_protection_overview_page: ExternalAuthority = ExternalAuthorit
   }
 }
 
+data hetzner_cloud_servers_faq_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/cloud/servers/faq/"
+  }
+}
+
+// Read 2026-10-07 from hetzner_cloud_servers_faq_page: "Can I run virtual machines on cloud servers,
+// or rather is nested virtualization possible? No, this is not possible on cloud server." The page
+// states it for every cloud server type, so it is one fact about the product, not a per-type row. A
+// guest therefore exposes no usable KVM device, and any execution path that boots its own VMM inside
+// the guest (extdeps.virtualization.firecracker firecracker_requires_kvm_device) cannot run there.
+data hetzner_cloud_nested_virtualization_available: Bool = false
+
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
