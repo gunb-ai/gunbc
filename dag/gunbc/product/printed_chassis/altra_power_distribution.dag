@@ -1,6 +1,6 @@
 module product.printed_chassis.altra_power_distribution
 import std.types {Int,List,NonEmptyStr,String,Bool}
-import std.measure {Watt,watt,watt_count,Volt,volt,milliampere,milliampere_count,millivolt,millivolt_count,Milliampere,Percent,percent,percent_count,millimeter,ampere_count}
+import std.measure {Watt,Milliohm,milliohm,milliohm_count,Milliwatt,milliwatt,milliwatt_count,watt,watt_count,Volt,volt,milliampere,milliampere_count,millivolt,millivolt_count,Milliampere,Percent,percent,percent_count,millimeter,ampere_count}
 import std.nat {Nat}
 import std.optional {Present,Absent}
 import std.decl_ref {DeclarationRef,decl_ref}
@@ -188,7 +188,7 @@ fn altra_pairing(nodes:List<AltraNode>,policy:OperatorSupplyPolicy) -> PairingSc
 // the constant-power current at the regulation floor that node_feed reports, shared over the populated
 // legs with a declared imbalance allowance (100 percent = equal sharing, which no source establishes).
 // Upper bound: the derated connector limit per leg, and the wire's ampacity when a source states it.
-type WireAmpacityStanding = WireAmpacityCited {limit_ma:Int,source:CitedFigureStanding} | WireAmpacityUnresolved {read_obligation:NonEmptyStr}
+type WireAmpacityStanding = WireAmpacityCited {limit:Milliampere,source:CitedFigureStanding} | WireAmpacityUnresolved {read_obligation:NonEmptyStr}
 data altra_wire_ampacity:WireAmpacityStanding=WireAmpacityUnresolved {read_obligation:"No chassis-wire ampacity table is cited in the corpus (extdeps.standards.awg carries resistance only, itself uncited); read the wire manufacturer's rating for the selected gauge and insulation at the cassette's ambient before a fuse is chosen."}
 data altra_leg_imbalance_allowance:Percent=percent(count:100)
 type ConnectionIntegrityRequirement = ConnectorFamilyKeyedLocking | TerminalRetention | CrimpSystem | StrainRelief
@@ -203,23 +203,24 @@ data connection_integrity_findings:List<ConnectionIntegrityFinding> = [
  ConnectionIntegrityFinding {requirement:StrainRelief,evidence:Unresolved {read_obligation:"Design and source strain relief and cable retention for the node harness inside the cassette."}},
 ]
 // The operator-accepted illustration: 0.1 ohm. A declared example resistance, not a measured contact.
-data declared_example_contact_resistance_mohm:Int=100
-type ConnectionFaultExposure {fault_current_ma:Int,resistance_mohm:Int,dissipation_mw:Int,fuse_ma:Int,fuse_opens:Bool}
-fn connection_fault_exposure(fault_current_ma:Int,resistance_mohm:Int,fuse_ma:Int) -> ConnectionFaultExposure {
- ConnectionFaultExposure {fault_current_ma:fault_current_ma,resistance_mohm:resistance_mohm,dissipation_mw:fault_current_ma*fault_current_ma*resistance_mohm/1000000,fuse_ma:fuse_ma,fuse_opens:fault_current_ma>fuse_ma}
+data declared_example_contact_resistance:Milliohm=milliohm(count:100)
+type ConnectionFaultExposure {fault_current:Milliampere,resistance:Milliohm,dissipation:Milliwatt,fuse:Milliampere,fuse_opens:Bool}
+fn connection_fault_exposure(fault_current:Milliampere,resistance:Milliohm,fuse:Milliampere) -> ConnectionFaultExposure {
+ let i=milliampere_count(i:fault_current)
+ ConnectionFaultExposure {fault_current:fault_current,resistance:resistance,dissipation:milliwatt(count:i*i*milliohm_count(r:resistance)/1000000),fuse:fuse,fuse_opens:i>milliampere_count(i:fuse)}
 }
-type ProtectionRefusal = FeedRefused | WindowEmpty {lower_exclusive_ma:Int,upper_inclusive_ma:Int}
-type BranchProtection = ProtectionWindow {lower_exclusive_ma:Int,upper_inclusive_ma:Int,legs:Int,wire:WireAmpacityStanding,exposure_at_window_top:ConnectionFaultExposure,evidence:EvidenceState}
+type ProtectionRefusal = FeedRefused | WindowEmpty {lower_exclusive:Milliampere,upper_inclusive:Milliampere}
+type BranchProtection = ProtectionWindow {lower_exclusive:Milliampere,upper_inclusive:Milliampere,legs:Int,wire:WireAmpacityStanding,exposure_at_window_top:ConnectionFaultExposure,evidence:EvidenceState}
  | ProtectionRefused {cause:ProtectionRefusal}
 fn branch_protection(reading:NodeFeedReading,wire:WireAmpacityStanding,imbalance:Percent) -> BranchProtection {
  match reading {
   NodeFeedRefused {cause:_}=>ProtectionRefused {cause:FeedRefused}
   NodeFeedScreeningOnly {feed:f}=>{
-   let legs=f.inputs_populated as Int
-   let lower=((milliampere_count(i:f.node_current) as Int)*(percent_count(p:imbalance) as Int)+legs*100-1)/(legs*100)
-   let connector=milliampere_count(i:f.per_input_limit) as Int
-   let upper=match wire {WireAmpacityCited {limit_ma:w,source:_}=>if w<connector {w} else {connector} WireAmpacityUnresolved {read_obligation:_}=>connector}
-   if lower>=upper {ProtectionRefused {cause:WindowEmpty {lower_exclusive_ma:lower,upper_inclusive_ma:upper}}} else {ProtectionWindow {lower_exclusive_ma:lower,upper_inclusive_ma:upper,legs:legs,wire:wire,exposure_at_window_top:connection_fault_exposure(fault_current_ma:upper,resistance_mohm:declared_example_contact_resistance_mohm,fuse_ma:upper),evidence:ConservativeBound {basis:"sized between constant-power current at the 11.4 V floor and the derated connector limit with the declared sharing allowance; wire ampacity and fault clearing are not established"}}}
+   let legs=f.inputs_populated
+   let lower=(milliampere_count(i:f.node_current)*percent_count(p:imbalance)+legs*100-1)/(legs*100)
+   let connector=milliampere_count(i:f.per_input_limit)
+   let upper=match wire {WireAmpacityCited {limit:w,source:_}=>if milliampere_count(i:w)<connector {milliampere_count(i:w)} else {connector} WireAmpacityUnresolved {read_obligation:_}=>connector}
+   if lower>=upper {ProtectionRefused {cause:WindowEmpty {lower_exclusive:milliampere(count:lower),upper_inclusive:milliampere(count:upper)}}} else {ProtectionWindow {lower_exclusive:milliampere(count:lower),upper_inclusive:milliampere(count:upper),legs:legs as Int,wire:wire,exposure_at_window_top:connection_fault_exposure(fault_current:milliampere(count:upper),resistance:declared_example_contact_resistance,fuse:milliampere(count:upper)),evidence:ConservativeBound {basis:"sized between constant-power current at the 11.4 V floor and the derated connector limit with the declared sharing allowance; wire ampacity and fault clearing are not established"}}}
   }
  }
 }
@@ -308,7 +309,7 @@ fn disposition_json(d:ObligationDisposition) -> JsonValue {json_object(members:[
 fn protection_json(p:BranchProtection) -> JsonValue {
  match p {
   ProtectionRefused {cause:_}=>json_object(members:[json_kv(key:"window",value:json_string(s:"refused"))])
-  ProtectionWindow {lower_exclusive_ma:l,upper_inclusive_ma:u,legs:g,wire:_,exposure_at_window_top:x,evidence:e}=>json_object(members:[json_kv(key:"legs",value:json_int(n:g)),json_kv(key:"fuse_above_ma",value:json_int(n:l)),json_kv(key:"fuse_at_most_ma",value:json_int(n:u)),json_kv(key:"evidence",value:evidence_json(e:e)),json_kv(key:"declared_example_contact_mohm",value:json_int(n:x.resistance_mohm)),json_kv(key:"dissipation_below_fuse_mw",value:json_int(n:x.dissipation_mw)),json_kv(key:"fuse_opens_on_that_fault",value:json_bool(b:x.fuse_opens))])
+  ProtectionWindow {lower_exclusive:l,upper_inclusive:u,legs:g,wire:_,exposure_at_window_top:x,evidence:e}=>json_object(members:[json_kv(key:"legs",value:json_int(n:g)),json_kv(key:"fuse_above_ma",value:json_int(n:milliampere_count(i:l) as Int)),json_kv(key:"fuse_at_most_ma",value:json_int(n:milliampere_count(i:u) as Int)),json_kv(key:"evidence",value:evidence_json(e:e)),json_kv(key:"declared_example_contact_mohm",value:json_int(n:milliohm_count(r:x.resistance) as Int)),json_kv(key:"dissipation_below_fuse_mw",value:json_int(n:milliwatt_count(w:x.dissipation) as Int)),json_kv(key:"fuse_opens_on_that_fault",value:json_bool(b:x.fuse_opens))])
  }
 }
 fn screen_json(s:AltraCapacityScreen) -> JsonValue {

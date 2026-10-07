@@ -1,6 +1,6 @@
 module test.claim.printed_chassis_altra_power_distribution_witness
 import std.types {Bool,Int,List}
-import std.measure {watt,watt_count,milliampere_count,percent,volt}
+import std.measure {milliampere,milliohm,milliwatt_count,watt,watt_count,milliampere_count,percent,volt}
 import std.optional {Present,Absent}
 import std.decision {SelectedWithin,SelectionNeedsEvidence}
 import extdeps.power.fsp800_50fs {fsp800_50fs_reference,fsp800_50fs_main_12v_power}
@@ -79,26 +79,26 @@ test fn station_control_has_one_owner_and_no_node_drives_ps_on() -> Bool {
 }
 test fn fuse_window_for_300w_node_exists_and_is_a_bound_only() -> Bool {
  match altra_branch_protection(load:watt(count:300)) {
-  ProtectionWindow {lower_exclusive_ma:l,upper_inclusive_ma:u,legs:g,wire:_,exposure_at_window_top:_,evidence:e}=>g==2 && l>13000 && l<13300 && u==14400 && !supports_electrical_approval(e:e)
+  ProtectionWindow {lower_exclusive:l,upper_inclusive:u,legs:g,wire:_,exposure_at_window_top:_,evidence:e}=>g==2 && milliampere_count(i:l)>13000 && milliampere_count(i:l)<13300 && milliampere_count(i:u)==14400 && !supports_electrical_approval(e:e)
   ProtectionRefused {cause:_}=>false
  }
 }
 test fn unequal_sharing_allowance_can_empty_the_window() -> Bool {
  match branch_protection(reading:node_feed(inputs:altra_node_feed_inputs(load:watt(count:300),rating:mini_fit_jr_standard_terminal_rating)),wire:altra_wire_ampacity,imbalance:percent(count:120)) {
-  ProtectionRefused {cause:WindowEmpty {lower_exclusive_ma:l,upper_inclusive_ma:u}}=>l>=u
+  ProtectionRefused {cause:WindowEmpty {lower_exclusive:l,upper_inclusive:u}}=>milliampere_count(i:l)>=milliampere_count(i:u)
   ProtectionRefused {cause:_}=>false
-  ProtectionWindow {lower_exclusive_ma:_,upper_inclusive_ma:_,legs:_,wire:_,exposure_at_window_top:_,evidence:_}=>false
+  ProtectionWindow {lower_exclusive:_,upper_inclusive:_,legs:_,wire:_,exposure_at_window_top:_,evidence:_}=>false
  }
 }
 test fn cited_wire_ampacity_narrows_the_window() -> Bool {
- match branch_protection(reading:node_feed(inputs:altra_node_feed_inputs(load:watt(count:300),rating:mini_fit_jr_standard_terminal_rating)),wire:WireAmpacityCited {limit_ma:14000,source:TranscribedUncited {read_obligation:"witness"}},imbalance:altra_leg_imbalance_allowance) {
-  ProtectionWindow {lower_exclusive_ma:_,upper_inclusive_ma:u,legs:_,wire:_,exposure_at_window_top:_,evidence:_}=>u==14000
+ match branch_protection(reading:node_feed(inputs:altra_node_feed_inputs(load:watt(count:300),rating:mini_fit_jr_standard_terminal_rating)),wire:WireAmpacityCited {limit:milliampere(count:14000),source:TranscribedUncited {read_obligation:"witness"}},imbalance:altra_leg_imbalance_allowance) {
+  ProtectionWindow {lower_exclusive:_,upper_inclusive:u,legs:_,wire:_,exposure_at_window_top:_,evidence:_}=>milliampere_count(i:u)==14000
   ProtectionRefused {cause:_}=>false
  }
 }
 test fn fuse_does_not_open_on_a_high_resistance_connection_fault() -> Bool {
- let x=connection_fault_exposure(fault_current_ma:15000,resistance_mohm:100,fuse_ma:20000)
- x.dissipation_mw==22500 && !x.fuse_opens && connection_fault_exposure(fault_current_ma:25000,resistance_mohm:100,fuse_ma:20000).fuse_opens
+ let x=connection_fault_exposure(fault_current:milliampere(count:15000),resistance:milliohm(count:100),fuse:milliampere(count:20000))
+ milliwatt_count(w:x.dissipation)==22500 && !x.fuse_opens && connection_fault_exposure(fault_current:milliampere(count:25000),resistance:milliohm(count:100),fuse:milliampere(count:20000)).fuse_opens
 }
 test fn connection_integrity_stays_open_after_protection() -> Bool {
  integrity_open_count()==count(connection_integrity_findings) && count(connection_integrity_findings)==4

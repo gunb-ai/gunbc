@@ -1980,6 +1980,11 @@ type Milliampere = Measure<ElectricCurrent, Milli, Nat>
 fn milliampere(count: Nat) -> Milliampere { Measure { count: count } }
 fn milliampere_count(i: Milliampere) -> Nat { measure_count(i) }
 
+// MILLIOHM, for contact and joint resistances: a 0.1 ohm bad contact is exactly 100.
+type Milliohm = Measure<Resistance, Milli, Nat>
+fn milliohm(count: Nat) -> Milliohm { Measure { count: count } }
+fn milliohm_count(r: Milliohm) -> Nat { measure_count(r) }
+
 // GRAMS PER CUBIC METRE, so dry air at 1.204 kg/m^3 is exactly 1204.
 type GramPerCubicMetre = Measure<Density, Milli, Nat>
 fn gram_per_cubic_metre(count: Nat) -> GramPerCubicMetre { Measure { count: count } }
