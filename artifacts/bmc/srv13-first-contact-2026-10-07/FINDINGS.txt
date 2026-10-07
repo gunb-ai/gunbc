@@ -1,0 +1,28 @@
+srv13 first contact, 2026-10-07 (ASRock Rack ALTRAD8UD-1L2T), read from srv2.
+Each line names the capture file that carries it.
+
+BMC     192.168.1.247, MAC 9c:6b:00:e7:c9:83 (router reservation bmc-altrad8ud-1l2t-5),
+        OpenBMC 2.07.00, Redfish 1.17.0, factory credential            Managers_bmc.json, service-root.json
+BIOS    AMI Aptio, UEFI 2.06, Aptio core 2.22.1282, CPLD_MB 0.02         UpdateService_FirmwareInventory_bios_active.json, sol-after-reseat.log
+Host NIC Intel I210 Gigabit, 9C:6B:00:E7:CA:63                          sol-setup-walk.log (Advanced page)
+Redfish Bios resource exposes no Attributes: settings are not readable
+        or writable over Redfish on this build                         Systems_system_Bios.json
+Boot override targets: None Pxe Hdd Cd Diags BiosSetup Usb (no UefiShell) Systems_system.json
+SOL     enabled, ADMINISTRATOR                                          (ipmitool sol info, not captured)
+
+FACTORY DEFAULTS, Aptio Setup
+  Boot:     Hard Disk, NVME, CD/DVD, USB Device, Network, UEFI AP Built-in EFI Shell;
+            Setup Prompt Timeout 1; NumLock On; Boot Beep Disabled; Full Screen Logo Enabled   sol-setup-walk.log
+  Advanced > Network Stack Configuration:
+            Network Stack Enabled; IPv4 PXE Disabled; IPv4 HTTP Disabled;
+            IPv6 PXE Disabled; IPv6 HTTP Disabled; PXE boot wait time 0; Media detect count 1  sol-after-reseat.log
+
+PXE TEST  One-time Pxe override + ForceRestart landed in Aptio Setup, not a PXE client,
+          because every PXE/HTTP boot client is disabled by default.     sol-pxe-override.log
+          Enabling one is a Setup change; Redfish cannot make it on this build.
+
+INCIDENT  After that test the host went dark (power On, no console). The event log carries
+          "Undetermined system hardware failure" asserts from 2023-04-03, 2026-10-06 and
+          2026-10-07, mostly in pairs ~18 s apart. Operator reseated a DIMM and AC-cycled the
+          board; it then POSTed to Setup in ~100 s.                    sel-elist.txt, sol-after-reseat.log
+          Whether the paired asserts are a fault or this BMC's per-boot noise is not decided.
