@@ -12,17 +12,15 @@ fn imported_optional_value(o: Optional) -> Int {
   }
 }
 
-// THE CROSS-MODULE COLLISION, the resolver repair's red-to-green specimen
-// (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name). This module imports the
-// non-kernel Optional of gunbc.instruments.native_emission_controls_optional_collision BY NAME and
-// names it bare in a variant payload, and the v1 resolver types that payload two ways: the field
-// binding (v1.compiler.infer_env lookup_binding) takes the import, while the type environment's copy
-// of HeldChoice, resolved by name through the overlay where the kernel layer sits above imports,
-// takes the kernel Optional mint. Emitted, the module renders HeldChoice<present_value>, the mint's
-// type variable, and does not build (measured on gunbc#13454). It lives under fixtures/, not a
-// source root, beside its collision declaration: a second Optional in the accepted corpus is itself
-// a leaf-name fork. The emitter's own order is pinned meanwhile by the unit control
-// unstamped_bare_optional_follows_the_lookup_binding_order.
+// THE COLLISION WALL'S DISCRIMINATING RED
+// (gunbc.recurring_failure_mode.import_collides_with_a_kernel_name). This module imports the
+// non-kernel Optional of gunbc.instruments.native_emission_controls_optional_collision BY NAME.
+// v1.compiler.resolve imported_type_collides_with_kernel_mint refuses that import
+// (ImportCollidesWithKernelName). test.claim.infer_kernel_import_collision_witness
+// importing_a_non_mint_optional_refuses_at_the_import compiles these fixture bytes and asserts that
+// class. The file is not a dual-typing emit specimen: the colliding import is unwritable, so the
+// two-lookup fork cannot form. It lives under fixtures/, not a source root, beside its collision
+// declaration: a second Optional in the accepted corpus is itself a leaf-name fork.
 type HeldChoice
   = HeldOptional { held: Optional }
   | HeldNothing

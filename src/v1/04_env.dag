@@ -280,8 +280,8 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
 // reaches the overlay where the kernel layer sits above imports (overlay_skips_kernel_name). So: a
 // declaration in the occurrence's own file, then the file's named import, then the kernel. That the
 // overlay's order (v1.compiler.infer direct_import_export_precedence_note) disagrees for an imported
-// kernel-named declaration is a meaning fork inside the resolver
-// (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name); this decision mirrors the
+// kernel-named declaration is the class
+// (gunbc.recurring_failure_mode.import_collides_with_a_kernel_name); this decision mirrors the
 // binding the typechecker actually uses. It is the emitter's COPY of that order for references that
 // arrive with no resolution fact -- type-environment declaration bodies whose members were never
 // stamped -- and a counted route, not a second authority: v1.compiler.infer_emit_info
