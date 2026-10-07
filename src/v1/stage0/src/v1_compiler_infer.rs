@@ -11876,10 +11876,6 @@ pub fn infer_call_arguments_generic_pass(
             let expected = if !has_formal.clone() {
                 std::option::Option::None
             } else if (direct_call_formal_has_unbound_type_variable(formal_raw.clone())
-                && crate::v1_compiler_infer_types::node_is_element_collection(
-                    formal_raw.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                )
                 && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
                 && !(formal_is_code_point_sequence.clone() && argument_is_literal.clone())
                 && match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone()

@@ -7801,7 +7801,6 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let expected = if !has_formal {
       none
     } else if (direct_call_formal_has_unbound_type_variable(n: formal_raw)
-        && node_is_element_collection(n: formal_raw, source_indices: scope.type_env.source_indices)
         && !is_lambda_expr(e: arg_value(n: a))
         && !(formal_is_code_point_sequence && argument_is_literal)
         && match arg_value(n: a).expr_data { ExprRecordLit { parent_enum: _ } => false  _ => true }) {
@@ -13739,9 +13738,9 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 }
 
 // A CONTAINER SLOT MAY NOT BE THE RAW CHILD. Normalize wrappers, bind the raw child, else peel
-// through for_each_element_type_node. Do not keep TypeVariable leaves in a second peel — that
-// rebound callee generics as Outcome and broke emit. fold_list's T is bound by inferring xs
-// without an expected type that still names T.
+// through for_each_element_type_node. fold_list's xs: FreeMonoid<T> is not a List alias, so
+// infer that argument without expected T — otherwise the produced type is FreeMonoid<T> and
+// unify binds T to itself.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
