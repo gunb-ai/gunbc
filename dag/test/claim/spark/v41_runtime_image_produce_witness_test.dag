@@ -5,15 +5,6 @@ import extdeps.container.oci.digest { parse_oci_content_digest_wire }
 import extdeps.flashinfer.flashinfer { flashinfer_0_7_1rc1_wheels }
 import std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_image_probe { V41ProbeRead, V41ProbeRefused }
-import gunbc.spark.v41_runtime_image_converge {
-  V41ProducedRuntime, V41KernelWheelsVerified, V41KernelWheelVerificationRefused,
-  V41RuntimeProductionStopped,
-  V41ProbeIdentityJoin, V41ProbeJoinedToProducedImage, V41ProbeDescribesAnotherImage,
-  V41ProbeIdentityUnreadable, V41ProbeIdentityNotRead,
-  v41_probe_identity_join, v41_probe_identity_holds, v41_probe_identity_line,
-  v41_wheel_verification_line, v41_production_receipt, v41_production_succeeded,
-  v41_wheel_verify_script,
-}
 
 // WHY THIS FILE EXISTS AT ALL, BEFORE ANY ASSERTION IN IT.
 //

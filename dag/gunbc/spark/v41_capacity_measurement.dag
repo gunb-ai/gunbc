@@ -28,7 +28,6 @@ import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }
 import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, render_oci_content_digest_wire }
 import gunbc.floor_memory_demand { CgroupMemoryEvents }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
-import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_arm_a_produced_image, v41_production_produced_image }
 import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyUnread, ClientBenchLatencyReported }
 
 // ══ V4.1 CAPACITY MEASUREMENT ═══════════════════════════════════════════════════════════════════

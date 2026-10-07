@@ -6,11 +6,11 @@ import std.content_hash { Sha256Digest }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size_count }
-import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_repo_directory }
 import std.optional { Present, Absent }
+import gunbc.spark.model_snapshot_acquisition { spark_local_checkpoint_repo_directory }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.deepseek.deepseek_v4_1_flash {
-  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
 }
 import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
 import gunbc.spark.v41_engram_row_store {
@@ -127,7 +127,7 @@ data v41_row_store_host_realization: V41HostRealization = V41HostRealization {
 // the wiring patch's decision (gunbc.spark.v41_engram_row_store states that frontier); this is where
 // the encoder writes.
 fn v41_row_store_output_directory() -> NonEmptyStr {
-  join([v41_checkpoint_repo_directory(), "/engram-row-stores"], "") as NonEmptyStr
+  join([spark_local_checkpoint_repo_directory(repo: deepseek_v4_1_flash_hub_repo) as String, "/engram-row-stores"], "") as NonEmptyStr
 }
 
 // THE PUBLISHED STORES' IDENTITIES are not here: they live with the row-store model

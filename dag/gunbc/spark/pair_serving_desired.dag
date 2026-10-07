@@ -26,7 +26,6 @@ import gunbc.spark.fabric_switch_observed {
 }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
-import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
 import gunbc.spark.pair_serving_observed { first_pair_observed_head }
 
 // SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A FABRIC GROUP, NOT A HOST. DeepSeek V4
@@ -423,17 +422,8 @@ fn spark_pair_serving_workers(group: FabricGroup, hosts: List<HostIdentity>) -> 
 
 fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSeqCapacity) -> SparkPairServingUnit {
   let hosts = fabric_group_hosts(g: group)
-  let reserved = filter(hosts, h => llama_cpp_rpc_host_holds_undischarged_reservation(host: h))
   if length(hosts) < 2 {
     SparkPairServingUnitRefused { group: group, cause: "a serving group needs at least two hosts on the fabric" as NonEmptyStr }
-  } else if length(reserved) > 0 {
-    SparkPairServingUnitRefused {
-      group: group,
-      cause: join([
-        "group member(s) still hold an undischarged llama.cpp RPC peer reservation, and no release receipt exists: ",
-        join(map(reserved, h => h as String), ", "),
-      ], "") as NonEmptyStr,
-    }
   } else {
     match capacity {
       SeqCapacityUnmeasured =>

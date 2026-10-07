@@ -14,7 +14,6 @@ import gunbc.spark.vllm_runtime_image_build {
   VllmImageDistributed, VllmImageDistributionRefused, VllmImageHostDelivered, VllmImageHostDeliveryRefused,
   vllm_image_distribution_succeeded,
 }
-import gunbc.spark.v41_runtime_image_converge { v41_arm_a_produced_image, v41_production_produced_image, v41_produced_image_subject }
 
 // ── THE DISTRIBUTION'S DECISIONS, OVER SUPPLIED DAEMON ANSWERS ────────────────────────────────
 //
