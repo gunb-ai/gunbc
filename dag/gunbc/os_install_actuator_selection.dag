@@ -1,8 +1,8 @@
 module gunbc.os_install_actuator_selection
 
-import std.optional { Present }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.optional { Present, Absent }
 
 import gunbc.fleet_intent { srv1_host, srv2_host, ComputeHost }
 import gunbc.fleet_intent_network {
@@ -385,7 +385,11 @@ fn srv3_os_install_actuator_host_selected_because_requirements_and_policy() -> B
     )
     && srv1_install_window_load == srv2_install_window_load
     && match srv3_os_install_actuator_tie_break_policy {
-      OperatorHostPreference { order: order } => order.first() == Present { value: operator_host_srv1 }
+      OperatorHostPreference { order: order } =>
+        match order.first() {
+          Present { value: host } => host == operator_host_srv1
+          Absent => false
+        }
       LeastLoadedHost => false
     }
     && srv3_os_install_actuator_host_is_derived_srv1()
