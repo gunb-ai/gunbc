@@ -420,6 +420,17 @@ fn vfp_arrow_resolved() -> Outcome<ResolvedTree> {
 
 fn vfp_partial_reading() -> VfpReading { vfp_reading(src: vfp_partial_src) }
 
+// THE GENERIC-WRONG-FIELD FIXTURE: a construct over a GENERIC variant whose field VALUE does not
+// inhabit the field's declared type (`n: true` against `n: Int`), the control silent-deer-637
+// asked for beside the payload-binder row: the payload reader must not widen the construct side,
+// or a wrong field value starts passing wherever a type parameter is in scope.
+data vfp_generic_wrong_field_src: String = "module p\n\ntype Out<T>\n  = Acc { value: T, n: Int }\n  | Rej { n: Int }\n\nfn make<T>(t: T) -> Out<T> {\n  Acc { value: t, n: true }\n}"
+
+// The discriminating twin: the only delta is the field VALUE (7 inhabits Int). If this grounds
+// where the wrong-field fixture refuses, the refusal is the field-value check; if it refuses the
+// same way, the generic route itself does not derive yet.
+data vfp_generic_right_field_src: String = "module p\n\ntype Out<T>\n  = Acc { value: T, n: Int }\n  | Rej { n: Int }\n\nfn make<T>(t: T) -> Out<T> {\n  Acc { value: t, n: 7 }\n}"
+
 // THE ARROW FIXTURE, ITS OWN MODULE: the payload field's type is an arrow whose RESULT is the
 // formal (`f: fn(ParseTree) -> T`) -- the one shape the match_binder fixture never exercises, and
 // the current suspect for the grounding cascade. It rides alone so a refusal here cannot take the
@@ -675,6 +686,19 @@ test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
   vfp_partial_reading().construct_read == ^Boxed
 }
 
+// THE GENERIC-WRONG-FIELD CONTROL (silent-deer-637's ask beside the payload-binder row): a
+// construct over a GENERIC variant whose field VALUE does not inhabit the field's declared type
+// (`n: true` against `n: Int`) refuses; the refusal's terminal reason is the located value below.
+// The discriminating twin grounds the same construct with the value the field declares (`n: 7`),
+// so the refusal cannot be satisfied by a compiler that refuses every generic construct.
+test fn vfp_the_generic_construct_refuses_a_wrong_field_value_holds() -> Bool {
+  vfp_generic_wrong_field_infer_reason() == ^infer_grounding_not_derived
+}
+
+test fn vfp_the_generic_construct_grounds_its_correct_field_value_holds() -> Bool {
+  vfp_generic_right_field_infer_reason() == ^infers
+}
+
 // THE BISECT FIXTURES THE LEDGER CITES (temporary; they go out when their rows' follow-ups
 // land): the nullary single-arm sum the single_arm_sum_parses_as_an_alias row's 2026-10-06
 // receipt cites, and the recursive record the grounding-cascade row cites.
@@ -696,4 +720,25 @@ fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
 }
 
 fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
+
+// The generic-wrong-field fixture's reading: the terminal infer reason, or ^infers if the walk
+// accepts (the acceptance case is the defect this control exists to catch).
+fn vfp_generic_wrong_field_infer_reason() -> Symbol {
+  vfp_generic_infer_reason(src: vfp_generic_wrong_field_src)
+}
+
+fn vfp_generic_right_field_infer_reason() -> Symbol {
+  vfp_generic_infer_reason(src: vfp_generic_right_field_src)
+}
+
+fn vfp_generic_infer_reason(src: String) -> Symbol {
+  match vfp_assemble(src: src) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r2 } => r2.head.reason
+        Accepted { value: _, diagnostics: _ } => ^infers
+      }
+  }
+}
 
