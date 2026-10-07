@@ -30,7 +30,11 @@ import gunbc.auth.authorization_pattern_selection {
   InterlockPending, InterlockedBy,
   select_authorization_pattern,
 }
-import gunbc.auth.privileged_effect_census { rulings_without_a_rostered_interlock }
+import gunbc.auth.privileged_effect_census {
+  rulings_without_a_rostered_interlock, privileged_effect_census,
+  RealizedUnauthorized, RealizedFederatedGrant, RealizedRunSelected,
+  RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession,
+}
 import gunbc.machine_intake_arrival_converge { grant_discharges_bmc_secure_account_write }
 import gunbc.machine_intake_arrival_run { arrival_wet_prefix_from_unobserved_world }
 import gunbc.auth.standing_operator_grant {
@@ -183,4 +187,17 @@ test fn w_wet_door_refuses_unobserved_prior_life_world() -> Bool {
     ExitFailure { code: _, reason: r } =>
       string_contains(s: r, pattern: "unobserved PriorLifeBoundary")
   }
+}
+
+test fn w_archive_census_does_not_claim_a_write_the_wet_door_refuses() -> Bool {
+  any(privileged_effect_census, row =>
+    (row.site.decl_name as String) == "mtjade1_arrival_archive_effect"
+      && match row.realized {
+        RealizedUnauthorized => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
+      })
 }

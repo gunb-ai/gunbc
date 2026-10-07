@@ -457,12 +457,12 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
     hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire") },
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
-    premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and keeps ArrivalArchiveSlotHeld across converge_mtjade1_arrival_prefix before arrival_archive_slot_release" as NonEmptyStr,
+    premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and, while ArrivalArchiveSlotHeld, calls arrival_wet_prefix_from_unobserved_world which refuses; it does not fold converge_mtjade1_arrival_prefix or write the prior-life archive until an observed BMC/archive world is bound" as NonEmptyStr,
     hold_owning_roots: [
       InterlockRoot {
         root: site(module_path: "gunbc.machine_intake_arrival_run", decl_name: "arrival_converge_wet"),
         acquires_at: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
-        operations: ["prior-life archive write" as NonEmptyStr],
+        operations: ["typed refusal of unobserved PriorLifeBoundary" as NonEmptyStr],
         sealed_by: [
           site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_release"),
         ],
@@ -557,8 +557,13 @@ data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
 
 // BOUND TO THE DECLARED FORK ROW: when that dissolution row retires, the fork it names is gone and
 // this reason with it.
+data arrival_archive_prefix_unobserved_world: DivergenceReason = DivergenceReason {
+  statement: "the arrival wet door acquires the archive slot then refuses unobserved PriorLifeBoundary (arrival_wet_prefix_from_unobserved_world); it does not fold the PriorLifeBoundary prefix or write the archive, so RealizedFederatedGrant would claim a write this job does not perform" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: arrival_converge_under_archive_interlock. TRIGGER: that door binds an observed BMC/archive world and folds converge_mtjade1_arrival_prefix while holding ArrivalArchiveSlotHeld from arrival_archive_slot_acquire, then arrival_archive_slot_release. SUFFICIENT FOR retiring this reason and overlaying the archive census as RealizedFederatedGrant" as NonEmptyStr),
+}
+
 data firmware_qualification_writer_unlanded: DivergenceReason = DivergenceReason {
-  statement: "the arrival wet door federates the archive prefix only; firmware qualification has no writer under ArrivalArchiveSlotHeld, so RealizedFederatedGrant would claim a write this job does not perform" as NonEmptyStr,
+  statement: "the arrival wet door acquires the archive slot then refuses unobserved PriorLifeBoundary; firmware qualification has no writer under ArrivalArchiveSlotHeld, so RealizedFederatedGrant would claim a write this job does not perform" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "NAMED CONSUMER: arrival_converge_under_archive_interlock. TRIGGER: a successor of converge_mtjade1_arrival_prefix performs the MegaRAC per-build qualification write while holding ArrivalArchiveSlotHeld from arrival_archive_slot_acquire, then arrival_archive_slot_release. SUFFICIENT FOR retiring this reason and overlaying StandingJadeFirmwareQualification as InterlockedBy arrival_archive_slot_acquire" as NonEmptyStr),
 }
 
@@ -745,8 +750,8 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
     effect: mtjade1_arrival_archive_effect(),
-    realized: RealizedFederatedGrant,
-    divergence_reason: none,
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: arrival_archive_prefix_unobserved_world },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
