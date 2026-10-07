@@ -2,6 +2,7 @@ module gunbc.altra_firmware_library
 
 import std.types { NonEmptyStr, List, Bool }
 import std.measure { ByteSize, byte_size }
+import std.optional { Present }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.uri { Uri, uri_https }
 import extdeps.firmware.types { FirmwareReleaseRow, BmcController }
@@ -35,7 +36,7 @@ type AltraLibraryArchive {
   archive_name: NonEmptyStr
   human_retrieval: Uri
   archive_bytes: ByteSize
-  archive_digest: Digest
+  archive_digest: Digest?
 }
 
 data altra_firmware_drive_archives: List<AltraLibraryArchive> = [
@@ -43,22 +44,22 @@ data altra_firmware_drive_archives: List<AltraLibraryArchive> = [
     subject: FirmwareDistribution { firmware_release: asrock_altrad8ud_bios_3_10_instant_flash_release },
     archive_name: "ALTRAD8UD-1L2T(3.10)ROM.zip",
     human_retrieval: uri_https(locator: "drive.google.com/file/d/1qnoi3fVvDYoQy3NLfF0dhQIghIWZxC41/view"),
-    archive_bytes: byte_size(count: 5359089),
-    archive_digest: sha256_digest(hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223"),
+    archive_bytes: asrock_altrad8ud_bios_3_10_instant_flash_release.image_bytes,
+    archive_digest: asrock_altrad8ud_bios_3_10_instant_flash_release.image_digest,
   },
   AltraLibraryArchive {
     subject: FirmwareDistribution { firmware_release: asrock_altrad8ud_bmc_3_22_00_release },
     archive_name: "ALTRAD8UD-1L2T(03.22.00)BMC.zip",
     human_retrieval: uri_https(locator: "drive.google.com/file/d/19e4kjCDcDMmkYaEbt1juPsvMCR2l4e4R/view"),
     archive_bytes: byte_size(count: 29060210),
-    archive_digest: sha256_digest(hex: "0c1f458c396aff76ae0259509ea05c53eef57809fa202721875586792fa807bb"),
+    archive_digest: Present { value: sha256_digest(hex: "0c1f458c396aff76ae0259509ea05c53eef57809fa202721875586792fa807bb") },
   },
   AltraLibraryArchive {
     subject: SsifKernelPatchBundle,
     archive_name: "SSIF_PATCH_V6.zip",
     human_retrieval: altra_ssif_patch_authority.uri,
     archive_bytes: byte_size(count: 5697),
-    archive_digest: sha256_digest(hex: "74ca2343e20b682f419f3240006dfc55ed391978e57c86bdce698e8b72ee0531"),
+    archive_digest: Present { value: sha256_digest(hex: "74ca2343e20b682f419f3240006dfc55ed391978e57c86bdce698e8b72ee0531") },
   },
 ]
 
