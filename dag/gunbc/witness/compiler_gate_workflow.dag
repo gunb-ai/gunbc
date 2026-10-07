@@ -1279,18 +1279,6 @@ fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
     },
     CompilerGateBoundStep {
       step: compiler_gate_seed_run_step(
-        name: "Record the checker inputs beside the pair (build outcomes only)",
-        id: none,
-        script: "./target/release/claim_executor --write-checker-inputs target/release/claim_executor_checker_inputs\n",
-        env: [],
-        condition: Present { value: release_bins_build_condition() },
-        timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
-      ),
-      role: capability_neutral,
-      step_name: "Record the checker inputs beside the pair (build outcomes only)",
-    },
-    CompilerGateBoundStep {
-      step: compiler_gate_seed_run_step(
         name: "Pack the compiler pair with its build log (build outcomes only)",
         id: none,
         script: release_bins_pack_manifest_script_for(product: compiler_pair_release_product()),

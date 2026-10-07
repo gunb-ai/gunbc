@@ -320,11 +320,6 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
         if: steps.release_bins_outcome.outputs.outcome != 'reuse'
-      - name: Record the checker inputs beside the pair (build outcomes only)
-        run: |
-          ./target/release/claim_executor --write-checker-inputs target/release/claim_executor_checker_inputs
-        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
-        timeout-minutes: 5
       - name: Pack the compiler pair with its build log (build outcomes only)
         run: |
           set -e
@@ -333,6 +328,7 @@ jobs:
           'mkdir' '-p' "$STAGE"
           '[' '-s' "$ROOT"'/gunbc-floor-cmd.log' ']' || ('echo' '::error title=release-bins BuildDiagnosticsMissing::the product requires the build log gunbc-floor-cmd.log as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller'; exit 1)
           'cp' "$ROOT"'/gunbc-floor-cmd.log' "$ROOT"'/target/release/build_diagnostics'
+          './target/release/claim_executor' '--write-checker-inputs' "$ROOT"'/target/release/claim_executor_checker_inputs'
           '[' '-s' "$ROOT"'/target/release/claim_executor_checker_inputs' ']' || ('echo' '::error title=release-bins SidecarMissing::the product requires the sidecar claim_executor_checker_inputs as a pack member and the producing job left none; a pack without it is incomplete, not smaller'; exit 1)
           ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics' 'claim_executor_checker_inputs') > "$STAGE"'/release-bins.manifest'
           'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics' 'claim_executor_checker_inputs'
