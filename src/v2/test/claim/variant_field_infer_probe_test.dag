@@ -813,3 +813,58 @@ fn vfp_bool_text(b: Bool) -> String {
     False => "false"
   }
 }
+
+fn vfp_probe_kids(n: Node, depth: Int) -> String {
+  match depth {
+    0 => ""
+    _ =>
+      fold(n.children, init: "", f: fn(acc, e) {
+        let tag = match e.label {
+          CoreMarker { marker: m } => "core:" + symbol_lexeme(sym: m)
+          Authored { name: nm } => "fld:" + symbol_lexeme(sym: nm)
+          Positional => "pos"
+          Instantiation => "inst"
+          _ => "other"
+        }
+        let tgt = match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } => "atom(" + symbol_lexeme(sym: id) + "|occ" + "?" + ")"
+          TypeNode { connective: Conj } => "conj(o" + "?" + "[" + vfp_probe_kids(n: e.target, depth: sub_int(a: depth, b: 1)) + "])"
+          ComputationNode { behavior: Match } => "MATCH(o" + "?" + ")"
+          ComputationNode { behavior: _ } => "comp(o" + "?" + ")"
+          _ => "node(o" + "?" + ")"
+        }
+        acc + " " + tag + "->" + tgt
+      })
+  }
+}
+
+fn vfp_probe_anchor(d: Diagnostic) -> String {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match a.at.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          "atom:" + symbol_lexeme(sym: id) + "|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 2) + "]"
+        TypeNode { connective: Conj } =>
+          "conj|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 2) + "]"
+        ComputationNode { behavior: Match } =>
+          "MATCH|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 1) + "]"
+        ComputationNode { behavior: _ } =>
+          "comp|o" + "?" + "[" + vfp_probe_kids(n: a.at, depth: 1) + "]"
+        _ => "node|o" + "?"
+      }
+    DeclarationLocus { declaration: dd } => "decl"
+    _ => "other-locus"
+  }
+}
+
+fn vfp_decode_refusal_locus() -> CliWireResponse {
+  match vfp_fixture_resolved() {
+    Rejected { diagnostics: _ } => CliWirePrintable { bytes: "resolve-refused", exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } =>
+          CliWirePrintable { bytes: symbol_lexeme(sym: r.head.reason) + " @" + vfp_probe_anchor(d: r.head), exit: ExitSuccess }
+        Accepted { value: _, diagnostics: _ } => CliWirePrintable { bytes: "infer-ok", exit: ExitSuccess }
+      }
+  }
+}
