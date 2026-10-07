@@ -168,24 +168,20 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
   }
 }
 
-// A THIRD FIELD WAS DELETED HERE AND STAYS DELETED, and this annotation is the second attempt to
-// settle it. An earlier lane added runner_name because the vendor machine name is corroborating --
-// the Biome baseline job reports "depot-1mw2k81zm2" -- found nothing read it, and deleted it on the
-// ground that interesting is not a consumer. This change put it back claiming a consumer had
-// arrived, in prose, while the diff carried no import and no call site; it is deleted again on the
-// original ground, which was right both times. DESIGN section 4c is the rule: an annotation is
-// never evidence that a machine claim holds.
+// THE RUNNER FIELDS RETURNED WHEN THEIR NAMED TRIGGER LANDED. An earlier lane added runner_name,
+// found nothing read it, and deleted it on the ground that interesting is not a consumer; a second
+// attempt claimed a consumer in prose with no import or call site and was deleted again. The trigger
+// that was named is a fold that IMPORTS this module and reads the field, landing in the same change
+// as the field: gunbc.runner.runner_qualification_dispatch job_ran_on is that fold, so the fields are
+// here with their consumer in the same change.
 //
-// The example survives the deletion because it is the part that was worth keeping.
-// "depot-1mw2k81zm2" is neither GitHub-hosted nor self-hosted but a third party's fleet, so any
-// provenance reading with two arms folds a paying provider customer in with a team running its own
-// hardware. The trigger that brings the field back is a fold that IMPORTS this module and reads
-// the field, landing in the same change as the field -- and that fold now has a further obligation
-// this lane learned the hard way: a runs-on LABEL already has an authority in
-// gunbc.runner.runner_label_resolution, backed by the per-provider catalogs
+// The example that survived both deletions still governs the reading. "depot-1mw2k81zm2" is neither
+// GitHub-hosted nor self-hosted but a third party's fleet, so any provenance reading with two arms
+// folds a paying provider customer in with a team running its own hardware. A runs-on LABEL has an
+// authority in gunbc.runner.runner_label_resolution, backed by the per-provider catalogs
 // gunbc.runner.runner_provider_survey enrolls, so a consumer may not re-answer the label question
 // with a fresh prefix roster. A runner NAME is a different vocabulary with no such authority, which
-// is the one thing this field would genuinely add.
+// is what these fields add.
 //
 // `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
 // (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
