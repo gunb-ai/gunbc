@@ -584,6 +584,10 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
+// One more for gunbc#13325, from floor run 37247019357 (930,914 eval steps): the ONE real-path
+// inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
+// their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
+// has no other demander, so derived sharing cannot cover it.
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
 // Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
@@ -591,6 +595,12 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.declared_return_result",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.collection_concat_realization",
     claims: [
