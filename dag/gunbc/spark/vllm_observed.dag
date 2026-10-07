@@ -336,8 +336,10 @@ fn vllm_tp_realization_refusal_cause(refusal: VllmTpRealizationRefusal) -> Strin
 data vllm_version_route_2026_09_03: VllmVersionRouteReadback = vllm_version_route_readback(
   server_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
 
+// A DATED RECEIPT OF A HOST NO LONGER IN THE FLEET: srv6 was decommissioned with Group A on 2026-10-07, so
+// its identity is recorded as the receipt read it rather than through the deleted fleet identity row.
 data vllm_front_door_scope_2026_09_03: VllmHistoricalFrontDoorScope = vllm_historical_front_door_scope(
-  front_door_host: operator_host_srv6,
+  front_door_host: "srv6" as HostIdentity,
   observed_on: "2026-09-03" as NonEmptyStr)
 
 // WHAT IS RETURNED NOW IS NOT THIS ROW'S QUESTION. vllm_models_route_standing reads the live
