@@ -380,7 +380,7 @@ test fn witness_passthrough_reads_either_quote_and_absence() -> Bool {
 // 99-override.yaml sets 3, so the merge -- what the next generate renders -- says 3. Drift, planned
 // to the persisted setter. Reading only the 90-NM file would have returned Noop here.
 test fn witness_a_later_layer_overriding_the_profile_file_is_drift() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: merged_passthrough_with(powersave: "wifi.powersave: '3'\n")))) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: merged(passthrough: merged_passthrough_with(powersave: "wifi.powersave: '3'\n")))) {
     Apply { plan: p } => match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false }
     _ => false
   }
@@ -389,7 +389,7 @@ test fn witness_a_later_layer_overriding_the_profile_file_is_drift() -> Bool {
 // THE KEY ABSENT FROM 90-NM BUT SUPPLIED BY ANOTHER LAYER: the merge carries it, so the profile file's
 // omission is not read as the default.
 test fn witness_a_key_supplied_by_another_layer_is_read_from_the_merge() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: authority_converged)) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: authority_converged)) {
     Noop => true
     _ => false
   }
@@ -398,14 +398,14 @@ test fn witness_a_key_supplied_by_another_layer_is_read_from_the_merge() -> Bool
 // No layer supplies the key: the merge omits it, the generated keyfile omits it, NetworkManager uses
 // its default, which is not 'disable'.
 test fn witness_a_key_no_layer_supplies_is_the_default_and_drift() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: merged_passthrough_with(powersave: "")))) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: merged(passthrough: merged_passthrough_with(powersave: "")))) {
     Apply { plan: p } => match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false }
     _ => false
   }
 }
 
 test fn witness_merged_retry_drift_is_planned_even_when_nmcli_reads_zero() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: "wifi.powersave: \"2\"\n"))) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: merged(passthrough: "wifi.powersave: \"2\"\n"))) {
     Apply { plan: p } =>
       (match p.auth_retries { Present { value: NmRetryIndefinitely } => true  _ => false })
       && (match p.persisted { Absent => true  Present { value: _ } => false })
@@ -416,9 +416,9 @@ test fn witness_merged_retry_drift_is_planned_even_when_nmcli_reads_zero() -> Bo
 // THE ACTIVE PROFILE AGREEING WHILE ITS KEYFILE ON DISK MAY NOT: that backend's file is not read, so
 // agreement is not minted from the in-memory profile; it refuses, like a runtime-only or unread one.
 test fn witness_keyfile_runtime_only_or_unread_persistence_refuses() -> Bool {
-  let keyfile = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityKeyfileUnmodeled { path: "/etc/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
-  let volatile = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityRuntimeOnly { path: "/run/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
-  let unread = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityUnreadable { cause: "x" })) { Refuse { reason: _ } => true  _ => false }
+  let keyfile = match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: AuthorityKeyfileUnmodeled { path: "/etc/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
+  let volatile = match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: AuthorityRuntimeOnly { path: "/run/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
+  let unread = match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: AuthorityUnreadable { cause: "x" })) { Refuse { reason: _ } => true  _ => false }
   keyfile && volatile && unread
 }
 
@@ -426,7 +426,7 @@ test fn witness_keyfile_runtime_only_or_unread_persistence_refuses() -> Bool {
 // netplan for the merged passthrough of NM-<uuid>, and decides on it. An override in the merge reds a
 // converge that would otherwise be Noop; deleting the merged read reds both claims.
 test fn witness_observe_reads_the_merged_netplan_value_by_uuid() -> Bool {
-  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "Power save: off", persisted: "disable", modify_exit: 0)) {
+  match wireless_link_converge(desired: srv11_desired(), run: fake_run(runtime: "Power save: off", persisted: "disable", modify_exit: 0)) {
     WirelessLinkAlreadyConverged { observed: o } => match o.persistence {
       AuthorityNetplanMerged { provenance: y, definition: d, passthrough: _ } =>
         y as String == join(["/etc/netplan/90-NM-", spark_2196_profile_uuid, ".yaml"], "") && d as String == join(["NM-", spark_2196_profile_uuid], "")
@@ -438,7 +438,7 @@ test fn witness_observe_reads_the_merged_netplan_value_by_uuid() -> Bool {
 
 test fn witness_converge_over_a_merged_override_does_not_report_converged() -> Bool {
   let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: merged_passthrough_with(powersave: "wifi.powersave: \"3\"\n"))
-  match wireless_link_converge(desired: srv7_desired(), run: run) {
+  match wireless_link_converge(desired: srv11_desired(), run: run) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "readback"
     _ => false
   }
@@ -446,7 +446,7 @@ test fn witness_converge_over_a_merged_override_does_not_report_converged() -> B
 
 test fn witness_an_empty_merge_answer_refuses() -> Bool {
   let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: "")
-  match wireless_link_converge(desired: srv7_desired(), run: run) {
+  match wireless_link_converge(desired: srv11_desired(), run: run) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "observe"
     _ => false
   }
@@ -457,7 +457,7 @@ test fn witness_an_empty_merge_answer_refuses() -> Bool {
 // plan a set against a map nobody read.
 test fn witness_a_null_passthrough_answer_refuses_not_defaults() -> Bool {
   let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: "null\n")
-  match wireless_link_converge(desired: srv7_desired(), run: run) {
+  match wireless_link_converge(desired: srv11_desired(), run: run) {
     WirelessLinkRefused { stage: s, cause: c } => s as String == "observe" && string_contains(s: c, pattern: "unread")
     _ => false
   }
@@ -466,7 +466,7 @@ test fn witness_a_null_passthrough_answer_refuses_not_defaults() -> Bool {
 // The real srv12 answer shape, verbatim keys: the decision reads it as converged.
 test fn witness_the_srv12_passthrough_answer_is_converged() -> Bool {
   let srv12 = "connection.auth-retries: \"0\"\nconnection.autoconnect-retries: \"0\"\nconnection.timestamp: \"1791043398\"\nwifi.powersave: \"2\"\nwifi-security.auth-alg: \"open\"\nipv6.addr-gen-mode: \"default\"\nipv6.ip6-privacy: \"-1\"\nproxy._: \"\"\n"
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: srv12))) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_with_authority(authority: merged(passthrough: srv12))) {
     Noop => true
     _ => false
   }

@@ -1,5 +1,6 @@
 module test.claim.spark.serving_load_probe_witness
 
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }

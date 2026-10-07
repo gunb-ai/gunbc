@@ -1,6 +1,6 @@
 module test.claim.spark.vllm_kv_layout_receipt_witness
 
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
 import std.optional { Present, Absent }
 import std.nat { Nat }

@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.measure { token_count, second_count }
 import std.optional { Present, Absent }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10 }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import product.fabric.provider_route { ProviderRoute }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef, OfferedService, MaterializedProgram }

@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.host_identity { host_identity_eq }
 import gunbc.spark.pair_serving_realization { SparkPairRealization, spark_pair_realization }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_unit }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.pair_serving_apply {
   SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,

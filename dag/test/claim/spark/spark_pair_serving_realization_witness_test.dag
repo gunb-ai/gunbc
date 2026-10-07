@@ -13,7 +13,7 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
   spark_pair_head_unit_name, spark_pair_rendered_unit_digest,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,

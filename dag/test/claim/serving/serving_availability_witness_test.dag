@@ -1,6 +1,6 @@
 module test.claim.serving.serving_availability_witness
 
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import std.types { Bool, String, NonEmptyStr }
 import std.measure { second_count }
 import product.fabric.demand { ObservationReceiptRef }

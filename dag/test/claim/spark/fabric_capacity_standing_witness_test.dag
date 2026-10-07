@@ -3,7 +3,7 @@ module test.claim.spark.fabric_capacity_standing_witness
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.optional { Present, Absent }
-import gunbc.spark.fabric_switch_observed { FabricGroupB, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, fabric_group_hosts, FabricGroup }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { concurrent_request_hundredths_count, token_count }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }

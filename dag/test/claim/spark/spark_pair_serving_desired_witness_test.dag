@@ -17,7 +17,7 @@ import gunbc.spark.pair_serving_realization { spark_pair_vllm_serve_argv }
 import gunbc.spark.model_snapshot_acquisition { deepseek_v4_flash_snapshot }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_engine_args,

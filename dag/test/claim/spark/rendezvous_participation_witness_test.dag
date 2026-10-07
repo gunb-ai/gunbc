@@ -21,7 +21,7 @@ import gunbc.spark.rendezvous_participation {
   declared_rank_host_is_connected, serving_group_rendezvous_reach_line,
 }
 import gunbc.spark.serving_group_launch { serving_group_rendezvous }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import extdeps.iproute2.ss { ss_established_to_peer_argv, ss_enumeration_line_count }
 
 // THE CLASS UNDER TEST IS `A SUPERVISOR'S LIVENESS READING CONSUMED AS PARTICIPATION`, and it is

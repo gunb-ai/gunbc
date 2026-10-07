@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
-import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts, FabricGroup, FabricGroupB }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import product.capacity.lease { LeaseGrant }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }

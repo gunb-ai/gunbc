@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.selection { AvailableIndefinitely, NoTransitionRequired, NoFeasibleAlternativeUse }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
   LaunchObserved, LaunchUnobserved,

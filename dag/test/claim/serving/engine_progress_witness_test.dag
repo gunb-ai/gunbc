@@ -1,6 +1,6 @@
 module test.claim.serving.engine_progress_witness
 
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { second, second_count }

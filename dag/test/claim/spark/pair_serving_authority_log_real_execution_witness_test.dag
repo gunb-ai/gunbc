@@ -3,7 +3,7 @@ module test.claim.spark.pair_serving_authority_log_real_execution
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath, List }
 import std.optional { Present, Absent }
-import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts, FabricGroup, FabricGroupB }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
