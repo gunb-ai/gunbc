@@ -57,7 +57,7 @@ fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
       head: DagSourceReadWitness {
         source: Medium { carried: src, fidelity: Lossless },
         artifact: vfp_artifact,
-        compilation_unit: ^variant_field_infer_probe_cu,
+        compilation_unit: cu,
         source_root: V2Tree
       },
       tail: Empty
@@ -370,13 +370,13 @@ data vfp_arrow_src: String = "module vfp_arrow\n\ntype Result2 = Ok { v: Int } |
 
 // Each fixture assembles under its own artifact so the two programs never share a source identity;
 // the admission subject must match the module's own declaration.
-fn vfp_assemble_module(src: String, name: Symbol, artifact: Artifact) -> Outcome<ResolvedTree> {
+fn vfp_assemble_module(src: String, name: Symbol, artifact: Artifact, cu: Symbol) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness {
         source: Medium { carried: src, fidelity: Lossless },
         artifact: artifact,
-        compilation_unit: ^variant_field_infer_probe_cu,
+        compilation_unit: cu,
         source_root: V2Tree
       },
       tail: Empty
@@ -426,15 +426,15 @@ data vfp_arrow_artifact: Artifact = Artifact {
 // is its own identity so the long-home claim that must bill its own frame is not admitted by the
 // derived producer-share.
 fn vfp_fixture_resolved() -> Outcome<ResolvedTree> {
-  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_artifact)
+  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_artifact, cu: ^vfp_fixture_cu)
 }
 
 fn vfp_fixture_resolved_direct() -> Outcome<ResolvedTree> {
-  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_artifact)
+  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_artifact, cu: ^vfp_fixture_cu)
 }
 
 fn vfp_arrow_resolved() -> Outcome<ResolvedTree> {
-  vfp_assemble_module(src: vfp_arrow_src, name: ^vfp_arrow, artifact: vfp_arrow_artifact)
+  vfp_assemble_module(src: vfp_arrow_src, name: ^vfp_arrow, artifact: vfp_arrow_artifact, cu: ^vfp_arrow_cu)
 }
 
 fn vfp_partial_reading() -> VfpReading { vfp_reading(src: vfp_partial_src) }
@@ -769,7 +769,7 @@ fn vfp_cat_reasons(xs: List<Symbol>) -> String {
 }
 
 fn vfp_decode_binder_type_twobinder() -> CliWireResponse {
-  match vfp_assemble_module(src: vfp_twobinder_src, name: ^p, artifact: vfp_arrow_artifact) {
+  match vfp_assemble_module(src: vfp_twobinder_src, name: ^p, artifact: vfp_arrow_artifact, cu: ^vfp_twobinder_cu) {
     Rejected { diagnostics: _ } => CliWirePrintable { bytes: "refused", exit: ExitSuccess }
     Accepted { value: resolved, diagnostics: _ } => {
       let body = vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
