@@ -525,8 +525,13 @@ mod real_module_round_trip {
 
         // size control: the entry is the module's own tail; the closure snapshot (parent envs)
         // is what made the deleted store multi-GB.
+        // Measured over the modules the store committed (the ones the warm run restored): the
+        // cold index also holds the store closure's ~two hundred modules from the session
+        // prepare, and serializing each of those in full is the test's own cost, not the
+        // product's.
         let largest_full = cold
             .iter()
+            .filter(|(k, _)| warm.iter().any(|(kw, _)| kw == k))
             .map(|(_, r)| {
                 let mut w = CountingWriter(0);
                 serde_json::to_writer(&mut w, &**r).expect("serialize result");
