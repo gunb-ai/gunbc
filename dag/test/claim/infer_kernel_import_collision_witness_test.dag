@@ -27,8 +27,8 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ONE RULE: an authored import of a type that shares a kernel-mint spelling, and is not the
-// mint's own declaration, REFUSES at the import (v1.compiler.resolve
-// imported_type_collides_with_kernel_mint). Unifying the two lookups would still leave two
+// mint's own declaration, REFUSES at the import (v1.compiler.resolve resolve_import via
+// kernel_named_import_standing and kernel_named_import_diags). Unifying the two lookups would still leave two
 // Optional types in the closure; the kernel overlay would keep winning by name and the
 // imported declaration would keep winning by interned identity. Refusal is the construction.
 //

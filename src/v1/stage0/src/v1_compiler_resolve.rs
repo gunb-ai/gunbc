@@ -401,31 +401,6 @@ pub fn module_type_declaration_names(
     Rc::new(acc)
 }
 
-pub fn module_declares_type_named(
-    module: Rc<Node>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    v1_rt::map_has(
-        module_type_declaration_names(module.clone(), source_indices.clone()).as_ref(),
-        name,
-    )
-}
-
-pub fn imported_type_collides_with_kernel_mint(
-    name: String,
-    import_path: String,
-    target_module: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelNamedImportStanding> {
-    crate::std_literal_elaboration::kernel_named_import_standing(
-        name.clone(),
-        import_path.clone(),
-        module_declares_type_named(target_module.clone(), name.clone(), source_indices.clone()),
-        kernel_mint_declaration_rows(),
-    )
-}
-
 pub fn kernel_name_collision_diag(
     name: String,
     import_path: String,

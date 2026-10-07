@@ -21,7 +21,7 @@ data import_collides_with_a_kernel_name: RecurringFailureMode = RecurringFailure
 
   evidence: [
     DeclarationRef { module_path: "std.literal_elaboration", decl_name: "kernel_named_import_standing", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1.compiler.resolve", decl_name: "imported_type_collides_with_kernel_mint", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.resolve", decl_name: "kernel_named_import_diags", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.compiler.resolve", decl_name: "resolve_import", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.infer_kernel_import_collision_witness", decl_name: "importing_a_non_mint_optional_refuses_at_the_import", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.structural_realization_bindings", decl_name: "kernel_mint_declaration_rows", field: WholeDeclaration },

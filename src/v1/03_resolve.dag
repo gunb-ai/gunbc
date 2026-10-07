@@ -232,19 +232,6 @@ fn module_type_declaration_names(module: Node, source_indices: Map<String, Newli
   )
 }
 
-fn module_declares_type_named(module: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  map_has(m: module_type_declaration_names(module: module, source_indices: source_indices), key: name)
-}
-
-fn imported_type_collides_with_kernel_mint(name: String, import_path: String, target_module: Node, source_indices: Map<String, NewlineIndex>) -> KernelNamedImportStanding {
-  kernel_named_import_standing(
-    imported_name: name,
-    import_path: import_path,
-    module_declares_type: module_declares_type_named(module: target_module, name: name, source_indices: source_indices),
-    rows: kernel_mint_declaration_rows
-  )
-}
-
 fn kernel_name_collision_diag(
   name: String,
   import_path: String,
