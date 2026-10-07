@@ -11873,10 +11873,24 @@ pub fn infer_call_arguments_generic_pass(
                         _ => formal_param_type.clone(),
                     }
                 };
-            let expected = if has_formal.clone() {
-                Some(contextual_expected.clone())
-            } else {
+            let expected = if !has_formal.clone() {
                 std::option::Option::None
+            } else if (direct_call_formal_has_unbound_type_variable(formal_raw.clone())
+                && crate::v1_compiler_infer_types::node_is_element_collection(
+                    formal_raw.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+                && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
+                && !(formal_is_code_point_sequence.clone() && argument_is_literal.clone())
+                && match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone()
+                {
+                    ExprData::ExprRecordLit { parent_enum: _, .. } => false,
+                    _ => true,
+                })
+            {
+                std::option::Option::None
+            } else {
+                Some(contextual_expected.clone())
             };
             let ar_inferred = infer_expr(
                 crate::v1_std_core::arg_value(a.clone()),
@@ -23712,30 +23726,6 @@ pub fn param_is_generic_decl(
     }
 }
 
-pub fn unify_type_slot(ch: Rc<Node>) -> Rc<Node> {
-    match ch.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: _, .. }) => ch.clone(),
-        _ => crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-    }
-}
-
-pub fn unify_container_element(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-    if ((normed.connective.clone() == Connective::NoConnective)
-        && ((normed.children.clone().len() as i64) == 1))
-    {
-        match normed.children.clone().first().cloned() {
-            Some(ch) => unify_type_slot(ch),
-            std::option::Option::None => normed,
-        }
-    } else {
-        crate::v1_compiler_infer_types::for_each_element_type_node(n.clone(), source_indices)
-    }
-}
-
 pub fn unify_generics(
     mut __tco_loop_formal: Rc<Node>,
     mut __tco_loop_actual: Rc<Node>,
@@ -23805,7 +23795,7 @@ pub fn unify_generics(
                 let anorm = crate::v1_compiler_infer_types::normalize_access_type_node(
                     actual.clone(),
                 );
-                let after_kids = if (((fnorm.children.clone().len() as i64) == 1)
+                if (((fnorm.children.clone().len() as i64) == 1)
                     && ((anorm.children.clone().len() as i64) == 1))
                 {
                     match fnorm.children.clone().first().cloned() {
@@ -23818,41 +23808,56 @@ pub fn unify_generics(
                                     source_indices.clone(),
                                     acc.clone(),
                                 );
-                                unify_generics(
-                                    unify_type_slot(fc.clone()),
-                                    unify_type_slot(ac.clone()),
-                                    generic_names.clone(),
-                                    source_indices.clone(),
-                                    after_raw,
-                                )
+                                let __tco_0 =
+                                    crate::v1_compiler_infer_types::child_type_node(fc.clone());
+                                let __tco_1 =
+                                    crate::v1_compiler_infer_types::child_type_node(ac.clone());
+                                let __tco_2 = generic_names;
+                                let __tco_3 = source_indices;
+                                let __tco_4 = after_raw;
+                                __tco_loop_formal = __tco_0;
+                                __tco_loop_actual = __tco_1;
+                                __tco_loop_generic_names = __tco_2;
+                                __tco_loop_source_indices = __tco_3;
+                                __tco_loop_acc = __tco_4;
+                                continue;
                             }
-                            std::option::Option::None => acc.clone(),
+                            std::option::Option::None => {
+                                break acc.clone();
+                            }
                         },
-                        std::option::Option::None => acc.clone(),
+                        std::option::Option::None => {
+                            break acc.clone();
+                        }
                     }
                 } else {
-                    acc.clone()
-                };
-                let f_el = unify_container_element(fnorm.clone(), source_indices.clone());
-                let a_el = unify_container_element(anorm.clone(), source_indices.clone());
-                if (type_node_label(f_el.clone(), source_indices.clone())
-                    != type_node_label(fnorm.clone(), source_indices.clone())
-                    || ((f_el.children.clone().len() as i64)
-                        != (fnorm.children.clone().len() as i64)))
-                {
-                    let __tco_0 = f_el;
-                    let __tco_1 = a_el;
-                    let __tco_2 = generic_names;
-                    let __tco_3 = source_indices;
-                    let __tco_4 = after_kids;
-                    __tco_loop_formal = __tco_0;
-                    __tco_loop_actual = __tco_1;
-                    __tco_loop_generic_names = __tco_2;
-                    __tco_loop_source_indices = __tco_3;
-                    __tco_loop_acc = __tco_4;
-                    continue;
-                } else {
-                    break after_kids;
+                    let f_el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                        fnorm.clone(),
+                        source_indices.clone(),
+                    );
+                    let a_el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                        anorm.clone(),
+                        source_indices.clone(),
+                    );
+                    if (type_node_label(f_el.clone(), source_indices.clone())
+                        != type_node_label(fnorm.clone(), source_indices.clone())
+                        || ((f_el.children.clone().len() as i64)
+                            != (fnorm.children.clone().len() as i64)))
+                    {
+                        let __tco_0 = f_el;
+                        let __tco_1 = a_el;
+                        let __tco_2 = generic_names;
+                        let __tco_3 = source_indices;
+                        let __tco_4 = acc;
+                        __tco_loop_formal = __tco_0;
+                        __tco_loop_actual = __tco_1;
+                        __tco_loop_generic_names = __tco_2;
+                        __tco_loop_source_indices = __tco_3;
+                        __tco_loop_acc = __tco_4;
+                        continue;
+                    } else {
+                        break acc.clone();
+                    }
                 }
             }
         }
