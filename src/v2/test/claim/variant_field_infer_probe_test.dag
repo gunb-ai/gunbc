@@ -57,7 +57,7 @@ fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
       head: DagSourceReadWitness {
         source: Medium { carried: src, fidelity: Lossless },
         artifact: vfp_artifact,
-        compilation_unit: cu,
+        compilation_unit: ^variant_field_infer_probe_cu,
         source_root: V2Tree
       },
       tail: Empty
