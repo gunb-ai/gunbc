@@ -22301,6 +22301,108 @@ mod defining_module_lookup_tests {
             "the variant map still answers the record-lit arm"
         );
     }
+
+    fn synthetic_named_node(name: &str) -> Rc<Node> {
+        let span = no_span();
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: Rc::new(im::Vector::new()),
+            connective: Connective::NoConnective,
+            params: Rc::new(im::Vector::new()),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im::Vector::new()),
+            body: None,
+            transport: None,
+            properties: Rc::new(im::Vector::new()),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })
+    }
+
+    #[test]
+    fn inferred_user_bool_witness_claim_keeps_its_module_at_initializer_ref() {
+        use crate::std_decl_ref::decl_ref;
+        use crate::v1_compiler_infer_emit_info::{
+            empty_emit_graph_info, empty_type_decl_index, empty_type_summary_index,
+            type_decl_index_insert, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+
+        let mut type_node = (*synthetic_named_node("BoolWitnessClaim")).clone();
+        type_node.declaration = Some(decl_ref(
+            "owner.types".to_string(),
+            "BoolWitnessClaim".to_string(),
+        ));
+        let type_node = Rc::new(type_node);
+
+        let decl_item = type_node.clone();
+        let decls = type_decl_index_insert(
+            empty_type_decl_index(),
+            "owner.types".to_string(),
+            "BoolWitnessClaim".to_string(),
+            decl_item,
+        );
+        let summary = Rc::new(TypeSummary {
+            name: "BoolWitnessClaim".to_string(),
+            key: "owner.types.BoolWitnessClaim".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let summaries = type_summary_index_insert(
+            empty_type_summary_index(),
+            "owner.types.BoolWitnessClaim".to_string(),
+            "BoolWitnessClaim".to_string(),
+            summary,
+        );
+
+        let mut emit_info = (*empty_emit_graph_info()).clone();
+        emit_info.variant_to_enum = Rc::new(variant_to_enum);
+        emit_info.type_summaries = summaries;
+        emit_info.type_decl_items = decls;
+
+        let mut body = (*synthetic_named_node("")).clone();
+        body.inferred = Some(Rc::new(InferredNode::Resolved { node: type_node }));
+        let body = Rc::new(body);
+
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(im::HashMap::new()),
+            item_leaf_owner_modules: Rc::new(im::HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+        };
+        let source_indices = HashMap::new();
+        let resolved =
+            resolved_initializer_decl_ref(&graph, &source_indices, &emit_info, &body, None)
+                .expect("initializer ref must resolve the carried user declaration");
+        assert_eq!(
+            resolved.module, "owner.types",
+            "carried BoolWitnessClaim declaration must beat variant_to_enum UnifiedTestClaim"
+        );
+        assert_eq!(resolved.name, "BoolWitnessClaim");
+    }
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
