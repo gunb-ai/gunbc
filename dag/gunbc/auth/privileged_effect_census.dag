@@ -1,6 +1,5 @@
 module gunbc.auth.privileged_effect_census
 
-import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {

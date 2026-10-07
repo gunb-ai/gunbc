@@ -227,22 +227,6 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  HostSpatialFacts {
-    host: operator_host_srv5,
-    asset: chassis_srv5_placeholder,
-    residence: rack_01_unobserved_residence,
-    wireless: WirelessAdapterUnobserved,
-    relay: RelayUnprovisioned,
-    bootstrap_need: BootstrapNeeded,
-  },
-  HostSpatialFacts {
-    host: operator_host_srv6,
-    asset: chassis_srv6_placeholder,
-    residence: rack_01_unobserved_residence,
-    wireless: WirelessAdapterUnobserved,
-    relay: RelayUnprovisioned,
-    bootstrap_need: BootstrapNeeded,
-  },
 ]
 
 // FleetOnce wifi-first-relay-standing human burden row is intentionally absent here —

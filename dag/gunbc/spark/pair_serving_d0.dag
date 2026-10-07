@@ -1,6 +1,6 @@
 module gunbc.spark.pair_serving_d0
 
-import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet }
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingD0ReleaseToFleet }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }

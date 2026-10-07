@@ -268,8 +268,6 @@ data fleet_subsumption_enrollments: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_enrollment_participation },
   HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_enrollment_participation },
   HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv5, participation: inference_serving_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv6, participation: inference_serving_enrollment_participation },
 ]
 
 // The bare host list is DERIVED from the enrollments, never authored beside them. Consumers that

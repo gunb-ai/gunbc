@@ -39,12 +39,6 @@ type ServingGroupLaunch {
 
 fn serving_group_launch(group: FabricGroup) -> ServingGroupLaunch {
   match group {
-    FabricGroupA => ServingGroupLaunch {
-      head_unit_name: spark_pair_head_unit_name,
-      container_name: spark_pair_container_name,
-      engine_binary: sparkrun_vllm_ds4_gb10_vllm_binary,
-      declared_model_path: spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot),
-    }
     FabricGroupB => ServingGroupLaunch {
       head_unit_name: glm_native_head_unit_name,
       container_name: glm_native_container_name,
@@ -67,7 +61,6 @@ type GroupRendezvous sole_constructor {
 
 fn serving_group_rendezvous(group: FabricGroup) -> GroupRendezvous? {
   match group {
-    FabricGroupA => none
     FabricGroupB =>
       match glm_native_master_endpoint() {
         Absent => none

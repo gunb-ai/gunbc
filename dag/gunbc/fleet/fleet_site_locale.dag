@@ -217,8 +217,6 @@ type ObservedHostZone {
 // to report -- the ought is the derivation's job, and fusing them would rebuild the fork.
 data observed_host_zones: List<ObservedHostZone> = [
   ObservedHostZone { host: operator_host_srv4, observed_zone: zone_etc_utc },
-  ObservedHostZone { host: operator_host_srv5, observed_zone: zone_etc_utc },
-  ObservedHostZone { host: operator_host_srv6, observed_zone: zone_america_new_york },
 ]
 
 // THE PI IS MEASURED AND DELIBERATELY NOT GIVEN AN IDENTITY HERE. A reading was taken over "pi1"
@@ -255,8 +253,6 @@ type HostSiteAssignment {
 
 data fleet_host_site_assignments: List<HostSiteAssignment> = [
   HostSiteAssignment { host: operator_host_srv4, site: operator_site },
-  HostSiteAssignment { host: operator_host_srv5, site: operator_site },
-  HostSiteAssignment { host: operator_host_srv6, site: operator_site },
 ]
 
 // Three outcomes, not two, and the missing case is not folded into the mismatch case: a host with

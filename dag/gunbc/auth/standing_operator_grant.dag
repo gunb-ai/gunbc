@@ -57,26 +57,6 @@ type StandingOperatorGrant {
   effects: List<StandingGrantEffect>
 }
 
-// THE GROUP A DEVELOPMENT GRANT. The words are the operator's, given directly in the parent session on
-// 2026-10-03 and relayed by valiant-crab-775 (dashboard message msg_2940687d): "you have my permission to
-// use group A however you want from now on." The operator also ruled that the approval broker and app
-// are a separate lane and will not be set up now, so a per-effect approval for Group A cannot be met.
-// The interlock is D0's own durable claim of the consent (gunbc.spark.pair_serving_d0 d0_claim_grant):
-// the release runs only under that claim, its pending state and its fresh all-quiescent reading.
-data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
-  identity: "group-a-dev-standing-grant-2026-10-03" as NonEmptyStr,
-  principal: "operator" as NonEmptyStr,
-  ruled_at: "2026-10-03T05:00:00Z",
-  ruling: StandingDestructiveAuthorization {
-    ruling_text: "Operator ruling 2026-10-03, given directly in valiant-crab-775's session and relayed by dashboard message msg_2940687d: 'you have my permission to use group A however you want from now on.' The approval broker and app are a separate lane and will not be set up now. Scope as relayed: FabricGroupA hosts srv5-srv8; the D0 release-to-fleet plus the GLM staircase's host effects (image produce and distribute, checkpoint materialize, arm launch and teardown), and, per valiant-crab-775 on 2026-10-03, recovering a dead lane's host-effect claim on a Group A host after a fresh quiescence read. Group B is outside it." as NonEmptyStr,
-    effect_subject: "Group A development effects: the D0 release-to-fleet of Group A's pair-serving authority and the GLM-5.3-Flash staircase's host effects on srv5-srv8" as NonEmptyStr,
-    interlock: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
-  },
-  group: FabricGroupA,
-  hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8],
-  effects: [StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover],
-}
-
 // COVERAGE IS AN IDENTITY JOIN: the group is the grant's, the effect is one of its effects, and EVERY host
 // the effect touches is one of its hosts (a host outside the roster is outside the ruling, however few).
 // An empty host list touches nothing a ruling could cover, so it is not covered.

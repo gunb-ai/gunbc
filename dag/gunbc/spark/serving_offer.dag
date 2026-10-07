@@ -366,7 +366,6 @@ data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark
 // install side. Keyed by fabric group because the arm determines the container.
 fn spark_serving_offer_required_grants(group: FabricGroup) -> List<SparkManagedGrant> {
   match group {
-    FabricGroupA => [InspectServingContainer { container: spark_pair_container_name }]
     FabricGroupB => [InspectServingContainer { container: glm_native_container_name }]
   }
 }
