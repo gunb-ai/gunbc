@@ -1,7 +1,8 @@
 module product.printed_chassis.review_realization
 
 import std.types { String,List }
-import std.dissolution {DissolutionCondition, unbound_dissolution}
+import std.dissolution {DissolutionCondition}
+import product.printing.deposited_geometry {printed_chassis_python_kernel_dissolve_on}
 import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterface}
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ExitSuccess,exit_failure }
@@ -17,7 +18,7 @@ import product.printed_chassis.assembly_review_checks {review_model_checks}
 // admission workflow remains mandatory after assembly review and before printing.
 // Exercise with CadQuery 2.8.0; rejection is atomic (no partial review package).
 // Python is emitted transiently because this repository owns tools in .dag/.rs.
-data printed_chassis_review_cad_adapter_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the review CAD check (CadQuery/VTK host adapter staged as .cad-check.py) is expressed in .dag; CadQuery is reached only as a declared external-tool realization. Operator-approved scaffold 2026-10-07 (gunbc#13334 comment 6030005433, which names the review CAD adapter), tracked by roadmap node printed-chassis-python-kernel-retirement.")
+fn python_kernel_dissolve_on() -> DissolutionCondition { printed_chassis_python_kernel_dissolve_on }
 fn adapter_source() -> String { join([
   "#!/usr/bin/env python3\n",
   "\"\"\"Realize a DAG-emitted review manifest. No cassette dimensions live in this adapter.\n",
