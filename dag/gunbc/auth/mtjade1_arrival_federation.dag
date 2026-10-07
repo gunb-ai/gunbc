@@ -4,12 +4,12 @@ import std.types { NonEmptyStr }
 import gunbc.auth.mtjade1_arrival_pair { mtjade1_arrival_principal_member }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityBindable, WorkloadIdentityStanding,
-  MintsNoCredential, MintsResourceScopedCredential, IrreversibleEffect, ReversibleByReapply,
+  MintsNoCredential, IrreversibleEffect, ReversibleByReapply,
   NoBillingConsequence, StandingRulingUnderInterlock,
 }
 import std.human_intervention { DeviceOnce }
 import gunbc.auth.standing_operator_grant {
-  mtjade1_live_standing_grant, StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification,
+  mtjade1_live_standing_grant, StandingJadeArrivalArchive, StandingJadeFirmwareQualification,
   standing_ruling_with_arm_interlock,
 }
 
@@ -28,21 +28,6 @@ fn mtjade1_arrival_archive_effect() -> PrivilegedEffect {
     billing: NoBillingConsequence,
     witness_discharge: StandingRulingUnderInterlock {
       ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalArchive),
-    },
-  }
-}
-
-fn mtjade1_arrival_bmc_secure_effect() -> PrivilegedEffect {
-  PrivilegedEffect {
-    subject: "mtjade1 BmcSecure: rotate the managed account to a stored generation and retire the published account over admitted routes" as NonEmptyStr,
-    frequency: DeviceOnce,
-    reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
-    surface: ApiSurface,
-    workload_identity: mtjade1_arrival_bindable_identity(),
-    minted_reach: MintsResourceScopedCredential,
-    billing: NoBillingConsequence,
-    witness_discharge: StandingRulingUnderInterlock {
-      ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalBmcSecure),
     },
   }
 }

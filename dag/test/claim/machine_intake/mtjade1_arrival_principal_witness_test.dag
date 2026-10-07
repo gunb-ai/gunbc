@@ -17,7 +17,7 @@ import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import gunbc.auth.mtjade1_arrival_pair { mtjade1_arrival_principal_member, mtjade1_arrival_secret_grants }
 import gunbc.auth.mtjade1_arrival_federation {
-  mtjade1_arrival_archive_effect, mtjade1_arrival_bmc_secure_effect, mtjade1_arrival_firmware_qualification_effect,
+  mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
 }
 import gunbc.auth.authorization_pattern_selection {
   FederatedScopedGrant, OperatorApprovedCapability,
@@ -25,9 +25,10 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern,
 }
 import gunbc.auth.privileged_effect_census { rulings_without_a_rostered_interlock }
+import gunbc.machine_intake_arrival_converge { grant_discharges_bmc_secure_account_write }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost,
-  StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification, StandingD0ReleaseToFleet,
+  StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
 }
 import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 
@@ -69,9 +70,11 @@ test fn w_mtjade1_is_admitted_and_mtcollins1_and_outsiders_refuse_before_effect(
 
 test fn w_grant_covers_arrival_arms_on_mtjade1_only() -> Bool {
   standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
-    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalBmcSecure)
     && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
-    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingJadeArrivalBmcSecure)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
+    && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
+    && !grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1)
+    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingBmcSecureAccountWrite)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
 }
 
@@ -99,9 +102,8 @@ test fn w_ungrounded_route_refuses_bmc_secure_interlock() -> Bool {
 
 test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
   selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
-    && selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_bmc_secure_effect()))
     && selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
-    && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_bmc_secure_effect()))
+    && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
     && mtjade1_arrival_principal_member() == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
     && mtjade1_arrival_secret_grants().length() == 1
     && rulings_without_a_rostered_interlock().length() == 0

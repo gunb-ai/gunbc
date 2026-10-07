@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost,
-  StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification,
+  StandingJadeArrivalArchive, StandingJadeFirmwareQualification,
 }
 import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 
@@ -60,10 +60,6 @@ fn admit_arrival_subject(wire: String) -> ArrivalSubjectAdmission {
       Absent => ArrivalSubjectUnknown { wire: wire }
       Present { value: row } =>
         if standing_grant_covers(
-          g: mtjade1_live_standing_grant,
-          scope: StandingGrantHost { host: operator_host_mtjade1 },
-          effect: StandingJadeArrivalBmcSecure,
-        ) && standing_grant_covers(
           g: mtjade1_live_standing_grant,
           scope: StandingGrantHost { host: operator_host_mtjade1 },
           effect: StandingJadeArrivalArchive,

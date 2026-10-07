@@ -110,14 +110,30 @@ type BillingConsequence
 // statically that the interlock is rostered against the site
 // (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
 // realization must take that hold before any write.
-// INTERLOCK IS PER EFFECT ARM, NOT PER GRANT. A standing ruling may cover several effects whose
-// holds differ; the grant row may therefore carry Absent at grant grain. A census site that
-// discharges StandingRulingUnderInterlock must still carry Present: Absent there is red
-// (rulings_without_a_rostered_interlock), never a skip.
+//
+// THREE INTERLOCK STATES, NOT AN OPTIONAL HOLD. InterlockPending is a hold not yet named: it must
+// refuse, never discharge (a bindable irreversible effect under a pending ruling still owes a
+// witness). UnconditionalStanding is an intentional no-hold discharge, with its reason. InterlockedBy
+// is a named hold the census must roster against the site. Only UnconditionalStanding and
+// InterlockedBy discharge the irreversibility ground. Route A overlays InterlockedBy per arm
+// (standing_grant_arm_interlock); grant grain may stay InterlockPending for unnamed classes.
+type StandingRulingInterlock
+  = InterlockPending { obligation: NonEmptyStr }
+  | UnconditionalStanding { reason: NonEmptyStr }
+  | InterlockedBy { hold: DeclarationRef }
+
 type StandingDestructiveAuthorization {
   ruling_text: NonEmptyStr
   effect_subject: NonEmptyStr
-  interlock: DeclarationRef?
+  interlock: StandingRulingInterlock
+}
+
+fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorization) -> Bool {
+  match r.interlock {
+    InterlockPending { obligation: _ } => false
+    UnconditionalStanding { reason: _ } => true
+    InterlockedBy { hold: _ } => true
+  }
 }
 
 type WitnessDischarge
@@ -147,7 +163,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
     IrreversibleEffect { what_is_lost: _ } =>
       match e.witness_discharge {
         NoWitnessDischarge => true
-        StandingRulingUnderInterlock { ruling: _ } => false
+        StandingRulingUnderInterlock { ruling: r } => !standing_ruling_discharges_irreversibility(r: r)
       }
     ReversibleByReapply => false
   }
@@ -555,8 +571,9 @@ fn minted_reach_text(m: MintedCredentialReach) -> String {
 // authorization is a different decision scope from one minted without it.
 fn standing_ruling_interlock_label(r: StandingDestructiveAuthorization) -> String {
   match r.interlock {
-    Present { value: i } => declaration_ref_display_key(ref: i)
-    Absent => "no effect-arm interlock"
+    InterlockPending { obligation: o } => join(["InterlockPending: ", o as String], "")
+    UnconditionalStanding { reason: s } => join(["UnconditionalStanding: ", s as String], "")
+    InterlockedBy { hold: i } => declaration_ref_display_key(ref: i)
   }
 }
 

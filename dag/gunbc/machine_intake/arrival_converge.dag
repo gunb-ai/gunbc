@@ -1,7 +1,15 @@
 module gunbc.machine_intake_arrival_converge
 
 import std.types { List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import product.host_identity { HostIdentity }
+import gunbc.auth.standing_operator_grant {
+  StandingOperatorGrant, standing_grant_covers, StandingGrantHost,
+  StandingBmcSecureAccountWrite, standing_grant_arm_interlock,
+}
+import gunbc.auth.authorization_pattern_selection {
+  InterlockPending, UnconditionalStanding, InterlockedBy,
+}
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -91,6 +99,19 @@ import gunbc.machine_intake_bmc_rotation_route {
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
+import gunbc.machine_intake_prior_life_boundary {
+  DryPriorLifeWorld,
+  PriorLifeBoundaryEstablished,
+  PriorLifeRefusal,
+  PriorLifeIncomplete,
+  PriorLifeArchiveEstablished,
+  PriorLifeArchiveRefused,
+  PriorLifeArchiveIncomplete,
+  dry_archive_prior_life,
+  mt_jade_platform_ref,
+  prior_life_receipt_key,
+  prior_life_receipt_consumed_identity,
+}
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
   StepSubjectKey,
@@ -107,6 +128,7 @@ import gunbc.fleet.convergence_fold {
   StepOutcome,
   StepEstablished,
   StepRefused,
+  StepIncomplete,
   ConvergenceReceiptProjection,
   ConvergenceRunVerdict,
   admit_convergence_plan,
@@ -115,24 +137,30 @@ import gunbc.fleet.convergence_fold {
   step_outcome_receipt,
 }
 
-// THE ARRIVAL CONVERGENCE, READ-ONLY PREFIX (docs/plans/managed-host-untangle.md, cut O1c-1): the
-// first real consumer of gunbc.fleet.convergence_fold. Its two steps are the first two phases of
-// gunbc.machine_intake_phase arrival_phases_all, AccessDiscover and IdentityBindProvisional, each a
-// protocol step through gunbc.host_convergence_protocol HostEffectDomainProjection (observe, assess,
-// decide) with its own row in gunbc.host_convergence_census. Both are read-only: the only decision
-// either can reach is Noop (the phase's goal is read back as already holding) or Refuse; neither has
-// an Apply, so an Apply decision is itself a typed refusal. Nothing here performs a live BMC call: the
-// read each step consumes is a committed capture. gunbc.bmc_onboarding is not imported.
+// THE ARRIVAL CONVERGENCE PREFIX (docs/plans/managed-host-untangle.md, cuts O1c-1 and O1c-2): the first
+// real consumer of gunbc.fleet.convergence_fold. Its three steps are the first three phases of
+// gunbc.machine_intake_phase arrival_phases_all -- AccessDiscover, IdentityBindProvisional and
+// PriorLifeBoundary -- each a protocol step through gunbc.host_convergence_protocol
+// HostEffectDomainProjection (observe, assess, decide) with its own row in
+// gunbc.host_convergence_census. The first two are read-only: the only decision either can reach is
+// Noop (the phase's goal is read back as already holding) or Refuse; neither has an Apply, so an Apply
+// decision is itself a typed refusal, and the read each consumes is a committed capture.
+// PriorLifeBoundary is the first effectful step: its archive arm writes the controller's prior-life
+// records to the evidence store and reads them back, DRY in this cut
+// (gunbc.machine_intake_prior_life_boundary), so it is the one step that can be INCOMPLETE. Nothing
+// here performs a live BMC call or a live store write. gunbc.bmc_onboarding is not imported.
 //
-// ORDERING TIME. No field here is an ordering clock. The controller's own DateTime is kept as an
-// AccessDiscover observation only; cut O1b's observer clock (#13221, not landed at this writing) is
-// the ordering authority, and this cut orders nothing by time.
+// ORDERING TIME. No field of the read-only steps is an ordering clock. The controller's own DateTime is
+// kept as an AccessDiscover observation only; the observer clock (gunbc.clock_read) orders the
+// archive write's leg against its deadline, and nothing here orders by the controller's clock.
 
 data arrival_order_authority_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_phase", decl_name: "arrival_phases_all")
 
 data access_discover_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "access_discover")
 
 data identity_bind_provisional_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional")
+
+data prior_life_boundary_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary")
 
 // A read-only phase has no remedy. The plan type of its projection is sealed to this module and this
 // module constructs none, so an Apply over a read-only phase has no value to carry.
@@ -433,6 +461,7 @@ fn intake_attempt_of_run(run: ConvergenceRunId) -> IntakeAttemptId {
 type ArrivalStepReceipt
   = AccessDiscoverReceipt { receipt: AccessDiscoverEstablished }
   | IdentityBindReceipt { receipt: IdentityBoundProvisional }
+  | PriorLifeBoundaryReceipt { receipt: PriorLifeBoundaryEstablished }
 
 type ArrivalStepRefusal
   = AccessDiscoverObserveRefused { cause: AccessObserveRefusal }
@@ -441,11 +470,19 @@ type ArrivalStepRefusal
   | ReadOnlyPhaseRefused { phase: ArrivalPhase, reason: NonEmptyStr }
   | ReadOnlyPhaseDecidedApply { phase: ArrivalPhase }
   | ReadOnlyPhaseSatisfiedWithoutEvidence { phase: ArrivalPhase }
+  | PriorLifeIdentityForAnotherInstance { identity: StepInstanceKey }
+  | PriorLifeBoundaryRefused { cause: PriorLifeRefusal }
+
+// A STEP WHOSE EFFECT WAS ATTEMPTED AND IS NOT GROUNDED BY ITS READBACK. Only PriorLifeBoundary has
+// an effect in this prefix; the read-only phases cannot be incomplete.
+type ArrivalStepIncomplete
+  = PriorLifeBoundaryIncomplete { cause: PriorLifeIncomplete }
 
 fn arrival_receipt_key(r: ArrivalStepReceipt) -> StepInstanceKey {
   match r {
     AccessDiscoverReceipt { receipt: a } => a.key
     IdentityBindReceipt { receipt: i } => i.key
+    PriorLifeBoundaryReceipt { receipt: p } => prior_life_receipt_key(r: p)
   }
 }
 
@@ -453,6 +490,7 @@ fn arrival_receipt_consumed(r: ArrivalStepReceipt) -> List<StepInstanceKey> {
   match r {
     AccessDiscoverReceipt { receipt: _ } => []
     IdentityBindReceipt { receipt: i } => [i.consumed_access]
+    PriorLifeBoundaryReceipt { receipt: p } => [prior_life_receipt_consumed_identity(r: p)]
   }
 }
 
@@ -470,7 +508,7 @@ fn read_only_refusal(phase: ArrivalPhase, decision: UpsertDecision<ReadOnlyPhase
 
 // THE ACCESSDISCOVER STEP: observe the current read, assess it against the unit the instance names,
 // decide; only Noop over a satisfied assessment mints the receipt.
-fn access_discover(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> {
+fn access_discover(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
   let projection = access_discover_projection()
   match inspect_via_host_effect_projection(subject: key, goal: AccessDiscoverGoal { unit: key.subject }, request: read, projection: projection) {
     GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => StepRefused { key: key, cause: AccessDiscoverObserveRefused { cause: c } }
@@ -499,7 +537,7 @@ fn access_discover(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcom
 // THE IDENTITYBINDPROVISIONAL STEP: the unit key from bind_unit_key over the unit's board-serial
 // observations, the provisional assembly, the live firmware manifest from the consumed access
 // receipt, qualification_subject_of, then MachineIntakeSubject with this run's one attempt identity.
-fn identity_bind_provisional(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> {
+fn identity_bind_provisional(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
   if (access.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (access.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
     StepRefused { key: key, cause: IdentityBindAccessForAnotherInstance { access: access.key } }
   } else {
@@ -508,7 +546,7 @@ fn identity_bind_provisional(key: StepInstanceKey, access: AccessDiscoverEstabli
 }
 
 // The access receipt is this instance's own (same run, same subject): the step binds from it.
-fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> {
+fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
   let projection = identity_bind_projection()
   let request = IdentityBindRequest { access: access, inputs: inputs }
   match inspect_via_host_effect_projection(subject: key, goal: IdentityBindGoal { attempt: intake_attempt_of_run(run: key.run) }, request: request, projection: projection) {
@@ -535,6 +573,23 @@ fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablis
   }
 }
 
+// THE PRIORLIFEBOUNDARY STEP: the archive of the unit's prior-life records, dry, over the subject the
+// IdentityBindProvisional receipt of this run and this subject bound. The platform's policy row is
+// selected by the caller before the step (DESIGN §3d); the archive, its write, its deadline and its
+// readback are gunbc.machine_intake_prior_life_boundary's. A refusal wrote nothing; an incomplete
+// write is its own outcome and never converged.
+fn prior_life_boundary(key: StepInstanceKey, identity: IdentityBoundProvisional, platform: DeclarationRef, world: DryPriorLifeWorld) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  if (identity.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: PriorLifeIdentityForAnotherInstance { identity: identity.key } }
+  } else {
+    match dry_archive_prior_life(key: key, consumed_identity: identity.key, subject: identity.subject, platform: platform, world: world).outcome {
+      PriorLifeArchiveEstablished { receipt: r } => StepEstablished { receipt: PriorLifeBoundaryReceipt { receipt: r } }
+      PriorLifeArchiveRefused { cause: c } => StepRefused { key: key, cause: PriorLifeBoundaryRefused { cause: c } }
+      PriorLifeArchiveIncomplete { cause: i } => StepIncomplete { key: key, cause: PriorLifeBoundaryIncomplete { cause: i } }
+    }
+  }
+}
+
 // ── THE PLAN: a prefix of the authority's order, never a second list ───────────────────────────
 
 fn arrival_order_authority() -> ConvergenceOrderAuthority<IntakePhase> {
@@ -554,7 +609,7 @@ fn arrival_step_of_phase(phase: ArrivalPhase) -> ConvergenceStep<IntakePhase>? {
   match phase {
     AccessDiscover => Present { value: ConvergenceStep { identity: access_discover_step_ref, order_member: Arrival { phase: AccessDiscover }, preconditions: [] } }
     IdentityBindProvisional => Present { value: ConvergenceStep { identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: [SameSubject { step: access_discover_step_ref }] } }
-    PriorLifeBoundary => none
+    PriorLifeBoundary => Present { value: ConvergenceStep { identity: prior_life_boundary_step_ref, order_member: Arrival { phase: PriorLifeBoundary }, preconditions: [SameSubject { step: identity_bind_provisional_step_ref }] } }
     BmcSecure => none
     BootDeliveryEstablish => none
     DiagnosticBootAttest => none
@@ -580,7 +635,7 @@ fn arrival_prefix_through(last: ArrivalPhase) -> List<IntakePhase> {
   }
 }
 
-data arrival_prefix_last: ArrivalPhase = IdentityBindProvisional
+data arrival_prefix_last: ArrivalPhase = PriorLifeBoundary
 
 type ArrivalPrefixSteps
   = ArrivalPrefixStepped { steps: List<ConvergenceStep<IntakePhase>> }
@@ -608,25 +663,44 @@ fn arrival_prefix_steps(phases: List<IntakePhase>) -> ArrivalPrefixSteps {
 type ArrivalPrefixVerdict
   = ArrivalPrefixUnstepped { phase: IntakePhase }
   | ArrivalPlanRefused { cause: ConvergencePlanRefusal<IntakePhase> }
-  | ArrivalRunFolded { verdict: ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal> }
+  | ArrivalRunFolded { verdict: ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> }
 
-// The domain executes its read-only steps in the admitted order, each consuming only the receipt its
+// THE PRIOR-LIFE INPUTS: the unit's platform (which selects its policy row) and the dry world the
+// archive reads and writes.
+type PriorLifeInputs {
+  platform: DeclarationRef
+  world: DryPriorLifeWorld
+}
+
+// The domain executes its steps in the admitted order, each consuming only the receipt its
 // precondition produced in this run; a step whose precondition did not establish is not executed and
 // the fold records it NotReached. Then the fold composes the outcomes into the run's ledger.
-fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>> {
+fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
   let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read)
   match step_outcome_receipt(outcome: access) {
     Absent => [access]
     Present { value: r } =>
       match r {
-        AccessDiscoverReceipt { receipt: a } =>
-          [access, identity_bind_provisional(key: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: subject), access: a, inputs: inputs)]
+        AccessDiscoverReceipt { receipt: a } => {
+          let identity = identity_bind_provisional(key: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: subject), access: a, inputs: inputs)
+          match step_outcome_receipt(outcome: identity) {
+            Present { value: ir } =>
+              match ir {
+                IdentityBindReceipt { receipt: i } =>
+                  [access, identity, prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world)]
+                AccessDiscoverReceipt { receipt: _ } => [access, identity]
+                PriorLifeBoundaryReceipt { receipt: _ } => [access, identity]
+              }
+            Absent => [access, identity]
+          }
+        }
         IdentityBindReceipt { receipt: _ } => [access]
+        PriorLifeBoundaryReceipt { receipt: _ } => [access]
       }
   }
 }
 
-fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>>) -> ArrivalPrefixVerdict {
+fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>>) -> ArrivalPrefixVerdict {
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: steps) {
     ConvergencePlanRefused { cause: c } => ArrivalPlanRefused { cause: c }
     ConvergencePlanAdmitted { plan: plan } =>
@@ -634,12 +708,27 @@ fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: Convergen
   }
 }
 
-fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs) -> ArrivalPrefixVerdict {
+fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs) -> ArrivalPrefixVerdict {
   match arrival_prefix_steps(phases: arrival_prefix_through(last: arrival_prefix_last)) {
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } =>
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs))
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life))
   }
+}
+
+// StandingBmcSecureAccountWrite discharge: same name and hold as gunbc#13517 (admit_rotation_apply).
+// Reads the per-arm overlay, not grant-grain InterlockPending.
+fn bmc_secure_apply_interlock_hold() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply")
+}
+
+fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: HostIdentity) -> Bool {
+  standing_grant_covers(g: g, scope: StandingGrantHost { host: host }, effect: StandingBmcSecureAccountWrite)
+    && match standing_grant_arm_interlock(g: g, e: StandingBmcSecureAccountWrite) {
+      InterlockPending { obligation: _ } => false
+      UnconditionalStanding { reason: _ } => false
+      InterlockedBy { hold: h } => declaration_ref_eq(a: h, b: bmc_secure_apply_interlock_hold())
+    }
 }
 
 // ── mtjade1 ────────────────────────────────────────────────────────────────────────────────────
@@ -659,11 +748,20 @@ fn arrival_bound_unit_keys() -> List<UnitKey> {
 //   (B810301000412080005AJ0C1), so the step mints the two-source agreement and binds the unit key;
 // - provisional assembly: from the FRU capture, chassis part number B60.0300E.0001 with the chassis
 //   (serial 21000012N0A1) as its one component;
-// - live firmware manifest: the bmc entry 2.11.104000 from this run's Manager read, nothing else.
+// - live firmware manifest: the bmc entry 2.11.104000 from this run's Manager read, nothing else;
+// - PriorLifeBoundary: DRY ONLY. No capture of mtjade1's prior-life carriers is committed, so the
+//   archive reads the dry world the caller supplies, under the Mt. Jade policy row, and its receipt
+//   names the dry realization; the world claims no controller family.
 fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
   IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys() }
 }
 
-fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
-  converge_arrival_prefix(run: run, subject: "mtjade1" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs())
+fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_prefix(
+    run: run,
+    subject: "mtjade1" as StepSubjectKey,
+    read: read_mtjade1_current_manager_read(),
+    inputs: mtjade1_identity_bind_inputs(),
+    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+  )
 }
