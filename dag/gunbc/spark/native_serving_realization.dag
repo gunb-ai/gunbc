@@ -17,7 +17,7 @@ import extdeps.docker.cli {
   DockerCreateSpec, DockerForegroundRunArgv, DockerForegroundRunRefused,
   docker_run_foreground_argv,
 }
-import gunbc.spark.serving_arm { ArmIntent, ArmNormalServing, ArmBoundedExperiment, glm_native_concurrent_profile }
+import gunbc.spark.serving_arm { ArmIntent, ArmNormalServing, ArmBoundedExperiment, ArmOperatorQualificationServing, glm_native_concurrent_profile }
 import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime, engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
 import std.measure { Second, second, second_count }
 import extdeps.vllm.engine_args { vllm_argv_nat, vllm_max_num_seqs_flag, VllmArgvNat, VllmArgvNatUnread }
@@ -232,6 +232,11 @@ fn arm_unit_directives(intent: ArmIntent, units: ArmUnitIdentity, launch: ArmNod
       After { target: "docker.service network-online.target" as NonEmptyStr },
       Requires { target: "docker.service" as NonEmptyStr },
     ]
+    ArmOperatorQualificationServing { ruling: r } => [
+      Description { text: join([units.description as String, " OPERATOR-QUALIFICATION SERVE (not normal serving; ruled by ", r.ruled_by as String, " ", r.ruled_on as String, "), rank ", to_string(launch.node.node_rank), " (", served_alias as String, ")"], "") as NonEmptyStr },
+      After { target: "docker.service network-online.target" as NonEmptyStr },
+      Requires { target: "docker.service" as NonEmptyStr },
+    ]
     ArmBoundedExperiment => [
       Description { text: join([units.description as String, " BOUNDED EXPERIMENT, rank ", to_string(launch.node.node_rank), " (", served_alias as String, "): one attempt, no enrollment, no restart"], "") as NonEmptyStr },
       After { target: "docker.service network-online.target" as NonEmptyStr },
@@ -282,6 +287,7 @@ type ArmUnitLifetimeStanding
 fn arm_unit_lifetime_for(intent: ArmIntent, launch: ArmNodeLaunch) -> ArmUnitLifetimeStanding {
   match intent {
     ArmNormalServing => ArmUnitLifetimeDerived { lifetime: ArmUnitPersistent }
+    ArmOperatorQualificationServing { ruling: _ } => ArmUnitLifetimeDerived { lifetime: ArmUnitPersistent }
     ArmBoundedExperiment =>
       match arm_launch_experiment_runtime(launch: launch) {
         ArmExperimentRuntimeBound { bound: b } => ArmUnitLifetimeDerived { lifetime: ArmUnitBounded { bound: b } }
@@ -324,6 +330,7 @@ fn arm_service_directives(lifetime: ArmUnitLifetime, launch: ArmNodeLaunch, run_
 fn arm_install_section(intent: ArmIntent) -> SystemdInstallSection {
   match intent {
     ArmNormalServing => Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] }
+    ArmOperatorQualificationServing { ruling: _ } => Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] }
     ArmBoundedExperiment => NotInstallable
   }
 }

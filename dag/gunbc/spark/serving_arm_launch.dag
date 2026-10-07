@@ -49,7 +49,7 @@ import gunbc.spark.serving_arm {
   ServingArmAdmitted,
   ServingArmRefused,
   ArmIntent,
-  ArmNormalServing,
+  ArmNormalServing, ArmOperatorQualificationServing, operator_qualification_subject_refusal,
   ArmBoundedExperiment,
   serving_arm_admits_under,
   ServingLaunchProfile,
@@ -625,7 +625,19 @@ fn launch_compatibility_subject(
 // an ArmLaunchPlan, which forced the admitting arms to invent a lines list and a master address they
 // had no business holding -- a fabricated value standing in for "no objection". Absent IS the
 // admission, and there is nothing to make up.
-fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEmptyStr? {
+fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> NonEmptyStr? {
+  match intent {
+    ArmOperatorQualificationServing { ruling: r } =>
+      match operator_qualification_subject_refusal(ruling: r, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group) {
+        Present { value: c } => Present { value: c }
+        Absent => compatibility_intent_refusal(admission: admission, intent: intent)
+      }
+    ArmBoundedExperiment => compatibility_intent_refusal(admission: admission, intent: intent)
+    ArmNormalServing => compatibility_intent_refusal(admission: admission, intent: intent)
+  }
+}
+
+fn compatibility_intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEmptyStr? {
   match admission {
     AdmitsNothing { because: b } => Present { value: b }
     AdmitsNormalServing => none
@@ -633,6 +645,7 @@ fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEm
       match intent {
         ArmBoundedExperiment => none
         ArmNormalServing => Present { value: "this subject has no execution receipt, so the measured roster admits a bounded experiment and not normal serving; run it as a bounded experiment first, or record the receipt that makes it compatible" as NonEmptyStr }
+        ArmOperatorQualificationServing { ruling: _ } => Present { value: "this subject has no execution receipt, so the measured roster admits a bounded experiment and not an operator-qualification serve; the ruling waives promotion receipts, not execution compatibility" as NonEmptyStr }
       }
   }
 }
@@ -666,7 +679,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   } else if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
   } else {
-  match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
+  match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group) {
     Present { value: c } => ArmLaunchRefused { cause: c }
     Absent =>
   match serving_arm_admits_under(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: Present { value: profile }) {
@@ -770,9 +783,14 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
   }
 }
 
+// AN OPERATOR-QUALIFICATION SERVE WAIVES RECEIPTS 3-5 (cache fit, quality, calibration) and only those:
+// receipt 1 (execution compatibility) is intent_refusal's and receipt 2 (memory fit) is
+// arm_memory_launch_gate's, both enforced on its plan. The waiver is the declared drop
+// gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts.
 fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
   match intent {
     ArmBoundedExperiment => none
+    ArmOperatorQualificationServing { ruling: _ } => none
     ArmNormalServing =>
       match serving_checkpoint_row(c: checkpoint) {
         Absent => Present { value: "no checkpoint row, so no promotion subject derives" as NonEmptyStr }
@@ -830,6 +848,7 @@ fn arm_memory_experiment_for_wall(
 ) -> ArmWallExperiment {
   match intent {
     ArmNormalServing => ArmWallExperimentNotRequired
+    ArmOperatorQualificationServing { ruling: _ } => ArmWallExperimentNotRequired
     ArmBoundedExperiment =>
       match verdict {
         ArmMemoryFitUnestablished { obligations: _ } =>

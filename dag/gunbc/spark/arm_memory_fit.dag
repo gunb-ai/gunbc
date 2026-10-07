@@ -46,7 +46,7 @@ import gunbc.spark.serving_arm {
   serving_checkpoint_row, serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
   serving_topology_rank_count,
   gb10_unified_pool_gib,
-  ArmIntent, ArmNormalServing, ArmBoundedExperiment,
+  ArmIntent, ArmNormalServing, ArmBoundedExperiment, ArmOperatorQualificationServing,
 }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, intent_for_launch_profile,
@@ -1568,12 +1568,20 @@ fn arm_memory_fit_experiment_plan_at(
 // parameter, and the wall builds it through the plan mint -- because the plan is what makes the
 // experiment the smallest measuring configuration rather than an unbounded service wearing an
 // experiment's name.
+// AN OPERATOR-QUALIFICATION SERVE IS ADMITTED ON AN UNESTABLISHED FIT UNDER ITS RULING (operator ruling
+// 2026-10-07); a refused fit still refuses -- a shape that cannot fit is not qualified by serving it.
 fn arm_memory_launch_gate(
   intent: ArmIntent,
   verdict: ArmMemoryFitVerdict,
   experiment: ArmMemoryExperimentPlan?,
 ) -> NonEmptyStr? {
   match intent {
+    ArmOperatorQualificationServing { ruling: _ } =>
+      match verdict {
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => none
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } => Present { value: c }
+        ArmMemoryFitUnestablished { obligations: _ } => none
+      }
     ArmNormalServing =>
       match verdict {
         ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => none

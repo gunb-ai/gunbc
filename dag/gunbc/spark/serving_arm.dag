@@ -4,6 +4,7 @@ import extdeps.docker.cli { DockerEnvAssignment }
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, gibibyte_ceiling, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_checkpoint_manifest_gibibytes }
 import extdeps.vllm.source_build { vllm_8d09804_sm121_recipe }
@@ -502,6 +503,48 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 type ArmIntent
   = ArmBoundedExperiment
   | ArmNormalServing
+  | ArmOperatorQualificationServing { ruling: OperatorQualificationRuling }
+
+// ── AN OPERATOR-QUALIFICATION SERVE IS ITS OWN INTENT, NOT NORMAL SERVING (operator ruling 2026-10-07) ──
+//
+// A THIRD THING AN ARM CAN BE ASKED FOR, AND IT HAS ITS OWN NAME BECAUSE ITS CONTRACT DIFFERS (DESIGN
+// section 3, meaning forks): it serves persistently, like normal serving, but WITHOUT the promotion
+// receipts normal serving requires, so the operator can qualify the subject personally. Calling it normal
+// serving would let one name carry two obligation sets. It is admitted ONLY with the ruling as a typed
+// carrier: who ruled, when, and EXACTLY which subject (checkpoint, runtime, topology, fabric group) -- a
+// ruling about one subject admits no other -- and the named conditions that end it. What it waives is
+// declared as a section 4b(3) rung drop (gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts);
+// every other gate (execution compatibility, the memory wall, the transport readback, the front door)
+// stands. A FitUnestablished memory verdict is admitted under the ruling, as a bounded experiment's is; a
+// FitRefused one still refuses.
+type OperatorQualificationRuling sole_constructor {
+  ruled_by: NonEmptyStr
+  ruled_on: NonEmptyStr
+  relayed_by: NonEmptyStr
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  group: FabricGroup
+  ends_when: List<OperatorQualificationEnd>
+}
+
+// THE CONDITIONS THAT END THE RULING: the operator's own qualification verdict, or the promotion receipt
+// producers landing, after which the subject promotes through normal serving or does not serve at all.
+type OperatorQualificationEnd
+  = OperatorQualificationVerdictRecorded
+  | PromotionReceiptProducersLand
+
+// THE RULING ADMITS EXACTLY ITS OWN SUBJECT. A launch whose checkpoint, runtime, topology or group differs
+// from the ruling's is refused, naming both.
+fn operator_qualification_subject_refusal(ruling: OperatorQualificationRuling, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> NonEmptyStr? {
+  if serving_checkpoint_wire(c: ruling.checkpoint) == serving_checkpoint_wire(c: checkpoint)
+    && serving_runtime_wire(r: ruling.runtime) == serving_runtime_wire(r: runtime)
+    && serving_topology_wire(t: ruling.topology) == serving_topology_wire(t: topology)
+    && fabric_group_wire(g: ruling.group) == fabric_group_wire(g: group) { none }
+  else {
+    Present { value: join(["the operator-qualification ruling of ", ruling.ruled_on as String, " admits ", serving_checkpoint_wire(c: ruling.checkpoint) as String, " on ", serving_runtime_wire(r: ruling.runtime) as String, " / ", serving_topology_wire(t: ruling.topology) as String, " / ", fabric_group_wire(g: ruling.group) as String, " only, and this launch is ", serving_checkpoint_wire(c: checkpoint) as String, " on ", serving_runtime_wire(r: runtime) as String, " / ", serving_topology_wire(t: topology) as String, " / ", fabric_group_wire(g: group) as String], "") as NonEmptyStr }
+  }
+}
 
 // ── A RUNTIME IS IDENTIFIED BY ITS BYTES AND ITS LINEAGE, NOT BY A STRING ──────────────────────
 //

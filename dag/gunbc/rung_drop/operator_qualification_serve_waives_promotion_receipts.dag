@@ -1,0 +1,40 @@
+module gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, OperatorWaiver }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// THE DECLARED RUNG DROP for persistent serving without the promotion receipts that cannot be produced
+// today (DESIGN 4b(3); operator ruling 2026-10-07, relayed by valiant-crab-775).
+//
+// WHAT IS DROPPED. Persistent serving on a Spark arm is ArmNormalServing, whose promotion gate
+// (gunbc.spark.serving_arm_launch normal_serving_promotion_refusal over gunbc.spark.serving_promotion
+// serving_promotion_standing) requires five subject-bound receipts. Three of them have NO PRODUCER today:
+// the resolved-layout cache fit, quality on the agentic acceptance set, and workload calibration on the real
+// trace. The operator ruled that Group A may serve GLM-5.3-Flash NVFP4 at eight seats persistently anyway,
+// under its own intent, ArmOperatorQualificationServing (gunbc.spark.serving_arm), so the operator can
+// qualify it personally against GLM-5.3-Flash FP8 on Group B.
+//
+// WHAT IS NOT DROPPED. Execution compatibility still gates (the subject's ExecutionCompatible row in
+// gunbc.spark.serving_compatibility, earned on hardware), and so do the memory wall (a FitRefused verdict
+// still refuses; FitUnestablished is admitted only under the ruling), the transport readback and the front
+// door. The intent is NOT normal serving and is never named so.
+data operator_qualification_serve_waives_promotion_receipts: RungDrop = RungDrop {
+  identity: "operator_qualification_serve_waives_promotion_receipts" as NonEmptyStr,
+
+  subject: "persistent serving of GLM-5.3-Flash NVFP4 at eight seats on Group A without promotion receipts 3 (resolved-layout cache fit), 4 (quality on the agentic acceptance set) and 5 (workload calibration on the real trace)",
+
+  declared: "2026-10-07",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: OperatorWaiver { ruling: "the operator, 2026-10-07 (relayed by valiant-crab-775): Group A may serve GLM-5.3-Flash nvfp4-8 persistently for the operator's own qualification against GLM-5.3-Flash fp8 on Group B, as gunbc.spark.serving_arm ArmOperatorQualificationServing with the ruling gunbc.spark.glm53_arm_staircase glm53_nvfp4_8_operator_qualification" },
+    population: [
+      "gunbc.spark.glm53_arm_staircase glm53_step_intent at Glm53Nvfp4Step Nvfp4Seats8 on FabricGroupA (checkpoint Glm53FlashNvidiaNvfp4, runtime GunbcGlm53KvplanV2GroupAProduced, topology FourSparkTp4): the only subject the ruling admits",
+    ],
+    restoration_trigger: "the gunbc.spark.serving_promotion producers of the resolved-layout cache-fit, quality and workload-calibration receipts land, SUFFICIENT FOR promoting this subject through gunbc.spark.serving_arm_launch normal_serving_promotion_refusal; at that point the subject serves as ArmNormalServing or not at all, and this intent's arm for it is deleted -- or, earlier, the operator records the qualification verdict, which also ends the ruling",
+  }
+}

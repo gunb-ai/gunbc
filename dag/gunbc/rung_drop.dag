@@ -210,6 +210,7 @@ type RungDropReason
   = LostAsPassenger { carrier: String }
   | DeletedWithoutReplacement
   | ReplacementStaged { replacement: String }
+  | OperatorWaiver { ruling: String }
 
 // THE ENUMERATED SET OF ROWS WHOSE DECLARATION IS STILL PROSE. One nullary arm per such row -- see
 // the note above on what that enumeration does and does not guarantee, and on the concurrent row
@@ -342,6 +343,7 @@ fn rung_drop_reason_label(r: RungDropReason) -> String {
   match r {
     LostAsPassenger { carrier: c } => concat("lost as a passenger of ", c)
     DeletedWithoutReplacement => "deleted without replacement"
+    OperatorWaiver { ruling: w } => concat("waived by operator ruling: ", w)
     ReplacementStaged { replacement: r2 } => concat("replacement staged: ", r2)
   }
 }

@@ -2,6 +2,8 @@ module gunbc.spark.serving_compatibility
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.optional { Present, Absent }
+import gunbc.spark.glm53_staircase_steps { Glm53Nvfp4Step, Nvfp4Seats8, glm53_step_profile, glm53_step_checkpoint }
 import gunbc.spark.serving_arm {
   ServingCheckpoint,
   Glm53NativeFp8,
@@ -10,6 +12,7 @@ import gunbc.spark.serving_arm {
   Gitcommit90Sm121Exl3,
   VllmOpenaiGlm53Flash,
   GunbcGlm53NopeDerivedGb10,
+  GunbcGlm53KvplanV2GroupAProduced,
   ServingTopology,
   SingleSparkTp1,
   FourSparkTp4,
@@ -482,9 +485,36 @@ data glm_native_on_derived_nope_standing: RuntimeCompatibilityStanding = Executi
   receipt: "the GLM-5.3-Flash native checkpoint at eb9eb208 executed on sha256:41366caf...af9d at four-rank native TP4 across srv9, srv10, srv11 and srv12 and answered a routed chat completion: the request was carried by the cutover transaction's own semantic probe (that transaction is not in this tree; it is the source of this receipt, not a module this one cites), and independently by a direct POST to /v1/chat/completions on the head, which returned finish_reason stop with a CORRECT answer to a question whose wrong answer is the obvious one, 73 completion tokens of which 47 were reasoning, in a response whose reasoning channel was parsed separately from its content and whose system_fingerprint reads vllm-0.1.dev1+g8d09804c8-tp4. The pe_dim-must-be-64 refusal that ended the ninth attempt did not occur. The deployment readback accepted every rank on image, engine arguments, checkpoint revision, host and bound fabric interface, and a later rerun observed the same population and converged to a no-op without restarting it." as NonEmptyStr,
 }
 
-data measured_serving_compatibility: List<RuntimeCompatibilityStanding> = [
+// ── NVFP4 AT EIGHT SEATS ON GROUP A EXECUTED (operator ruling 2026-10-07, relayed by valiant-crab-775) ─────
+//
+// THE SUBJECT IS THE STEP'S OWN, derived by gunbc.spark.glm53_staircase_steps from the same functions the
+// launch uses (checkpoint, profile), so this standing and the launch compare all five fields equal by
+// construction rather than by a restated profile. If the step's profile refuses, there is no subject and no
+// standing -- the list is empty, never a fabricated subject.
+//
+// THE PROMOTING EVIDENCE IS GENERATION, AS THE NATIVE ROW BELOW REQUIRES. fleet-converge run 37545563945
+// (2026-10-07) committed nvfp4-8 on srv5-srv8: every rank's complete planned realization read back field for
+// field, NCCL verified IB on all four ranks, and the head's front door served glm-5.3-flash. Load runs
+// 37550120792 and 37554905495 then GENERATED on it: 16 accepted turns each at eight concurrent sequences,
+// 0 preemptions, 0 engine restarts, 0 OOM events, 0 stalls or lost requests (103.9 output tok/s warm).
+fn glm53_nvfp4_8_execution_standings() -> List<RuntimeCompatibilityStanding> {
+  match glm53_step_profile(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) {
+    Absent => [] as List<RuntimeCompatibilityStanding>
+    Present { value: p } => [ExecutionCompatible {
+      subject: serving_compatibility_subject(
+        checkpoint: glm53_step_checkpoint(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }),
+        runtime: GunbcGlm53KvplanV2GroupAProduced,
+        topology: FourSparkTp4,
+        accelerator: spark_gb10_accelerator,
+        profile: p),
+      receipt: "GLM-5.3-Flash NVFP4 (NVIDIA ModelOpt, Glm53FlashNvidiaNvfp4) at eight seats executed on the GLM KVPLAN-v2 Group A build at four-rank TP4 across srv5-srv8: fleet-converge 37545563945 committed the arm (complete realization read back on every rank, NCCL IB verified on all four, front door serving), and load runs 37550120792 and 37554905495 generated 16 accepted turns each at eight concurrent sequences with zero preemptions, restarts, OOM events and stalls" as NonEmptyStr,
+    }]
+  }
+}
+
+data measured_serving_compatibility: List<RuntimeCompatibilityStanding> = concat([
   glm_native_official_sm121_tp4_standing,
   glm_exl3_on_gitcommit90_standing,
   glm_native_on_gitcommit90_standing,
   glm_native_on_derived_nope_standing,
-]
+], glm53_nvfp4_8_execution_standings())
