@@ -1,0 +1,104 @@
+// caller_admission_native_wall_red_test -- THE ONE REAL-PATH INHABITANCE CLAIM for
+// gunbc.rung_drop admit_callers_discarded_on_the_native_route, in the LONG HOME
+// (module v2.test.claim.long.* is structurally too expensive for the armed line: the interpreter's
+// parse of even a trivial source dominates -- 496,179 eval steps / 1421ms cpu for a two-module
+// fixture against the 72,300 new-witness budget, CI floor run at 8528a59b45 -- so the whole-pipeline
+// cost is admitted here and nowhere else: withheld from the required floor's charged clock by its
+// typed v2.workflow.floor_cost_debt row, verdict-proven in the changed-witness lane where
+// required_floor long_home_prefixes admit it as ChangedCostDebtVerdictOnly, and proven for its
+// verdict without the eval budget: the claim PASSED when run for its verdict, receipts in the row
+// and in the PR).
+//
+// WHAT IT INHABITS: the native route end to end -- the peer module's body lowering carries the
+// admit clause onto the sealed fn's Arrow as a structured roster, the subject module imports the
+// sealed fn, infer gathers the imported callee's clause through the call's facts entry, and the
+// wall refuses a call from a declaration the roster does not name. That is the trigger the drop
+// was declared against, and the claim goes red if any stage of it is removed: no carrier edge, no
+// facts read across the import, no judge, and the wall does not fire.
+//
+// The judge's positive direction and both failure arms are pinned hermetically in
+// src/v2/test/claim/caller_admission_native_wall_test.dag over hand-built values, so this file
+// carries exactly one pipeline claim (DESIGN section 3's witness rule: one real-path inhabitance
+// claim, admitted where over-budget claims are admitted).
+
+module v2.test.claim.long.caller_admission_native_wall_red
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// THE CROSS-MODULE PEER: the sealed fn in module aca, naming its one permitted caller by the
+// caller's OWN module path and declaration name.
+fn wall_red_peer_text() -> String {
+  "module aca\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"bcb\", decl_name: \"listed_caller\")]\n  = n + 1\n"
+}
+
+// THE CROSS-MODULE RED: the subject module imports the sealed fn and calls it from a declaration
+// the peer's list does not name. The refusal must reach across the import: the judge reads the
+// callee's declared Arrow through the call's facts entry, so the edge the peer's body_lowering
+// carried survives into the subject module's judgment.
+fn wall_red_subject_text() -> String {
+  "module bcb\n\nimport aca { sealed_mint }\n\nfn unlisted_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+}
+
+data wall_red_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^wall_red_subject_artifact,
+  file_path: "src/v2/pilot/caller_admission_wall_red_subject.dag"
+}
+
+data wall_red_peer_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^wall_red_peer_artifact,
+  file_path: "src/v2/pilot/caller_admission_wall_red_peer.dag"
+}
+
+fn wall_red_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+fn wall_red_assembled(subject_src: String, peer_src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: wall_red_source(src: subject_src, artifact: wall_red_subject_artifact, cu: ^wall_red_subject_cu),
+      tail: [
+        wall_red_source(src: peer_src, artifact: wall_red_peer_artifact, cu: ^wall_red_peer_cu)
+      ]
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^bcb, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+// THE INHABITANCE CLAIM: assemble peer + subject through the real ingest, infer, and the wall
+// refuses the outside cross-module call with caller_admission_refused -- v1's
+// ConstructorCallAdmissionRefused, restored on the native route.
+test fn the_native_route_refuses_an_outside_cross_module_call_holds() -> Bool {
+  match wall_red_assembled(subject_src: wall_red_subject_text(), peer_src: wall_red_peer_text()) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
+    Accepted { value: rt, diagnostics: _ } =>
+      match infer(tree: rt) {
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}

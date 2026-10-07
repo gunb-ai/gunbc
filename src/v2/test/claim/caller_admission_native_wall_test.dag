@@ -6,8 +6,10 @@
 // identities, Node literals) and call the wall's pure entry points directly. No claim here runs the
 // ingest pipeline; the ONE real-path inhabitance claim -- the native route refusing an outside
 // cross-module call end to end -- lives in the long home
-// (src/v2/test/claim/long/caller_admission_native_wall_red_test.dag), where an over-budget claim is
-// admitted (required_floor long_home_prefixes).
+// (src/v2/test/claim/long/caller_admission_native_wall_red_test.dag): it runs the real
+// parse -> assemble -> lower -> infer pipeline over a two-module source, so it is withheld from
+// the required floor's charged clock by its typed v2.workflow.floor_cost_debt row and
+// verdict-proven in the changed-witness lane; deleting the carrier or the consumer turns it red.
 //
 // THE RECORD SHAPE these claims build is the image the lowering's carrier hangs: a left-named
 // roster spine (each node a conj with one @left record edge and one @right rest edge, the empty
