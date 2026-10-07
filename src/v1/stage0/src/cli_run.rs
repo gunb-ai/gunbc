@@ -22252,6 +22252,55 @@ mod defining_module_lookup_tests {
             "a bare type leaf must not scan keys_by_leaf"
         );
     }
+
+    #[test]
+    fn user_type_named_like_a_known_variant_keeps_its_module() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_decl_index, empty_type_summary_index, type_summary_index_insert, TypeRepr,
+            TypeSummary,
+        };
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        let summary = Rc::new(TypeSummary {
+            name: "BoolWitnessClaim".to_string(),
+            key: "owner.types.BoolWitnessClaim".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            empty_type_summary_index(),
+            "owner.types.BoolWitnessClaim".to_string(),
+            "BoolWitnessClaim".to_string(),
+            summary,
+        );
+        let source_indices = HashMap::new();
+        let decls = empty_type_decl_index();
+        assert_eq!(
+            defining_module_for_inferred_result(
+                &variant_to_enum,
+                &index,
+                &decls,
+                &source_indices,
+                None,
+                "owner.types.BoolWitnessClaim",
+            ),
+            Some("owner.types".to_string()),
+            "a user type identity named like a variant leaf is not routed to v2.std.verification"
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
+            Some("v2.std.verification".to_string()),
+            "the variant map still answers the record-lit arm"
+        );
+    }
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
@@ -22276,13 +22325,31 @@ fn declared_type_name_from_annotation(
     }
 }
 
+fn defining_module_for_inferred_result(
+    variant_to_enum: &im::HashMap<String, String>,
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    inferred_node: Option<&Rc<Node>>,
+    name: &str,
+) -> Option<String> {
+    // Type declaration identity first. A user type whose leaf matches a known variant
+    // (BoolWitnessClaim) must not be stolen by variant_to_enum spelling.
+    inferred_node
+        .and_then(|node| {
+            defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
+        })
+        .or_else(|| defining_module_for_type_identity(type_summaries, name))
+        .or_else(|| defining_module_for_variant(variant_to_enum, name))
+}
+
 fn resolved_decl_ref_from_type_name(
     variant_to_enum: &im::HashMap<String, String>,
     type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_variant(variant_to_enum, name)
-        .or_else(|| defining_module_for_type_identity(type_summaries, name))
+    let module = defining_module_for_type_identity(type_summaries, name)
+        .or_else(|| defining_module_for_variant(variant_to_enum, name))
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
     let stored_name = crate::v1_std_core::qualified_last_segment(name.to_string());
     Ok(ResolvedDeclRef {
@@ -22369,23 +22436,22 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        if let Some(module) = defining_module_for_variant(variant_to_enum, &name)
-            .or_else(|| defining_module_for_type_identity(type_summaries, &name))
-        {
+        let inferred_node = match body.inferred.as_deref() {
+            Some(InferredNode::Resolved { node }) => Some(node),
+            _ => None,
+        };
+        if let Some(module) = defining_module_for_inferred_result(
+            variant_to_enum,
+            type_summaries,
+            type_decls,
+            source_indices,
+            inferred_node,
+            &name,
+        ) {
             return Ok(ResolvedDeclRef {
                 module,
                 name: crate::v1_std_core::qualified_last_segment(name),
             });
-        }
-        if let Some(InferredNode::Resolved { node }) = body.inferred.as_deref() {
-            if let Some(module) =
-                defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
-            {
-                return Ok(ResolvedDeclRef {
-                    module,
-                    name: crate::v1_std_core::qualified_last_segment(name),
-                });
-            }
         }
         return Err(format!("no defining module for resolved type '{}'", name));
     }
