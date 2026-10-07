@@ -36341,14 +36341,18 @@ mod peel_alias_fixpoint_termination {
                     },
                 ),
             );
+            // No files in this probe: the peel tree is synthetic, module_path is empty.
+            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // the same constructor every other empty SymbolIndex uses.
+            let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
-                entries: crate::v1_rt::rc_empty_map(),
+                entries: empty_index.entries.clone(),
                 global_bare,
-                services: crate::v1_rt::rc_empty_map(),
-                transparent_alias_rep: crate::v1_rt::rc_empty_map(),
-                type_head_exposures: crate::v1_rt::rc_empty_map(),
-                file_modules: crate::v1_rt::rc_empty_map(),
-                module_named_imports: crate::v1_rt::rc_empty_map(),
+                services: empty_index.services.clone(),
+                transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                type_head_exposures: empty_index.type_head_exposures.clone(),
+                file_modules: empty_index.file_modules.clone(),
+                module_named_imports: empty_index.module_named_imports.clone(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
