@@ -57,7 +57,7 @@ import gunbc.auth.standing_operator_grant {
   StandingOperatorGrant,
 }
 import gunbc.auth.authorization_pattern_selection {
-  InterlockPending, UnconditionalStanding, InterlockedBy, StandingDestructiveAuthorization,
+  InterlockPending, InterlockedBy, StandingDestructiveAuthorization,
   select_authorization_pattern, StandingRulingUnderInterlock, NoWitnessDischarge,
   PatternSelected, OperatorApprovedCapability, AuthorizationPatternSelection,
 }
@@ -1283,7 +1283,7 @@ test fn w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_requ
 test fn w_a_bound_mtcollins1_instance_is_not_covered_by_the_mtjade1_grant() -> Bool {
   grant_discharges_bmc_secure_account_write(
     g: mtjade1_live_standing_grant,
-    host: (step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: "mtcollins1" as StepSubjectKey).subject as NonEmptyStr) as HostIdentity,
+    host: operator_host_mtcollins1,
   ) == false
 }
 
