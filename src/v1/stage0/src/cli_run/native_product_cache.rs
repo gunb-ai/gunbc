@@ -270,7 +270,16 @@ pub(super) fn lookup(root: &Path, key: &ProductKey) -> Lookup {
 /// claim to stop hostile PR code on a shared filesystem; that boundary is the credential
 /// asymmetry of the shared R2 store (`gunbc.native_product_shared_store`).
 pub(super) fn writer_standing() -> bool {
-    std::env::var("GITHUB_EVENT_NAME").ok().as_deref() == Some("merge_group")
+    event_may_publish(std::env::var("GITHUB_EVENT_NAME").ok().as_deref())
+}
+
+fn event_may_publish(event: Option<&str>) -> bool {
+    event == Some("merge_group")
+}
+
+/// Publication is admitted only for a protected writer whose red+restore COMPLETED.
+pub(super) fn publication_admitted(red_completed: bool, event: Option<&str>) -> bool {
+    red_completed && event_may_publish(event)
 }
 
 /// Commit atomically: write a private sibling, rename into place. WriteOnce -- an entry already
@@ -377,6 +386,16 @@ mod tests {
         assert!(matches!(lookup(&store, &k), Lookup::Refused { .. }));
         // A read never deletes: the entry is still there and still refused.
         assert!(matches!(lookup(&store, &k), Lookup::Refused { .. }));
+    }
+
+    // Deleting the publish rule makes this red: a skipped red or a pull-request run never publishes.
+    #[test]
+    fn only_a_completed_red_on_the_merge_queue_publishes() {
+        assert!(publication_admitted(true, Some("merge_group")));
+        assert!(!publication_admitted(false, Some("merge_group")));
+        assert!(!publication_admitted(true, Some("pull_request")));
+        assert!(!publication_admitted(true, Some("workflow_dispatch")));
+        assert!(!publication_admitted(true, None));
     }
 
     // An entry whose manifest does not record the red is refused rather than served.

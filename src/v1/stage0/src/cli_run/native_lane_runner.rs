@@ -637,7 +637,10 @@ fn prepare_emitted_compiler_for_entry(
 
     // Publication needs a protected writer AND a completed red+restore: a skipped experiment or a
     // pull-request miss builds and runs its controls but never publishes evidence it did not earn.
-    let publish = red_completed && super::native_product_cache::writer_standing();
+    let publish = super::native_product_cache::publication_admitted(
+        red_completed,
+        std::env::var("GITHUB_EVENT_NAME").ok().as_deref(),
+    );
     if let (true, Some(root), Some(key)) = (publish, &store, &product_key) {
         let manifest = super::native_product_cache::Manifest {
             key: key.digest.clone(),
