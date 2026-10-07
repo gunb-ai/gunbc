@@ -2189,6 +2189,8 @@ fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
@@ -2260,7 +2262,10 @@ fn dry_read_bmc_account_state(
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_bmc_account_reading"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_diverged_reading"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -2324,6 +2329,7 @@ fn dry_apply_bmc_account_plan(
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {

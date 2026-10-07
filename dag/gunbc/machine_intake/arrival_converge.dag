@@ -1,6 +1,6 @@
 module gunbc.machine_intake_arrival_converge
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.goal_assessment {
   ObservationAttempt,
@@ -19,7 +19,7 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcEndpoint, BmcFirmwareFamily, Redfish }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceManagerIdentity }
-import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.machine_intake_phase {
   ArrivalPhase,
   AccessDiscover,
@@ -85,11 +85,12 @@ import gunbc.machine_intake_mtjade1_access_observation {
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
 import gunbc.machine_intake_bmc_rotation_route {
   BmcRotationRouteStanding,
+  BmcAccountWriteRequest,
   ObservedSurfaceRead,
   rotation_route_candidate,
   redfish_account_password_write,
   rotation_apply_authority,
-  canonical_component,
+  rotation_route_request_identity,
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
@@ -119,6 +120,7 @@ import gunbc.machine_intake_bmc_secure {
   inspect_bmc_secure_state,
   bmc_secure_phase_noop,
   bmc_secure_phase_applied,
+  bmc_secure_state_finding_label,
   BmcAccountApplication,
 }
 import gunbc.auth.authorization_pattern_selection {
@@ -511,6 +513,8 @@ type ArrivalStepRefusal
   | BmcSecureAuthorizationUndischarged
   | BmcSecurePhaseDomainRefused
   | BmcSecureApplyInputsMissing
+  | BmcSecureApplicationForAnotherInstance { subject: MachineIntakeSubject }
+  | BmcSecureApplicationNotTheInspectedTransition
 
 type ArrivalStepIncomplete
   = PriorLifeBoundaryIncomplete { cause: PriorLifeIncomplete }
@@ -687,11 +691,12 @@ fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: Hos
     }
 }
 
-fn rotation_apply_revision_prefix(host: HostIdentity) -> String {
-  join(["gunbc.bmc.rotation-route/v1;", canonical_component(text: host as String)], "")
-}
-
-fn capability_discharges_bmc_secure_account_write(r: Redemption, host: HostIdentity, key: StepInstanceKey) -> Bool {
+fn capability_discharges_bmc_secure_account_write(
+  r: Redemption,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+  key: StepInstanceKey,
+) -> Bool {
   match r {
     RedemptionRefused { cause: _ } => false
     RedemptionAdmitted { claims: cl, decided_by: _ } =>
@@ -700,15 +705,25 @@ fn capability_discharges_bmc_secure_account_write(r: Redemption, host: HostIdent
         ProposeApprove =>
           cl.authority == rotation_apply_authority
             && (cl.attempt as NonEmptyStr) == (key.run as NonEmptyStr)
-            && starts_with(s: cl.request_revision as String, prefix: rotation_apply_revision_prefix(host: host))
+            && (cl.request_revision as String) == (rotation_route_request_identity(standing: standing, request: request) as String)
       }
   }
 }
 
-fn discharge_bmc_secure_apply(key: StepInstanceKey, inputs: BmcSecureInputs) -> InstanceAuthorization? {
+fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity {
+  (key.subject as NonEmptyStr) as HostIdentity
+}
+
+fn discharge_bmc_secure_apply(
+  key: StepInstanceKey,
+  inputs: BmcSecureInputs,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+) -> InstanceAuthorization? {
+  let host = bound_bmc_secure_host(key: key)
   match inputs.grant {
     Present { value: g } =>
-      if grant_discharges_bmc_secure_account_write(g: g, host: inputs.host) {
+      if grant_discharges_bmc_secure_account_write(g: g, host: host) {
         Present { value: instance_authorization(key: key, principal: g.principal) }
       } else {
         none
@@ -716,7 +731,7 @@ fn discharge_bmc_secure_apply(key: StepInstanceKey, inputs: BmcSecureInputs) -> 
     Absent =>
       match inputs.capability {
         Present { value: r } =>
-          if capability_discharges_bmc_secure_account_write(r: r, host: inputs.host, key: key) {
+          if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
             match r {
               RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
               RedemptionRefused { cause: _ } => none
@@ -726,6 +741,20 @@ fn discharge_bmc_secure_apply(key: StepInstanceKey, inputs: BmcSecureInputs) -> 
           }
         Absent => none
       }
+  }
+}
+
+fn bmc_secure_application_joins_this_instance(
+  identity: IdentityBoundProvisional,
+  due_label: NonEmptyStr,
+  application: BmcAccountApplication,
+) -> ArrivalStepRefusal? {
+  if !same_intake_subject(left: application.plan.subject, right: identity.subject) {
+    Present { value: BmcSecureApplicationForAnotherInstance { subject: application.plan.subject } }
+  } else if (bmc_secure_state_finding_label(finding: application.plan.due.deviation) as String) != (due_label as String) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else {
+    none
   }
 }
 
@@ -746,17 +775,30 @@ fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: P
               BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
             }
           Refuse { reason: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
-          Apply { plan: _ } =>
-            match discharge_bmc_secure_apply(key: key, inputs: inputs) {
-              Absent => StepRefused { key: key, cause: BmcSecureAuthorizationUndischarged }
-              Present { value: _ } =>
-                match inputs.apply {
-                  Absent => StepRefused { key: key, cause: BmcSecureApplyInputsMissing }
-                  Present { value: ap } =>
-                    match bmc_secure_phase_applied(application: ap.application, post_read: ap.post_read) {
-                      BmcSecurePhaseConverged { receipt: phase } =>
-                        StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_life_receipt_key(r: prior), phase: phase) } }
-                      BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
+          Apply { plan: due } =>
+            match inputs.apply {
+              Absent => StepRefused { key: key, cause: BmcSecureApplyInputsMissing }
+              Present { value: ap } =>
+                match bmc_secure_application_joins_this_instance(
+                  identity: identity,
+                  due_label: bmc_secure_state_finding_label(finding: due.deviation),
+                  application: ap.application,
+                ) {
+                  Present { value: c } => StepRefused { key: key, cause: c }
+                  Absent =>
+                    match discharge_bmc_secure_apply(
+                      key: key,
+                      inputs: inputs,
+                      standing: ap.application.plan.managed_write.route,
+                      request: ap.application.plan.managed_write.request,
+                    ) {
+                      Absent => StepRefused { key: key, cause: BmcSecureAuthorizationUndischarged }
+                      Present { value: _ } =>
+                        match bmc_secure_phase_applied(application: ap.application, post_read: ap.post_read) {
+                          BmcSecurePhaseConverged { receipt: phase } =>
+                            StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_life_receipt_key(r: prior), phase: phase) } }
+                          BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
+                        }
                     }
                 }
             }
@@ -938,9 +980,27 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } => {
       let key = step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject)
-      let discharges = match discharge_bmc_secure_apply(key: key, inputs: bmc) {
-        Present { value: d } => [d]
-        Absent => []
+      let discharges = match bmc.apply {
+        Present { value: ap } =>
+          match discharge_bmc_secure_apply(
+            key: key,
+            inputs: bmc,
+            standing: ap.application.plan.managed_write.route,
+            request: ap.application.plan.managed_write.request,
+          ) {
+            Present { value: d } => [d]
+            Absent => []
+          }
+        Absent =>
+          match bmc.grant {
+            Present { value: g } =>
+              if grant_discharges_bmc_secure_account_write(g: g, host: bound_bmc_secure_host(key: key)) {
+                [instance_authorization(key: key, principal: g.principal)]
+              } else {
+                []
+              }
+            Absent => []
+          }
       }
       fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc), discharges: discharges)
     }
