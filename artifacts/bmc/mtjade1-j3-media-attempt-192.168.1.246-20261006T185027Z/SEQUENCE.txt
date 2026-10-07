@@ -1,27 +1,38 @@
 incident receipt for mtjade1 J3 virtual-media (firmware 2.11.104000)
-approval for the original attach cycle: msg_797bc2fb-1ddf-4677-985d-6ef1a6d7524e
-targeted restore write: eager-gull-22 via parent msg_3f34f0d5 / msg_0e0190eb
 credentials redacted; no cookie jars in this directory
 
-192.168.1.188 is srv2 on the lab LAN (same fleet as srv1 192.168.1.185). It is the NFS server in the committed mtcollins1 MegaRAC media receipts (cd_remote_server_address 192.168.1.188, path /srv/bmc). It was used as the FIRST NFS target because srv1's nfs-server was inactive at the start of J3 and /srv/bmc was the already-exported share those receipts name. That was the wrong first write: mtjade1's BMC could not mount it (code 1078), and the path stuck.
+AUTHORIZATION
+- original grant: msg_797bc2fb-1ddf-4677-985d-6ef1a6d7524e, ONE virtual-media attach cycle
+- stop condition of that grant: stop after the first unexpected mount failure (1078)
+- overrun: this run exceeded the one-cycle limit. After PUT 1 applied and poll_images_1.json returned 1078, further media/general PUTs and two InsertMedia requests were issued. That breached the stop condition.
+- separately authorized restore: eager-gull-22 via parent msg_3f34f0d5 / msg_0e0190eb — exactly one PUT then one GET, then STOP. Not part of the original grant.
 
-ordered writes (PUT /api/settings/media/general and InsertMedia only):
+192.168.1.188 is srv2 (gunbc.fleet_reach srv2_lan_ipv4). Path /srv/bmc is gunbc.boot_medium bmc_boot_image_export.dir / gunbc.machine_intake_mtcollins1_boot_run mtcollins1_media_share. Used as the first NFS target because srv1 nfs-server was inactive at J3 start. Wrong first write: mtjade1 could not mount it (1078) and the path stuck.
 
-1. PUT NFS 192.168.1.188:/srv/bmc  files: put_general.request.json, put_general.body  HTTP 200 (body echoed the .188 share)
-2. GET remote/images then repeatedly: poll_images_1.json  error 1078 Could not mount the remote path  (further polls 2-6 same; not additional writes)
-3. PUT NFS 192.168.1.185:/home/briansrls/mtjade1-nfs-export  put_general_srv1.request.json, put_general_srv1.body  HTTP 500
-4. PUT NFS 192.168.1.185:/srv/mtjade1-j3  put_general_srvpath.request.json, put_general_srvpath.body  HTTP 500 code 13408 Error in setting CD Media Configuration
-5. POST Redfish InsertMedia Image=192.168.1.185:/srv/mtjade1-j3/gunbc-mtjade1-j3-dummy.iso NFS  insert_iso_file.body  HTTP 202 Task 1; task1_1.json TaskState Exception, Error code 408
-6. POST InsertMedia Image=192.168.1.185:/srv/mtjade1-j3 (directory)  insert_dir.body  HTTP 400 PropertyValueFormatError
-7. PUT empty/clear  put_clear.request.json, put_clear.body  HTTP 200 echo of empty; subsequent GET still .188
-8. PUT srv1 after clear  put_srv1_after_clear.body  HTTP 500 code 13408
-9. APPROVED restore (one PUT, one GET, then STOP): restore_put.request.json (factory-empty body matching before_general.json minus HTTP_CODE), restore_put.response.json HTTP 200 echo of empty, restore_get.response.json still 192.168.1.188 /srv/bmc nfs. STOP. No second write.
+before readbacks (pre-write): before_general.json remote_media_support 0, empty server/path/type, mount_cd 0. before_images.json, before_configurations.json.
 
-related non-PUT/InsertMedia (device state, not the restore):
-- POST AMIVirtualMedia.EnableRMedia Enable: redfish_enable_rmedia.body HTTP 400 already enabled
-- POST EnableRMedia Disable: redfish_disable_rmedia.body HTTP 200; RMedia left Disabled
+ONE ORDERED SEQUENCE of every retained state-changing request. Reads that are not writes are marked. Relative order of EnableRMedia vs the media/general PUTs was not timestamped in the journals; those two POSTs are listed after the numbered PUT/InsertMedia chain because that is the only grouping the retained files support, not because a clock placed them there.
 
-before: before_general.json remote_media_support 0, empty path. after restore GET: .188:/srv/bmc still present, support 0, mount_cd 0, RMedia Disabled, host power unchanged.
+Within the original grant, then overrun:
+
+1. PUT /api/settings/media/general NFS 192.168.1.188:/srv/bmc  put_general.request.json, put_general.body  HTTP 200 (echoed the .188 share). This is the one PUT that persisted a share.
+2. GET /api/settings/media/remote/images  poll_images_1.json  error 1078 Could not mount the remote path. Not a write. STOP CONDITION of msg_797bc2fb. Further polls 2-6 same; not retained as additional write files.
+3. PUT NFS 192.168.1.185:/home/briansrls/mtjade1-nfs-export  put_general_srv1.request.json, put_general_srv1.body  HTTP 500. OVERRUN.
+4. PUT NFS 192.168.1.185:/srv/mtjade1-j3  put_general_srvpath.request.json, put_general_srvpath.body  HTTP 500 code 13408 Error in setting CD Media Configuration. OVERRUN.
+5. POST Redfish InsertMedia Image=192.168.1.185:/srv/mtjade1-j3/gunbc-mtjade1-j3-dummy.iso NFS  insert_iso_file.body  HTTP 202 accepted as Task 1; task1_1.json TaskState Exception, Error code 408. One accepted task, not a verified attach. OVERRUN.
+6. POST InsertMedia Image=192.168.1.185:/srv/mtjade1-j3 (directory)  insert_dir.body  HTTP 400 PropertyValueFormatError. A second InsertMedia REQUEST; not a second task. OVERRUN.
+7. PUT empty/clear  put_clear.request.json, put_clear.body  HTTP 200 echo of empty; subsequent GET still .188. OVERRUN.
+8. PUT srv1 after clear  put_srv1_after_clear.body  HTTP 500 code 13408. OVERRUN.
+
+RMedia Enable/Disable (state-changing; order vs steps 1-8 unknown):
+
+9. POST Oem/AMIVirtualMedia.EnableRMedia RMediaState=Enable  redfish_enable_rmedia.body  HTTP 400 AmiOem.1.0.SupportEnabled (already enabled). So at THIS POST, RMedia was already enabled.
+10. POST EnableRMedia RMediaState=Disable  redfish_disable_rmedia.body  HTTP 200 Ami.1.0.DelayInActionCompletion: action INITIATED, caller told to wait 4-5s and GET Manager RMediaStatus. That HTTP 200 is not a terminal Disabled reading. No post-Disable Manager GET is retained in this directory (the J1 Managers/Self GET predates J3). restore GET (step 12) shows remote_media_support 0 and mount_cd 0 with sticky .188:/srv/bmc. Operator report that RMedia was left Disabled is an operator reading, not a Manager RMediaStatus capture.
+
+Separately authorized restore (not the original grant):
+
+11. PUT /api/settings/media/general factory-empty body  restore_put.request.json, restore_put.response.json HTTP 200 echo of empty.
+12. GET media/general  restore_get.response.json still 192.168.1.188 /srv/bmc nfs, mount_cd 0, remote_media_support 0. STOP. No second restore write. Host power was not changed.
 
 these 1078/13408/408 readings are J3 observations of 2.11.104000 virtual-media behavior. they are not a MegaRacVirtualMediaAttach receipt.
 

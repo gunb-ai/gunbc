@@ -730,7 +730,7 @@ data mtjade1_managed_bmc_secret_standing: JadeManagedBmcSecretStanding = SecretL
 // converge read this standing so they never treat a nonempty GET as factory empty.
 data mtjade1_j3_media_incident_receipt_path: NonEmptyStr = "artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z/SEQUENCE.txt"
 
-data mtjade1_j3_media_incident_receipt_sha256: NonEmptyStr = "e272c4bbba2f7d2daafb696c01504867f1e95b3a53bec901e1b8fed1f06f2e7c"
+data mtjade1_j3_media_incident_receipt_sha256: NonEmptyStr = "4c4ee841706d0f2f0e5e938974725917c3286301d61f676b619b0aa9d41b8735"
 
 data mtjade1_j3_before_general_path: NonEmptyStr = "artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z/before_general.json"
 
@@ -773,7 +773,7 @@ type RmediaGeneralResidueGap
   | ResidueDigestMismatch { expected: NonEmptyStr, observed: String }
   | ResidueJsonUnreadable { gap: String }
   | ResidueFieldUnread { field: NonEmptyStr, cause: String }
-  | ResidueBeforeNotEmpty { before_server: String }
+  | ResidueShareIncomplete { role: NonEmptyStr, share: MegaRacObservedShare }
   | ResidueManagerUnread { cause: String }
   | ResiduePutEchoOrPersistMismatch { cause: String }
 
@@ -799,6 +799,18 @@ fn digest_held(content: String, expected: NonEmptyStr) -> RmediaGeneralResidueGa
   } else {
     Present { value: ResidueDigestMismatch { expected: expected, observed: observed } }
   }
+}
+
+fn share_is_completely_empty(s: MegaRacObservedShare) -> Bool {
+  s.server_address == ""
+    && s.source_path == ""
+    && s.share_type == ""
+    && s.mount_cd == "0"
+    && s.remote_media_support == "0"
+}
+
+fn share_is_complete_occupied(s: MegaRacObservedShare) -> Bool {
+  s.server_address != "" && s.source_path != "" && s.share_type != ""
 }
 
 fn observed_share_of_capture(content: String, expected_sha256: NonEmptyStr) -> ObservedShareRead {
@@ -832,10 +844,10 @@ fn decode_rmedia_general_residue(
           match observed_share_of_capture(content: get_content, expected_sha256: get_sha256) {
             ObservedShareRefused { gap: g } => RmediaGeneralResidueRefused { gap: g }
             ObservedShareHeld { share: get } =>
-              if before.server_address != "" {
-                RmediaGeneralResidueRefused { gap: ResidueBeforeNotEmpty { before_server: before.server_address } }
+              if !share_is_completely_empty(s: before) {
+                RmediaGeneralResidueRefused { gap: ResidueShareIncomplete { role: "before" as NonEmptyStr, share: before } }
               } else {
-                if get.server_address == "" {
+                if share_is_completely_empty(s: get) {
                   RmediaGeneralResidueObserved {
                     residue: RmediaGeneralResidue {
                       subject: "mtjade1",
@@ -846,19 +858,23 @@ fn decode_rmedia_general_residue(
                     },
                   }
                 } else {
-                  RmediaGeneralResidueObserved {
-                    residue: RmediaGeneralResidue {
-                      subject: "mtjade1",
-                      origin: StickyAfterEmptyBefore {
-                        before_path: before_path,
-                        before_sha256: before_sha256,
-                        incident_receipt_path: incident_path,
-                        incident_receipt_sha256: sequence_sha256,
+                  if share_is_complete_occupied(s: get) {
+                    RmediaGeneralResidueObserved {
+                      residue: RmediaGeneralResidue {
+                        subject: "mtjade1",
+                        origin: StickyAfterEmptyBefore {
+                          before_path: before_path,
+                          before_sha256: before_sha256,
+                          incident_receipt_path: incident_path,
+                          incident_receipt_sha256: sequence_sha256,
+                        },
+                        share: get,
+                        get_capture_path: get_path,
+                        get_capture_sha256: get_sha256,
                       },
-                      share: get,
-                      get_capture_path: get_path,
-                      get_capture_sha256: get_sha256,
-                    },
+                    }
+                  } else {
+                    RmediaGeneralResidueRefused { gap: ResidueShareIncomplete { role: "after" as NonEmptyStr, share: get } }
                   }
                 }
               }
