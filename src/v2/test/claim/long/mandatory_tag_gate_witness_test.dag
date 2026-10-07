@@ -20,6 +20,7 @@ import v2.std.member_declaration_kind {
   no_member_declaration_kinds
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.compiler.namespace_graft { namespace_graft_build_body_conj, namespace_graft_fold_spine, namespace_graft_wrap_module_shell }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Arrow, Authored, ArrowBodyEdge, Atom, Edge, Node, Positional, TypeNode, Conj, core_edge_label }
 import v2.lens.mandatory_tag { mandatory_tag_lowered_candidate_findings, extdeps_external_authority_region }
@@ -365,6 +366,58 @@ fn mt_only(candidate: Node, channel: MemberKindChannel, reason: Symbol) -> Bool 
     Cons { head: _, tail: Cons { head: _, tail: _ } } => false
     Empty => false
   }
+}
+
+// TOP-LEVEL SELECTOR, SUPPLIED-CARRIER GRAIN: the grafted module is built directly (no parse, no normalize) by the
+// graft's own constructors. Its one DIRECT member is unrelated; the required name appears only NESTED inside that
+// member's Arrow as a valid Arrow, and the channel would admit that name as a data member. Must refuse as missing.
+fn mt_unrelated_member_nesting_anchor() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: mt_domain() },
+      Edge { label: Positional, target: mt_atom(s: ^Int) },
+      Edge { label: Authored { name: ^extdeps_external_authority_anchor }, target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn mt_nested_anchor_module() -> Node {
+  namespace_graft_wrap_module_shell(captured: mt_nested_anchor_spine(), source: mt_domain())
+}
+
+fn mt_nested_anchor_spine() -> Node {
+  mt_spine_with(edges: [Edge { label: Authored { name: ^gate_probe_unrelated_row }, target: mt_unrelated_member_nesting_anchor() }])
+}
+
+fn mt_direct_anchor_module() -> Node {
+  namespace_graft_wrap_module_shell(
+    captured: mt_spine_with(edges: [Edge { label: Authored { name: ^extdeps_external_authority_anchor }, target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]) }]),
+    source: mt_domain()
+  )
+}
+
+fn mt_spine_with(edges: List<Edge>) -> Node {
+  namespace_graft_fold_spine(
+    qn: mt_module(),
+    body: namespace_graft_build_body_conj(
+      edges: edges,
+      source: mt_domain()
+    ),
+    source: mt_domain()
+  )
+}
+
+test fn mandatory_tag_supplied_nested_anchor_under_unrelated_member_refuses_as_missing() -> Bool {
+  gate_rejects_tree_with(
+    probe: GrainTree { root: mt_nested_anchor_module(), channel: mt_captured(kind: ForData) },
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+test fn mandatory_tag_supplied_direct_anchor_member_in_grafted_module_accepts() -> Bool {
+  gate_accepts_tree(probe: GrainTree { root: mt_direct_anchor_module(), channel: mt_captured(kind: ForData) })
 }
 
 test fn mandatory_tag_supplied_data_member_with_good_carrier_accepts() -> Bool {
