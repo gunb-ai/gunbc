@@ -6,8 +6,8 @@ import std.measure { Microsecond, microsecond, measure_le }
 import std.interval { IntervalConstruction, closed_interval }
 import std.optional { Present, Absent }
 import extdeps.version { VersionConstraint }
-import extdeps.uri { uri_https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Mailto }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Facts from SSIF_PATCH_V6/readme.txt and the five patch members, acquired
@@ -15,8 +15,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // These are vendor-stated target ranges, not a compatibility decision for a
 // running kernel; no patch application or production qualification was performed.
 // Consumer: gunbc.altra_firmware_library reference_report.
+// The readme names this upstream support contact. It does not identify the
+// distribution URL from which the operator acquired the archive.
 data altra_ssif_patch_authority: ExternalAuthority = ExternalAuthority {
-  uri: uri_https(locator: "drive.google.com/file/d/1TdY8pJ86LwNVktYzrf0oGICwqElcUj5F/view"),
+  uri: Uri { scheme: Mailto, locator: "support@amperecomputing.com" },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -77,6 +79,7 @@ type AltraSsifPatchBundle {
   abort_before_disable_hook: NonEmptyStr
   abort_wait: IntervalConstruction<Microsecond>
   vendor_usage: SsifPatchVendorUsage
+  source_standing: CitedFigureStanding
   patches: List<AltraSsifPatch>
 }
 
@@ -90,5 +93,8 @@ data altra_ssif_v6: AltraSsifPatchBundle = AltraSsifPatchBundle {
     le: fn(a, b) { measure_le(a: a, b: b) },
   ),
   vendor_usage: DevelopmentAndTesting,
+  source_standing: TranscribedUncited {
+    read_obligation: "Read the Ampere distribution record for SSIF_PATCH_V6.zip and bind it to this bundle; the inspected readme names Ampere support but the original distribution locator is not established.",
+  },
   patches: altra_ssif_v6_patches,
 }

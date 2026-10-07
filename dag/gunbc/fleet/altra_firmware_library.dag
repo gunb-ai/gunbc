@@ -18,7 +18,7 @@ import extdeps.boards.asrock_altrad8ud_beta_firmware {
   SemanticFirmwareVersion, ScpBuildVersion,
 }
 import extdeps.ampere.altra_ssif_patch {
-  AltraSsifPatchBundle, altra_ssif_patch_authority, altra_ssif_v6,
+  AltraSsifPatchBundle, altra_ssif_v6,
 }
 
 // Our Drive locations belong to the fleet library, not ASRock's upstream facts.
@@ -57,7 +57,7 @@ data altra_firmware_drive_archives: List<AltraLibraryArchive> = [
   AltraLibraryArchive {
     subject: SsifKernelPatchBundle,
     archive_name: "SSIF_PATCH_V6.zip",
-    human_retrieval: altra_ssif_patch_authority.uri,
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1TdY8pJ86LwNVktYzrf0oGICwqElcUj5F/view"),
     archive_bytes: byte_size(count: 5697),
     archive_digest: Present { value: sha256_digest(hex: "74ca2343e20b682f419f3240006dfc55ed391978e57c86bdce698e8b72ee0531") },
   },
