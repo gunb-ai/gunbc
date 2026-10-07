@@ -22116,22 +22116,13 @@ fn extract_bool_witness_transport(
 }
 
 fn defining_module_for_resolved_type(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
     variant_to_enum: &im::HashMap<String, String>,
     type_name: &str,
 ) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
-    for tm in graph.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        if lookup_type_by_name(tm.type_env.clone(), type_name.to_string()).is_some() {
-            return Some(mod_name);
-        }
-    }
-    let parent_enum = variant_to_enum.get(type_name).cloned()?;
     // variant_to_enum names the owning enum by its declaration identity, `<module>.<name>`.
-    // An unqualified identity has no module; return None so the caller refuses
-    // (resolved_decl_ref_from_type_name). Do not scan the graph for a leaf match.
+    // No row, the collision sentinel "", or an unqualified identity has no module part:
+    // return None so the caller refuses. Do not scan type environments for a leaf match.
+    let parent_enum = variant_to_enum.get(type_name)?;
     let (module, _) = parent_enum.rsplit_once('.')?;
     Some(module.to_string())
 }
@@ -22159,12 +22150,10 @@ fn declared_type_name_from_annotation(
 }
 
 fn resolved_decl_ref_from_type_name(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
     variant_to_enum: &im::HashMap<String, String>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_resolved_type(graph, source_indices, variant_to_enum, name)
+    let module = defining_module_for_resolved_type(variant_to_enum, name)
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
     Ok(ResolvedDeclRef {
         module,
@@ -22208,18 +22197,13 @@ fn resolved_initializer_decl_ref(
                     variant_name, parent_name
                 ));
             }
-            let module = defining_module_for_resolved_type(
-                graph,
-                source_indices,
-                variant_to_enum,
-                parent_name,
-            )
-            .ok_or_else(|| {
-                format!(
-                    "no defining module for resolved coproduct '{}'",
-                    parent_name
-                )
-            })?;
+            let module = defining_module_for_resolved_type(variant_to_enum, parent_name)
+                .ok_or_else(|| {
+                    format!(
+                        "no defining module for resolved coproduct '{}'",
+                        parent_name
+                    )
+                })?;
             return Ok(ResolvedDeclRef {
                 module,
                 name: variant_name,
@@ -22248,11 +22232,11 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
+        return resolved_decl_ref_from_type_name(variant_to_enum, &name);
     }
     if let Some(ann) = type_annotation {
         if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
+            return resolved_decl_ref_from_type_name(variant_to_enum, &name);
         }
     }
     Err(
