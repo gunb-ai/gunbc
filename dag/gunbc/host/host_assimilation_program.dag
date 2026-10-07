@@ -11,6 +11,7 @@ import gunbc.host_standup {
   BmcCredentialConverge,
   OsInstallMechanismResolved,
   OsInstallActuated,
+  ProviderGuestAdopted,
   HostConvergePolicyDerived,
   HostIdentityConverge,
   ReachSecretsNetwork,
@@ -42,6 +43,7 @@ import gunbc.host_standup {
   assimilation_complete_input_eq,
   assimilation_input_is_required,
 }
+import gunbc.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
 import gunbc.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
@@ -69,7 +71,8 @@ import gunbc.fleet_enrollment {
 // cell.
 
 
-// The one place a standup phase is bound to the participations that require it, kept HERE rather
+// The one place a standup phase is bound to what requires it -- an assimilation phase to the
+// participations that need it, a prefix phase to the provisioning that owes it -- kept HERE rather
 // than as a field on HostStandupStep on purpose. Adding the field would reshape fourteen rows in
 // host_standup.dag, which is load-bearing, and that module's own gap-ledger note has already ruled
 // that its row-reshaping change stays separable from its status-axis change so the two are
@@ -79,21 +82,30 @@ import gunbc.fleet_enrollment {
 // stated. That is the construction half (DESIGN section 5) -- there is no unclassified phase to
 // detect after the fact, because an unclassified phase does not compile.
 
-// Every PREFIX phase is CI-runner only. BMC credential convergence and virtual-media OS
-// installation are the Ampere Altra provisioning path and have no analogue on an appliance that
-// self-provisions through its own first-boot flow; HostConvergePolicyDerived is grouped with them
-// because the policy it derives is that installation path's policy. A DGX Spark absolutely HAS
-// arrival obligations -- physical binding, network convergence, baseline observation -- but they
-// are its OWN obligations, authored where that arrival is modeled, and inheriting a
-// differently-shaped host's provisioning steps because they sound generic is precisely the
-// false-obligation defect this module exists to prevent.
-
-fn prefix_phase_participations(p: HostStandupPrefixPhase) -> List<FleetParticipation> {
-  match p {
-    BmcCredentialConverge => [CiRunnerParticipation]
-    OsInstallMechanismResolved => [CiRunnerParticipation]
-    OsInstallActuated => [CiRunnerParticipation]
-    HostConvergePolicyDerived => [CiRunnerParticipation]
+// A PREFIX STEP IS PROVISIONING, AND PROVISIONING FOLLOWS FROM BACKING, NOT FROM ROLE. The four
+// Altra steps -- BMC credential convergence, the virtual-media install's mechanism and actuation, and
+// the converge policy derived for that install path -- are owed by a host whose OS arrives over BMC
+// virtual media, whatever it is enrolled to do. A provider guest owes its adoption instead. An
+// appliance that provisions itself through first boot owes no prefix step here: its arrival
+// obligations are its own and are authored where that arrival is modeled. The match is exhaustive
+// over both enums, so a new phase or a new provisioning path does not compile until it is placed.
+fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool {
+  match backing {
+    OwnedMachine { provisioning: BmcVirtualMediaInstall } => match p {
+      BmcCredentialConverge => true
+      OsInstallMechanismResolved => true
+      OsInstallActuated => true
+      ProviderGuestAdopted => false
+      HostConvergePolicyDerived => true
+    }
+    OwnedMachine { provisioning: ApplianceFirstBoot } => false
+    ProviderGuest { route: _, entitlement: _, resource: _ } => match p {
+      BmcCredentialConverge => false
+      OsInstallMechanismResolved => false
+      OsInstallActuated => false
+      ProviderGuestAdopted => true
+      HostConvergePolicyDerived => false
+    }
   }
 }
 
@@ -122,16 +134,13 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
   }
 }
 
-fn host_phase_participations(phase: HostStandupPhase) -> List<FleetParticipation> {
-  match phase {
-    Prefix { phase: p } => prefix_phase_participations(p: p)
-    Assimilation { phase: p } => assimilation_phase_participations(p: p)
-  }
-}
 
 
 fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) -> Bool {
-  participation_list_contains(ps: host_phase_participations(phase: step.phase), wanted: wanted)
+  match step.phase {
+    Prefix { phase: _ } => false
+    Assimilation { phase: p } => participation_list_contains(ps: assimilation_phase_participations(p: p), wanted: wanted)
+  }
 }
 
 fn step_serves_any(step: HostStandupStep, wanted: List<FleetParticipation>) -> Bool {
@@ -140,6 +149,15 @@ fn step_serves_any(step: HostStandupStep, wanted: List<FleetParticipation>) -> B
     empty: false,
     cons: fn(acc, w) { if acc { true } else { step_serves_participation(step: step, wanted: w) } }
   )
+}
+
+// A step is in a host's program when its provisioning owes it (a prefix step) or one of its
+// participations does (an assimilation step).
+fn step_in_program(step: HostStandupStep, intent: HostEnrollmentIntent) -> Bool {
+  match step.phase {
+    Prefix { phase: p } => prefix_phase_applies(p: p, backing: intent.backing)
+    Assimilation { phase: _ } => step_serves_any(step: step, wanted: intent.participation)
+  }
 }
 
 type HostAssimilationProgram {
@@ -158,7 +176,7 @@ type HostAssimilationProgram {
 fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationProgram {
   HostAssimilationProgram {
     identity: host_enrollment_program_identity(intent: intent),
-    steps: filter(host_standup_spine, s => step_serves_any(step: s, wanted: intent.participation)),
+    steps: filter(host_standup_spine, s => step_in_program(step: s, intent: intent)),
   }
 }
 

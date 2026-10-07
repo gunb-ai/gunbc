@@ -37,6 +37,15 @@ type ProviderResourceBinding
   = ProviderResourceAwaited { read_obligation: NonEmptyStr }
   | ProviderResourceBound { resource_id: NonEmptyStr }
 
+// HOW AN OWNED MACHINE'S OPERATING SYSTEM ARRIVES. This is not implied by ownership: an Ampere
+// Altra server is installed over its BMC's virtual media, while an appliance such as a DGX Spark has
+// no BMC to converge and provisions itself through its own first boot. A provider guest has no arm
+// here because its OS always arrives as the provider's image -- that is what ProviderGuest means --
+// so a rented guest owing a BMC operation has no constructor.
+type OwnedProvisioning
+  = BmcVirtualMediaInstall
+  | ApplianceFirstBoot
+
 type HostBacking
-  = OwnedMachine
+  = OwnedMachine { provisioning: OwnedProvisioning }
   | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }

@@ -8,6 +8,8 @@ import product.supplier.hetzner { hetzner_nuremberg_route }
 import gunbc.fleet_host_backing {
   HostBacking,
   OwnedMachine,
+  BmcVirtualMediaInstall,
+  ApplianceFirstBoot,
   ProviderGuest,
   ProviderResourceAwaited,
 }
@@ -130,12 +132,12 @@ fn cax41_nuremberg_guest(server: String) -> HostBacking {
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
 data fleet_enrollments: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine },
-  HostEnrollmentIntent { host: operator_host_srv5, participation: inference_serving_enrollment_participation, backing: OwnedMachine },
-  HostEnrollmentIntent { host: operator_host_srv6, participation: inference_serving_enrollment_participation, backing: OwnedMachine },
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv5, participation: inference_serving_enrollment_participation, backing: OwnedMachine { provisioning: ApplianceFirstBoot } },
+  HostEnrollmentIntent { host: operator_host_srv6, participation: inference_serving_enrollment_participation, backing: OwnedMachine { provisioning: ApplianceFirstBoot } },
   HostEnrollmentIntent {
     host: operator_host_183527,
     participation: ci_runner_enrollment_participation,

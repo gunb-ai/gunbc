@@ -56,6 +56,7 @@ import gunbc.host_standup {
   srv3_host_standup_target,
   srv3_install_mechanism_refuses_rather_than_falling_back,
 }
+import gunbc.host_standup { ProviderGuestAdopted }
 import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -67,16 +68,17 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
     Prefix { phase: BmcCredentialConverge } => 0
     Prefix { phase: OsInstallMechanismResolved } => 1
     Prefix { phase: OsInstallActuated } => 2
-    Prefix { phase: HostConvergePolicyDerived } => 3
-    Assimilation { phase: HostIdentityConverge } => 4
-    Assimilation { phase: ReachSecretsNetwork } => 5
-    Assimilation { phase: RunnerDeploySlot } => 6
-    Assimilation { phase: BuildCacheProvision } => 7
-    Assimilation { phase: CodexRuntimeProvision } => 8
-    Assimilation { phase: ComputeFabricEnroll } => 9
-    Assimilation { phase: GreenPlaceReadiness } => 10
-    Assimilation { phase: SessionPlacementEnrollment } => 11
-    Assimilation { phase: StandupAssimilationComplete } => 12
+    Prefix { phase: ProviderGuestAdopted } => 3
+    Prefix { phase: HostConvergePolicyDerived } => 4
+    Assimilation { phase: HostIdentityConverge } => 5
+    Assimilation { phase: ReachSecretsNetwork } => 6
+    Assimilation { phase: RunnerDeploySlot } => 7
+    Assimilation { phase: BuildCacheProvision } => 8
+    Assimilation { phase: CodexRuntimeProvision } => 9
+    Assimilation { phase: ComputeFabricEnroll } => 10
+    Assimilation { phase: GreenPlaceReadiness } => 11
+    Assimilation { phase: SessionPlacementEnrollment } => 12
+    Assimilation { phase: StandupAssimilationComplete } => 13
   }
 }
 
@@ -96,10 +98,10 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_thirteen_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 13
+test fn host_standup_spine_is_fourteen_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 14
     && spine_tags_are_linear()
-    && host_standup_gap_ledger.length() == 13
+    && host_standup_gap_ledger.length() == 14
 }
 
 test fn p1c_codex_runtime_provision_spine_row_landed() -> Bool {

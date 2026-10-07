@@ -4,6 +4,7 @@ type HostStandupPrefixPhase
   = BmcCredentialConverge
   | OsInstallMechanismResolved
   | OsInstallActuated
+  | ProviderGuestAdopted
   | HostConvergePolicyDerived
 
 type HostStandupAssimilationPhase
@@ -194,6 +195,15 @@ data host_standup_spine: List<HostStandupStep> = [
     effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
+    phase: ProviderGuestAdopted,
+    label: "prefix:provider-guest-adopt",
+    authorities: [
+      decl_ref(module_path: "gunbc.provider_guest_adoption", decl_name: "adopt_provider_guest"),
+      decl_ref(module_path: "gunbc.provider_guest_adoption", decl_name: "observe_provider_guest"),
+    ],
+    effect_evidence: host_effect_identity_evidence
+  ),
+  host_standup_prefix_step(
     phase: HostConvergePolicyDerived,
     label: "prefix:host-converge",
     authorities: [
@@ -351,6 +361,11 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
     phase_label: "prefix:os-install-actuated",
     modeling: "gap",
     authority_or_interim: "gunbc.srv3_os_install_actuate + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption — live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)"
+  },
+  GapLedgerRow {
+    phase_label: "prefix:provider-guest-adopt",
+    modeling: "modeled",
+    authority_or_interim: "gunbc.provider_guest_adoption.adopt_provider_guest (bound provider resource + entitlement-bounded observation; microVM execution standing carried beside adoption) + observe_provider_guest (uname/getconf/meminfo/kvm over the admitted host_command transport)"
   },
   GapLedgerRow {
     phase_label: "prefix:host-converge",

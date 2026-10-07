@@ -10,10 +10,14 @@ import gunbc.host_assimilation_program {
   fleet_participation_canonical_roster,
   fleet_participation_in_canonical_roster,
   program_step_count,
+  step_in_program,
   step_serves_participation,
 }
-import gunbc.fleet_host_backing { OwnedMachine }
+import gunbc.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot }
+import gunbc.fleet_host_identity { operator_host_183527 }
 import gunbc.fleet_enrollment {
+  enrollment_for_host,
+  fleet_enrollments,
   CiRunnerParticipation,
   HostEnrollmentIntent,
   InferenceServingParticipation,
@@ -308,13 +312,13 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
 data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: inference_serving_enrollment_participation,
-  backing: OwnedMachine,
+  backing: OwnedMachine { provisioning: ApplianceFirstBoot },
 }
 
 data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: ci_runner_enrollment_participation,
-  backing: OwnedMachine,
+  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
 }
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
@@ -327,18 +331,33 @@ fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
   l == "P0:host-identity-converge" || l == "P0:reach-secrets-network" || l == "P2:compute-fabric-enroll" || l == "P5:assimilation-complete-gate"
 }
 
-// The whole spine is owed by a host that both runs CI and hosts interactive sessions -- srv1-srv4's
+// Every step but the provider-guest adoption: what an owned, BMC-installed host owes when it carries
+// every participation an Altra runner has. Derived from the spine rather than counted, so adding a
+// phase moves it without editing the claims below.
+fn step_is_guest_adoption(s: HostStandupStep) -> Bool {
+  match s.phase {
+    Prefix { phase: ProviderGuestAdopted } => true
+    Prefix { phase: _ } => false
+    Assimilation { phase: _ } => false
+  }
+}
+
+fn owned_bmc_full_program_length() -> Int {
+  filter(host_standup_spine, s => !step_is_guest_adoption(s: s)).length()
+}
+
+// The whole provisioning-plus-roles program is owed by a host that both runs CI and hosts interactive sessions -- srv1-srv4's
 // enrollment -- and a CI-ONLY host owes exactly one step fewer: session placement, which belongs to
 // the session participation since sessions stopped being assumed of every CI host.
 test fn witness_ci_program_selects_the_whole_spine() -> Bool {
   let both = HostEnrollmentIntent {
     host: synthetic_ci_enrollment.host,
     participation: ci_runner_and_session_enrollment_participation,
-    backing: OwnedMachine,
+    backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
   }
   let ci_only = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
-  program_step_count(program: assimilation_program_for(intent: both)) == host_standup_spine.length()
-    && ci_only == host_standup_spine.length() - 1
+  program_step_count(program: assimilation_program_for(intent: both)) == owned_bmc_full_program_length()
+    && ci_only == owned_bmc_full_program_length() - 1
 }
 
 test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
@@ -349,19 +368,19 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
 data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [InferenceServingParticipation, CiRunnerParticipation],
-  backing: OwnedMachine,
+  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
 }
 
 data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine,
+  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
 }
 
 data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine,
+  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
 }
 
 // Participation is a set wearing a list's carrier, so the three enrollments below must be one
@@ -437,10 +456,33 @@ test fn witness_inference_enrollment_keeps_the_shared_obligations() -> Bool {
 }
 
 test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
-  let unclaimed = filter(host_standup_spine, s => !any(fleet_participation_canonical_roster, p => step_serves_participation(step: s, wanted: p)))
+  let unclaimed = filter(host_standup_spine, s => !any(fleet_enrollments, e => step_in_program(step: s, intent: e)))
   unclaimed.length() == 0
 }
 
+// A RENTED GUEST OWES ITS ADOPTION AND ITS ROLES, AND NO BMC OR INSTALL STEP. The CAX guest's program
+// is exactly the adoption prefix plus the assimilation steps its CI participation selects; that it
+// contains no BMC or virtual-media step is the false-obligation defect this refactor removes, read
+// off the real production enrollment rather than a fixture.
+test fn witness_provider_guest_owes_adoption_not_bmc_provisioning() -> Bool {
+  match enrollment_for_host(host: operator_host_183527) {
+    Absent => false
+    Present { value: e } => {
+      let steps = assimilation_program_for(intent: e).steps
+      let prefix = filter(steps, s => match s.phase {
+        Prefix { phase: _ } => true
+        Assimilation { phase: _ } => false
+      })
+      let ci_roles = filter(host_standup_spine, s => match s.phase {
+        Prefix { phase: _ } => false
+        Assimilation { phase: _ } => step_serves_participation(step: s, wanted: CiRunnerParticipation)
+      })
+      prefix.length() == 1
+        && any(prefix, s => step_is_guest_adoption(s: s))
+        && steps.length() == 1 + ci_roles.length()
+    }
+  }
+}
 // The runner control the scope requires: enrolling the Sparks must not change what a CI-runner
 // enrollment owes. Each runner enrollment still contributes exactly its own program, and that
 // program is still the whole spine — asserted per enrollment, so it stays true no matter how many
@@ -451,12 +493,12 @@ test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
     fleet_enrollments,
     e => {
       let owed = program_step_count(program: assimilation_program_for(intent: e))
-      owed == host_standup_spine.length()
+      owed == owned_bmc_full_program_length()
     },
   )
   let intact = filter(
     runners,
-    e => filter(matrix, c => c.cell.host == e.host).length() == host_standup_spine.length(),
+    e => filter(matrix, c => c.cell.host == e.host).length() == owned_bmc_full_program_length(),
   )
   runners.length() == 4 && intact.length() == runners.length()
 }
