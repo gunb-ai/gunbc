@@ -899,14 +899,14 @@ fn vfp_map_build(m: Map<Int, Int>, i: Int, n: Int) -> Map<Int, Int> {
 
 fn vfp_map_bench_512_holds() -> Bool {
   match map_lookup(m: vfp_map_built(n: 512), key: 511) {
-    Present { value: v } -> v == 511
+    Present { value: v } => v == 511
     Absent => false
   }
 }
 
 fn vfp_map_bench_2048_holds() -> Bool {
   match map_lookup(m: vfp_map_built(n: 2048), key: 2047) {
-    Present { value: v } -> v == 2047
+    Present { value: v } => v == 2047
     Absent => false
   }
 }
