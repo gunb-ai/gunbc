@@ -140,3 +140,12 @@ test fn if_join_authored_string_list_against_nonstr_refuses() -> Bool {
     || (blocking_class_count_for(source: if_join_authored_string_list_vs_nonstr_source, wanted_class: "InternalError") >= 1))
     && !compiles_with_no_blocking_diagnostic(source: if_join_authored_string_list_vs_nonstr_source)
 }
+
+// EXPECTED-RED for gunbc.recurring_failure_mode brand_erased_at_list_literal_element.
+// List-literal elements peel NonEmptyStr to String before concat/++ unify, so these
+// joins compile today. The trigger (keep the brand through unify) must flip this.
+data brand_erased_at_list_literal_element_source: String = "module probe_brand_erased_list_lit\nimport std.types { NonEmptyStr, String, List }\nfn branded() -> List<NonEmptyStr> { [\"a\" as NonEmptyStr] }\nfn plus_bare() -> List<String> { branded() + [\"b\"] }\nfn concat_acc(acc: List<NonEmptyStr>) -> List<NonEmptyStr> { concat(acc, [\"foo\"]) }\n"
+
+test fn brand_erased_at_list_literal_element_still_compiles_until_the_wall() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: brand_erased_at_list_literal_element_source)
+}

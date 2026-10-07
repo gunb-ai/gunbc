@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.brand_erased_at_list_literal_element
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data brand_erased_at_list_literal_element: RecurringFailureMode = RecurringFailureMode {
+  identity: "brand_erased_at_list_literal_element" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a list-literal or concat element whose authored type is a brand (NonEmptyStr) is typed as the peeled carrier (String) before unify, so the brand is gone when concat or ++ compares the operands. The program is Accepted, and a List<NonEmptyStr> value can be joined with a bare String list.",
+
+    "SPECIMENS, executed 2026-10-07 on gunbc#13475 after the informed-list concat TypeMismatch: `[\"a\" as NonEmptyStr] ++ [\"b\"]` compiles, and `concat(acc: List<NonEmptyStr>, [\"foo\"])` compiles. Both operands reach concat_unify as List<String>. The unequal-brand refusal that now uses type_mismatch_error fires only when both sides are still string carriers and the where/constructor keys differ; it does not see these specimens because the brand was already erased at the list-literal element.",
+
+    "HARM: silent wrongness (DESIGN section 5). The checker reports success for a join that dropped a declared brand. The neighbouring class unsolved_placeholder_reads_back_as_unit is a fabricated Unit readback; this class is a fabricated carrier after a brand was authored. They are not the same producer.",
+
+    "RUNG FOUND AT: below the floor (silent acceptance). CEILING: 3 -- whether a list element keeps its brand through unify is decidable at the list-literal and concat sites. NEXT TRIGGER: list element types keep the brand through unify, so the two specimens refuse with a typed located mismatch. Evidence is enrolled as an expected-red probe in test.claim.empty_list_element_fabrication_witness: it asserts the sources compile today and must flip when the trigger lands.",
+  ],
+
+  evidence: [],
+}
