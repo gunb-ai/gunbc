@@ -1,5 +1,7 @@
 module gunbc.spark.serving_arm
 
+import extdeps.docker.cli { DockerEnvAssignment }
+
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, gibibyte_ceiling, BasisPoint, basis_point, basis_point_count }
@@ -1051,6 +1053,25 @@ fn serving_launch_profile(
 // allocates, so two profiles differing in it are two subjects; an omitted one spells no flag, and
 // rendering it into the key would re-key every existing subject -- and every receipt recorded against
 // one -- for a field none of their launches carried.
+// THE DEPLOYMENT ENVIRONMENT IS PART OF WHAT LAUNCHED (side-chat ruling on #13319, finding 3). An
+// assignment like VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS changes the realized kernels -- with it, rank 0 runs
+// tuned tactics and ranks 1-3 run heuristics, so throughput is a lower bound -- yet it lives in the
+// launch's deployment env, outside the profile. This key is that env, canonical and unambiguous: every
+// assignment in its AUTHORED order, each length-prefixed. Two envs that differ in any assignment, or in
+// order, are two keys -- order-sensitivity can only split one configuration into two, never merge two
+// into one. It enters the successor key (gunbc.spark.group_arm_launch group_arm_row_successor) and the
+// performance subject (gunbc.spark.serving_performance_subject AxisDeploymentEnv), so a skip-ops launch and
+// a fully tuned one are different successors and different measured subjects.
+fn serving_deployment_env_key(env: List<DockerEnvAssignment>) -> String {
+  if count(env) == 0 { "env=none" }
+  else {
+    join(["env=", join(map(env, a => {
+      let pair = join([a.name as String, "=", a.value], "")
+      join([to_string(length(pair)), ":", pair], "")
+    }), ",")], "")
+  }
+}
+
 fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   join([
     "len=", to_string(token_count_value(t: p.max_model_len)),

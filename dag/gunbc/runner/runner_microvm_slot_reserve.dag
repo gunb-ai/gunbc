@@ -5,7 +5,7 @@ import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { decl_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.provider_route {
   ProviderRouteFacts, ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
   DownstreamProvidersEnumerated,

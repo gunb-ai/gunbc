@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { list_snoc_item }
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
 import v2.std.language_model { LanguageModel }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.diagnostic {

@@ -2,10 +2,13 @@ module test.claim.wcag_contrast_witness
 
 import extdeps.accessibility.wcag_contrast {
   linearize_channel_scaled, relative_luminance_scaled,
-  contrast_ratio_x100,
+  contrast_ratio_x100, contrast_at_least_hundredths,
+  rgb_scaled_luminance,
   hsl_contrast_ratio_x100, hsl_contrast_at_least,
   wcag_aa_normal_text_hundredths, wcag_aa_large_text_and_graphics_hundredths,
+  wcag_aaa_normal_text_hundredths,
 }
+import extdeps.color.srgb { RgbScaled }
 import gunbc.design.theme {
   Theme, assign, theme_contrast_ok,
   night_theme, day_theme, night_canvas,
@@ -34,6 +37,43 @@ test fn witness_gamma_kernel_pinned() -> Bool {
   full == 10000
     && half >= 2120 && half <= 2160
     && low == (300 * 100) / 1292
+}
+
+// WCAG 2.2 #dfn-relative-luminance (https://www.w3.org/TR/WCAG22/#dfn-relative-luminance),
+// cited by the module: for the sRGB colourspace, R = R_srgb/12.92 if R_srgb <= 0.04045,
+// else ((R_srgb+0.055)/1.055)^2.4 — same for G and B. (Note 2 there records that the
+// threshold was 0.03928 before May 2021; the current threshold is 0.04045, aligned with sRGB.)
+//
+// The cited knee and the code's knee disagree only on channels between 0.03928 and 0.04045
+// (scale-10000: 393..404) — no 8-bit channel at unity white lands there, so the existing
+// pins never sample the window. A channel at 0.0393 (393) does.
+
+// 0.0393 <= 0.04045 -> the cited formula linearizes with c/12.92: (393*100)/1292 = 30.
+// The defective 0.0392 knee sends 393 to the gamma curve instead (29).
+test fn witness_cited_knee_linearizes_below_threshold() -> Bool {
+  linearize_channel_scaled(c_scaled: 393) == (393 * 100) / 1292
+}
+// The verdict FLIPS at a real WCAG threshold for a fresh input: A = (393, 0, 500) scaled —
+// nearly black, red channel inside the knee window. Cited: L_A = (2126*30 + 722*39)/10000 = 9.
+// Defective knee: L_A = (2126*29 + 722*39)/10000 = 8. B = (8000, 1000, 8000) scaled: L_B = 1789
+// either way. AA normal text is 4.5:1 (450 hundredths); 100*(1789+500) = 228900:
+//   cited knee:     450*(9+500) = 229050 -> 228900 < 229050 -> contrast is NOT sufficient;
+//   defective knee: 450*(8+500) = 228600 -> 228900 >= 228600 -> (wrongly) sufficient.
+test fn witness_cited_knee_flips_aa_normal_verdict() -> Bool {
+  let lum_a = rgb_scaled_luminance(rgb: RgbScaled { r: 393, g: 0, b: 500 })
+  let lum_b = rgb_scaled_luminance(rgb: RgbScaled { r: 8000, g: 1000, b: 8000 })
+  lum_a == 9
+    && lum_b == 1789
+    && !contrast_at_least_hundredths(lum_a_scaled: lum_a, lum_b_scaled: lum_b, threshold_hundredths: wcag_aa_normal_text_hundredths)
+}
+
+// Threshold half of the citation: SC 1.4.3 (AA) 4.5:1 normal text and 3:1 large-scale text;
+// SC 1.4.11 (AA) 3:1 for graphical objects; SC 1.4.6 (AAA) 7:1. The module's rows must keep
+// transcribing those numbers.
+test fn witness_cited_knee_threshold_rows_match_criterion_text() -> Bool {
+  wcag_aa_normal_text_hundredths == 450
+    && wcag_aa_large_text_and_graphics_hundredths == 300
+    && wcag_aaa_normal_text_hundredths == 700
 }
 
 test fn witness_reviewer_oracle_night_text() -> Bool {

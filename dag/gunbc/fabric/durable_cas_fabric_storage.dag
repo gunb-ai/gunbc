@@ -2,7 +2,7 @@ module gunbc.durable_cas_fabric_storage
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash }
 import std.durable_compare_and_set {
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
