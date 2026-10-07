@@ -13561,7 +13561,33 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                                         };
-                                        let bridge_result_type = method_tv.ty.clone();
+                                        let concat_other = match remaining
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .next()
+                                        {
+                                            Some(other) => {
+                                                crate::v1_compiler_infer_types::resolved_type(
+                                                    crate::v1_std_core::arg_value(other.clone()),
+                                                )
+                                            }
+                                            std::option::Option::None => {
+                                                crate::v1_std_core::unit_type()
+                                            }
+                                        };
+                                        let bridge_result_type = if (func_name.clone()
+                                            == "concat".to_string())
+                                        {
+                                            informative_list_concat_result(
+                                                first_arg_type.clone(),
+                                                concat_other.clone(),
+                                                method_tv.ty.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            )
+                                        } else {
+                                            method_tv.ty.clone()
+                                        };
                                         let template_subst_diags = method_tv.diagnostics.clone();
                                         let returns_receiver_self = if (method_resolution
                                             .semantics
@@ -14191,7 +14217,24 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                     };
-                    let result_type = method_tv_mc.ty.clone();
+                    let mc_concat_other = match typed_mc_args.clone().iter().cloned().next() {
+                        Some(other) => crate::v1_compiler_infer_types::resolved_type(
+                            crate::v1_std_core::arg_value(other.clone()),
+                        ),
+                        std::option::Option::None => {
+                            crate::v1_std_core::unit_type()
+                        }
+                    };
+                    let result_type = if (method_name.clone() == "concat".to_string()) {
+                        informative_list_concat_result(
+                            recv_rt.clone(),
+                            mc_concat_other.clone(),
+                            method_tv_mc.ty.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        )
+                    } else {
+                        method_tv_mc.ty.clone()
+                    };
                     let mc_template_diags = method_tv_mc.diagnostics.clone();
                     let method_semantics =
                         if (method_resolution.semantics.clone() != std::option::Option::None) {
@@ -15112,19 +15155,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.type_env.clone().source_indices.clone(),
                 scope.type_env.clone(),
             );
-            let binop_result = if (op.clone() == BinOp::Add
-                && crate::v1_compiler_infer_types::node_is_element_collection(
+            let binop_result = if (op.clone() == BinOp::Add) {
+                informative_list_concat_result(
                     left_rt.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                )
-                && crate::v1_compiler_infer_types::node_is_element_collection(
                     right_rt.clone(),
+                    binop_info.result_type.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 )
-                && unify_binding_is_uninformative(left_rt.clone())
-                && !unify_binding_is_uninformative(right_rt.clone()))
-            {
-                right_rt.clone()
             } else {
                 binop_info.result_type.clone()
             };
@@ -23931,6 +23968,27 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
                 }
             }
         }
+    }
+}
+
+pub fn informative_list_concat_result(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    fallback: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if (crate::v1_compiler_infer_types::node_is_element_collection(
+        left.clone(),
+        source_indices.clone(),
+    ) && crate::v1_compiler_infer_types::node_is_element_collection(
+        right.clone(),
+        source_indices.clone(),
+    ) && unify_binding_is_uninformative(left.clone())
+        && !unify_binding_is_uninformative(right.clone()))
+    {
+        right.clone()
+    } else {
+        fallback.clone()
     }
 }
 
