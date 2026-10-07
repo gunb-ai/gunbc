@@ -3,18 +3,17 @@ module test.claim.htc_discovery_probe
 import std.types { Bool, List, String }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
 
-// DISCOVERY PROBE (deleted before ready): prints the census rows of the host-text controls.
-fn rows_of(source: String) -> String {
+// DISCOVERY PROBE (deleted before ready): the BLOCKING census rows of the host-text controls.
+fn blocking_rows(source: String) -> String {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => {
       let rs: List<CompileDiagnosticCensusRow> = rows
-      rs |> map(r => concat(concat(r.diagnostic_class as String, "@"), concat(r.subject_name, if r.blocking { "!B" } else { "" }))) |> join(" ; ")
+      rs |> filter(r => r.blocking) |> map(r => concat(to_string(r.diagnostic_class), concat("@", r.subject_name))) |> join(" ; ")
     }
-    CensusNotRunnable { cause: c } => concat("NOT-RUNNABLE ", to_string(c))
+    CensusNotRunnable { cause: _ } => "NOT-RUNNABLE"
   }
 }
 
 fn probe() -> String {
-  concat("CHAR: ", concat(rows_of(source: "module test.claim.htc_char_probe\nimport std.types { Char }\nfn is_a(c: Char) -> Bool { true }\nfn probe(s: String) -> Bool { any(xs: s, predicate: fn(c) { is_a(c: c) }) }\n"),
-    concat("  ||  BARE: ", rows_of(source: "module test.claim.htc_bare_probe\nfn probe(s: String) -> Bool { true }\n")))
+  concat("CHAR: ", concat(blocking_rows(source: "module test.claim.htc_char_probe\nimport std.types { Char }\nfn is_a(c: Char) -> Bool { true }\nfn probe(s: String) -> Bool { any(xs: s, predicate: fn(c) { is_a(c: c) }) }\n"), concat("  ||  BARE: ", blocking_rows(source: "module test.claim.htc_bare_probe\nfn probe(s: String) -> Bool { true }\n")))
 }
