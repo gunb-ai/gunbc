@@ -11893,6 +11893,79 @@ pub fn subst_from_typed_call_args(
     }
 }
 
+pub fn fold_step_callable(acc_type: Rc<Node>, element_type: Rc<Node>) -> Rc<Node> {
+    let fold_params = Rc::new(vec![
+        crate::v1_std_core::make_param_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "acc".to_string(),
+            acc_type.clone(),
+            std::option::Option::None,
+            crate::v1_std_core::no_span(),
+            crate::v1_std_core::no_span(),
+        ),
+        crate::v1_std_core::make_param_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "elem".to_string(),
+            element_type.clone(),
+            std::option::Option::None,
+            crate::v1_std_core::no_span(),
+            crate::v1_std_core::no_span(),
+        ),
+    ]);
+    Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: "".to_string(),
+        span: crate::v1_std_core::no_span(),
+        ident_span: std::option::Option::None,
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: fold_params,
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: acc_type.clone(),
+        })),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
+        properties: Rc::new(vec![]),
+        type_annotation: std::option::Option::None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
+}
+
+pub fn collection_fold_lambda_expected(
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match results.clone().first().cloned() {
+        std::option::Option::None => std::option::Option::None,
+        Some(xs) => {
+            let elem = crate::v1_compiler_infer_types::for_each_element_type_node(
+                crate::v1_compiler_infer_types::resolved_type(
+                    crate::v1_std_core::arg_value(xs.typed_arg.clone()),
+                ),
+                source_indices.clone(),
+            );
+            match results.clone().iter().cloned().skip(1).next() {
+                std::option::Option::None => std::option::Option::None,
+                Some(empty_arg) => Some(fold_step_callable(
+                    crate::v1_compiler_infer_types::resolved_type(
+                        crate::v1_std_core::arg_value(empty_arg.typed_arg.clone()),
+                    ),
+                    elem,
+                )),
+            }
+        }
+    }
+}
+
 pub fn infer_call_arguments_generic_pass(
     call_args: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
@@ -11900,6 +11973,7 @@ pub fn infer_call_arguments_generic_pass(
     generic_names: Rc<Vec<String>>,
     init_subst: Rc<HashMap<String, Rc<Node>>>,
     scope: Rc<InferScope>,
+    collection_fold: bool,
 ) -> Rc<ArgGenericFoldState> {
     Rc::new(
         call_args
@@ -12034,6 +12108,16 @@ pub fn infer_call_arguments_generic_pass(
                 };
             let expected = if !has_formal.clone() {
                 std::option::Option::None
+            } else if (collection_fold
+                && is_lambda_expr(crate::v1_std_core::arg_value(a.clone())))
+            {
+                match collection_fold_lambda_expected(
+                    st.results.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(e) => Some(e),
+                    std::option::Option::None => Some(contextual_expected.clone()),
+                }
             } else if (direct_call_formal_has_unbound_type_variable(formal_raw.clone())
                 && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
                 && !(formal_is_code_point_sequence.clone() && argument_is_literal.clone())
@@ -13403,6 +13487,7 @@ Rc::new(InferResult {
                                         generic_names.clone(),
                                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                         scope.clone(),
+                                        callee_is_collection_fold(func_name.clone()),
                                     );
                                     let bound_pass = if call_needs_generic_rebinding_pass(
                                         call_args.clone(),
@@ -13416,6 +13501,7 @@ Rc::new(InferResult {
                                             generic_names.clone(),
                                             first_pass.subst.clone(),
                                             scope.clone(),
+                                            callee_is_collection_fold(func_name.clone()),
                                         )
                                     } else {
                                         first_pass.clone()

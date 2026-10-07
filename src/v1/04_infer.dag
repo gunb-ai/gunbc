@@ -7859,7 +7859,34 @@ fn subst_from_typed_call_args(
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+fn fold_step_callable(acc_type: Node, element_type: Node) -> Node {
+  let fold_params = [
+    make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: acc_type, default_value: none, span: no_span(), name_span: no_span()),
+    make_param_node(occurrence_identity: OccurrenceSynthetic, name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
+  ]
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
+    connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: acc_type } },
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn collection_fold_lambda_expected(results: List<ArgInferResult>, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match results |> first {
+    Absent => none
+    Present { value: xs } =>
+      let elem = for_each_element_type_node(n: resolved_type(n: arg_value(n: xs.typed_arg)), source_indices: source_indices)
+      match results |> skip(1) |> first {
+        Absent => none
+        Present { value: empty_arg } =>
+          Present { value: fold_step_callable(acc_type: resolved_type(n: arg_value(n: empty_arg.typed_arg)), element_type: elem) }
+      }
+  }
+}
+
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope, collection_fold: Bool) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
@@ -7903,6 +7930,11 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     } }
     let expected = if !has_formal {
       none
+    } else if (collection_fold && is_lambda_expr(e: arg_value(n: a))) {
+      match collection_fold_lambda_expected(results: st.results, source_indices: scope.type_env.source_indices) {
+        Present { value: e } => Present { value: e }
+        Absent => Present { value: contextual_expected }
+      }
     } else if (direct_call_formal_has_unbound_type_variable(n: formal_raw)
         && !is_lambda_expr(e: arg_value(n: a))
         && !(formal_is_code_point_sequence && argument_is_literal)
@@ -8760,9 +8792,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope, collection_fold: callee_is_collection_fold(name: func_name))
         let bound_pass = if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope, collection_fold: callee_is_collection_fold(name: func_name))
         } else {
           first_pass
         }
