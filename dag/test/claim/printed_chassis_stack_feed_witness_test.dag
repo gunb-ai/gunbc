@@ -6,7 +6,7 @@ import product.printed_chassis.harness_census {selected_fan_harness,SelectedFanH
 import extdeps.fans.arctic { arctic_p8_cable_length, arctic_p8_pwm_sharing, arctic_p8_rated_current, arctic_p14_rated_current, arctic_p14_pwm_sharing }
 import std.types { Bool, List }
 import std.nat { Nat }
-import std.measure { watt, millivolt, millivolt_count, millimeter, millimeter_count, milliampere_count, percent, gram, watt_count, Watt, Millimeter, Millivolt }
+import std.measure { watt, millivolt, millivolt_count, millimeter, millimeter_count, milliampere_count, percent, gram, watt_count, Watt, Millimeter, Millivolt, micrometer_count }
 import std.optional { Present, Absent }
 import product.printed_chassis.node_power_feed {
   NodeFeedInputs, declared_connector_derating, node_feed, NodeFeedReading, NodeFeedScreeningOnly, NodeFeedRefused,
@@ -96,7 +96,7 @@ test fn station_placement_decides_what_a_pop_lifts() -> Bool {
 }
 
 fn plan(top: Bool, front: Bool, allowance: Nat) -> HarnessPlan {
-  HarnessPlan { node_count: 4, station: station(placement_top: top), inlet: if front { InletAtFront } else { InletAtRear }, inputs_populated: 2, fan:FanHarnessPlan {fans:3,cable_length:arctic_p8_cable_length,sharing:arctic_p8_pwm_sharing,rated_current:arctic_p8_rated_current,header_run:millimeter(count:(tray_d/2-rear_plate_z)/1000+allowance),pst_link_run:millimeter(count:100)}, ethernet_per_node: 2, switch_level_from_bottom: 4, service_allowance: millimeter(count: allowance) }
+  HarnessPlan { node_count: 4, station: station(placement_top: top), inlet: if front { InletAtFront } else { InletAtRear }, inputs_populated: 2, fan:FanHarnessPlan {fans:3,cable_length:arctic_p8_cable_length,sharing:arctic_p8_pwm_sharing,rated_current:arctic_p8_rated_current,header_run:millimeter(count:(micrometer_count(m: tray_d)/2-rear_plate_z)/1000+allowance),pst_link_run:millimeter(count:100)}, ethernet_per_node: 2, switch_level_from_bottom: 4, service_allowance: millimeter(count: allowance) }
 }
 
 // Four nodes: per node one branch, two pigtails, two patch leads, one fan header cable and two
