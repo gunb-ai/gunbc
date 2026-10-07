@@ -1,14 +1,14 @@
 module v2.test.parse.bare_node_statement_route
 
-import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -18,26 +18,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // followed by the next match arm or an `if`, and five corpus files refused (among them
 // src/v2/std/node.dag). The shapes are the regression's own: an arm `=> node` before the next arm,
 // and `node` before an `if`. Each takes the expression route (no let_expr); the sugar `node y = 1`
-// still takes the let route (one let_expr). The first two sources are the regression's fixtures
-// verbatim (a1, a3). Each claim pays ONE parse of the smallest module that
-// reaches its route.
-data bns_arm_source: String = "module a1\ntype O = S { node: Int } | L { x: Int }\nfn f(o: O) -> Int {\n  match o {\n    S { node: node } => node\n    L { x: x } => x\n  }\n}\n"
-data bns_if_source: String = "module a3\nfn f(node: Int, c: Bool) -> Int {\n  node\n  if c {\n    1\n  } else {\n    0\n  }\n}\n"
-data bns_sugar_source: String = "module p\nfn f() -> I {\n  node y = 1\n  y\n}\n"
+// still takes the let route (one let_expr). The first two fragments keep the regression's shapes
+// (a1: an arm body `node` before an arm that begins with a name; a3: a `node` statement before an
+// `if`) at their smallest: the old two-token guard `node name` refuses both. Each claim pays ONE
+// parse, entering the grammar at the production under test: `match_expr` for the arm sequence,
+// `fn_body` for the statement spine. Only the prepared grammar is shared, by declared demand.
+data bns_arm_source: String = "match o {\n  S => node\n  L => x\n}"
+data bns_if_source: String = "{\n  node\n  if c { 1 }\n}"
+data bns_sugar_source: String = "{\n  node y = 1\n  y\n}"
 
-fn bns_parse(text: String, file: Symbol) -> Outcome<Node> {
+fn bns_parse(text: String, file: Symbol, production: Symbol) -> Optional<Node> {
   match dag_prepared_grammar() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
-        f: fn(token_stream) {
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => Absent
+        PreparedModeled { modeled: modeled, materialization: m } =>
+          match tokenize(text: text, file: file, rules: dag_lex()) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: token_stream, diagnostics: _ } =>
+              match parse_production_prepared(
+                tokens: token_stream.all,
+                validated: modeled.validated,
+                analysis: modeled.analysis,
+                production_name: production,
+                materialization: m
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+              }
           }
-        }
-      )
+      }
   }
 }
 
@@ -50,37 +61,21 @@ fn bns_lets(root: Node) -> Int {
 }
 
 // Accepted, holding exactly `lets` let_expr nodes.
-fn bns_route(text: String, file: Symbol, lets: Int) -> Bool {
-  match bns_parse(text: text, file: file) {
-    Accepted { value: tree, diagnostics: _ } => bns_lets(root: tree) == lets
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// THE THREE ROUTES, FROM ONE PARSE OF EACH SOURCE. Nullary and pure, enrolled WARM in
-// v2.workflow.floor_pure_producer_share: each claim reads its stored Bool.
-type BnsVerdicts {
-  arm_before_arm: Bool
-  node_before_if: Bool
-  sugar: Bool
-}
-
-fn bns_verdicts() -> BnsVerdicts {
-  BnsVerdicts {
-    arm_before_arm: bns_route(text: bns_arm_source, file: ^bns_arm, lets: 0),
-    node_before_if: bns_route(text: bns_if_source, file: ^bns_if, lets: 0),
-    sugar: bns_route(text: bns_sugar_source, file: ^bns_sugar, lets: 1)
+fn bns_route(text: String, file: Symbol, production: Symbol, lets: Int) -> Bool {
+  match bns_parse(text: text, file: file, production: production) {
+    Present { value: tree } => bns_lets(root: tree) == lets
+    Absent => false
   }
 }
 
 test fn bare_node_arm_body_before_the_next_arm_takes_the_expression_route() -> Bool {
-  bns_verdicts().arm_before_arm
+  bns_route(text: bns_arm_source, file: ^bns_arm, production: ^dag_production_match_expr, lets: 0)
 }
 
 test fn bare_node_statement_before_an_if_takes_the_expression_route() -> Bool {
-  bns_verdicts().node_before_if
+  bns_route(text: bns_if_source, file: ^bns_if, production: ^dag_production_fn_body, lets: 0)
 }
 
 test fn node_let_sugar_still_takes_the_let_route() -> Bool {
-  bns_verdicts().sugar
+  bns_route(text: bns_sugar_source, file: ^bns_sugar, production: ^dag_production_fn_body, lets: 1)
 }

@@ -927,6 +927,16 @@ pub(crate) fn value_depth_guarded<R>(walk: impl FnOnce() -> R) -> R {
     stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, walk)
 }
 
+struct DebugEntries<'a>(Vec<(&'a Value, &'a Value)>);
+
+impl fmt::Debug for DebugEntries<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|(k, v)| (*k, *v)))
+            .finish()
+    }
+}
+
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         value_depth_guarded(|| match self {
@@ -936,7 +946,13 @@ impl fmt::Debug for Value {
             Value::Float(n) => f.debug_tuple("Float").field(n).finish(),
             Value::Str(s) => f.debug_tuple("Str").field(s).finish(),
             Value::List(items) => f.debug_tuple("List").field(items).finish(),
-            Value::Map(entries) => f.debug_tuple("Map").field(entries).finish(),
+            Value::Map(entries) => {
+                // Debug renders in the same canonical order as Display: a debug dump that
+                // differs per process is a host-order path too.
+                let ordered = canonical_entries(entries.iter().map(|(k, v)| (&k.key, v)).collect())
+                    .map_err(|_| fmt::Error)?;
+                f.debug_tuple("Map").field(&DebugEntries(ordered)).finish()
+            }
             Value::Set(members) => f.debug_tuple("Set").field(members).finish(),
             Value::Record { type_name, fields } => f
                 .debug_struct("Record")
@@ -984,12 +1000,17 @@ impl fmt::Display for Value {
                 write!(f, "]")
             }
             Value::Map(entries) => {
+                // Canonical content order, never `HamtMap` iteration order (which is
+                // per-process RandomState). Keys are reflexive, so no key holds a closure and
+                // the order is total over every renderable map.
+                let ordered = canonical_entries(entries.iter().map(|(k, v)| (&k.key, v)).collect())
+                    .map_err(|_| fmt::Error)?;
                 write!(f, "{{")?;
-                for (i, (k, v)) in entries.iter().enumerate() {
+                for (i, (k, v)) in ordered.into_iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", k.key, v)?;
+                    write!(f, "{}: {}", k, v)?;
                 }
                 write!(f, "}}")
             }
@@ -1086,6 +1107,37 @@ impl Drop for Value {
         while let Some(mut child) = pending.pop() {
             detach_owned_children(&mut child, &mut pending);
         }
+    }
+}
+
+/// The portable form is a plain tree with no sharing, so it is as deep as the value it was taken
+/// from and needs the same iterative drop (`impl Drop for Value`): a recursive drop of a deep
+/// portable chain aborted the process (stack overflow) in
+/// `value_depth_walker_tests::a_deep_value_round_trips_through_the_portable_form`.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+impl Drop for PortableValue {
+    fn drop(&mut self) {
+        let mut pending: Vec<PortableValue> = Vec::new();
+        detach_portable_children(self, &mut pending);
+        while let Some(mut child) = pending.pop() {
+            detach_portable_children(&mut child, &mut pending);
+        }
+    }
+}
+
+fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<PortableValue>) {
+    match value {
+        PortableValue::List(items) => pending.append(items),
+        PortableValue::Map(entries) => {
+            for (k, v) in entries.drain(..) {
+                pending.push(k);
+                pending.push(v);
+            }
+        }
+        PortableValue::Record { fields, .. } | PortableValue::Variant { fields, .. } => {
+            pending.extend(fields.drain(..).map(|(_, v)| v));
+        }
+        _ => {}
     }
 }
 
@@ -1430,6 +1482,32 @@ pub enum InterpError {
         operation: String,
         ground: HermeticEffectGround,
     },
+    /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
+    /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
+    /// values was ill-typed, the WORLD said no, and the remedy (permissions, an occupied path, a
+    /// full disk) lives outside the corpus. Reported as `type-error`, a permission-denied cache
+    /// write sent every reader looking for a type defect that did not exist (the
+    /// `emit_host_identity_cast_native` floor rows). `operation` names the effect site, `path` the
+    /// path the host refused, `kind` the host's own classification, `detail` its text.
+    HostIoFailed {
+        operation: &'static str,
+        path: String,
+        kind: std::io::ErrorKind,
+        detail: String,
+    },
+}
+
+impl InterpError {
+    /// The one constructor for `HostIoFailed`, so every effect site maps the host error the same
+    /// way.
+    pub fn host_io(operation: &'static str, path: &std::path::Path, e: &std::io::Error) -> Self {
+        InterpError::HostIoFailed {
+            operation,
+            path: path.display().to_string(),
+            kind: e.kind(),
+            detail: e.to_string(),
+        }
+    }
 }
 
 /// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
@@ -1451,6 +1529,15 @@ pub enum HermeticEffectGround {
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            InterpError::HostIoFailed {
+                operation,
+                path,
+                kind,
+                detail,
+            } => write!(
+                f,
+                "host filesystem effect failed: {operation} {path} ({kind:?}): {detail}"
+            ),
             InterpError::NoSuchFunction { name } => write!(
                 f,
                 "no declaration named '{}' in this execution's loaded index \
@@ -1700,82 +1787,304 @@ enum PortableValue {
     },
 }
 
-/// A TOTAL ORDER over portable values that depends only on their content: variant rank, then
-/// payload; symbols by spelling, floats by IEEE 754-2019 §5.10 totalOrder (`f64::total_cmp`),
-/// sequences lexicographically. Used to put map
-/// entries in one order in every process.
-fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
-    fn rank(v: &PortableValue) -> u8 {
-        match v {
-            PortableValue::Null => 0,
-            PortableValue::Unit => 1,
-            PortableValue::Bool(_) => 2,
-            PortableValue::Int(_) => 3,
-            PortableValue::Float(_) => 4,
-            PortableValue::Str(_) => 5,
-            PortableValue::List(_) => 6,
-            PortableValue::Map(_) => 7,
-            PortableValue::Set(_) => 8,
-            PortableValue::Record { .. } => 9,
-            PortableValue::Variant { .. } => 10,
+/// THE CANONICAL CONTENT ORDER -- the interpreter's realization of `std.algebra`
+/// `TotalOrder` over value content (docs/plans/canonical-content-order-draft.md). ONE
+/// comparator serves every caller: map rendering (`Display`/`Debug` of `Value::Map`), the
+/// portable encoding's map-entry order (`portable_value_from_ctx_at`), and the emitted-agreeing
+/// sorts (`sorted_map_keys`, `sort_by`, through `admit_emitted_ord_keys`). A
+/// second comparator beside it would be a second order (DESIGN section 3), so both carriers
+/// (`Value`, `PortableValue`) expose a borrowed `ContentView` and nothing else.
+///
+/// * Kind rank is `ContentKind`'s DECLARATION order (derived `Ord`), which is
+///   `PortableValue`'s variant order -- never a hand list beside it.
+/// * Within a kind: Bool false<true; Int numeric; Float by IEEE 754-2019 section 5.10
+///   totalOrder (`f64::total_cmp`); Str byte-lexicographic; List lexicographic then length;
+///   Map lexicographic over its entries in canonical key order, comparing (key, value); Set
+///   lexicographic over its (already ordered) member strings; Record by type spelling then
+///   fields in spelling order as (name, value); Variant by type spelling, arm spelling, then
+///   full payload as a record. A function value ranks last, by name.
+/// * SPELLING IS AN ORDERING STAND-IN, NEVER IDENTITY: `Value::Variant` carries no owner
+///   identity (gunbc.guarantee_stall.variant_owner_identity_stall, NS-0B). Because the
+///   payload is compared after the spelling, two keys tie only when they render to identical
+///   bytes, so tie order is unobservable in output. Declared drop:
+///   gunbc.rung_drop canonical_order_variant_spelling_stand_in.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub(crate) enum ContentKind {
+    Null,
+    Unit,
+    Bool,
+    Int,
+    Float,
+    Str,
+    List,
+    Map,
+    Set,
+    Record,
+    Variant,
+    Function,
+}
+
+pub(crate) enum ContentView<'a, T> {
+    Null,
+    Unit,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(&'a str),
+    List(Vec<&'a T>),
+    Map(Vec<(&'a T, &'a T)>),
+    Set(Vec<&'a str>),
+    Record {
+        type_name: &'static str,
+        fields: Vec<(&'static str, &'a T)>,
+    },
+    Variant {
+        type_name: &'static str,
+        variant_name: &'static str,
+        fields: Vec<(&'static str, &'a T)>,
+    },
+    Function(&'a str),
+}
+
+impl<T> ContentView<'_, T> {
+    fn kind(&self) -> ContentKind {
+        match self {
+            ContentView::Null => ContentKind::Null,
+            ContentView::Unit => ContentKind::Unit,
+            ContentView::Bool(_) => ContentKind::Bool,
+            ContentView::Int(_) => ContentKind::Int,
+            ContentView::Float(_) => ContentKind::Float,
+            ContentView::Str(_) => ContentKind::Str,
+            ContentView::List(_) => ContentKind::List,
+            ContentView::Map(_) => ContentKind::Map,
+            ContentView::Set(_) => ContentKind::Set,
+            ContentView::Record { .. } => ContentKind::Record,
+            ContentView::Variant { .. } => ContentKind::Variant,
+            ContentView::Function(_) => ContentKind::Function,
         }
     }
-    fn seq<T>(
-        xs: &[T],
-        ys: &[T],
-        cmp: impl Fn(&T, &T) -> std::cmp::Ordering,
-    ) -> std::cmp::Ordering {
-        for (x, y) in xs.iter().zip(ys) {
-            let o = cmp(x, y);
-            if o != std::cmp::Ordering::Equal {
-                return o;
+}
+
+/// A carrier whose content the canonical order reads. `None` = the value has no content
+/// order (a closure), which every caller REFUSES rather than placing.
+pub(crate) trait CanonicalContent: Sized {
+    fn content_view(&self) -> Option<ContentView<'_, Self>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NoContentOrder {
+    pub(crate) kind_label: &'static str,
+}
+
+fn seq_cmp<T>(
+    xs: &[T],
+    ys: &[T],
+    cmp: impl Fn(&T, &T) -> Result<std::cmp::Ordering, NoContentOrder>,
+) -> Result<std::cmp::Ordering, NoContentOrder> {
+    for (x, y) in xs.iter().zip(ys) {
+        let o = cmp(x, y)?;
+        if o != std::cmp::Ordering::Equal {
+            return Ok(o);
+        }
+    }
+    Ok(xs.len().cmp(&ys.len()))
+}
+
+/// Map entries in canonical key order (then value): the one entry order rendering and
+/// encoding both use.
+pub(crate) fn canonical_entries<'a, T: CanonicalContent>(
+    mut entries: Vec<(&'a T, &'a T)>,
+) -> Result<Vec<(&'a T, &'a T)>, NoContentOrder> {
+    let mut err = None;
+    entries.sort_by(|(k, v), (l, w)| {
+        match canonical_content_cmp(*k, *l).and_then(|o| {
+            if o == std::cmp::Ordering::Equal {
+                canonical_content_cmp(*v, *w)
+            } else {
+                Ok(o)
+            }
+        }) {
+            Ok(o) => o,
+            Err(e) => {
+                err.get_or_insert(e);
+                std::cmp::Ordering::Equal
             }
         }
-        xs.len().cmp(&ys.len())
+    });
+    match err {
+        Some(e) => Err(e),
+        None => Ok(entries),
     }
-    let fields = |x: &[(Symbol, PortableValue)], y: &[(Symbol, PortableValue)]| {
-        seq(x, y, |(n, v), (m, w)| {
-            n.0.cmp(m.0).then_with(|| portable_value_cmp(v, w))
-        })
-    };
-    match (a, b) {
-        (PortableValue::Bool(x), PortableValue::Bool(y)) => x.cmp(y),
-        (PortableValue::Int(x), PortableValue::Int(y)) => x.cmp(y),
-        (PortableValue::Float(x), PortableValue::Float(y)) => x.total_cmp(y),
-        (PortableValue::Str(x), PortableValue::Str(y)) => x.as_ref().cmp(y.as_ref()),
-        (PortableValue::List(x), PortableValue::List(y)) => seq(x, y, portable_value_cmp),
-        (PortableValue::Map(x), PortableValue::Map(y)) => seq(x, y, |(k, v), (l, w)| {
-            portable_value_cmp(k, l).then_with(|| portable_value_cmp(v, w))
-        }),
-        (PortableValue::Set(x), PortableValue::Set(y)) => x.iter().cmp(y.iter()),
-        (
-            PortableValue::Record {
-                type_name: t,
-                fields: f,
-            },
-            PortableValue::Record {
-                type_name: u,
-                fields: g,
-            },
-        ) => t.0.cmp(u.0).then_with(|| fields(f, g)),
-        (
-            PortableValue::Variant {
-                type_name: t,
-                variant_name: v,
-                fields: f,
-            },
-            PortableValue::Variant {
-                type_name: u,
-                variant_name: w,
-                fields: g,
-            },
-        ) => {
-            t.0.cmp(u.0)
-                .then_with(|| v.0.cmp(w.0))
-                .then_with(|| fields(f, g))
+}
+
+fn canonical_field_order<'a, T>(
+    mut fields: Vec<(&'static str, &'a T)>,
+) -> Vec<(&'static str, &'a T)> {
+    fields.sort_by(|a, b| a.0.cmp(b.0));
+    fields
+}
+
+pub(crate) fn canonical_content_cmp<T: CanonicalContent>(
+    a: &T,
+    b: &T,
+) -> Result<std::cmp::Ordering, NoContentOrder> {
+    use std::cmp::Ordering;
+    value_depth_guarded(|| {
+        let (x, y) = match (a.content_view(), b.content_view()) {
+            (Some(x), Some(y)) => (x, y),
+            _ => {
+                return Err(NoContentOrder {
+                    kind_label: "closure",
+                })
+            }
+        };
+        let fields = |f: Vec<(&'static str, &T)>, g: Vec<(&'static str, &T)>| {
+            seq_cmp(
+                &canonical_field_order(f),
+                &canonical_field_order(g),
+                |(n, v), (m, w)| {
+                    Ok(n.cmp(m)).and_then(|o| {
+                        if o == Ordering::Equal {
+                            canonical_content_cmp(*v, *w)
+                        } else {
+                            Ok(o)
+                        }
+                    })
+                },
+            )
+        };
+        let kx = x.kind();
+        let ky = y.kind();
+        if kx != ky {
+            return Ok(kx.cmp(&ky));
         }
-        _ => rank(a).cmp(&rank(b)),
+        match (x, y) {
+            (ContentView::Null, ContentView::Null) | (ContentView::Unit, ContentView::Unit) => {
+                Ok(Ordering::Equal)
+            }
+            (ContentView::Bool(p), ContentView::Bool(q)) => Ok(p.cmp(&q)),
+            (ContentView::Int(p), ContentView::Int(q)) => Ok(p.cmp(&q)),
+            (ContentView::Float(p), ContentView::Float(q)) => Ok(p.total_cmp(&q)),
+            (ContentView::Str(p), ContentView::Str(q)) => Ok(p.cmp(q)),
+            (ContentView::List(p), ContentView::List(q)) => {
+                seq_cmp(&p, &q, |v, w| canonical_content_cmp(*v, *w))
+            }
+            (ContentView::Map(p), ContentView::Map(q)) => {
+                let p = canonical_entries(p)?;
+                let q = canonical_entries(q)?;
+                seq_cmp(&p, &q, |(k, v), (l, w)| {
+                    canonical_content_cmp(*k, *l).and_then(|o| {
+                        if o == Ordering::Equal {
+                            canonical_content_cmp(*v, *w)
+                        } else {
+                            Ok(o)
+                        }
+                    })
+                })
+            }
+            (ContentView::Set(p), ContentView::Set(q)) => Ok(p.cmp(&q)),
+            (
+                ContentView::Record {
+                    type_name: t,
+                    fields: f,
+                },
+                ContentView::Record {
+                    type_name: u,
+                    fields: g,
+                },
+            ) => match t.cmp(u) {
+                Ordering::Equal => fields(f, g),
+                o => Ok(o),
+            },
+            (
+                ContentView::Variant {
+                    type_name: t,
+                    variant_name: v,
+                    fields: f,
+                },
+                ContentView::Variant {
+                    type_name: u,
+                    variant_name: w,
+                    fields: g,
+                },
+            ) => match t.cmp(u).then_with(|| v.cmp(w)) {
+                Ordering::Equal => fields(f, g),
+                o => Ok(o),
+            },
+            (ContentView::Function(p), ContentView::Function(q)) => Ok(p.cmp(q)),
+            _ => unreachable!("kinds were compared equal above"),
+        }
+    })
+}
+
+impl CanonicalContent for PortableValue {
+    fn content_view(&self) -> Option<ContentView<'_, Self>> {
+        Some(match self {
+            PortableValue::Null => ContentView::Null,
+            PortableValue::Unit => ContentView::Unit,
+            PortableValue::Bool(b) => ContentView::Bool(*b),
+            PortableValue::Int(n) => ContentView::Int(*n),
+            PortableValue::Float(f) => ContentView::Float(*f),
+            PortableValue::Str(s) => ContentView::Str(s),
+            PortableValue::List(items) => ContentView::List(items.iter().collect()),
+            PortableValue::Map(entries) => {
+                ContentView::Map(entries.iter().map(|(k, v)| (k, v)).collect())
+            }
+            PortableValue::Set(members) => {
+                ContentView::Set(members.iter().map(|m| m.as_str()).collect())
+            }
+            PortableValue::Record { type_name, fields } => ContentView::Record {
+                type_name: type_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            PortableValue::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => ContentView::Variant {
+                type_name: type_name.0,
+                variant_name: variant_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+        })
     }
+}
+
+impl CanonicalContent for Value {
+    fn content_view(&self) -> Option<ContentView<'_, Self>> {
+        Some(match self {
+            Value::Null => ContentView::Null,
+            Value::Unit => ContentView::Unit,
+            Value::Bool(b) => ContentView::Bool(*b),
+            Value::Int(n) => ContentView::Int(*n),
+            Value::Float(f) => ContentView::Float(*f),
+            Value::Str(s) => ContentView::Str(s.as_ref()),
+            Value::List(items) => ContentView::List(items.iter().collect()),
+            Value::Map(m) => ContentView::Map(m.iter().map(|(k, v)| (&k.key, v)).collect()),
+            Value::Set(members) => ContentView::Set(members.iter().map(|m| m.as_str()).collect()),
+            Value::Record { type_name, fields } => ContentView::Record {
+                type_name: type_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => ContentView::Variant {
+                type_name: type_name.0,
+                variant_name: variant_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            Value::Fn { node } => ContentView::Function(node.name.as_str()),
+            Value::Closure { .. } => return None,
+        })
+    }
+}
+
+/// The portable encoding's order: the canonical content order. Total over `PortableValue`
+/// (it has no closure inhabitant), so the refusal arm is unreachable here by construction.
+fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
+    canonical_content_cmp(a, b).expect("PortableValue has no inhabitant without a content order")
 }
 
 /// Structural equality over portable values — the cross-claim tier's verification relation.
@@ -2038,7 +2347,16 @@ struct CrossClaimPureMemo {
     /// on process-global pointer identity, and equality no longer depends on which frame
     /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
     /// used to rebuild per consuming frame, at O(1) instead of O(size).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
+    map: std::collections::HashMap<(usize, u64), Vec<CrossClaimEntry>>,
+    /// THE SERVED-INSTANCE REGISTRY: the root of every value this tier serves, mapped to the
+    /// content digest computed once, at publication, from its portable form. A served value is
+    /// handed out by `Rc` clone and retained here for the tier's lifetime, so its root pointer
+    /// names it for as long as the entry stands. It lets a caller that passes a served value as
+    /// an ARGUMENT be verified by digest instead of by reifying the whole argument again.
+    served_instances: std::collections::HashMap<ServedInstanceKey, Rc<str>>,
+    /// Argument rows totally reified on the lookup path. A served instance passed as an argument
+    /// adds nothing here; everything else adds one per composite argument per call.
+    lookup_arg_reifies: u64,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
@@ -2052,9 +2370,156 @@ struct CrossClaimPureMemo {
     /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
+    /// Derived-share fills declined below the declared cost floor (recomputed, not retained).
+    below_cost_floor: u64,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
     /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
     unportable_refusals: u64,
+}
+
+/// One retained call: its argument row in portable form, each composite argument's content digest
+/// (`None` for a scalar, which is compared directly), the served-instance identity each argument
+/// WAS when stored (`None` unless the caller passed a value this tier served), and the value
+/// served. The digest is a 64-bit hash and so only a PRE-FILTER: a match is established by
+/// instance identity or by the portable row, never by digest equality alone.
+struct CrossClaimEntry {
+    args: Vec<(Option<String>, PortableValue)>,
+    arg_digests: Vec<Option<Rc<str>>>,
+    arg_instances: Vec<Option<ServedInstanceKey>>,
+    served: Value,
+}
+
+/// The identity of a served value's root: its container pointer, with the kind and the type and
+/// variant symbols beside it, because a record and a re-branded record may share one field vector.
+type ServedInstanceKey = (usize, u8, Option<Symbol>, Option<Symbol>);
+
+fn served_instance_key(v: &Value) -> Option<ServedInstanceKey> {
+    match v {
+        Value::List(xs) => Some((Rc::as_ptr(xs) as usize, 0, None, None)),
+        Value::Map(m) => Some((Rc::as_ptr(m) as usize, 1, None, None)),
+        Value::Set(s) => Some((Rc::as_ptr(s) as usize, 2, None, None)),
+        Value::Record { type_name, fields } => {
+            Some((Rc::as_ptr(fields) as usize, 3, Some(*type_name), None))
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => Some((
+            Rc::as_ptr(fields) as usize,
+            4,
+            Some(*type_name),
+            Some(*variant_name),
+        )),
+        _ => None,
+    }
+}
+
+fn portable_is_composite(v: &PortableValue) -> bool {
+    matches!(
+        v,
+        PortableValue::List(_)
+            | PortableValue::Map(_)
+            | PortableValue::Set(_)
+            | PortableValue::Record { .. }
+            | PortableValue::Variant { .. }
+    )
+}
+
+/// What the lookup holds for one caller argument: a served instance's identity and digest (no
+/// walk unless an entry needs the structural fallback), or the argument reified in full.
+enum CrossClaimArgProbe {
+    Served {
+        key: ServedInstanceKey,
+        digest: Rc<str>,
+    },
+    Reified(PortableValue),
+}
+
+/// One probe per caller argument. AN ARGUMENT THAT IS ITSELF A VALUE THIS TIER SERVED IS NAMED BY
+/// ITS INSTANCE, with the digest computed once when it was published as a pre-filter; reifying it again on every call re-walked the
+/// whole value each time (a derived site whose argument is a served grammar or target model paid
+/// that per call). Any other argument is reified as before, and refuses the lookup when it is not
+/// portable.
+fn cross_claim_arg_probes(
+    ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> Option<Vec<CrossClaimArgProbe>> {
+    let mut out = Vec::with_capacity(args.len());
+    for (_, value) in args {
+        let served = served_instance_key(value).and_then(|key| {
+            CROSS_CLAIM_PURE_MEMO.with(|m| {
+                m.borrow()
+                    .served_instances
+                    .get(&key)
+                    .map(|digest| (key, digest.clone()))
+            })
+        });
+        match served {
+            Some((key, digest)) => out.push(CrossClaimArgProbe::Served { key, digest }),
+            None => {
+                let portable = portable_value_from_ctx(ctx, value)?;
+                if portable_is_composite(&portable) {
+                    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().lookup_arg_reifies += 1);
+                }
+                out.push(CrossClaimArgProbe::Reified(portable));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Whether a retained entry's argument row is the caller's. A served probe matches an entry that
+/// stored the SAME instance (exact: a registered instance is retained for the tier's lifetime, so
+/// its root pointer cannot be reused while the entry stands). A served probe whose instance the
+/// entry did not store falls back to the structural comparison, reifying the caller's argument at
+/// most once per lookup into `fallback` (counted in `reifies`); the digest only rules a candidate
+/// OUT, because a 64-bit FNV digest is not injective and equality of digests proves nothing.
+/// A reified probe matches structurally, as it always has. Returns `None` when a fallback
+/// reification refuses (the argument is not portable), which refuses the lookup.
+fn cross_claim_entry_matches(
+    ctx: &InterpContext,
+    entry: &CrossClaimEntry,
+    args: &[(Option<String>, Value)],
+    probes: &[CrossClaimArgProbe],
+    fallback: &mut [Option<PortableValue>],
+    reifies: &mut u64,
+) -> Option<bool> {
+    if entry.args.len() != args.len() {
+        return Some(false);
+    }
+    for (i, ((sn, sv), (an, value))) in entry.args.iter().zip(args.iter()).enumerate() {
+        if sn != an {
+            return Some(false);
+        }
+        let matched = match &probes[i] {
+            CrossClaimArgProbe::Reified(p) => portable_value_eq(sv, p),
+            CrossClaimArgProbe::Served { key, digest } => {
+                if entry.arg_digests[i].as_ref() != Some(digest) {
+                    false
+                } else if entry.arg_instances[i].as_ref() == Some(key) {
+                    true
+                } else {
+                    if fallback[i].is_none() {
+                        fallback[i] = Some(portable_value_from_ctx(ctx, value)?);
+                        *reifies += 1;
+                    }
+                    fallback[i]
+                        .as_ref()
+                        .is_some_and(|p| portable_value_eq(sv, p))
+                }
+            }
+        };
+        if !matched {
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
+/// Composite-argument reifications performed by lookups so far (see `lookup_arg_reifies`).
+pub fn cross_claim_lookup_arg_reify_count() -> u64 {
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().lookup_arg_reifies)
 }
 
 /// Entry-count admission for the cross-claim tier: distinct (fn, args) keys stop being STORED
@@ -2161,6 +2626,62 @@ thread_local! {
         RefCell::new(std::collections::HashSet::new());
     static CROSS_CLAIM_SHARE_OBSERVER: RefCell<Option<CrossClaimShareObserver>> =
         const { RefCell::new(None) };
+    /// Producers admitted by the DERIVED share (`v2.workflow.floor_pure_producer_share`
+    /// `derive_cross_claim_share`): fn nodes whose admission is not the producer but specific
+    /// call sites of it, so a call from any other site -- whose argument row the derivation never
+    /// judged closed -- stays outside the tier.
+    static CROSS_CLAIM_SITE_GATED: RefCell<std::collections::HashSet<usize>> =
+        RefCell::new(std::collections::HashSet::new());
+    /// The admitted sites whose fill is NETTED BUT NOT RETAINED: single-claim fill debt. Exactly
+    /// one declared claim demands the identity, so no later claim will ever ask for the value;
+    /// retaining it would spend the tier's byte budget on values nobody reads (floor probe
+    /// 37142207751: 638 stores declined at the byte budget, each leaving its fill on the claim).
+    /// The fill is measured and netted from the claim exactly as a retained one is.
+    static CROSS_CLAIM_NET_ONLY_SITES: RefCell<CrossClaimSiteSet> =
+        RefCell::new(CrossClaimSiteSet::default());
+    /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
+    static CROSS_CLAIM_ADMITTED_SITES: RefCell<CrossClaimSiteSet> =
+        RefCell::new(CrossClaimSiteSet::default());
+}
+
+/// A set of call sites, indexed so that MEMBERSHIP COSTS NO ALLOCATION. The check runs on every
+/// call of every site-gated producer, admitted site or not; keyed on `(String, i64, i64)` it
+/// allocated and hashed the file path each time, which same-revision floor pairs showed as about
+/// 30% more native time per evaluator step across the whole claim fold. The byte span is hashed
+/// first (two integers), and the file is compared as a borrowed string only on a span match.
+#[derive(Default)]
+struct CrossClaimSiteSet {
+    by_span: std::collections::HashMap<(i64, i64), Vec<String>>,
+}
+
+impl CrossClaimSiteSet {
+    fn from_sites(sites: std::collections::HashSet<(String, i64, i64)>) -> CrossClaimSiteSet {
+        let mut by_span: std::collections::HashMap<(i64, i64), Vec<String>> =
+            std::collections::HashMap::new();
+        for (file, start, end) in sites {
+            by_span.entry((start, end)).or_default().push(file);
+        }
+        CrossClaimSiteSet { by_span }
+    }
+
+    fn contains(&self, file: &str, start: i64, end: i64) -> bool {
+        self.by_span
+            .get(&(start, end))
+            .is_some_and(|files| files.iter().any(|f| f == file))
+    }
+
+    fn remove(&mut self, file: &str, start: i64, end: i64) {
+        if let Some(files) = self.by_span.get_mut(&(start, end)) {
+            files.retain(|f| f != file);
+            if files.is_empty() {
+                self.by_span.remove(&(start, end));
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.by_span.clear();
+    }
 }
 
 /// Clears stored values, roster and observer together: the tier's lifetime is ONE prepared
@@ -2169,8 +2690,17 @@ thread_local! {
 /// under it.
 pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| m.borrow_mut().clear());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
+    CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().clear());
+    CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
+    CROSS_CLAIM_COST_FLOOR_CPU_NANOS.with(|c| c.set(0));
+    CROSS_CLAIM_STORE_DECLINES.with(|d| d.borrow_mut().clear());
+    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
+    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(0));
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
     // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
     // outlived its subject would serve a later, differently-prepared evaluation a value acquired
@@ -2198,9 +2728,189 @@ pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(n
     }
 }
 
+/// Install the DERIVED share: each producer node is admitted at the listed call sites only.
+/// Adds to whatever the roster install admitted (carried-input producers keep their own
+/// admission); the site set replaces any previous derivation's.
+pub fn install_cross_claim_derived_share<I: IntoIterator<Item = Rc<Node>>>(
+    nodes: I,
+    sites: std::collections::HashSet<(String, i64, i64)>,
+) {
+    install_cross_claim_derived_share_with_net_only(nodes, sites, std::collections::HashSet::new())
+}
+
+/// As `install_cross_claim_derived_share`, with the subset of `sites` that are net-only (see
+/// `CROSS_CLAIM_NET_ONLY_SITES`). A net-only site must also be in `sites`.
+pub fn install_cross_claim_derived_share_with_net_only<I: IntoIterator<Item = Rc<Node>>>(
+    nodes: I,
+    sites: std::collections::HashSet<(String, i64, i64)>,
+    net_only_sites: std::collections::HashSet<(String, i64, i64)>,
+) {
+    CROSS_CLAIM_NET_ONLY_SITES
+        .with(|n| *n.borrow_mut() = CrossClaimSiteSet::from_sites(net_only_sites));
+    let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
+    // REPLACES the previous derivation rather than adding to it: a producer dropped from the
+    // derived set must leave the roster too, or it would remain admitted with no site gate --
+    // admitted everywhere, the widening this gate exists to prevent.
+    let previous: Vec<usize> =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().iter().copied().collect());
+    // A SITE GATE MAY ONLY NARROW WHAT THE DERIVATION ALONE ADMITS. A producer already admitted
+    // without a gate -- a carried-input producer on the roster, or the built-in `prepare_grammar`
+    // arm admitted by name -- keeps every call site: gating it would withdraw an admission the
+    // derivation never granted, which is how floor probe 37114012751 made 59 claims each
+    // re-prepare the grammar.
+    let gated: Vec<usize> = CROSS_CLAIM_PURE_ROSTER.with(|r| {
+        let mut r = r.borrow_mut();
+        for ptr in &previous {
+            r.remove(ptr);
+        }
+        let mut gated = Vec::new();
+        for node in &nodes {
+            let ptr = Rc::as_ptr(node) as usize;
+            if node.name == "prepare_grammar" || r.contains(&ptr) {
+                continue;
+            }
+            r.insert(ptr);
+            gated.push(ptr);
+        }
+        gated
+    });
+    CROSS_CLAIM_SITE_GATED.with(|g| *g.borrow_mut() = gated.into_iter().collect());
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| *a.borrow_mut() = CrossClaimSiteSet::from_sites(sites));
+    for node in &nodes {
+        keep_cross_claim_fn(node);
+    }
+}
+
+/// Whether THIS call site may use the cross-claim tier for `fn_node`. True for every producer
+/// admitted without a site gate; for a derived producer, only at a site the derivation admitted.
+fn cross_claim_site_admitted(fn_node: &Rc<Node>, call_node: &Node) -> bool {
+    let gated =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+    !gated
+        || CROSS_CLAIM_ADMITTED_SITES.with(|a| {
+            a.borrow().contains(
+                &call_node.span.file,
+                call_node.span.start,
+                call_node.span.end,
+            )
+        })
+}
+
+/// Whether this call site is a net-only (single-claim fill debt) site.
+fn cross_claim_site_is_net_only(call_node: &Node) -> bool {
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| {
+        n.borrow().contains(
+            &call_node.span.file,
+            call_node.span.start,
+            call_node.span.end,
+        )
+    })
+}
+
+/// Retire a derived producer's call site for the rest of the run after its fill came in below the
+/// cost floor. A site carries one closed argument row, so one identity, so the same small work on
+/// every later call; leaving it admitted would make every such call pay the tier's key (argument
+/// hash and total reification), open a fill and be declined again -- several hundred thousand
+/// declined publications on a planning probe. A producer admitted without a site gate is untouched.
+fn retire_cross_claim_site_below_cost_floor(fn_node: &Rc<Node>, call_node: &Node) {
+    let gated =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+    if !gated {
+        return;
+    }
+    let (start, end) = (call_node.span.start, call_node.span.end);
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().remove(&call_node.span.file, start, end));
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().remove(&call_node.span.file, start, end));
+}
+
+/// Whether a fill is BELOW the cost floor: it performed fewer evaluator steps than the step floor
+/// AND spent less thread CPU than the CPU floor. STEPS ALONE UNDERCOUNT A FILL WHOSE COST IS
+/// NATIVE: a nullary wrapper around an already-served producer performs a handful of steps and
+/// still pays the content hash and total reification of that producer's argument row to key the
+/// lookup (`dag_prepared_grammar` over `prepare_grammar(grammar:)`: 466 ms and 1140 ms on two
+/// measured fills). Judged on steps it was declined, so every claim re-paid that keying natively
+/// and outside its step budget. A CPU floor of zero (nothing installed) judges on steps alone.
+fn cross_claim_fill_below_cost_floor(guard: &CrossClaimFillGuard) -> bool {
+    let steps = evaluator_steps().wrapping_sub(guard.steps_started);
+    if steps >= CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.get()) {
+        return false;
+    }
+    let cpu_floor = CROSS_CLAIM_COST_FLOOR_CPU_NANOS.with(|c| c.get());
+    cpu_floor == 0 || thread_cpu_nanos().saturating_sub(guard.cpu_started) < cpu_floor
+}
+
+/// Publish one completed admitted fill: retain it in the tier, or -- at a net-only site -- net its
+/// cost from the paying claim without retaining the value. The cost floor applies to both: a fill
+/// below it is neither retained nor netted. Every declined outcome is counted by producer.
+fn publish_cross_claim_fill(
+    ctx: &InterpContext,
+    call_node: &Node,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    value: &Value,
+    fill_guard: Option<&CrossClaimFillGuard>,
+    net_only: bool,
+) {
+    if net_only {
+        if let Some(guard) = fill_guard {
+            if cross_claim_fill_below_cost_floor(guard) {
+                CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
+                note_cross_claim_store_outcome(
+                    func_name,
+                    &CrossClaimStoreOutcome::RefusedBelowCostFloor,
+                );
+                retire_cross_claim_site_below_cost_floor(fn_node, call_node);
+            } else {
+                guard.mark_stored();
+            }
+        }
+        return;
+    }
+    let outcome = store_cross_claim_pure_memo(ctx, fn_node, func_name, args, value, fill_guard);
+    note_cross_claim_store_outcome(func_name, &outcome);
+    if outcome == CrossClaimStoreOutcome::RefusedBelowCostFloor {
+        retire_cross_claim_site_below_cost_floor(fn_node, call_node);
+    }
+}
+
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
 pub fn install_cross_claim_share_observer(observer: Option<CrossClaimShareObserver>) {
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = observer);
+}
+
+thread_local! {
+    /// Every store the tier DECLINED for an admitted fill, by (producer, cause): the fill ran and
+    /// was not retained, so its cost stayed on the paying claim. Counted here so a claim that pays
+    /// for an admitted identity is explained by the run's own log rather than inferred.
+    static CROSS_CLAIM_STORE_DECLINES: RefCell<std::collections::BTreeMap<(String, &'static str), u64>> =
+        const { RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// The declined stores of admitted fills on this thread, as (producer, cause, count).
+pub fn cross_claim_store_declines() -> Vec<(String, &'static str, u64)> {
+    CROSS_CLAIM_STORE_DECLINES.with(|d| {
+        d.borrow()
+            .iter()
+            .map(|((producer, cause), n)| (producer.clone(), *cause, *n))
+            .collect()
+    })
+}
+
+fn note_cross_claim_store_outcome(func_name: &str, outcome: &CrossClaimStoreOutcome) {
+    if outcome.is_servable() || matches!(outcome, CrossClaimStoreOutcome::NotAdmitted) {
+        return;
+    }
+    CROSS_CLAIM_STORE_DECLINES.with(|d| {
+        *d.borrow_mut()
+            .entry((func_name.to_string(), outcome.cause()))
+            .or_insert(0) += 1;
+    });
+}
+
+/// Derived-share fills declined below the cost floor on this thread — receipt fodder only.
+pub fn cross_claim_below_cost_floor_count() -> u64 {
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().below_cost_floor)
 }
 
 /// (stores, overflow) for the cross-claim tier on this thread — receipt fodder only.
@@ -2246,6 +2956,7 @@ thread_local! {
 struct CrossClaimFillFrame {
     producer: String,
     cpu_started: u128,
+    wall_started: Instant,
     steps_started: u64,
     stored_children_cpu: u128,
     stored_children_wall: u128,
@@ -2271,6 +2982,7 @@ impl CrossClaimFillGuard {
             s.borrow_mut().push(CrossClaimFillFrame {
                 producer: func_name.to_string(),
                 cpu_started,
+                wall_started: Instant::now(),
                 steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
@@ -2306,6 +3018,7 @@ impl Drop for CrossClaimFillGuard {
             .unwrap_or(CrossClaimFillFrame {
                 producer: self.func_name.clone(),
                 cpu_started: self.cpu_started,
+                wall_started: self.wall_started,
                 steps_started: self.steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
@@ -2409,20 +3122,30 @@ fn try_cross_claim_pure_memo(
     };
     let args_hash = cross_claim_args_hash(ctx, args)?;
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
-    // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
-    // the full portable argument row, so an intra-frame hash collision cannot alias either.
-    let portable_args = portable_args_from_ctx(ctx, args)?;
+    // Hash first, then the argument row itself, so a hash collision cannot alias: each argument
+    // is verified by the digest of the served instance it is, or by its full portable form.
+    let probes = cross_claim_arg_probes(ctx, args)?;
     // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
     // per-context hit cache this path used to maintain is gone with the walk it existed to
     // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
     // machinery it obsoletes.
+    let mut fallback: Vec<Option<PortableValue>> = vec![None; args.len()];
+    let mut reifies = 0u64;
     let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
-        m.borrow().map.get(&memo_key).and_then(|bucket| {
-            bucket.iter().find_map(|(stored_args, stored)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
-            })
-        })
-    })?;
+        let m = m.borrow();
+        let bucket = m.map.get(&memo_key)?;
+        for entry in bucket {
+            match cross_claim_entry_matches(ctx, entry, args, &probes, &mut fallback, &mut reifies)
+            {
+                Some(true) => return Some(Some(entry.served.clone())),
+                Some(false) => {}
+                None => return None,
+            }
+        }
+        Some(None)
+    });
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().lookup_arg_reifies += reifies);
+    let value = value.flatten()?;
     cross_claim_observe_hit(func_name);
     Some(value)
 }
@@ -2463,6 +3186,9 @@ pub enum CrossClaimStoreOutcome {
     RefusedEntryCap,
     /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
     RefusedByteBudget,
+    /// A derived share's fill performed fewer evaluator steps than the declared cost floor, so the
+    /// value is recomputed rather than retained (DESIGN section 2's economic realization).
+    RefusedBelowCostFloor,
 }
 
 impl CrossClaimStoreOutcome {
@@ -2495,6 +3221,7 @@ impl CrossClaimStoreOutcome {
             CrossClaimStoreOutcome::RefusedValueNotPortable(_) => "ServeCacheValueNotPortable",
             CrossClaimStoreOutcome::RefusedEntryCap => "EntryCapReached",
             CrossClaimStoreOutcome::RefusedByteBudget => "ByteBudgetExceeded",
+            CrossClaimStoreOutcome::RefusedBelowCostFloor => "BelowCostFloor",
         }
     }
 }
@@ -2509,6 +3236,17 @@ fn store_cross_claim_pure_memo(
 ) -> CrossClaimStoreOutcome {
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return CrossClaimStoreOutcome::NotAdmitted;
+    }
+    // THE COST FLOOR, applied to a derived producer's fill at the moment it would be retained: the
+    // guard measured the fill's evaluator steps AND its thread CPU, so the decision rests on this
+    // fill's own work, native work included (`cross_claim_fill_below_cost_floor`).
+    if let Some(guard) = fill_guard {
+        let gated =
+            CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+        if gated && cross_claim_fill_below_cost_floor(guard) {
+            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
+            return CrossClaimStoreOutcome::RefusedBelowCostFloor;
+        }
     }
     // The same substitution the lookup makes, in the same place in the fold, so a warm and a
     // serve cannot disagree about what the key represents.
@@ -2538,15 +3276,16 @@ fn store_cross_claim_pure_memo(
     };
     // The evaluated value's content identity, recorded for the caller BEFORE the presence
     // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
-    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
-        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
-    });
+    let value_digest = portable_value_digest(&portable);
+    CROSS_CLAIM_LAST_STORE_DIGEST
+        .with(|d| *d.borrow_mut() = Some((func_name.to_string(), value_digest.clone())));
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
-            if bucket.iter().any(|(stored_args, _)| {
-                cross_claim_portable_args_match(stored_args, &portable_args)
-            }) {
+            if bucket
+                .iter()
+                .any(|entry| cross_claim_portable_args_match(&entry.args, &portable_args))
+            {
                 return CrossClaimStoreOutcome::AlreadyPresent;
             }
         }
@@ -2570,10 +3309,31 @@ fn store_cross_claim_pure_memo(
         // The portable form has done its two jobs by here — it proved total portability and it
         // measured the entry — and nothing downstream needs it again.
         let served = value_from_portable_ctx(ctx, &portable);
-        m.map
-            .entry(memo_key)
-            .or_default()
-            .push((portable_args, served));
+        // Its content hash, once, for every fresh context that will key a call on it.
+        carry_cross_claim_served_hash(ctx, &served);
+        // The served value's root is registered under its digest, so a later call that passes
+        // this value as an argument is verified without walking it; and each composite argument
+        // of THIS entry carries its digest for the same comparison from the other side.
+        if let Some(key) = served_instance_key(&served) {
+            m.served_instances
+                .insert(key, Rc::from(value_digest.as_str()));
+        }
+        let arg_digests = portable_args
+            .iter()
+            .map(|(_, v)| {
+                portable_is_composite(v).then(|| Rc::from(portable_value_digest(v).as_str()))
+            })
+            .collect();
+        let arg_instances = args
+            .iter()
+            .map(|(_, v)| served_instance_key(v).filter(|k| m.served_instances.contains_key(k)))
+            .collect();
+        m.map.entry(memo_key).or_default().push(CrossClaimEntry {
+            args: portable_args,
+            arg_digests,
+            arg_instances,
+            served,
+        });
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -2598,67 +3358,6 @@ pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
     CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| match d.borrow_mut().take() {
         Some((name, digest)) if name == func_name => Some(digest),
         _ => None,
-    })
-}
-
-/// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
-/// dispatched effect is a roster defect with its own remedy, not an evaluation failure.
-#[derive(Debug)]
-pub enum PureProducerWarmRefusal {
-    DispatchedEffect { effects: u64 },
-    Failed(String),
-}
-
-/// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier, under the
-/// same guard protocol as a claim-forced fill — so a preparation warm lands in the ledger as an
-/// outside-fold fill, not on the first claim. Returns the TYPED outcome: a servable tier
-/// (`Stored`, `AlreadyPresent`) vs each refusal by name, not one boolean.
-pub fn warm_cross_claim_pure_producer(
-    ctx: &InterpContext,
-    qualified_fn: &str,
-) -> Result<CrossClaimStoreOutcome, PureProducerWarmRefusal> {
-    with_active_ctx(ctx, || {
-        let fn_node = ctx
-            .lookup_fn(qualified_fn)
-            .ok_or_else(|| {
-                PureProducerWarmRefusal::Failed(format!(
-                    "no declaration named '{qualified_fn}' in this frame"
-                ))
-            })?
-            .clone();
-        let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
-        if !cross_claim_pure_admitted(&fn_node, bare) {
-            return Err(PureProducerWarmRefusal::Failed(format!(
-                "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
-            )));
-        }
-        let guard = CrossClaimFillGuard::enter(bare);
-        let env = Env::empty();
-        // THE SAME GUARD THE FOLD PATH HOLDS. The claim-time store refuses to publish a value
-        // whose evaluation dispatched an effect, because the key `(fn node, argument row)` cannot
-        // see what the effect read. The warm path stored without that guard, so an effectful
-        // nullary row rostered as a plain warm row was stored CONTENT-BLIND under the empty
-        // argument row — the key omitting an input the value depends on. A dispatch here is a
-        // roster defect (the row belongs in the prepared-effect-input rows, where the read is
-        // carried and keyed), so it stops the line rather than declining silently.
-        let effects_before = ctx.effect_dispatch_count.get();
-        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
-            .map_err(|e| PureProducerWarmRefusal::Failed(format!("{qualified_fn}: {e}")))?;
-        let effects = ctx
-            .effect_dispatch_count
-            .get()
-            .saturating_sub(effects_before);
-        if effects != 0 {
-            return Err(PureProducerWarmRefusal::DispatchedEffect { effects });
-        }
-        Ok(store_cross_claim_pure_memo(
-            ctx,
-            &fn_node,
-            bare,
-            &[],
-            &value,
-            Some(&guard),
-        ))
     })
 }
 
@@ -3655,6 +4354,531 @@ mod cross_claim_memo_tests {
         }
     }
 
+    // THE GATE NEVER NARROWS AN EXISTING ADMISSION: a producer admitted ungated before the derived
+    // share is installed (here, by the roster) keeps every call site even when the derivation also
+    // admits it at one site.
+    #[test]
+    fn a_derived_admission_never_gates_a_producer_already_admitted_ungated() {
+        use super::{
+            cross_claim_site_admitted, install_cross_claim_derived_share,
+            install_cross_claim_pure_share_roster,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node_at = |start: i64, end: i64| {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                Rc::new(crate::std_types::SourceSpan {
+                    file: "workspace/src/g.dag".to_string(),
+                    start,
+                    end,
+                }),
+            )
+        };
+        let carried = node_at(0, 1);
+        install_cross_claim_pure_share_roster([carried.clone()]);
+        let mut sites = std::collections::HashSet::new();
+        sites.insert(("workspace/src/g.dag".to_string(), 10, 20));
+        install_cross_claim_derived_share([carried.clone()], sites);
+        assert!(
+            cross_claim_site_admitted(&carried, &node_at(50, 60)),
+            "an already-admitted producer keeps a site the derivation did not list"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A NET-ONLY FILL IS NETTED AND NOT RETAINED. The pair varies only whether the site is
+    // net-only: the same fill at a net-only site marks the guard (so the claim is netted) and
+    // leaves the tier empty; at a retained site it lands in the tier.
+    #[test]
+    fn a_net_only_fill_is_netted_without_retaining_its_value() {
+        use super::{
+            cross_claim_pure_memo_counts, install_cross_claim_derived_share,
+            publish_cross_claim_fill, CrossClaimFillGuard,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let derived = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+        let guard = CrossClaimFillGuard::enter("tm_debt");
+        publish_cross_claim_fill(
+            &ctx,
+            &derived,
+            &derived,
+            "tm_debt",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+            true,
+        );
+        assert!(
+            guard.stored.get(),
+            "a net-only fill is netted from its claim"
+        );
+        drop(guard);
+        assert_eq!(
+            cross_claim_pure_memo_counts().0,
+            0,
+            "and its value is not retained"
+        );
+        let guard = CrossClaimFillGuard::enter("tm_debt");
+        publish_cross_claim_fill(
+            &ctx,
+            &derived,
+            &derived,
+            "tm_debt",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+            false,
+        );
+        drop(guard);
+        assert_eq!(
+            cross_claim_pure_memo_counts().0,
+            1,
+            "control: a retained site stores"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE COST FLOOR IS APPLIED AT RETENTION, TO THE FILL'S OWN STEPS. The pair varies only the
+    // floor: the same derived producer's fill is declined below it and stored at zero.
+    #[test]
+    fn a_derived_fill_below_the_cost_floor_is_declined_and_one_above_is_stored() {
+        use super::{
+            install_cross_claim_cost_floor_steps, install_cross_claim_derived_share,
+            store_cross_claim_pure_memo, CrossClaimFillGuard, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let derived = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+        install_cross_claim_cost_floor_steps(u64::MAX);
+        let guard = CrossClaimFillGuard::enter("tm_cheap");
+        let below = store_cross_claim_pure_memo(
+            &ctx,
+            &derived,
+            "tm_cheap",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+        );
+        drop(guard);
+        assert_eq!(below, CrossClaimStoreOutcome::RefusedBelowCostFloor);
+        assert_eq!(super::cross_claim_below_cost_floor_count(), 1);
+        install_cross_claim_cost_floor_steps(0);
+        let guard = CrossClaimFillGuard::enter("tm_cheap");
+        let stored = store_cross_claim_pure_memo(
+            &ctx,
+            &derived,
+            "tm_cheap",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+        );
+        drop(guard);
+        assert_eq!(stored, CrossClaimStoreOutcome::Stored);
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A SERVED INSTANCE PASSED AS AN ARGUMENT IS VERIFIED BY ITS INSTANCE, WITH NO REIFY; anything
+    // else is still reified and still refuses on a mismatch. Producer A's value is published and
+    // served; producer B is published over that served value as its argument. Three lookups of B:
+    // with the served instance (hit, zero reifies), with an equal value built afresh (hit, one
+    // reify -- the old path, still sound), and with a different value (miss).
+    #[test]
+    fn a_served_instance_argument_is_verified_by_instance_and_others_still_reify() {
+        use super::{
+            cross_claim_lookup_arg_reify_count, install_cross_claim_pure_share_roster, list_value,
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let node = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let (a, b) = (node(), node());
+        install_cross_claim_pure_share_roster([a.clone(), b.clone()]);
+        let built = || list_value(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&ctx, &a, "tm_a", &[], &built(), None),
+            CrossClaimStoreOutcome::Stored
+        );
+        let served = try_cross_claim_pure_memo(&ctx, &a, "tm_a", &[]).expect("A is served");
+        let over = |v: Value| vec![(Some("x".to_string()), v)];
+        assert_eq!(
+            store_cross_claim_pure_memo(
+                &ctx,
+                &b,
+                "tm_b",
+                &over(served.clone()),
+                &Value::Int(7),
+                None
+            ),
+            CrossClaimStoreOutcome::Stored
+        );
+        let before = cross_claim_lookup_arg_reify_count();
+        assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(served.clone())).is_some());
+        assert_eq!(
+            cross_claim_lookup_arg_reify_count(),
+            before,
+            "a served instance is named by its instance: no reify"
+        );
+        assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(built())).is_some());
+        assert_eq!(
+            cross_claim_lookup_arg_reify_count(),
+            before + 1,
+            "an equal value that is not the served instance is reified, and still hits"
+        );
+        let other = list_value(vec![Value::Int(1), Value::Int(2), Value::Int(4)]);
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(other)).is_none(),
+            "a different argument is not served another call's value"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A FRESH CONTEXT KEYS A SERVED VALUE WITHOUT RE-HASHING IT. Producer A's value (a list of
+    // lists) is published; a fresh context then keys a call on the served value AND on one list
+    // INSIDE it (the `prepared_exprs` shape: a field of a served grammar). Neither walk lands in
+    // the fresh context's own memo, because both hashes are read from the run-scoped served memo,
+    // and each key equals the one a cold walk computes with that memo emptied. The control is an
+    // EQUAL value that is not the served instance: it is walked in the context (its memo grows)
+    // and keys the same, so the carried hash changes cost only, never the key.
+    #[test]
+    fn a_fresh_context_keys_a_served_value_and_its_parts_without_rehashing() {
+        use super::{
+            cross_claim_served_hash_count, eval_recompute_key,
+            install_cross_claim_pure_share_roster, list_value, store_cross_claim_pure_memo,
+            try_cross_claim_pure_memo, CrossClaimStoreOutcome, CROSS_CLAIM_SERVED_HASH_MEMO,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let (a, consumer) = (node(), node());
+        install_cross_claim_pure_share_roster([a.clone()]);
+        let built = || {
+            list_value(vec![
+                list_value(vec![Value::Int(1), Value::Int(2)]),
+                list_value(vec![Value::Int(3), Value::Int(4)]),
+            ])
+        };
+        let publisher = fresh_ctx();
+        assert_eq!(
+            store_cross_claim_pure_memo(&publisher, &a, "tm_a", &[], &built(), None),
+            CrossClaimStoreOutcome::Stored
+        );
+        assert_eq!(
+            cross_claim_served_hash_count(),
+            3,
+            "the root and both inner lists"
+        );
+        let claim = fresh_ctx();
+        let served = try_cross_claim_pure_memo(&claim, &a, "tm_a", &[]).expect("A is served");
+        let Value::List(items) = &served else {
+            panic!("A serves a list")
+        };
+        let part = items[1].clone();
+        let key_of = |ctx: &InterpContext, v: &Value| {
+            eval_recompute_key(ctx, &consumer, &[(Some("x".to_string()), v.clone())])
+                .expect("a list of ints is keyable")
+        };
+        let warm_whole = key_of(&claim, &served);
+        let warm_part = key_of(&claim, &part);
+        assert_eq!(
+            claim.eval_recompute_hash_memo.borrow().len(),
+            0,
+            "a served value and its parts are keyed from the carried hashes, with no walk"
+        );
+        let carried = CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| std::mem::take(&mut *m.borrow_mut()));
+        let cold = fresh_ctx();
+        assert!(
+            key_of(&cold, &served) == warm_whole,
+            "the carried hash is the walked hash"
+        );
+        assert!(
+            key_of(&cold, &part) == warm_part,
+            "and so is an inner part's"
+        );
+        CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| *m.borrow_mut() = carried);
+        let other = fresh_ctx();
+        assert!(key_of(&other, &built()) == warm_whole);
+        assert!(
+            !other.eval_recompute_hash_memo.borrow().is_empty(),
+            "an equal value that is not the served instance is walked in its own context"
+        );
+        super::clear_cross_claim_pure_memos();
+        assert_eq!(cross_claim_served_hash_count(), 0, "cleared with the tier");
+    }
+
+    // A DIGEST IS NOT AN IDENTITY. `portable_value_digest` is a 64-bit FNV hash, so two distinct
+    // values can share one. An entry is forged whose argument digest EQUALS the served probe's but
+    // whose stored argument is a different value and a different instance: it must not match (the
+    // structural fallback refuses it). The positive control is the same entry carrying the probe's
+    // instance key, which matches with no reify; and an equal digest over an EQUAL value that is
+    // not the stored instance matches through the fallback, reifying once.
+    #[test]
+    fn two_values_sharing_a_digest_are_not_served_as_one_another() {
+        use super::{
+            cross_claim_entry_matches, list_value, served_instance_key, CrossClaimArgProbe,
+            CrossClaimEntry, PortableValue,
+        };
+        let ctx = fresh_ctx();
+        let probe_value = list_value(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let key = served_instance_key(&probe_value).expect("a list has an instance key");
+        let shared_digest: Rc<str> = Rc::from("forged-collision");
+        let args = vec![(Some("x".to_string()), probe_value.clone())];
+        let probes = vec![CrossClaimArgProbe::Served {
+            key,
+            digest: shared_digest.clone(),
+        }];
+        let stored_as = |stored: Vec<i64>, instance| CrossClaimEntry {
+            args: vec![(
+                Some("x".to_string()),
+                PortableValue::List(stored.into_iter().map(PortableValue::Int).collect()),
+            )],
+            arg_digests: vec![Some(shared_digest.clone())],
+            arg_instances: vec![instance],
+            served: Value::Int(7),
+        };
+        let run = |entry: &CrossClaimEntry| {
+            let mut fallback = vec![None];
+            let mut reifies = 0u64;
+            let hit =
+                cross_claim_entry_matches(&ctx, entry, &args, &probes, &mut fallback, &mut reifies)
+                    .expect("the argument is portable");
+            (hit, reifies)
+        };
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 4], None)),
+            (false, 1),
+            "a digest collision over a different value is refused by the structural fallback"
+        );
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 3], Some(key))),
+            (true, 0),
+            "the same served instance matches by identity, with no reify"
+        );
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 3], None)),
+            (true, 1),
+            "an equal value that is not the stored instance matches structurally"
+        );
+    }
+
+    // THE COST FLOOR COUNTS NATIVE WORK. The pair varies only the CPU rate: one fill that performs
+    // NO evaluator steps but burns thread CPU is declined when CPU is not counted (rate zero) and
+    // retained when it is. This is the `dag_prepared_grammar` shape -- a wrapper whose cost is the
+    // native keying of the producer beneath it -- which a steps-only floor declined on every claim.
+    #[test]
+    fn a_fill_with_native_cost_and_no_steps_is_retained_only_at_or_above_the_cpu_floor() {
+        use super::{
+            install_cross_claim_cost_floor_cpu_ms, install_cross_claim_cost_floor_steps,
+            install_cross_claim_derived_share, store_cross_claim_pure_memo, thread_cpu_nanos,
+            CrossClaimFillGuard, CrossClaimStoreOutcome,
+        };
+        fn burn_two_milliseconds_of_cpu() {
+            let started = thread_cpu_nanos();
+            let mut acc = 0u64;
+            while thread_cpu_nanos().saturating_sub(started) < 2_000_000 {
+                acc = std::hint::black_box(acc.wrapping_mul(31).wrapping_add(7));
+            }
+        }
+        // The fill burns 2 ms of CPU and performs no steps. With no CPU floor it is judged on
+        // steps and declined; under a 1 ms CPU floor it is retained; under a 1000 ms one it is not.
+        for (cpu_floor_ms, expected) in [
+            (0u64, CrossClaimStoreOutcome::RefusedBelowCostFloor),
+            (1u64, CrossClaimStoreOutcome::Stored),
+            (1_000u64, CrossClaimStoreOutcome::RefusedBelowCostFloor),
+        ] {
+            super::clear_cross_claim_pure_memos();
+            let ctx = fresh_ctx();
+            let derived = make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            );
+            install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+            install_cross_claim_cost_floor_steps(1_000);
+            install_cross_claim_cost_floor_cpu_ms(cpu_floor_ms);
+            let guard = CrossClaimFillGuard::enter("tm_native");
+            burn_two_milliseconds_of_cpu();
+            let outcome = store_cross_claim_pure_memo(
+                &ctx,
+                &derived,
+                "tm_native",
+                &[],
+                &Value::Int(1),
+                Some(&guard),
+            );
+            drop(guard);
+            assert_eq!(outcome, expected, "cpu floor {cpu_floor_ms} ms");
+        }
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE EXCUSAL IS BOUNDED BY THE FILL'S OWN WORK. The stalled control is the point: a fill in
+    // flight that performs NO evaluator steps is excused nothing, however long it has run, so the
+    // claim's wall deadline fires on it. The same fill after doing work is excused in proportion
+    // to its steps, and never past the outer cap.
+    #[test]
+    fn a_stalled_in_flight_fill_is_excused_nothing_and_a_working_one_by_its_steps() {
+        use super::{
+            in_flight_cross_claim_fill_wall_nanos, install_cross_claim_in_flight_wall_bound,
+            record_eval_step, CrossClaimFillGuard,
+        };
+        super::clear_cross_claim_pure_memos();
+        let guard = CrossClaimFillGuard::enter("tm_slow");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no bound installed: nothing excused"
+        );
+        install_cross_claim_in_flight_wall_bound(1_000, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "STALLED: 5ms of wall and zero steps is excused nothing"
+        );
+        for _ in 0..1_000 {
+            record_eval_step();
+        }
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            1_000_000,
+            "1000 steps at a 1000ns ceiling excuse exactly 1ms of the 5ms"
+        );
+        install_cross_claim_in_flight_wall_bound(0, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no outer cap: nothing excused"
+        );
+        drop(guard);
+        install_cross_claim_in_flight_wall_bound(1_000, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no fill in flight: nothing excused"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE SITE GATE OF THE DERIVED SHARE. A derived producer is admitted at the call sites the
+    // derivation judged closed and nowhere else: the same producer called from another site has an
+    // argument row nobody judged, so it must stay outside the tier. The discriminating pair varies
+    // only the call site; the control is a producer admitted without a gate (a carried-input
+    // producer), which is unaffected by any site set.
+    #[test]
+    fn a_derived_producer_is_admitted_only_at_its_admitted_sites() {
+        use super::{
+            cross_claim_site_admitted, install_cross_claim_derived_share,
+            install_cross_claim_pure_share_roster,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node_at = |start: i64, end: i64| {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                Rc::new(crate::std_types::SourceSpan {
+                    file: "workspace/src/n7.dag".to_string(),
+                    start,
+                    end,
+                }),
+            )
+        };
+        let derived = node_at(0, 1);
+        let ungated = node_at(2, 3);
+        install_cross_claim_pure_share_roster([ungated.clone()]);
+        let mut sites = std::collections::HashSet::new();
+        sites.insert(("workspace/src/n7.dag".to_string(), 100, 140));
+        install_cross_claim_derived_share([derived.clone()], sites);
+        assert!(
+            cross_claim_site_admitted(&derived, &node_at(100, 140)),
+            "the admitted site uses the tier"
+        );
+        assert!(
+            !cross_claim_site_admitted(&derived, &node_at(200, 240)),
+            "another site of the same derived producer must not"
+        );
+        assert!(
+            cross_claim_site_admitted(&ungated, &node_at(200, 240)),
+            "control: a producer admitted without a site gate is unaffected"
+        );
+        // A SITE WHOSE FILL CAME IN BELOW THE COST FLOOR IS RETIRED, so its later calls skip the
+        // tier instead of keying and being declined again. Only the site named is retired, a
+        // same-span site in another file is a different site, and an ungated producer keeps all.
+        let mut two = std::collections::HashSet::new();
+        two.insert(("workspace/src/n7.dag".to_string(), 100, 140));
+        two.insert(("workspace/src/n7.dag".to_string(), 300, 340));
+        two.insert(("workspace/src/other.dag".to_string(), 100, 140));
+        install_cross_claim_derived_share([derived.clone()], two);
+        super::retire_cross_claim_site_below_cost_floor(&derived, &node_at(100, 140));
+        assert!(!cross_claim_site_admitted(&derived, &node_at(100, 140)));
+        assert!(cross_claim_site_admitted(&derived, &node_at(300, 340)));
+        let other_file = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            Rc::new(crate::std_types::SourceSpan {
+                file: "workspace/src/other.dag".to_string(),
+                start: 100,
+                end: 140,
+            }),
+        );
+        assert!(cross_claim_site_admitted(&derived, &other_file));
+        super::retire_cross_claim_site_below_cost_floor(&ungated, &node_at(200, 240));
+        assert!(cross_claim_site_admitted(&ungated, &node_at(200, 240)));
+        super::clear_cross_claim_pure_memos();
+        assert!(
+            cross_claim_site_admitted(&derived, &node_at(200, 240)),
+            "clearing the tier clears the gate with it"
+        );
+    }
+
     // RED (review 57446 F1): admission is by RESOLVED DECLARATION IDENTITY, so a bare-name
     // HOMONYM in a non-rostered module must NOT store — name-set admission cached any
     // same-named fn in the subject. Fn-node identity in the key stopped cross-SERVING between
@@ -4303,68 +5527,6 @@ mod cross_claim_memo_tests {
                 .expect("Cons/Empty chain must resolve under a held immutable interner borrow");
             assert_eq!(items, vec![Value::Int(7)]);
         });
-    }
-
-    /// The real-path discriminating pair for the in-flight boundary. Both arms evaluate the
-    /// same compiled producer through `eval_pure_named_call` and cross the same 5ms CPU
-    /// ceiling. Resolved-identity admission is the only changed fact: without it the ordinary
-    /// entry budget fires; with it the refusal names the prospective shared-fill producer.
-    #[test]
-    fn admitted_in_flight_fill_crossing_is_typed_and_unadmitted_control_is_ordinary() {
-        use super::InterpError;
-        use crate::v1_compiler_compile::SourceFile;
-
-        super::clear_cross_claim_pure_memos();
-        let items = std::iter::repeat("0")
-            .take(200_000)
-            .collect::<Vec<_>>()
-            .join(",");
-        let result =
-            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
-                SourceFile {
-                    path: "workspace/src/fill_budget_fixture.dag".to_string(),
-                    content: format!(
-                        "module fixture.fill_budget\nfn producer() -> List<Int> {{ [{items}] }}\n\
-                     fn use_producer() -> List<Int> {{ producer() }}\n"
-                    ),
-                }
-            ),]));
-        let graph = result.graph.as_ref().expect("fixture graph");
-        let fresh = || {
-            InterpContext::new(
-                graph,
-                result.source_indices.clone(),
-                ExecutionMode::Hermetic,
-            )
-        };
-
-        let control = fresh();
-        control.arm_eval_deadline(5);
-        match super::run_in_context(&control, "fixture.fill_budget.use_producer", false) {
-            Err(InterpError::EvaluationBudgetExceeded { .. }) => {}
-            other => panic!("unadmitted control must keep the ordinary refusal: {other:?}"),
-        }
-
-        let admitted = fresh();
-        let producer = admitted
-            .lookup_fn_node("fixture.fill_budget.producer")
-            .expect("fixture producer");
-        super::install_cross_claim_pure_share_roster([producer]);
-        admitted.arm_eval_deadline(5);
-        match super::run_in_context(&admitted, "fixture.fill_budget.use_producer", false) {
-            Err(InterpError::FillBudgetExceeded {
-                producer,
-                fill_cpu_nanos,
-                limit_ms,
-                ..
-            }) => {
-                assert_eq!(producer, "producer");
-                assert!(fill_cpu_nanos >= 5_000_000, "fill CPU must cross 5ms");
-                assert_eq!(limit_ms, 5);
-            }
-            other => panic!("admitted specimen must name its in-flight fill: {other:?}"),
-        }
-        super::clear_cross_claim_pure_memos();
     }
 }
 
@@ -5932,7 +7094,11 @@ impl InterpContext {
         let fill_since =
             crate::cli_run::shared_artifact_fill_wall_nanos().saturating_sub(fill_at_arm);
         Some((
-            start.elapsed().as_nanos().saturating_sub(fill_since),
+            start
+                .elapsed()
+                .as_nanos()
+                .saturating_sub(fill_since)
+                .saturating_sub(in_flight_cross_claim_fill_wall_nanos()),
             budget_ms,
         ))
     }
@@ -5949,6 +7115,22 @@ impl InterpContext {
         let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
         let elapsed = std::time::Duration::from_nanos(elapsed_nanos as u64);
         if elapsed.as_millis() as u64 > budget_ms {
+            // WHEN A FILL IS IN FLIGHT, THE REFUSAL NAMES IT: the producer, the steps it has
+            // performed and its wall, beside what was excused. A fill that stopped advancing, or
+            // outran the outer cap, is then visible as such rather than as an unexplained
+            // interrupted claim.
+            if let Some((producer, fill_steps, fill_wall)) = in_flight_cross_claim_fill_progress() {
+                eprintln!(
+                    "[cross-claim-fill-wall-deadline] entry={} producer={producer} \
+                     fill_steps={fill_steps} fill_wall_ms={} excused_wall_ms={} limit_ms={budget_ms} \
+                     ns_per_step_ceiling={} outer_cap_ms={}",
+                    self.budget_entry_or_unnamed(),
+                    fill_wall / 1_000_000,
+                    in_flight_cross_claim_fill_wall_nanos() / 1_000_000,
+                    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.get()),
+                    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get()) / 1_000_000,
+                );
+            }
             Some(InterpError::EvaluationBudgetExceeded {
                 entry: self.budget_entry_or_unnamed(),
                 clock: EvaluationClock::MonotonicWall,
@@ -6263,6 +7445,97 @@ thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
+/// One `.dag` declaration frame an error unwound through: the declaration's name and the span
+/// of its node. `file` + `start` is the declaration's own position, not the raise site's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RaiseFrame {
+    pub decl: String,
+    pub file: String,
+    pub start: i64,
+}
+
+/// WHERE A RUNTIME ERROR WAS RAISED, as declarations rather than prose. Most `InterpError` arms
+/// carry no source position at their raise site (only field-access `TypeError`s were ever
+/// located, and only those got a call chain appended), so the location every arm CAN carry is the
+/// innermost `.dag` declaration being evaluated when the error was raised, plus the call path
+/// that reached it. `frames[0]` is that innermost declaration; the last frame is the outermost
+/// one recorded (for a claim, the claim function itself, unless `elided` > 0).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RaisePath {
+    pub frames: Vec<RaiseFrame>,
+    pub elided: usize,
+}
+
+/// Frames kept per error. The innermost frames locate the raise; beyond this a deep chain only
+/// grows the line.
+const RAISE_PATH_FRAME_LIMIT: usize = 12;
+
+thread_local! {
+    /// The unwind path of the error currently propagating, each entry tagged with its call depth.
+    /// Written only by `call_function`; read and cleared by `take_raise_path`.
+    static RAISE_PATH: std::cell::RefCell<(Vec<(u32, RaiseFrame)>, usize)> =
+        const { std::cell::RefCell::new((Vec::new(), 0)) };
+}
+
+/// Record `fn_node` as a frame of the propagating error, or forget a path that is no longer
+/// propagating.
+///
+/// The interpreter DOES recover from some errors (an `Err(_)` arm that retries another access
+/// style, for one), so a recorded path can outlive its error. Two rules keep a stale path from
+/// being attributed to a later error: any frame that returns `Ok` clears it (the error it held
+/// was absorbed below that frame), and a frame is appended only when it is the direct caller of
+/// the last recorded one (depth exactly one less); otherwise the new error starts a fresh path.
+fn record_raise_frame(result: &InterpResult<Value>, fn_node: &Rc<Node>, depth: u32) {
+    match result {
+        Ok(_) => RAISE_PATH.with(|p| {
+            let mut p = p.borrow_mut();
+            if !p.0.is_empty() || p.1 != 0 {
+                p.0.clear();
+                p.1 = 0;
+            }
+        }),
+        // Control flow, not a failure: `return` unwinds to its own function frame.
+        Err(InterpError::EarlyReturn { .. }) => {}
+        Err(_) => RAISE_PATH.with(|p| {
+            let mut p = p.borrow_mut();
+            let continues = p.0.last().map(|(d, _)| *d == depth + 1).unwrap_or(false);
+            if !continues {
+                p.0.clear();
+                p.1 = 0;
+            }
+            if p.0.len() < RAISE_PATH_FRAME_LIMIT {
+                p.0.push((
+                    depth,
+                    RaiseFrame {
+                        decl: fn_node.name.to_string(),
+                        file: fn_node.span.file.to_string(),
+                        start: fn_node.span.start,
+                    },
+                ));
+            } else {
+                // Keep tagging the depth so the contiguity check still sees the unwind
+                // continuing; only the frame itself is dropped.
+                if let Some(last) = p.0.last_mut() {
+                    last.0 = depth;
+                }
+                p.1 += 1;
+            }
+        }),
+    }
+}
+
+/// Take the raise path of the error that just escaped `run_in_context`, leaving none behind.
+/// Call it immediately after the evaluation returns `Err`, on the same thread.
+pub fn take_raise_path() -> RaisePath {
+    RAISE_PATH.with(|p| {
+        let (frames, elided) = std::mem::take(&mut *p.borrow_mut());
+        RaisePath {
+            frames: frames.into_iter().map(|(_, f)| f).collect(),
+            elided,
+        }
+    })
+}
+
 /// Bounded execution (§4): a call chain deeper than this is a typed, located refusal naming
 /// the frontier function — never a host stack overflow, which aborts the process and every
 /// later witness's measurement (measured: a cycle in live_deploy script assembly under
@@ -6283,6 +7556,7 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    record_raise_frame(&result, fn_node, depth);
     // A located TypeError carries its raise site but no route back up the call chain, which made
     // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
     // frame as the error unwinds, bounded so a deep chain cannot grow the message without limit.
@@ -6709,6 +7983,77 @@ pub fn record_shared_artifact_fill_cpu_nanos(nanos: u128) {
 /// The running fill total for this thread.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
+thread_local! {
+    /// THE OUTER HARD CAP on the wall an in-flight admitted fill may be excused from a claim's
+    /// wall deadline, so a fill that advances forever still terminates. Zero (the default)
+    /// excuses nothing. The floor installs its preparation wall safety limit.
+    static CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// THE WORK BOUND: wall is excused only in proportion to the evaluator steps the fill has
+    /// performed, at this declared ceiling of nanoseconds per step
+    /// (`v2.workflow.floor_pure_producer_share`
+    /// `floor_cross_claim_fill_wall_per_step_ceiling`). A fill that is blocked or descheduled
+    /// accrues wall without steps and is therefore not excused. Zero excuses nothing.
+    static CROSS_CLAIM_FILL_NS_PER_STEP_CEILING: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// The declared cost floor (evaluator steps) below which a derived share's fill is not
+    /// retained. Zero (the default) retains every admitted fill.
+    static CROSS_CLAIM_COST_FLOOR_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The declared CPU floor (thread CPU nanoseconds): a fill at or above it is retained however
+    /// few evaluator steps it performed. Zero judges on steps alone.
+    static CROSS_CLAIM_COST_FLOOR_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+}
+
+/// Install the in-flight fill excusal: the outer hard cap and the nanoseconds-per-step ceiling.
+pub fn install_cross_claim_in_flight_wall_bound(cap_ms: u64, ns_per_step_ceiling: u64) {
+    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(u128::from(cap_ms) * 1_000_000));
+    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(u128::from(ns_per_step_ceiling)));
+}
+
+/// Install the derived share's cost floor (see `CROSS_CLAIM_COST_FLOOR_STEPS`).
+pub fn install_cross_claim_cost_floor_steps(steps: u64) {
+    CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(steps));
+}
+
+/// Install the CPU arm of the cost floor, in milliseconds (see `CROSS_CLAIM_COST_FLOOR_CPU_NANOS`).
+pub fn install_cross_claim_cost_floor_cpu_ms(cpu_ms: u64) {
+    CROSS_CLAIM_COST_FLOOR_CPU_NANOS.with(|c| c.set(u128::from(cpu_ms) * 1_000_000));
+}
+
+/// The outermost in-flight admitted fill, as (producer, its own steps so far, its own wall so
+/// far), each less the stored children already netted when they completed.
+fn in_flight_cross_claim_fill_progress() -> Option<(String, u64, u128)> {
+    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
+        frames.borrow().first().map(|outermost| {
+            (
+                outermost.producer.clone(),
+                evaluator_steps()
+                    .wrapping_sub(outermost.steps_started)
+                    .saturating_sub(outermost.stored_children_steps),
+                outermost
+                    .wall_started
+                    .elapsed()
+                    .as_nanos()
+                    .saturating_sub(outermost.stored_children_wall),
+            )
+        })
+    })
+}
+
+/// Wall the outermost in-flight admitted fill is EXCUSED from a claim's wall deadline: its own
+/// wall so far, bounded by its own WORK (steps so far times the declared ceiling) and by the
+/// outer hard cap. This is the wall-clock sibling of `in_flight_cross_claim_fill`: a claim that
+/// first-touches a fill is not charged the fill's wall while the fill is doing work, and is
+/// charged all of it the moment the fill stops advancing.
+fn in_flight_cross_claim_fill_wall_nanos() -> u128 {
+    let cap = CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get());
+    let ceiling = CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.get());
+    if cap == 0 || ceiling == 0 {
+        return 0;
+    }
+    in_flight_cross_claim_fill_progress().map_or(0, |(_, steps, wall)| {
+        wall.min(u128::from(steps).saturating_mul(ceiling)).min(cap)
+    })
 }
 
 fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
@@ -7361,15 +8706,18 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 }
             }
             _ => {
-                if let (Some(mut a), Some(b)) =
-                    (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                // A persistent RRB append, never an element copy: a `Value::List` operand is
+                // shared as-is and only a free-monoid chain is materialized (and charged).
+                if let (Some((a_items, a_copied)), Some((b_items, b_copied))) =
+                    (value_to_list_carrier(&left), value_to_list_carrier(&right))
                 {
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += (a.len() + b.len()) as u64;
+                    counters.list_concat_items_copied += a_copied + b_copied;
                     drop(counters);
-                    a.extend(b);
-                    return Ok(list_value((a)));
+                    let mut result = (*a_items).clone();
+                    result.append((*b_items).clone());
+                    return Ok(list_value(result));
                 }
             }
         }
@@ -9172,27 +10520,6 @@ fn match_pattern(
                 field_bindings,
                 parent_identity,
             } => {
-                // A variant pattern against a HOST bool is a native arm or nothing: the identity
-                // inference carried decides which value it denotes, and an undecidable one refuses.
-                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
-                // never reach this branch and keep their structural match below.
-                if let Value::Bool(held) = value {
-                    let arm = name.rsplit('.').next().unwrap_or(name);
-                    return match native_variant_reading(parent_identity, arm) {
-                        NativeVariantReading::HostBool(b) => {
-                            if *held == b {
-                                Some(HashMap::new())
-                            } else {
-                                None
-                            }
-                        }
-                        NativeVariantReading::Structural => None,
-                        NativeVariantReading::Refused(detail) => {
-                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
-                            None
-                        }
-                    };
-                }
                 // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
                 // containment path, but values are constructed with the bare last segment (the
                 // short-name normalization at value construction). Every name-vs-literal
@@ -9209,7 +10536,11 @@ fn match_pattern(
                 // { value: t } => ... }` failed non-exhaustive on any record element (pre-existing
                 // on main; located via the interpreted-parse suite reds). Hoisted here verbatim;
                 // Variant payloads excluded so the Variant arm's inline raw-value handling stays
-                // authoritative.
+                // authoritative. A host Bool payload is a raw value like any other: these unwraps
+                // run BEFORE the host-bool arm below, which otherwise answered `Present`/`Absent`
+                // against a raw `Bool?` as a native True/False arm and missed, so a REST-decoded
+                // `email_verified: Bool?` failed non-exhaustive on `true` (gunbc.recurring_failure_mode
+                // optional_bool_payload_read_as_a_native_arm).
                 if name_last == "Present"
                     && parent_enum_is(parent_enum.as_ref(), "Optional")
                     && !matches!(value, Value::Null)
@@ -9235,6 +10566,27 @@ fn match_pattern(
                         bindings.extend(sub_bindings);
                     }
                     return Some(bindings);
+                }
+                // Otherwise a variant pattern against a HOST bool is a native arm or nothing: the identity
+                // inference carried decides which value it denotes, and an undecidable one refuses.
+                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
+                // never reach this branch and keep their structural match below.
+                if let Value::Bool(held) = value {
+                    let arm = name.rsplit('.').next().unwrap_or(name);
+                    return match native_variant_reading(parent_identity, arm) {
+                        NativeVariantReading::HostBool(b) => {
+                            if *held == b {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        }
+                        NativeVariantReading::Structural => None,
+                        NativeVariantReading::Refused(detail) => {
+                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
+                            None
+                        }
+                    };
                 }
                 if name_last == "Absent" && field_bindings.is_empty() {
                     return match value {
@@ -9913,13 +11265,19 @@ fn eval_pure_named_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
-        return Ok(v);
+    // A derived producer is admitted at its admitted call sites only; from any other site the
+    // call neither serves nor stores, exactly as if the producer were not admitted at all.
+    let share_site = cross_claim_site_admitted(fn_node, call_node);
+    let net_only = share_site && cross_claim_site_is_net_only(call_node);
+    if share_site && !net_only {
+        if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
+            return Ok(v);
+        }
     }
     // Guard runs only for admitted calls: a store that lands must carry what it cost, so the
     // paying claim's receipt can net it and the shared-fill ledger can attribute it. Its
     // `Drop` closes the fill on every path out of this function.
-    let fill_guard = if cross_claim_pure_admitted(fn_node, func_name) {
+    let fill_guard = if share_site && cross_claim_pure_admitted(fn_node, func_name) {
         Some(CrossClaimFillGuard::enter(func_name))
     } else {
         None
@@ -9930,17 +11288,19 @@ fn eval_pure_named_call(
         let effects_before = ctx.effect_dispatch_count.get();
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
-            if ctx.effect_dispatch_count.get() == effects_before {
+            if share_site && ctx.effect_dispatch_count.get() == effects_before {
                 // The ordinary call path publishes opportunistically: every outcome,
                 // servable or refused, is already counted inside the store, and this
                 // call recomputes on a refusal exactly as if never enrolled.
-                let _ = store_cross_claim_pure_memo(
+                publish_cross_claim_fill(
                     ctx,
+                    call_node,
                     fn_node,
                     func_name,
                     args,
                     v,
                     fill_guard.as_ref(),
+                    net_only,
                 );
             }
         }
@@ -9958,7 +11318,28 @@ fn eval_pure_named_call(
             // buckets comparable; the earlier count-only form could name a producer it could
             // never rank.
             let partial = eval_recompute_partial_key(ctx, fn_node, args);
+            let effects_before = ctx.effect_dispatch_count.get();
             let result = call_function(ctx, fn_node, args, env);
+            // THE RECOMPUTE LEDGER'S KEY IS NOT THE TIER'S. This branch is taken when the ledger
+            // cannot key the arguments; the tier keys them itself (or refuses, counted), and a
+            // net-only fill needs no key at all. Returning here without publishing left an
+            // admitted fill on the paying claim with nothing said (floor probe 37142207751).
+            if share_site {
+                if let Ok(v) = &result {
+                    if ctx.effect_dispatch_count.get() == effects_before {
+                        publish_cross_claim_fill(
+                            ctx,
+                            call_node,
+                            fn_node,
+                            func_name,
+                            args,
+                            v,
+                            fill_guard.as_ref(),
+                            net_only,
+                        );
+                    }
+                }
+            }
             eval_recompute_record_unkeyed(
                 ctx,
                 fn_node,
@@ -9987,9 +11368,17 @@ fn eval_pure_named_call(
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
-        if ctx.effect_dispatch_count.get() == effects_before {
-            let _ =
-                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+        if share_site && ctx.effect_dispatch_count.get() == effects_before {
+            publish_cross_claim_fill(
+                ctx,
+                call_node,
+                fn_node,
+                func_name,
+                args,
+                v,
+                fill_guard.as_ref(),
+                net_only,
+            );
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
@@ -10358,6 +11747,60 @@ enum EvalRecomputeStep {
     Bail,
 }
 
+thread_local! {
+    /// THE CONTENT HASHES OF EVERY VALUE THE CROSS-CLAIM TIER SERVES, computed once, at
+    /// publication, over the served instance and each composite inside it. A served value is
+    /// handed to every claim by `Rc` clone, but each claim runs in a FRESH `InterpContext`, whose
+    /// own memo is empty, so the first call in each claim that took a served value (or any part of
+    /// it, such as a prepared grammar's `prepared_exprs`) as an argument re-hashed the whole thing
+    /// natively: a per-claim cost proportional to the served value's size, outside the step budget.
+    /// The hash is a fact about the instance, not the context: it reads only content and
+    /// process-canonical symbol spellings. So it is computed once and carried with the tier.
+    ///
+    /// THE JOIN IS INSTANCE IDENTITY, NEVER A DIGEST. An entry is consulted by `Rc` pointer and
+    /// used only while its allocation is alive, and the tier retains every served value for its
+    /// lifetime, so the pointer cannot be reused while the entry stands: the hash read is exactly
+    /// the one a fresh walk of that instance would compute. Serving a memoized call still verifies
+    /// its arguments, so this memo decides only the cost of a key, never what a key admits.
+    /// Cleared with the tier (`clear_cross_claim_pure_memos`).
+    static CROSS_CLAIM_SERVED_HASH_MEMO: RefCell<EvalRecomputeHashMemo> =
+        RefCell::new(EvalRecomputeHashMemo::default());
+}
+
+/// A composite's memoized content hash: the context's own memo first, then the hashes carried
+/// for tier-served instances. Both are joined by the live allocation the pointer names. While the
+/// served memo is itself being filled (`memo` IS that memo, mutably borrowed), the second read is
+/// skipped.
+fn eval_recompute_memo_get(memo: &EvalRecomputeHashMemo, ptr: usize) -> Option<u64> {
+    if let Some((w, h)) = memo.get(&ptr) {
+        if w.alive() {
+            return Some(*h);
+        }
+    }
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|served| {
+        let served = served.try_borrow().ok()?;
+        match served.get(&ptr) {
+            Some((w, h)) if w.alive() => Some(*h),
+            _ => None,
+        }
+    })
+}
+
+/// Hash a value the tier is about to serve, once, into the served-instance memo. A value carrying
+/// a closure has no content hash and is simply not carried; every later key derivation then
+/// refuses it exactly as before.
+fn carry_cross_claim_served_hash(ctx: &InterpContext, served: &Value) {
+    let interner = ctx.symbols.borrow();
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|memo| {
+        let _ = eval_recompute_value_hash(&mut memo.borrow_mut(), &interner, served);
+    });
+}
+
+/// Composite hashes carried for tier-served instances (the served-instance memo's population).
+pub fn cross_claim_served_hash_count() -> usize {
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| m.borrow().len())
+}
+
 fn eval_recompute_value_hash(
     memo: &mut EvalRecomputeHashMemo,
     interner: &SymbolInterner,
@@ -10388,8 +11831,8 @@ fn eval_recompute_value_hash(
                 Value::Closure { .. } => EvalRecomputeStep::Bail,
                 Value::Set(s) => {
                     let ptr = Rc::as_ptr(s) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             let mut h: u64 = 0xA5A5_00A0;
                             for item in s.iter() {
@@ -10402,8 +11845,8 @@ fn eval_recompute_value_hash(
                 }
                 Value::List(xs) => {
                     let ptr = Rc::as_ptr(xs) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::List { rc: xs.clone() },
@@ -10417,10 +11860,10 @@ fn eval_recompute_value_hash(
                 Value::Record { type_name, fields } => {
                     let ptr = Rc::as_ptr(fields) as usize;
                     let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(0xA5A5_0070, type_sym_hash),
-                            *h,
+                            h,
                         )),
                         _ => {
                             let field_name_hashes = fields
@@ -10450,13 +11893,13 @@ fn eval_recompute_value_hash(
                     let ptr = Rc::as_ptr(fields) as usize;
                     let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
                     let variant_sym_hash = eval_recompute_str_hash(interner.resolve(*variant_name));
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(
                                 eval_recompute_mix(0xA5A5_0080, type_sym_hash),
                                 variant_sym_hash,
                             ),
-                            *h,
+                            h,
                         )),
                         _ => {
                             let field_name_hashes = fields
@@ -10480,8 +11923,8 @@ fn eval_recompute_value_hash(
                 }
                 Value::Map(m) => {
                     let ptr = Rc::as_ptr(m) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             let mut key_hashes = Vec::with_capacity(m.len());
                             let mut values = Vec::with_capacity(m.len());
@@ -10565,9 +12008,8 @@ fn eval_recompute_extend_push_hash(
     let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
         return;
     };
-    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
-        Some((w, h)) if w.alive() => *h,
-        _ => return,
+    let Some(parent_h) = eval_recompute_memo_get(&memo, Rc::as_ptr(parent) as usize) else {
+        return;
     };
     let interner = ctx.symbols.borrow();
     let Some(item_h) = eval_recompute_value_hash(&mut memo, &interner, item) else {
@@ -10609,9 +12051,8 @@ fn eval_recompute_extend_insert_hash(
     let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
         return;
     };
-    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
-        Some((w, h)) if w.alive() => *h,
-        _ => return,
+    let Some(parent_h) = eval_recompute_memo_get(&memo, Rc::as_ptr(parent) as usize) else {
+        return;
     };
     let interner = ctx.symbols.borrow();
     let key_h = eval_recompute_canon_key_hash(key);
@@ -11983,76 +13424,6 @@ mod cast_scope_index_tests {
         ((**graph).clone(), result.source_indices.clone())
     }
 
-    // The counted work is the host-side declaration walk, which eval_steps cannot see.
-    // Multiple fresh frames have the same prepared scope, exactly as on the required floor.
-    // Reverting to a frame-owned index authors the red: each first lookup walks every item.
-    #[test]
-    fn fresh_cast_frames_do_not_rescan_the_prepared_scope() {
-        PROFILE_FLAG.with(|flag| flag.set(Some(true)));
-        let (graph, sources) = fixture();
-        let indexes = InterpContext::build_scope_indexes(&graph, sources);
-        let mut samples = Vec::new();
-        for _ in 0..4 {
-            let ctx = InterpContext::over_scope_indexes(
-                indexes.clone(),
-                ExecutionMode::Hermetic,
-                None,
-                None,
-            );
-            let before = cast_lookup_counters().2;
-            let started = thread_cpu_nanos();
-            assert!(lookup_type_item_across_modules(&ctx, "Shared").is_some());
-            let cold_cpu = thread_cpu_nanos().saturating_sub(started);
-            let cold_visits = cast_lookup_counters().2 - before;
-            let started = thread_cpu_nanos();
-            assert!(lookup_type_item_across_modules(&ctx, "Shared").is_some());
-            let warm_cpu = thread_cpu_nanos().saturating_sub(started);
-            let warm_visits = cast_lookup_counters().2 - before - cold_visits;
-            samples.push((cold_visits, warm_visits, cold_cpu, warm_cpu));
-        }
-        eprintln!(
-            "cast-scope-index (cold visits, warm visits, cold cpu ns, warm cpu ns): {samples:?}"
-        );
-        assert!(samples
-            .iter()
-            .all(|(cold, warm, _, _)| *cold == 0 && *warm == 0));
-    }
-
-    // Both modules author Shared with different kernels. Alias lookup has always used
-    // graph order, first declaration wins, independently of function lookup precedence.
-    #[test]
-    fn cast_lookup_preserves_graph_order_even_with_reversed_function_precedence() {
-        let (graph, sources) = fixture();
-        let first = graph
-            .modules
-            .iter()
-            .flat_map(|m| m.items.iter())
-            .find(|item| authored_name_at(sources.clone(), (*item).clone()) == "Shared")
-            .expect("fixture has colliding declarations")
-            .clone();
-        let order: Vec<String> = graph
-            .modules
-            .iter()
-            .rev()
-            .map(|module| module.func_env.name.clone())
-            .collect();
-        for module_order in [None, Some(order.as_slice())] {
-            let indexes = InterpContext::build_scope_indexes_with_module_order(
-                &graph,
-                sources.clone(),
-                module_order,
-                None,
-            );
-            let ctx =
-                InterpContext::over_scope_indexes(indexes, ExecutionMode::Hermetic, None, None);
-            let selected =
-                lookup_type_item_across_modules(&ctx, "Shared").expect("Shared resolves");
-            assert!(Rc::ptr_eq(&selected, &first));
-            assert!(lookup_type_item_across_modules(&ctx, "Absent").is_none());
-            assert!(lookup_type_item_across_modules(&ctx, "fixture.cast_first.Shared").is_none());
-        }
-    }
-
     // Offline differential oracle for the removed scan, never reachable in production.
     // This explicitly resolves the lane's real scope; ordinary unit runs stay fixture-bounded.
     #[test]
@@ -12706,7 +14077,10 @@ macro_rules! v1_algebra_method_arms {
                             Ok((key, item.clone()))
                         })
                         .collect::<InterpResult<_>>()?;
-                    keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
+                    admit_emitted_ord_keys(keyed.iter().map(|(k, _)| k), "sort_by")?;
+                    keyed.sort_by(|(ka, _), (kb, _)| {
+                        canonical_content_cmp(ka, kb).expect("admitted scalar keys are ordered")
+                    });
                     Ok(list_value(
                         keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
                     ))
@@ -13580,7 +14954,14 @@ fn eval_service_call(
             OutputChannel::Instrumentation,
             &format!("[hermetic:mock] {}.{}", service_name, op_name),
         );
-        return eval_mock_response(op_node, ctx);
+        // A REST operation's mock is its decoded-200 body, so it reaches the caller in the
+        // answered arm of the same coproduct a wet exchange yields.
+        let mocked = eval_mock_response(op_node, ctx)?;
+        return Ok(if is_rest_transport(transport.clone(), ctx.si()) {
+            rest_answered_value(ctx, mocked)
+        } else {
+            mocked
+        });
     }
 
     let result = dispatch_service_wet(
@@ -18703,10 +20084,10 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
     })
 }
 
-/// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
-/// outcome/replay bridge below it through `dispatch_rest`: bounded growth in the seed
-/// interpreter, not a new Rust authority nor a second transport convention. Every DECISION is
-/// modeled — outcome states `extdeps.transports.rest` `RestOutcome`, observation states
+/// HAND-RUST GATE explicit deferral (review 46616), covering the REST result/replay bridge
+/// below through `dispatch_rest`: bounded growth in the seed interpreter, not a new Rust
+/// authority nor a second transport convention. Every DECISION is modeled — result states
+/// `extdeps.transports.rest` `RestResult` / `RestRefusal`, observation states
 /// `RestExchangeObservation`, replay identity and 0/1/many lookup `rest_bound_invocation_eq` /
 /// `rest_exchange_fixture_lookup`, resolution selected by calling `rest_exchange_resolution`
 /// back into `.dag`. Seed-side is only the projection onto the operation's declared output
@@ -18715,27 +20096,12 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
 /// `v1-honest-frontier`.
 ///
-/// EARLIER, NARROWER deletion condition than the lane's, which should fire first (SCOPE
-/// paragraph of the `rest_outcome_note` annotation): when the `response` block becomes the single authority
-/// and `output` is DERIVED from its 2xx arm, every operation carries its outcome without
-/// declaring one; the opt-in disappears, `transport_outcome_output_field` deletes outright (no
-/// field to detect), and the `if status >= 400` raise below it deletes in the same motion
-/// (it serves only operations declaring no outcome). Checkable by execution:
-/// `rest_operation_without_outcome_still_refuses` pins the opt-in's existence, so it must be
-/// REPLACED (not kept green) when the seam dissolves — a `Legacy` operation with no outcome
-/// field can no longer exist.
+/// The shell opt-in seam declared by `extdeps.transports.shell` `ShellOutcome`.
 ///
-/// The opt-in migration seam declared by extdeps.transports.rest.RestOutcome.
-///
-/// An operation asks for transport observations by declaring an output field of type
-/// RestOutcome. Operations without it keep the legacy raise-on-failure behavior until the
-/// response table becomes the universal result authority; see the rest_outcome_note annotation. Inspect the
-/// field's TYPE, not its spelling, so callers may pick a domain-appropriate name without
-/// another transport convention.
-///
-/// ONE DETECTOR FOR BOTH TRANSPORTS: `outcome_type` names the transport's outcome carrier
-/// (`RestOutcome`, `extdeps.transports.shell` `ShellOutcome`), so the shell opt-in is the same
-/// seam read with a different type name, not a second convention beside this one.
+/// A shell operation asks for transport observations by declaring an output field of type
+/// ShellOutcome; one without it keeps raise-on-failure. Inspect the field's TYPE, not its
+/// spelling. REST no longer has this seam: every REST operation yields `RestResult` over its
+/// declared output, so there is no field to detect and no raise to fall back to.
 fn transport_outcome_output_field(
     op_node: &Rc<Node>,
     ctx: &InterpContext,
@@ -18756,21 +20122,39 @@ fn transport_outcome_output_field(
     })
 }
 
-fn rest_outcome_variant(
+fn rest_refusal_variant(
     ctx: &InterpContext,
     variant: &str,
     mut fields: Vec<(Symbol, Value)>,
 ) -> Value {
     fields.sort_unstable_by_key(|(name, _)| name.0);
     Value::Variant {
-        type_name: ctx.sym("RestOutcome"),
+        type_name: ctx.sym("RestRefusal"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     }
 }
 
-/// `extdeps.transports.shell` `ShellOutcome`, projected the way `rest_outcome_variant` projects
-/// `RestOutcome`.
+/// `extdeps.transports.rest` `RestResult`: the one value a REST operation yields. The body's
+/// fields exist only inside `RestAnswered`, so no output field is ever produced without a value.
+fn rest_answered_value(ctx: &InterpContext, answer: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("RestResult"),
+        variant_name: ctx.sym("RestAnswered"),
+        fields: Rc::new(vec![(ctx.sym("answer"), answer)]),
+    }
+}
+
+fn rest_refused_value(ctx: &InterpContext, refusal: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("RestResult"),
+        variant_name: ctx.sym("RestRefused"),
+        fields: Rc::new(vec![(ctx.sym("refusal"), refusal)]),
+    }
+}
+
+/// `extdeps.transports.shell` `ShellOutcome`, projected the way `rest_refusal_variant` projects
+/// `RestRefusal`.
 fn shell_outcome_variant(
     ctx: &InterpContext,
     variant: &str,
@@ -18785,7 +20169,7 @@ fn shell_outcome_variant(
 }
 
 fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> Value {
-    rest_outcome_variant(
+    rest_refusal_variant(
         ctx,
         "RestStatusRefused",
         vec![
@@ -18796,7 +20180,7 @@ fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> 
 }
 
 fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
-    rest_outcome_variant(
+    rest_refusal_variant(
         ctx,
         "RestTransportRefused",
         vec![(ctx.sym("cause"), str_value(cause))],
@@ -18804,7 +20188,7 @@ fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
 }
 
 fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) -> Value {
-    rest_outcome_variant(
+    rest_refusal_variant(
         ctx,
         "RestBodyUndecodable",
         vec![
@@ -19159,40 +20543,18 @@ fn decide_rest_exchange(
     observation: RestExchangeObservationHost,
     op_node: &Rc<Node>,
     response_format: &str,
-    outcome_field: Option<&str>,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> Value {
+    let refused = |refusal: Value| rest_refused_value(ctx, refusal);
     let (status, body) = match observation {
         RestExchangeObservationHost::ExchangeRefused(cause) => {
-            return match outcome_field {
-                Some(field) => Ok(attach_transport_outcome(
-                    None,
-                    op_node,
-                    field,
-                    rest_transport_refused_value(ctx, cause),
-                    ctx,
-                )),
-                None => Err(InterpError::TypeError {
-                    msg: format!("HTTP request failed: {}", cause),
-                }),
-            };
+            return refused(rest_transport_refused_value(ctx, cause));
         }
         RestExchangeObservationHost::Response {
             status,
             body: RestBodyObservationHost::ReadRefused(cause),
         } => {
-            return match outcome_field {
-                Some(field) => Ok(attach_transport_outcome(
-                    None,
-                    op_node,
-                    field,
-                    rest_body_undecodable_value(ctx, status, cause),
-                    ctx,
-                )),
-                None => Err(InterpError::TypeError {
-                    msg: format!("HTTP {} body unreadable: {}", status, cause),
-                }),
-            };
+            return refused(rest_body_undecodable_value(ctx, status, cause));
         }
         RestExchangeObservationHost::Response {
             status,
@@ -19200,94 +20562,43 @@ fn decide_rest_exchange(
         } => (status, body),
     };
     if !(200..300).contains(&status) {
-        if let Some(field) = outcome_field {
-            return Ok(attach_transport_outcome(
-                None,
-                op_node,
-                field,
-                rest_status_refused_value(ctx, status, body),
-                ctx,
-            ));
-        }
-    }
-    if status >= 400 {
-        return Err(InterpError::TypeError {
-            msg: format!("HTTP {}: {}", status, body),
-        });
+        return refused(rest_status_refused_value(ctx, status, body));
     }
     let mapped = if response_format == "Text" {
-        map_response_to_value(&body, None, op_node, ctx)?
+        map_response_to_value(&body, op_node, ctx)
     } else {
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
                 let cause = format!("JSON body did not decode: {}", error);
-                return match outcome_field {
-                    Some(field) => Ok(attach_transport_outcome(
-                        None,
-                        op_node,
-                        field,
-                        rest_body_undecodable_value(ctx, status, cause),
-                        ctx,
-                    )),
-                    None => Err(InterpError::TypeError {
-                        msg: format!("HTTP {} body undecodable: {}", status, cause),
-                    }),
-                };
+                return refused(rest_body_undecodable_value(ctx, status, cause));
             }
         };
         match map_response_to_value_json(&json, op_node, ctx) {
             Ok(mapped) => mapped,
             Err(refusal) => {
-                return match outcome_field {
-                    Some(field) => Ok(attach_transport_outcome(
-                        None,
-                        op_node,
-                        field,
-                        rest_body_undecodable_value(
-                            ctx,
-                            status,
-                            format!("body did not inhabit the declared output: {}", refusal),
-                        ),
-                        ctx,
-                    )),
-                    None => Err(InterpError::RestResponseUndecodable { refusal }),
-                };
+                return refused(rest_body_undecodable_value(
+                    ctx,
+                    status,
+                    format!("body did not inhabit the declared output: {}", refusal),
+                ));
             }
         }
     };
-    if let Some(missing) = rest_payload_null_fields(&mapped, op_node, outcome_field, ctx) {
+    if let Some(missing) = rest_payload_null_fields(&mapped, op_node, ctx) {
         let cause = format!(
             "HTTP {} body did not inhabit the declared output (null at {})",
             status, missing
         );
-        return match outcome_field {
-            Some(field) => Ok(attach_transport_outcome(
-                None,
-                op_node,
-                field,
-                rest_body_undecodable_value(ctx, status, cause),
-                ctx,
-            )),
-            None => Err(InterpError::TypeError { msg: cause }),
-        };
+        return refused(rest_body_undecodable_value(ctx, status, cause));
     }
-    match outcome_field {
-        Some(field) => Ok(attach_transport_outcome(
-            Some(mapped),
-            op_node,
-            field,
-            rest_outcome_variant(ctx, "RestOk", vec![]),
-            ctx,
-        )),
-        None => Ok(mapped),
-    }
+    rest_answered_value(ctx, mapped)
 }
 
-/// Project an observation into the operation's declared output record. On a non-success
-/// outcome (RestOutcome or ShellOutcome) the transport-derived fields are Null: the outcome is the
-/// only inhabited branch and so the only consumable fact. On success (RestOk, ShellExited) keep
-/// the mapped fields and replace just the outcome field.
+/// Project a shell observation into the operation's declared output record. On a non-success
+/// ShellOutcome the transport-derived fields are Null: the outcome is the only inhabited branch
+/// and so the only consumable fact. On ShellExited keep the mapped fields and replace just the
+/// outcome field. REST does not come through here: its result is the `RestResult` coproduct.
 fn attach_transport_outcome(
     mapped: Option<Value>,
     op_node: &Rc<Node>,
@@ -19617,14 +20928,12 @@ fn dispatch_rest(
     )?;
     let selection = rest_exchange_selection(invocation, ctx)?;
     let observation = observe_rest_exchange(selection, request, body_json);
-    let outcome_field = transport_outcome_output_field(op_node, ctx, "RestOutcome");
-    decide_rest_exchange(
+    Ok(decide_rest_exchange(
         observation,
         op_node,
         &response_format,
-        outcome_field.as_deref(),
         ctx,
-    )
+    ))
 }
 
 pub fn resolve_auth(
@@ -19796,22 +21105,14 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
     result
 }
 
-fn map_response_to_value(
-    text: &str,
-    _json: Option<&serde_json::Value>,
-    op_node: &Rc<Node>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn map_response_to_value(text: &str, op_node: &Rc<Node>, ctx: &InterpContext) -> Value {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(str_value(text.to_string())),
+        _ => return str_value(text.to_string()),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(str_value(text.to_string()));
-    }
-    if children.len() == 1 {
-        return Ok(str_value(text.to_string()));
+        return str_value(text.to_string());
     }
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
@@ -19819,18 +21120,10 @@ fn map_response_to_value(
         fields.push((ctx.sym(&field_name), str_value(text.to_string())));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
-    Ok(Value::Record {
+    Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
-    })
-}
-
-fn rest_output_child_is_outcome(child: &Rc<Node>, ctx: &InterpContext) -> bool {
-    let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
-    else {
-        return false;
-    };
-    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("RestOutcome")
+    }
 }
 
 fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
@@ -19867,7 +21160,6 @@ fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> 
 fn rest_payload_null_fields(
     mapped: &Value,
     op_node: &Rc<Node>,
-    outcome_field: Option<&str>,
     ctx: &InterpContext,
 ) -> Option<String> {
     let optional = rest_optional_output_field_names(op_node, ctx);
@@ -19877,9 +21169,7 @@ fn rest_payload_null_fields(
                 .iter()
                 .filter(|(name, value)| {
                     let field = ctx.resolve(*name);
-                    Some(field.as_str()) != outcome_field
-                        && matches!(value, Value::Null)
-                        && !optional.contains(&field)
+                    matches!(value, Value::Null) && !optional.contains(&field)
                 })
                 .map(|(name, _)| ctx.resolve(*name))
                 .collect();
@@ -19926,16 +21216,10 @@ fn map_response_to_value_json(
         return Ok(json_to_value(json));
     }
 
-    let payload_count = children
-        .iter()
-        .filter(|child| !rest_output_child_is_outcome(child, ctx))
-        .count();
+    let payload_count = children.len();
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        if rest_output_child_is_outcome(child, ctx) {
-            continue;
-        }
         let from_key = extract_from_key(child, ctx);
         let val = match from_key {
             Some(path) => {
@@ -21018,8 +22302,8 @@ fn eval_emit_host_run_transport_builtin(
         std::process::id(),
         EMIT_HOST_WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport: workspace create failed: {e}"),
+    std::fs::create_dir_all(&workspace).map_err(|e| {
+        InterpError::host_io("emit_host_run_transport: workspace create", &workspace, &e)
     })?;
 
     let result = emit_host_run_transport_in_workspace(
@@ -21210,9 +22494,11 @@ fn eval_emit_host_native_cache_evict_builtin(
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("emit_host_native_cache_evict: {workspace_dir}: {e}"),
-        }),
+        Err(e) => Err(InterpError::host_io(
+            "emit_host_native_cache_evict: remove",
+            std::path::Path::new(&workspace_dir),
+            &e,
+        )),
     }
 }
 
@@ -21403,8 +22689,12 @@ fn run_cached_process_spec(
 ) -> InterpResult<Value> {
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
-    std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    std::fs::create_dir_all(&realization_workspace).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: workspace create",
+            &realization_workspace,
+            &e,
+        )
     })?;
     // ONE WRITER PER CONTENT-KEYED WORKSPACE. Two runs that share a cache root (two same-user runs
     // outside CI share ~/.cache) would otherwise materialize, build and mark one directory at once:
@@ -21433,8 +22723,12 @@ fn run_cached_process_spec(
         &build_environment,
     )?;
     let workspace = realization_workspace.join(resolved_build_context_identity);
-    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    std::fs::create_dir_all(&workspace).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: workspace create",
+            &workspace,
+            &e,
+        )
     })?;
 
     emit_host_run_transport_cached_in_workspace(
@@ -21646,12 +22940,11 @@ fn emit_host_cargo_configuration_digest(
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: read Cargo configuration {} failed: {e}",
-                        path.display()
-                    ),
-                })
+                return Err(InterpError::host_io(
+                    "emit_host_run_transport_cached: read Cargo configuration",
+                    &path,
+                    &e,
+                ))
             }
         }
     }
@@ -21680,23 +22973,25 @@ fn observe_tool_identity(
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<ObservedToolIdentity> {
     let resolved = resolve_host_tool_program(requested)?;
-    let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: resolve build tool {requested:?} \
-                 ({resolved:?}) failed: {e}"
-        ),
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: canonicalize build tool",
+            std::path::Path::new(&resolved),
+            &e,
+        )
     })?;
-    let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
-            canonical.display()
-        ),
+    let executable = std::fs::read(&canonical).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: read resolved build tool",
+            &canonical,
+            &e,
+        )
     })?;
     let mut command = std::process::Command::new(&resolved);
     command.args(version_args).current_dir(probe_workspace);
     emit_host_apply_build_environment(&mut command, environment);
-    let output = command.output().map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"),
+    let output = command.output().map_err(|e| {
+        host_tool_spawn_failure("emit_host_run_transport_cached", requested, &resolved, &e)
     })?;
     if !output.status.success() {
         return Err(InterpError::TypeError {
@@ -21784,6 +23079,25 @@ fn emit_host_resolved_build_context_identity(
     ]))
 }
 
+#[cfg(test)]
+pub(crate) fn emit_host_cargo_configuration_digest_for_test(
+    probe_workspace: &std::path::Path,
+) -> InterpResult<String> {
+    let environment = EmitHostBuildEnvironment {
+        entries: Vec::new(),
+        digest: String::new(),
+    };
+    emit_host_cargo_configuration_digest(&environment, probe_workspace)
+}
+
+#[cfg(test)]
+pub(crate) fn emit_host_materialize_workspace_files_for_test(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+) -> InterpResult<()> {
+    emit_host_materialize_workspace_files(workspace, files)
+}
+
 fn emit_host_materialize_workspace_files(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -21801,18 +23115,12 @@ fn emit_host_materialize_workspace_files(
         }
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: mkdir {} failed: {e}",
-                    parent.display()
-                ),
+            std::fs::create_dir_all(parent).map_err(|e| {
+                InterpError::host_io("emit_host_run_transport_cached: mkdir", parent, &e)
             })?;
         }
-        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: write {} failed: {e}",
-                full.display()
-            ),
+        std::fs::write(&full, text).map_err(|e| {
+            InterpError::host_io("emit_host_run_transport_cached: write", &full, &e)
         })?;
     }
     Ok(())
@@ -21836,10 +23144,19 @@ fn emit_host_run_transport_cached_in_workspace(
     let cold_control = std::env::var("GUNBC_CI_NATIVE_CACHE_COLD_CONTROL")
         .map(|v| v == "1")
         .unwrap_or(false);
-    let recorded_cold_compile_nanos = std::fs::read_to_string(&cold_compile_receipt)
-        .ok()
-        .and_then(|s| s.trim().parse::<u128>().ok())
-        .filter(|n| *n > 0);
+    // An ABSENT receipt is the ordinary warm miss. Any other read failure is the host refusing,
+    // and is refused as such rather than absorbed into a rebuild that hides it.
+    let recorded_cold_compile_nanos = match std::fs::read_to_string(&cold_compile_receipt) {
+        Ok(s) => s.trim().parse::<u128>().ok().filter(|n| *n > 0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(InterpError::host_io(
+                "emit_host_run_transport_cached: read cold compile receipt",
+                &cold_compile_receipt,
+                &e,
+            ))
+        }
+    };
     // The timing receipt is part of readiness for the production transition: an old marker
     // without its measured cold wall is a warm miss and widens to a rebuild, never a zero.
     let compile_skipped = !cold_control
@@ -21958,15 +23275,19 @@ fn emit_host_run_transport_cached_in_workspace(
             process_termination_label(&out.status)
         )));
         if out.status.success() {
-            std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
-                msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
+            std::fs::write(&ready_marker, b"1").map_err(|e| {
+                InterpError::host_io(
+                    "emit_host_run_transport_cached: ready marker write",
+                    &ready_marker,
+                    &e,
+                )
             })?;
             std::fs::write(&cold_compile_receipt, cold_compile_nanos.to_string()).map_err(|e| {
-                InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: cold compile receipt write failed: {e}"
-                    ),
-                }
+                InterpError::host_io(
+                    "emit_host_run_transport_cached: cold compile receipt write",
+                    &cold_compile_receipt,
+                    &e,
+                )
             })?;
         }
         return Ok(transport_result(
@@ -22021,19 +23342,11 @@ fn emit_host_run_transport_in_workspace(
         }
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport: mkdir {} failed: {e}",
-                    parent.display()
-                ),
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| InterpError::host_io("emit_host_run_transport: mkdir", parent, &e))?;
         }
-        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport: write {} failed: {e}",
-                full.display()
-            ),
-        })?;
+        std::fs::write(&full, text)
+            .map_err(|e| InterpError::host_io("emit_host_run_transport: write", &full, &e))?;
     }
 
     let target_dir = workspace.join("target");
@@ -22381,15 +23694,15 @@ macro_rules! v1_builtin_arms {
                             }
                             None => Ok(None),
                         },
-                        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
-                            (Some(mut a_items), Some(b_items)) => {
+                        _ => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
+                            (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
                                 let mut counters = $ctx.mutation_counters.borrow_mut();
                                 counters.list_concat_calls += 1;
-                                counters.list_concat_items_copied +=
-                                    (a_items.len() + b_items.len()) as u64;
+                                counters.list_concat_items_copied += a_copied + b_copied;
                                 drop(counters);
-                                a_items.extend(b_items);
-                                Ok(Some(list_value((a_items))))
+                                let mut result = (*a_items).clone();
+                                result.append((*b_items).clone());
+                                Ok(Some(list_value(result)))
                             }
                             _ => Ok(None),
                         },
@@ -25040,6 +26353,12 @@ fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, 
     Some((get("Empty"), get("Cons"), get("head"), get("tail")))
 }
 
+/// The elements of a list value in either representation -- a kernel `List` or the structural
+/// `FreeMonoid` (`Cons`/`Empty`) that `v2.std.algebra` folds return -- read in `ctx`.
+pub fn list_value_items(ctx: &InterpContext, val: &Value) -> Option<Vec<Value>> {
+    with_active_ctx(ctx, || free_monoid_to_vec(val))
+}
+
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let site = std::panic::Location::caller();
     let mut out = Vec::new();
@@ -25652,17 +26971,31 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
 /// deterministic, so a silently-different permutation is a plausible, stable, WRONG artifact
 /// (DESIGN.md 5 -- no fabricated plausible output).
 ///
-/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE. It answers `Ordering::Equal` for every
-/// pair it does not recognise -- mismatched kinds, records, variants, lists -- exactly the
-/// silent permutation above: a never-refusing comparator produces *an* order for key sets
-/// the emitted realization cannot represent, and `sort_by` with a non-total-order comparator
-/// leaves those keys wherever map iteration put them, so the answer is not even stable across
-/// runs. Refusing is the only honest arm. (`sort_by`'s own use of `cmp_values` is a separate
-/// caller contract, untouched here.)
+/// `cmp_values` -- which answered `Ordering::Equal` for every pair it did not recognise, an
+/// absorbing fallback that let `sort_by` silently disagree with the emitted `derive(Ord)` --
+/// was deleted in favour of the canonical content order behind `admit_emitted_ord_keys`.
 fn sorted_map_keys_in_emitted_order(
     keys: Vec<Value>,
     what: &str,
 ) -> Result<Vec<Value>, InterpError> {
+    admit_emitted_ord_keys(keys.iter(), what)?;
+    let mut keys = keys;
+    // Admitted kinds are homogeneous Str/Int/Bool, on which the canonical content order IS
+    // the emitted `Ord` (byte-lexicographic, numeric, false<true) -- one order, not a copy.
+    keys.sort_by(|a, b| canonical_content_cmp(a, b).expect("admitted scalar keys are ordered"));
+    Ok(keys)
+}
+
+/// The ONE admission for an interpreter sort that must agree with an emitted `K: Ord` sort
+/// (`sorted_map_keys`, `sort_by`): homogeneous Str, Int or Bool keys, whose emitted `Ord` is
+/// proven identical to the canonical content order. Every other kind refuses, typed: the
+/// emitted order there is a `derive(Ord)` in DECLARATION order (or does not compile, for
+/// `f64`), which the canonical spelling order does not reproduce, so any order here would be
+/// a silent disagreement between the two realizations (DESIGN section 5).
+fn admit_emitted_ord_keys<'a>(
+    keys: impl IntoIterator<Item = &'a Value>,
+    what: &str,
+) -> Result<(), InterpError> {
     #[derive(PartialEq, Eq)]
     enum KeyKind {
         Str,
@@ -25679,11 +27012,11 @@ fn sorted_map_keys_in_emitted_order(
     }
 
     let mut kind: Option<KeyKind> = None;
-    for k in &keys {
+    for k in keys {
         let this = kind_of(k).ok_or_else(|| InterpError::TypeError {
             msg: format!(
-                "{what}: map key of type '{}' has no emitted-Rust ordering to agree with \
-                 (emitted `sorted_map_keys<K: Ord>` orders by K's own Ord; only Str, Int and \
+                "{what}: key of type '{}' has no emitted-Rust ordering to agree with \
+                 (the emitted sort orders by K's own Ord; only Str, Int and \
                  Bool keys are proven to order identically in both realizations)",
                 k.type_label()
             ),
@@ -25694,34 +27027,15 @@ fn sorted_map_keys_in_emitted_order(
             Some(_) => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "{what}: map has keys of more than one type, so there is no emitted \
-                         `HashMap<K, V>` key ordering to agree with"
+                        "{what}: keys of more than one type, so there is no single emitted \
+                         `K: Ord` ordering to agree with"
                     ),
                 })
             }
         }
     }
 
-    let mut keys = keys;
-    keys.sort_by(|a, b| match (a, b) {
-        // `str`'s Ord is byte-lexicographic, and so is `String`'s in the emitted realization.
-        (Value::Str(x), Value::Str(y)) => x.as_ref().cmp(y.as_ref()),
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        // Unreachable: the loop above refused every other kind and every mixed key set.
-        _ => std::cmp::Ordering::Equal,
-    });
-    Ok(keys)
-}
-
-fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-    match (a, b) {
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-        (Value::Str(x), Value::Str(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        _ => std::cmp::Ordering::Equal,
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -25898,76 +27212,6 @@ mod file_effect_trace_tests {
         }
     }
 
-    #[test]
-    fn file_effect_begin_mirror_matches_seed_oracle() {
-        let ctx = oracle_context();
-
-        // The mode spelling comes back from the authority's own file_mode_of_octal_text →
-        // file_mode_octal round trip, so the expected clause below is not this test's invention.
-        let oracle = render(
-            &ctx,
-            "Filesystem.WriteCreateNewWithMode",
-            "dag/x.dag",
-            written_payload(&ctx, 12, Some("0600")),
-            true,
-        );
-        let mirror = render_file_effect_begin_line_mirror(
-            "Filesystem.WriteCreateNewWithMode",
-            "dag/x.dag",
-            &file_payload_clause(12, Some(0o600)),
-            true,
-        );
-        assert_eq!(
-            mirror, oracle,
-            "mirror must be byte-equal to the seed oracle"
-        );
-        assert_eq!(
-            mirror,
-            "🔄 started Filesystem.WriteCreateNewWithMode dag/x.dag (12 bytes, mode 0600)"
-        );
-
-        // 2. A write with no declared mode.
-        let oracle = render(
-            &ctx,
-            "Filesystem.Write",
-            "dag/gunbc/observation_emit_census.dag",
-            written_payload(&ctx, 166, None),
-            false,
-        );
-        let mirror = render_file_effect_begin_line_mirror(
-            "Filesystem.Write",
-            "dag/gunbc/observation_emit_census.dag",
-            &file_payload_clause(166, None),
-            false,
-        );
-        assert_eq!(
-            mirror, oracle,
-            "mirror must be byte-equal to the seed oracle"
-        );
-        assert_eq!(
-            mirror,
-            "◐ started Filesystem.Write dag/gunbc/observation_emit_census.dag (166 bytes)"
-        );
-
-        // 3. A path-only operation: the size clause is ABSENT rather than zero, so the line cannot
-        //    be read as "wrote 0 bytes".
-        let oracle = render(
-            &ctx,
-            "Filesystem.Read",
-            "foo.dag",
-            variant(&ctx, "FileEffectNoPayload", vec![]),
-            true,
-        );
-        let mirror = render_file_effect_begin_line_mirror("Filesystem.Read", "foo.dag", "", true);
-        assert_eq!(
-            mirror, oracle,
-            "mirror must be byte-equal to the seed oracle"
-        );
-        assert_eq!(mirror, "🔄 started Filesystem.Read foo.dag");
-        assert!(!mirror.contains("0 bytes"));
-        assert!(!mirror.contains("unreadable"));
-    }
-
     /// The mirror keeps the operand in every payload state — the property the raw line supplied
     /// and the one a "started <intent>"-only projection would silently drop.
     #[test]
@@ -25984,74 +27228,6 @@ mod file_effect_trace_tests {
                 "the operand must survive in {line:?}"
             );
         }
-    }
-    /// The doc on `file_mode_octal` claims the range comes from the caller's admission, not from
-    /// the type. That claim is only worth making if it is checked, so this holds the mirror against
-    /// `extdeps.access.posix file_mode_octal` BY EXECUTION across the range that admission admits
-    /// (0..=0o7777) — including the special-bits digit, which is where a three-digit rendering and a
-    /// four-digit one disagree. It also pins the discriminating case the reviewer raised: a value
-    /// ABOVE the admitted range would be silently masked, which is why the admission arm exists
-    /// upstream rather than here.
-    #[test]
-    fn file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range() {
-        let ctx = oracle_context();
-        // The authority's own direction: text -> FileMode -> octal spelling. A mode admitted by
-        // dispatch_file is a four-digit octal spelling, so feeding one and reading it back
-        // exercises both halves of the posix module on the same value this mirror spells.
-        let authority_octal = |spelling: &str| -> String {
-            let mode = super::run_in_context_with_args(
-                &ctx,
-                "file_mode_of_octal_text",
-                &[(Some("text".to_string()), Value::Str(spelling.into()))],
-                false,
-            )
-            .expect("file_mode_of_octal_text resolves");
-            // The parse returns FileMode?, so unwrap through the same optional shape the authority
-            // publishes rather than assuming a bare record.
-            let peeled = match mode {
-                Value::Variant {
-                    variant_name,
-                    ref fields,
-                    ..
-                } if ctx.sym_eq(variant_name, "Present") => fields
-                    .iter()
-                    .find(|(name, _)| ctx.sym_eq(*name, "value"))
-                    .map(|(_, v)| v.clone())
-                    .expect("Present carries its value"),
-                other => panic!("file_mode_of_octal_text refused {spelling}: {other:?}"),
-            };
-            super::run_in_context_with_args(
-                &ctx,
-                "file_mode_octal",
-                &[(Some("mode".to_string()), peeled)],
-                false,
-            )
-            .and_then(|v| match v {
-                Value::Str(ref s) => Ok(s.to_string()),
-                _ => Err(super::InterpError::NoSuchFunction {
-                    name: "file_mode_octal returned a non-string".to_string(),
-                }),
-            })
-            .expect("file_mode_octal resolves")
-        };
-        for spelling in [
-            "0000", "0600", "0644", "0755", "1777", "2755", "4755", "7777",
-        ] {
-            let value = u32::from_str_radix(spelling, 8).expect("octal literal");
-            assert!(
-                value <= 0o7777,
-                "{spelling} must be inside the range dispatch_file admits"
-            );
-            assert_eq!(
-                file_mode_octal(value),
-                authority_octal(spelling),
-                "mirror must agree with extdeps.access.posix on {spelling}"
-            );
-        }
-        // The narrowing the comment names: the mask is what makes a four-digit rendering total
-        // over the admitted range, and a value above it is the caller's to refuse (dispatch_file
-        // does, before dispatch). Asserted so the claim cannot drift back into "the type says so".
-        assert_eq!(file_mode_octal(0o100600), "0600");
     }
 }
 
@@ -26983,55 +28159,6 @@ mod wall_deadline_kill_tests {
         );
         let _ = child.kill();
         let _ = child.wait();
-    }
-
-    #[test]
-    fn wall_deadline_kills_sleep_before_completion_backstop() {
-        let ctx = wet_ctx();
-        // 200ms ceiling vs a 5s sleep: kill-at-deadline must refuse near the
-        // ceiling, not after the sleep finishes (the measure-after-spend defect).
-        ctx.arm_wall_deadline(200);
-        let started = Instant::now();
-        let child = Command::new("sleep")
-            .arg("5")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn sleep");
-        let err = wait_child_honoring_wall_deadline(
-            child,
-            &ctx,
-            "sleep",
-            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
-            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
-        )
-        .expect_err("over-budget sleep must refuse");
-        let elapsed_ms = started.elapsed().as_millis() as u64;
-        // The KERNEL result is caller-agnostic: this is generic shell-wait machinery, and the
-        // wall budget being armed only by the witness lane today is a fact about callers, not
-        // the bound. The witness lane maps it into its own refusal at the claim boundary
-        // (`map_budget_error_to_witness_refusal`), where its guidance text lives.
-        match err {
-            InterpError::EvaluationBudgetExceeded {
-                clock,
-                elapsed_nanos,
-                limit_ms,
-                ..
-            } => {
-                assert_eq!(limit_ms, 200);
-                assert_eq!(clock, EvaluationClock::MonotonicWall);
-                assert!(
-                    elapsed_nanos / 1_000_000 >= 200,
-                    "elapsed_nanos={elapsed_nanos}"
-                );
-            }
-            other => panic!("expected EvaluationBudgetExceeded, got {other:?}"),
-        }
-        assert!(
-            elapsed_ms < 2000,
-            "kill-at-deadline must stop near the 200ms ceiling, spent {elapsed_ms}ms (measure-after-spend would burn ~5000ms)"
-        );
     }
 
     #[test]
@@ -28007,56 +29134,6 @@ mod evaluator_step_work_measure_tests {
         evaluator_steps().wrapping_sub(before)
     }
 
-    /// THE DISCRIMINATING RED FOR THE WHOLE MEASURE. `gunbc.rung_drop`
-    /// `floor_cost_claim_qualification_unavailable` says an attempt's CPU duration is not an invariant
-    /// property of the witness, and names a deterministic work measure as one of the three arms
-    /// that would restore a claim-owned cost basis. This is that arm's evidence, and it is
-    /// asserted as EXACT EQUALITY rather than as a tolerance: a work measure that needed a
-    /// tolerance across envelopes would be a slow clock, not a count.
-    ///
-    /// THE TWO ENVELOPES ARE REAL AND DIFFERENT, not two calls in a row. The second arm runs
-    /// with the CPU deadline ARMED -- which is a different code path through `eval_expr`, taking
-    /// the stride poll and the two clock reads the first arm never executes -- and with a
-    /// co-tenant thread spinning beside it for the whole evaluation, which is the contention the
-    /// row's subject names. Neither perturbation may move the count by one.
-    #[test]
-    fn the_step_count_is_identical_across_two_execution_envelopes() {
-        let result = list_fixture("step_envelope", 2_000);
-
-        let quiet = steps_of(&result, "step_envelope", None);
-
-        let stop = Arc::new(AtomicBool::new(false));
-        let co_tenant = {
-            let stop = stop.clone();
-            std::thread::spawn(move || {
-                let mut spin = 0u64;
-                while !stop.load(Ordering::Relaxed) {
-                    for i in 0..10_000u64 {
-                        spin = spin.wrapping_add(i);
-                    }
-                }
-                std::hint::black_box(spin);
-            })
-        };
-        // A budget far above anything this fixture can spend: the point is that the deadline is
-        // ARMED, not that it fires. A fired deadline would end the evaluation early and the two
-        // arms would be measuring different amounts of work.
-        let contended = steps_of(&result, "step_envelope", Some(60_000));
-        stop.store(true, Ordering::Relaxed);
-        co_tenant.join().expect("co-tenant thread");
-
-        assert!(
-            quiet > 0,
-            "the step counter never advanced across a 2000-element list; every equality below \
-             would then be 0 == 0 and this file would assert nothing"
-        );
-        assert_eq!(
-            quiet, contended,
-            "evaluator steps must be identical across execution envelopes: quiet={quiet}, \
-             deadline-armed under co-tenant load={contended}"
-        );
-    }
-
     /// THE WORK CONTROL, and the reason the equality above is readable. A counter frozen at a
     /// constant satisfies every invariance assertion in this file; only a size change can tell
     /// an invariant measure from a dead one. Asserted as strict growth rather than as a ratio,
@@ -28072,80 +29149,6 @@ mod evaluator_step_work_measure_tests {
             large_steps > small_steps,
             "a tenfold larger list must take strictly more evaluator steps: \
              small={small_steps}, large={large_steps}"
-        );
-    }
-
-    /// THE ORDER-INVARIANCE HALF, WHICH IS A SEPARATE CLAIM FROM THE ENVELOPE HALF. A count
-    /// that included shared-artifact fills would be a function of WHICH claim ran first: the one
-    /// that filled the memo would carry the producer's steps and every later reader would carry
-    /// none. That is the same defect the 2026-08-27 fill-attribution ruling closed on the CPU
-    /// clock, and this asserts the work measure is netted by the same rule.
-    ///
-    /// THE RED IS THE RAW COUNT BESIDE THE NETTED ONE. The raw counts of the two runs are
-    /// asserted to differ by a wide margin -- proving the order dependence is real and large,
-    /// so the netted equality is not a vacuous comparison of two identical numbers.
-    #[test]
-    fn stored_shared_fills_are_netted_out_of_the_step_count() {
-        super::clear_cross_claim_pure_memos();
-        let items = (0..20_000)
-            .map(|i| i.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        let result =
-            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
-                SourceFile {
-                    path: "workspace/src/step_fill_fixture.dag".to_string(),
-                    content: format!(
-                        "module fixture.step_fill\nfn producer() -> List<Int> {{ [{items}] }}\n\
-                         fn use_producer() -> List<Int> {{ producer() }}\n"
-                    ),
-                }
-            ),]));
-        let graph = result.graph.as_ref().expect("fixture graph");
-        let fresh = || {
-            InterpContext::new(
-                graph,
-                result.source_indices.clone(),
-                ExecutionMode::Hermetic,
-            )
-        };
-        let enrolled = fresh();
-        let producer = enrolled
-            .lookup_fn_node("fixture.step_fill.producer")
-            .expect("fixture producer");
-        super::install_cross_claim_pure_share_roster([producer]);
-
-        // One measurement, exactly as `run_claim_measured` takes it: raw delta, fill delta,
-        // and the marginal figure that is the difference.
-        let measure = |ctx: &InterpContext| -> (u64, u64) {
-            let steps_before = evaluator_steps();
-            let fill_before = shared_artifact_fill_eval_steps();
-            let value = run_in_context(ctx, "fixture.step_fill.use_producer", false)
-                .expect("fixture must evaluate");
-            std::hint::black_box(value);
-            let raw = evaluator_steps().wrapping_sub(steps_before);
-            let fill = shared_artifact_fill_eval_steps().wrapping_sub(fill_before);
-            (raw, raw.saturating_sub(fill))
-        };
-
-        let filler = fresh();
-        let (raw_filler, marginal_filler) = measure(&filler);
-        let reader = fresh();
-        let (raw_reader, marginal_reader) = measure(&reader);
-        super::install_cross_claim_pure_share_roster(Vec::<Rc<Node>>::new());
-        super::clear_cross_claim_pure_memos();
-
-        assert!(
-            raw_filler > raw_reader.saturating_mul(10),
-            "the memo must actually make the second run's RAW work far smaller, or the netted \
-             equality below compares two numbers that were never going to differ: \
-             filler={raw_filler}, reader={raw_reader}"
-        );
-        assert_eq!(
-            marginal_filler, marginal_reader,
-            "the claim that PAID for a shared fill and the claim that read it warm must carry \
-             the same marginal step count, or the measure is a function of execution order: \
-             filler={marginal_filler}, reader={marginal_reader}"
         );
     }
 }
@@ -28912,107 +29915,6 @@ mod value_depth_walker_tests {
         drop(second);
     }
 
-    #[test]
-    fn deep_values_compare() {
-        let ctx = fresh_ctx();
-        assert!(deep_chain(&ctx) == deep_chain(&ctx));
-        assert!(value_fast_eq(&deep_chain(&ctx), &deep_chain(&ctx)));
-        assert!(deep_list() == deep_list());
-        assert!(
-            cross_representation_numeric_straddle(&deep_chain(&ctx), &deep_chain(&ctx)).is_none()
-        );
-    }
-
-    #[test]
-    fn a_deep_value_renders() {
-        let ctx = fresh_ctx();
-        let chain = deep_chain(&ctx);
-        assert!(format!("{chain}").starts_with("Link"));
-        assert!(format!("{chain:?}").starts_with("Variant"));
-    }
-
-    #[test]
-    fn a_deep_free_monoid_renders_dotted() {
-        let ctx = fresh_ctx();
-        let (fm, cons, empty, head, tail) = (
-            ctx.sym("FreeMonoid"),
-            ctx.sym("Cons"),
-            ctx.sym("Empty"),
-            ctx.sym("head"),
-            ctx.sym("tail"),
-        );
-        let mut value = Value::Variant {
-            type_name: fm,
-            variant_name: empty,
-            fields: Rc::new(vec![]),
-        };
-        for _ in 0..DEPTH {
-            value = Value::Variant {
-                type_name: fm,
-                variant_name: cons,
-                fields: Rc::new(vec![(head, super::str_value("a")), (tail, value)]),
-            };
-        }
-        assert_eq!(
-            free_monoid_symbol_value_to_dotted_string(&value).len(),
-            2 * DEPTH - 1
-        );
-        assert_eq!(
-            crate::cli_run::free_monoid_symbol_value_to_dotted_string(&value).len(),
-            2 * DEPTH - 1
-        );
-    }
-
-    #[test]
-    fn a_deep_value_hashes() {
-        let ctx = fresh_ctx();
-        assert_eq!(value_hash(&deep_chain(&ctx)), value_hash(&deep_chain(&ctx)));
-    }
-
-    #[test]
-    fn a_deep_value_is_accounted() {
-        let ctx = fresh_ctx();
-        let mut acc = MemoryAccounting::default();
-        account_value(
-            &deep_chain(&ctx),
-            &mut std::collections::HashSet::new(),
-            &mut acc,
-        );
-        assert!(acc.total_unique_allocations > 0);
-    }
-
-    #[test]
-    fn a_deep_value_round_trips_through_the_portable_form() {
-        let ctx = fresh_ctx();
-        let chain = deep_chain(&ctx);
-        let portable = portable_value_from_ctx_at(&ctx, &chain, &mut String::new())
-            .unwrap_or_else(|_| panic!("a deep chain is portable"));
-        assert!(portable_value_eq(&portable, &portable));
-        assert!(portable_value_size_bytes(&portable) > 0);
-        let _ = portable_value_digest(&portable);
-        assert!(value_from_portable_ctx(&ctx, &portable) == chain);
-    }
-
-    #[test]
-    fn a_deep_value_is_refused_at_the_json_boundary_not_killed() {
-        let ctx = fresh_ctx();
-        let limit = super::serde_json_read_depth_limit();
-        let fixture = crate::recorded_fixture::value_to_fixture_json(&deep_chain(&ctx), &ctx);
-        match fixture {
-            Err(crate::recorded_fixture::FixtureError::JsonDepthExceeded { detail }) => {
-                assert!(detail.contains("<root>.next.next"), "located: {detail}");
-                assert!(
-                    detail.contains(&format!("past the {limit} levels")),
-                    "{detail}"
-                );
-            }
-            other => panic!("expected a located depth refusal, got {other:?}"),
-        }
-        let wire = crate::cli_run::value_to_wire_json(&deep_list(), &ctx);
-        let detail = wire.expect_err("a deep list is refused on the wire");
-        assert!(detail.contains("<root>[0][0]"), "located: {detail}");
-    }
-
     /// The bound is the reader's, so a value at exactly the bound still encodes and its bytes
     /// read back -- the refusal removes nothing a reader could have accepted.
     #[test]
@@ -29148,5 +30050,243 @@ mod portable_canonical_order_tests {
             fields: Rc::new(vec![]),
         };
         assert_ne!(value_hash(&v(t1)), value_hash(&other));
+    }
+}
+
+/// Controls for the canonical content order as the RENDERING order (node adhoc-77383faf-d07).
+#[cfg(test)]
+mod canonical_render_order_tests {
+    use super::*;
+    use im::vector as im_vec;
+    use std::cmp::Ordering;
+
+    fn key(v: Value) -> CanonKey {
+        CanonKey::new(v).expect("reflexive key")
+    }
+
+    fn variant(t: &'static str, v: &'static str, n: i64) -> Value {
+        Value::Variant {
+            type_name: Symbol(t),
+            variant_name: Symbol(v),
+            fields: Rc::new(vec![(Symbol("n"), Value::Int(n))]),
+        }
+    }
+
+    /// A map whose HAMT iteration order follows the process's RandomState: 64 string keys,
+    /// plus same-spelled variant keys that differ only in payload (the stand-in's tie case).
+    fn subject() -> Value {
+        let mut entries = HamtMap::new();
+        for i in 0..64 {
+            entries = entries.update(key(str_value(format!("k{i:02}"))), Value::Int(i));
+        }
+        for n in 0..8 {
+            entries = entries.update(key(variant("T", "V", n)), Value::Int(n));
+        }
+        map_value(entries)
+    }
+
+    const CHILD: &str = "GUNBC_CANONICAL_RENDER_CHILD";
+
+    fn child_output(test: &str, tag: &str) -> String {
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "--exact",
+                &format!("v1_interpreter::canonical_render_order_tests::{test}"),
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("child process");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        text.lines()
+            .find_map(|l| l.split(tag).nth(1).map(|d| d.to_string()))
+            .unwrap_or_else(|| panic!("child printed no {tag}: {text}"))
+    }
+
+    #[test]
+    fn rendered_map_bytes_are_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("RENDER={}", subject());
+            return;
+        }
+        let test = "rendered_map_bytes_are_equal_across_two_processes";
+        let (a, b) = (child_output(test, "RENDER="), child_output(test, "RENDER="));
+        assert_eq!(a, b, "two processes rendered one map differently");
+        // Same-spelled variants with different payloads render in payload order.
+        let v0 = a.find("V { n: 0 }").expect("V0 rendered");
+        let v7 = a.find("V { n: 7 }").expect("V7 rendered");
+        assert!(v0 < v7, "tied-spelling variants must order by payload: {a}");
+    }
+
+    #[test]
+    fn debug_map_bytes_are_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("DEBUG={:?}", subject());
+            return;
+        }
+        let test = "debug_map_bytes_are_equal_across_two_processes";
+        let (a, b) = (child_output(test, "DEBUG="), child_output(test, "DEBUG="));
+        assert_eq!(a, b, "two processes debug-formatted one map differently");
+    }
+
+    fn cmp(a: &Value, b: &Value) -> Ordering {
+        canonical_content_cmp(a, b).expect("content order")
+    }
+
+    /// One inhabitant of every kind, listed in ContentKind DECLARATION order.
+    fn one_of_each_kind() -> Vec<Value> {
+        vec![
+            Value::Null,
+            Value::Unit,
+            Value::Bool(false),
+            Value::Int(0),
+            Value::Float(0.0),
+            str_value("s".to_string()),
+            list_value(vec![Value::Int(1)]),
+            map_value(HamtMap::new().update(key(Value::Int(1)), Value::Int(1))),
+            Value::Set(Rc::new(OrdSet::unit("m".to_string()))),
+            Value::Record {
+                type_name: Symbol("R"),
+                fields: Rc::new(vec![(Symbol("a"), Value::Int(1))]),
+            },
+            variant("T", "V", 1),
+        ]
+    }
+
+    #[test]
+    fn kind_rank_is_content_kind_declaration_order() {
+        let xs = one_of_each_kind();
+        for w in xs.windows(2) {
+            assert_eq!(cmp(&w[0], &w[1]), Ordering::Less, "{:?} < {:?}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn floats_follow_ieee_total_order_including_zero_sign_and_nan_payloads() {
+        let neg_nan = f64::from_bits(0xfff8_0000_0000_0001);
+        let nan_lo = f64::from_bits(0x7ff8_0000_0000_0001);
+        let nan_hi = f64::from_bits(0x7ff8_0000_0000_0002);
+        let ordered = [
+            neg_nan,
+            f64::NEG_INFINITY,
+            -2.0,
+            -1.0,
+            -0.0,
+            0.0,
+            1.0,
+            f64::INFINITY,
+            nan_lo,
+            nan_hi,
+        ];
+        for w in ordered.windows(2) {
+            assert_eq!(
+                cmp(&Value::Float(w[0]), &Value::Float(w[1])),
+                Ordering::Less,
+                "{:e} ({:#x}) must order before {:e} ({:#x})",
+                w[0],
+                w[0].to_bits(),
+                w[1],
+                w[1].to_bits()
+            );
+        }
+    }
+
+    /// A generated corpus covering every kind pair, empty vs non-empty collections, and nested
+    /// maps and sets.
+    fn corpus() -> Vec<Value> {
+        let mut out = one_of_each_kind();
+        out.push(list_value(Vec::<Value>::new()));
+        out.push(map_value(HamtMap::new()));
+        out.push(Value::Set(Rc::new(OrdSet::new())));
+        out.push(Value::Float(-0.0));
+        out.push(Value::Float(f64::from_bits(0x7ff8_0000_0000_0003)));
+        out.push(variant("T", "W", 0));
+        out.push(variant("T", "V", 0));
+        let inner = map_value(
+            HamtMap::new()
+                .update(key(str_value("b".to_string())), Value::Int(2))
+                .update(key(str_value("a".to_string())), Value::Int(1)),
+        );
+        out.push(map_value(
+            HamtMap::new()
+                .update(key(Value::Int(1)), inner.clone())
+                .update(
+                    key(Value::Int(0)),
+                    Value::Set(Rc::new(OrdSet::unit("z".to_string()))),
+                ),
+        ));
+        out.push(list_value(vec![inner.clone(), inner]));
+        out
+    }
+
+    #[test]
+    fn value_and_portable_carriers_agree_on_every_pair() {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let xs = corpus();
+        let ps: Vec<PortableValue> = xs
+            .iter()
+            .map(|v| portable_value_from_ctx(&ctx, v).expect("portable"))
+            .collect();
+        for (i, a) in xs.iter().enumerate() {
+            for (j, b) in xs.iter().enumerate() {
+                assert_eq!(
+                    cmp(a, b),
+                    portable_value_cmp(&ps[i], &ps[j]),
+                    "Value and PortableValue disagree on {a:?} vs {b:?}"
+                );
+                // Antisymmetry: the order is total, not merely consistent.
+                assert_eq!(cmp(a, b), cmp(b, a).reverse(), "{a:?} vs {b:?}");
+            }
+        }
+    }
+
+    /// The emitted realization sorts admitted keys by Rust's native `Ord` on String/i64/bool;
+    /// the canonical order must BE that order on exactly those kinds.
+    #[test]
+    fn canonical_order_is_native_ord_on_emitted_admitted_key_kinds() {
+        let strs = ["", "a", "B", "b", "\u{e9}", "z", "\u{1F600}"];
+        for x in strs {
+            for y in strs {
+                assert_eq!(
+                    cmp(&str_value(x.to_string()), &str_value(y.to_string())),
+                    x.to_string().cmp(&y.to_string())
+                );
+            }
+        }
+        let ints = [i64::MIN, -1, 0, 1, i64::MAX];
+        for x in ints {
+            for y in ints {
+                assert_eq!(cmp(&Value::Int(x), &Value::Int(y)), x.cmp(&y));
+            }
+        }
+        for x in [false, true] {
+            for y in [false, true] {
+                assert_eq!(cmp(&Value::Bool(x), &Value::Bool(y)), x.cmp(&y));
+            }
+        }
+    }
+
+    #[test]
+    fn emitted_ord_admission_refuses_record_keys_and_admits_scalars() {
+        let rec = Value::Record {
+            type_name: Symbol("R"),
+            fields: Rc::new(vec![]),
+        };
+        let err = admit_emitted_ord_keys([&rec, &rec], "sort_by").expect_err("record keys refuse");
+        assert!(
+            format!("{err:?}").contains("no emitted-Rust ordering"),
+            "{err:?}"
+        );
+        let mixed = [Value::Int(1), str_value("a".to_string())];
+        assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
+        let ints = [Value::Int(2), Value::Int(1)];
+        assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
     }
 }

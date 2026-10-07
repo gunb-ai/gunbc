@@ -33,3 +33,19 @@ fn calibration_specimen_descend(n: Int, acc: Int) -> Int {
 test fn calibration_specimen_performs_its_declared_work() -> Bool {
   calibration_specimen_descend(n: calibration_specimen_depth(), acc: 0) > 0
 }
+
+// TWO REPLICATES, FOR THE SAME-RUN HOST-SPEED FACTOR (`v2.workflow.floor_eval_step_calibration`
+// `HostSpeedCalibration`). One reading of this specimen is not a stable property of the runner: on
+// one remote runner twelve consecutive readings were 75ms, then eleven between 43 and 47ms -- a
+// first touch 1.74x slow. A slow reading inflates the factor and so LOOSENS the margin, which is the
+// fail-open direction, and it sits far inside the plausible-range bound. So the run takes the
+// FASTEST of three readings, which errs toward the strict side. The replicates perform the same work
+// at the same depth, so their eval_steps equal the pin; each passes a DISTINCT accumulator seed so
+// no two are the same call, and no cross-claim share can serve one replicate from another's fill.
+test fn calibration_specimen_replicate_two_performs_its_declared_work() -> Bool {
+  calibration_specimen_descend(n: calibration_specimen_depth(), acc: 1) > 0
+}
+
+test fn calibration_specimen_replicate_three_performs_its_declared_work() -> Bool {
+  calibration_specimen_descend(n: calibration_specimen_depth(), acc: 2) > 0
+}

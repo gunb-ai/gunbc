@@ -1,7 +1,8 @@
 module gunbc.spark.managed_grant_reconcile
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
+import v2.std.algebra { filter, length, any }
 import product.host_identity { HostIdentity }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
@@ -370,4 +371,143 @@ fn spark_managed_grant_report(host: HostIdentity, outcome: SparkGrantOutcome) ->
         spark_grant_install_admission_wire(a: a)),
     ),
   ), "")
+}
+
+// ── The retired shared drop-in, observed rather than assumed gone ────────────────────────────────
+//
+// Before gunbc#13040 every InspectServingContainer grant was written to ONE file,
+// /etc/sudoers.d/gunbc-docker-inspect, so each install overwrote the previous container's grant
+// (Group A srv5, run 37166203531). spark_managed_grant_dropin_name now names the container, but the
+// installer never removes the old file: on any host granted before the change it can still be there,
+// holding whichever container's line was written last. sudo's listing cannot tell which file an entry
+// came from, so the drop-in DIRECTORY is read by name. An unread directory is not an absent file.
+data spark_retired_shared_inspect_dropin_name: NonEmptyStr = "gunbc-docker-inspect" as NonEmptyStr
+data spark_sudoers_dropin_directory: NonEmptyStr = "/etc/sudoers.d" as NonEmptyStr
+
+fn spark_retired_shared_inspect_dropin_path() -> NonEmptyStr {
+  join([spark_sudoers_dropin_directory as String, "/", spark_retired_shared_inspect_dropin_name as String], "") as NonEmptyStr
+}
+
+// ls(1): `-1` lists one entry per line. /etc/sudoers.d read mode=755 root:root on all four Group B
+// hosts 2026-10-04 22:53Z (valiant-crab-775, unprivileged), so the listing needs no grant there; a host
+// where it is not listable lands in Unobserved, never in an absent file.
+fn spark_sudoers_dropin_listing_argv() -> List<String> {
+  ["ls", "-1", spark_sudoers_dropin_directory as String]
+}
+
+// WHICH SHAPE A HOST'S INSPECT GRANTS ARE IN, read from the drop-in names. Two shapes and an unread:
+//   SharedInspectDropinShape    -- the retired shared file is present. If no per-container file sits
+//                                  beside it, it is the host's ONLY inspect grant: one container is
+//                                  granted, the others are not, and which one is whichever install ran
+//                                  last. Group B (srv9..srv12) read in exactly this shape
+//                                  on 2026-10-04 22:53Z, before it joined the probe roster.
+//   PerContainerInspectDropinShape -- no shared file; the per-container files are the grants.
+// The per-container names found are carried either way, so "shared file beside new files" (residue)
+// and "shared file alone" (the old shape) stay distinguishable.
+type SparkInspectDropinShape
+  = SharedInspectDropinShape { per_container: List<String> }
+  | PerContainerInspectDropinShape { per_container: List<String> }
+  | InspectDropinShapeUnobserved { cause: NonEmptyStr }
+
+fn spark_per_container_inspect_dropins(names: List<String>) -> List<String> {
+  let prefix = join([spark_retired_shared_inspect_dropin_name as String, "-"], "")
+  filter(names, n => starts_with(s: n, prefix: prefix))
+}
+
+fn spark_inspect_dropin_shape_of_names(names: List<String>) -> SparkInspectDropinShape {
+  let per_container = spark_per_container_inspect_dropins(names: names)
+  if any(names, n => n == spark_retired_shared_inspect_dropin_name as String) {
+    SharedInspectDropinShape { per_container: per_container }
+  } else {
+    PerContainerInspectDropinShape { per_container: per_container }
+  }
+}
+
+fn spark_inspect_dropin_shape_of_listing(exit_code: Int, stdout: String, stderr: String) -> SparkInspectDropinShape {
+  if exit_code != 0 {
+    InspectDropinShapeUnobserved { cause: join(["ls ", spark_sudoers_dropin_directory as String, " exit=", to_string(exit_code), " stderr=", trim(s: stderr)], "") as NonEmptyStr }
+  } else {
+    spark_inspect_dropin_shape_of_names(names: filter(map(stdout.split(delimiter: "\n"), l => trim(s: l)), l => l != ""))
+  }
+}
+
+fn spark_inspect_dropin_shape_wire(host: String, shape: SparkInspectDropinShape) -> String {
+  match shape {
+    SharedInspectDropinShape { per_container: pc } =>
+      join([
+        "inspect-dropins host=", host, " SHARED-SHAPE ", spark_sudoers_dropin_directory as String, "/", spark_retired_shared_inspect_dropin_name as String,
+        " present per_container=[", join(pc, ","), "]",
+        if length(pc) == 0 { " (the shared file is the only inspect grant: one container granted, which one is unread)" } else { " (retired file beside per-container files: residue)" },
+        "; converging it is an operator-approved grant install and removal\n",
+      ], "")
+    PerContainerInspectDropinShape { per_container: pc } =>
+      join(["inspect-dropins host=", host, " per-container [", join(pc, ","), "]\n"], "")
+    InspectDropinShapeUnobserved { cause: c } =>
+      join(["inspect-dropins host=", host, " UNOBSERVED cause=", c as String, "\n"], "")
+  }
+}
+
+// ── Converging away from the shared drop-in, without a lapse ─────────────────────────────────────
+//
+// sudo's listing answers HELD for an inspect grant whether its line sits in its own per-container
+// file or in the retired shared one, and a file NAMED for a grant may exist without carrying it -- so
+// neither the listing nor the file names can establish that removing the shared file lapses nothing.
+// Measured: on Group B the glm-native-tp4 inspect grant read held only through the shared file
+// (fleet-converge run 37263427207). The ONE authority for "this grant stands on its own file" is
+// therefore the install itself (review of gunbc#13373): the removal is admitted only on install
+// receipts this run minted for EVERY modeled inspect grant's own file (sealed in
+// gunbc.spark.grant_privileged_operation) -- never on a second parser of file contents.
+
+fn spark_grant_is_inspect(grant: SparkManagedGrant) -> Bool {
+  match grant {
+    InspectServingContainer { container: _ } => true
+    EnableLingerForOwnAccount { subject: _ } => false
+    RebootThisHost => false
+    ReadFabricModuleEeprom { device: _ } => false
+  }
+}
+
+fn spark_modeled_inspect_grants() -> List<SparkManagedGrant> {
+  filter(spark_managed_grant_population, g => spark_grant_is_inspect(grant: g))
+}
+
+fn spark_grant_named_in(grants: List<SparkManagedGrant>, g: SparkManagedGrant) -> Bool {
+  any(grants, x => (spark_managed_grant_dropin_name(grant: x) as String) == (spark_managed_grant_dropin_name(grant: g) as String))
+}
+
+// RELOCATION, NOT ADMISSION (review of gunbc#13373). While the shared file is present, the inspect
+// grants OBSERVED HELD are re-installed under their own file: that moves a capability the host already
+// grants, so it needs no new admission. A grant NOT held, a grant whose standing is UNREAD, or an
+// unread directory contributes nothing here -- such a grant can only be installed through the normal
+// admission wall (spark_managed_grants_to_install), and if that wall withholds it, it gets no install
+// receipt and the removal is not admitted (gunbc.spark.grant_privileged_operation
+// admit_retired_dropin_removal).
+fn spark_inspect_grants_to_relocate(outcome: SparkGrantOutcome, shape: SparkInspectDropinShape) -> List<SparkManagedGrant> {
+  match shape {
+    SharedInspectDropinShape { per_container: _ } =>
+      flat_map(spark_managed_grant_standings(outcome: outcome), s => match s {
+        GrantHeld { grant: g } => if spark_grant_is_inspect(grant: g) { [g] } else { [] }
+        GrantNotHeld { grant: _ } => []
+        GrantStandingUnobserved { grant: _, cause: _ } => []
+      })
+    PerContainerInspectDropinShape { per_container: _ } => []
+    InspectDropinShapeUnobserved { cause: _ } => []
+  }
+}
+
+// THE READBACK OF A REMOVAL: the shared file is gone, every modeled inspect grant has its own file and
+// reads held. Anything else is a removal that did not converge.
+fn spark_retired_dropin_removal_confirmed(outcome: SparkGrantOutcome, shape: SparkInspectDropinShape) -> Bool {
+  match shape {
+    PerContainerInspectDropinShape { per_container: pc } =>
+      !any(spark_modeled_inspect_grants(), g =>
+        !any(pc, n => n == (spark_managed_grant_dropin_name(grant: g) as String))
+          || !match spark_managed_grant_standing_from_outcome(grant: g, outcome: outcome) {
+            GrantHeld { grant: _ } => true
+            GrantNotHeld { grant: _ } => false
+            GrantStandingUnobserved { grant: _, cause: _ } => false
+          })
+    SharedInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
 }

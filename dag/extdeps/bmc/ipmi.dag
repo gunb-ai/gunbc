@@ -3,7 +3,7 @@ module extdeps.bmc.ipmi
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, NonEmptyStr, Unit }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import v2.std.algebra { filter }
 import std.resources { Network }
@@ -413,6 +413,23 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool fru print failed"
+    }
+  }
+
+  operation HpmCheck {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "hpm", "check"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool hpm check failed"
     }
   }
 

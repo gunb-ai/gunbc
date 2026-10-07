@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_ui_bundle_observe
 
+import std.decl_ref { decl_ref }
 import extdeps.shell
 import extdeps.bmc.ipmi
 import extdeps.bmc.megarac
@@ -12,12 +13,13 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.megarac { megarac_ui_bundle_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_megarac_media_attach { megarac_media_read_max_time, megarac_media_read_max_time_operand }
 import std.measure { Second, second, second_count }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { any }
 import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
 
@@ -320,7 +322,11 @@ fn served_seed_fetched(rows: List<ServedFileRow>, seed: String) -> Bool {
   any(rows, r => match r { ServedFileFetched { path: p, found_by: _, http: _, size: _, sha256: _, kept_at: _ } => p == seed  _ => false })
 }
 
-fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEmptyStr) -> ProcessExit {
+fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEmptyStr) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_ui_bundle_observe", decl_name: "mtcollins1_ui_bundle_observe_wet"),
+  ]
+{
   let mc = diagnostic.ipmi.Tool.McInfo(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
@@ -352,8 +358,8 @@ fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEm
 // REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING, exactly as the fan observation's.
 fn mtcollins1_ui_bundle_observe_wet() -> ProcessExit
 {
-  match mtcollins1_secured_account() {
-    Absent => exit_failure(reason: "mtcollins1 ui bundle: the BMC is not BmcSecured, so this run holds no account to read the firmware revision with; contacting NO host")
+  match managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint) {
+    Absent => exit_failure(reason: "mtcollins1 ui bundle: the managed host does not bind (not BmcSecured, or its observed controller is not the secured one), so this run holds no account to read the firmware revision with; contacting NO host")
     Present { value: username } =>
       match mtcollins1_fan_credential_path() {
         FanCredentialPathUnset => exit_failure(reason: join(["mtcollins1 ui bundle: no ", mtcollins1_fan_credential_path_env as String, " in the environment; contacting NO host"], ""))

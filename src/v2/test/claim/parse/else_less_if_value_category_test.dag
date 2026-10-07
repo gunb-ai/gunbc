@@ -12,7 +12,7 @@ import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_opt
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -148,39 +148,20 @@ fn elif_value_refuses_at_the_if(parsed: Optional<Node>) -> Bool {
   }
 }
 
-// THE FOUR VERDICTS, FROM ONE PARSE OF EACH SOURCE. Nullary and pure, enrolled WARM in
-// v2.workflow.floor_pure_producer_share: each source is parsed once at preparation and every claim
-// reads its stored Bool, so no claim pays a parse (each measured at the new-witness budget's edge).
-type ElifVerdicts {
-  guard_one_route: Bool
-  value_one_route: Bool
-  guard_admitted: Bool
-  value_refuses: Bool
-}
-
-fn elif_verdicts() -> ElifVerdicts {
-  let guard = elif_parse_as(text: elif_guard_source, production: ^dag_production_fn_body)
-  let value = elif_parse_as(text: elif_value_source, production: ^dag_production_expr)
-  ElifVerdicts {
-    guard_one_route: elif_one_route(parsed: guard),
-    value_one_route: elif_one_route(parsed: value),
-    guard_admitted: elif_guard_admitted(parsed: guard),
-    value_refuses: elif_value_refuses_at_the_if(parsed: value)
-  }
-}
-
+// Each claim pays its own parse of its own source (only the prepared grammar is shared, by declared
+// demand).
 test fn statement_guard_parses_to_one_else_less_if_route() -> Bool {
-  elif_verdicts().guard_one_route
+  elif_one_route(parsed: elif_parse_as(text: elif_guard_source, production: ^dag_production_fn_body))
 }
 
 test fn value_if_parses_to_one_else_less_if_route() -> Bool {
-  elif_verdicts().value_one_route
+  elif_one_route(parsed: elif_parse_as(text: elif_value_source, production: ^dag_production_expr))
 }
 
 test fn statement_position_guard_is_admitted() -> Bool {
-  elif_verdicts().guard_admitted
+  elif_guard_admitted(parsed: elif_parse_as(text: elif_guard_source, production: ^dag_production_fn_body))
 }
 
 test fn value_position_else_less_if_refuses_at_the_if() -> Bool {
-  elif_verdicts().value_refuses
+  elif_value_refuses_at_the_if(parsed: elif_parse_as(text: elif_value_source, production: ^dag_production_expr))
 }

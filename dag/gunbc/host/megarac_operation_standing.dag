@@ -1,0 +1,284 @@
+module gunbc.megarac_operation_standing
+
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Present, Absent }
+import v2.std.algebra { filter, any }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
+import extdeps.bmc.access_profile { BmcObservedIdentity }
+import gunbc.machine_intake_receipt { EvidenceRef }
+
+// WHICH MEGARAC OPERATIONS HAVE BEEN EXECUTED ON WHICH CONTROLLER BUILD, AND ON WHAT EVIDENCE
+// (docs/plans/managed-host-untangle.md, cut 3). extdeps.bmc.megarac admits an operation row only as
+// executed; this module is where "executed" is a fact with a subject. Family and raw firmware version
+// are not that subject: two MegaRAC appliances of different product lines can both report 0.32, and
+// the Mt. Collins media wire, KVM bundle and CPU<n>_ SDR naming were read on one of them. So an
+// operation is grounded at an OBSERVED CONTROLLER IDENTITY -- baseboard and firmware together
+// (extdeps.bmc.access_profile BmcObservedIdentity) -- the way gunbc.machine_intake_bmc_rotation_route
+// BmcRotationRouteStanding grounds an account-write route at an endpoint and build.
+//
+// A RUN RECEIPT NAMES ITS RUN, NOT ITS BUILD. The build comes from a separate reading of the
+// controller (an access observation, an `mc info` / `hpm check` probe), and the two are joined only
+// when no firmware transition is recorded between the instant the operation executed and the instant
+// the build was read, and no other reading of that controller saw a different build in between. A
+// receipt whose controller was reflashed between the two grounds nothing.
+type MegaRacOperation
+  = MegaRacVirtualMediaAttach
+  | MegaRacKvmCanvasStill
+  | MegaRacSdrSocketNaming
+
+fn megarac_operation_eq(a: MegaRacOperation, b: MegaRacOperation) -> Bool {
+  match a {
+    MegaRacVirtualMediaAttach => match b { MegaRacVirtualMediaAttach => true  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => false }
+    MegaRacKvmCanvasStill => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => true  MegaRacSdrSocketNaming => false }
+    MegaRacSdrSocketNaming => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => true }
+  }
+}
+
+fn megarac_identity_eq(a: BmcObservedIdentity, b: BmcObservedIdentity) -> Bool {
+  a.baseboard == b.baseboard && bmc_firmware_release_identity_eq(a: a.firmware, b: b.firmware)
+}
+
+// ── THE CARRIERS. Each is sole_constructor and minted only by a function sealed to the evidence rows
+// (gunbc.machine_intake_megarac_operation_evidence) and to the witnesses that exercise the join, so a
+// build, a receipt or a transition is never authored around its evidence. ──────────────────────────
+
+// ONE READING OF A CONTROLLER'S BUILD: what it said it was, from which capture, when.
+type MegaRacBuildReading sole_constructor {
+  endpoint: BmcControllerEndpoint
+  identity: BmcObservedIdentity
+  evidence: EvidenceRef
+  observed_at: EpochMs
+}
+
+// ONE EXECUTED MEGARAC OPERATION, from its run's committed receipt. It names the controller and the
+// instant, never the build.
+type MegaRacOperationReceipt sole_constructor {
+  operation: MegaRacOperation
+  endpoint: BmcControllerEndpoint
+  receipt: EvidenceRef
+  executed_at: EpochMs
+}
+
+// A FIRMWARE TRANSITION KNOWN TO HAVE HAPPENED ON A CONTROLLER, bounded in time. Its record is a
+// declaration, not a capture: a flash is known from the session that performed it, and that knowledge
+// is enough to stop a reading taken before it from describing the controller after it.
+type MegaRacFirmwareTransition sole_constructor {
+  endpoint: BmcControllerEndpoint
+  from: BmcFirmwareReleaseIdentity
+  to: BmcFirmwareReleaseIdentity
+  not_before: EpochMs
+  not_after: EpochMs
+  record: DeclarationRef
+}
+
+// AN OPERATION'S ROUTE RECOVERED FROM AN ARTIFACT THE CONTROLLER SERVES, NOT EXECUTED. The KVM canvas
+// still's route (extdeps.bmc.megarac MegaRacScreenCaptureRoute) was read from the web UI bundle the
+// controller serves to any browser at a given build. That is an OBSERVATION OF WHAT THE DEVICE SERVES --
+// the same standing as gunbc.machine_intake_megarac_served_ui_catalog_observation and
+// gunbc.machine_intake_megarac_ui_features -- not a disassembly of firmware and not a proprietary-notice
+// document, and it is distinct from O1a's cited-source arm, which cites an upstream-published source.
+// WHAT IT DOES NOT ESTABLISH: that the operation was ever executed. It grounds the route at the identity
+// that served it, and nothing that requires an executed standing admits on it
+// (megarac_operation_executed_at, and the current-build gate, refuse this arm).
+type ServedArtifactCapture
+  = ServedArtifactCommitted { evidence: EvidenceRef }
+  | ServedArtifactDigestOnly { digest: ContentHash }
+
+type MegaRacOperationServedArtifactRecovery sole_constructor {
+  operation: MegaRacOperation
+  identity: BmcObservedIdentity
+  served_by: BmcControllerEndpoint
+  artifact: NonEmptyStr
+  capture: ServedArtifactCapture
+  read_at: EpochMs
+}
+
+// THE WHOLE EVIDENCE POPULATION, SEALED. An operation's grounding and a controller's current build are
+// conclusions over the COMPLETE population: drop a recorded transition from otherwise genuine rows and a
+// superseded build reads as current. So the population is sole_constructor too, and its one mint is
+// sealed to the committed evidence rows (gunbc.machine_intake_megarac_operation_evidence) and to named
+// witness fixtures; no other caller can assemble, subset or rebuild one.
+type MegaRacOperationEvidence sole_constructor {
+  readings: List<MegaRacBuildReading>
+  receipts: List<MegaRacOperationReceipt>
+  transitions: List<MegaRacFirmwareTransition>
+  recoveries: List<MegaRacOperationServedArtifactRecovery>
+}
+
+fn megarac_operation_evidence_of(
+  readings: List<MegaRacBuildReading>,
+  receipts: List<MegaRacOperationReceipt>,
+  transitions: List<MegaRacFirmwareTransition>,
+  recoveries: List<MegaRacOperationServedArtifactRecovery>,
+) -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+  ]
+{
+  MegaRacOperationEvidence { readings: readings, receipts: receipts, transitions: transitions, recoveries: recoveries }
+}
+
+fn megarac_build_reading(endpoint: BmcControllerEndpoint, identity: BmcObservedIdentity, evidence: EvidenceRef, observed_at: EpochMs) -> MegaRacBuildReading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+  ]
+{
+  MegaRacBuildReading { endpoint: endpoint, identity: identity, evidence: evidence, observed_at: observed_at }
+}
+
+fn megarac_operation_receipt(operation: MegaRacOperation, endpoint: BmcControllerEndpoint, receipt: EvidenceRef, executed_at: EpochMs) -> MegaRacOperationReceipt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+  ]
+{
+  MegaRacOperationReceipt { operation: operation, endpoint: endpoint, receipt: receipt, executed_at: executed_at }
+}
+
+fn megarac_firmware_transition(endpoint: BmcControllerEndpoint, from: BmcFirmwareReleaseIdentity, to: BmcFirmwareReleaseIdentity, not_before: EpochMs, not_after: EpochMs, record: DeclarationRef) -> MegaRacFirmwareTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+  ]
+{
+  MegaRacFirmwareTransition { endpoint: endpoint, from: from, to: to, not_before: not_before, not_after: not_after, record: record }
+}
+
+fn megarac_operation_served_artifact_recovery(operation: MegaRacOperation, identity: BmcObservedIdentity, served_by: BmcControllerEndpoint, artifact: NonEmptyStr, capture: ServedArtifactCapture, read_at: EpochMs) -> MegaRacOperationServedArtifactRecovery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
+  ]
+{
+  MegaRacOperationServedArtifactRecovery { operation: operation, identity: identity, served_by: served_by, artifact: artifact, capture: capture, read_at: read_at }
+}
+
+// ── THE JOIN ─────────────────────────────────────────────────────────────────────────────────────
+
+fn same_controller(a: BmcControllerEndpoint, b: BmcControllerEndpoint) -> Bool {
+  (a.host as String) == (b.host as String)
+}
+
+fn earlier(a: EpochMs, b: EpochMs) -> EpochMs { if a < b { a } else { b } }
+
+fn later(a: EpochMs, b: EpochMs) -> EpochMs { if a < b { b } else { a } }
+
+// A TRANSITION IS BETWEEN TWO INSTANTS WHEN ITS WINDOW OVERLAPS THE SPAN THEY CLOSE. A window that only
+// may have fallen between them is between them: an unknown flash instant never joins across itself.
+fn transition_between(t: MegaRacFirmwareTransition, endpoint: BmcControllerEndpoint, a: EpochMs, b: EpochMs) -> Bool {
+  same_controller(a: t.endpoint, b: endpoint) && t.not_before <= later(a: a, b: b) && t.not_after >= earlier(a: a, b: b)
+}
+
+fn other_build_read_between(readings: List<MegaRacBuildReading>, reading: MegaRacBuildReading, at: EpochMs) -> Bool {
+  any(readings, r =>
+    same_controller(a: r.endpoint, b: reading.endpoint)
+      && !bmc_firmware_release_identity_eq(a: r.identity.firmware, b: reading.identity.firmware)
+      && r.observed_at > earlier(a: at, b: reading.observed_at)
+      && r.observed_at < later(a: at, b: reading.observed_at))
+}
+
+// The receipt and the reading describe one build exactly when they are of one controller, no recorded
+// transition falls between them, and no reading of a different build falls between them.
+fn receipt_joins_reading(evidence: MegaRacOperationEvidence, receipt: MegaRacOperationReceipt, reading: MegaRacBuildReading) -> Bool {
+  same_controller(a: receipt.endpoint, b: reading.endpoint)
+    && !any(evidence.transitions, t => transition_between(t: t, endpoint: reading.endpoint, a: receipt.executed_at, b: reading.observed_at))
+    && !other_build_read_between(readings: evidence.readings, reading: reading, at: receipt.executed_at)
+}
+
+type MegaRacOperationGrounding
+  = OperationExecutedAtBuild { receipt: MegaRacOperationReceipt, build: MegaRacBuildReading }
+  | OperationRecoveredFromServedArtifact { recovery: MegaRacOperationServedArtifactRecovery }
+
+// ONE OPERATION GROUNDED AT ONE OBSERVED CONTROLLER IDENTITY. sole_constructor and minted only by the
+// join below, so a grounding cannot be authored beside the evidence that would have to produce it.
+type MegaRacOperationStanding sole_constructor {
+  operation: MegaRacOperation
+  identity: BmcObservedIdentity
+  grounding: MegaRacOperationGrounding
+}
+
+fn megarac_operation_standings(evidence: MegaRacOperationEvidence) -> List<MegaRacOperationStanding> {
+  concat(
+    flat_map(evidence.receipts, rc =>
+      flat_map(filter(evidence.readings, rd => receipt_joins_reading(evidence: evidence, receipt: rc, reading: rd)), rd =>
+        [MegaRacOperationStanding { operation: rc.operation, identity: rd.identity, grounding: OperationExecutedAtBuild { receipt: rc, build: rd } }])),
+    map(evidence.recoveries, rv =>
+      MegaRacOperationStanding { operation: rv.operation, identity: rv.identity, grounding: OperationRecoveredFromServedArtifact { recovery: rv } }),
+  )
+}
+
+fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
+  match g {
+    OperationExecutedAtBuild { receipt: _, build: _ } => true
+    OperationRecoveredFromServedArtifact { recovery: _ } => false
+  }
+}
+
+fn standing_grounds(standing: MegaRacOperationStanding, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
+  megarac_operation_eq(a: standing.operation, b: operation) && megarac_identity_eq(a: standing.identity, b: identity) && (!executed_only || grounding_is_executed(g: standing.grounding))
+}
+
+fn standings_ground(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
+  count(filter(standings, st => standing_grounds(standing: st, operation: operation, identity: identity, executed_only: executed_only))) > 0
+}
+
+fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
+  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: false)
+}
+
+// EXECUTED AT THIS IDENTITY, and only executed: a route recovered from a served artifact does not count.
+fn megarac_operation_executed_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
+  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: true)
+}
+
+// ── THE CURRENT BUILD OF A CONTROLLER ────────────────────────────────────────────────────────────
+// The latest thing known about the controller's firmware: a reading, or a transition recorded after
+// the latest reading, which makes the build known but unread.
+type MegaRacCurrentBuild
+  = CurrentBuildRead { reading: MegaRacBuildReading }
+  | CurrentBuildKnownUnread { transition: MegaRacFirmwareTransition }
+  | CurrentBuildUnobserved
+
+fn latest_of_readings(rs: List<MegaRacBuildReading>) -> MegaRacBuildReading? {
+  filter(rs, r => !any(rs, o => o.observed_at > r.observed_at)).first()
+}
+
+fn latest_reading(readings: List<MegaRacBuildReading>, endpoint: BmcControllerEndpoint) -> MegaRacBuildReading? {
+  latest_of_readings(rs: filter(readings, r => same_controller(a: r.endpoint, b: endpoint)))
+}
+
+fn latest_of_transitions(ts: List<MegaRacFirmwareTransition>) -> MegaRacFirmwareTransition? {
+  filter(ts, t => !any(ts, o => o.not_after > t.not_after)).first()
+}
+
+fn latest_transition_after(transitions: List<MegaRacFirmwareTransition>, endpoint: BmcControllerEndpoint, after: EpochMs) -> MegaRacFirmwareTransition? {
+  latest_of_transitions(ts: filter(transitions, t => same_controller(a: t.endpoint, b: endpoint) && t.not_after > after))
+}
+
+fn megarac_current_build(evidence: MegaRacOperationEvidence, endpoint: BmcControllerEndpoint) -> MegaRacCurrentBuild {
+  match latest_reading(readings: evidence.readings, endpoint: endpoint) {
+    Absent =>
+      match latest_transition_after(transitions: evidence.transitions, endpoint: endpoint, after: 0) {
+        Present { value: t } => CurrentBuildKnownUnread { transition: t }
+        Absent => CurrentBuildUnobserved
+      }
+    Present { value: r } =>
+      match latest_transition_after(transitions: evidence.transitions, endpoint: endpoint, after: r.observed_at) {
+        Present { value: t } => CurrentBuildKnownUnread { transition: t }
+        Absent => CurrentBuildRead { reading: r }
+      }
+  }
+}

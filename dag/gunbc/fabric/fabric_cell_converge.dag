@@ -3,7 +3,7 @@ module gunbc.fabric_cell_converge
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
 import extdeps.systemd {
   systemd_cpu_quota_per_sec_of_threads,

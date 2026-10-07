@@ -1,23 +1,112 @@
 module test.claim.workspace_network_observation_witness_test
 
-import std.types { Bool }
-import extdeps.linux.tun_fdinfo { tun_descriptor_census, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable }
-
-test fn zero_holders_requires_successful_explicit_census() -> Bool {
-  (match tun_descriptor_census(success: true, value: "holders=0\n") { TunDescriptorCount { count: n } => n == 0 other => false })
-    && (match tun_descriptor_census(success: false, value: "holders=0\n") { TunDescriptorUnreadable => true other => false })
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import extdeps.linux.procfs { procfs_status_effective_uid }
+import extdeps.ethtool { ethtool_combined_channels, EthtoolCombinedChannelsCurrent, EthtoolCombinedChannelsUnreadable }
+import extdeps.linux.tun_fdinfo {
+  TunDescriptorCount, TunDescriptorUnreadable,
+  TunCensusMultiQueue, TunCensusFlagsUnreadable, TunCensusProcUnreadable,
+  TunQueuesAttached, TunQueuesRefused, TunSweepComplete, TunSweepRefused,
+  TunSingleQueue, TunMultiQueue, TunFlagsMalformed, TunListed, TunListingVanished, TunListingRefused,
+  tun_census_join, tun_queue_mode, tun_queue_reading, tun_fdinfo_names_interface, tun_listing,
+  tun_interface_name_admissible
 }
 
-test fn missing_tap_does_not_mean_reusable_tap() -> Bool {
-  match tun_descriptor_census(success: true, value: "missing\n") { TunInterfaceMissing => true other => false }
+// SUPPLIED AT THE BOUNDARY (DESIGN section 3 witness rule): every claim here constructs the
+// readings the census folds over, because the subject is the fold and a real tap cannot exist on the
+// floor. The real reader runs in
+// test.claim.workspace_network_real_reader_witness_test on the local-repo wet lane.
+
+data channels_one: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\nCurrent hardware settings:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\n"
+
+data channels_current_na: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\nCurrent hardware settings:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\tn/a\n"
+
+data channels_maximums_only: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\n"
+
+// Positive control: no holder descriptor, no attached queue, two clean sweeps.
+test fn zero_holders_requires_every_observation_to_affirm_zero() -> Bool {
+  match tun_census_join(before: TunQueuesAttached { count: 0 }, first: TunSweepComplete { holders: [], exited: 2 },
+    second: TunSweepComplete { holders: [], exited: 1 }, after: TunQueuesAttached { count: 0 }) {
+    TunDescriptorCount { count: n, exited: e } => n == 0 && e == 3
+    other => false
+  }
 }
 
-test fn attached_descriptor_refutes_quiescence() -> Bool {
-  match tun_descriptor_census(success: true, value: "holders=2\n") { TunDescriptorCount { count: n } => n == 2 other => false }
+// A queue still attached through an SCM_RIGHTS or io_uring reference installs no process fd, so
+// the sweeps find nothing. The kernel queue count is what keeps that from reading as zero.
+test fn attached_queue_without_installed_descriptor_refutes_quiescence() -> Bool {
+  (match tun_census_join(before: TunQueuesAttached { count: 0 }, first: TunSweepComplete { holders: [], exited: 0 },
+    second: TunSweepComplete { holders: [], exited: 0 }, after: TunQueuesAttached { count: 1 }) {
+    TunDescriptorCount { count: n, exited: _ } => n == 1
+    other => false
+  }) && (match tun_census_join(before: TunQueuesAttached { count: 1 }, first: TunSweepComplete { holders: [], exited: 0 },
+    second: TunSweepComplete { holders: [], exited: 0 }, after: TunQueuesAttached { count: 0 }) {
+    TunDescriptorCount { count: n, exited: _ } => n == 1
+    other => false
+  })
 }
 
-test fn malformed_and_negative_census_remain_unknown() -> Bool {
-  (match tun_descriptor_census(success: true, value: "holders=-1") { TunDescriptorUnreadable => true other => false })
-    && (match tun_descriptor_census(success: true, value: "") { TunDescriptorUnreadable => true other => false })
-    && (match tun_descriptor_census(success: true, value: "holders=garbage") { TunDescriptorUnreadable => true other => false })
+// Holders seen by either sweep are counted once each.
+test fn attached_descriptors_are_the_union_of_both_sweeps() -> Bool {
+  match tun_census_join(before: TunQueuesAttached { count: 1 }, first: TunSweepComplete { holders: ["10/10/4", "11/11/5"], exited: 0 },
+    second: TunSweepComplete { holders: ["11/11/5", "12/12/6"], exited: 0 }, after: TunQueuesAttached { count: 1 }) {
+    TunDescriptorCount { count: n, exited: _ } => n == 3
+    other => false
+  }
+}
+
+test fn any_refused_observation_refuses_the_census() -> Bool {
+  (match tun_census_join(before: TunQueuesAttached { count: 0 }, first: TunSweepComplete { holders: [], exited: 0 },
+    second: TunSweepRefused { cause: TunCensusProcUnreadable { path: "/proc/1/task/1/fdinfo" } }, after: TunQueuesAttached { count: 0 }) {
+    TunDescriptorUnreadable { cause: TunCensusProcUnreadable { path: p } } => p == "/proc/1/task/1/fdinfo"
+    other => false
+  }) && (match tun_census_join(before: TunQueuesAttached { count: 0 }, first: TunSweepComplete { holders: [], exited: 0 },
+    second: TunSweepComplete { holders: [], exited: 0 }, after: TunQueuesRefused { cause: TunCensusMultiQueue }) {
+    TunDescriptorUnreadable { cause: TunCensusMultiQueue } => true
+    other => false
+  })
+}
+
+// tun_flags is "0x%x"; IFF_TAP|IFF_NO_PI is 0x1002, adding IFF_MULTI_QUEUE gives 0x1102.
+test fn multi_queue_and_malformed_flags_refuse() -> Bool {
+  (match tun_queue_mode(flags: "0x1002\n") { TunSingleQueue => true other => false })
+    && (match tun_queue_mode(flags: "0x1102\n") { TunMultiQueue => true other => false })
+    && (match tun_queue_mode(flags: "1002") { TunFlagsMalformed => true other => false })
+    && (match tun_queue_mode(flags: "0xzz") { TunFlagsMalformed => true other => false })
+    && (match tun_queue_reading(mode: TunMultiQueue, channels: EthtoolCombinedChannelsCurrent { count: 0 }) { TunQueuesRefused { cause: TunCensusMultiQueue } => true other => false })
+    && (match tun_queue_reading(mode: TunFlagsMalformed, channels: EthtoolCombinedChannelsCurrent { count: 0 }) { TunQueuesRefused { cause: TunCensusFlagsUnreadable } => true other => false })
+}
+
+test fn channel_count_reads_only_the_current_combined_count() -> Bool {
+  (match ethtool_combined_channels(device: "tap0", success: true, value: channels_one) { EthtoolCombinedChannelsCurrent { count: n } => n == 1 other => false })
+    && (match ethtool_combined_channels(device: "tap0", success: true, value: channels_current_na) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
+    && (match ethtool_combined_channels(device: "tap0", success: true, value: channels_maximums_only) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
+    && (match ethtool_combined_channels(device: "tap0", success: false, value: channels_one) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
+    && (match ethtool_combined_channels(device: "tap1", success: true, value: channels_one) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
+    && (match ethtool_combined_channels(device: "tap0", success: true, value: "") { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
+}
+
+test fn fdinfo_names_exactly_this_interface() -> Bool {
+  tun_fdinfo_names_interface(content: "pos:\t0\nflags:\t02\nmnt_id:\t15\niff:\ttap0\n", name: "tap0")
+    && !tun_fdinfo_names_interface(content: "pos:\t0\niff:\ttap01\n", name: "tap0")
+    && !tun_fdinfo_names_interface(content: "pos:\t0\nflags:\t02\n", name: "tap0")
+    && tun_interface_name_admissible(name: "fc-tap_3")
+    && !tun_interface_name_admissible(name: "")
+    && !tun_interface_name_admissible(name: "tap0/../x")
+}
+
+// A vanished pid is skipped; a denied or unrecognized failure refuses the whole observation.
+test fn only_a_vanished_entry_is_skipped() -> Bool {
+  (match tun_listing(success: false, entries: "", error_kind: "not_found") { TunListingVanished => true other => false })
+    && (match tun_listing(success: false, entries: "", error_kind: "permission_denied") { TunListingRefused => true other => false })
+    && (match tun_listing(success: false, entries: "", error_kind: "mystery") { TunListingRefused => true other => false })
+    && (match tun_listing(success: true, entries: "1\n2\n", error_kind: "") { TunListed { names: ns } => length(ns) == 2 other => false })
+}
+
+test fn effective_uid_is_the_second_uid_field() -> Bool {
+  (match procfs_status_effective_uid(content: "Name:\tx\nUid:\t1000\t0\t0\t0\nGid:\t0\t0\t0\t0\n") { Present { value: u } => u == 0 other => false })
+    && (match procfs_status_effective_uid(content: "Uid:\t0\t1000\t0\t0\n") { Present { value: u } => u == 1000 other => false })
+    && (match procfs_status_effective_uid(content: "Uid:\t0\t0\n") { Absent => true other => false })
+    && (match procfs_status_effective_uid(content: "Name:\tx\n") { Absent => true other => false })
 }

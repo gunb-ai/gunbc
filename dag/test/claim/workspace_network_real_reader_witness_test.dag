@@ -1,0 +1,35 @@
+module test.claim.workspace_network_real_reader_witness_test
+
+import std.types { Bool }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.procfs { procfs_status_effective_uid }
+import extdeps.linux.tun_fdinfo {
+  TunInterfaceMissing, TunDescriptorUnreadable, TunCensusReaderNotRoot, TunCensusSubjectInadmissible,
+  tun_descriptor_census_observe
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// INHABITANCE BY REAL EXECUTION: the one claim that runs the real reader, paired with the supplied-input
+// claims in test.claim.workspace_network_observation_witness_test. The hermetic floor has no arm for
+// Filesystem.Read outside the checkout, so this claim runs on the local-repo wet lane
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule) and is known as a route gap on the floor.
+// It reads only and mutates nothing on the host.
+//
+// The reader runs against this host for a device that cannot exist. It must take the route the
+// effective uid dictates, and this claim reads that uid independently. As root, the reader reaches
+// tun_flags and answers Missing. Otherwise it refuses on the reader identity before touching /proc.
+// Neither route may produce a count.
+test fn real_reader_takes_the_route_the_reader_identity_dictates() -> Bool {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  status.success && (match procfs_status_effective_uid(content: status.content) {
+    Absent => false
+    Present { value: euid } => match tun_descriptor_census_observe(name: "gunbcnotap0") {
+      TunInterfaceMissing => euid == 0
+      TunDescriptorUnreadable { cause: TunCensusReaderNotRoot { euid: seen } } => euid != 0 && seen == euid
+      other => false
+    }
+  }) && (match tun_descriptor_census_observe(name: "bad/name") { TunDescriptorUnreadable { cause: TunCensusSubjectInadmissible } => true other => false })
+}

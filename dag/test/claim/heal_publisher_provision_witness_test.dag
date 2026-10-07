@@ -3,13 +3,13 @@ module test.claim.heal_publisher_provision_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
 import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set, heal_publisher_wif_pool_display_name }
 import gunbc.auth.heal_publisher_provision {
   SubjectCreation, SubjectCreated, SubjectAlreadyPresentUnverified, SubjectCreateRefused,
-  subject_creation, heal_publisher_impersonation_cell, impersonation_binding_present,
+  subject_creation, create_if, heal_publisher_impersonation_cell, impersonation_binding_present,
   DedicatedFederation, heal_publisher_dedicated_federation,
   PoolReading, PoolObservedAbsent, PoolObserved, ProvidersReading, ProvidersObserved, ProvidersUnreadable,
   AccountObservedAbsent, AccountObserved,
@@ -18,7 +18,7 @@ import gunbc.auth.heal_publisher_provision {
 }
 import extdeps.cloud.gcp.gcp { WifPoolWire, WifProviderWire, WifOidcWire }
 import gunbc.auth.github_gcp_federation { github_wif_issuer_uri }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.transports.rest { RestResponseObserved, RestBodyRead, RestBodyUndecodable }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }
@@ -38,9 +38,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one request, so what this module decides on a PARTIAL result is the whole safety content: which
 // outcomes may be called converged, which must stop the run, and which must reconcile-then-refuse.
 
-fn ok() -> RestOutcome { RestOk }
-fn conflict() -> RestOutcome { RestStatusRefused { status: 409, body: "{\"error\":{\"status\":\"ALREADY_EXISTS\"}}" } }
-fn denied() -> RestOutcome { RestStatusRefused { status: 403, body: "caller lacks iam.workloadIdentityPools.create" } }
+fn conflict() -> RestRefusal { RestStatusRefused { status: 409, body: "{\"error\":{\"status\":\"ALREADY_EXISTS\"}}" } }
+fn denied() -> RestRefusal { RestStatusRefused { status: 403, body: "caller lacks iam.workloadIdentityPools.create" } }
 
 fn succeeded(e: ProcessExit) -> Bool {
   match e {
@@ -58,14 +57,13 @@ fn refusal_text(e: ProcessExit) -> String {
 
 // ── what one create outcome established ─────────────────────────────────────────────────────
 
-// THE POSITIVE CONTROL. A 200 is a creation this run performed and may rely on; without this arm
-// answering Created, every refusal below is satisfied by a classifier that admits nothing.
+// THE POSITIVE CONTROL. An answered create is SubjectCreated at the call site and is the only
+// creation the run lets proceed: create_if reports nothing for it and reports a halt for each of the
+// other two arms, so the refusals below are not satisfied by a fold that halts on everything.
 test fn witness_a_created_subject_is_created() -> Bool {
-  match subject_creation(o: ok()) {
-    SubjectCreated => true
-    SubjectAlreadyPresentUnverified => false
-    SubjectCreateRefused { cause: _ } => false
-  }
+  create_if(wanted: true, subject: "the pool", creation: SubjectCreated) == ""
+    && create_if(wanted: true, subject: "the pool", creation: subject_creation(o: conflict())) != ""
+    && create_if(wanted: true, subject: "the pool", creation: subject_creation(o: denied())) != ""
 }
 
 // A 409 IS NOT A REFUSAL AND NOT A CONVERGENCE. It says the id is taken and says nothing about the
@@ -234,20 +232,22 @@ data live_mtcollins1_providers_body: String = "{\"workloadIdentityPoolProviders\
 
 data live_mtcollins1_pool_body: String = "{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot\",\"displayName\":\"Mt. Collins boot (one job)\",\"state\":\"ACTIVE\"}"
 
-// The witness frame's return is generic, so the providers Optional is re-typed as the operation declares it.
+// The reading is computed inside the subject, where the operation's result is matched directly.
 fn decoded_providers() -> ProvidersReading {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "WifProvidersPage",
       observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_mtcollins1_providers_body } }
     )]),
-    subject: fn(_scope) { test.RestReplay.WifProvidersPage() }
+    subject: fn(_scope) {
+      match test.RestReplay.WifProvidersPage() {
+        RestAnswered { answer } => ProvidersObserved { providers: match answer.providers { Present { value: ps } => ps  Absent => [] } }
+        RestRefused { refusal: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => {
-      let providers: List<WifProviderWire>? = value.providers
-      ProvidersObserved { providers: match providers { Present { value: ps } => ps  Absent => [] } }
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
     WitnessInterrupted { at: _, route: _, state: _ } => ProvidersUnreadable { cause: "a replay frame carries no modeled realization, so an interruption cannot occur" }
   }
@@ -259,10 +259,15 @@ fn decoded_pool() -> PoolReading {
       operation: "WifPool",
       observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_mtcollins1_pool_body } }
     )]),
-    subject: fn(_scope) { test.RestReplay.WifPool() }
+    subject: fn(_scope) {
+      match test.RestReplay.WifPool() {
+        RestAnswered { answer } => PoolObserved { pool: WifPoolWire { name: answer.pool_name, display_name: answer.display_name, disabled: answer.disabled, state: answer.state } }
+        RestRefused { refusal: _ } => PoolObservedAbsent
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => PoolObserved { pool: WifPoolWire { name: value.pool_name, display_name: value.display_name, disabled: value.disabled, state: value.state } }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => PoolObservedAbsent
     WitnessInterrupted { at: _, route: _, state: _ } => PoolObservedAbsent
   }
@@ -316,13 +321,15 @@ fn providers_body_refusal(body: String) -> String {
       operation: "WifProvidersPage",
       observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }
     )]),
-    subject: fn(_scope) { test.RestReplay.WifProvidersPage() }
+    subject: fn(_scope) {
+      match test.RestReplay.WifProvidersPage() {
+        RestRefused { refusal: RestBodyUndecodable { status: _, cause } } => cause as String
+        _ => ""
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.outcome {
-      RestBodyUndecodable { status: _, cause } => cause as String
-      _ => ""
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => ""
     WitnessInterrupted { at: _, route: _, state: _ } => ""
   }

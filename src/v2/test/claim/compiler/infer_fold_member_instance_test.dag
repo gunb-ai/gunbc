@@ -2,7 +2,7 @@ module v2.test.claim.compiler.infer_fold_member_instance
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.collection { List }
@@ -61,8 +61,9 @@ fn fmi_reason(o: Outcome<Bool>) -> Symbol {
   }
 }
 
-// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer enrolled in
-// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the claims read the decided,
+// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) admits where two or more declared
+// claims read it; the claims read the decided,
 // portable value. The record fold's one assembly serves three claims, including the supplied-tree control (3).
 type FmiRecordFoldReading {
   no_projection_refusal: Bool

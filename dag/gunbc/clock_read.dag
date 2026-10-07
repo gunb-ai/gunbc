@@ -1,8 +1,9 @@
 module gunbc.clock_read
 
-import std.types { String, NonEmptyStr }
-import extdeps.clock { Clock }
-import v2.std.optional { Present }
+import std.types { Bool, EpochMs, String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import extdeps.clock { Clock, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
+import std.optional { Present }
 
 fn clock_now_probed_at() -> NonEmptyStr? {
   let result = Clock.Now()
@@ -33,4 +34,74 @@ fn probed_at_word(reading: NonEmptyStr?) -> NonEmptyStr {
 
 fn clock_now_probed_at_or_unknown() -> NonEmptyStr {
   probed_at_word(reading: clock_now_probed_at())
+}
+
+// THE OBSERVER CLOCK AS AN ORDERING CARRIER (docs/plans/managed-host-untangle.md, cut O1b, "Receipts
+// and clock"). A bare EpochMs on an ordering field admits any instant from any clock, so a reading a
+// controller reported about itself -- mtjade1's BMC clock reads the year 2000 -- can be spelled into a
+// field that orders a rotation against its readback, and no comment can stop it. This record is
+// sealed and its producers live here, so an ordering field typed ObserverClockInstant can only hold an
+// instant this repository's own observer produced. A controller's clock stays representable as an
+// observation of the controller (gunbc.machine_intake_bmc_secure ControllerClockReading); it has no
+// route into this type.
+//
+// Two producers and their sources, neither a default. ObserverClockReadAtRun is the live read through
+// extdeps.clock clock_unix_millis_read, which already refuses a non-integer or negative reading.
+// ObserverClockModeled is the clock of a dry realization: its instants are the realization's own
+// schedule, admitted only to the realization and its witness, and the source travels with every
+// instant so a modeled instant is never read as a measured one. Transcribing an instant recorded in a
+// committed artifact is NOT a producer yet: its first consumer is the held mtcollins1 transition
+// (gunbc.machine_intake_bmc_secure bmc_secure_state_cutover_frontier), and it lands with it.
+type ObserverInstantSource
+  = ObserverClockReadAtRun
+  | ObserverClockModeled { realization: NonEmptyStr }
+
+type ObserverClockInstant sole_constructor {
+  millis: EpochMs
+  source: ObserverInstantSource
+}
+
+type ObserverClockRead
+  = ObserverClockObserved { instant: ObserverClockInstant }
+  | ObserverClockUnreadable { detail: String }
+
+fn observer_clock_read() -> ObserverClockRead {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => ObserverClockUnreadable { detail: d }
+    ClockUnixMillisObserved { millis: ms } =>
+      ObserverClockObserved { instant: ObserverClockInstant { millis: ms, source: ObserverClockReadAtRun } }
+  }
+}
+
+fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> ObserverClockInstant
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_bmc_account_instant"),
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_prior_life_instant"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "reflash_restored_factory_access_takes_the_same_apply_and_readback_path"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_year_2000_readback_cannot_satisfy_ordering_and_an_observer_instant_can"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_ungrounded_route_with_approval_refuses_the_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_secret_order_is_carried_by_the_plan"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_published_replacement_must_be_the_goal_bound_break_glass_generation"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_a_deviation_and_the_plan_refuses_without_a_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_apply_whose_post_read_fails_the_goal_generation_mints_no_receipt"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+  ]
+{
+  ObserverClockInstant { millis: millis, source: ObserverClockModeled { realization: realization } }
+}
+
+fn observer_instant_millis(instant: ObserverClockInstant) -> EpochMs {
+  instant.millis
+}
+
+fn observer_instant_precedes(earlier: ObserverClockInstant, later: ObserverClockInstant) -> Bool {
+  earlier.millis < later.millis
 }

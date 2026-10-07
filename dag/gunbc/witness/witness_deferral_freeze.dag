@@ -51,7 +51,8 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // `v2.workflow.required_floor` `long_home_prefixes`. Both the path and that refusal were
 // deleted as unreachable (2026-10-04). The refusal the rule needs is the required floor's own,
 // named as the restoration trigger of `gunbc.rung_drop`
-// `witness_deferral_freeze_forward_rule_rung_drop`.
+// `witness_deferral_freeze_forward_rule_rung_drop`. The STALE-ROW half does run on the live
+// route: `run_required_floor` refuses stale freeze rows before its intersection wall.
 //
 // EVIDENCE GRADE, stated because two of the three claims above are about absences.
 // The cadence standing is read from the corpus's own recorded corrections, not
@@ -68,6 +69,10 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
+// SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
+// renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
+// Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
+// gunbc.offline_local_recipe RecipeFunctions; freeze must not report a passing ratchet. Do not raise the cap.
 // SHRINK LOG. 2026-09-18 — 4 entries
 // (src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag [whole],
 // src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [whole],
@@ -416,21 +421,16 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
-  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag", functions: ["roster_lean_zero_suspects_within_ratchet", "roster_bash_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
     functions: [
       "roster_std_change_dag_zero_suspects_within_ratchet"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag", functions: ["roster_swift_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
     functions: [
       "roster_machine_code_zero_suspects_within_ratchet",
-      "roster_compile_stage_zero_suspects_within_ratchet",
-      "roster_glob_discovery_zero_suspects_within_ratchet",
-      "roster_lens_traversal_zero_suspects_within_ratchet",
       "roster_lens_cost_model_zero_suspects_within_ratchet",
       "roster_std_algebra_zero_suspects_within_ratchet"
     ]

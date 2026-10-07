@@ -202,6 +202,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_ci_mode = false;
     let mut required_ci_measurement_receipt: Option<String> = None;
     let mut required_ci_adjudicate_receipt: Option<String> = None;
+    let mut reach_base_standings_file: Option<String> = None;
+    let mut claim_wall_limit_ms: Option<u64> = None;
     let mut required_ci_unreached_receipt: Option<String> = None;
     let mut required_ci_unreached_cause: Option<String> = None;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
@@ -211,7 +213,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
-    let mut required_regen_fixed_point_mode = false;
     let mut regen_round_cost_mode = false;
     let mut regen_affected_set_mode = false;
     let mut regen_affected_scope = false;
@@ -250,6 +251,27 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 required_ci_adjudicate_receipt =
                     Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            // THE BASE SIDE OF THE PER-PR v2 CLAIM DIFFERENTIAL. Only the required floor passes
+            // this, as a separate process whose working directory is a worktree at the diff base
+            // (`v1_compiler::cli_run::reach_base_standings`). It names the reached identities and
+            // the floor's own per-claim wall limit, read once by the floor from
+            // `v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms`.
+            "--reach-base-standings" => {
+                i += 1;
+                reach_base_standings_file =
+                    Some(require_value(&args, i, "--reach-base-standings")?);
+            }
+            "--claim-wall-limit-ms" => {
+                i += 1;
+                let value = require_value(&args, i, "--claim-wall-limit-ms")?;
+                match value.parse::<u64>() {
+                    Ok(ms) => claim_wall_limit_ms = Some(ms),
+                    Err(e) => {
+                        eprintln!("--claim-wall-limit-ms {value:?}: {e}");
+                        return Err(ExitCode::from(2));
+                    }
+                }
             }
             "--measurement-unreached-receipt" => {
                 i += 1;
@@ -305,9 +327,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--write" => {
                 emit_partition_crates_write = true;
             }
-            "--required-regen-fixed-point" => {
-                required_regen_fixed_point_mode = true;
-            }
             // ONE PRICED REGEN ROUND: seed build, the same `--required-regen` emit, install of
             // what drifted, rebuild from the installed seed, diff — every phase on two clocks,
             // rendered by `gunbc.regen_round_cost`. It installs into src/v1/stage0/src, which
@@ -356,6 +375,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
+    if let Some(path) = reach_base_standings_file {
+        let Some(wall_ms) = claim_wall_limit_ms else {
+            eprintln!("--reach-base-standings requires --claim-wall-limit-ms");
+            return Err(ExitCode::from(2));
+        };
+        return run_reach_base_standings(&source_roots, &path, wall_ms);
+    }
     if let Some(path) = required_ci_adjudicate_receipt {
         return adjudicate_required_ci_measurement_receipt(&path);
     }
@@ -462,7 +488,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // reported as SKIPPED — because a phase that always reports the same non-verdict is the
     // absorbing fallback wearing a phase's clothes (DESIGN §5): its deficit frequency is zero by
     // construction and it reads as coverage on the ledger. The capabilities themselves survive
-    // where they had their own entry points and consumers: `--required-regen-fixed-point`,
+    // where they had their own entry points and consumers.
     // The three behavioral producers now run only through their `gunbc test` labels. Their old
     // flags are deleted in the same change as those bindings, so no dual-authority interval exists.
     //
@@ -900,64 +926,27 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("generated-artifact");
         }
 
-        // PHASE 2b — regen SECOND generation: does the emit reproduce itself.
-        //
-        // WHAT THIS PHASE CAN AND CANNOT SEE, stated here because the honest claim is much
-        // narrower than "the fixed point is now checked". When the first generation EQUALS the
-        // committed mirrors, this pass is green by construction: the tree it re-emits from is the
-        // one that produced the first generation, so only a NONDETERMINISTIC emit can separate
-        // them. It therefore catches emit nondeterminism and nothing else. In particular it
-        // cannot see a self-consistently wrong seed -- a producer built from a wrong mirror emits
-        // that same wrong mirror and every generation agrees -- and enrolling it must not be read
-        // as closing that gap. `gunbc.rung_drop` `floor_cut_regen_second_generation_agreement`
-        // states the same bound: a repeatability comparison sees a GENERATION DISAGREEMENT, never
-        // deterministic wrongness.
-        //
-        // IT IS ENROLLED ANYWAY BECAUSE IT IS NEARLY FREE AND ITS RED IS REAL. One extra emit, no
-        // install and no rebuild -- the expensive variant that installs the generation and
-        // rebuilds the producer buys only BUILD nondeterminism on top, at the price of a crate
-        // build per required run, and is deliberately not what this enrols.
-        if required_ci_phase_selected(RequiredCiPhase::RegenFixedPoint, required_ci_lane) {
-            eprintln!("required-ci: phase regen-fixed-point (second generation vs first)");
-            match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None) {
-                Ok(outcome) => {
-                    // `unmeasured` rather than a plausible default: a None here means the pass
-                    // built the wrong receipt variant, which is a defect to report and not a
-                    // verdict to substitute.
-                    let fpe = outcome
-                        .receipt
-                        .fixed_point_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string());
-                    eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
-                    for failure in &outcome.failures {
-                        eprintln!("required-ci: regen-fixed-point FAIL {failure}");
-                    }
-                    if !outcome.failures.is_empty() {
-                        phase_failures.push("regen-fixed-point".to_string());
-                    } else if outcome.receipt.fixed_point_equal() != Some(true) {
-                        eprintln!(
-                            "required-ci: regen-fixed-point REFUSED — no fixed_point_equal was                              measured, so this run has no second-generation verdict to report"
-                        );
-                        phase_failures.push("regen-fixed-point (unmeasured)".to_string());
-                    }
-                }
-                // A PASS THAT CANNOT RUN REFUSES RATHER THAN SKIPS. The reachable causes are an
-                // absent or unparseable prior receipt and a prior measured at a different commit,
-                // and every one of them means this run holds NO second-generation evidence.
-                // Treating "could not check" as "checked" is the absorbing fallback exactly.
-                Err(e) => {
-                    eprintln!("required-ci: regen-fixed-point REFUSED {e}");
-                    phase_failures.push(format!("regen-fixed-point ({e})"));
-                }
-            }
-
-            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THIS PHASE, for the reason
-            // the rostered-row join rides the parse: it is the SAME QUESTION this phase already
-            // asks -- re-run the producer over an unchanged tree, compare the bytes -- one
-            // artifact over, and the roster of required jobs is closed to growth. It is a rider,
-            // not a phase, so `RequiredCiPhase::RegenFixedPoint`'s lane ownership answers for it
-            // and no second routing fact exists to drift.
+        // PHASE 2b — THE SECOND-GENERATION RE-EMIT IS GONE (operator ruling 2026-10-04: "we
+        // don't need to run multiple times - we are not that particular about determinism in v1
+        // anymore"). It re-emitted with the SAME binary the generated-artifact phase had just
+        // run, so it could separate the two generations only on a NONDETERMINISTIC emit -- it
+        // was a determinism check and nothing else, and determinism is what the ruling waives.
+        // What the build lane asserts is now exactly one sentence: the committed mirrors equal
+        // ONE emission of the current .dag sources by the seed built from those mirrors (the
+        // generated-artifact phase above). The ruling does NOT waive CONVERGENCE, and that
+        // assertion is what still enforces it: a change to the emitter's own closure (infer,
+        // emit_rust) emitted by a binary that predates it is refused there, because the seed CI
+        // builds from the committed mirrors emits differently. The declared drop of the
+        // determinism capability stays `gunbc.rung_drop`
+        // `floor_cut_regen_second_generation_agreement`.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THE GENERATED-ARTIFACT PHASE.
+            // It rode the deleted second-generation phase until 2026-10-04 and moved here rather
+            // than lapsing: it is a fixture-sized emitter property (registry-key order in one
+            // artifact), not the corpus re-emit the ruling waives, and the roster of required
+            // jobs is closed to growth. It is a rider, not a phase, so
+            // `RequiredCiPhase::GeneratedArtifact`'s lane ownership answers for it and no second
+            // routing fact exists to drift.
             //
             // ITS COST IS THREE EMISSIONS OF A SIXTEEN-DECLARATION FIXTURE, not of the corpus.
             // The class it catches is a property of the EMITTER, so the smallest specimen that
@@ -983,7 +972,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                     phase_failures.push("dag-artifact-identity (subject unobtainable)".to_string());
                 }
             }
-            ran.push("regen-fixed-point");
         }
 
         // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
@@ -1343,49 +1331,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eprintln!(
                     "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
                 );
-                Err(ExitCode::from(1))
-            }
-        };
-    }
-
-    if required_regen_fixed_point_mode {
-        return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
-        {
-            Ok(outcome) => {
-                // The provenance is printed, not just carried. This line previously read
-                // `first_generation_equal={}` off the receipt as though the fixed-point pass had
-                // measured it; it never does. Labelling it `referenced_` and naming the commit it
-                // came from means the log itself distinguishes measured from quoted -- and since
-                // the host refuses a cross-tree reference, `referenced_at` equals HEAD on every
-                // line that is allowed to print.
-                let (referenced_fge, referenced_at) = match outcome.receipt.prior() {
-                    Some(prior) => (
-                        prior.first_generation_equal.to_string(),
-                        prior.commit_sha.clone(),
-                    ),
-                    None => ("unavailable".to_string(), "unavailable".to_string()),
-                };
-                eprintln!(
-                    "required-regen-fixed-point: fixed_point_equal={} referenced_first_generation_equal={} referenced_at={}",
-                    outcome
-                        .receipt
-                        .fixed_point_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string()),
-                    referenced_fge,
-                    referenced_at
-                );
-                for failure in &outcome.failures {
-                    eprintln!("required-regen-fixed-point: FAIL {failure}");
-                }
-                if outcome.failures.is_empty() {
-                    Ok(ExitCode::SUCCESS)
-                } else {
-                    Err(ExitCode::from(1))
-                }
-            }
-            Err(e) => {
-                eprintln!("required-regen-fixed-point: refused: {e}");
                 Err(ExitCode::from(1))
             }
         };
@@ -1800,7 +1745,6 @@ enum RequiredCiPhase {
     Parse,
     PrimitiveRuntimeBody,
     GeneratedArtifact,
-    RegenFixedPoint,
     BareReferenceAdmission,
     Floor,
 }
@@ -1810,7 +1754,6 @@ impl RequiredCiPhase {
         match self {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
-            RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::BareReferenceAdmission => "bare-reference-admission",
             RequiredCiPhase::Floor => "floor",
@@ -1832,12 +1775,6 @@ impl RequiredCiPhase {
             // the floor then prepares from, so the heads census is read once.
             RequiredCiPhase::BareReferenceAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
-            // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
-            // the receipt that phase's stage0-mirror adjudicator wrote at
-            // `target/stage0-regen-receipt.json`, and target/ does not
-            // survive checkout, so a lane boundary between them would leave it with no prior
-            // measurement to reference and nothing to compare.
-            RequiredCiPhase::RegenFixedPoint => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
@@ -1854,12 +1791,14 @@ impl RequiredCiPhase {
 // is gunbc.rung_drop v2_native_route_off_the_merge_path. The namespace wave-admission phase
 // (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
 // refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
-// namespace_wave_admission_wall_removed.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
+// namespace_wave_admission_wall_removed. The regen-fixed-point phase (a same-binary second
+// emit, catching only nondeterminism) left by operator ruling 2026-10-04 ("we are not that
+// particular about determinism in v1 anymore"); the drop stays gunbc.rung_drop
+// floor_cut_regen_second_generation_agreement.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
-    RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::BareReferenceAdmission,
     RequiredCiPhase::Floor,
 ];
@@ -1873,11 +1812,10 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
     "ParsePhase",
     "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
-    "RegenFixedPointPhase",
     "BareReferenceAdmissionPhase",
     "FloorPhase",
 ];
@@ -2185,6 +2123,16 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
     }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "required-floor: COST-DEBT-ROW-REFUSED {} cause={} — this change admits or restores a \
+             floor_cost_debt row, and its claim did not pass when run for its verdict without the \
+             eval-step budget. A cost row withholds a witness for COST; standing over a failing or \
+             verdict-less claim it hides a semantic red. Repair the claim, or keep the row out of \
+             the roster and name the red where reds are carried.",
+            blocker.identity, blocker.cause
+        );
+    }
     for blocker in &outcome.enrolment_margin_blocking {
         eprintln!(
             "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
@@ -2270,69 +2218,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
 }
 
-/// Whether the floor outcome permits a green run.
-///
-/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
-/// caller, because a mode that forgot one of them would green a run the other refused. (The
-/// count is stated because a reader checks it; it was five before main added `route_gap` and
-/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
-/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// were wired in here directly; that was reverted and the count returned to seven.)
-///
-/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
-/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
-/// an enrolled claim produced no verdict — and gating on them directly would red every lane
-/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
-/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
-/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
-/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
-/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
-/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
-///
-/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
-/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
-/// today and, should it stop producing a verdict again, it is already rostered and the eighth
-/// conjunct admits it. Repayment and deletion are therefore one act, which is what
-/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
-/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
-/// — it requires the fix to be complete, and the diagnostic names every row to delete.
-fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
-    outcome.failures.is_empty()
-        && outcome.non_verdict_unenrolled.is_empty()
-        && outcome.stale_non_verdict.is_empty()
-        && outcome.stale_quarantine.is_empty()
-        && outcome.interrupted_before_verdict.is_empty()
-        && outcome.completed_over_cost_requirement.is_empty()
-        && outcome.host_tool_unresolved.is_empty()
-        && outcome.route_gap.is_empty()
-        && outcome.stale_route_gap.is_empty()
-        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
-        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
-        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
-        // roster that has stopped describing the tree, which voids the contract's monotone
-        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
-        && outcome.stale_cost_debt.is_empty()
-        // A CHANGED witness identity that did not execute to a passing verdict — declined,
-        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
-        // required context. The classification authority is
-        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
-        // is only the identities this change's diff touched, never the standing declined
-        // corpus, so this conjunct cannot red a PR for debt it did not author.
-        && outcome.changed_witness_blocking.is_empty()
-        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
-        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
-        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
-        // the line every one of the fifteen incident rows cleared on the run that measured them
-        // and crossed on the run that did not. Three refusing states, deliberately distinct:
-        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
-        // the one that must not be folded into the others — absence of a measurement is not
-        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
-        //
-        // The population is only what this change enrols, so this conjunct cannot red a PR for
-        // debt it did not author. Authority:
-        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
-        && outcome.enrolment_margin_blocking.is_empty()
-}
+// Moved to `v1_compiler::cli_run::required_floor_outcome_is_clean` so the floor's integration
+// controls drive the same predicate this binary gates on.
+use v1_compiler::cli_run::required_floor_outcome_is_clean;
 
 fn required_floor_measurement_blockers(
     outcome: &v1_compiler::cli_run::RequiredFloorOutcome,
@@ -2347,6 +2235,9 @@ fn required_floor_measurement_blockers(
     };
     for identity in &outcome.failures {
         add(identity, "claim_failed");
+    }
+    for (identity, differential) in &outcome.reach_differential_blocking {
+        add(identity, &format!("reach_differential_{differential}"));
     }
     for identity in &outcome.non_verdict_unenrolled {
         add(identity, "non_verdict_unenrolled");
@@ -2385,6 +2276,9 @@ fn required_floor_measurement_blockers(
     for blocker in &outcome.changed_witness_blocking {
         add(&blocker.identity, &blocker.cause);
     }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        add(&blocker.identity, &blocker.cause);
+    }
     // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes
     // measured-over-margin, censored-at-ceiling and not-measured-at-all, and those have three
     // different remedies — collapsing them into one population name here would rebuild exactly the
@@ -2393,6 +2287,47 @@ fn required_floor_measurement_blockers(
         add(&blocker.identity, &blocker.cause);
     }
     blockers
+}
+
+/// One line per reached identity on stdout, `reach-base identity=<id> standing=<name>`, then exit
+/// 0. Exit 3 with `reach-base-refused identity=<id> cause=<cause>` when an outcome is not a
+/// verdict, and exit 2 when the arm could not run at all. The floor parses these lines and
+/// nothing else.
+fn run_reach_base_standings(
+    source_roots: &[String],
+    identities_file: &str,
+    wall_ms: u64,
+) -> Result<ExitCode, ExitCode> {
+    use v1_compiler::cli_run::reach_base_standings::{reach_base_standings, ReachBaseArm};
+    let text = std::fs::read_to_string(identities_file).map_err(|e| {
+        eprintln!("reach-base: {identities_file}: {e}");
+        ExitCode::from(2)
+    })?;
+    let identities: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    match reach_base_standings(source_roots, &identities, wall_ms) {
+        Ok(ReachBaseArm::Completed(standings)) => {
+            for (identity, standing) in standings {
+                println!(
+                    "reach-base identity={identity} standing={}",
+                    standing.name()
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Ok(ReachBaseArm::Refused { identity, cause }) => {
+            println!("reach-base-refused identity={identity} cause={cause}");
+            Ok(ExitCode::from(3))
+        }
+        Err(e) => {
+            eprintln!("reach-base: arm did not run: {e}");
+            Err(ExitCode::from(2))
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -2453,7 +2388,6 @@ mod tests {
             lane_phase_row("witnesses", "parse"),
             lane_phase_row("witnesses", "primitive-runtime-body"),
             lane_phase_row("build", "generated-artifact"),
-            lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
         ]
     }
@@ -2486,7 +2420,6 @@ mod tests {
         let mut rows = standing_authority_rows();
         rows.retain(|r| r.lane != "build");
         rows.push(lane_phase_row("witnesses", "generated-artifact"));
-        rows.push(lane_phase_row("witnesses", "regen-fixed-point"));
         let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
         assert!(
             findings
@@ -2515,12 +2448,7 @@ mod tests {
         let rows = standing_authority_rows();
         assert_eq!(
             expected_lane_phases(&rows, Some(RequiredCiLane::Build)),
-            [
-                "generated-artifact".to_string(),
-                "regen-fixed-point".to_string()
-            ]
-            .into_iter()
-            .collect()
+            ["generated-artifact".to_string()].into_iter().collect()
         );
         assert_eq!(
             expected_lane_phases(&rows, None),
@@ -2854,7 +2782,6 @@ mod tests {
 // ---------------------------------------------------------------------------
 //
 // WHAT THIS ANSWERS THAT NOTHING ELSE DOES. `--required-regen` proves the committed mirrors
-// equal what the authority emits, and `--required-regen-fixed-point` proves the emit repeats.
-// Neither ever COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
+// equal what the authority emits. It never COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
 // rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and DESIGN §7 says in
 // as many words that a byte-identical fixed point is NOT the goal, because matching bytes forces

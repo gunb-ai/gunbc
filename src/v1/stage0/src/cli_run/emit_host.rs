@@ -143,6 +143,7 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
         COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        record_fixture_closure_memo_hit(&memo_key);
         return hit;
     }
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -164,7 +165,9 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     // halves still sum to what it actually spent.
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
+    begin_fixture_closure_fill();
     let census = compile_dag_diagnostic_census_uncached(source);
+    finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
@@ -199,7 +202,9 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
             let sources =
-                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
+                    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+            record_fixture_closure(&sources);
             compile_fixture_rendering_only_what_is_read(sources, None)
         })
     }));
@@ -1913,22 +1918,37 @@ pub fn compile_dag_rust_emit_check_memo_counts() -> (u64, u64) {
     )
 }
 
+/// WHAT ONE FIXTURE COMPILE ESTABLISHES, independent of what a caller asserts about it.
+/// The memo key is (source, read path, prepared inventory): the inputs the compile and render
+/// depend on. `includes`/`excludes` are assertions evaluated AFTER compilation over the emitted
+/// text, so they are not inputs of the compile and key nothing; each call evaluates its own
+/// against the shared read (`emit_check_verdict`).
+#[derive(Clone)]
+pub(crate) enum EmitCheckRead {
+    /// At least one compile-clean hard diagnostic: every assertion set reads `false`.
+    HardDiagnostics,
+    /// The emitted text at the read path.
+    Content(Rc<str>),
+}
+
+fn emit_check_verdict(read: &EmitCheckRead, includes: &[String], excludes: &[String]) -> bool {
+    match read {
+        EmitCheckRead::HardDiagnostics => false,
+        EmitCheckRead::Content(content) => {
+            includes.iter().all(|n| content.contains(n.as_str()))
+                && excludes.iter().all(|n| !content.contains(n.as_str()))
+        }
+    }
+}
+
 pub(crate) fn compile_dag_rust_emit_check_memo_key(
     source: &str,
     file_path: &str,
-    includes: &[String],
-    excludes: &[String],
     inventory_digest: &str,
 ) -> String {
     use crate::v1_rt::{atom_identity_hash, hash_combine};
     let mut h = atom_identity_hash(source.to_string());
     h = hash_combine(h, atom_identity_hash(file_path.to_string()));
-    for s in includes {
-        h = hash_combine(h, atom_identity_hash(s.clone()));
-    }
-    for s in excludes {
-        h = hash_combine(h, atom_identity_hash(s.clone()));
-    }
     h = hash_combine(h, atom_identity_hash(inventory_digest.to_string()));
     h
 }
@@ -2016,19 +2036,15 @@ pub fn compile_dag_rust_emit_check(
     // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
     // Outside the guard there is no snapshot, so a hit would lie about disk.
     let Some(inventory_digest) = floor_prepared_inventory_digest() else {
-        return compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+        return compile_dag_rust_emit_check_uncached(source, file_path)
+            .map(|read| emit_check_verdict(&read, includes, excludes));
     };
-    let memo_key = compile_dag_rust_emit_check_memo_key(
-        source,
-        file_path,
-        includes,
-        excludes,
-        &inventory_digest,
-    );
+    let memo_key = compile_dag_rust_emit_check_memo_key(source, file_path, &inventory_digest);
     if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        return hit;
+        record_fixture_closure_memo_hit(&memo_key);
+        return hit.map(|read| emit_check_verdict(&read, includes, excludes));
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
@@ -2036,23 +2052,25 @@ pub fn compile_dag_rust_emit_check(
     // — the claim loop does the split, this only says how much of the cost was a fill.
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
-    let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    begin_fixture_closure_fill();
+    let verdict = compile_dag_rust_emit_check_uncached(source, file_path);
+    finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
     record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict.clone()));
-    verdict
+    verdict.map(|read| emit_check_verdict(&read, includes, excludes))
 }
 
 pub(crate) fn compile_dag_rust_emit_check_uncached(
     source: &str,
     file_path: &str,
-    includes: &[String],
-    excludes: &[String],
-) -> Result<bool, FixtureRenderRefusal> {
+) -> Result<EmitCheckRead, FixtureRenderRefusal> {
     let module_index = build_module_path_index_from_witness_roots();
-    let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+    let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
+        .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+    record_fixture_closure(&sources);
     let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
     let hard_diagnostics = result
         .diagnostics
@@ -2060,11 +2078,10 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
     if hard_diagnostics != 0 {
-        return Ok(false);
+        return Ok(EmitCheckRead::HardDiagnostics);
     }
     match result.files.iter().find(|f| f.path == file_path) {
-        Some(f) => Ok(includes.iter().all(|n| f.content.contains(n.as_str()))
-            && excludes.iter().all(|n| !f.content.contains(n.as_str()))),
+        Some(f) => Ok(EmitCheckRead::Content(Rc::from(f.content.as_str()))),
         // A CLEAN COMPILE THAT DID NOT PRODUCE THE READ PATH IS NOT A RED VERDICT ABOUT ITS TEXT.
         // The path named no module of the compiled closure and no crate-level file the emitter
         // writes, so there was nothing to read; answering `false` would let a misspelled path pass
@@ -2104,8 +2121,9 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 /// in the fixture's closure is no longer rendered, so ITS per-module emit refusal no longer
 /// reaches the census rows or the emit check's hard-diagnostic gate. Whole-graph emit checks
 /// (anonymous records, effectful recursion, file-name and symbol collisions) run before
-/// selection and are unchanged. A corpus module's own emission is the subject of the
-/// generated-artifact lanes, which render it for real, not of a fixture claim.
+/// selection and are unchanged. A corpus module's own emission is not a fixture claim's subject:
+/// the required floor renders every recorded closure module once per run in
+/// [`fixture_closure_union_emit_receipt`], and an emit refusal there refuses the floor.
 ///
 /// REFUSES, NEVER WIDENS. If the graph holds no module spanned in the fixture source, there is
 /// no subject to render, and the answer is a typed refusal. It is never a fall back to
@@ -2207,7 +2225,8 @@ pub(crate) fn render_selection_agreement_receipt(
         };
         let module_index = build_module_path_index_from_witness_roots();
         let sources =
-            resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, fx.source, &module_index);
+            resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, fx.source, &module_index)
+                .map_err(&refuse)?;
         let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
         let selection = fixture_render_selection(&resolved, Some(fx.read_path))
             .map_err(|r| refuse(r.to_string()))?;
@@ -2310,6 +2329,9 @@ pub enum FixtureRenderRefusal {
         read_path: String,
         emitted: Vec<String>,
     },
+    /// The closure authority refused to close the fixture's imported modules
+    /// (`resolve_virtual_source_with_imports`), so there is no program to compile.
+    ClosureUnresolvable { cause: String },
 }
 
 impl std::fmt::Display for FixtureRenderRefusal {
@@ -2331,6 +2353,12 @@ impl std::fmt::Display for FixtureRenderRefusal {
                 emitted.len(),
                 emitted.join(", ")
             ),
+            FixtureRenderRefusal::ClosureUnresolvable { cause } => {
+                write!(
+                    f,
+                    "fixture closure refused by the closure authority: {cause}"
+                )
+            }
         }
     }
 }
@@ -2882,25 +2910,1356 @@ pub(crate) fn compile_xl1_primary_root_tap(
     }
 }
 
+/// THE FIXTURE-CLOSURE UNION (retires `gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger`).
+///
+/// Floor C1 (gunbc#13037) stopped rendering every closure module per fixture compile, so a corpus
+/// module's own emit refusal no longer reached any required gate unless the v1 seed mirrors
+/// happened to cover it. The restoration is the deduplicated form of what was removed: each fixture
+/// instrument RECORDS the closure it resolved (every source except the fixture itself, by path and
+/// bytes), and the required floor renders the union of those closures ONCE, after the claims ran
+/// ([`fixture_closure_union_emit_receipt`]).
+///
+/// THE POPULATION IS THE INSTRUMENT'S OUTPUT, NOT A LIST. It is exactly the closures the fixture
+/// instruments resolved on this run, recorded at the one seam both of them pass through
+/// (`resolve_virtual_source_with_imports` over the floor's module index), so it cannot name a module
+/// no fixture reached and cannot omit one a fixture did. A memo hit replays the closure its fill
+/// recorded ([`record_fixture_closure_memo_hit`]), so the union stays complete on a later run in the
+/// same process, where every fixture call may be a hit.
+///
+/// One path recorded with two different byte contents is not unioned by picking one: it is kept as
+/// a conflict, and the receipt refuses on it (DESIGN §5, refuse rather than widen or choose).
+#[derive(Default)]
+pub(crate) struct FixtureClosureUnion {
+    pub members: BTreeMap<String, String>,
+    pub conflicts: BTreeSet<String>,
+    pub fixture_compiles: usize,
+    /// Fixture calls answered by a memo hit, whose closures were replayed rather than resolved.
+    pub memo_hits: usize,
+}
+
+static FIXTURE_CLOSURE_UNION: Mutex<Option<FixtureClosureUnion>> = Mutex::new(None);
+
+/// WHAT A MEMO HIT REPLAYS. The two fixture memos are process-lived and thread-local, while the
+/// union is per run (`run_required_floor` resets it). A later run in the same process whose fixture
+/// compiles all hit the memo would otherwise record nothing and render an empty union green. So a
+/// fill stores its closure's paths under its memo key, and every hit replays them into the union
+/// ([`record_fixture_closure_memo_hit`]). A replay returns exactly the bytes ITS OWN fill read: the
+/// closure is stored as (path, bytes) under the memo key, never looked up by path alone, so a file
+/// that changed between runs cannot be replayed with another fill's bytes (review 76336). Identical
+/// bytes for one path are shared, not copied, through `interned`.
+/// One fill's closure: every recorded path with the exact bytes that fill read.
+type RecordedFixtureClosure = Vec<(String, Arc<String>)>;
+
+#[derive(Default)]
+struct FixtureClosureMemoReplay {
+    closure_by_memo_key: std::collections::HashMap<String, RecordedFixtureClosure>,
+    interned: std::collections::HashMap<String, Vec<Arc<String>>>,
+}
+
+impl FixtureClosureMemoReplay {
+    fn intern(&mut self, path: &str, content: &str) -> Arc<String> {
+        let variants = self.interned.entry(path.to_string()).or_default();
+        if let Some(existing) = variants.iter().find(|v| v.as_str() == content) {
+            return existing.clone();
+        }
+        let fresh = Arc::new(content.to_string());
+        variants.push(fresh.clone());
+        fresh
+    }
+}
+
+static FIXTURE_CLOSURE_MEMO_REPLAY: Mutex<Option<FixtureClosureMemoReplay>> = Mutex::new(None);
+
+thread_local! {
+    /// The paths the last [`record_fixture_closure`] on this thread recorded, taken by the memo
+    /// wrapper that triggered the fill. Cleared before each fill so a fill that panicked before
+    /// resolving cannot inherit an earlier fill's closure.
+    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<RecordedFixtureClosure>> = const { RefCell::new(None) };
+}
+
+/// Called by a memo wrapper just before it fills.
+pub(crate) fn begin_fixture_closure_fill() {
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = None);
+}
+
+/// Called by a memo wrapper after it filled `memo_key`: the closure the fill recorded becomes what
+/// a later hit on that key replays.
+pub(crate) fn finish_fixture_closure_fill(memo_key: &str) {
+    let Some(closure) = LAST_RECORDED_FIXTURE_CLOSURE.with(|l| l.borrow_mut().take()) else {
+        return;
+    };
+    let mut guard = FIXTURE_CLOSURE_MEMO_REPLAY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard
+        .get_or_insert_with(FixtureClosureMemoReplay::default)
+        .closure_by_memo_key
+        .insert(memo_key.to_string(), closure);
+}
+
+/// A memo hit on `memo_key`: replay the closure its fill recorded into this run's union.
+pub(crate) fn record_fixture_closure_memo_hit(memo_key: &str) {
+    let guard = FIXTURE_CLOSURE_MEMO_REPLAY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(replay) = guard.as_ref() else {
+        return;
+    };
+    let Some(closure) = replay.closure_by_memo_key.get(memo_key) else {
+        return;
+    };
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = closure
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.as_str().to_string(),
+            })
+        })
+        .collect();
+    drop(guard);
+    record_into_union(&sources, true);
+}
+
+/// Record one fixture compile's resolved closure into the run's union. Called by the two fixture
+/// instruments' uncached paths with the exact source vector they compile.
+pub(crate) fn record_fixture_closure(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let closure: RecordedFixtureClosure = {
+        let mut replay = FIXTURE_CLOSURE_MEMO_REPLAY
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let replay = replay.get_or_insert_with(FixtureClosureMemoReplay::default);
+        sources
+            .iter()
+            .filter(|source| source.path != FIXTURE_SOURCE_PATH)
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    replay.intern(&source.path, &source.content),
+                )
+            })
+            .collect()
+    };
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = Some(closure));
+    record_into_union(sources, false);
+}
+
+fn record_into_union(sources: &[Rc<v1_compiler_compile::SourceFile>], memo_hit: bool) {
+    let mut guard = FIXTURE_CLOSURE_UNION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let union = guard.get_or_insert_with(FixtureClosureUnion::default);
+    if memo_hit {
+        union.memo_hits += 1;
+    } else {
+        union.fixture_compiles += 1;
+    }
+    for source in sources {
+        if source.path == FIXTURE_SOURCE_PATH {
+            continue;
+        }
+        match union.members.get(&source.path) {
+            Some(existing) if existing != &source.content => {
+                union.conflicts.insert(source.path.clone());
+            }
+            Some(_) => {}
+            None => {
+                union
+                    .members
+                    .insert(source.path.clone(), source.content.clone());
+            }
+        }
+    }
+}
+
+/// Take the union recorded so far, leaving it empty for the next run in this process.
+pub(crate) fn take_fixture_closure_union() -> FixtureClosureUnion {
+    FIXTURE_CLOSURE_UNION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+        .unwrap_or_default()
+}
+
+/// What a held union render observed, for the caller's `[floor-phase]` line.
+#[derive(Debug)]
+pub(crate) struct FixtureClosureUnionObserved {
+    pub members: usize,
+    pub digest: String,
+    pub files: usize,
+    pub emit_diagnostics: usize,
+    /// Services not rendered, each naming module, service, the capture-policy fact, and the drop.
+    /// Empty when the union rendered every member. Never a skip without a row here.
+    pub excluded: Vec<String>,
+}
+
+/// The digest of a union: path and bytes of every member, in path order. Two runs print the same
+/// digest exactly when they rendered the same population.
+pub(crate) fn fixture_closure_union_digest(members: &BTreeMap<String, String>) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash(format!("fixture-closure-union:{}", members.len()));
+    for (path, content) in members {
+        h = hash_combine(h, atom_identity_hash(path.clone()));
+        h = hash_combine(h, atom_identity_hash(content.clone()));
+    }
+    h
+}
+
+/// RENDER THE UNION ONCE THROUGH THE RUST EMITTER AND REFUSE ON ANY PER-MODULE EMIT REFUSAL.
+///
+/// The members are compiled together as one source vector and rendered with `RenderEveryModule`,
+/// so every member owes its own rendering, which is the coverage #13037 removed. The compile is
+/// fresh: the floor's prepared graph is the gate closure with its typecheck caches stripped
+/// (`prepared_graph_without_typecheck_caches`), a different carrier from the `compile_to_resolved`
+/// output the fixture instruments render, and the caller prints how many members lie outside it,
+/// so a reader can see the union is not that closure rather than assume it.
+///
+/// Every failure is a typed, located refusal, never a skip:
+///   * `FixtureClosureUnionConflict`: one path recorded with two contents;
+///   * `FixtureClosureUnionUncompilable`: a blocking compile diagnostic, so no member could be
+///     rendered, named by module;
+///   * `FixtureClosureUnionEmitRefused`: an error diagnostic produced by the render, named by
+///     module and emit reason. These are the render's own diagnostics: a render's diagnostic list
+///     is the compile's list followed by the emitter's (`emit_resolved_for_target_selected`), so
+///     the suffix past the compile's length is exactly what the emitter added.
+///
+/// Unmodeled rust stderr-capture channels (`gunbc.rung_drop`
+/// `fixture_closure_union_unmodeled_stderr_capture`) are a typed exclusion, not this refusal:
+/// those services are stripped from the emit graph and listed on the observation. A sibling
+/// unmodeled key or any other emit error still refuses.
+pub(crate) fn fixture_closure_union_emit_receipt(
+    union: &FixtureClosureUnion,
+) -> Result<FixtureClosureUnionObserved, String> {
+    let digest = fixture_closure_union_digest(&union.members);
+    let refuse = |cause: &str, what: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause={cause} receipt=fixture_closure_union_emit_receipt \
+             members={} digest={digest} -- {what}",
+            union.members.len()
+        )
+    };
+    if !union.conflicts.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionConflict",
+            format!(
+                "paths recorded with two different contents in one run: {:?}",
+                union.conflicts
+            ),
+        ));
+    }
+    // AN EMPTY UNION IS A BROKEN SEAM, NOT A CLEAN ONE (review 76399). The required floor always
+    // runs fixture claims, so a union with no members means the recording seam was bypassed (an
+    // instrument that does not record, a hit that did not replay), and holding here would let the
+    // restored capability die green.
+    if union.members.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionEmpty",
+            format!(
+                "no fixture closure was recorded on this run (fixture_compiles={} memo_hits={}); \
+                 the recording seam (record_fixture_closure / record_fixture_closure_memo_hit) was \
+                 bypassed",
+                union.fixture_compiles, union.memo_hits
+            ),
+        ));
+    }
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = union
+        .members
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect();
+    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let located = |d: &Rc<ErrorNode>| {
+        format!(
+            "module={} reason=`{}`",
+            d.module_name,
+            diagnostic_to_message(d.diagnostic.clone())
+        )
+    };
+    if v1_compiler_compile::emittable_graph(resolved.clone()).is_none() {
+        let blocking: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            })
+            .map(located)
+            .collect();
+        return Err(refuse(
+            "FixtureClosureUnionUncompilable",
+            format!(
+                "the union compile produced {} blocking diagnostics, so no member was rendered: {}",
+                blocking.len(),
+                blocking.join(" | ")
+            ),
+        ));
+    }
+    let (resolved, excluded) = union_emit_graph_excluding_unmodeled_stderr_capture(resolved);
+    let compile_diagnostics = resolved.diagnostics.len();
+    let rendered = v1_compiler_compile::emit_resolved_for_target(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let emitted: Vec<&Rc<ErrorNode>> = rendered
+        .diagnostics
+        .iter()
+        .skip(compile_diagnostics)
+        .collect();
+    let refusals: Vec<String> = emitted
+        .iter()
+        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| located(d))
+        .collect();
+    if !refusals.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionEmitRefused",
+            format!(
+                "{} per-module emit refusals: {}",
+                refusals.len(),
+                refusals.join(" | ")
+            ),
+        ));
+    }
+    Ok(FixtureClosureUnionObserved {
+        members: union.members.len(),
+        digest,
+        files: rendered.files.len(),
+        emit_diagnostics: emitted.len(),
+        excluded,
+    })
+}
+
+/// Deleting either the drop row or its typed carrier fails this compile. The union compiles
+/// the carrier through `compile_to_resolved` and evaluates `exclusion` (review 77125).
+const STDERR_CAPTURE_GAP_CARRIER_SOURCE: &str =
+    include_str!("../../../../../dag/gunbc/stderr_capture_gap_exclusion.dag");
+const STDERR_CAPTURE_POLICY_DROP_SOURCE: &str = include_str!(
+    "../../../../../dag/gunbc/rung_drop/fixture_closure_union_unmodeled_stderr_capture.dag"
+);
+
+struct CaptureGapExclusion {
+    drop_identity: String,
+    declaring_module: String,
+    service: String,
+    operation_qualified: String,
+    operation_bare: String,
+}
+
+fn record_field_string(
+    ctx: &crate::v1_interpreter::InterpContext,
+    fields: &[(crate::v1_interpreter::Symbol, crate::v1_interpreter::Value)],
+    name: &str,
+) -> Result<String, String> {
+    use crate::v1_interpreter::Value;
+    match fields
+        .iter()
+        .find(|(sym, _)| ctx.sym_eq(*sym, name))
+        .map(|(_, v)| v)
+    {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        Some(other) => Err(format!(
+            "cause=CaptureGapExclusionFieldNotString field={name} value={other:?}"
+        )),
+        None => Err(format!(
+            "cause=CaptureGapExclusionFieldMissing field={name}"
+        )),
+    }
+}
+
+fn load_capture_gap_exclusion() -> Result<CaptureGapExclusion, String> {
+    let _drop_row_tether = STDERR_CAPTURE_POLICY_DROP_SOURCE;
+    let files = vec![Rc::new(v1_compiler_compile::SourceFile {
+        path: "dag/gunbc/stderr_capture_gap_exclusion.dag".to_string(),
+        content: STDERR_CAPTURE_GAP_CARRIER_SOURCE.to_string(),
+    })];
+    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+    let located = |d: &Rc<ErrorNode>| {
+        format!(
+            "module={} reason=`{}`",
+            d.module_name,
+            crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone())
+        )
+    };
+    if v1_compiler_compile::emittable_graph(resolved.clone()).is_none() {
+        let blocking: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            })
+            .map(located)
+            .collect();
+        return Err(format!(
+            "cause=CaptureGapExclusionUncompilable drop_row_bytes={} diagnostics={}",
+            _drop_row_tether.len(),
+            blocking.join(" | ")
+        ));
+    }
+    let Some(graph) = resolved.graph.clone() else {
+        return Err(format!(
+            "cause=CaptureGapExclusionUncompilable drop_row_bytes={} -- resolved graph is none",
+            _drop_row_tether.len()
+        ));
+    };
+    let ctx = make_eval_context(
+        &graph,
+        resolved.source_indices.clone(),
+        crate::v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let val = crate::v1_interpreter::with_active_context(&ctx, || {
+        match crate::v1_interpreter::eval_data_item_value(&ctx, "exclusion") {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => crate::v1_interpreter::eval_data_item_value(
+                &ctx,
+                "gunbc.stderr_capture_gap_exclusion.exclusion",
+            ),
+            Err(e) => Err(e),
+        }
+    })
+    .map_err(|e| format!("cause=CaptureGapExclusionEvalFailed error={e}"))?
+    .ok_or_else(|| "cause=CaptureGapExclusionDataMissing name=exclusion".to_string())?;
+    let crate::v1_interpreter::Value::Record {
+        ref fields,
+        type_name,
+    } = val
+    else {
+        return Err(format!("cause=CaptureGapExclusionNotRecord value={val:?}"));
+    };
+    if !ctx.sym_eq(type_name, "StderrCaptureGapExclusion")
+        && !ctx.sym_eq(
+            type_name,
+            "gunbc.stderr_capture_gap_exclusion.StderrCaptureGapExclusion",
+        )
+    {
+        return Err(format!(
+            "cause=CaptureGapExclusionUnexpectedType type={}",
+            ctx.resolve(type_name)
+        ));
+    }
+    Ok(CaptureGapExclusion {
+        drop_identity: record_field_string(&ctx, fields.as_slice(), "drop_identity")?,
+        declaring_module: record_field_string(&ctx, fields.as_slice(), "declaring_module")?,
+        service: record_field_string(&ctx, fields.as_slice(), "service")?,
+        operation_qualified: record_field_string(&ctx, fields.as_slice(), "operation_qualified")?,
+        operation_bare: record_field_string(&ctx, fields.as_slice(), "operation_bare")?,
+    })
+}
+
+fn capture_gap_exclusion() -> Result<&'static CaptureGapExclusion, &'static str> {
+    static GAP: OnceLock<Result<CaptureGapExclusion, String>> = OnceLock::new();
+    match GAP.get_or_init(load_capture_gap_exclusion) {
+        Ok(gap) => Ok(gap),
+        Err(e) => Err(e.as_str()),
+    }
+}
+
+/// Facts `v1.compiler.emit` `shell_emission_refusal_fact` renders for
+/// `ShellChannelNotRealizedByTarget` on the three stderr-accounting channels the drop names.
+/// Not every channel `shell_channel_realized_by_target` currently returns false for: a later
+/// unrealized stdout-side channel must still refuse the union (review 77034).
+fn rust_stderr_capture_channel_not_realized_facts() -> &'static BTreeSet<String> {
+    static FACTS: OnceLock<BTreeSet<String>> = OnceLock::new();
+    FACTS.get_or_init(|| {
+        use crate::v1_compiler_artifact::RenderTarget;
+        use crate::v1_compiler_emit::{
+            render_target_name, shell_channel_realized_by_target, shell_emission_refusal_fact,
+            shell_result_channel_key, ShellEmissionRefusal, ShellResultChannel,
+        };
+        let target = RenderTarget::Rust;
+        let target_name = render_target_name(target);
+        [
+            ShellResultChannel::ShellChanStderrTruncated,
+            ShellResultChannel::ShellChanStderrTotalBytes,
+            ShellResultChannel::ShellChanStderrRetainedBytes,
+        ]
+        .into_iter()
+        .filter(|channel| !shell_channel_realized_by_target(*channel, target))
+        .map(|channel| {
+            shell_emission_refusal_fact(Rc::new(
+                ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                    key: shell_result_channel_key(channel),
+                    target_name: target_name.clone(),
+                },
+            ))
+        })
+        .collect()
+    })
+}
+
+/// The drop population: rust shell TransportEmissionNotModeled on exactly
+/// `extdeps.gunbc` `WitnessBin.Run` whose fact equals a ShellChannelNotRealizedByTarget
+/// fact for an unrealized rust channel. Any other module, service, or operation stays rendered.
+fn stderr_capture_policy_gap_service(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    let Ok(gap) = capture_gap_exclusion() else {
+        return None;
+    };
+    match &*d.diagnostic {
+        crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+            transport_kind,
+            service,
+            operation,
+            declaring_module,
+            target,
+            missing_realization_fact,
+            ..
+        } if transport_kind == "shell"
+            && target == "rust"
+            && declaring_module.as_str() == gap.declaring_module
+            && service.as_str() == gap.service
+            && is_drop_run_operation(operation)
+            && rust_stderr_capture_channel_not_realized_facts()
+                .contains(missing_realization_fact) =>
+        {
+            Some((declaring_module.clone(), service.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn is_drop_run_operation(operation: &str) -> bool {
+    let Ok(gap) = capture_gap_exclusion() else {
+        return false;
+    };
+    operation == gap.operation_bare || operation == gap.operation_qualified
+}
+
+fn transport_emission_run(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    match &*d.diagnostic {
+        crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+            service,
+            operation,
+            declaring_module,
+            ..
+        } if is_drop_run_operation(operation) => Some((declaring_module.clone(), service.clone())),
+        _ => None,
+    }
+}
+
+/// The selection fold: among supplied unmodeled-transport rows, keep `(module, service)`
+/// only when every Run row for that pair is a capture-gap fact. Production feeds it the
+/// three emit diagnostic streams; tests supply rows.
+fn select_run_operations_excluded_for_stderr_capture_gap(
+    unmodeled: &[Rc<ErrorNode>],
+) -> BTreeSet<(String, String)> {
+    let mut gap_runs: BTreeSet<(String, String)> = BTreeSet::new();
+    for d in unmodeled {
+        if let Some(key) = stderr_capture_policy_gap_service(d) {
+            gap_runs.insert(key);
+        }
+    }
+    gap_runs
+        .into_iter()
+        .filter(|key| {
+            unmodeled
+                .iter()
+                .filter(|d| transport_emission_run(d).as_ref() == Some(key))
+                .all(|d| stderr_capture_policy_gap_service(d).is_some())
+        })
+        .collect()
+}
+
+/// `extdeps.gunbc` `gunbc.WitnessBin.Run` when that operation's unmodeled-transport refusals
+/// are solely the rust stderr-capture gap. Other operations on the same service are not members.
+fn run_operations_excluded_for_stderr_capture_gap(
+    typed: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+) -> BTreeSet<(String, String)> {
+    let target = crate::v1_compiler_artifact::RenderTarget::Rust;
+    let mut unmodeled = Vec::new();
+    unmodeled.extend(
+        crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(typed.clone(), target)
+            .iter()
+            .cloned(),
+    );
+    unmodeled.extend(
+        crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(typed.clone(), target)
+            .iter()
+            .cloned(),
+    );
+    unmodeled.extend(
+        crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(typed.clone(), target)
+            .iter()
+            .cloned(),
+    );
+    select_run_operations_excluded_for_stderr_capture_gap(&unmodeled)
+}
+
+fn strip_excluded_run_operations(
+    typed: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+    excluded: &BTreeSet<(String, String)>,
+) -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
+    if excluded.is_empty() {
+        return typed;
+    }
+    let modules = Rc::new(
+        typed
+            .modules
+            .iter()
+            .map(|tm| {
+                let module_name = crate::v1_compiler_infer_env::authored_name(
+                    tm.type_env.clone(),
+                    tm.module.clone(),
+                );
+                let items = Rc::new(
+                    tm.items
+                        .iter()
+                        .filter_map(|item| {
+                            if item.module_item_kind
+                                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
+                            {
+                                return Some((*item).clone());
+                            }
+                            let service = crate::v1_compiler_infer_env::authored_name(
+                                tm.type_env.clone(),
+                                (*item).clone(),
+                            );
+                            if !excluded.contains(&(module_name.clone(), service)) {
+                                return Some((*item).clone());
+                            }
+                            let kept: im::Vector<_> = item
+                                .children
+                                .iter()
+                                .filter(|op| {
+                                    !is_drop_run_operation(
+                                        &crate::v1_compiler_infer_env::authored_name(
+                                            tm.type_env.clone(),
+                                            (*op).clone(),
+                                        ),
+                                    )
+                                })
+                                .cloned()
+                                .collect();
+                            if kept.is_empty() {
+                                return None;
+                            }
+                            Some(Rc::new({
+                                let mut node = (**item).clone();
+                                node.children = Rc::new(kept);
+                                node
+                            }))
+                        })
+                        .collect::<im::Vector<_>>(),
+                );
+                Rc::new(crate::v1_compiler_infer_items::TypedModule {
+                    items,
+                    ..(**tm).clone()
+                })
+            })
+            .collect::<im::Vector<_>>(),
+    );
+    Rc::new(crate::v1_compiler_infer_items::ResolvedGraph {
+        modules,
+        ..(*typed).clone()
+    })
+}
+
+/// Compile stays the full closure. Emit strips only `gunbc.WitnessBin.Run` when its rust
+/// refusals are solely the capture-policy gap. Other operations on that service stay.
+fn union_emit_graph_excluding_unmodeled_stderr_capture(
+    resolved: Rc<v1_compiler_compile::ResolvedPipelineResult>,
+) -> (Rc<v1_compiler_compile::ResolvedPipelineResult>, Vec<String>) {
+    let Some(typed) = resolved.graph.clone() else {
+        return (resolved, Vec::new());
+    };
+    let excluded_keys = run_operations_excluded_for_stderr_capture_gap(&typed);
+    if excluded_keys.is_empty() {
+        return (resolved, Vec::new());
+    }
+    let Ok(gap) = capture_gap_exclusion() else {
+        return (resolved, Vec::new());
+    };
+    let excluded: Vec<String> = excluded_keys
+        .iter()
+        .map(|(module, service)| {
+            format!(
+                "module={module} service={service} operation={} \
+                 cause=ShellChannelNotRealizedByTarget \
+                 fact=stderr_capture_policy_unrealized drop={}",
+                gap.operation_qualified, gap.drop_identity,
+            )
+        })
+        .collect();
+    let graph = strip_excluded_run_operations(typed, &excluded_keys);
+    (
+        Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+            graph: Some(graph),
+            ..(*resolved).clone()
+        }),
+        excluded,
+    )
+}
+
+/// The red control's member: a non-tail effectful self-call, which the rust emitter refuses
+/// (`EffectfulSelfRecursionUnrealized`, the derived form exercised by
+/// `test.claim.effectful_item_kind_collapse_witness_test`).
+const FIXTURE_CLOSURE_UNION_RED_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
+
+/// The positive control's member: the same closure with the self-call in tail position, which is
+/// lowered to a loop and renders clean.
+const FIXTURE_CLOSURE_UNION_CLEAN_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { walk(n: n - 1) } else { 0 }\n}\n";
+
+const FIXTURE_CLOSURE_UNION_CONTROL_PATH: &str = "dag/fixture_closure_union_control/efr_member.dag";
+
+/// A union built the way a fixture compile builds its closure: the member's imports resolved over
+/// the live module index, the member itself given a corpus path so it is a union MEMBER.
+pub(crate) fn fixture_closure_union_control_union(
+    content: &str,
+) -> Result<FixtureClosureUnion, String> {
+    let module_index = build_module_path_index_from_witness_roots();
+    let mut union = FixtureClosureUnion::default();
+    for source in resolve_virtual_source_with_imports(
+        FIXTURE_CLOSURE_UNION_CONTROL_PATH,
+        content,
+        &module_index,
+    )? {
+        union
+            .members
+            .insert(source.path.clone(), source.content.clone());
+    }
+    Ok(union)
+}
+
+/// THE ENROLLED CONTROLS FOR [`fixture_closure_union_emit_receipt`], run by the required floor on
+/// every run before the union renders (review 76399; DESIGN §4b(4): the discriminating red and the
+/// positive control stay enrolled on the acceptance path, not only in cargo unit tests, which run on
+/// no CI path). The red member must refuse as `FixtureClosureUnionEmitRefused` located at
+/// `module=efr_member`; the clean member must hold. Either failing refuses the floor, so a later
+/// change that disables the refusal arm or breaks the clean render is a required red.
+/// Returns (red wall ms, clean wall ms) for the caller's log line.
+pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
+    let refuse = |what: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=FixtureClosureUnionControlFailed \
+             receipt=fixture_closure_union_controls -- {what}"
+        )
+    };
+    let red_started = std::time::Instant::now();
+    match fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_RED_MEMBER).map_err(&refuse)?,
+    ) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the red member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "the red member's emit refusal did not refuse the union: {observed:?}"
+            )))
+        }
+    }
+    let red_ms = red_started.elapsed().as_millis();
+    let clean_started = std::time::Instant::now();
+    fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_CLEAN_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| refuse(format!("the clean member did not hold: {refusal}")))?;
+    // THE CLOSURE CONTROLS (#13437). The fixture closure is the corpus closure of what the
+    // fixture imports, not its import edges alone. `std.syllogism` imports nothing and reaches
+    // `std.graph` by the bare names `GraphEdge` / `CallGraph`, so an import-only walk compiles
+    // it without its provider and the union refuses at `module=std.syllogism` (#13420's refusal).
+    fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| {
+        refuse(format!(
+            "a provider reached only by reference is missing from the fixture closure: {refusal}"
+        ))
+    })?;
+    // THE QUALIFIED-REFERENCE EDGE. The same walker must follow a dotted module-path
+    // reference, not only a bare name: `test.fixture.reference_derived_graph.consumer_reference_only`
+    // imports `std.types` and names `test.fixture.reference_derived_graph.provider.provided_value`
+    // qualified, so an import-only walk compiles it without its provider. The pair is small
+    // (no `v2.std.node`); the large corpus specimens (`v2.std.artifact` → `v2.std.refinement`)
+    // are the same edge at a cost the floor control must not pay.
+    fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_QUALIFIED_REFERENCE_REACH_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| {
+        refuse(format!(
+            "a provider reached only by qualified reference is missing from the fixture closure: {refusal}"
+        ))
+    })?;
+    // And the closure fix closes providers without narrowing what refuses: a real error in a
+    // member of the fixture's own closure still refuses, located at that member.
+    match fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_REAL_ERROR_MEMBER).map_err(&refuse)?,
+    ) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionUncompilable")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the real-error member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "a real error in the fixture closure did not refuse the union: {observed:?}"
+            )))
+        }
+    }
+    // A fixture whose closure reaches extdeps.gunbc is admitted with the typed capture-policy
+    // exclusion, not as FixtureClosureUnionEmitRefused (the #13420 floor after #13437).
+    let gunbc_observed = fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_REACH_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| {
+        refuse(format!(
+            "a fixture whose closure reaches extdeps.gunbc refused: {refusal}"
+        ))
+    })?;
+    if !gunbc_observed.excluded.iter().any(|row| {
+        let Ok(gap) = capture_gap_exclusion() else {
+            return false;
+        };
+        row.contains(&format!("module={}", gap.declaring_module))
+            && row.contains(&format!("operation={}", gap.operation_qualified))
+            && row.contains("cause=ShellChannelNotRealizedByTarget")
+            && row.contains(&gap.drop_identity)
+    }) {
+        return Err(refuse(format!(
+            "a fixture whose closure reaches extdeps.gunbc was admitted without the typed exclusion: {gunbc_observed:?}"
+        )));
+    }
+    // A real emit error in a member the union still renders still refuses, even when the same
+    // closure also reaches the excluded service.
+    match fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_AND_REAL_EMIT_ERROR)
+            .map_err(&refuse)?,
+    ) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the gunbc-plus-real-emit-error member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "a real emit error beside the excluded gunbc service did not refuse the union: {observed:?}"
+            )))
+        }
+    }
+    Ok((red_ms, clean_started.elapsed().as_millis()))
+}
+
+/// A member reaching `std.graph` only through `std.syllogism`'s bare references.
+const FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument, argument_is_acyclic }\nfn acyclic(a: Argument) -> Bool {\n  argument_is_acyclic(a)\n}\n";
+
+/// A member reaching `test.fixture.reference_derived_graph.provider` only through that
+/// consumer's dotted qualified reference (no import of the provider, no bare name).
+const FIXTURE_CLOSURE_QUALIFIED_REFERENCE_REACH_MEMBER: &str = "module efr_member\nimport test.fixture.reference_derived_graph.consumer_reference_only { uses_provider }\nfn probe() -> Int {\n  uses_provider()\n}\n";
+
+/// The same closure with a call to a function nothing declares.
+const FIXTURE_CLOSURE_REAL_ERROR_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument }\nfn broken(a: Argument) -> Bool {\n  no_such_function_anywhere(a)\n}\n";
+
+/// A member that imports a type from extdeps.gunbc, so the fixture closure contains WitnessBin.Run.
+const FIXTURE_CLOSURE_GUNBC_REACH_MEMBER: &str = "module efr_member\nimport extdeps.gunbc { CrateRole }\nfn keep(r: CrateRole) -> CrateRole {\n  r\n}\n";
+
+/// The gunbc-reaching closure with a non-tail effectful self-call the rust emitter still refuses.
+const FIXTURE_CLOSURE_GUNBC_AND_REAL_EMIT_ERROR: &str = "module efr_member\nimport extdeps.gunbc { CrateRole }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
+
 #[cfg(test)]
-mod fixture_render_selection_probe {
+mod fixture_closure_union_tests {
     use super::*;
 
-    // Runs the floor receipt by hand (`--ignored`) with its cost. Not enrolled here: the CI lane
-    // runs no unit tests; the floor runs the receipt itself.
+    /// The recorder and the union are process-wide; tests that touch them run one at a time.
+    static UNION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn gap_excl() -> &'static CaptureGapExclusion {
+        capture_gap_exclusion().unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// An empty union is a bypassed recording seam and refuses (review 76399).
     #[test]
-    #[ignore]
-    #[allow(clippy::disallowed_macros)]
-    fn render_selection_agreement_receipt_by_hand() {
-        // The floor warms this index before the receipt; warm it here too so the cost is the
-        // receipt's own.
-        let _ = build_module_path_index_from_witness_roots();
-        let t = std::time::Instant::now();
-        let r = render_selection_agreement_receipt();
-        eprintln!(
-            "[c1-probe] receipt={r:?} wall_ms={}",
-            t.elapsed().as_millis()
+    fn an_empty_union_refuses() {
+        let refusal = fixture_closure_union_emit_receipt(&FixtureClosureUnion::default())
+            .expect_err("an empty union must refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmpty"),
+            "{refusal}"
         );
-        assert!(r.is_ok());
+    }
+
+    /// One path recorded with two contents is refused, never resolved by picking one.
+    #[test]
+    fn a_path_recorded_with_two_contents_refuses() {
+        let mut union = FixtureClosureUnion::default();
+        union.conflicts.insert("dag/x.dag".to_string());
+        let refusal = fixture_closure_union_emit_receipt(&union).expect_err("conflict refuses");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionConflict"),
+            "{refusal}"
+        );
+    }
+
+    /// A LATER RUN IN THE SAME PROCESS WHOSE FIXTURE CALLS ALL HIT THE MEMO still reaches the
+    /// union: the hit replays the closure its fill recorded (review 76318). Without the replay the
+    /// second union is empty and the receipt would hold having rendered nothing.
+    #[test]
+    fn a_memo_hit_on_a_later_run_replays_its_closure() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        drop(take_fixture_closure_union());
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[
+            file("dag/replay_a.dag", "module replay_a\n"),
+            file(FIXTURE_SOURCE_PATH, "x"),
+        ]);
+        finish_fixture_closure_fill("replay-test-key");
+        drop(take_fixture_closure_union());
+        record_fixture_closure_memo_hit("replay-test-key");
+        let second_run = take_fixture_closure_union();
+        assert_eq!(second_run.fixture_compiles, 0);
+        assert_eq!(second_run.memo_hits, 1);
+        assert_eq!(
+            second_run.members.keys().collect::<Vec<_>>(),
+            vec!["dag/replay_a.dag"]
+        );
+    }
+
+    /// A FILE THAT CHANGED BETWEEN RUNS: a hit on run 1's key replays run 1's bytes and a fresh fill
+    /// on run 2 records the new bytes, each under its own key. Path-keyed replay would hand the
+    /// second key the first fill's bytes (review 76336).
+    #[test]
+    fn a_replay_returns_its_own_fills_bytes() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        drop(take_fixture_closure_union());
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[file("dag/replay_b.dag", "module replay_b\n// v1\n")]);
+        finish_fixture_closure_fill("replay-bytes-key-1");
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[file("dag/replay_b.dag", "module replay_b\n// v2\n")]);
+        finish_fixture_closure_fill("replay-bytes-key-2");
+        drop(take_fixture_closure_union());
+        record_fixture_closure_memo_hit("replay-bytes-key-2");
+        let run = take_fixture_closure_union();
+        assert!(run.conflicts.is_empty(), "{:?}", run.conflicts);
+        assert_eq!(
+            run.members.get("dag/replay_b.dag").map(String::as_str),
+            Some("module replay_b\n// v2\n")
+        );
+    }
+
+    /// The recorder skips the fixture source itself and keeps a content conflict.
+    #[test]
+    fn the_recorder_excludes_the_fixture_and_keeps_conflicts() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        drop(take_fixture_closure_union());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        record_fixture_closure(&[
+            file("dag/a.dag", "module a\n"),
+            file(FIXTURE_SOURCE_PATH, "x"),
+        ]);
+        record_fixture_closure(&[file("dag/a.dag", "module a2\n")]);
+        let union = take_fixture_closure_union();
+        assert_eq!(union.fixture_compiles, 2);
+        assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
+        assert!(union.conflicts.contains("dag/a.dag"));
+    }
+
+    #[test]
+    fn capture_gap_keys_on_shell_channel_not_realized_fact_equality() {
+        use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        let span = crate::v1_std_core::kernel_span("probe".to_string());
+        let mk = |fact: String| {
+            let gap = gap_excl();
+            make_error_node(
+                Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                    transport_kind: "shell".to_string(),
+                    service: gap.service.to_string(),
+                    operation: gap.operation_qualified.to_string(),
+                    declaring_module: gap.declaring_module.to_string(),
+                    target: "rust".to_string(),
+                    missing_realization_fact: fact,
+                    span: span.clone(),
+                }),
+                gap.declaring_module.to_string(),
+            )
+        };
+        let gap = shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: "stderr_truncated".to_string(),
+                target_name: "rust".to_string(),
+            },
+        ));
+        let unmodeled_key =
+            shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                key: "not_a_channel".to_string(),
+            }));
+        let substring_poison =
+            "unmodeled key 'not_a_channel' implements no stderr capture policy".to_string();
+        let stdout_unrealized = shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: "stdout".to_string(),
+                target_name: "rust".to_string(),
+            },
+        ));
+        assert!(stderr_capture_policy_gap_service(&mk(gap.clone())).is_some());
+        assert!(stderr_capture_policy_gap_service(&mk(unmodeled_key)).is_none());
+        assert!(stderr_capture_policy_gap_service(&mk(substring_poison)).is_none());
+        assert!(stderr_capture_policy_gap_service(&mk(stdout_unrealized)).is_none());
+        let other_module = make_error_node(
+            Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                transport_kind: "shell".to_string(),
+                service: gap_excl().service.to_string(),
+                operation: gap_excl().operation_qualified.to_string(),
+                declaring_module: "extdeps.other".to_string(),
+                target: "rust".to_string(),
+                missing_realization_fact: gap,
+                span: span.clone(),
+            }),
+            "extdeps.other".to_string(),
+        );
+        assert!(stderr_capture_policy_gap_service(&other_module).is_none());
+    }
+
+    fn gap_fact() -> String {
+        use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};
+        shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: "stderr_truncated".to_string(),
+                target_name: "rust".to_string(),
+            },
+        ))
+    }
+
+    fn transport_row(
+        module: &str,
+        service: &str,
+        operation: &str,
+        fact: String,
+    ) -> Rc<crate::v1_std_core::ErrorNode> {
+        crate::v1_std_core::make_error_node(
+            Rc::new(
+                crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                    transport_kind: "shell".to_string(),
+                    service: service.to_string(),
+                    operation: operation.to_string(),
+                    declaring_module: module.to_string(),
+                    target: "rust".to_string(),
+                    missing_realization_fact: fact,
+                    span: crate::v1_std_core::kernel_span("probe".to_string()),
+                },
+            ),
+            module.to_string(),
+        )
+    }
+
+    #[test]
+    fn selection_fold_allows_only_run_capture_rows_and_vetoes_mixed_refusal() {
+        let gap = gap_fact();
+        let gap_row = gap_excl();
+        let allowed = transport_row(
+            &gap_row.declaring_module,
+            &gap_row.service,
+            &gap_row.operation_qualified,
+            gap.clone(),
+        );
+        let selected = select_run_operations_excluded_for_stderr_capture_gap(&[allowed]);
+        assert_eq!(
+            selected.iter().cloned().collect::<Vec<_>>(),
+            vec![(
+                gap_row.declaring_module.to_string(),
+                gap_row.service.to_string()
+            )]
+        );
+
+        let mixed_key = crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
+            crate::v1_compiler_emit::ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                key: "not_a_channel".to_string(),
+            },
+        ));
+        let mixed = vec![
+            transport_row(
+                &gap_row.declaring_module,
+                &gap_row.service,
+                &gap_row.operation_qualified,
+                gap.clone(),
+            ),
+            transport_row(
+                &gap_row.declaring_module,
+                &gap_row.service,
+                &gap_row.operation_qualified,
+                mixed_key,
+            ),
+        ];
+        assert!(select_run_operations_excluded_for_stderr_capture_gap(&mixed).is_empty());
+
+        let wrong_module = transport_row(
+            "extdeps.other",
+            &gap_row.service,
+            &gap_row.operation_qualified,
+            gap.clone(),
+        );
+        assert!(select_run_operations_excluded_for_stderr_capture_gap(&[wrong_module]).is_empty());
+
+        let nonmember = transport_row(&gap_row.declaring_module, &gap_row.service, "Sibling", gap);
+        assert!(select_run_operations_excluded_for_stderr_capture_gap(&[nonmember]).is_empty());
+    }
+
+    fn kernel_named(
+        name: &str,
+        kind: crate::v1_std_core::ParsedModuleItemKind,
+        children: im::Vector<Rc<crate::v1_std_core::Node>>,
+    ) -> Rc<crate::v1_std_core::Node> {
+        let mut node = (*crate::v1_std_core::leaf_node_with_span(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            crate::v1_std_core::kernel_span(name.to_string()),
+        ))
+        .clone();
+        node.module_item_kind = kind;
+        node.children = Rc::new(children);
+        Rc::new(node)
+    }
+
+    fn supplied_graph_with_run_and_sibling() -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
+        use crate::v1_compiler_infer_items::{
+            ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedModule,
+        };
+        use crate::v1_std_core::ParsedModuleItemKind;
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let cache = crate::v1_compiler_infer_env::empty_type_env_cache();
+        let gap = gap_excl();
+        let run = kernel_named(
+            &gap.operation_bare,
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let sibling = kernel_named(
+            "Sibling",
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let other_fn = kernel_named(
+            "unrelated_fn",
+            ParsedModuleItemKind::ModuleItemFunction,
+            im::vector![],
+        );
+        let service = kernel_named(
+            &gap.service,
+            ParsedModuleItemKind::ModuleItemService,
+            im::vector![run, sibling],
+        );
+        let module = kernel_named(
+            &gap.declaring_module,
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let other_module_node = kernel_named(
+            "other.mod",
+            ParsedModuleItemKind::NotAModuleItem,
+            im::vector![],
+        );
+        let other_item = kernel_named(
+            "KeepMe",
+            ParsedModuleItemKind::ModuleItemFunction,
+            im::vector![],
+        );
+        let interface = |e: Rc<crate::v1_compiler_infer_env::TypeEnv>,
+                         c: Rc<crate::v1_compiler_infer_env::TypeEnvCache>,
+                         path: &str| {
+            Rc::new(ModuleInterface {
+                summary: Rc::new(crate::std_interface_summary::InterfaceSummary {
+                    module_path: path.to_string(),
+                    exports: Rc::new(im::vector![]),
+                    interface_hash: crate::std_interface_summary::interface_summary_rollup(
+                        Rc::new(im::vector![]),
+                    ),
+                }),
+                env: e,
+                cache: c,
+            })
+        };
+        let tm = Rc::new(TypedModule {
+            module,
+            items: Rc::new(im::vector![service, other_fn]),
+            progress: ModuleTypecheckProgress::ItemsChecked,
+            type_env: env.clone(),
+            type_env_cache: cache.clone(),
+            interface: interface(env.clone(), cache.clone(), &gap.declaring_module),
+            func_env: Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
+                name: gap.declaring_module.to_string(),
+                local: crate::v1_rt::rc_empty_map(),
+                parents: Rc::new(im::vector![]),
+            }),
+            item_registry: crate::v1_rt::rc_empty_map(),
+            occurrence_transport: None,
+        });
+        let other = Rc::new(TypedModule {
+            module: other_module_node,
+            items: Rc::new(im::vector![other_item]),
+            progress: ModuleTypecheckProgress::ItemsChecked,
+            type_env: env.clone(),
+            type_env_cache: cache.clone(),
+            interface: interface(env, cache, "other.mod"),
+            func_env: Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
+                name: "other.mod".to_string(),
+                local: crate::v1_rt::rc_empty_map(),
+                parents: Rc::new(im::vector![]),
+            }),
+            item_registry: crate::v1_rt::rc_empty_map(),
+            occurrence_transport: None,
+        });
+        Rc::new(ResolvedGraph {
+            modules: Rc::new(im::vector![tm, other]),
+            item_registry: crate::v1_rt::rc_empty_map(),
+            item_leaf_owner_modules: crate::v1_rt::rc_empty_map(),
+            diagnostics: Rc::new(im::vector![]),
+        })
+    }
+
+    fn service_op_names(
+        graph: &crate::v1_compiler_infer_items::ResolvedGraph,
+        module: &str,
+        service: &str,
+    ) -> Vec<String> {
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        graph
+            .modules
+            .iter()
+            .find(|tm| {
+                crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                    == module
+            })
+            .into_iter()
+            .flat_map(|tm| tm.items.iter())
+            .filter(|item| {
+                item.module_item_kind == crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
+                    && crate::v1_compiler_infer_env::authored_name(env.clone(), (*item).clone())
+                        == service
+            })
+            .flat_map(|item| {
+                item.children
+                    .iter()
+                    .map(|op| crate::v1_compiler_infer_env::authored_name(env.clone(), op.clone()))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn strip_removes_only_run_and_keeps_sibling_and_unrelated_items() {
+        let gap = gap_excl();
+        let graph = supplied_graph_with_run_and_sibling();
+        let mut excluded = BTreeSet::new();
+        excluded.insert((gap.declaring_module.to_string(), gap.service.to_string()));
+        let stripped = strip_excluded_run_operations(graph.clone(), &excluded);
+        assert_eq!(
+            service_op_names(&stripped, &gap.declaring_module, &gap.service),
+            vec!["Sibling".to_string()]
+        );
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let gunbc_item_names: Vec<String> = stripped
+            .modules
+            .iter()
+            .find(|tm| {
+                crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                    == gap.declaring_module
+            })
+            .unwrap()
+            .items
+            .iter()
+            .map(|item| crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()))
+            .collect();
+        assert!(
+            gunbc_item_names.contains(&"unrelated_fn".to_string()),
+            "{gunbc_item_names:?}"
+        );
+        assert_eq!(stripped.modules.len(), 2, "unrelated module must remain");
+        let empty = strip_excluded_run_operations(graph, &BTreeSet::new());
+        assert_eq!(
+            service_op_names(&empty, &gap.declaring_module, &gap.service),
+            vec![gap.operation_bare.to_string(), "Sibling".to_string()]
+        );
+    }
+
+    #[test]
+    fn capture_gap_exclusion_reads_typed_fields_from_the_drop_module() {
+        let gap = gap_excl();
+        assert!(!gap.drop_identity.is_empty());
+        assert!(!gap.declaring_module.is_empty());
+        assert!(!gap.service.is_empty());
+        assert!(!gap.operation_bare.is_empty());
+        assert!(
+            gap.operation_qualified == gap.operation_bare
+                || gap
+                    .operation_qualified
+                    .ends_with(&format!(".{}", gap.operation_bare)),
+            "qualified={} bare={}",
+            gap.operation_qualified,
+            gap.operation_bare
+        );
+    }
+}
+
+#[cfg(test)]
+mod emit_check_read_tests {
+    use super::*;
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// One shared read answers every assertion set independently: the memo key no longer
+    /// carries `includes`/`excludes`, so this is what keeps a hit from lying about them.
+    #[test]
+    fn one_read_discriminates_each_assertion_set() {
+        let read = EmitCheckRead::Content(Rc::from("pub fn alpha() {}"));
+        assert!(emit_check_verdict(&read, &strings(&["alpha"]), &[]));
+        assert!(!emit_check_verdict(&read, &strings(&["beta"]), &[]));
+        assert!(!emit_check_verdict(&read, &[], &strings(&["alpha"])));
+        assert!(emit_check_verdict(&read, &[], &strings(&["beta"])));
+        assert!(!emit_check_verdict(
+            &EmitCheckRead::HardDiagnostics,
+            &[],
+            &[]
+        ));
+    }
+
+    #[test]
+    fn memo_key_is_over_source_and_render_only() {
+        let a = compile_dag_rust_emit_check_memo_key("s", "src/a.rs", "inv");
+        assert_eq!(
+            a,
+            compile_dag_rust_emit_check_memo_key("s", "src/a.rs", "inv")
+        );
+        assert_ne!(
+            a,
+            compile_dag_rust_emit_check_memo_key("s", "src/b.rs", "inv")
+        );
+        assert_ne!(
+            a,
+            compile_dag_rust_emit_check_memo_key("t", "src/a.rs", "inv")
+        );
     }
 }

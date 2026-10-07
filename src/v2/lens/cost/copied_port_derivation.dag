@@ -8,9 +8,15 @@ import v2.lens.cost {
   SumCost,
   SymbolicCost,
   UnknownCost,
-  symbolic_cost_of_node
+  symbolic_cost_of_node,
+  ConstantCost,
+  ExponentialCost,
+  FactorialCost,
+  LogCost,
+  PolyLogCost,
+  PolynomialCost
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
@@ -29,6 +35,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   arrow_body_target_lookup,
+  ComputationNode
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 
@@ -41,8 +48,13 @@ import v2.std.algebra { CopiedPortFact, fold_list }
 // fires). Unpriceable shapes return Absent — classify_call keeps
 // ^combiner_unregistered_carrier_reaches fail-closed.
 
+// `declaration` is the cited declaration's dotted path when the combiner HAS a .dag declaration, so a
+// QUALIFIED call reaches this citation only by naming that declaration -- never by sharing its leaf
+// (`foreign.list_append` is not std.algebra list_append). Absent where the combiner has no .dag
+// declaration to name (map_merge); a qualified call then reaches no citation at all.
 type CombinerArrowCitation {
   combiner: Symbol
+  declaration: Optional<String>
   arrow: Node
 }
 

@@ -46,6 +46,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
+/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
+const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -258,8 +264,8 @@ pub fn emitted_build_not_clean_cause(
         .collect();
     Some(format!(
         "{label} REFUSAL cause=EmittedBuildWarnings warning_count={warning_count} \
-         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo \
-         stderr carried these warning headers (first 40 distinct, with multiplicity):\n{}",
+         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo's \
+         JSON stream carried these warning-level compiler messages on the emitted crate (first 40 distinct, with multiplicity):\n{}",
         distinct.len(),
         shown.join("\n")
     ))
@@ -413,6 +419,15 @@ fn prepare_emitted_compiler_for_entry(
         &probe_root.target_dir(),
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
+    if let super::emitted_closure_compile_host::CargoVerdict::DependencyFetchFailed { .. } =
+        &verdict
+    {
+        // INFRA, NOT A SELF-HOST DEFECT: no compiler judged the emitted crate.
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedBuildDependencyFetchFailed class=Infra — {}",
+            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
+        ));
+    }
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(emitted_build_failed_refusal(
             probe_root,
@@ -508,30 +523,44 @@ fn prepare_emitted_compiler_for_entry(
     // to the entrypoint step as though it were the baseline's.
     let entry_module = super::emitted_closure_compile_host::entry_rust_module(entry, &workspace)
         .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
-    eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
-    let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-        &crate_dir,
-        &probe_root.target_dir(),
-        &entry_module,
-    );
-    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+    // THE FAULT EXPERIMENT IS SKIPPED ONLY WHEN THE WORKFLOW SAYS SO, and says so in the log. The
+    // input is `gunbc.emitted_subject_build_gate` `native_fault_experiment_env_name`, set by
+    // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
+    // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
+    // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
+    if std::env::var(FAULT_EXPERIMENT_ENV).ok().as_deref() == Some(FAULT_EXPERIMENT_SKIP_VALUE) {
+        eprintln!(
+            "v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request \
+             (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, \
+             build, census pair, door, refusal and filesystem controls still run; the fault-and-\
+             restoration rebuild runs on merge_group and workflow_dispatch."
+        );
+    } else {
+        eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
+        let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
+            &crate_dir,
+            &probe_root.target_dir(),
+            &entry_module,
+        );
+        if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+                super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+            ));
+        }
+        eprintln!(
+            "v2-native-route: discriminating red established — {}",
             super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-        ));
-    }
-    eprintln!(
-        "v2-native-route: discriminating red established — {}",
-        super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-    );
-    let identity_after_mutation = sha256_file(&binary_path)?;
-    if identity_after_mutation != binary_identity {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
-             when the clean baseline built it and is {identity_after_mutation} after the fault was \
-             injected and removed; the executable handed on is not the one the green build produced",
-            binary_path.display()
-        ));
+        );
+        let identity_after_mutation = sha256_file(&binary_path)?;
+        if identity_after_mutation != binary_identity {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
+                 when the clean baseline built it and is {identity_after_mutation} after the fault was \
+                 injected and removed; the executable handed on is not the one the green build produced",
+                binary_path.display()
+            ));
+        }
     }
 
     Ok(EmittedPreparation {
@@ -1066,21 +1095,30 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no path: {line}"))?;
-            let head_reason = refusal
-                .get("head_reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("file refusal carries no head_reason: {line}"))?;
-            let fatal_reason = refusal
-                .get("fatal_reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("file refusal carries no fatal_reason: {line}"))?;
-            // The chain's LAST link is the fatal one (carriage order); a row without a chain, or
-            // with an empty one, refuses rather than printing an unpositioned cause.
-            let fatal_link = refusal
+            // THE CHAIN IS THE ROW (`v2.compiler.native_test_vocabulary` `NativeTestFileRefusal`):
+            // a non-empty `{head, tail}` of links in carriage order, the head first and the fatal
+            // last. The head and fatal reasons are read from it, never from stored copies. A row
+            // without a chain, a head or a tail refuses rather than printing an unpositioned or
+            // invented cause.
+            let chain = refusal
                 .get("chain")
-                .and_then(|v| v.as_array())
-                .and_then(|links| links.last())
                 .ok_or_else(|| format!("file refusal carries no chain: {line}"))?;
+            let head_link = chain
+                .get("head")
+                .ok_or_else(|| format!("file refusal chain carries no head: {line}"))?;
+            let tail = chain
+                .get("tail")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| format!("file refusal chain carries no tail: {line}"))?;
+            let fatal_link = tail.last().unwrap_or(head_link);
+            let link_reason = |link: &serde_json::Value| -> Result<String, String> {
+                link.get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("file refusal link carries no reason: {line}"))
+            };
+            let head_reason = link_reason(head_link)?;
+            let fatal_reason = link_reason(fatal_link)?;
             let fatal_at = file_refusal_at_text(
                 fatal_link
                     .get("at")
@@ -1088,8 +1126,8 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             )?;
             file_refusals.push(NativeFileRefusalObserved {
                 path: path.to_string(),
-                head_reason: head_reason.to_string(),
-                fatal_reason: fatal_reason.to_string(),
+                head_reason,
+                fatal_reason,
                 fatal_at,
             });
             continue;
@@ -2522,6 +2560,7 @@ pub struct NativeServeProgramRun {
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
+    pub served_exit_status: Option<i32>,
     pub stderr: String,
 }
 
@@ -2529,8 +2568,10 @@ pub struct NativeServeProgramRun {
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
     vec![
+        "--request-deadline-ms".to_string(),
+        request_deadline_ms.to_string(),
         "--host".to_string(),
         "127.0.0.1".to_string(),
         "--port".to_string(),
@@ -2544,10 +2585,14 @@ fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
 fn native_serve_refused_launch(
     binary: &Path,
     refused_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(refused_revision))
+        .args(native_serve_launch_args(
+            refused_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2603,6 +2648,7 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
+    request_deadline_ms: &str,
     requests: &[String],
 ) -> Result<NativeServeProgramRun, String> {
     use std::io::{BufRead, Read};
@@ -2613,9 +2659,12 @@ pub fn run_native_serve_program(
         prepared.binary_path.display()
     );
     let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
     let mut child = Command::new(&prepared.binary_path)
-        .args(native_serve_launch_args(release_revision))
+        .args(native_serve_launch_args(
+            release_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2650,8 +2699,23 @@ pub fn run_native_serve_program(
             .collect(),
         None => Vec::new(),
     };
-    let _ = child.kill();
-    let _ = child.wait();
+    // The last case drives the service past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status.
+    let started = std::time::Instant::now();
+    let served_exit_status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
     let stderr = reader.join().unwrap_or_default();
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
@@ -2662,6 +2726,7 @@ pub fn run_native_serve_program(
         responses,
         refused_status,
         refused_stderr,
+        served_exit_status,
         stderr,
     })
 }
@@ -2766,21 +2831,60 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec!["census-resolve".to_string()];
     args.extend(source_roots.iter().cloned());
-    let output = Command::new(&preparation.binary_path)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                preparation.binary_path.display()
-            )
-        })?;
+    let mut command = Command::new(&preparation.binary_path);
+    command.args(&args);
+    let output = run_relaying_as_it_runs(command).map_err(|e| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            preparation.binary_path.display()
+        )
+    })?;
     let stdout = String::from_utf8(output.stdout).map_err(|cause| {
         format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
     })?;
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    print!("{stdout}");
     decode_native_census_output(&stdout, output.status.code())
+}
+
+/// THE CHILD'S STREAMS, RELAYED AS IT WRITES THEM AND STILL COLLECTED WHOLE. `Command::output()`
+/// forwarded nothing until the child exited, so a multi-hour census was silent throughout and a
+/// cancelled run lost every row it had already printed (run 37229309848: 3h48m, empty stdout).
+/// Here each stream is drained by its own thread and written through to this process's stream
+/// as it arrives; the bytes are also kept, so the returned `Output` is the one `output()` would
+/// have returned and every verdict decoded from it is unchanged. Transport only, not semantics.
+fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process::Output> {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    fn relay<R: Read, W: Write>(mut from: R, mut to: W) -> std::io::Result<Vec<u8>> {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = from.read(&mut buf)?;
+            if n == 0 {
+                return Ok(kept);
+            }
+            kept.extend_from_slice(&buf[..n]);
+            // A closed relay target must not cost the collected bytes the verdict is decoded from.
+            let _ = to.write_all(&buf[..n]).and_then(|()| to.flush());
+        }
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let child_stdout = child.stdout.take().expect("stdout was piped");
+    let child_stderr = child.stderr.take().expect("stderr was piped");
+    let stderr_relay = std::thread::spawn(move || relay(child_stderr, std::io::stderr()));
+    let stdout = relay(child_stdout, std::io::stdout());
+    let stderr = stderr_relay
+        .join()
+        .map_err(|_| std::io::Error::other("stderr relay thread panicked"))?;
+    let status = child.wait()?;
+    Ok(std::process::Output {
+        status,
+        stdout: stdout?,
+        stderr: stderr?,
+    })
 }
 
 /// The census-resolve stdout, decoded. Only the terminal's counts are carried out, but the
@@ -3410,8 +3514,8 @@ mod tests {
     #[test]
     fn terminal_marker_carries_the_refused_admission_summary() {
         let stdout = concat!(
-            "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\",",
-            "\"chain\":[{\"reason\":\"f\",\"at\":{\"_variant\":\"FileRefusalAtWholeFile\"}}]}}\n",
+            "{\"file_refusal\":{\"path\":\"a.dag\",",
+            "\"chain\":{\"head\":{\"reason\":\"f\",\"at\":{\"_variant\":\"FileRefusalAtWholeFile\"}},\"tail\":[]}}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
             "\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
@@ -3433,10 +3537,19 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
+        // Both reasons are DERIVED from the chain: the head link's and the last link's.
+        assert_eq!(
+            parsed.file_refusals[0].head_reason,
+            "parse_grammar_choice_overlap_residue"
+        );
+        assert_eq!(
+            parsed.file_refusals[0].fatal_reason,
+            "parse_g0_tokens_remain"
+        );
         assert!(native_file_refusal_summary(&parsed.file_refusals)
             .contains("refused a.dag at=12:5 fatal=parse_g0_tokens_remain"));
         // The pre-chain row shape: three symbols, no position. It must refuse, not print a cause
@@ -3452,6 +3565,16 @@ mod tests {
             Ok(_) => panic!("a row with no chain must refuse"),
         };
         assert!(cause.contains("carries no chain"), "got: {cause}");
+        // A chain with no head refuses: the row is non-empty by construction, so a missing head is
+        // a producer or decoder defect, never a refusal with no cause.
+        let headless = format!(
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"chain\":{{\"tail\":[]}}}}}}\n{marker}\n"
+        );
+        let cause = match parse_native_run_output(&headless) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a chain with no head must refuse"),
+        };
+        assert!(cause.contains("carries no head"), "got: {cause}");
         // An arm the vocabulary does not declare is a decoder refusal, never a blank position.
         assert!(file_refusal_at_text(&serde_json::json!({"_variant": "Somewhere"})).is_err());
     }
@@ -4001,6 +4124,66 @@ mod cli_emit_probe_tests {
             )),
             CliEmitProbeVerdict::StdoutNotEmpty { .. }
         ));
+    }
+}
+
+#[cfg(test)]
+mod run_relaying_as_it_runs_tests {
+    use super::run_relaying_as_it_runs;
+    use std::process::Command;
+
+    fn specimen() -> Command {
+        let mut c = Command::new("sh");
+        c.args([
+            "-c",
+            "i=0; while [ $i -lt 2000 ]; do echo \"row $i\"; echo \"[progress] $i\" >&2; i=$((i+1)); done; printf tail; exit 3",
+        ]);
+        c
+    }
+
+    // THE RELAY CHANGES TRANSPORT, NOT THE VERDICT: the collected streams and the status are the
+    // ones `Command::output()` returns for the same child, byte for byte.
+    #[test]
+    fn relayed_output_equals_collected_output() {
+        let collected = specimen().output().expect("spawn");
+        let relayed = run_relaying_as_it_runs(specimen()).expect("spawn");
+        assert_eq!(relayed.status.code(), Some(3));
+        assert_eq!(relayed.status.code(), collected.status.code());
+        assert_eq!(relayed.stdout, collected.stdout);
+        assert_eq!(relayed.stderr, collected.stderr);
+    }
+
+    // THE CENSUS VERDICT IS UNCHANGED: a census stdout relayed through the child decodes to the
+    // same counts as the same bytes decoded directly.
+    #[test]
+    fn a_relayed_census_stdout_decodes_to_the_same_verdict() {
+        let out = "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
+                   {\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let mut c = Command::new("printf");
+        c.arg("%s").arg(out);
+        let relayed = run_relaying_as_it_runs(c).expect("spawn");
+        let relayed_stdout = String::from_utf8(relayed.stdout).expect("utf8");
+        assert_eq!(relayed_stdout, out);
+        let direct = super::decode_native_census_output(out, Some(0));
+        let via = super::decode_native_census_output(&relayed_stdout, relayed.status.code());
+        assert_eq!(
+            direct.as_ref().map(|r| (
+                r.modules,
+                r.file_refusals,
+                r.residual_rows,
+                r.cause_groups,
+                r.advised_files
+            )),
+            via.as_ref().map(|r| (
+                r.modules,
+                r.file_refusals,
+                r.residual_rows,
+                r.cause_groups,
+                r.advised_files
+            ))
+        );
+        assert!(direct.is_ok(), "the specimen census must decode");
     }
 }
 

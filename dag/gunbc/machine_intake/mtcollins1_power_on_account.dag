@@ -4,7 +4,7 @@ import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.ampere.scp_diagnostic {
@@ -125,7 +125,7 @@ type FirmwareReadbackRow {
 }
 
 type FirmwareReadbacks
-  = FirmwareReadBeforeActuation { rows: List<FirmwareReadbackRow> }
+  = FirmwareReadBeforeActuation { attempt: NonEmptyStr, source: NonEmptyStr, rows: List<FirmwareReadbackRow> }
   | FirmwareReadbacksNotRecorded { reason: NonEmptyStr }
 
 // THE EXPECTED TOPOLOGY THIS ATTEMPT IS JUDGED AGAINST, recorded for the attempt or not at all: a
@@ -230,7 +230,7 @@ type BmcWatchdogDisposition
   | WatchdogUnobserved { reason: NonEmptyStr }
 
 // THE ANOMALIES THE BMC'S OWN VIEW REPORTS. Each is decided by the module that owns its reading
-// (the sensor rule in gunbc.machine_intake_mtcollins1_bmc_sensor_observation mtcollins1_sensor_anomalies;
+// (the sensor rule in gunbc.machine_intake_megarac_sensor_observation megarac_sensor_anomalies;
 // the inventory and SEL rules in the bundle) and only placed here.
 type BmcAnomaly
   = ProcessorMissingOnExpectedSocket { socket: Int }
@@ -987,7 +987,7 @@ fn configuration_questions(c: AttemptConfigurationReceipt) -> List<OpenQuestion>
   concat(match c.applied { StimulusAppliedByReceipt { receipt: _, attested_by: _ } => [] StimulusApplicationNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredStimulus } }] },
   concat(population_question(r: c.cpus, field: ConfiguredCpuPopulation),
   concat(population_question(r: c.dimms, field: ConfiguredDimmPopulation),
-    match c.firmware { FirmwareReadBeforeActuation { rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
+    match c.firmware { FirmwareReadBeforeActuation { attempt: _, source: _, rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
 }
 
 fn population_question<T>(r: PopulationReading<T>, field: ConfigurationField) -> List<OpenQuestion> {

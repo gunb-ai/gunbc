@@ -1,8 +1,8 @@
 module gunbc.auth.approval_store_receipt
 
 import std.types { NonEmptyStr, Timestamp, String, Int, List }
-import v2.std.algebra { skip, length }
-import v2.std.optional { Present, Absent }
+import v2.std.algebra { skip }
+import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_first }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacVerification, MacVerified, mac_verify, mac_verification_reason }
@@ -245,7 +245,7 @@ fn receipt_line_at(lines: List<String>, i: Int) -> String {
 
 fn request_field(line: String, key: String) -> String {
   let prefix = join([key, "="], "")
-  if starts_with(s: line, prefix: prefix) { substring(s: line, start: length(prefix), end: length(line)) } else { "" }
+  if starts_with(s: line, prefix: prefix) { substring(s: line, start: string_length(s: prefix), end: string_length(s: line)) } else { "" }
 }
 
 // THE WIRE A RECEIPT TRAVELS AS: its signing input, then its tag, one line each. The signing input

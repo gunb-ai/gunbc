@@ -3,7 +3,7 @@ module gunbc.instrument_dispatch_workflow
 import std.types { Bool, Int, List, String }
 import std.algebra { list_append }
 import v2.std.algebra { list_map, filter, length }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import extdeps.bazel.label { Label, render_label }
@@ -31,7 +31,7 @@ import gunbc.compiler_gate_workflow { compiler_gate_hosted_build_prelude_bound_s
 import gunbc.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, instrument_targets,
+  type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, instrument_targets,
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
@@ -40,7 +40,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_test_bracket, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
   bash_build_with_redir, bash_build_word_cmdsubst, bash_build_pipe, bash_build_and_then, bash_build_assign,
-  bash_build_exit, bash_build_if_from_stmts,
+  bash_build_exit, bash_build_if_from_stmts, bash_build_subshell_from_stmts,
 }
 
 // ONE OPERATOR-DISPATCHED RUN OF ONE ROSTERED INSTRUMENT, ON THE FLEET, AND NOTHING ELSE.
@@ -129,11 +129,14 @@ data instrument_dispatch_timeout_minutes: Int = 240
 // The native resolve census is another: `census-resolve` emits and builds the compiler closure and then
 // resolves every indexed module, which outlives the free remote runner's one-hour cap twice over, and
 // its saved whole-tree receipt is what the resolve-frontier root ranking and the census lane's step D
-// read. A dispatchable label is on-demand only; it adds no job to any per-change workflow.
+// read. The stage0 regen round's price is another: a seed build plus a whole-population emit and a
+// one-mirror emit, which needs a memory-bounded slot the free remote runner does not expose (its
+// host budget is unreadable there and the run refuses). A dispatchable label is on-demand only; it
+// adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
     dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(),
-    v2_native_census_label(), type_declaration_use_census_label(),
+    v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
   ]
 }
 
@@ -172,8 +175,14 @@ type InstrumentDispatchMemoryDemand {
 // that raised this row), sized under the fleet slot's memory.high so the selected target admits it.
 data instrument_dispatch_whole_tree_memory_demand: ByteSize = byte_size(21474836480)
 
+// 16 GiB: the stage0 regen round's policy budget. Its subject is the seed closure's whole-population
+// emit, whose measured peak sits near 12.9 GiB on the fleet (gunbc.witness.compiler_gate_workflow
+// compiler_gate_stage0_regen_step, the memory note), plus headroom for the seed build's children.
+data instrument_dispatch_stage0_regen_memory_demand: ByteSize = byte_size(17179869184)
+
 fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> {
   [
+    InstrumentDispatchMemoryDemand { label: regen_round_cost_label(), demand: instrument_dispatch_stage0_regen_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
   ]
@@ -377,32 +386,40 @@ fn instrument_dispatch_seed_step(script: String) -> Step {
 }
 
 // THE RUN SCRIPT. The seed step has already written the receipt; this overwrites the placeholders with
-// the instrument's stdout and stderr (each replayed into the log on its own stream) and its exit, and the
-// step fails exactly when the instrument did not hold. stderr is captured, not left on the log alone:
+// the instrument's stdout and stderr and its exit, and the step fails exactly when the instrument did
+// not hold. stderr reaches the log AS THE INSTRUMENT WRITES IT (tee into stderr.txt), so a multi-hour
+// census shows its per-module progress live and a cancelled run's stderr.txt and stdout.txt hold what
+// was written before the cancel for the always() upload; stdout is replayed after exit. pipefail makes
+// `status` the instrument's exit rather than tee's. stderr is captured, not left on the log alone:
 // `gunbc test` writes its verdict there on a non-zero exit, so a run that did not hold would otherwise
 // upload an empty stdout and keep its receipt only in the lossy job log.
 fn instrument_dispatch_statements() -> List<Node> {
   [
     bash_build_assign_lit(name: "status", text: "0"),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "set"), bash_build_word_lit(text: "-o"), bash_build_word_lit(text: "pipefail")]),
     bash_build_or_else(
-      left: bash_build_with_redir_stderr_to_file(
-        inner: bash_build_with_redir_to_file(
-          inner: bash_build_command_with_words(words: [
-            bash_build_word_lit(text: "target/release/gunbc"),
-            bash_build_word_lit(text: "test"),
-            bash_build_word_var(name: "INSTRUMENT_LABEL"),
+      left: bash_build_pipe(
+        left: bash_build_with_redir(
+          inner: bash_build_subshell_from_stmts(stmts: [
+            bash_build_with_redir_to_file(
+              inner: bash_build_command_with_words(words: [
+                bash_build_word_lit(text: "target/release/gunbc"),
+                bash_build_word_lit(text: "test"),
+                bash_build_word_var(name: "INSTRUMENT_LABEL"),
+              ]),
+              path: instrument_dispatch_path_word(file: "stdout.txt"),
+            ),
           ]),
-          path: instrument_dispatch_path_word(file: "stdout.txt"),
+          redir: ^bash_production_fold_redir_stderr_to_stdout,
         ),
-        path: instrument_dispatch_path_word(file: "stderr.txt"),
+        right: bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "tee"), instrument_dispatch_path_word(file: "stderr.txt")]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
       ),
       right: bash_build_assign_var(name: "status", var_name: "?"),
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stdout.txt")]),
-    bash_build_with_redir(
-      inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stderr.txt")]),
-      redir: ^bash_production_fold_redir_stdout_to_stderr,
-    ),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit="), bash_build_word_var(name: "status")], file: "exit.txt"),
     bash_build_test_bracket(words: [bash_build_word_var(name: "status"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")]),
   ]

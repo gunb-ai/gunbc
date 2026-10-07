@@ -1,8 +1,8 @@
 module v2.test.lens_common.infer_fixture
-import v2.std.optional { optional_absent }
+import std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { ClosureProviderRefusal, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.cardinality { RankingComponent, TerminationProof }
@@ -12,8 +12,21 @@ import v2.std.constraints {
   CanonicalGroundingWitness
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.witness { Holds, StructuralPropertyWitness, Witness, witness_from_optional }
+
+import v2.compiler.body_lowering_fold { body_lower_callable_arrow }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.node_query { binder_edge, field_projection_node }
+import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
+import v2.std.symbol_index { SymbolIndex, symbol_index_insert }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, parameter_reference_node, qualified_name_last_segment }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted }
+import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.optional { Absent, optional_present }
+import v2.std.algebra { list_append, list_map }
+import std.algebra { Cons }
 
 // A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index
@@ -122,4 +135,175 @@ fn claim_inferred_tree(root: Node, facts: InferredFacts) -> InferredTree {
 
 fn claim_inferred_facts_for_tree(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
+}
+
+
+// A SUPPLIED CALL TO ONE DECLARATION, AS RESOLVE EMITS IT. The callee is a bodied Arrow built by the
+// production assembler lowering itself uses (v2.compiler.body_lowering_fold body_lower_callable_arrow over
+// v2.std.arrow_signature declared_signature), the call is a Transform whose first positional child is the
+// declaration reference (v2.std.qualified_name declaration_reference_node) and whose actuals are Authored
+// edges, and both stand as Authored members of one module root -- the shape a real front end produces for
+// `fn <callee>(...) -> T { body }` beside one call to it. resolved_declarations carries the callee at its
+// path and each declared parameter at the callee's path extended by its name, which is where
+// v2.compiler.infer reads a declaration reference's denotation and a parameter reference's type.
+//
+// EVERY AUTHORED POSITION CARRIES ITS OWN MINTED OCCURRENCE (claim_minted), as the real front end's do.
+// Infer keys its facts by node, so two synthetic type atoms of one spelling are ONE key, and a codomain
+// atom structurally equal to the type infer derives for it is refused as grounding_evidence_is_source
+// (v2.std.constraints canonical_grounding_from_derived_type). Callers pass distinct ids per position.
+//
+// A supplied tree is a hypothesis about resolve's output; every module that uses this owes a real-path
+// row over authored source asserting the same route, which is what makes it a reading.
+type ClaimParam {
+  name: Symbol
+  type_node: Node
+}
+
+fn claim_minted(n: Int) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: OccurrenceId { value: n } }
+}
+
+fn claim_minted_atom(identity: Symbol, n: Int) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: claim_minted(n: n) }
+}
+
+// A literal the language's own constructor builds; a refused lexeme becomes an atom no reader takes for
+// an Int, so a row depending on it goes red rather than passing on a fabricated value.
+fn claim_int_literal(lexeme: String, n: Int) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: claim_minted(n: n)) {
+    Accepted { value: literal, diagnostics: _ } => literal
+    Rejected { diagnostics: _ } => claim_minted_atom(identity: ^claim_int_literal_refused, n: n)
+  }
+}
+
+fn claim_callable_arrow(site: Int, params: List<ClaimParam>, codomain: Node, body: Node) -> Node {
+  let source = claim_minted_atom(identity: ^claim_supplied_site, n: site)
+  let signature = declared_signature(
+    params: list_map(xs: params, f: fn(p) { binder_edge(name: p.name, type_node: p.type_node) }),
+    source: source
+  )
+  body_lower_callable_arrow(
+    source: source,
+    domain: signature.domain,
+    codomain: codomain,
+    order_edge: signature.order,
+    type_param_edges: [],
+    body: optional_present(value: body)
+  )
+}
+
+fn claim_parameter_entries(index: SymbolIndex, callee_path: QualifiedName, params: List<ClaimParam>) -> SymbolIndex {
+  fold(params, init: index, f: fn(acc, p) {
+    symbol_index_insert(index: acc, qualified_path: list_append(left: callee_path, right: [p.name]), resolved: p.type_node)
+  })
+}
+
+fn claim_resolved_call_tree(
+  callee_path: QualifiedName,
+  callee: Symbol,
+  params: List<ClaimParam>,
+  codomain: Node,
+  body: Node,
+  actuals: List<Edge>,
+  reference_site: Int
+) -> ResolvedTree {
+  let declaration = claim_callable_arrow(site: 1, params: params, codomain: codomain, body: body)
+  ResolvedTree {
+    root: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Authored { name: callee }, target: declaration },
+        Edge {
+          label: Authored { name: ^claim_supplied_call },
+          target: Node {
+            kind: ComputationNode { behavior: Transform },
+            children: Cons {
+              head: Edge { label: Positional, target: declaration_reference_node(qn: callee_path, occurrence_id: claim_minted(n: reference_site)) },
+              tail: actuals
+            },
+            occurrence_id: OccurrenceSynthetic
+          }
+        }
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    symbol_index: empty_symbol_index(),
+    resolved_declarations: claim_parameter_entries(
+      index: symbol_index_insert(index: empty_symbol_index(), qualified_path: callee_path, resolved: declaration),
+      callee_path: callee_path,
+      params: params
+    ),
+    lexical_bindings: empty_map(),
+    unavailable_providers: []
+  }
+}
+
+
+// A SUPPLIED FIELD PROJECTION OFF A PARAMETER, AS RESOLVE EMITS IT: `fn <fn_name>(<param>: <receiver>) ->
+// <codomain> { <param>.<field> }` beside the record declarations the index carries. A record declaration is a
+// Conj of Authored binder edges (v2.std.node_query binder_edge), the parameter's type is whatever node the
+// caller supplies (a declaration reference to a record, a kernel type atom, a reference naming nothing), and
+// the body is v2.std.node_query field_projection_node over the parameter reference resolve mints
+// (v2.std.qualified_name parameter_reference_node). resolved_declarations carries each supplied record at its
+// path, the function at its path and the parameter at the function's path extended by its name. A record that
+// is NOT supplied is absent from the index, which is the state a provider dropped from the closure leaves;
+// `unavailable` is the refused-provider roster resolve hands infer beside it (ResolvedTree
+// unavailable_providers), the cause infer reports ahead of such a miss.
+type ClaimRecord {
+  path: QualifiedName
+  fields: List<ClaimParam>
+  site: Int
+}
+
+fn claim_record_declaration(r: ClaimRecord) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_map(xs: r.fields, f: fn(p) { binder_edge(name: p.name, type_node: p.type_node) }),
+    occurrence_id: claim_minted(n: r.site)
+  }
+}
+
+fn claim_resolved_projection_tree(
+  records: List<ClaimRecord>,
+  unavailable: List<ClosureProviderRefusal>,
+  fn_path: QualifiedName,
+  fn_name: Symbol,
+  param: ClaimParam,
+  codomain: Node,
+  field: Symbol
+) -> ResolvedTree {
+  let projection = field_projection_node(
+    base: parameter_reference_node(qn: list_append(left: fn_path, right: [param.name]), occurrence_id: claim_minted(n: 31)),
+    field: claim_minted_atom(identity: field, n: 32),
+    source: claim_minted_atom(identity: ^claim_supplied_projection, n: 30)
+  )
+  let declaration = claim_callable_arrow(site: 1, params: [param], codomain: codomain, body: projection)
+  let with_records = fold(records, init: empty_symbol_index(), f: fn(acc, r) {
+    symbol_index_insert(index: acc, qualified_path: r.path, resolved: claim_record_declaration(r: r))
+  })
+  ResolvedTree {
+    root: Node {
+      kind: TypeNode { connective: Conj },
+      children: list_append(
+        left: list_map(xs: records, f: fn(r) { Edge { label: Authored { name: claim_path_leaf(path: r.path) }, target: claim_record_declaration(r: r) } }),
+        right: [Edge { label: Authored { name: fn_name }, target: declaration }]
+      ),
+      occurrence_id: OccurrenceSynthetic
+    },
+    symbol_index: empty_symbol_index(),
+    resolved_declarations: claim_parameter_entries(
+      index: symbol_index_insert(index: with_records, qualified_path: fn_path, resolved: declaration),
+      callee_path: fn_path,
+      params: [param]
+    ),
+    lexical_bindings: empty_map(),
+    unavailable_providers: unavailable
+  }
+}
+
+fn claim_path_leaf(path: QualifiedName) -> Symbol {
+  match qualified_name_last_segment(qn: path) {
+    Present { value: leaf } => leaf
+    Absent => ^claim_empty_path
+  }
 }

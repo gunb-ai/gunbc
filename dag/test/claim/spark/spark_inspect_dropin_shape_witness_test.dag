@@ -1,0 +1,240 @@
+module test.claim.spark.spark_inspect_dropin_shape_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.optional { Present, Absent }
+import v2.std.algebra { filter, length, any }
+import gunbc.spark.managed_grant_reconcile {
+  SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
+  spark_inspect_grants_to_relocate, spark_retired_dropin_removal_confirmed,
+  spark_retired_shared_inspect_dropin_path, spark_managed_grants_to_install_under, spark_managed_grant_dropin_path,
+  spark_managed_grant_dropin_name,
+  spark_inspect_dropin_shape_of_listing,
+  spark_sudoers_dropin_listing_argv,
+}
+import gunbc.fleet_multi_principal_probe { spark_standing_hosts, spark_standing_hosts_of }
+import product.host_identity { HostIdentity }
+import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
+import gunbc.fleet_converge_workflow {
+  SparkGrantsObserve, FleetSshKeyConsumed, FleetSshKeyNotConsumed,
+  fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
+  fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
+}
+import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, SparkGrantOutcome, GrantEnumerated, GrantProbeRefused, spark_managed_grant_sudoers_command }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
+import gunbc.spark.grant_privileged_operation {
+  spark_retired_dropin_removal_lease, admit_retired_dropin_removal, retired_dropin_removal_receipts_missing,
+  spark_confirmed_installs_of, SparkGrantInstallStep, SparkGrantInstallExecuted, GrantReadbackConfirmed,
+  PrivilegedCommandSucceeded, InstallStagedSudoers,
+}
+import gunbc.remote_operation { RemoteStepUnattempted }
+import gunbc.spark.bootstrap_credential { CredentialMaterializationPending }
+import gunbc.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
+
+// THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
+// alone; a host converged by the #13040 installer carries per-container files and no shared one.
+
+fn is_shared_alone(s: SparkInspectDropinShape) -> Bool {
+  match s {
+    SharedInspectDropinShape { per_container: pc } => length(pc) == 0
+    PerContainerInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+test fn w_shared_file_alone_reads_shared_shape() -> Bool {
+  is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-reboot\nREADME\n", stderr: ""))
+}
+
+test fn w_shared_file_beside_per_container_files_is_residue_not_alone() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-docker-inspect-glm53-staircase\nREADME\n", stderr: "") {
+    SharedInspectDropinShape { per_container: pc } => pc == ["gunbc-docker-inspect-glm53-staircase"]
+    PerContainerInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+test fn w_per_container_only_reads_per_container_shape() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect-a\ngunbc-docker-inspect-b\ngunbc-reboot\n", stderr: "") {
+    PerContainerInspectDropinShape { per_container: pc } => length(pc) == 2
+    SharedInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+// An unreadable directory is not an absent shared file.
+test fn w_unlistable_directory_is_unobserved_not_per_container() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 2, stdout: "", stderr: "ls: cannot open directory '/etc/sudoers.d': Permission denied") {
+    InspectDropinShapeUnobserved { cause: _ } => true
+    SharedInspectDropinShape { per_container: _ } => false
+    PerContainerInspectDropinShape { per_container: _ } => false
+  }
+}
+
+test fn w_listing_argv_is_read_only() -> Bool {
+  spark_sudoers_dropin_listing_argv() == ["ls", "-1", "/etc/sudoers.d"]
+}
+
+// ── the probe roster IS the procured roster ───────────────────────────────────────────────────
+
+// Every procured Spark, Group A and Group B alike, is probed by every run: an IDENTITY JOIN of the
+// probe roster against the procured roster (gunbc.spark.dgx_procurement), each procured identity
+// present exactly once and nothing else present -- no count or name list copied from today's tree
+// (DESIGN §5). A hand list that dropped one (the srv5/srv6-only roster this replaced) or added a
+// non-Spark reds it; procuring a ninth Spark does not.
+fn occurrences(xs: List<String>, x: String) -> Int {
+  length(filter(xs, y => y == x))
+}
+
+test fn w_probe_roster_is_every_procured_spark() -> Bool {
+  let procured = map(dgx_spark_procurement_intent.reserved_identities, h => h as String)
+  !any(procured, h => occurrences(xs: spark_standing_hosts, x: h) != 1)
+    && !any(spark_standing_hosts, h => occurrences(xs: procured, x: h) != 1)
+}
+
+// THE DERIVATION OVER A SUPPLIED ROSTER, with its control: the production derivation
+// (spark_standing_hosts_of) covers a roster it has never seen, and the srv5/srv6 hand list it replaced
+// does not -- so the join above is shown able to go red on the shape it guards.
+fn covers(procured: List<String>, probed: List<String>) -> Bool {
+  !any(procured, h => occurrences(xs: probed, x: h) != 1) && !any(probed, h => occurrences(xs: procured, x: h) != 1)
+}
+
+test fn w_the_derivation_covers_a_supplied_roster() -> Bool {
+  covers(procured: ["sA", "sB", "sC"], probed: spark_standing_hosts_of(roster: ["sA" as HostIdentity, "sB" as HostIdentity, "sC" as HostIdentity]))
+}
+
+test fn red_control_a_two_host_hand_list_does_not_cover_a_larger_roster() -> Bool {
+  !covers(procured: spark_standing_hosts_of(roster: ["srv5" as HostIdentity, "srv6" as HostIdentity, "srv7" as HostIdentity]), probed: ["srv5", "srv6"])
+}
+
+// Group B's 2026-10-04 listing shape (shared file alone, no per-container file) reads as the
+// shared shape the probe will report until an operator-approved converge replaces it.
+test fn w_group_b_listing_shape_reads_shared_alone() -> Bool {
+  is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-ethtool-module-info\ngunbc-reboot\nREADME\n", stderr: ""))
+}
+
+// ── the convergence route ─────────────────────────────────────────────────────────────────────
+//
+// The operator's condition (2026-10-05): every Spark's grant listing is read by convergence. These
+// pin the route: the mode is a dispatch option, its step runs exactly the probe entry over the
+// registered run target, the step is gated on that mode alone, and the mode consumes the fleet key
+// (it reads over ssh) while declaring no host scope (it reads every procured Spark).
+
+test fn w_grants_observe_is_a_dispatch_mode() -> Bool {
+  any(fleet_converge_mode_options, m => m == "spark_grants_observe")
+}
+
+test fn w_grants_observe_runs_the_probe_entry() -> Bool {
+  length(filter(gunbc_run_step_targets(), t =>
+    t.entry == "dag/gunbc/fleet/fleet_multi_principal_probe.dag" && t.function == "spark_exact_grant_probe_ci_wet")) == 1
+    && contains(gunbc_ci_spark_grants_observe_invoke(), "spark_exact_grant_probe_ci_wet")
+    && contains(gunbc_ci_spark_grants_observe_invoke(), "target/spark-exact-grant-probe-receipt.txt")
+}
+
+test fn w_grants_observe_step_is_gated_on_its_mode_and_reads_over_the_fleet_key() -> Bool {
+  contains(fleet_converge_spark_grants_observe_step_if, "'spark_grants_observe'")
+    && contains(fleet_converge_fleet_ssh_key_step_if, "'spark_grants_observe'")
+    && match fleet_converge_mode_fleet_ssh_key_demand(mode: SparkGrantsObserve) {
+      FleetSshKeyConsumed => true
+      FleetSshKeyNotConsumed => false
+    }
+}
+
+// ── converging away from the shared drop-in without a lapse ───────────────────────────────────
+//
+// Supplied sudo listings in the shape `sudo -n -l` renders, built from the grants' own commands, and
+// supplied drop-in shapes. Group B as read by run 37263427207: the shared file alone, carrying the
+// glm-native-tp4 inspect line.
+
+fn listing_of(grants: List<SparkManagedGrant>) -> SparkGrantOutcome {
+  GrantEnumerated { listing: join(map(grants, g => join(["    (root) NOPASSWD: ", spark_managed_grant_sudoers_command(grant: g) as String], "")), "\n") }
+}
+
+fn inspect_pair() -> SparkManagedGrant { InspectServingContainer { container: spark_pair_container_name } }
+fn inspect_native() -> SparkManagedGrant { InspectServingContainer { container: glm_native_container_name } }
+fn inspect_stair() -> SparkManagedGrant { InspectServingContainer { container: glm53_staircase_container_name } }
+
+fn names_of(gs: List<SparkManagedGrant>) -> List<String> {
+  map(gs, g => spark_managed_grant_dropin_name(grant: g) as String)
+}
+
+fn has(gs: List<SparkManagedGrant>, g: SparkManagedGrant) -> Bool {
+  any(names_of(gs: gs), n => n == (spark_managed_grant_dropin_name(grant: g) as String))
+}
+
+data all_three_names: List<String> = ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-glm53-stair-tp4", "gunbc-docker-inspect-gunbc-spark-pair"]
+
+// RELOCATION: while the shared file is present, exactly the inspect grants observed HELD are
+// re-installed under their own file -- Group B's native, as run 37263427207 read it.
+test fn w_shared_present_relocates_the_held_inspect_grants() -> Bool {
+  names_of(gs: spark_inspect_grants_to_relocate(outcome: listing_of(grants: [inspect_native()]), shape: SharedInspectDropinShape { per_container: [] }))
+    == ["gunbc-docker-inspect-glm-native-tp4"]
+    && length(spark_inspect_grants_to_relocate(outcome: listing_of(grants: [inspect_native()]), shape: PerContainerInspectDropinShape { per_container: all_three_names })) == 0
+}
+
+// CONTROL (review of gunbc#13373): shared file present + an UNREAD grant listing -> no inspect grant
+// enters through relocation, so nothing is installed by that route.
+test fn red_control_unread_listing_relocates_nothing() -> Bool {
+  length(spark_inspect_grants_to_relocate(
+    outcome: GrantProbeRefused { cause: "the grant probe leg never ran" },
+    shape: SharedInspectDropinShape { per_container: [] },
+  )) == 0
+}
+
+// CONTROL: shared file present + a NOT-HELD inspect grant with no accepted-risk basis -> relocation
+// skips it and the admission wall withholds it, so it is never installed and has no install receipt.
+test fn red_control_not_held_unadmitted_inspect_grant_is_never_installed() -> Bool {
+  let outcome = listing_of(grants: [inspect_native()])
+  !has(gs: spark_inspect_grants_to_relocate(outcome: outcome, shape: SharedInspectDropinShape { per_container: [] }), g: inspect_pair())
+    && !has(gs: spark_managed_grants_to_install_under(outcome: outcome, basis: []), g: inspect_pair())
+}
+
+// THE REMOVAL CANNOT RUN WITHOUT THE NO-LAPSE PROOF: with no confirmed installs the admission is not
+// minted and every modeled inspect grant's drop-in is named as missing.
+test fn red_control_no_confirmed_installs_no_removal_admission() -> Bool {
+  let missing = map(retired_dropin_removal_receipts_missing(host: "srv9" as HostIdentity, attempt: "a" as NonEmptyStr, confirmed: []), p => p as String)
+  (match admit_retired_dropin_removal(host: "srv9" as HostIdentity, attempt: "a" as NonEmptyStr, confirmed: []) { Absent => true  Present { value: _ } => false })
+    && any(missing, p => p == "/etc/sudoers.d/gunbc-docker-inspect-glm-native-tp4")
+    && any(missing, p => p == "/etc/sudoers.d/gunbc-docker-inspect-gunbc-spark-pair")
+    && any(missing, p => p == "/etc/sudoers.d/gunbc-docker-inspect-gunbc-glm53-stair-tp4")
+}
+
+// THE SIDE CHAT'S CONTROL (gunbc#13373): THREE RAW SUCCESSFUL INSTALLS MINT NO ADMISSION. Each step
+// below is a successful install of one inspect grant's own drop-in, its outcome even reporting a
+// confirmed readback -- but it was not produced by spark_grant_install_execute, so it carries no
+// sealed ConfirmedGrantInstall (sole_constructor in gunbc.spark.grant_privileged_operation; a test
+// cannot write one), and the admission, which consumes only those, is not minted.
+fn raw_success_step(g: SparkManagedGrant) -> SparkGrantInstallStep {
+  SparkGrantInstallStep {
+    outcome: SparkGrantInstallExecuted {
+      host: "srv9" as HostIdentity,
+      grant: g,
+      standings: [],
+      privileged: [PrivilegedCommandSucceeded { command: InstallStagedSudoers { staged_path: "/tmp/s" as NonEmptyStr, dropin_path: spark_managed_grant_dropin_path(grant: g) } }],
+      readback: GrantReadbackConfirmed,
+      cleanup: RemoteStepUnattempted { identity: "cleanup" as NonEmptyStr },
+    },
+    confirmed: none,
+  }
+}
+
+test fn red_control_three_raw_successful_installs_mint_no_admission() -> Bool {
+  let steps = [raw_success_step(g: inspect_pair()), raw_success_step(g: inspect_native()), raw_success_step(g: inspect_stair())]
+  length(spark_confirmed_installs_of(steps: steps)) == 0
+    && match admit_retired_dropin_removal(host: "srv9" as HostIdentity, attempt: "spark-grant-install-ci" as NonEmptyStr, confirmed: spark_confirmed_installs_of(steps: steps)) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn w_removal_readback_requires_the_file_gone_and_every_inspect_grant_held() -> Bool {
+  spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three_names })
+    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three_names })
+    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: SharedInspectDropinShape { per_container: all_three_names })
+}
+
+// The removal lease's position, intent and purpose all derive from the one canonical retired path.
+test fn w_removal_lease_names_exactly_the_canonical_dropin() -> Bool {
+  (spark_retired_shared_inspect_dropin_path() as String) == "/etc/sudoers.d/gunbc-docker-inspect"
+    && contains(spark_retired_dropin_removal_lease(host: "srv9" as HostIdentity, administrator: CredentialMaterializationPending, attempt_identity: "a" as NonEmptyStr).purpose as String, spark_retired_shared_inspect_dropin_path() as String)
+}

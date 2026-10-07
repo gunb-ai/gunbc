@@ -4,7 +4,7 @@ import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_s
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.list { list_cover }
@@ -39,7 +39,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import std.fabric_storage { FabricStoreRefused, fabric_storage_fault_wire }
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
-import gunbc.rung_drop { Standing, Retired, TypedDeclaration, RungDropStanding }
+import gunbc.rung_drop { Standing, Retired, Superseded, TypedDeclaration, AuthoredProse, RungDropStanding }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.rung_drop.d0_store_walls_single_lifecycle { d0_store_walls_single_lifecycle }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
@@ -65,7 +65,7 @@ import gunbc.compute.host_occupancy { HostOccupancyReading, HostOccupancyRead, H
 import gunbc.spark.host_commitment { fleet_argv_run }
 import gunbc.spark.pair_incumbent_identity {
   DeclaredPairRealization, DeclaredRankUnit, DeclaredPairRealizationStanding, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization,
-  observe_pair_realization, PairRealizationAgreement, PairRealizationEstablished, pair_realization_agreement, pair_realization_agreement_lines,
+  observe_pair_realization, PairRealizationAgreement, PairRealizationEstablished, PairRealizationDrifted, PairRealizationRankPopulationDiffers, PairRealizationConflict, PairRealizationDeclarationUnavailable, PairRealizationUnread, pair_realization_agreement, pair_realization_agreement_lines,
 }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline, released_baseline_wire, parse_released_baseline }
 import gunbc.spark.pair_serving_authority {
@@ -1108,19 +1108,23 @@ fn reconcile_occupancy(declared: DeclaredPairRealization, ranks: List<RankOccupa
       match r.occupancy {
         UnitOccupancyUnread { refusal: why } => OccupancyUnread { hosts: [declared.head.host], cause: serving_incarnation_refusal_text(r: why) as NonEmptyStr }
         UnitInstalled { active: true, unit_digest: _ } => OccupancyNotQuiet { live: [declared.head.host] }
-        _ => {
-          let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
-          let unread = flat_map(verdicts, v => verdict_unread(v: v))
-          let live = flat_map(verdicts, v => live_host(v: v))
-          if length(unread) != 0 {
-            OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
-          } else if length(live) != 0 {
-            OccupancyNotQuiet { live: live }
-          } else {
-            DeclaredOccupantDrifted { drifted: flat_map(verdicts, v => verdict_drifted_host(v: v)) }
-          }
-        }
+        UnitInstalled { active: false, unit_digest: _ } => reconcile_all_ranks(declared: declared, ranks: ranks)
+        UnitNotInstalled => reconcile_all_ranks(declared: declared, ranks: ranks)
       }
+  }
+}
+
+// The head is not live: every declared rank is reconciled, head first.
+fn reconcile_all_ranks(declared: DeclaredPairRealization, ranks: List<RankOccupancyReading>) -> OccupancyReconciliation {
+  let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
+  let unread = flat_map(verdicts, v => verdict_unread(v: v))
+  let live = flat_map(verdicts, v => live_host(v: v))
+  if length(unread) != 0 {
+    OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
+  } else if length(live) != 0 {
+    OccupancyNotQuiet { live: live }
+  } else {
+    DeclaredOccupantDrifted { drifted: flat_map(verdicts, v => verdict_drifted_host(v: v)) }
   }
 }
 
@@ -1200,7 +1204,11 @@ fn d0_decide_suspend(
           match a {
             PairRealizationEstablished { key: k, declared: _, observed: _, image: _ } =>
               D0DecidedRestore { next: active, key: k }
-            _ => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
+            PairRealizationDrifted { key: _, drifted: _ } => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
+            PairRealizationRankPopulationDiffers { key: _, declared_hosts: _, observed_hosts: _ } => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
+            PairRealizationConflict { key: _, host: _, cause: _ } => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
+            PairRealizationDeclarationUnavailable { group: _, obligation: _ } => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
+            PairRealizationUnread { key: _, refusal: _ } => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
           }
         IncumbentDidNotAnswer { receipt: rc, head: head } =>
           match head {
@@ -1655,12 +1663,17 @@ fn d0_transaction(store: FabricStorageBinding, group: FabricGroup, current_hosts
                     match left {
                       PairServingActive { group: _, exact_realization: _ } =>
                         d0_settle(store: store, pending: cur, head: head, active: left, lease: lease, admitted: admitted, admitting: admitting, pending_generation: gen, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
-                      _ => D0Refused { cause: join(["the pending state was not entered from an Active authority (it left ", authority_wire(a: left), "), so this transaction cannot settle it"], "") }
+                      SuspensionPendingReconciliation { group: _, hosts: _, transaction: _, authorization_binding: _, lease: _ } => D0Refused { cause: join(["the pending state was not entered from an Active authority (it left ", authority_wire(a: left), "), so this transaction cannot settle it"], "") }
+                      SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => D0Refused { cause: join(["the pending state was not entered from an Active authority (it left ", authority_wire(a: left), "), so this transaction cannot settle it"], "") }
+                      FencedRefusal { group: _, hosts: _, cause: _, disposition_authority: _ } => D0Refused { cause: join(["the pending state was not entered from an Active authority (it left ", authority_wire(a: left), "), so this transaction cannot settle it"], "") }
+                      ReleasedToFleet { group: _, release_receipt: _ } => D0Refused { cause: join(["the pending state was not entered from an Active authority (it left ", authority_wire(a: left), "), so this transaction cannot settle it"], "") }
                     }
                 }
             }
           }
-        _ => D0Refused { cause: join(["the authority is neither active nor pending under this transaction, so there is nothing to suspend or settle: ", authority_wire(a: cur)], "") }
+        SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => D0Refused { cause: join(["the authority is neither active nor pending under this transaction, so there is nothing to suspend or settle: ", authority_wire(a: cur)], "") }
+        FencedRefusal { group: _, hosts: _, cause: _, disposition_authority: _ } => D0Refused { cause: join(["the authority is neither active nor pending under this transaction, so there is nothing to suspend or settle: ", authority_wire(a: cur)], "") }
+        ReleasedToFleet { group: _, release_receipt: _ } => D0Refused { cause: join(["the authority is neither active nor pending under this transaction, so there is nothing to suspend or settle: ", authority_wire(a: cur)], "") }
       }
   }
 }
@@ -1860,7 +1873,8 @@ fn d0_settle_admitted_over(store: FabricStorageBinding, g: FabricGroup, current_
       if d0_outcome_is_eligible(o: outcome) {
         match terminal {
           D0ClaimTerminated => ExitSuccess
-          _ => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  settled, but the claim's terminal did not land:", claim_terminal_text(t: terminal)], ""))
+          D0ClaimNotAttempted { still_held_by: _ } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  settled, but the claim's terminal did not land:", claim_terminal_text(t: terminal)], ""))
+          D0ClaimUnterminated { detail: _ } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  settled, but the claim's terminal did not land:", claim_terminal_text(t: terminal)], ""))
         }
       } else {
         exit_failure(reason: join([d0_outcome_text(o: outcome), claim_terminal_text(t: terminal)], ""))
@@ -2058,6 +2072,7 @@ data d0_release_lifecycle_escalation_id: NonEmptyStr = "d0-group-a-release-glm53
 fn d0_single_lifecycle_admits_under(standing: RungDropStanding, group: FabricGroup, escalation_id: NonEmptyStr) -> Bool {
   match standing {
     Retired { trigger_fired: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
     Standing =>
       (match group { FabricGroupA => true  FabricGroupB => false })
         && ((escalation_id as String) == (d0_single_lifecycle_escalation_id as String)
@@ -2079,6 +2094,7 @@ fn d0_store_write_wall_standing(group: FabricGroup, escalation_id: NonEmptyStr) 
 
 fn d0_store_walls_refusal() -> String? {
   match fabric_storage_append_principal_unrefused.standing {
+    Superseded { ruling: _, decision_record: _, loss_holder: h } => Present { value: join(["the fabric DB write-door drop fabric_storage_append_principal_unrefused was superseded rather than retired by its trigger, so the wall it tracked is not shown restored (its loss is held by ", h as String, "); D0 does not run on a supersession"], "") }
     Standing => Present { value: join(["the fabric DB's write door admits any tailnet member (gunbc.rung_drop fabric_storage_append_principal_unrefused stands; its trigger: ", fabric_storage_append_principal_unrefused_trigger(), "), so a writer that never passed this door could move the facts this transaction writes; D0 does not run until that drop is retired"], "") }
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {
@@ -2091,7 +2107,7 @@ fn d0_store_walls_refusal() -> String? {
 fn fabric_storage_append_principal_unrefused_trigger() -> String {
   match fabric_storage_append_principal_unrefused.declaration {
     TypedDeclaration { previous: _, temporary: _, reason: _, population: _, restoration_trigger: t } => t
-    _ => "(see the drop's declaration)"
+    AuthoredProse { legacy: _, authored: _ } => "(see the drop's declaration)"
   }
 }
 

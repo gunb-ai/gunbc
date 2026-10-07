@@ -10,7 +10,8 @@ import gunbc.serving.serving_enrollment {
   ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
   serving_route,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import gunbc.fabric_event_log_host {
   HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds,
 }
@@ -1532,6 +1533,16 @@ fn release_retry_open(store: FabricStorageBinding, partition: PartitionId, ceili
   match st.done {
     Present { value: r } => r
     Absent => HarnessSeatReleaseRefused { detail: "release contended three times" }
+  }
+}
+
+// THE POINTER TO THE SEAT A BOUND BINDING HOLDS, for gunbc.harness.harness_seat_pointer.
+fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
+  match binding {
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: r } =>
+      Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
+    HarnessSeatRefused { detail: _ } => none
+    HarnessSeatPending { detail: _ } => none
   }
 }
 

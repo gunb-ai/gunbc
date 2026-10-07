@@ -1,10 +1,10 @@
 module test.fixture.rest_exchange_replay_probe
 
 import std.types { Bool, Int, List, String }
-import extdeps.transports.rest { RestOutcome }
 import std.serialization { Text }
 import extdeps.github.workflow_runs { WorkflowRunList }
 import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
+import extdeps.transports.rest { RestResult }
 
 type WireFileShape {
   encoding: String
@@ -15,12 +15,17 @@ type WirePageShape {
   incomplete_results: Bool
 }
 
-// WorkflowRunsPage and WorkflowRunsPageLegacy below serve the real extdeps.github.workflow_runs
+// WorkflowRunsPage below serves the real extdeps.github.workflow_runs
 // response type through the replay seam, so a witness exercises the interpreter's type-directed
 // decode with a recorded GitHub body.
 // A nullary coproduct no CoproductWireContract row names and whose module declares no
 // wire_contract: the undeclared-spelling control for the type-directed response decode.
 type UncontractedArm = Alpha | Beta
+
+// The shape of extdeps.google.userinfo GoogleUserInfoWire's email_verified: an optional Bool.
+type WireVerifiedFlag {
+  verified: Bool?
+}
 
 type WireUncontractedShape {
   arm: UncontractedArm
@@ -39,7 +44,6 @@ service test.RestReplay {
   operation Observe {
     output {
       message: String from "message"
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -48,7 +52,6 @@ service test.RestReplay {
   operation TextBody {
     output {
       text: String
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer", response_format: Text }
@@ -58,7 +61,6 @@ service test.RestReplay {
   operation FormatUnrecognized {
     output {
       text: String
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer", response_format: "Text" }
@@ -68,7 +70,6 @@ service test.RestReplay {
   operation RootArray {
     output {
       pulls: List<Int>
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -78,7 +79,6 @@ service test.RestReplay {
   operation RootFile {
     output {
       file: WireFileShape
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -88,7 +88,6 @@ service test.RestReplay {
   operation RootPage {
     output {
       page: WirePageShape
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -98,7 +97,6 @@ service test.RestReplay {
   operation WorkflowRunsPage {
     output {
       runs: WorkflowRunList
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -106,30 +104,29 @@ service test.RestReplay {
   }
 
   operation WifProvidersPage {
-    output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
+    output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders" }
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WifProviderListWire }
   }
 
   operation WifPool {
-    output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String?, outcome: RestOutcome }
+    output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String? }
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WifPoolWire }
   }
 
-  operation WorkflowRunsPageLegacy {
-    output { runs: WorkflowRunList }
+  operation VerifiedFlag {
+    output { verified: Bool? }
     readonly
     transport rest { method: GET, path: "/answer" }
-    response { 200 => WorkflowRunList }
+    response { 200 => WireVerifiedFlag }
   }
 
   operation RootUncontracted {
     output {
       shape: WireUncontractedShape
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -139,7 +136,6 @@ service test.RestReplay {
   operation Sibling {
     output {
       message: String from "message"
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -149,15 +145,9 @@ service test.RestReplay {
     output {
       message: String from "message"
       expires_on: String? from "expires_on"
-      observed: RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
   }
 
-  operation Legacy {
-    output { message: String from "message" }
-    readonly
-    transport rest { method: GET, path: "/answer" }
-  }
 }

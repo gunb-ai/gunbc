@@ -22,7 +22,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.apt { apt_installed_bin_path, apt_bin_dir }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

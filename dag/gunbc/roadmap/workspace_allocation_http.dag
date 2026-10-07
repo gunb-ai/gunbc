@@ -13,7 +13,7 @@ import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, w
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap_allocation_location { allocation_page_path, allocation_release_route }
 
 // JSON is the allocation wire contract. Identity, image, keys and lease are server policy.
 // Duplicate fields and extra authority-bearing fields refuse before any storage operation.
@@ -37,7 +37,7 @@ fn workspace_http_write(result: WorkspaceStoreWrite, observed_at: Timestamp) -> 
 fn workspace_http_create_over(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, store: FabricStorageBinding,
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
-  observed_at: Timestamp, new_expires_at: Timestamp, pinned_image: NonEmptyStr, public_key_ref: NonEmptyStr,
+  observed_at: Timestamp, new_expires_at: Timestamp, pinned_image: NonEmptyStr,
 ) -> ServeHttpResponse {
   match workspace_create_submission(body: request.body) {
     Absent => workspace_http_reason(status: 400, reason: "Expected JSON csrf_token, idempotency_key and profile")
@@ -60,7 +60,7 @@ fn workspace_http_create_over(
               security: request.security, policy: policy, deployment_policy: deployment_policy,
               observed_at: observed_at, expires_at: new_expires_at, csrf_presented: submission.csrf_token,
               idempotency_key: submission.idempotency_key, profile_wire: submission.profile,
-              pinned_image: pinned_image, enrolled_public_key_ref: public_key_ref,
+              pinned_image: pinned_image,
             ) {
               WorkspaceRequestAdmitted { request: admitted } => workspace_http_create_result(store: store, admitted: admitted, observed_at: observed_at, result: workspace_record_request_at(store: store, request: admitted, observed_at: observed_at))
               WorkspaceRequestAdmissionRefused { decision } => match decision {
@@ -106,7 +106,7 @@ fn workspace_http_release_over(
     Present { value: submission } => match request.security.authentication {
       GoogleOidcSession { session } => match workspace_write_admission(
         security: request.security, owner: session.principal, policy: policy, deployment_policy: deployment_policy,
-        observed_at: observed_at, route_path: "/allocations/release", action: ServeActionReleaseAllocation, csrf_presented: submission.csrf_token,
+        observed_at: observed_at, route_path: allocation_release_route(), action: ServeActionReleaseAllocation, csrf_presented: submission.csrf_token,
       ) {
         Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
         Permit => workspace_http_write(observed_at: observed_at, result: workspace_request_release_at(store: store, owner: session.principal, idempotency_key: allocation_id, expected_generation: submission.generation, observed_at: observed_at))

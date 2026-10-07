@@ -1,5 +1,6 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
+import v2.lens.complexity_accumulator_copy { Finding }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
@@ -20,6 +21,9 @@ import v2.lens.common.source_analysis_standing {
   SourceUnreadable
 }
 import std.types { List }
+import v2.std.integer { Int }
+import v2.std.node { Node }
+import v2.lens.complexity_accumulator_copy { Finding }
 
 // Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row
 // claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not
@@ -27,10 +31,8 @@ import std.types { List }
 // diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag
 // --source-root src/v2 --entry
 // src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function
-// roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet. Prior roster carriers:
-// accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag,
-// accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn
-// entry/function).
+// roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet. Large-file walks are
+// ordinary fns named by gunbc.offline_local_recipe RecipeFunctions. The cap is not raised.
 
 type FindingStanding
   = NoSuspect

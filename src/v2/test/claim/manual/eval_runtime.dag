@@ -24,7 +24,7 @@ import v2.std.collection {
   empty_map,
   list_nth
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,

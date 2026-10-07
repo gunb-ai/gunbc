@@ -1,0 +1,66 @@
+module gunbc.workspace_operator_request
+
+import std.types { String, NonEmptyStr, Timestamp }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation { workspace_allocation_id_of }
+import gunbc.workspace_allocation_admission { WorkspaceRequestAdmission, workspace_request_compose,
+  WorkspaceRequestAdmitted, WorkspaceRequestAdmissionRefused, WorkspaceRequestPolicyRefused }
+import gunbc.workspace_allocation_policy { workspace_operator_principal, workspace_installed_policy }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+
+// OPERATOR-ONLY FIRST REVISION. The owner is the single enrolled operator principal, not a
+// caller-supplied identity: this producer exists so a first request can be recorded while the
+// HTTP create route stays unmounted, and it is not a multi-user admission path. Its authority is
+// the operator's own repository dispatch; the key reference is the operator's enrollment in the
+// admitted installed policy and the request passes the same compose policy the HTTP route applies
+// after authentication, so the two producers cannot disagree on a request.
+fn workspace_operator_request(observed_at: Timestamp, key: String, profile_wire: String,
+  expires_at: Timestamp) -> WorkspaceRequestAdmission {
+  match workspace_allocation_id_of(raw: key) {
+    Absent => WorkspaceRequestPolicyRefused { reason: "workspace request key is not an admissible allocation id" }
+    Present { value: id } => match workspace_installed_policy() {
+      WorkspacePolicyRefused { reason: detail } => WorkspaceRequestPolicyRefused { reason: concat("installed workspace policy refused: ", detail) as NonEmptyStr }
+      WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: workspace_operator_principal()) {
+        Absent => WorkspaceRequestPolicyRefused { reason: "the operator principal is not enrolled by the installed workspace policy" }
+        Present { value: enrollment } => workspace_request_compose(owner: enrollment.principal,
+          observed_at: observed_at, expires_at: expires_at, idempotency_key: id, profile_wire: profile_wire,
+          pinned_image: workspace_demo_image_identity(), enrolled_public_key_ref: enrollment.public_key_ref)
+      }
+    }
+  }
+}
+
+fn workspace_operator_request_record(store: FabricStorageBinding, observed_at: Timestamp, key: String,
+  profile_wire: String, expires_at: Timestamp) -> ProcessExit {
+  match workspace_operator_request(observed_at: observed_at, key: key, profile_wire: profile_wire, expires_at: expires_at) {
+    WorkspaceRequestPolicyRefused { reason: detail } => exit_failure(reason: concat("WorkspaceOperatorRequestRefused: ", detail as String))
+    WorkspaceRequestAdmissionRefused { decision: _ } => exit_failure(reason: "WorkspaceOperatorRequestRefused: operator admission refused")
+    WorkspaceRequestAdmitted { request: admitted } => match workspace_record_request_at(store: store, request: admitted, observed_at: observed_at) {
+      WorkspaceStoreWritten { allocation: _ } => ExitSuccess
+      WorkspaceStoreConflict => exit_failure(reason: "WorkspaceOperatorRequestConflict: owner ledger changed concurrently; resubmit the same key")
+      WorkspaceStoreWriteRefused { reason: detail } => exit_failure(reason: concat("WorkspaceOperatorRequestRefused: ", detail))
+    }
+  }
+}
+
+fn workspace_operator_request_env(name: NonEmptyStr) -> String {
+  match shell.Env.Get(name: name).value { Absent => "" Present { value: v } => trim(s: v) }
+}
+
+// Typed entry: key, profile and lease end are the only operator inputs.
+fn workspace_operator_request_wet() -> ProcessExit {
+  match clock_now_probed_at() {
+    Absent => exit_failure(reason: "WorkspaceOperatorRequestRefused: request clock is unavailable")
+    Present { value: now } => workspace_operator_request_record(store: fabric_state_storage_binding(),
+      observed_at: now as Timestamp,
+      key: workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_KEY"),
+      profile_wire: workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_PROFILE"),
+      expires_at: workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_EXPIRES_AT") as Timestamp)
+  }
+}
