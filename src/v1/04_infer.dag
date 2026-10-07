@@ -7948,7 +7948,9 @@ fn bind_unbound_collection_element_generic(
 }
 
 fn type_is_bare_collection_carrier(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if formal_type_is_unary_container(n: n, source_indices: source_indices) && (n.children |> count) != 1 {
+  if qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices)) == "Empty" {
+    true
+  } else if formal_type_is_unary_container(n: n, source_indices: source_indices) && (n.children |> count) != 1 {
     true
   } else if (n.children |> count) == 1 {
     match n.children |> first {
@@ -14026,13 +14028,16 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
   if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
     && (generic_names |> any(g => g == bind_name)) {
-
+    if type_is_bare_collection_carrier(n: actual, source_indices: source_indices) {
+      acc
+    } else {
     match map_get(acc, bind_name) {
       Absent => map_insert(acc, bind_name, actual)
       Present { value: prev } =>
         if unify_binding_is_uninformative(n: prev) && !unify_binding_is_uninformative(n: actual) {
           map_insert(acc, bind_name, actual)
         } else { acc }
+    }
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)

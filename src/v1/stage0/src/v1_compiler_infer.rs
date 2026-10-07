@@ -12105,7 +12105,13 @@ pub fn type_is_bare_collection_carrier(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if formal_type_is_unary_container(n.clone(), source_indices.clone())
+    if crate::v1_std_core::qualified_last_segment(type_node_label(
+        n.clone(),
+        source_indices.clone(),
+    )) == "Empty".to_string()
+    {
+        true
+    } else if formal_type_is_unary_container(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) != 1)
     {
         true
@@ -24328,6 +24334,9 @@ pub fn unify_generics(
                 __found
             })
         {
+            if type_is_bare_collection_carrier(actual.clone(), source_indices.clone()) {
+                break acc;
+            }
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
                     break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
