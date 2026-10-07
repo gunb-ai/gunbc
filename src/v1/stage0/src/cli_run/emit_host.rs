@@ -3879,7 +3879,6 @@ mod fixture_closure_union_tests {
         assert!(union.conflicts.contains("dag/a.dag"));
     }
 
-    #[test]
     const STDERR_CAPTURE_MEMBER: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }\nimport std.measure { byte_size }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail { bytes: byte_size(count: 16) }\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
 
     const STDERR_CAPTURE_UNMODELED_SIBLING: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }\nimport std.measure { byte_size }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail { bytes: byte_size(count: 16) }\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n  operation Weird {\n    input { bin_path: String }\n    output { digest: String from \"stderr_digest_hex\" }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
@@ -4236,6 +4235,8 @@ mod fixture_closure_union_tests {
             panic!("a compile-probe reach of extdeps.gunbc must emit: {refusal}");
         });
     }
+
+    #[test]
     fn capture_gap_keys_on_shell_channel_not_realized_fact_equality() {
         use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};
         use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
