@@ -7479,15 +7479,30 @@ fn method_name_is(opt: String?, expected: String) -> Bool {
   if opt == none { false } else { opt.value == expected }
 }
 
+fn callee_is_collection_fold(name: String) -> Bool {
+  name == "fold_list" || name == "fold_list_right"
+}
+
+fn method_name_is_fold(opt: String?) -> Bool {
+  method_name_is(opt: opt, expected: "fold")
+    || match opt {
+      Present { value: n } => callee_is_collection_fold(name: n)
+      Absent => false
+    }
+}
+
 fn arg_has_name(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   let n = arg_name_at(n: arg, source_indices: source_indices)
   if n == none { false } else { n.value == name }
 }
 
 fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope, expected: Node?) -> ArgInferResult? {
-  let is_fold = method_name_is(opt: method_name, expected: "fold")
+  let is_fold = method_name_is_fold(opt: method_name)
   if is_fold && method_args |> count >= min_args {
-    let init_arg = match method_args |> filter(a => arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)) |> first {
+    let init_arg = match method_args |> filter(a =>
+      arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)
+        || arg_has_name(arg: a, name: "empty", source_indices: scope.type_env.source_indices)
+    ) |> first {
       Present { value: a } => Present { value: a }
       Absent => method_args |> first
     }
@@ -7526,11 +7541,13 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
 // expected type only when it is established and fully resolved, so an accumulator whose own
 // type is unknown expects nothing, as before.
 fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
-  let is_fold = method_name_is(opt: method_name, expected: "fold")
+  let is_fold = method_name_is_fold(opt: method_name)
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
     let idx = idx_pair.first
-    let is_init_arg = arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices) || (arg_name_at(n: a, source_indices: scope.type_env.source_indices) == none && idx == 0)
+    let is_init_arg = arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)
+      || arg_has_name(arg: a, name: "empty", source_indices: scope.type_env.source_indices)
+      || (arg_name_at(n: a, source_indices: scope.type_env.source_indices) == none && idx == 0)
     if is_fold && fold_info != none && is_init_arg {
       match fold_info {
         Present { value: fi } => fi
@@ -8622,7 +8639,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }])
           }
         )
-      } else if has_lambda && call_args |> count >= 2 && sig == none {
+      } else if has_lambda && call_args |> count >= 2 && (sig == none || callee_is_collection_fold(name: func_name)) {
         ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)

@@ -11260,6 +11260,18 @@ pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
     }
 }
 
+pub fn callee_is_collection_fold(name: String) -> bool {
+    ((name.clone() == "fold_list".to_string()) || (name.clone() == "fold_list_right".to_string()))
+}
+
+pub fn method_name_is_fold(opt: Option<String>) -> bool {
+    (method_name_is(opt.clone(), "fold".to_string())
+        || match opt.clone() {
+            Some(n) => callee_is_collection_fold(n),
+            std::option::Option::None => false,
+        })
+}
+
 pub fn arg_has_name(
     arg: Rc<Node>,
     name: String,
@@ -11283,17 +11295,21 @@ pub fn extract_fold_init_info(
     expected: Option<Rc<Node>>,
 ) -> Option<Rc<ArgInferResult>> {
     {
-        let is_fold = method_name_is(method_name.clone(), "fold".to_string());
+        let is_fold = method_name_is_fold(method_name.clone());
         if (is_fold.clone() && ((method_args.clone().len() as i64) >= min_args.clone())) {
             {
                 let init_arg = match Rc::new({
                     let mut __result = Vec::new();
                     for a in method_args.iter().cloned() {
-                        if arg_has_name(
+                        if (arg_has_name(
                             a.clone(),
                             "init".to_string(),
                             scope.type_env.clone().source_indices.clone(),
-                        ) {
+                        ) || arg_has_name(
+                            a.clone(),
+                            "empty".to_string(),
+                            scope.type_env.clone().source_indices.clone(),
+                        )) {
                             __result.push(a);
                         }
                     }
@@ -11398,7 +11414,7 @@ pub fn infer_method_args_with_fold(
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
-        let is_fold = method_name_is(method_name.clone(), "fold".to_string());
+        let is_fold = method_name_is_fold(method_name.clone());
         Rc::new({
             let mut __result = Vec::new();
             for idx_pair in Rc::new(
@@ -11416,7 +11432,7 @@ pub fn infer_method_args_with_fold(
                 __result.push({
             let a = idx_pair.1.clone();
 let idx = idx_pair.0.clone();
-let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.clone().source_indices.clone()) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()) == std::option::Option::None) && (idx.clone() == 0)));
+let is_init_arg = ((arg_has_name(a.clone(), "init".to_string(), scope.type_env.clone().source_indices.clone()) || arg_has_name(a.clone(), "empty".to_string(), scope.type_env.clone().source_indices.clone())) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()) == std::option::Option::None) && (idx.clone() == 0)));
 if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && is_init_arg.clone()) {
                 match fold_info.clone() {
     Some(fi) => fi.clone(),
@@ -13162,7 +13178,8 @@ Rc::new(InferResult {
                             )
                         } else {
                             if ((has_lambda.clone() && ((call_args.clone().len() as i64) >= 2))
-                                && (sig.clone() == std::option::Option::None))
+                                && ((sig.clone() == std::option::Option::None)
+                                    || callee_is_collection_fold(func_name.clone())))
                             {
                                 Rc::new(ArgGenericFoldState {
                                     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
