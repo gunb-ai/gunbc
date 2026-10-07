@@ -26,7 +26,6 @@ import gunbc.spark.fabric_switch_observed {
 }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
-import gunbc.spark.pair_serving_observed { first_pair_observed_head }
 
 // SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A FABRIC GROUP, NOT A HOST. DeepSeek V4
 // Flash does not fit one Spark's unified pool, so the desired serving state is one vLLM engine
@@ -270,12 +269,10 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // sitting in front of them in the same declaration.
 data spark_pair_serving_groups: List<FabricGroup> = map(spark_pair_serving_authorities, a => pair_serving_authority_group(a: a))
 
-// WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
-// (serve process, unit and Ray node address were all there). Group B: srv9 (spark-0c75), the unit the
+// WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group B: srv9 (spark-0c75), the unit the
 // operator named first of that batch; an arbitrary choice among identical units, written down.
 fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
   match group {
-    FabricGroupA => first_pair_observed_head
     FabricGroupB => operator_host_srv9
   }
 }

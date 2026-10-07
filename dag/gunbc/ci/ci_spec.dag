@@ -948,11 +948,6 @@ data gunbc_ci_approval_device_enrolment_code_issue_target: GunbcRunStepTarget = 
   function: "approval_device_enrolment_code_issue_wet",
 }
 
-data gunbc_ci_pair_serving_d0_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/pair_serving_d0_door.dag",
-  function: "pair_serving_d0_ci_wet",
-}
-
 data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
   function: "gcp_iam_converge_request_wet",
@@ -961,11 +956,6 @@ data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStep
 data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
   function: "gcp_iam_converge_apply_wet",
-}
-
-data gunbc_ci_pair_serving_d0_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/pair_serving_d0_door.dag",
-  function: "pair_serving_d0_admit_executor",
 }
 
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1334,8 +1324,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_sol_notice_target,
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_mtcollins1_boot_admit_target,
-    gunbc_ci_pair_serving_d0_target,
-    gunbc_ci_pair_serving_d0_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target
   ]
@@ -3258,10 +3246,6 @@ fn gunbc_ci_submission_key_prelude(stem: String) -> List<PipelineStep> {
   ]
 }
 
-fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
-  gunbc_ci_submission_key_prelude(stem: "pair-serving-d0")
-}
-
 data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
@@ -3299,43 +3283,6 @@ fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
     function: gunbc_ci_mtcollins1_boot_admit_target.function,
     claim_run: false,
     receipt_rel: none
-  )
-}
-
-// The credential-free admission: no prelude, no secret, just the door's pure fold over the
-// dispatch host, the kernel hostname, the consent and the expected revision.
-fn gunbc_ci_pair_serving_d0_admit_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_pair_serving_d0_admit_target.entry,
-    function: gunbc_ci_pair_serving_d0_admit_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-data gunbc_ci_pair_serving_d0_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_pair_serving_d0_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_pair_serving_d0_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk. The pipeline steps are modeled (gunbc_ci_pair_serving_d0_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
-
-fn gunbc_ci_pair_serving_d0_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_pair_serving_d0_prelude(),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_pair_serving_d0_target.entry,
-      function: gunbc_ci_pair_serving_d0_target.function,
-      claim_run: false,
-      receipt_rel: none
-    )
   )
 }
 

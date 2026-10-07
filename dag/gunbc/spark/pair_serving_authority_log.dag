@@ -428,7 +428,7 @@ fn group_fenced_hosts(preps: List<PlacementPreparationRecord>, group: FabricGrou
 
 // The groups that fence a host.
 fn groups_fencing(preps: List<PlacementPreparationRecord>, host: HostIdentity) -> List<FabricGroup> {
-  filter([FabricGroupA, FabricGroupB], g => any(group_fenced_hosts(preps: preps, group: g), h => host_identity_eq(a: h, b: host)))
+  filter([FabricGroupB], g => any(group_fenced_hosts(preps: preps, group: g), h => host_identity_eq(a: h, b: host)))
 }
 
 fn preparation_line(r: PlacementPreparationRecord) -> String {
@@ -1616,7 +1616,7 @@ type PlacementRead
 // event looked up on its group's chain -- it must exist and carry the record's copy. A
 // finalization naming an event that is not there, or one carrying another copy, is unread.
 fn placement_read(store: FabricStorageBinding) -> PlacementRead {
-  placement_read_over(placement: placement_fold_read(store: store), groups: map([FabricGroupA, FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) }))
+  placement_read_over(placement: placement_fold_read(store: store), groups: map([FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) }))
 }
 
 // ONE READ PER PARTITION, THEN PURE JOINS. A consumer that needs the authority of every group AND
