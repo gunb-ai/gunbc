@@ -401,6 +401,20 @@ fn vfp_decode_onearm_reasons() -> CliWireResponse {
   CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
 }
 
+data vfp_twobinder_src: String = "module p\n\ntype Pair = A { x: Int } | B { y: Int }\n\nfn unbox(s: Pair) -> Int {\n  match s {\n    A { x: p } => p\n    B { y: q } => q\n  }\n}"
+
+data vfp_intlit_src: String = "module p\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n    Fail => 5\n  }\n}"
+
+fn vfp_decode_twobinder() -> CliWireResponse {
+  let r = vfp_reading(src: vfp_twobinder_src)
+  CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
+}
+
+fn vfp_decode_intlit() -> CliWireResponse {
+  let r = vfp_reading(src: vfp_intlit_src)
+  CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
+}
+
 data vfp_arrow_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^variant_field_infer_probe_arrow_artifact,
