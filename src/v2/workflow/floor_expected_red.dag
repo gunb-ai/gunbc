@@ -801,6 +801,11 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // the same modeled operation as Optional<T>. This exact specimen executes and returns false. It
 // stays enrolled after repair: when it becomes true this roster row is deleted and the claim
 // remains as the regression control.
+
+fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<String> {
+  Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
+}
+
 // ENROLLED 2026-10-07 BY #13545, AND ENROLLED BECAUSE THAT CHANGE MADE THEM RUN. Each asserts a TRANSCRIBED COUNT of a
 // live grant set (DESIGN section 5: a count copied from the tree is a change detector, not an oracle). On main the
 // module never resolved -- 46 latent Optional-vs-required comparisons kept it out of every gated closure -- so these
@@ -812,10 +817,6 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // #12124) is archived, so the repair is routed through lively-crane-656 (XL-2) to the lane's current owner.
 fn floor_expected_red_chunk_grounded_principal_transcribed_counts() -> List<String> {
   Cons { head: "test.claim.grounded_principal_witness.witness_ci_runner_sudo_grants_derive_privileged_commands", tail: Cons { head: "test.claim.grounded_principal_witness.witness_deploy_authorization_query_grounds_expected_principal", tail: Cons { head: "test.claim.grounded_principal_witness.witness_deploy_preflight_plan_has_whoami_plus_privileged_probes", tail: Empty {} } } }
-}
-
-fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<String> {
-  Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
 }
 
 // THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding. The
