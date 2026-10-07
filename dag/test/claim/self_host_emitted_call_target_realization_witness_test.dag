@@ -57,7 +57,7 @@ test fn w_map_type_position_still_uses_its_declared_host_realization() -> Bool {
 // seed fallback, instead of silently constructing the structural algebra carrier under that type.
 test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.map_record_shape_probe\nimport std.types { Int, String, Map }\nimport v2.std.optional { Present }\nfn probe(m: Map<String, Int>, key: String, value: Int) -> Map<String, Int> { Map { lookup: fn(candidate) { if candidate == key { Present { value: value } } else { m.lookup(candidate) } } } }\n",
+    "module test.claim.map_record_shape_probe\nimport std.types { Int, String, Map }\nimport std.optional { Present }\nfn probe(m: Map<String, Int>, key: String, value: Int) -> Map<String, Int> { Map { lookup: fn(candidate) { if candidate == key { Present { value: value } } else { m.lookup(candidate) } } } }\n",
     "src/test_claim_map_record_shape_probe.rs",
     ["HashMap<String, i64>", "record-shaped carrier has no realization"],
     ["FinitelySupportedFunction", "Map {\n"]
@@ -696,7 +696,7 @@ test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
 // call (E0277, three sites in v2_std_collection). The bound is read from the signature.
 test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.map_key_bound_probe\nimport v2.std.collection { Map, map_lookup }\nimport v2.std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
+    "module test.claim.map_key_bound_probe\nimport v2.std.collection { Map, map_lookup }\nimport std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
     "src/test_claim_map_key_bound_probe.rs",
     ["pub fn probe<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
     ["pub fn probe<K: Clone, V", "pub fn probe<K, V"]
@@ -751,7 +751,7 @@ test fn w_a_service_op_through_an_aliased_service_value_refuses_instead_of_await
 // so the fail-closed unwrap fired on an argument the callee exists to inspect.
 test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwrap() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.optional_param_probe\nimport std.types { Int }\nimport v2.std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Optional<Int>) -> Optional<Int> { inspect(opt: x) }\n",
+    "module test.claim.optional_param_probe\nimport std.types { Int }\nimport std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Optional<Int>) -> Optional<Int> { inspect(opt: x) }\n",
     "src/test_claim_optional_param_probe.rs",
     ["inspect(x.clone())"],
     [".expect(\"fail-closed: an optional value flowed into non-optional parameter"]
