@@ -2257,10 +2257,6 @@ fn authority_transition_append(store: FabricStorageBinding, group: FabricGroup, 
   event_log_append_with(store: store, partition: pair_authority_partition(group: group), event: event, expected: head, encode: fn(e) { pair_authority_event_wire_text(event: e) })
 }
 
-  = EntryStateRecordedAt { id: EventId }
-  | EntryStateRecordStale { observed: HeadExpectation }
-  | EntryStateRecordRefused { step: String, reason: String }
-
 data current_authority_unread_marker: String = " authority unread at "
 
 fn current_authority_wire(c: CurrentAuthority) -> String {
