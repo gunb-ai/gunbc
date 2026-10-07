@@ -24,8 +24,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // any row it returns is the row the population read carries for that path, in the same order.
 // Its first form grouped the whole population union by importer, which made the first keyed read
 // in a process pay the whole-pool reference parse (the floor's reference_edges shared fill,
-// 15.7s charged to one claim on gunbc#12523); the per-file form demands the pool name index only
-// for an import-less importer, whose edges genuinely depend on other files' names.
+// 15.7s charged to one claim on gunbc#12523); the per-file form demands the pool name index for
+// every readable importer, import-bearing or not, since a reference edge depends on other files' names.
 //
 // A FOURTH ITEM, with_module_path_index, is the borrowing reader of the SAME MODULE_PATH_INDEX_CACHE
 // build_module_path_index fills: the keyed reads above asked one entry of it per visited module and

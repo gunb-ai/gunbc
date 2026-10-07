@@ -521,8 +521,10 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // modules), while for SELECTION it is precisely the thing that destroys the answer. The loader
     // (`extend_with_bare_reference_closure`) is deliberately left alone.
     //
-    // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
-    // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // (SUPERSEDED: this measurement predates the all-importer producer. Import-bearing files now
+    // also emit strict-tier reference edges for modules they reach without importing, so the union
+    // is no longer a no-op on an un-stripped file. The selection-tier effect of that widening is
+    // measured by the floor, not asserted here.)
     // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
     // demander, and that index is the first demander of every pool file's lexing, newline index
     // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,

@@ -204,6 +204,13 @@ fn emitted_workspace_edges(froms: List<String>, tos: List<String>, provenances: 
   }
 }
 
+// EMIT-ONLY BASENAMES: files the emitter writes with no .dag module behind them, beside the runtime
+// prelude. v1.compiler.emit_rust emit_dry_run_module writes dry_run.rs (the DryRunMode wrapper)
+// whenever the closure declares services, so it is never a module of the derived DAG. It is declared
+// here, at the authority that owns the closure-agreement exception, rather than filtered out of the
+// report; a basename absent from this list and from the DAG still refuses by name.
+data emitted_workspace_emit_only_basenames: List<String> = ["dry_run"]
+
 // The derived DAG in BASENAME space, with the runtime module as a node, because that is the space
 // the emitter's edges and the rendered includes speak.
 type BasenameDagBuild
@@ -216,6 +223,7 @@ fn emitted_workspace_basename_dag(module_dag: ModuleDag, module_by_basename: Map
     match emitted_workspace_lookup(m: emitted_set, key: rust_module_emit_filename(module_name: m as String)) { Present { value: _ } => false  Absent => true })
   let outside = emitted_basenames |> filter(b =>
     b != rust_runtime_prelude_module
+      && !(emitted_workspace_emit_only_basenames |> any(e => e == b))
       && match emitted_workspace_lookup(m: module_by_basename, key: b) { Present { value: _ } => false  Absent => true })
   if ((not_emitted |> count) + (outside |> count)) > 0 {
     BasenameDagRefused {
@@ -289,7 +297,7 @@ fn emitted_workspace_runtime_row() -> GeneratedPartitionCrateRow {
     package_name: emitted_workspace_runtime_package,
     crate_dir: emitted_workspace_crate_dir(package: emitted_workspace_runtime_package),
     kind: GeneratedFoundationCrate,
-    modules: [rust_runtime_prelude_module],
+    modules: concat([rust_runtime_prelude_module], emitted_workspace_emit_only_basenames),
     reexport_packages: [],
     carries_non_empty_wrappers: true
   }
