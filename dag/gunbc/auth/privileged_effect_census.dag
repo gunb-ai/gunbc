@@ -1,7 +1,7 @@
 module gunbc.auth.privileged_effect_census
 
 import gunbc.auth.standing_operator_grant {
-  group_a_dev_standing_grant,
+  group_a_dev_standing_grant, mtjade1_live_standing_grant,
 }
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
@@ -336,14 +336,16 @@ fn route_qualification_channel_access_effect() -> PrivilegedEffect {
   }
 }
 
-// BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
-// account to a stored and exact-fetched generation and retire the published account to a break-glass
-// generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
-// value each write replaces is gone, and the published factory value is not restorable by a reapply
-// (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's accounts, so its reach is one
-// resource. No dispatched run carries it: in this cut it is modeled, with a dry realization only, and
-// the plan mint takes an operator-approved capability (gunbc.auth.approval_broker Redemption) per write,
-// bound to the exact controller, build and request.
+// BMCSECURE ACCOUNT ROTATION (cut O1b, discharge O1c-3). The Apply arm of the state-shaped BmcSecure:
+// set the managed account to a stored and exact-fetched generation and retire the published account
+// to a break-glass generation, each write over a route admitted by admit_rotation_apply.
+// IRREVERSIBLE, AND SAID SO: the value each write replaces is gone, and the published factory value is
+// not restorable by a reapply (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's
+// accounts, so its reach is one resource. No dispatched run carries it: modeled with a dry realization
+// only. Irreversibility is discharged by the mtjade1 live-ops standing ruling under admit_rotation_apply
+// (gunbc.auth.standing_operator_grant mtjade1_live_standing_grant); a write still needs a grounded
+// route. Operator-approved capability remains the selected pattern while the workload identity is
+// unbindable, and is the fallback when the grant does not cover the host.
 fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "rotate a BMC's managed account to a stored generation and retire its published account, over admitted routes on one controller at one firmware build" as NonEmptyStr,
@@ -353,7 +355,7 @@ fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the BmcSecure account rotation; in cut O1b it is modeled with a dry realization only" as NonEmptyStr },
     minted_reach: MintsResourceScopedCredential,
     billing: NoBillingConsequence,
-    witness_discharge: NoWitnessDischarge,
+    witness_discharge: StandingRulingUnderInterlock { ruling: mtjade1_live_standing_grant.ruling },
   }
 }
 
@@ -440,6 +442,13 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply") },
+    refusal: site(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write"),
+    premise: "BmcSecure Apply discharges the mtjade1 standing ruling only when admit_rotation_apply is rostered against this site; InterlockPending and UnconditionalStanding never discharge, and a named hold that is not this site's rostered interlock does not discharge" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),

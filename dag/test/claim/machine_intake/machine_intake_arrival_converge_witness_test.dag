@@ -952,6 +952,22 @@ fn mtjade1_grant_with_interlock_pending() -> StandingOperatorGrant {
   }
 }
 
+fn mtjade1_grant_with_foreign_interlock() -> StandingOperatorGrant {
+  let g = mtjade1_live_standing_grant
+  StandingOperatorGrant {
+    identity: g.identity,
+    principal: g.principal,
+    ruled_at: g.ruled_at,
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: g.ruling.ruling_text,
+      effect_subject: g.ruling.effect_subject,
+      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
+    },
+    scope: g.scope,
+    effects: g.effects,
+  }
+}
+
 fn apply_fold_undischarged(discharges: List<InstanceAuthorization>) -> Bool {
   let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
@@ -983,6 +999,7 @@ fn apply_fold_undischarged(discharges: List<InstanceAuthorization>) -> Bool {
 
 test fn w_bmc_secure_apply_pending_interlock_refuses_at_discharge() -> Bool {
   grant_discharges_bmc_secure_account_write(g: mtjade1_grant_with_interlock_pending(), host: operator_host_mtjade1) == false
+    && grant_discharges_bmc_secure_account_write(g: mtjade1_grant_with_foreign_interlock(), host: operator_host_mtjade1) == false
     && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
 }
 
