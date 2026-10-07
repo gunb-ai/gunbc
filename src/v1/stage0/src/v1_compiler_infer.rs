@@ -3075,20 +3075,20 @@ pub fn node_admits_list_literal(
 pub fn empty_list_expected_element_is_unknown(
     expected: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> bool {
     (produced_is_unsolved_generic_at_conformance(expected.clone(), source_indices.clone())
         || empty_list_expected_is_unbound_generic_name(
             expected.clone(),
             source_indices.clone(),
-            env.clone(),
+            open_generic_names,
         ))
 }
 
 pub fn empty_list_expected_is_unbound_generic_name(
     expected: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> bool {
     {
         let label = type_node_label(expected.clone(), source_indices.clone());
@@ -3096,10 +3096,10 @@ pub fn empty_list_expected_is_unbound_generic_name(
             && (expected.connective.clone() == Connective::NoConnective))
             && !conformance_ground_type(expected.clone(), source_indices.clone()))
             && (label.clone() != "".to_string()))
-            && match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), label.clone()) {
-                std::option::Option::None => true,
-                Some(_) => false,
-            })
+            && open_generic_names
+                .clone()
+                .iter()
+                .any(|g| g.clone() == label.clone()))
     }
 }
 
@@ -11907,7 +11907,10 @@ pub fn formal_type_is_container_name(
         match container_template_algebra(leaf.clone()) {
             Some(_) => true,
             std::option::Option::None => {
-                leaf.clone() == "FreeMonoid".to_string() || leaf.clone() == "List".to_string()
+                match container_template_alias_algebra(leaf.clone()) {
+                    Some(_) => true,
+                    std::option::Option::None => false,
+                }
             }
         }
     }
@@ -12102,8 +12105,11 @@ pub fn typed_arg_type_for_formal(
         })
 }
 
-pub fn type_is_bare_collection_carrier(n: Rc<Node>) -> bool {
-    (n.name.clone() == "FreeMonoid".to_string() || n.name.clone() == "List".to_string())
+pub fn type_is_bare_collection_carrier(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    formal_type_is_container_name(n.clone(), source_indices)
         && ((n.children.clone().len() as i64) != 1)
 }
 
@@ -12176,8 +12182,8 @@ pub fn collection_fold_lambda_expected(
             );
             if unify_binding_is_uninformative(xs_ty.clone())
                 || unify_binding_is_uninformative(elem.clone())
-                || type_is_bare_collection_carrier(xs_ty.clone())
-                || type_is_bare_collection_carrier(elem.clone())
+                || type_is_bare_collection_carrier(xs_ty.clone(), source_indices.clone())
+                || type_is_bare_collection_carrier(elem.clone(), source_indices.clone())
             {
                 std::option::Option::None
             } else {
@@ -12193,7 +12199,10 @@ pub fn collection_fold_lambda_expected(
                         elem,
                     )),
                     Some(acc_ty) => {
-                        let acc = if type_is_bare_collection_carrier(acc_ty.clone()) {
+                        let acc = if type_is_bare_collection_carrier(
+                            acc_ty.clone(),
+                            source_indices.clone(),
+                        ) {
                             type_variable_node("FoldAccumulator".to_string())
                         } else {
                             acc_ty
@@ -12215,6 +12224,23 @@ pub fn infer_call_arguments_generic_pass(
     scope: Rc<InferScope>,
     fold_roles: Option<Rc<CollectionFoldRoles>>,
 ) -> Rc<ArgGenericFoldState> {
+    let arg_scope = Rc::new(InferScope {
+        type_env: scope.type_env.clone(),
+        func_env: scope.func_env.clone(),
+        locals: scope.locals.clone(),
+        body_locals: scope.body_locals.clone(),
+        match_bound_names: scope.match_bound_names.clone(),
+        module_name: scope.module_name.clone(),
+        service_registry: scope.service_registry.clone(),
+        item_registry: scope.item_registry.clone(),
+        lambda_param_provenance: scope.lambda_param_provenance.clone(),
+        caller_decl_name: scope.caller_decl_name.clone(),
+        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: v1_rt::concat(
+            scope.enclosing_declared_type_param_names.clone(),
+            generic_names.clone(),
+        ),
+    });
     Rc::new(
         call_args
             .clone()
@@ -12395,7 +12421,7 @@ pub fn infer_call_arguments_generic_pass(
             };
             let ar_inferred = infer_expr(
                 crate::v1_std_core::arg_value(a.clone()),
-                scope.clone(),
+                arg_scope.clone(),
                 expected.clone(),
             );
             let ar = if formal_is_code_point_sequence.clone() {
@@ -12455,6 +12481,7 @@ pub fn infer_call_arguments_generic_pass(
                                             crate::v1_compiler_infer_types::resolved_type(
                                                 ar.typed.clone(),
                                             ),
+                                            scope.type_env.clone().source_indices.clone(),
                                         )
                                 }
                                 CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
@@ -15642,7 +15669,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             if empty_list_expected_element_is_unknown(
                                 exp.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                                scope.type_env.clone(),
+                                scope.enclosing_declared_type_param_names.clone(),
                             ) {
                                 Rc::new(vec![])
                             } else {

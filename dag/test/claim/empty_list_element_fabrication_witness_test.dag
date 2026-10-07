@@ -46,6 +46,10 @@ data fold_list_uninformed_list_return_source: String = "module probe_nl_fold_uni
 // must still refuse here (review 77133).
 data empty_list_at_named_product_source: String = "module probe_empty_list_at_umod\ntype UMod { module: String }\ndata d: UMod = []\n"
 
+// A LOOKUP MISS IS NOT A GENERIC FORMAL (review 77535). `data d: Undeclared = []` must
+// refuse; the empty-list skip is membership in the declared type-parameter list.
+data empty_list_at_undeclared_type_source: String = "module probe_empty_list_undeclared\ndata d: Undeclared = []\n"
+
 // LANGUAGE FOLD(init: []) WHOSE STEP IS acc + [string] MUST INFORM THE ACCUMULATOR. The
 // leftover unify pass was a second bind authority (review 77302) and is gone; list concat
 // must take the informative right list so a declared List<String> return stays accepted.
@@ -93,6 +97,10 @@ test fn uninformed_fold_list_list_return_does_not_silently_typecheck() -> Bool {
 
 test fn empty_list_against_a_named_product_still_refuses() -> Bool {
   blocking_class_count_for(source: empty_list_at_named_product_source, wanted_class: "InternalError") >= 1
+}
+
+test fn empty_list_against_an_undeclared_type_name_still_refuses() -> Bool {
+  !compiles_with_no_blocking_diagnostic(source: empty_list_at_undeclared_type_source)
 }
 
 test fn fold_init_concat_informs_the_list_element() -> Bool {
