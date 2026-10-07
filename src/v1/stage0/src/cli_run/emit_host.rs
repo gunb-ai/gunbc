@@ -3701,8 +3701,9 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
             )))
         }
     }
-    // A fixture whose closure reaches extdeps.gunbc is admitted with the typed capture-policy
-    // exclusion, not as FixtureClosureUnionEmitRefused (the #13420 floor after #13437).
+    // A fixture whose closure reaches extdeps.gunbc is admitted by rust emit once
+    // WitnessBin.Run's capture channels are realized (#13472). #13466's typed exclusion
+    // remains for still-unrealized rust channels; it must not keep stripping Run.
     let gunbc_observed = fixture_closure_union_emit_receipt(
         &fixture_closure_union_control_union(FIXTURE_CLOSURE_GUNBC_REACH_MEMBER)
             .map_err(&refuse)?,
@@ -3712,17 +3713,16 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
             "a fixture whose closure reaches extdeps.gunbc refused: {refusal}"
         ))
     })?;
-    if !gunbc_observed.excluded.iter().any(|row| {
+    if gunbc_observed.excluded.iter().any(|row| {
         let Ok(gap) = capture_gap_exclusion() else {
             return false;
         };
         row.contains(&format!("module={}", gap.declaring_module))
             && row.contains(&format!("operation={}", gap.operation_qualified))
             && row.contains("cause=ShellChannelNotRealizedByTarget")
-            && row.contains(&gap.drop_identity)
     }) {
         return Err(refuse(format!(
-            "a fixture whose closure reaches extdeps.gunbc was admitted without the typed exclusion: {gunbc_observed:?}"
+            "WitnessBin.Run is realized; the capture-gap exclusion must not still strip it: {gunbc_observed:?}"
         )));
     }
     // A real emit error in a member the union still renders still refuses, even when the same
