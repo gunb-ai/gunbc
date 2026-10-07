@@ -56,8 +56,8 @@ fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
     ingest: Cons {
       head: DagSourceReadWitness {
         source: Medium { carried: src, fidelity: Lossless },
-        artifact: vfp_artifact,
-        compilation_unit: ^variant_field_infer_probe_cu,
+        artifact: vfp_variant_artifact,
+        compilation_unit: ^vfp_variant_cu,
         source_root: V2Tree
       },
       tail: Empty
@@ -416,6 +416,18 @@ fn vfp_decode_intlit() -> CliWireResponse {
   CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
 }
 
+data vfp_variant_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_variant_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_variant_pilot.dag"
+}
+
+data vfp_fixture_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_fixture_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_fixture_pilot.dag"
+}
+
 data vfp_arrow_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^variant_field_infer_probe_arrow_artifact,
@@ -426,11 +438,11 @@ data vfp_arrow_artifact: Artifact = Artifact {
 // is its own identity so the long-home claim that must bill its own frame is not admitted by the
 // derived producer-share.
 fn vfp_fixture_resolved() -> Outcome<ResolvedTree> {
-  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_artifact, cu: ^vfp_fixture_cu)
+  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_fixture_artifact, cu: ^vfp_fixture_cu)
 }
 
 fn vfp_fixture_resolved_direct() -> Outcome<ResolvedTree> {
-  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_artifact, cu: ^vfp_fixture_cu)
+  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_fixture_artifact, cu: ^vfp_fixture_cu)
 }
 
 fn vfp_arrow_resolved() -> Outcome<ResolvedTree> {
