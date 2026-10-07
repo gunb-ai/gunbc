@@ -93,6 +93,16 @@ fn emitted_subject_build_label_text(row: EmittedSubjectBuildRow) -> String {
   render_label(l: row.label)
 }
 
+// THE FAULT EXPERIMENT IS DECIDED BY A MODELED INPUT THE WORKFLOW PASSES, NOT BY THE RUNNER READING
+// THE EVENT ITSELF. The env var below is set per step by gunbc.compiler_gate_workflow from the
+// workflow event; native_lane_runner reads it and states the decision in the run log. Absent or any
+// other value RUNS the experiment (fail toward the control, never toward skipping it). The skip is
+// the declared drop gunbc.rung_drop native_fault_experiment_off_pull_requests; merge_group and
+// workflow_dispatch keep the experiment, and every other control runs on pull requests.
+data native_fault_experiment_env_name: String = "GUNBC_NATIVE_FAULT_EXPERIMENT"
+data native_fault_experiment_skip_value: String = "skip_pull_request"
+data native_fault_experiment_run_value: String = "run"
+
 fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
   gunbc_test_command(label: emitted_subject_build_label_text(row: row))
 }

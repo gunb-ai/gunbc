@@ -12,7 +12,7 @@ import v2.lens.module_graph {
 }
 import v2.std.collection { empty_map, map_get, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.compilers.compilation_unit { ModuleDag, ModuleDagEdge, ModuleId }
 import v2.workflow.rust_crate_partition {
   PartitionPolicy,

@@ -13,7 +13,7 @@ import std.content_hash {
 }
 import std.integer { NonNegativeInt }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

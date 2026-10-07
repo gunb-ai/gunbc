@@ -3,7 +3,7 @@ module extdeps.firmware.types
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.types { Bool, EpochMs, NonEmptyStr, List, list_length }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import extdeps.boards.types { BaseboardModel }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

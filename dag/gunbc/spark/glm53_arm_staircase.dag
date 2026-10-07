@@ -3,7 +3,7 @@ module gunbc.spark.glm53_arm_staircase
 import std.types { String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { token_count, basis_point }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }

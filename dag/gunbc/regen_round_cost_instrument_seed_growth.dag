@@ -1,0 +1,21 @@
+module gunbc.regen_round_cost_instrument_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data regen_round_cost_instrument_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_regen_round_cost_instrument", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "REGEN_ROUND_COST_PROBE_MIRROR", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "run_regen_one_mirror_emit_probe", field: WholeDeclaration }
+  ],
+
+  reason: "The producer arm for gunbc.target_binding RegenRoundCostProducer, so the existing priced regen round (claim_executor --regen-round-cost, gunbc.regen_round_cost) can run by label on a memory-bounded fleet slot through instrument-dispatch. It adds no second emit path: the round is the existing run_regen_round_cost, and the one-mirror discriminator is the existing run_required_regen_scoped with an Affected scope of one member, its trace ledger drained and printed. Both callees are host Rust in the seed, so their caller is too. It adds no flag and no mode that skips a check; it is on-demand only and no required job reaches it.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations with their callees, when the stage0 regen round (run_regen_round_cost and run_required_regen_scoped) is a .dag fold rather than host Rust and gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole). WHAT DOES NOT RETIRE IT: deleting the label while the emit repair it measures for is still open, which removes the instrument that repair's evidence names.",
+
+  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_regen_round_cost_instrument and REGEN_ROUND_COST_PROBE_MIRROR, behind gunbc test //gunbc/instruments:regen-round-cost; src/v1/stage0/src/required_regen_host.rs run_regen_one_mirror_emit_probe"
+}

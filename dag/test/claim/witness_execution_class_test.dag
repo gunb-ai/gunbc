@@ -1,7 +1,7 @@
 module gunbc.test.claim.witness_execution_class_test
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.types { Bool, List }
 import gunbc.witness_execution_class {
   NativeBlockedCause,

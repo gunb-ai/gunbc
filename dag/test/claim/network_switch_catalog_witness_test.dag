@@ -1,7 +1,7 @@
 module test.claim.network_switch_catalog_witness
 
 import std.types { Bool, Int, List, String }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import std.measure {
   Bandwidth, bandwidth, bandwidth_count,
   byte_size_count, cpu_core_count_value,

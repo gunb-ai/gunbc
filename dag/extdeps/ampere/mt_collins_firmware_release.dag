@@ -3,7 +3,7 @@ module extdeps.ampere.mt_collins_firmware_release
 import std.types { Int, NonEmptyStr, List }
 import std.measure { ByteSize, byte_size, Second, second }
 import extdeps.crypto.hash { sha256_digest }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.firmware.types {
   FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,

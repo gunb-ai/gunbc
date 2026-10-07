@@ -3,7 +3,7 @@ module gunbc.live_deploy.readiness
 import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
 import std.evaluation_budget { LimitSet, LimitUnset }
 import std.measure { positive_millisecond_count, Second, second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.readiness { Readiness, Ready, Pending, Refused }

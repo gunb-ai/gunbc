@@ -1,6 +1,6 @@
 module test.claim.materialization_kernel_closing_frontier_audit_witness
 
-import v2.std.optional { optional_absent, optional_present }
+import std.optional { optional_absent, optional_present }
 import gunbc.materialization_kernel_closing_frontier_audit {
   ClauseVerdict,
   FrontierClause,

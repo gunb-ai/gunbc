@@ -2,7 +2,7 @@ module gunbc.worker_turn_standing
 
 import std.types { String, NonEmptyStr, List, FilePath, Int }
 import std.claim_evidence { RecordedFactId }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.exec.command { LocalExec }

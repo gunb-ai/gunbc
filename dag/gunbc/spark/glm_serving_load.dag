@@ -3,7 +3,7 @@ module gunbc.spark.glm_serving_load
 import std.types { NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { token_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_backend_route,
