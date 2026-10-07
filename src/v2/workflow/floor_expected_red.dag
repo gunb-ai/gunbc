@@ -801,7 +801,6 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // the same modeled operation as Optional<T>. This exact specimen executes and returns false. It
 // stays enrolled after repair: when it becomes true this roster row is deleted and the claim
 // remains as the regression control.
-
 fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<String> {
   Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
 }
