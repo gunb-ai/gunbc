@@ -14,7 +14,7 @@ import v2.lens.cost.copied_port_derivation {
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 import v2.std.collection { optional_absent, optional_present }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

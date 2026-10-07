@@ -620,7 +620,9 @@ fn phase_roster_standing(walls: List<PhaseWall>) -> PhaseRosterStanding {
         let n = phase_count(walls: walls, phase: p)
         if n == 0 { PhaseMissing { phase: p } } else if n > 1 { PhaseDuplicated { phase: p } } else { acc }
       }
-      _ => acc
+      PhaseMissing { phase: _ } => acc
+      PhaseDuplicated { phase: _ } => acc
+      PhaseRosterNotAssessed { because: _ } => acc
     }
   )
 }
@@ -629,7 +631,9 @@ fn first_incomplete_roster(runs: List<ObservedRunnerQualificationRun>) -> PhaseR
   fold(runs, init: PhaseRosterComplete, f: (acc, r) =>
     match acc {
       PhaseRosterComplete => phase_roster_standing(walls: r.phase_wall)
-      _ => acc
+      PhaseMissing { phase: _ } => acc
+      PhaseDuplicated { phase: _ } => acc
+      PhaseRosterNotAssessed { because: _ } => acc
     }
   )
 }
@@ -657,7 +661,8 @@ fn phase_wall_standing(ceilings: PhaseCeilings, runs: List<ObservedRunnerQualifi
               acc
             }
           }
-          _ => acc
+          PhaseWallsNotAssessed => acc
+          PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => acc
         }
       )
   }

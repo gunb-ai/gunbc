@@ -7,7 +7,8 @@ import gunbc.auth.session { AuthenticatedSession }
 import extdeps.tailscale.serve { ServeStatusProxies, TailscaleServeRouteKey, ServeRootMount }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import extdeps.http.server { RequestSecurityContext }
-import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_write_admission }
+import gunbc.workspace_allocation_admission { workspace_write_admission }
+import test.claim.runner.workspace_owner_access_witness_test { witness_single_owner_policy, witness_empty_policy }
 import std.access { Permit, Deny }
 import std.types { String, Bool, NonEmptyStr, Int }
 import extdeps.ietf.http_semantics { POST }
@@ -33,13 +34,20 @@ test fn witness_allocation_enrollment_and_csrf_both_required() -> Bool {
     SessionRefused { cause: _ } => false
     SessionMinted { session } => {
       let security = RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: session } }
-      let allowed = WorkspaceAuthorizationPolicy { principals: [session.principal] }
-      let good = workspace_write_admission(security: security, owner: session.principal, policy: allowed, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
-      let bad_csrf = workspace_write_admission(security: security, owner: session.principal, policy: allowed, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "wrong")
-      let unenrolled = workspace_write_admission(security: security, owner: session.principal, policy: WorkspaceAuthorizationPolicy { principals: [] }, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
-      match good { Permit => true Deny { refusal: _ } => false }
-        && match bad_csrf { Deny { refusal: _ } => true Permit => false }
-        && match unenrolled { Deny { refusal: _ } => true Permit => false }
+      match witness_single_owner_policy(owner: session.principal) {
+        Absent => false
+        Present { value: allowed } => match witness_empty_policy() {
+        Absent => false
+        Present { value: empty } => {
+          let good = workspace_write_admission(security: security, owner: session.principal, policy: allowed, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+          let bad_csrf = workspace_write_admission(security: security, owner: session.principal, policy: allowed, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "wrong")
+          let unenrolled = workspace_write_admission(security: security, owner: session.principal, policy: empty, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+          match good { Permit => true Deny { refusal: _ } => false }
+            && match bad_csrf { Deny { refusal: _ } => true Permit => false }
+            && match unenrolled { Deny { refusal: _ } => true Permit => false }
+        }
+        }
+      }
     }
   }
 }
@@ -66,14 +74,18 @@ test fn allocation_write_requires_an_observed_tailnet_route() -> Bool {
   match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session } => {
-      let allowed = WorkspaceAuthorizationPolicy { principals: [session.principal] }
-      let required = DeploymentAccessPolicy { tailnet_path_required: true }
-      let observed = workspace_write_admission(security: allocation_tailnet_security(session: session, route_observed: true), owner: session.principal, policy: allowed, deployment_policy: required, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
-      let unobserved = workspace_write_admission(security: allocation_tailnet_security(session: session, route_observed: false), owner: session.principal, policy: allowed, deployment_policy: required, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
-      let local = workspace_write_admission(security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: session } }, owner: session.principal, policy: allowed, deployment_policy: required, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
-      match observed { Permit => true Deny { refusal: _ } => false }
-        && match unobserved { Deny { refusal: _ } => true Permit => false }
-        && match local { Deny { refusal: _ } => true Permit => false }
+      match witness_single_owner_policy(owner: session.principal) {
+        Absent => false
+        Present { value: allowed } => {
+          let required = DeploymentAccessPolicy { tailnet_path_required: true }
+          let observed = workspace_write_admission(security: allocation_tailnet_security(session: session, route_observed: true), owner: session.principal, policy: allowed, deployment_policy: required, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+          let unobserved = workspace_write_admission(security: allocation_tailnet_security(session: session, route_observed: false), owner: session.principal, policy: allowed, deployment_policy: required, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+          let local = workspace_write_admission(security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: session } }, owner: session.principal, policy: allowed, deployment_policy: required, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+          match observed { Permit => true Deny { refusal: _ } => false }
+            && match unobserved { Deny { refusal: _ } => true Permit => false }
+            && match local { Deny { refusal: _ } => true Permit => false }
+        }
+      }
     }
   }
 }
@@ -127,13 +139,16 @@ fn seam_create_body(csrf: String) -> String {
 }
 
 fn seam_create(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>, owner: AuthenticatedSession, store: FabricStorageBinding, body: String) -> ServeHttpResponse {
-  workspace_route_create_over(
-    request: ServeHttpRequest { method: POST, path: "/allocations", body: body, security: security },
-    store: store,
-    policy: WorkspaceAuthorizationPolicy { principals: [owner.principal] },
-    observed_at: seam_decided_at,
-    terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
-  )
+  match witness_single_owner_policy(owner: owner.principal) {
+    Absent => workspace_http_reason(status: 500, reason: "witness policy refused at admission")
+    Present { value: policy } => workspace_route_create_over(
+      request: ServeHttpRequest { method: POST, path: "/allocations", body: body, security: security },
+      store: store,
+      policy: policy,
+      observed_at: seam_decided_at,
+      terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
+    )
+  }
 }
 
 fn seam_create_status(header: String, readback: TailnetServeReadback, decided_at: String) -> Int {
@@ -313,29 +328,34 @@ test fn seam_permission_denied_refusal_names_the_command_failure() -> Bool {
 // tailnet path, and a matching fresh route with a malformed session cookie is not an authenticated
 // owner -- nor is that caller told why the host could not vouch for a header.
 test fn seam_malformed_identity_refuses_the_write() -> Bool {
-  let no_login = seam_create_status(header: "", readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
-  let malformed_session = workspace_route_create_over(
-    request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
-      access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at),
-      authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
-    } },
-    store: FabricStorageBindingUnplaced,
-    policy: WorkspaceAuthorizationPolicy { principals: [] },
-    observed_at: seam_decided_at,
-    terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
-  ).status
-  let unauthenticated_unvouched = workspace_route_create_over(
-    request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
-      access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_permission_denied_readback(), decided_at: seam_decided_at),
-      authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
-    } },
-    store: FabricStorageBindingUnplaced,
-    policy: WorkspaceAuthorizationPolicy { principals: [] },
-    observed_at: seam_decided_at,
-    terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
-  )
-  no_login == 403 && malformed_session == 401
-    && unauthenticated_unvouched.status == 401 && !string_contains(s: unauthenticated_unvouched.body, pattern: "Access denied")
+  match witness_empty_policy() {
+    Absent => false
+    Present { value: empty } => {
+      let no_login = seam_create_status(header: "", readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+      let malformed_session = workspace_route_create_over(
+        request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
+          access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at),
+          authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
+        } },
+        store: FabricStorageBindingUnplaced,
+        policy: empty,
+        observed_at: seam_decided_at,
+        terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
+      ).status
+      let unauthenticated_unvouched = workspace_route_create_over(
+        request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
+          access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_permission_denied_readback(), decided_at: seam_decided_at),
+          authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
+        } },
+        store: FabricStorageBindingUnplaced,
+        policy: empty,
+        observed_at: seam_decided_at,
+        terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
+      )
+      no_login == 403 && malformed_session == 401
+        && unauthenticated_unvouched.status == 401 && !string_contains(s: unauthenticated_unvouched.body, pattern: "Access denied")
+    }
+  }
 }
 
 // STALE READBACK: a matching reading older than the freshness bound, one dated after the decision,
@@ -354,13 +374,17 @@ test fn seam_csrf_and_release_are_held_to_the_same_law() -> Bool {
     SessionMinted { session } => {
       let good_path = seam_security(session: session, header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
       let no_path = seam_security(session: session, header: seam_tailnet_login, readback: TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }, decided_at: seam_decided_at)
-      let allowed = WorkspaceAuthorizationPolicy { principals: [session.principal] }
-      let release_body = "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}"
-      let release_refused = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: no_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
-      let release_admitted = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: good_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
-      seam_create(security: good_path, owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "wrong")).status == 403
-        && release_refused.status == 503 && string_contains(s: release_refused.body, pattern: "readback-not-demanded")
-        && release_admitted.status == 409
+      match witness_single_owner_policy(owner: session.principal) {
+        Absent => false
+        Present { value: allowed } => {
+          let release_body = "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}"
+          let release_refused = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: no_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
+          let release_admitted = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: good_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
+          seam_create(security: good_path, owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "wrong")).status == 403
+            && release_refused.status == 503 && string_contains(s: release_refused.body, pattern: "readback-not-demanded")
+            && release_admitted.status == 409
+        }
+      }
     }
   }
 }

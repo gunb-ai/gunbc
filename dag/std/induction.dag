@@ -1,4 +1,5 @@
 module std.induction
+import std.optional { Absent, Present }
 
 import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int, DescentUnknown, DivideByTwo, NonIncreasing, OneStep, Strict, TreeSize }
 

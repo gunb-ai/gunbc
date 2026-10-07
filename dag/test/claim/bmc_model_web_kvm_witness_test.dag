@@ -2,7 +2,7 @@ module test.claim.bmc_model_web_kvm_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { second }
 import gunbc.bmc_model {
   BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, bmc_web_world_untouched, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController,

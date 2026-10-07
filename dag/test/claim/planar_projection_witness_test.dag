@@ -20,7 +20,7 @@ import std.planar_projection {
   axis_image_u, axis_image_v,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -4208,72 +4208,6 @@ pub fn match_arm_types_are_proven_disjoint(
     }
 }
 
-pub fn match_arm_type_is_bare_concrete(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    {
-        let name = crate::v1_std_core::authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            t.clone(),
-        );
-        let generic = ((((t.params.clone().len() as i64) > 0)
-            || ((t.inferred.clone() != std::option::Option::None)
-                && crate::v1_std_core::is_compiler_error(t.inferred.clone().clone().unwrap())))
-            || match t.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: _, .. }) => true,
-                _ => false,
-            });
-        (((name.clone() != "".to_string()) && !generic.clone())
-            && !declared_type_carries_optional(t.clone(), scope.clone()))
-    }
-}
-
-pub fn match_arm_mixes_bare_and_optional(
-    unified_arm_type: Rc<Node>,
-    arm_type: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    ((declared_type_carries_optional(unified_arm_type.clone(), scope.clone())
-        && match_arm_type_is_bare_concrete(arm_type.clone(), scope.clone()))
-        || (match_arm_type_is_bare_concrete(unified_arm_type.clone(), scope.clone())
-            && declared_type_carries_optional(arm_type.clone(), scope.clone())))
-}
-
-pub fn match_arm_body_is_present_payload_binding(
-    arm: Rc<ArmInferResult>,
-    scope: Rc<InferScope>,
-) -> bool {
-    match (*crate::v1_std_core::arm_pattern(arm.typed_arm.clone())).clone() {
-        MatchPattern::VariantPattern {
-            name: variant_name,
-            field_bindings: bindings,
-            ..
-        } => {
-            let body_name = crate::v1_std_core::expr_var_name_at(
-                crate::v1_std_core::arm_body(arm.typed_arm.clone()),
-                scope.type_env.clone().source_indices.clone(),
-            );
-            (((variant_name.clone() == "Present".to_string())
-                && (body_name.clone() != "".to_string()))
-                && {
-                    let mut __found = false;
-                    for fb in bindings.iter().cloned() {
-                        if match (*crate::v1_std_core::field_binding_pattern(fb.clone())).clone() {
-                            MatchPattern::Bind {
-                                declaration: declaration,
-                                ..
-                            } => (declaration.name.clone() == body_name.clone()),
-                            _ => false,
-                        } {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                })
-        }
-        _ => false,
-    }
-}
-
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -4282,61 +4216,35 @@ pub fn match_arm_join_diagnostics(
     if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
         Rc::new(vec![])
     } else {
-        if (!match_arm_body_is_present_payload_binding(arm.clone(), scope.clone())
-            && match_arm_mixes_bare_and_optional(
-                unified_arm_type.clone(),
-                arm.body_type.clone(),
-                scope.clone(),
-            ))
-        {
-            Rc::new(vec![crate::v1_std_core::make_error_node(
-                Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
-                    position: "match arm".to_string(),
-                    expected: crate::v1_compiler_infer_types::node_type_shape(
-                        unified_arm_type.clone(),
-                        scope.type_env.clone().source_indices.clone(),
+        if match_arm_types_are_proven_disjoint(
+            unified_arm_type.clone(),
+            arm.body_type.clone(),
+            scope.clone(),
+        ) {
+            Rc::new(vec![inference_error(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "match arms produce proven-disjoint types: ".to_string(),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                unified_arm_type.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                        ),
+                        " vs ".to_string(),
                     ),
-                    got: crate::v1_compiler_infer_types::node_type_shape(
+                    crate::v1_compiler_infer_types::node_type_shape(
                         arm.body_type.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ),
-                    span: crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                        .span
-                        .clone(),
-                }),
+                ),
+                crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                    .span
+                    .clone(),
                 scope.module_name.clone(),
             )])
         } else {
-            if match_arm_types_are_proven_disjoint(
-                unified_arm_type.clone(),
-                arm.body_type.clone(),
-                scope.clone(),
-            ) {
-                Rc::new(vec![inference_error(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "match arms produce proven-disjoint types: ".to_string(),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    unified_arm_type.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                            ),
-                            " vs ".to_string(),
-                        ),
-                        crate::v1_compiler_infer_types::node_type_shape(
-                            arm.body_type.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ),
-                    ),
-                    crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                        .span
-                        .clone(),
-                    scope.module_name.clone(),
-                )])
-            } else {
-                Rc::new(vec![])
-            }
+            Rc::new(vec![])
         }
     }
 }
@@ -5374,7 +5282,7 @@ pub fn literal_introduction_type_mismatch(
         );
         match (*actual_expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
             {
                 let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6347,69 +6255,6 @@ pub fn declared_type_inhabitance(
     }
 }
 
-pub fn declared_type_carries_optional(declared: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        let declared_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-            declared.clone(),
-            scope.type_env.clone(),
-            scope.module_name.clone(),
-        );
-        ((((declared.return_cardinality.clone() == Cardinality::CardOptional)
-            || (declared_peeled.return_cardinality.clone() == Cardinality::CardOptional))
-            || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                declared.clone(),
-            )) == "Optional".to_string()))
-            || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                declared_peeled.clone(),
-            )) == "Optional".to_string()))
-    }
-}
-
-pub fn position_forbids_bare_lift(position: DeclaredTypePosition) -> bool {
-    match position.clone() {
-        DeclaredTypePosition::PositionDeclaredReturn => true,
-        DeclaredTypePosition::PositionDataInitializer => true,
-        _ => false,
-    }
-}
-
-pub fn required_produced_at_optional_declared(
-    declared: Rc<Node>,
-    produced: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        let declared_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
-        let produced_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
-        let produced_carries_optional = ((produced.return_cardinality.clone()
-            == Cardinality::CardOptional)
-            || (crate::v1_std_core::qualified_last_segment(produced_name.clone())
-                == "Optional".to_string()));
-        let produced_is_generic = ((((produced.params.clone().len() as i64) > 0)
-            || ((produced.inferred.clone() != std::option::Option::None)
-                && crate::v1_std_core::is_compiler_error(
-                    produced.inferred.clone().clone().unwrap(),
-                )))
-            || match produced.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: _, .. }) => true,
-                _ => false,
-            });
-        ((((((declared_type_carries_optional(declared.clone(), scope.clone())
-            && !produced_carries_optional.clone())
-            && !produced_is_generic.clone())
-            && (produced_name.clone() != "".to_string()))
-            && (declared_name.clone() != "".to_string()))
-            && !type_node_is_callable(declared.clone()))
-            && !type_node_is_callable(produced.clone()))
-    }
-}
-
 pub fn optional_produced_at_required_declared(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -6430,8 +6275,21 @@ pub fn optional_produced_at_required_declared(
                 Some(InferredNode::TypeVariable { id: _, .. }) => true,
                 _ => false,
             });
-        ((((((produced_carries_optional.clone()
-            && !declared_type_carries_optional(declared.clone(), scope.clone()))
+        let declared_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+            declared.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        let declared_carries_optional = ((((declared.return_cardinality.clone()
+            == Cardinality::CardOptional)
+            || (declared_peeled.return_cardinality.clone() == Cardinality::CardOptional))
+            || (crate::v1_std_core::qualified_last_segment(declared_name.clone())
+                == "Optional".to_string()))
+            || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                declared_peeled.clone(),
+            )) == "Optional".to_string()));
+        ((((((produced_carries_optional.clone() && !declared_carries_optional.clone())
             && !declared_is_generic.clone())
             && (declared_name.clone() != "".to_string()))
             && !type_node_is_callable(declared.clone()))
@@ -6444,17 +6302,11 @@ pub fn optional_at_required_obligation_diags(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if (optional_produced_at_required_declared(
+    if optional_produced_at_required_declared(
         obligation.declared.clone(),
         obligation.produced.clone(),
         scope.clone(),
-    ) || (position_forbids_bare_lift(obligation.position.clone())
-        && required_produced_at_optional_declared(
-            obligation.declared.clone(),
-            obligation.produced.clone(),
-            scope.clone(),
-        )))
-    {
+    ) {
         Rc::new(vec![crate::v1_std_core::make_error_node(
             Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
                 position: declared_type_position_label(
@@ -6713,7 +6565,13 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
                 TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+                    if matches!(
+                        view.as_ref(),
+                        TypeHeadView::ProductHead {
+                            type_identity: _,
+                            ..
+                        }
+                    ) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..
@@ -12013,32 +11871,48 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 ar_inferred.clone()
             };
-            let next_subst = if (is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
-                || !has_formal.clone())
-            {
+            let next_subst = if !has_formal.clone() {
                 st.subst.clone()
             } else {
-                if should_unify_record_lit_generics(
-                    formal_raw.clone(),
-                    crate::v1_std_core::arg_value(a.clone()),
-                    generic_names.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ) {
-                    unify_record_lit_generics(
-                        formal_raw.clone(),
-                        ar.typed.clone(),
-                        generic_names.clone(),
-                        scope.clone(),
-                        st.subst.clone(),
-                    )
+                if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                    if v1_rt::map_is_empty(&init_subst) {
+                        unify_lambda_solves(
+                            unify_generics(
+                                formal_raw.clone(),
+                                lambda_callable_type(ar.typed.clone()),
+                                generic_names.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                            ),
+                            generic_names.clone(),
+                            st.subst.clone(),
+                        )
+                    } else {
+                        st.subst.clone()
+                    }
                 } else {
-                    unify_generics(
+                    if should_unify_record_lit_generics(
                         formal_raw.clone(),
-                        crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
+                        crate::v1_std_core::arg_value(a.clone()),
                         generic_names.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                        st.subst.clone(),
-                    )
+                    ) {
+                        unify_record_lit_generics(
+                            formal_raw.clone(),
+                            ar.typed.clone(),
+                            generic_names.clone(),
+                            scope.clone(),
+                            st.subst.clone(),
+                        )
+                    } else {
+                        unify_generics(
+                            formal_raw.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
+                            generic_names.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            st.subst.clone(),
+                        )
+                    }
                 }
             };
             Rc::new(ArgGenericFoldState {
@@ -23793,34 +23667,202 @@ pub fn unify_generics(
                 }
             }
         } else {
-            if (((formal.children.clone().len() as i64) == 1)
-                && ((actual.children.clone().len() as i64) == 1))
+            if ((formal.connective.clone() == Connective::Arrow)
+                && (actual.connective.clone() == Connective::Arrow))
             {
-                match formal.children.clone().first().cloned() {
-                    Some(fc) => match actual.children.clone().first().cloned() {
-                        Some(ac) => {
-                            let __tco_0 = fc.clone();
-                            let __tco_1 = ac.clone();
-                            let __tco_2 = generic_names;
-                            let __tco_3 = source_indices;
-                            let __tco_4 = acc;
-                            __tco_loop_formal = __tco_0;
-                            __tco_loop_actual = __tco_1;
-                            __tco_loop_generic_names = __tco_2;
-                            __tco_loop_source_indices = __tco_3;
-                            __tco_loop_acc = __tco_4;
-                            continue;
-                        }
+                break unify_callable_generics(
+                    formal.clone(),
+                    actual.clone(),
+                    generic_names.clone(),
+                    source_indices.clone(),
+                    acc.clone(),
+                );
+            } else {
+                if (((formal.children.clone().len() as i64) == 1)
+                    && ((actual.children.clone().len() as i64) == 1))
+                {
+                    match formal.children.clone().first().cloned() {
+                        Some(fc) => match actual.children.clone().first().cloned() {
+                            Some(ac) => {
+                                let __tco_0 = fc.clone();
+                                let __tco_1 = ac.clone();
+                                let __tco_2 = generic_names;
+                                let __tco_3 = source_indices;
+                                let __tco_4 = acc;
+                                __tco_loop_formal = __tco_0;
+                                __tco_loop_actual = __tco_1;
+                                __tco_loop_generic_names = __tco_2;
+                                __tco_loop_source_indices = __tco_3;
+                                __tco_loop_acc = __tco_4;
+                                continue;
+                            }
+                            std::option::Option::None => {
+                                break acc.clone();
+                            }
+                        },
                         std::option::Option::None => {
                             break acc.clone();
                         }
-                    },
-                    std::option::Option::None => {
-                        break acc.clone();
+                    }
+                } else {
+                    break acc.clone();
+                }
+            }
+        }
+    }
+}
+
+pub fn unify_callable_generics(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let with_params = unify_callable_param_pairs(
+            formal.params.clone(),
+            actual.params.clone(),
+            generic_names.clone(),
+            source_indices.clone(),
+            acc.clone(),
+        );
+        match formal.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved {
+                node: formal_ret, ..
+            }) => match actual.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved {
+                    node: actual_ret, ..
+                }) => unify_generics(
+                    formal_ret.clone(),
+                    actual_ret.clone(),
+                    generic_names.clone(),
+                    source_indices.clone(),
+                    with_params.clone(),
+                ),
+                _ => with_params.clone(),
+            },
+            _ => with_params.clone(),
+        }
+    }
+}
+
+pub fn lambda_callable_type(lambda: Rc<Node>) -> Rc<Node> {
+    crate::v1_compiler_infer_types::make_callable_type(
+        Rc::new(
+            lambda
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        ),
+        crate::v1_compiler_infer_types::resolved_type(lambda.clone()),
+    )
+}
+
+pub fn unify_callable_param_pairs(
+    mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_generic_names: Rc<Vec<String>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut formals = __tco_loop_formals;
+        #[allow(unused_mut)]
+        let mut actuals = __tco_loop_actuals;
+        #[allow(unused_mut)]
+        let mut generic_names = __tco_loop_generic_names;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        match formals.clone().first().cloned() {
+            Some(f) => match actuals.clone().first().cloned() {
+                Some(a) => {
+                    let __tco_0 =
+                        Rc::new(formals.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                    let __tco_1 =
+                        Rc::new(actuals.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                    let __tco_2 = generic_names.clone();
+                    let __tco_3 = source_indices.clone();
+                    let __tco_4 = unify_generics(
+                        crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                        crate::v1_compiler_infer_types::child_type_node(a.clone()),
+                        generic_names.clone(),
+                        source_indices.clone(),
+                        acc,
+                    );
+                    __tco_loop_formals = __tco_0;
+                    __tco_loop_actuals = __tco_1;
+                    __tco_loop_generic_names = __tco_2;
+                    __tco_loop_source_indices = __tco_3;
+                    __tco_loop_acc = __tco_4;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break acc.clone();
+                }
+            },
+            std::option::Option::None => {
+                break acc.clone();
+            }
+        }
+    }
+}
+
+pub fn unify_lambda_solves(
+    solved: Rc<HashMap<String, Rc<Node>>>,
+    generic_names: Rc<Vec<String>>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    generic_names.iter().cloned().fold(
+        acc.clone(),
+        |st: Rc<HashMap<String, Rc<Node>>>, g: String| match v1_rt::map_get(&solved, g.clone()) {
+            Some(candidate) => {
+                if unify_binding_is_uninformative(candidate.clone()) {
+                    st.clone()
+                } else {
+                    match v1_rt::map_get(&st, g.clone()) {
+                        std::option::Option::None => {
+                            v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
+                        }
+                        Some(_) => st.clone(),
                     }
                 }
-            } else {
-                break acc.clone();
+            }
+            std::option::Option::None => st.clone(),
+        },
+    )
+}
+
+pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: _, .. }) => {
+                break true;
+            }
+            _ => {
+                if ((n.children.clone().len() as i64) == 1) {
+                    match n.children.clone().first().cloned() {
+                        Some(c) => {
+                            let __tco_0 =
+                                crate::v1_compiler_infer_types::child_type_node(c.clone());
+                            __tco_loop_n = __tco_0;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            break false;
+                        }
+                    }
+                } else {
+                    break false;
+                }
             }
         }
     }
@@ -24289,7 +24331,7 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
                     __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                         let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                         let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                        __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                        v1_rt::canonical_key_cmp(&__ka, &__kb)
                     });
                     __sorted
                 }),
@@ -24428,7 +24470,7 @@ pub fn kernel_variant_owner_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec
             __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                 let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                 let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         })
@@ -29351,7 +29393,7 @@ pub fn grounded_successor(
 ) -> Rc<Node> {
     match (*prev.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
         {
             let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
                 unreachable!()

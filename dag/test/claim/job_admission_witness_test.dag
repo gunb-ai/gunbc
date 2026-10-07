@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr }
 import std.roster_frontier { FrontierRow }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
 import product.fabric.job_admission {

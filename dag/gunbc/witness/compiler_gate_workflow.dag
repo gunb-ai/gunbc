@@ -5,14 +5,13 @@ module gunbc.compiler_gate_workflow
 // lanes the `witnesses` aggregate reads -- `emit-build`, `floor` and `generated` -- run on the fleet,
 // and so does the aggregate.
 //
-// THE HOSTED UNIT-TEST LANE IS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
+// THE HOSTED UNIT-TEST LANE WAS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
 // `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
 // non-blocking measurement, and its step's continue_on_error rendered every run green while the
 // population was red on main -- a verdict nobody could read, bought with about a third of the
-// hosted pool, which it shared with the heal publisher and pushed into multi-hour waits. The v1
-// unit tests are back to the state gunbc.rung_drop rust_unit_tests_off_the_merge_path declares:
-// no CI step executes them. They return as a BLOCKING fleet lane once the population is green,
-// never as a hosted measurement again.
+// hosted pool. That ruling said the tests return as a BLOCKING fleet lane once the population is
+// green, never as a hosted measurement again, and on 2026-09-30 they did: `rust-unit-tests` is a
+// blocking fleet lane read by the aggregate (see the unit-test section below).
 //
 // WHY THE HOSTED LANES LEFT THE MERGE PATH. The history below put them there because the fleet was
 // the bottleneck. On 2026-09-28 the bottleneck was the hosted pool: it held at 20 running jobs with
@@ -73,7 +72,7 @@ module gunbc.compiler_gate_workflow
 
 import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
@@ -150,7 +149,7 @@ import gunbc.fleet_release_bins_key {
   release_bins_pack_object_script, release_bins_pack_object_path_expression,
   compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_whole_days,
 }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, Github, Expression, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -262,6 +261,134 @@ fn compiler_gate_lint_step() -> Step {
     if_condition: Present { value: witness_step_status_guard_expression() },
     continue_on_error: none,
     timeout_minutes: none
+  }
+}
+
+// THE v1 UNIT TESTS ARE A BLOCKING FLEET LANE (2026-09-30, restoring the lane the 2026-09-29 ruling
+// deleted, in the shape that ruling named). The history: a non-required step on the hosted `clippy`
+// job (2026-09-27), its own non-blocking hosted lane (2026-09-28), deleted because continue_on_error
+// made its red unreadable (2026-09-29). It returns without continue_on_error, on the fleet, with the
+// aggregate reading it, so a unit-test red refuses the required context; the restoration retires
+// gunbc.rung_drop rust_unit_tests_off_the_merge_path in the same change.
+//
+// THE FLEET COST IS THE PRICE THE OLDER REASONING DECLINED, AND IT IS NOW PAID DELIBERATELY. The
+// 2026-09-28 reasoning kept the step off the fleet because a fleet slot would pay its wall on every
+// push for a verdict nothing required. The verdict is now required, so the wall buys a gate; and the
+// lane runs BESIDE `floor` and `generated` (needs: []), so it adds slot-minutes but no critical-path
+// minutes unless it is the longest lane.
+//
+// THE BOUND IS REAL, NOT DECLARED, AND ON THE FLEET IT IS THE SLOT'S OWN. The regeneration-host tests
+// read their budget through gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup
+// binds the process. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
+// refuse. On the hosted runner the step bound itself with sudo (gunbc.ci_spec
+// hosted_runner_memory_cgroup_bind_commands); on a fleet host that bind is unsound, because the slots
+// share one cgroup tree and a sudo write to the root subtree_control reaches every slot. It is also
+// unneeded: every fleet slot is a systemd unit whose MemoryMax is gunbc.fleet_host_budget
+// gunbc_per_runner_memory_cap, the runner starts the step inside that unit's cgroup, and the v1
+// governor's leaf-to-root walk (memory_governor binding_cap_cgroup_dir) reads it. So the step runs the
+// test command bare, and a slot that lost its MemoryMax turns the regeneration-host tests red with a
+// typed refusal rather than passing on a fabricated budget.
+data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
+data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
+// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT, SO THE STEP ENDS INSIDE THE
+// JOB BY CONSTRUCTION. THE RULE, stated so the literal can be re-derived rather than trusted: the step
+// cap is the largest observed step wall on the fleet runner class, times 1.5, rounded up to the next
+// 5 minutes. Headroom is multiplicative because the wall scales with the test population and with
+// slot contention, and a required lane whose cap is hit reads as a red that says nothing about the
+// diff. The observed walls are those of the rust_unit_tests step in this lane's own fleet runs (the
+// first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
+// silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
+// exceeds two thirds of the cap.
+fn compiler_gate_unit_test_timeout() -> Minute {
+  minute(count: 40)
+}
+
+// Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
+// itself compiles the test binary, so this reserve covers only the prelude.
+fn compiler_gate_unit_test_pre_step_reserve() -> Minute {
+  minute(count: 10)
+}
+
+fn compiler_gate_unit_test_job_timeout() -> Minute {
+  minute(count: minute_count(compiler_gate_unit_test_timeout()) + minute_count(compiler_gate_unit_test_pre_step_reserve()))
+}
+
+fn compiler_gate_unit_test_command() -> String {
+  repo_self_test_command()
+}
+
+fn compiler_gate_unit_test_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_unit_test_step_name },
+    id: Present { value: compiler_gate_unit_test_step_id },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: compiler_gate_unit_test_command()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_timeout()) }
+  }
+}
+
+data compiler_gate_unit_test_job_id: String = "rust-unit-tests"
+
+fn compiler_gate_unit_test_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: compiler_gate_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_unit_test_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_unit_test_step_name,
+    },
+  ]
+}
+
+fn compiler_gate_unit_test_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: compiler_gate_unit_test_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn compiler_gate_unit_test_job() -> Job {
+  Job {
+    id: compiler_gate_unit_test_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
+    steps: list_map(xs: compiler_gate_unit_test_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_job_timeout()) },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: compiler_gate_permissions }
   }
 }
 
@@ -1380,8 +1507,23 @@ type CompilerGateLaneRow {
   arm: CompilerGateArm
 }
 
+// THE UNIT-TEST ROW IS NOT BLOCKING UNDER A DECLARED DROP (operator-approved, escalation
+// msg_e83c070f, 2026-10-05): the step overran its cap on every head after gunbc#12951, so its red
+// said nothing about the diff and refused every merge. The job still runs and reports;
+// gunbc.rung_drop rust_unit_tests_over_their_cap names the trigger that flips it back to LaneBlocks.
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
+    CompilerGateLaneRow {
+      job_id: compiler_gate_unit_test_job_id,
+      var_name: "RUST_UNIT_TESTS",
+      arm: GateArmSkippableOnFork {
+        notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
+        unobserved_error: "the v1 unit-test lane produced no success"
+      },
+      standing: LaneAnnouncedNotBlocking {
+        flip_trigger: "gunbc.rung_drop rust_unit_tests_over_their_cap: the full v1 --lib unit suite completes under its cap on the fleet runner on every head. Sufficient for: the lane red meaning a test failed, never that its clock ran out."
+      },
+    },
     CompilerGateLaneRow {
       job_id: compiler_gate_emit_build_job_id,
       var_name: "EMIT_BUILD",
@@ -1541,7 +1683,7 @@ data compiler_gate_workflow: Workflow = Workflow {
     kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
+  jobs: [compiler_gate_unit_test_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a floor script is not renderable, the workflow runs a job that compiler_gate_lane_rows does not roster, or a blocking lane or the aggregate runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the lane's bound steps, add the job's row, or put the merge-path job on gunbc_ci_selected_runner_spec. The gate's needs, env bindings and every conditional are FOLDED from that roster, so they cannot disagree with it and this refusal has nothing to say about them."
@@ -1559,7 +1701,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
+          if compiler_gate_unit_test_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }

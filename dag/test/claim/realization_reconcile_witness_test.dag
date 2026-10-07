@@ -1,5 +1,6 @@
 module test.claim.realization_reconcile_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.realization { LocalInProcess }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

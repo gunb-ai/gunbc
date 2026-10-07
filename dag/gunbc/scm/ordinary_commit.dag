@@ -16,6 +16,7 @@ module gunbc.scm.ordinary_commit
 // admission beside the one authority is the section 3 fork on top of it. Found by external review.
 
 import std.types { String, Int }
+import gunbc.scm.intake { CaptureWork }
 
 import gunbc.scm.repository_envelope {
   MintedCommit,
@@ -23,6 +24,7 @@ import gunbc.scm.repository_envelope {
   AncestralSubjectAllocatorInvalid,
   AdmittedCommitBasis,
   admit_commit_subject_from_basis,
+  admit_commit_subject_from_basis_with_work,
   mint_repository_commit_admitted,
 }
 
@@ -47,6 +49,20 @@ fn mint_ancestral_commit(
   message: String,
 ) -> AncestralCommitMint {
   match admit_commit_subject_from_basis(basis: basis) {
+    AncestralSubjectAllocatorInvalid { next_ordinal: n } =>
+      AncestralCommitAllocatorInvalid { next_ordinal: n }
+    AncestralSubjectAdmitted(admitted) =>
+      AncestralCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
+  }
+}
+
+// THE CAPTURE MINT: the ordinary mint, recording the unit of work the commit captured.
+fn mint_ancestral_capture(
+  basis: AdmittedCommitBasis,
+  message: String,
+  work: CaptureWork,
+) -> AncestralCommitMint {
+  match admit_commit_subject_from_basis_with_work(basis: basis, work: work) {
     AncestralSubjectAllocatorInvalid { next_ordinal: n } =>
       AncestralCommitAllocatorInvalid { next_ordinal: n }
     AncestralSubjectAdmitted(admitted) =>

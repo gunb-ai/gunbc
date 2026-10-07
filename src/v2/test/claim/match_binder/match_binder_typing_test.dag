@@ -53,7 +53,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { List }
 import v2.std.collection { empty_map }
 import v2.std.integer { Int }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data mbp_artifact: Artifact = Artifact {
