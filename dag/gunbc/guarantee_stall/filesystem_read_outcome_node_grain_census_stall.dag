@@ -1,0 +1,43 @@
+module gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall
+
+// IRREDUCIBLE RATIONALE for the parked node-grain census of the read-outcome adoption row
+// (extdeps.filesystem.filesystem_io filesystem_read_outcome_adoption_standing), kept as an
+// annotation rather than row prose (DESIGN 4c: the park state, structural trigger and population
+// live in the typed GuaranteeStall below; this comment carries only what no carrier can hold):
+// - A raw service operation (Filesystem.Read) has NO identity at node grain in decl_facts: the
+//   marshal mints callee identity atoms for ExprCall only, and a service operation is an
+//   ExprMethodCall, so it produces no callee atom and no distinctive node -- live or dead, no
+//   node-grain census can recognize wire reads.
+// - Skeleton callee identity atoms are BARE fn names (T:Atom(trim), T:Atom(por_sink)), not
+//   qualified paths; probes comparing qualified ids against skeleton atoms always come up empty.
+// - A wire read therefore leaves no node-grain evidence whether it is grafted or dropped, so its
+//   absence from a skeleton is indistinguishable from its presence.
+// - This is the skeleton's DESIGNED subject, not a marshal defect: v2.std.fn_index's
+//   FnArrowDecl.output contract declares the carrier as .dag-to-.dag call structure (a skeleton
+//   node is a Conj except a named call carrying ComputationNode with the callee identity leaf; the
+//   same carrier v2.compiler.body_lowering_fold produces, with v2.std.compilers.body_lowering
+//   application_head_read the shape authority), and a service operation has no .dag callee
+//   declaration to reference. The production carrier models a let as a Bind and never drops it.
+// - The earlier investigation that read the marshal as dropping projected-only lets was FALSIFIED
+//   by a pre-fix claim and a skeleton dump; the drafted marshal repair was discarded and the rfm
+//   row filed for it deleted. No repair is owed.
+// - NOT tracked by fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: that trigger
+//   fires when a substrate fold emits the SAME skeleton facts, which still omit service-op
+//   identity -- it could fire with Filesystem.Read still anonymous. Hence the trigger below is
+//   structural, about the facts themselves, not about any scaffold dissolving.
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data filesystem_read_outcome_node_grain_census_stall: GuaranteeStall = GuaranteeStall {
+  subject: "extdeps.filesystem.filesystem_io's read-outcome adoption row has no committed producer of a live unconverted remainder: the planned node-grain census over decl_facts cannot recognize raw service-operation calls, so it is parked rather than half-built",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "the qualified service-operation identity authority: v2.std.fn_index's FnArrowDecl.output contract carries a callee identity leaf that names a service operation as a service plus operation pair (service: filesystem, operation: Read), the same grain v2.compiler.body_lowering_fold's carrier uses",
+  },
+  population: BoundedPopulation { members: ["extdeps.filesystem.filesystem_io::filesystem_read_outcome_adoption_standing"] },
+  next_rung_trigger: climbs_when(
+    capability: "FnArrowDecl.output carries a QUALIFIED service-operation identity -- a service plus operation pair (service: filesystem, operation: Read), enough to tell Filesystem.Read from every other Read and from every .dag call leaf -- and the census consumes that identity to classify raw wire reads",
+  ),
+}

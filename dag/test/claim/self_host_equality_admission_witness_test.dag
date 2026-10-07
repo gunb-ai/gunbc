@@ -101,3 +101,39 @@ test fn structural_record_equality_stays_admitted() -> Bool {
 test fn presence_test_stays_admitted() -> Bool {
   eq_census_clean(source: presence_test_green_source)
 }
+
+// T? == T (gunbc.recurring_failure_mode optional_compared_with_required_value). Before the arm
+// in v1.compiler.infer equality_admission_diags these compiled clean and the Rust emitter
+// rendered `Option<T> == T` (rustc E0308, std.filesystem is_text_readable). The red is a
+// field typed `Kind?` compared with a bare variant, in both operand orders; the controls are
+// the explicit spellings the refusal names (a Present comparison, a match) and two optionals
+// compared with each other, which the arm must not widen into.
+data optionality_mismatch_red_source: String = "module eq_probe_optionality\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool { r.kind == A }\n"
+
+data optionality_mismatch_reversed_red_source: String = "module eq_probe_optionality_rev\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool { A != r.kind }\n"
+
+data optionality_explicit_present_green_source: String = "module eq_probe_optionality_present\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool { r.kind == Present { value: A } }\n"
+
+data optionality_explicit_match_green_source: String = "module eq_probe_optionality_match\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool {\n  match r.kind {\n    Present { value: k } => k == A\n    Absent => false\n  }\n}\n"
+
+data optionality_both_optional_green_source: String = "module eq_probe_optionality_both\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn same(a: Row, b: Row) -> Bool { a.kind == b.kind }\n"
+
+test fn optional_compared_with_required_value_refuses_blocking() -> Bool {
+  eq_blocking_count(source: optionality_mismatch_red_source, wanted: "EqualityOptionalityMismatch") == 1
+}
+
+test fn required_compared_with_optional_value_refuses_blocking() -> Bool {
+  eq_blocking_count(source: optionality_mismatch_reversed_red_source, wanted: "EqualityOptionalityMismatch") == 1
+}
+
+test fn explicit_present_comparison_stays_admitted() -> Bool {
+  eq_admitted(source: optionality_explicit_present_green_source)
+}
+
+test fn explicit_match_on_optional_stays_admitted() -> Bool {
+  eq_admitted(source: optionality_explicit_match_green_source)
+}
+
+test fn optional_compared_with_optional_stays_admitted() -> Bool {
+  eq_admitted(source: optionality_both_optional_green_source)
+}

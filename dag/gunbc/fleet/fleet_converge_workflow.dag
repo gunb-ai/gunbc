@@ -42,6 +42,7 @@ import gunbc.spark.arm_group_launch_dispatch { arm_checkpoint_env, arm_checkpoin
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
+import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake_megarac_kvm_still { megarac_kvm_observer_release_allowance }
@@ -172,6 +173,7 @@ import gunbc.ci_spec {
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_r2_workspace_object_read_mint_invoke,
   gunbc_ci_r2_workspace_object_write_mint_invoke,
+  gunbc_ci_r2_conditional_put_race_probe_invoke,
   gunbc_ci_workspace_source_pack_invoke,
   gunbc_ci_workspace_checkpoint_measure_invoke,
   gunbc_ci_workspace_checkpoint_restore_invoke,
@@ -353,6 +355,7 @@ type FleetConvergeWorkflowMode
   | R2ObjectWriteMint
   | R2WorkspaceObjectReadMint
   | R2WorkspaceObjectWriteMint
+  | R2ConditionalPutRaceProbe
   | WorkspaceSourcePack
   | WorkspaceCheckpointMeasure
   | WorkspaceCheckpointRestore
@@ -429,6 +432,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2ObjectWriteMint => "r2_object_write_mint"
     R2WorkspaceObjectReadMint => "r2_workspace_object_read_mint"
     R2WorkspaceObjectWriteMint => "r2_workspace_object_write_mint"
+    R2ConditionalPutRaceProbe => "r2_conditional_put_race_probe"
     WorkspaceSourcePack => "workspace_source_pack"
     WorkspaceCheckpointMeasure => "workspace_checkpoint_measure"
     WorkspaceCheckpointRestore => "workspace_checkpoint_restore"
@@ -473,7 +477,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
 
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
@@ -534,6 +538,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     R2ObjectWriteMint => SixteenBinaryPack
     R2WorkspaceObjectReadMint => SixteenBinaryPack
     R2WorkspaceObjectWriteMint => SixteenBinaryPack
+    R2ConditionalPutRaceProbe => SixteenBinaryPack
     WorkspaceSourcePack => CompilerPairOnly
     WorkspaceCheckpointMeasure => CompilerPairOnly
     WorkspaceCheckpointRestore => CompilerPairOnly
@@ -646,6 +651,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2ObjectWriteMint => none
     R2WorkspaceObjectReadMint => none
     R2WorkspaceObjectWriteMint => none
+    R2ConditionalPutRaceProbe => none
     WorkspaceSourcePack => none
     WorkspaceCheckpointMeasure => none
     WorkspaceCheckpointRestore => none
@@ -747,6 +753,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2BucketAdminMint => FleetSshKeyNotConsumed
     R2WorkspaceObjectReadMint => FleetSshKeyNotConsumed
     R2WorkspaceObjectWriteMint => FleetSshKeyNotConsumed
+    R2ConditionalPutRaceProbe => FleetSshKeyNotConsumed
     WorkspaceSourcePack => FleetSshKeyNotConsumed
     WorkspaceCheckpointMeasure => FleetSshKeyNotConsumed
     WorkspaceCheckpointRestore => FleetSshKeyNotConsumed
@@ -1466,6 +1473,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2ObjectWriteMint => ExecutorDomain
     R2WorkspaceObjectReadMint => ExecutorDomain
     R2WorkspaceObjectWriteMint => ExecutorDomain
+    R2ConditionalPutRaceProbe => SubjectDomain { group: "r2-conditional-put-race-probe" }
     WorkspaceSourcePack => ExecutorDomain
     WorkspaceCheckpointMeasure => ExecutorDomain
     WorkspaceCheckpointRestore => ExecutorDomain
@@ -2290,6 +2298,7 @@ data fleet_converge_r2_bucket_admin_mint_step_if: String = fleet_converge_mode_s
 data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
 data fleet_converge_r2_workspace_object_read_mint_step_if: String = fleet_converge_mode_step_if(mode: R2WorkspaceObjectReadMint)
 data fleet_converge_r2_workspace_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2WorkspaceObjectWriteMint)
+data fleet_converge_r2_conditional_put_race_probe_step_if: String = fleet_converge_mode_step_if(mode: R2ConditionalPutRaceProbe)
 
 // ── THE APP-KEY VERSION VERIFIER ─────────────────────────────────────────────────────────────
 // A MODE AND NOT A JOB, for the reason the R2 mint gives above: this job is already dispatch-only,
@@ -3235,6 +3244,51 @@ fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_write_mint_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE R2 IF-MATCH RACE PROBE (gunbc.cloudflare.r2_conditional_put_race_probe). It touches no host: it
+// writes and deletes one probe key in the workspace bucket with that bucket's pinned write credential.
+// The dispatch is the operator's approval; the receipt names every round's statuses and the verdict,
+// and is uploaded whether the probe passed, was falsified, or proved nothing.
+// THE PROBE'S OWN STEP BUDGET, AN ENVELOPE AND NOT A MEASUREMENT. The step pays one gunbc run resolve
+// (minutes, as gunbc_ci_gunbc_run_resolve_step_timeout_minutes records) plus race_probe_rounds rounds of
+// two curl invocations each (one seed PUT, one parallel pair), each bounded by a round trip to R2. The
+// aux 5m would kill it mid-run and lose the receipt, which is the one artifact the run exists to make;
+// raising the aux value would multiply across every aux step, so this constant is this step.
+data fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes: Duration = 30
+
+fn fleet_converge_r2_conditional_put_race_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 If-Match race probe (two concurrent conditional PUTs per round on one entity tag)" },
+    id: Present { value: "r2_conditional_put_race_probe" },
+    run: gunbc_ci_r2_conditional_put_race_probe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_conditional_put_race_probe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_conditional_put_race_probe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 If-Match race probe receipt (per-round statuses and verdict; no secret)" },
+    id: Present { value: "r2_conditional_put_race_probe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-conditional-put-race-probe-receipt")),
+      kv(key: "path", value: yaml_string(s: race_probe_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 90)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_conditional_put_race_probe_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -4347,6 +4401,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_workspace_object_read_mint_receipt_upload_step(),
         fleet_converge_r2_workspace_object_write_mint_step(),
         fleet_converge_r2_workspace_object_write_mint_receipt_upload_step(),
+        fleet_converge_r2_conditional_put_race_probe_step(),
+        fleet_converge_r2_conditional_put_race_probe_receipt_upload_step(),
         fleet_converge_workspace_source_pack_step(),
         fleet_converge_workspace_source_pack_receipt_upload_step(),
         fleet_converge_workspace_checkpoint_measure_step(),
@@ -4609,6 +4665,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     R2BucketAdminMint => fleet_converge_shared_job_id
     R2WorkspaceObjectReadMint => fleet_converge_shared_job_id
     R2WorkspaceObjectWriteMint => fleet_converge_shared_job_id
+    R2ConditionalPutRaceProbe => fleet_converge_shared_job_id
     WorkspaceSourcePack => fleet_converge_shared_job_id
     WorkspaceCheckpointMeasure => fleet_converge_shared_job_id
     WorkspaceCheckpointRestore => fleet_converge_shared_job_id
