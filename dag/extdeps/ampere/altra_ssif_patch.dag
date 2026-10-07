@@ -1,0 +1,72 @@
+module extdeps.ampere.altra_ssif_patch
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.version { VersionConstraint }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Facts from SSIF_PATCH_V6/readme.txt and the five patch members, acquired
+// 2026-10-07. The readme names Altra and Altra Max, and SSIF host timeouts.
+// These are vendor-stated target ranges, not a compatibility decision for a
+// running kernel; no patch application or production qualification was performed.
+// Consumer: gunbc.altra_firmware_library reference_report.
+data altra_ssif_patch_authority: ExternalAuthority = ExternalAuthority {
+  uri: uri_https(locator: "drive.google.com/file/d/1TdY8pJ86LwNVktYzrf0oGICwqElcUj5F/view"),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.ampere.altra_ssif_patch",
+    decl_name: "altra_ssif_v6_patches", field: WholeDeclaration,
+  } },
+  first_citation: altra_ssif_patch_authority,
+  further_citations: [],
+}
+
+type SsifPatchKernelLineage = GeneralLinux | AmpereSrpCentos8 | Centos8
+
+type AltraSsifPatch {
+  archive_member: NonEmptyStr
+  lineage: SsifPatchKernelLineage
+  kernel_constraint: VersionConstraint
+}
+
+data altra_ssif_v6_purpose: NonEmptyStr = "Ampere Altra and Altra Max SSIF host timeout patches: drivers/i2c/busses/i2c-designware-common.c __i2c_dw_disable aborts active master activity and waits 50-100 ms before disabling; the Ampere SRP variant moves the existing abort out of i2c_dw_wait_bus_not_busy. These are host Linux I2C driver changes, not BMC images. Development and testing use, with production testing requested by the vendor."
+
+data altra_ssif_v6_patches: List<AltraSsifPatch> = [
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18.patch",
+    lineage: GeneralLinux, kernel_constraint: "4.18+" as VersionConstraint,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18-Ampere.patch",
+    lineage: AmpereSrpCentos8, kernel_constraint: "4.18" as VersionConstraint,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_5.10.patch",
+    lineage: GeneralLinux, kernel_constraint: "5.10+" as VersionConstraint,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18_c8_365_el8.patch",
+    lineage: Centos8, kernel_constraint: "4.18_365+" as VersionConstraint,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/Ampere-Altra-family-SSIF-patch-for-kernel-6.1.patch",
+    lineage: GeneralLinux, kernel_constraint: "6.x" as VersionConstraint,
+  },
+]
+
+// V6 is the bundle revision, independent of the kernel versions each member targets.
+type AltraSsifPatchBundle {
+  revision: Nat
+  purpose: NonEmptyStr
+  patches: List<AltraSsifPatch>
+}
+
+data altra_ssif_v6: AltraSsifPatchBundle = AltraSsifPatchBundle {
+  revision: 6,
+  purpose: altra_ssif_v6_purpose,
+  patches: altra_ssif_v6_patches,
+}

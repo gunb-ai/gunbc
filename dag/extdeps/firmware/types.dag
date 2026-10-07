@@ -91,6 +91,8 @@ type FirmwareTarget
 type FirmwareImageKind
   = OpenBmcWebUiTar
   | InstantFlashRom
+  // ASRock SCP .slim payload applied through host Instant Flash.
+  | InstantFlashSlim
   | PicmgHpmImage
 
 // A vendor release, cited. image_digest is Optional because a digest this

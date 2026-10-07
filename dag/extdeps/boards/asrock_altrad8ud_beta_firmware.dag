@@ -1,0 +1,74 @@
+module extdeps.boards.asrock_altrad8ud_beta_firmware
+
+import std.types { NonEmptyStr, List, EpochMs }
+import extdeps.firmware.types {
+  FirmwareTarget, FirmwareSemanticVersion, FirmwareImageKind,
+  HostBios, BmcController, ScpFirmware, InstantFlashRom, InstantFlashSlim,
+  OpenBmcWebUiTar, firmware_semantic_version,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_download_authority, asrock_altrad8ud_bmc_3_22_00_release,
+}
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// The operator transcribed the product page's Beta Firmware table on 2026-10-07.
+// A listing is not an acquired FirmwareReleaseRow: the table gives rounded sizes,
+// no digest and no established applicability prerequisite. Its Global/China link
+// targets were not included in the transcription, so the reference stays the page.
+// Consumer: gunbc.altra_firmware_library reference_report, for operator discovery.
+type AsrockAltrad8udBetaFirmwareListing {
+  target: FirmwareTarget
+  version: FirmwareSemanticVersion
+  listed_on: EpochMs
+  packages: List<AsrockBetaFirmwarePackage>
+  description: NonEmptyStr
+}
+
+type AsrockBetaFirmwarePackage {
+  image_kind: FirmwareImageKind
+  displayed_size: NonEmptyStr
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.boards.asrock_altrad8ud_beta_firmware",
+    decl_name: "asrock_altrad8ud_beta_firmware_listings", field: WholeDeclaration,
+  } },
+  first_citation: asrock_altrad8ud_download_authority,
+  further_citations: [],
+}
+
+data asrock_altrad8ud_beta_disclaimer: NonEmptyStr = "Beta firmware is still undergoing final testing; use is at the user's risk and ASRock Rack assumes no responsibility. ASRock Rack recommends keeping current firmware when the system works properly."
+
+data asrock_altrad8ud_beta_firmware_listings: List<AsrockAltrad8udBetaFirmwareListing> = [
+  AsrockAltrad8udBetaFirmwareListing {
+    target: HostBios,
+    version: firmware_semantic_version(major: 4, minor: 1, patch: 0),
+    listed_on: 1776124800000,
+    packages: [
+      AsrockBetaFirmwarePackage { image_kind: InstantFlashRom, displayed_size: "5.11MB" },
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: "5.11MB" },
+    ],
+    description: "Updated RC to 0ACRB_022",
+  },
+  AsrockAltrad8udBetaFirmwareListing {
+    target: BmcController,
+    version: asrock_altrad8ud_bmc_3_22_00_release.version,
+    listed_on: 1772064000000,
+    packages: [
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: "27.71MB" },
+    ],
+    description: "A password change is enforced upon the first login to the WebUI",
+  },
+  AsrockAltrad8udBetaFirmwareListing {
+    target: ScpFirmware,
+    version: firmware_semantic_version(major: 2, minor: 10, patch: 20260210),
+    listed_on: 1776729600000,
+    packages: [
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: "165.25KB" },
+      AsrockBetaFirmwarePackage { image_kind: InstantFlashSlim, displayed_size: "165.01KB" },
+    ],
+    description: "Ampere SCP firmware",
+  },
+]

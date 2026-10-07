@@ -1,0 +1,83 @@
+module gunbc.altra_firmware_library
+
+import std.types { NonEmptyStr, List }
+import std.measure { ByteSize, byte_size }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.uri { Uri, uri_https }
+import extdeps.firmware.types { FirmwareReleaseRow }
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_bios_3_10_instant_flash_release,
+  asrock_altrad8ud_bmc_3_22_00_release, asrock_altrad8ud_download_authority,
+}
+import extdeps.boards.asrock_altrad8ud_beta_firmware {
+  AsrockAltrad8udBetaFirmwareListing, asrock_altrad8ud_beta_firmware_listings,
+  asrock_altrad8ud_beta_disclaimer,
+}
+import extdeps.ampere.altra_ssif_patch {
+  AltraSsifPatchBundle, altra_ssif_patch_authority, altra_ssif_v6,
+}
+
+// Our Drive locations belong to the fleet library, not ASRock's upstream facts.
+// All archive byte counts and SHA-256 values were measured from authenticated
+// Drive downloads on 2026-10-07. They identify the ZIP, never its flashable member.
+// The BIOS ZIP matched the existing vendor-download digest. BMC ZIP contains
+// altrad8ud-1l2t_3.22.00.static.mtd.tar; ROM ZIP contains ALTRAD8UD-1L2T_3.10.ROM.
+// A Drive /view link is for human retrieval, not an unauthenticated raw download.
+type AltraLibraryArchiveSubject
+  = FirmwareDistribution { firmware_release: FirmwareReleaseRow }
+  | SsifKernelPatchBundle
+
+type AltraLibraryArchive {
+  subject: AltraLibraryArchiveSubject
+  archive_name: NonEmptyStr
+  human_retrieval: Uri
+  archive_bytes: ByteSize
+  archive_digest: Digest
+}
+
+data altra_firmware_drive_archives: List<AltraLibraryArchive> = [
+  AltraLibraryArchive {
+    subject: FirmwareDistribution { firmware_release: asrock_altrad8ud_bios_3_10_instant_flash_release },
+    archive_name: "ALTRAD8UD-1L2T(3.10)ROM.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1qnoi3fVvDYoQy3NLfF0dhQIghIWZxC41/view"),
+    archive_bytes: byte_size(count: 5359089),
+    archive_digest: sha256_digest(hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223"),
+  },
+  AltraLibraryArchive {
+    subject: FirmwareDistribution { firmware_release: asrock_altrad8ud_bmc_3_22_00_release },
+    archive_name: "ALTRAD8UD-1L2T(03.22.00)BMC.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/19e4kjCDcDMmkYaEbt1juPsvMCR2l4e4R/view"),
+    archive_bytes: byte_size(count: 29060210),
+    archive_digest: sha256_digest(hex: "0c1f458c396aff76ae0259509ea05c53eef57809fa202721875586792fa807bb"),
+  },
+  AltraLibraryArchive {
+    subject: SsifKernelPatchBundle,
+    archive_name: "SSIF_PATCH_V6.zip",
+    human_retrieval: altra_ssif_patch_authority.uri,
+    archive_bytes: byte_size(count: 5697),
+    archive_digest: sha256_digest(hex: "74ca2343e20b682f419f3240006dfc55ed391978e57c86bdce698e8b72ee0531"),
+  },
+]
+
+type AltraFirmwareReferenceReport {
+  drive_archives: List<AltraLibraryArchive>
+  ssif_patch_bundle: AltraSsifPatchBundle
+  beta_reference: Uri
+  beta_disclaimer: NonEmptyStr
+  beta_listings: List<AsrockAltrad8udBetaFirmwareListing>
+  qualification: NonEmptyStr
+}
+
+// Operator discovery entry: gunbc run --source-root dag --source-root src/v2
+// --entry dag/gunbc/fleet/altra_firmware_library.dag --function reference_report
+// Returns typed references without selecting a release or authorizing a flash.
+fn reference_report() -> AltraFirmwareReferenceReport {
+  AltraFirmwareReferenceReport {
+    drive_archives: altra_firmware_drive_archives,
+    ssif_patch_bundle: altra_ssif_v6,
+    beta_reference: asrock_altrad8ud_download_authority.uri,
+    beta_disclaimer: asrock_altrad8ud_beta_disclaimer,
+    beta_listings: asrock_altrad8ud_beta_firmware_listings,
+    qualification: "The beta BMC listing is the same 3.22.00 version already recorded in gunbc.fleet_bmc_observation for srv3 and srv4, not evidence of a newer BMC fix. BIOS RC 0ACRB_022 and SCP 2.10.20260210 are separate targets. Neither the beta listings nor the SSIF readme establish that our observed BMC issues are fixed; qualification requires testing the affected behavior on the exact installed image/kernel.",
+  }
+}
