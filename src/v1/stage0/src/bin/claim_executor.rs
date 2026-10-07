@@ -237,8 +237,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             // pair (see `write_checker_inputs_record`). Takes no roots.
             "--write-checker-inputs" => {
                 i += 1;
-                write_checker_inputs =
-                    Some(require_path_value(&args, i, "--write-checker-inputs")?);
+                // An OUTPUT path: it does not exist yet, so it is not resolved-and-required.
+                write_checker_inputs = Some(require_value(&args, i, "--write-checker-inputs")?);
             }
             "--source-root" => {
                 i += 1;
