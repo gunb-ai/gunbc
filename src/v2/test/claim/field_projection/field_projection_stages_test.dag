@@ -43,7 +43,7 @@ import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { NodeFold, fold_node }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.test.lens_common.infer_fixture {
   ClaimParam,
   ClaimRecord,

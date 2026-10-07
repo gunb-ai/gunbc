@@ -42,7 +42,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

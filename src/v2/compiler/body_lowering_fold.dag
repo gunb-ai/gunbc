@@ -91,7 +91,7 @@ import v2.std.collection {
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

@@ -10,7 +10,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import std.process { ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host_boot_attempt_admission { attempt_configuration_not_recorded }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, StateAbsent, StateEnabled, StateUnrecognized, HealthOk, HealthCritical,
   redfish_memory_member_of, redfish_processor_member_of,

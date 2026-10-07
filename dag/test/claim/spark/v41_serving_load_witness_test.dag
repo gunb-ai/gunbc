@@ -3,7 +3,7 @@ module test.claim.spark.v41_serving_load_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { microsecond, microsecond_count, millisecond, millisecond_count, token_count_value }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest }
 import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable }

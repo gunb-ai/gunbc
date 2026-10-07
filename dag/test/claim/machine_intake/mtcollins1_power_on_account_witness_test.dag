@@ -3,7 +3,7 @@ module test.claim.machine_intake.mtcollins1_power_on_account_witness_test
 import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.bootloader.grub { grub_console_report, grub_error_text }

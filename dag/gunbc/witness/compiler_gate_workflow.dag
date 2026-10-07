@@ -2,8 +2,8 @@ module gunbc.compiler_gate_workflow
 
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
-// lanes the `witnesses` aggregate reads -- `emit-build`, `floor` and `generated` -- run on the fleet,
-// and so does the aggregate.
+// lanes the `witnesses` aggregate reads -- `rust-unit-tests`, `emit-build`, `floor` and `generated` --
+// run on the fleet, and so does the aggregate.
 //
 // THE HOSTED UNIT-TEST LANE WAS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
 // `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
@@ -72,7 +72,7 @@ module gunbc.compiler_gate_workflow
 
 import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
@@ -158,7 +158,10 @@ import gunbc.emitted_subject_build_gate {
   emit_build_standing, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_command,
-  emitted_subject_build_step_name
+  emitted_subject_build_step_name,
+  native_fault_experiment_env_name,
+  native_fault_experiment_skip_value,
+  native_fault_experiment_run_value
 }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
@@ -264,16 +267,19 @@ fn compiler_gate_lint_step() -> Step {
   }
 }
 
-// THE v1 UNIT TESTS ARE A BLOCKING FLEET LANE (2026-09-30, restoring the lane the 2026-09-29 ruling
-// deleted, in the shape that ruling named). The history: a non-required step on the hosted `clippy`
-// job (2026-09-27), its own non-blocking hosted lane (2026-09-28), deleted because continue_on_error
-// made its red unreadable (2026-09-29). It returns without continue_on_error, on the fleet, with the
-// aggregate reading it, so a unit-test red refuses the required context; the restoration retires
-// gunbc.rung_drop rust_unit_tests_off_the_merge_path in the same change.
+// THE v1 UNIT TESTS ARE A BLOCKING FLEET LANE. The history: a non-required step on the hosted
+// `clippy` job (2026-09-27), its own non-blocking hosted lane (2026-09-28), deleted because
+// continue_on_error made its red unreadable (2026-09-29), returned on the fleet without
+// continue_on_error and read by the aggregate (2026-09-30, retiring gunbc.rung_drop
+// rust_unit_tests_off_the_merge_path). After gunbc#12951 its step overran its cap on every head, so
+// it was reported but not read under gunbc.rung_drop rust_unit_tests_over_their_cap (2026-10-05)
+// until gunbc#13452 brought the suite under its cap by deleting tests. The aggregate reads the
+// lane again, so a unit-test red refuses the required context; the drop is superseded by the
+// #13452 deletion ruling (not retired by its trigger), and the deleted tests' loss is gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane.
 //
 // THE FLEET COST IS THE PRICE THE OLDER REASONING DECLINED, AND IT IS NOW PAID DELIBERATELY. The
 // 2026-09-28 reasoning kept the step off the fleet because a fleet slot would pay its wall on every
-// push for a verdict nothing required. The verdict is now required, so the wall buys a gate; and the
+// push for a verdict nothing required. The verdict is required, so the wall buys a gate; and the
 // lane runs BESIDE `floor` and `generated` (needs: []), so it adds slot-minutes but no critical-path
 // minutes unless it is the longest lane.
 //
@@ -295,12 +301,15 @@ data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 // cap is the largest observed step wall on the fleet runner class, times 1.5, rounded up to the next
 // 5 minutes. Headroom is multiplicative because the wall scales with the test population and with
 // slot contention, and a required lane whose cap is hit reads as a red that says nothing about the
-// diff. The observed walls are those of the rust_unit_tests step in this lane's own fleet runs (the
-// first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
-// silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
-// exceeds two thirds of the cap.
+// diff. The observed walls are those of the rust_unit_tests step in this lane's own fleet runs after
+// gunbc#13452 (merged 2026-10-06T01:02Z), which deleted the v1 tests that each took over 100ms and
+// so changed the population; walls from before it measure a different suite. The current maximum is
+// witnesses run 37459768899 (457s), over every completed step of the witnesses runs created after
+// that merge (gh run list --workflow witnesses.yml, then each run's rust-unit-tests job step times):
+// 457s x 1.5 rounds up to 15. Re-read them there and re-derive when a fleet wall exceeds two thirds
+// of the cap.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 40)
+  minute(count: 15)
 }
 
 // Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
@@ -374,6 +383,15 @@ fn compiler_gate_unit_test_capability_closure_holds() -> Bool {
   )
 }
 
+// THE UNIT LANE RUNS ON merge_group AND workflow_dispatch ONLY (operator 2026-10-06, CI short-term
+// relief), declared as gunbc.rung_drop rust_unit_tests_off_pull_requests: a failing unit test is
+// caught at the queue's composed revision, not on the pull request. The aggregate excuses the skip
+// only on a pull_request event (GateArmSkippedOnPullRequest). Fork pull requests are excluded by the
+// same clause.
+fn compiler_gate_unit_test_job_condition() -> String {
+  join(["github.event_name != '", github_event_name_pull_request, "'"], "")
+}
+
 fn compiler_gate_unit_test_job() -> Job {
   Job {
     id: compiler_gate_unit_test_job_id,
@@ -384,7 +402,7 @@ fn compiler_gate_unit_test_job() -> Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    if_condition: Present { value: compiler_gate_unit_test_job_condition() },
     timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_job_timeout()) },
     continue_on_error: none,
     concurrency: none,
@@ -1100,7 +1118,14 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
       "\n"
     ),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(
+          key: native_fault_experiment_env_name,
+          value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
+        )
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -1282,6 +1307,7 @@ fn compiler_gate_strict_rows_of(rows: List<CompilerGateLaneRow>) -> List<Compile
     match row.arm {
       GateArmStrict => true
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => false
+      GateArmSkippedOnPullRequest { notice: _, unobserved_error: _ } => false
     }
   })
 }
@@ -1291,6 +1317,7 @@ fn compiler_gate_fork_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerG
     match row.arm {
       GateArmStrict => false
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => true
+      GateArmSkippedOnPullRequest { notice: _, unobserved_error: _ } => true
     }
   })
 }
@@ -1348,6 +1375,14 @@ fn compiler_gate_unobserved_line(rows: List<CompilerGateLaneRow>) -> String {
 fn compiler_gate_fork_line(row: CompilerGateLaneRow) -> String {
   match row.arm {
     GateArmStrict => ""
+    GateArmSkippedOnPullRequest { notice: n, unobserved_error: e } =>
+      join([
+        "if ", compiler_gate_not_success_clause(row: row),
+        "; then if [ \"$GITHUB_EVENT_NAME\" = pull_request ] && [ ", compiler_gate_var_read(row: row), " = skipped ]",
+        "; then echo \"::notice::", n, "\"",
+        "; else echo \"::error::", e, " (", compiler_gate_var_report(row: row),
+        "), so this head carries no verdict from that lane\"; exit 1; fi; fi"
+      ], "")
     GateArmSkippableOnFork { notice: n, unobserved_error: e } =>
       join([
         "if ", compiler_gate_not_success_clause(row: row),
@@ -1496,9 +1531,13 @@ type CompilerGateLaneStanding
 // hand-written fourth line is what let the script drift from the roster. Since the 2026-09-28 ruling
 // every blocking lane is a fleet lane, so today no live row carries GateArmStrict (emit-build left it when it moved),
 // and a hosted lane cannot turn blocking without moving (compiler_gate_merge_path_runs_on_the_fleet).
+// GateArmSkippedOnPullRequest is a lane that does not run on pull_request at all (operator 2026-10-06,
+// gunbc.rung_drop rust_unit_tests_off_pull_requests): a skip is excused only when the event IS
+// pull_request, and it blocks on merge_group and workflow_dispatch like any blocking lane.
 type CompilerGateArm
   = GateArmStrict
   | GateArmSkippableOnFork { notice: String, unobserved_error: String }
+  | GateArmSkippedOnPullRequest { notice: String, unobserved_error: String }
 
 type CompilerGateLaneRow {
   job_id: String
@@ -1507,13 +1546,17 @@ type CompilerGateLaneRow {
   arm: CompilerGateArm
 }
 
+// THE UNIT-TEST ROW BLOCKS AGAIN. It was LaneAnnouncedNotBlocking under gunbc.rung_drop
+// rust_unit_tests_over_their_cap from 2026-10-05, when the step overran its cap on every head after
+// gunbc#12951; it blocks again with a cap derived after gunbc#13452 (see compiler_gate_unit_test_timeout).
+// That drop is superseded by the #13452 deletion ruling, not retired by its trigger.
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
     CompilerGateLaneRow {
       job_id: compiler_gate_unit_test_job_id,
       var_name: "RUST_UNIT_TESTS",
-      arm: GateArmSkippableOnFork {
-        notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
+      arm: GateArmSkippedOnPullRequest {
+        notice: "the v1 unit-test lane does not run on pull_request: it runs on merge_group and workflow_dispatch on the fleet",
         unobserved_error: "the v1 unit-test lane produced no success"
       },
       standing: LaneBlocks,
