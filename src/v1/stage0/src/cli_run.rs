@@ -5147,7 +5147,10 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
         while let Some(content) = queue.pop() {
             for module_path in extract_import_paths(&content) {
                 let Some(rel_path) = module_index.get(&module_path) else {
-                    continue;
+                    return Err(format!(
+                        "mutant closure: import `{module_path}` \
+                         (reached from `{entry_rel}`) names no module in the source roots"
+                    ));
                 };
                 if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
                     continue;
