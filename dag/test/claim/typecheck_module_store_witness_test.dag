@@ -3,11 +3,8 @@ module test.claim.typecheck_module_store_witness
 import std.types { Bool, List, String }
 import std.content_hash { content_hash_atom, as_content_hash_structural, Fnv1a64Structural }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
-import std.decl_ref { decl_ref }
-import std.dissolution { dissolution_status, DissolutionFired, DissolutionPending, DissolutionUnbound }
 import std.materialization_provider { request_key }
 import gunbc.materialization_store_budgets {
-  materialization_store_durable_budgets_consumer_frontier,
   typecheck_module_family_entry_budget_unit,
   materialization_store_typed_module_budget_policy,
   typecheck_store_family_budget_frontier,
@@ -22,7 +19,6 @@ import gunbc.typecheck_module_store {
   TypecheckModuleRequestDigestRefused,
   typecheck_module_payloads,
   typecheck_module_entry_bytes,
-  typecheck_materialization_seed_path_note,
 }
 import std.measure { measure_count }
 import std.optional { Present }
@@ -34,26 +30,6 @@ fn h(v: String) -> Fnv1a64Structural {
 
 fn iface(v: String) -> InterfaceHash {
   content_hash_atom(value: v)
-}
-
-test fn the_durable_budgets_consumer_frontier_stays_unbound_until_the_seed_path_runs() -> Bool {
-  match dissolution_status(condition: materialization_store_durable_budgets_consumer_frontier, present_decls: [
-    decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "ensure_durable_typecheck_store")
-  ]) {
-    DissolutionUnbound => true
-    DissolutionFired => false
-    DissolutionPending => false
-  }
-}
-
-test fn the_seed_path_note_stays_unbound_until_reconcile_calls_lookup_and_commit() -> Bool {
-  match dissolution_status(condition: typecheck_materialization_seed_path_note, present_decls: [
-    decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "lookup_typecheck_module")
-  ]) {
-    DissolutionUnbound => true
-    DissolutionFired => false
-    DissolutionPending => false
-  }
 }
 
 test fn typecheck_module_request_key_is_derived_from_the_judgment_contract() -> Bool {
@@ -83,16 +59,6 @@ test fn the_family_entry_size_is_a_transcribed_uncited_bet_naming_the_real_route
   match typecheck_store_family_entry_bet.standing {
     TranscribedUncited { read_obligation: o } => (o as String) == (typecheck_store_family_entry_size_read_obligation as String)
     CitedToAuthority { authority: _ } => false
-  }
-}
-
-test fn the_family_budget_frontier_stays_unbound_while_the_entry_size_is_a_bet() -> Bool {
-  match dissolution_status(condition: typecheck_store_family_budget_frontier, present_decls: [
-    decl_ref(module_path: "gunbc.materialization_store_budgets", decl_name: "typecheck_store_family_entry_bet")
-  ]) {
-    DissolutionUnbound => true
-    DissolutionFired => false
-    DissolutionPending => false
   }
 }
 

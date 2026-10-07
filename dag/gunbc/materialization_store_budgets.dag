@@ -59,8 +59,3 @@ data materialization_store_durable_family_budgets: List<LocalStoreFamilyBudget> 
 data materialization_store_host_ceiling_bytes: ByteSize = local_store_budget_sum(budgets: materialization_store_durable_family_budgets)
 
 data materialization_store_local_facts: CacheInterfaceCatalogFacts = materialization_store_local_facts_at(ceiling: materialization_store_host_ceiling_bytes)
-
-// C2's production consumer is the seed typecheck path (gunbc.typecheck_module_store
-// typecheck_materialization_seed_path_note). Binding this row to a declaration that merely
-// exists would fire before any run opens the durable root.
-data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets from the seed typecheck path (open_typecheck_store_door once per session, seed_lookup_typecheck_opened_hex, seed_commit_typecheck_opened_hex). SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)

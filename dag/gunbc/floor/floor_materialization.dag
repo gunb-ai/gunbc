@@ -156,8 +156,7 @@ data floor_typecheck_store_no_providers: List<CacheProvider> = []
 // are successive siblings with no shared mutable state to rewire, so there is no LCA process in
 // which the repetition could have been carried, and only a STORE tier can discharge it.
 // floor_typecheck_store_persist_provider is the modeled STORE row; it does not discharge the
-// live ladder while typecheck_materialization_seed_path_note and
-// typecheck_store_family_budget_frontier remain unbound. Live verdicts are
+// live ladder while typecheck_store_family_budget_frontier remains unbound. Live verdicts are
 // floor_typecheck_store_persist_verdicts_without_provider.
 
 fn floor_runner_host_frame() -> std.materialization_ladder.Frame {
@@ -200,7 +199,7 @@ data floor_typecheck_store_no_cost_floor_exemptions: List<String> = []
 // Modeled STORE row for TypecheckModuleRequest through
 // extdeps.realization.materialization_store_local. The no-provider ladder is the LIVE RED.
 // persist_verdicts with this provider is the intended discharge fold; it is not claimed as live
-// while typecheck_materialization_seed_path_note and typecheck_store_family_budget_frontier stay
+// while typecheck_store_family_budget_frontier stays
 // unbound.
 
 data floor_typecheck_store_persist_provider_id: String = "materialization_store_local:typed_module"

@@ -58,8 +58,8 @@ test fn floor_index_build_reds_without_reference_provider() -> Bool {
 // C3 — the cross-process demand set: two sibling PROCESSES over one corpus under one built binary
 // (the witness fold and the generated-artifact drift gate), whose obligation LCA is the runner
 // host. Only a store tier can discharge it. The live verdict remains the no-provider refusal
-// below: typecheck_materialization_seed_path_note and typecheck_store_family_budget_frontier
-// stay unbound, so this module does not claim the cross-run demand is discharged.
+// below: typecheck_store_family_budget_frontier
+// stays unbound, so this module does not claim the cross-run demand is discharged.
 
 fn first_persist_verdict(vs: List<LadderVerdict>) -> LadderVerdict? {
   vs.first()
