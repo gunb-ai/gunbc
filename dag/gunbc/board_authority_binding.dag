@@ -9,7 +9,7 @@ import extdeps.board_authority {
   BoardAreaAbsent, BoardAreaFieldsUnreadable, BoardCaptureUnreadable, BoardCaptureDigestMismatch, BoardFruReceipt,
   BoundByNameOnly, BoundByObservedEvidence, board_authority_for
 }
-import gunbc.ipmitool_fru_text { FruFieldValue, FruFieldGap, FruFieldAbsent, fru_field }
+import gunbc.ipmitool_fru_text { FruFieldValue, FruFieldGap, FruCaptureGap, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty, FruSubjectLinkUnobserved, FruBoundToAnotherLink, fru_field }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
@@ -75,17 +75,29 @@ fn observed_board_authority(observation: BoardFruObservation) -> BoardAuthorityL
 // Mfg and Board Product are required (exact text, one line each); Board Part Number is carried when
 // present. Never defaulted: no board area is BoardAreaAbsent, a present area with an empty or
 // repeated required field is BoardAreaFieldsUnreadable.
+fn fru_gap_is_absent(gap: FruCaptureGap) -> Bool {
+  match gap {
+    FruFieldAbsent { field: _ } => true
+    FruCaptureUnreadable { error: _ } => false
+    FruCaptureDigestMismatch { expected: _, observed: _ } => false
+    FruFieldRepeated { field: _ } => false
+    FruFieldEmpty { field: _ } => false
+    FruSubjectLinkUnobserved => false
+    FruBoundToAnotherLink { board_extra: _ } => false
+  }
+}
+
 fn board_fru_observation_of_text(content: String) -> BoardFruObservation {
   match fru_field(content: content, field: "Board Mfg") {
     FruFieldGap { gap: mg } =>
       match fru_field(content: content, field: "Board Product") {
         FruFieldGap { gap: pg } =>
-          match mg {
-            FruFieldAbsent { field: _ } => match pg {
-              FruFieldAbsent { field: _ } => BoardFruNotRead { cause: BoardAreaAbsent }
-              _ => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+          match fru_gap_is_absent(gap: mg) {
+            true => match fru_gap_is_absent(gap: pg) {
+              true => BoardFruNotRead { cause: BoardAreaAbsent }
+              false => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
             }
-            _ => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+            false => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
           }
         FruFieldValue { value: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
       }
