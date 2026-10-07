@@ -3103,6 +3103,14 @@ pub fn empty_list_expected_is_unbound_generic_name(
     }
 }
 
+pub fn empty_list_element_placeholder_id() -> String {
+    "empty_list_element".to_string()
+}
+
+pub fn empty_list_element_type() -> Rc<Node> {
+    type_variable_node(empty_list_element_placeholder_id())
+}
+
 pub fn produced_is_unsolved_generic_at_conformance(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3114,7 +3122,7 @@ pub fn produced_is_unsolved_generic_at_conformance(
         let mut source_indices = __tco_loop_source_indices;
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: id, .. }) => {
-                break (id.clone() == "empty_list_element".to_string());
+                break (id.clone() == empty_list_element_placeholder_id());
             }
             Some(InferredNode::Resolved { node: inner, .. }) => {
                 let __tco_0 = inner.clone();
@@ -3125,7 +3133,7 @@ pub fn produced_is_unsolved_generic_at_conformance(
             }
             _ => {
                 let label = type_node_label(n.clone(), source_indices.clone());
-                break ((label.clone() == "empty_list_element".to_string())
+                break ((label.clone() == empty_list_element_placeholder_id())
                     || unify_binding_is_uninformative(n.clone()));
             }
         }
@@ -11260,16 +11268,8 @@ pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
     }
 }
 
-pub fn callee_is_collection_fold(name: String) -> bool {
-    ((name.clone() == "fold_list".to_string()) || (name.clone() == "fold_list_right".to_string()))
-}
-
 pub fn method_name_is_fold(opt: Option<String>) -> bool {
-    (method_name_is(opt.clone(), "fold".to_string())
-        || match opt.clone() {
-            Some(n) => callee_is_collection_fold(n),
-            std::option::Option::None => false,
-        })
+    method_name_is(opt.clone(), "fold".to_string())
 }
 
 pub fn arg_has_name(
@@ -15610,15 +15610,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                             )
                                         }
                                         std::option::Option::None => {
-                                            type_variable_node("empty_list_element".to_string())
+                                            empty_list_element_type()
                                         }
                                     }
                                 } else {
-                                    type_variable_node("empty_list_element".to_string())
+                                    empty_list_element_type()
                                 }
                             }
                             std::option::Option::None => {
-                                type_variable_node("empty_list_element".to_string())
+                                empty_list_element_type()
                             }
                         }
                     }
