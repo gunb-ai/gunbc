@@ -665,8 +665,8 @@ type BodyTermWrapper {
   shape: LoweredShape
 }
 
-// The wrapper read back: exactly the two edges body_term_seal writes, in its order, the shape atom one
-// of the declared arms. Anything else is not a wrapper.
+// Whether an edge carries the authored label `name`. The leaf reader uses it to admit a parse-minted
+// literal token's single payload edge (body_term_literal_token_payload_field) and nothing beside it.
 fn body_term_edge_named(e: Edge, name: Symbol) -> Bool {
   match e.label {
     Authored { name: n } => n == name
@@ -690,8 +690,8 @@ fn body_term_edge_named(e: Edge, name: Symbol) -> Bool {
 // the parse, nor a childless leaf refuses where it is read, located at it -- it is lowered output no
 // producer declared, and it is never re-read as raw parse.
 //
-// RUNG, HONESTLY (gunbc.rung_drop lowered_term_carried_in_a_wrapper_node, operator approval
-// msg_63aee66e; STACK ruling, neat-boar-16): the wrapper is a Node, so the tag lives in the tree the
+// RUNG, HONESTLY (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering,
+// which carries this class's rung per path; operator approval msg_63aee66e; STACK ruling, neat-boar-16): the wrapper is a Node, so the tag lives in the tree the
 // fold threads but is not a type. Its one edge is the v2.std.node core marker BodyTermLoweredEdge,
 // whose BodyTermLoweredSeal is sole_constructor and minted only through body_term_lowered_seal,
 // admit_callers-sealed to body_term_seal, so a lookalike does not compile on the seed and interpreted
