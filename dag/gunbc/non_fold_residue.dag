@@ -673,7 +673,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/megarac_kvm_still.dag::kvm_last_result" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/megarac_kvm_still.dag::kvm_observer_trigger" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/megarac_kvm_still.dag::kvm_stopped_seen" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/megarac_media_attach.dag::presentation_still_served" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::media_loss_of_look" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_await_capture_terminal" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_on_srv1_resolving_toolchain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
