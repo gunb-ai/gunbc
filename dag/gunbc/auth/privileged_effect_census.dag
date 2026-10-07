@@ -2,6 +2,7 @@ module gunbc.auth.privileged_effect_census
 
 import gunbc.auth.standing_operator_grant {
   group_a_dev_standing_grant, mtjade1_live_standing_grant,
+  StandingBmcSecureAccountWrite, standing_ruling_with_arm_interlock,
 }
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
@@ -341,21 +342,24 @@ fn route_qualification_channel_access_effect() -> PrivilegedEffect {
 // to a break-glass generation, each write over a route admitted by admit_rotation_apply.
 // IRREVERSIBLE, AND SAID SO: the value each write replaces is gone, and the published factory value is
 // not restorable by a reapply (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's
-// accounts, so its reach is one resource. No dispatched run carries it: modeled with a dry realization
-// only. Irreversibility is discharged by the mtjade1 live-ops standing ruling under admit_rotation_apply
-// (gunbc.auth.standing_operator_grant mtjade1_live_standing_grant); a write still needs a grounded
-// route. Operator-approved capability remains the selected pattern while the workload identity is
-// unbindable, and is the fallback when the grant does not cover the host.
+// accounts, so its reach is one resource. arrival_converge_wet federates the archive door; it does
+// not invoke BmcSecure Apply, so this effect stays WorkloadIdentityUnbindable. Irreversibility is
+// discharged by the mtjade1 live-ops standing ruling's StandingBmcSecureAccountWrite arm (InterlockedBy
+// admit_rotation_apply via standing_ruling_with_arm_interlock), not grant-grain InterlockPending.
+// A write still needs a grounded route. Operator-approved capability remains the selected pattern
+// while the workload identity is unbindable, and is the fallback when the grant does not cover the host.
 fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "rotate a BMC's managed account to a stored generation and retire its published account, over admitted routes on one controller at one firmware build" as NonEmptyStr,
     frequency: DeviceOnce,
     reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
     surface: ApiSurface,
-    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the BmcSecure account rotation; in cut O1b it is modeled with a dry realization only" as NonEmptyStr },
+    workload_identity: WorkloadIdentityUnbindable { cause: "arrival_converge_wet does not invoke BmcSecure Apply; account rotation stays capability-selected until a held writer lands in that door" as NonEmptyStr },
     minted_reach: MintsResourceScopedCredential,
     billing: NoBillingConsequence,
-    witness_discharge: StandingRulingUnderInterlock { ruling: mtjade1_live_standing_grant.ruling },
+    witness_discharge: StandingRulingUnderInterlock {
+      ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingBmcSecureAccountWrite),
+    },
   }
 }
 

@@ -171,4 +171,9 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
       InterlockedBy { hold: _ } => false
       UnconditionalStanding { reason: _ } => false
     }
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingBmcSecureAccountWrite) {
+      InterlockedBy { hold: h } => (h.decl_name as String) == "admit_rotation_apply"
+      InterlockPending { obligation: _ } => false
+      UnconditionalStanding { reason: _ } => false
+    }
 }
