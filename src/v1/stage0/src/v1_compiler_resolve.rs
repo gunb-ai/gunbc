@@ -386,19 +386,40 @@ pub fn module_type_declaration_names(
     module: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
-    let mut acc = HashMap::new();
-    for item in crate::v1_std_core::module_items(module.clone())
-        .iter()
-        .cloned()
     {
-        if item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration {
-            acc.insert(
-                crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-                true,
-            );
-        }
+        let type_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in crate::v1_std_core::module_items(module.clone())
+                    .iter()
+                    .cloned()
+                {
+                    if (item.module_item_kind.clone()
+                        == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                    {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    item.clone(),
+                ));
+            }
+            __result
+        });
+        type_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        )
     }
-    Rc::new(acc)
 }
 
 pub fn kernel_name_collision_diag(
@@ -446,19 +467,21 @@ pub fn kernel_named_import_child_diags(
     importing_module: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    let name = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
-    kernel_named_import_diags(
-        crate::std_literal_elaboration::kernel_named_import_standing(
+    {
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
+        kernel_named_import_diags(
+            crate::std_literal_elaboration::kernel_named_import_standing(
+                name.clone(),
+                import_path.clone(),
+                map_has(type_decl_names.clone(), name.clone()),
+                kernel_mint_declaration_rows(),
+            ),
             name.clone(),
             import_path.clone(),
-            v1_rt::map_has(type_decl_names.as_ref(), name.clone()),
-            kernel_mint_declaration_rows(),
-        ),
-        name.clone(),
-        import_path.clone(),
-        importing_module.clone(),
-        child.span.clone(),
-    )
+            importing_module.clone(),
+            child.span.clone(),
+        )
+    }
 }
 
 pub fn kernel_named_import_diags(
@@ -616,10 +639,7 @@ pub fn resolve_import(
                 let kernel_collision_diags = if crate::v1_std_core::import_is_all(import.clone()) {
                     Rc::new({
                         let mut __result = Vec::new();
-                        for name in Rc::new(v1_rt::map_keys(type_decl_names.as_ref()))
-                            .iter()
-                            .cloned()
-                        {
+                        for name in Rc::new(v1_rt::map_keys(&type_decl_names)).iter().cloned() {
                             __result.extend(
                                 (*kernel_named_import_diags(
                                     crate::std_literal_elaboration::kernel_named_import_standing(
