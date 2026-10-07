@@ -52,6 +52,11 @@ fn rust_module_emit_filename(module_name: String) -> String {
 // the same value.
 data rust_runtime_prelude_module: String = "v1_rt"
 
+// Emitter-produced support file (`emit_dry_run_module`), not a `.dag` module. The workspace
+// identity check admits it the same way it admits the runtime: present in the emission, absent
+// from the source DAG.
+data rust_dry_run_emit_module: String = "dry_run"
+
 fn rust_prelude_emitted_edges(module: String) -> List<EmittedEdge> {
   if module == rust_runtime_prelude_module {
     [

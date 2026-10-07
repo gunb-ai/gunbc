@@ -131,3 +131,17 @@ test fn an_emitted_module_outside_the_dag_refuses_by_name() -> Bool {
     _ => false
   }
 }
+
+test fn an_emit_only_dry_run_basename_is_not_outside_the_dag() -> Bool {
+  match emitted_workspace_plan_over(
+    module_dag: chain_dag(),
+    emitted_basenames: ["fx_a", "fx_b", "fx_c", "v1_rt", "dry_run"],
+    edge_froms: chain_edge_froms(),
+    edge_tos: chain_edge_tos(),
+    edge_provenances: chain_edge_provenances(),
+    target_crate_count: 3
+  ) {
+    EmittedWorkspacePlanned { plan: _ } => true
+    _ => false
+  }
+}

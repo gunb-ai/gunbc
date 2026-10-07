@@ -742,7 +742,7 @@ pub fn load_sources_for_entry_with_pool_index(
 // emitted tree (nothing here compiles the emission), a semantic regression that still
 // emits, or an emission break confined to a closure the configured entry does not reach.
 
-pub(crate) fn load_sources_for_entry_with_pool(
+pub fn load_sources_for_entry_with_pool(
     index: &MultiEntryIndex,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {

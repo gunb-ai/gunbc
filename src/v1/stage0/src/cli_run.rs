@@ -142,8 +142,9 @@ pub fn source_root_ingest_module_identities_for_ci(
     Ok(identities)
 }
 pub use entry_resolve::{
-    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
+    load_sources_for_entry, load_sources_for_entry_with_pool, process_shared_index,
+    resolve_entry_graph, resolve_entry_with_index, resolve_stage_totals,
+    source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;

@@ -189,8 +189,9 @@ fn rows_from_value(
     }
 }
 
-/// Evaluate `emitted_workspace_plan` over the emission's basenames and edges. The plan derives the
-/// module DAG from the live dependency facts itself, so the corpus it reads is the source roots.
+/// Evaluate `emitted_workspace_plan` over the emission's basenames and edges. Module membership
+/// is the compile-entry both-closure (`load_sources_for_entry_with_pool` on `WORKSPACE_ENTRY`),
+/// the same relation `compile_entry_emission` uses — not `dependency_resolution_facts_live`.
 fn evaluate_plan(
     source_roots: &[String],
     emitted_basenames: &[String],
@@ -199,10 +200,27 @@ fn evaluate_plan(
     edge_provenances: &[String],
 ) -> Result<PlanRows, String> {
     let index = super::process_shared_index(source_roots);
+    let authority_sources = super::load_sources_for_entry_with_pool(&index, WORKSPACE_ENTRY)
+        .map_err(|e| refusal("AuthorityClosureLoadFailed", e))?;
+    let mut authority_module_names = Vec::new();
+    for source in &authority_sources {
+        let Some(name) = super::extract_module_path(&source.content) else {
+            return Err(refusal(
+                "AuthoritySourceHasNoModuleHeader",
+                source.path.clone(),
+            ));
+        };
+        authority_module_names.push(name);
+    }
+    authority_module_names.sort();
     let (graph, indices) = super::resolve_entry_with_index(&index, PLAN_MODULE)
         .map_err(|e| refusal("PlanModuleUnresolved", format!("{PLAN_MODULE}: {e}")))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Wet);
     let args = vec![
+        (
+            Some("authority_module_names".to_string()),
+            str_list(&authority_module_names),
+        ),
         (
             Some("emitted_basenames".to_string()),
             str_list(emitted_basenames),

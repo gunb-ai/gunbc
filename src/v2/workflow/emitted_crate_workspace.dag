@@ -20,7 +20,8 @@ import gunbc.rust_emitted_edge {
   ReexportFacade,
   SemanticSourceReference,
   rust_module_emit_filename,
-  rust_runtime_prelude_module
+  rust_runtime_prelude_module,
+  rust_dry_run_emit_module
 }
 import gunbc.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
@@ -28,10 +29,7 @@ import gunbc.stage0_crate_partition_generated {
   GeneratedLayeredCoreCrate
 }
 import v2.workflow.emitted_closure_crate_partition {
-  ModuleDagDerivationRefusal,
-  ModuleDagDerived,
-  ModuleDagDerivationRefused,
-  emitted_compiler_closure_module_dag
+  ModuleDagDerivationRefusal
 }
 import v2.workflow.rust_crate_partition {
   EmittedEdgeRefusal,
@@ -60,7 +58,9 @@ import v2.workflow.rust_crate_partition {
 // THE EMITTED COMPILER CLOSURE AS A CARGO WORKSPACE, DERIVED (Pkg7d render, Pkg7e build).
 //
 // Every fact here is derived, and none is read from the committed stage0 rows: the module DAG is
-// v2.workflow.emitted_closure_crate_partition's derivation from the live dependency facts; the
+// the compile-entry both-closure (`load_sources_for_entry_with_pool` /
+// `extend_sources_to_both_closure_fixpoint`, the same set `compile_entry_emission` emits);
+// the
 // emitter's own edges (gunbc.rust_emitted_edge, returned beside the text by the emission this
 // workspace is built from) are merged into it with the typed reverse-edge refusal; the balanced
 // policy assigns modules to units; and each unit's dependency packages are the TRANSITIVE CLOSURE
@@ -79,10 +79,11 @@ import v2.workflow.rust_crate_partition {
 //
 // A DAG module is placed by the basename the emitter writes for it (gunbc.rust_emitted_edge
 // rust_module_emit_filename, the one home of that rule, which the edge rows name endpoints by). The
-// caller supplies the basenames the emission actually wrote. The two closures -- the one the live
-// dependency facts derive and the one the emission compiled -- must be the SAME population: a DAG
-// module whose file the emission did not produce, and an emitted file that is neither a DAG module
-// nor the runtime, are refused together, every member named, never narrowed to the intersection.
+// caller supplies the basenames the emission actually wrote. The two closures -- the compile
+// authority and the files the emission wrote -- must be the SAME population: a DAG module whose
+// file the emission did not produce, and an emitted file that is neither a DAG module nor an
+// emit-only support file (runtime, dry_run), are refused together, every member named, never
+// narrowed to the intersection.
 
 type EmittedWorkspaceRefusal
   = EmittedWorkspaceDagRefused { cause: ModuleDagDerivationRefusal }
@@ -210,12 +211,16 @@ type BasenameDagBuild
   = BasenameDagOk { module_dag: ModuleDag }
   | BasenameDagRefused { cause: EmittedWorkspaceRefusal }
 
+fn emitted_workspace_emit_only_basename(b: String) -> Bool {
+  b == rust_runtime_prelude_module || b == rust_dry_run_emit_module
+}
+
 fn emitted_workspace_basename_dag(module_dag: ModuleDag, module_by_basename: Map<String, String>, emitted_basenames: List<String>) -> BasenameDagBuild {
   let emitted_set = emitted_basenames |> fold(init: empty_map(), f: fn(acc, b) { map_insert(acc, b, b) })
   let not_emitted = module_dag.modules |> filter(m =>
     match emitted_workspace_lookup(m: emitted_set, key: rust_module_emit_filename(module_name: m as String)) { Present { value: _ } => false  Absent => true })
   let outside = emitted_basenames |> filter(b =>
-    b != rust_runtime_prelude_module
+    !emitted_workspace_emit_only_basename(b: b)
       && match emitted_workspace_lookup(m: module_by_basename, key: b) { Present { value: _ } => false  Absent => true })
   if ((not_emitted |> count) + (outside |> count)) > 0 {
     BasenameDagRefused {
@@ -247,8 +252,8 @@ fn emitted_workspace_basename_dag(module_dag: ModuleDag, module_by_basename: Map
 // reason to place a closure module beside it.
 fn emitted_workspace_without_runtime(module_dag: ModuleDag) -> ModuleDag {
   ModuleDag {
-    modules: module_dag.modules |> filter(m => (m as String) != rust_runtime_prelude_module),
-    edges: module_dag.edges |> filter(e => (e.from as String) != rust_runtime_prelude_module && (e.to as String) != rust_runtime_prelude_module),
+    modules: module_dag.modules |> filter(m => !emitted_workspace_emit_only_basename(b: m as String)),
+    edges: module_dag.edges |> filter(e => !emitted_workspace_emit_only_basename(b: e.from as String) && !emitted_workspace_emit_only_basename(b: e.to as String)),
     exports: module_dag.exports,
     type_definitions: module_dag.type_definitions
   }
@@ -449,24 +454,27 @@ fn emitted_workspace_plan_over(
   }
 }
 
-// THE PRODUCTION ENTRY: the live closure derivation, the emission's own basenames and edges, and
-// the declared core target the closure's policy partition already uses.
+// THE PRODUCTION ENTRY: module names from the compile-entry both-closure (host:
+// load_sources_for_entry_with_pool on closure_entry), the emission's own basenames and edges,
+// and the declared core target the closure's policy partition already uses.
 fn emitted_workspace_plan(
+  authority_module_names: List<String>,
   emitted_basenames: List<String>,
   edge_froms: List<String>,
   edge_tos: List<String>,
   edge_provenances: List<String>
 ) -> EmittedWorkspaceOutcome {
-  match emitted_compiler_closure_module_dag() {
-    ModuleDagDerivationRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspaceDagRefused { cause: c } }
-    ModuleDagDerived { module_dag: module_dag } =>
-      emitted_workspace_plan_over(
-        module_dag: module_dag,
-        emitted_basenames: emitted_basenames,
-        edge_froms: edge_froms,
-        edge_tos: edge_tos,
-        edge_provenances: edge_provenances,
-        target_crate_count: rust_crate_partition_declared_core_target
-      )
-  }
+  emitted_workspace_plan_over(
+    module_dag: ModuleDag {
+      modules: authority_module_names |> map(n => n as ModuleId),
+      edges: [],
+      exports: empty_map(),
+      type_definitions: empty_map()
+    },
+    emitted_basenames: emitted_basenames,
+    edge_froms: edge_froms,
+    edge_tos: edge_tos,
+    edge_provenances: edge_provenances,
+    target_crate_count: rust_crate_partition_declared_core_target
+  )
 }
