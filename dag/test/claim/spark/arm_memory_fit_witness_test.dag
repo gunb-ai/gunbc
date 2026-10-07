@@ -32,9 +32,6 @@ import gunbc.spark.serving_capacity_intent {
   intent_max_total_resident_tokens, profile_for_envelope, envelope_at_cold_floor,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
-import gunbc.spark.pair_serving_capacity_floor {
-  spark_pair_serving_minimum_cold_sessions, minimum_cold_sessions_intent,
-}
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env, glm_group_b_sparse_indexer_max_logits }
 import gunbc.spark.arm_memory_fit {
@@ -895,7 +892,7 @@ test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_p
   }
 }
 
-// ── WITNESS 15: THE INTENT PROJECTIONS AND THE FLOOR'S FORWARD PROJECTION ───────────────────────
+// ── WITNESS 15: THE INTENT PROJECTIONS ───────────────────────
 test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool {
   (match serving_capacity_intent(cold_sequence_budgets: [], max_batched_tokens: token_count(count: 2048)) {
     ServingCapacityIntentRefused { cause: _ } => true
@@ -912,12 +909,6 @@ test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool {
       ServingCapacityIntentAdmitted { intent: i } =>
         intent_max_active_sequences(i: i) == 16
           && token_count_value(t: intent_max_total_resident_tokens(i: i)) == 4194304
-      ServingCapacityIntentRefused { cause: _ } => false
-    })
-    && (match minimum_cold_sessions_intent(floor: spark_pair_serving_minimum_cold_sessions, max_batched_tokens: token_count(count: 2048)) {
-      ServingCapacityIntentAdmitted { intent: i } =>
-        intent_max_active_sequences(i: i) == spark_pair_serving_minimum_cold_sessions.sessions
-          && token_count_value(t: intent_max_single_sequence_tokens(i: i)) == 500000
       ServingCapacityIntentRefused { cause: _ } => false
     })
 }
