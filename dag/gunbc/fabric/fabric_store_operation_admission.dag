@@ -1,7 +1,7 @@
 module gunbc.fabric_store_operation_admission
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { is_empty }
 import std.content_hash { ContentHash, sha256_hex_digest, as_content_hash_cryptographic, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree, grant_covers }

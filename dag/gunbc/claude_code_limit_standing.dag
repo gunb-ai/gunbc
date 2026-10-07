@@ -3,7 +3,7 @@ module gunbc.claude_code_limit_standing
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { basis_point_count, basis_point_unity_count }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.llm.claude_code_stream_json {
   ClaudeCodeStreamLine,
   ClaudeCodeRateLimitEventLine,

@@ -21,7 +21,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import std.types { FilePath }
 import extdeps.languages.json.emit { JsonValue, serialize_json }
 import extdeps.external_authority { ExternalAuthority }

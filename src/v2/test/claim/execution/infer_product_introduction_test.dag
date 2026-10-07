@@ -42,7 +42,7 @@ import v2.std.node {
 }
 import v2.std.text { String }
 import std.algebra { list_snoc_item }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.node_query { BinderParts, binder_node_parts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

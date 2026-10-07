@@ -1,7 +1,7 @@
 module gunbc.auth.heal_publisher_federation
 
 import std.types { NonEmptyStr, String, Int, List, Map, Bool }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId, WifPool, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }

@@ -1,7 +1,7 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings
 
 import std.types { List }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

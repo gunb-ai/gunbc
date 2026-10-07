@@ -59,6 +59,7 @@ import gunbc.harness.harness_tool {
   harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
   harness_run_command_schema,
 }
+import gunbc.harness.harness_tool_kind { harness_tool_of_wire_name, harness_tool_read_item_type }
 import extdeps.llm.anthropic_messages_api {
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
   ModelContextWindowExceeded,
@@ -474,14 +475,31 @@ fn harness_event_placement_waiting(wait: Int, wait_cap: Int, reason: String) -> 
   ]))
 }
 
+// EACH TOOL USE IS WRITTEN AS THE KIND OF TOOL IT WAS. The item type is derived from the use's own
+// HarnessTool through gunbc.harness.harness_tool_kind -- the declaration the reader inverts -- so a
+// file read is not reported as a command. A name the harness does not declare is written as the
+// unrecognized kind, which is what the dispatcher did with it: it refused. A block that is not a
+// tool use is no item at all; harness_tool_use_blocks never hands one over, and the arms say so
+// rather than labelling it.
+fn harness_tool_use_item_events(block: HarnessWireBlock) -> List<String> {
+  match block {
+    WireToolUseBlock { id: _, name: name, input: _ } => {
+      let item_type = harness_tool_read_item_type(read: harness_tool_of_wire_name(name: name))
+      [
+        harness_event_item(event_type: "item.started", item_type: item_type),
+        harness_event_item(event_type: "item.completed", item_type: item_type),
+      ]
+    }
+    WireTextBlock { text: _ } => []
+    WireThinkingBlock { thinking: _ } => []
+  }
+}
+
 fn harness_tool_round_events(uses: List<HarnessWireBlock>) -> List<String> {
   fold(
     uses,
     init: [],
-    f: (acc, u) => concat(acc, [
-      harness_event_item(event_type: "item.started", item_type: "command_execution"),
-      harness_event_item(event_type: "item.completed", item_type: "command_execution"),
-    ]),
+    f: (acc, u) => concat(acc, harness_tool_use_item_events(block: u)),
   )
 }
 

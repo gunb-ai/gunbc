@@ -3,7 +3,7 @@ module gunbc.serving.serving_front_door
 import std.types { String, Bool, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.crypto.mac {
   MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, MacVerified, MacTagMismatch, MacKeyUnknown,
   MacKeyRetired, MacSuiteMismatch, MacTagMalformed, MacSigned, MacKeyMaterialNotHex,

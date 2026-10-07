@@ -839,6 +839,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     disposition: RetainAuthority,
     first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
   ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, true, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
+  ),
 ]
 
 data host_convergence_census_standing: HostConvergenceCensus = admit_host_convergence_census(rows: host_convergence_census_rows)

@@ -1,0 +1,377 @@
+module tools.source_reference_repoint
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
+import v2.std.compilers.lexing { Token }
+import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import gunbc.source_root_read { source_root_walk, source_root_read_file, SourceRootWalkTask, SourceRootPathsRead, SourceRootPathsRefused }
+
+// A SOURCE REWRITE IS EDITS BY POSITION, PRODUCED FROM THE SEED'S OWN READING OF THE FILE. A module
+// that moves takes every reference to it along, and those references are found in the seed's token
+// stream rather than by a text search: a comment is not a token, and a path spelled inside a
+// string is one string token, so neither is a reference and neither is touched. The tokens come
+// through gunbc.parsed_import_statement_production, the one crossing by which a module under dag
+// reaches the seed's lexer (the floor resolves dag and src/v2 only), and they are produced
+// natively: tokenizing through the interpreter did not finish 901 files in forty minutes. The producer
+// returns edits; apply_source_edits splices them. A second producer (a literal rewrite over the
+// parse tree) reuses the applier and the walk unchanged.
+//
+// POSITIONS ARE CODE POINTS, because that is the unit the seed tokenizer's spans are in. The
+// applier slices the same code-point list the tokenizer indexed, so a non-ASCII character before
+// an edit cannot shift it.
+type SourceEdit {
+  start: Int
+  end: Int
+  replacement: String
+}
+
+type SpliceState {
+  pieces: List<String>
+  cursor: Int
+}
+
+// Edits are applied in position order and must not overlap; each producer here emits disjoint
+// spans by construction.
+fn apply_source_edits(text: String, edits: List<SourceEdit>) -> String {
+  let cs = chars(text)
+  let ordered = edits |> sort_by(e => e.start)
+  let st = fold(ordered, init: SpliceState { pieces: [], cursor: 0 }, f: (acc, e) =>
+    SpliceState {
+      pieces: list_push(list_push(acc.pieces, chars_to_string(chars: cs, start: acc.cursor, end: e.start)), e.replacement),
+      cursor: e.end
+    })
+  join(list_push(st.pieces, chars_to_string(chars: cs, start: st.cursor, end: count(cs))), "")
+}
+
+// ONE MODULE PATH MOVING TO ANOTHER. Three reference forms carry a module path and all three are
+// rewritten: the path of an import, the prefix of a qualified name, and the module_path of a
+// DeclarationRef row (a string, but one whose position says it names a module).
+type ReferenceRepoint {
+  from_path: String
+  to_path: String
+}
+
+fn token_is_word(tok: Token, word: String) -> Bool {
+  (tok.class == ^ShIdent || tok.class == ^ShKeyword) && tok.lexeme == word
+}
+
+// ONE PASS OVER THE TOKENS, carrying how much of the path the current dotted name has matched.
+// `matched` counts whole segments; `after_word` says the next token must be a dot to continue.
+// `prev_dot` is what makes a match begin only at the START of a dotted name: the segments inside a
+// longer chain are never a second match, and a field access spelled like the path's tail is not
+// one. `prev_colon` and `before_colon_is_module_path` recognise the one string position that
+// names a module.
+type RepointScan {
+  edits: List<SourceEdit>
+  matched: Int
+  after_word: Bool
+  start: Int
+  prev_dot: Bool
+  prev_colon: Bool
+  prev_is_module_path: Bool
+  before_colon_is_module_path: Bool
+}
+
+fn repoint_scan_carry(scan: RepointScan, tok: Token, edits: List<SourceEdit>, matched: Int, after_word: Bool, start: Int) -> RepointScan {
+  RepointScan {
+    edits: edits, matched: matched, after_word: after_word, start: start,
+    prev_dot: tok.class == ^ShDot,
+    prev_colon: tok.class == ^ShColon,
+    prev_is_module_path: token_is_word(tok: tok, word: "module_path"),
+    before_colon_is_module_path: scan.prev_is_module_path
+  }
+}
+
+fn segment_at(segments: List<String>, at: Int) -> String {
+  match segments |> skip(at) |> first {
+    Present { value: seg } => seg
+    Absent => ""
+  }
+}
+
+// A word that completes the path emits the edit and ends the match; what follows the matched
+// prefix is not inspected, so an import path (which ends there) and a qualified name (which
+// continues) both keep their remainder. The match is by whole segments, so a module whose last
+// segment merely starts with the moved one is left alone.
+fn repoint_scan_word(scan: RepointScan, tok: Token, segments: List<String>, repoint: ReferenceRepoint, matched: Int, start: Int) -> RepointScan {
+  if matched == count(segments) {
+    repoint_scan_carry(scan: scan, tok: tok, edits: list_push(scan.edits, SourceEdit { start: start, end: tok.end, replacement: repoint.to_path }), matched: 0, after_word: false, start: 0)
+  } else {
+    repoint_scan_carry(scan: scan, tok: tok, edits: scan.edits, matched: matched, after_word: true, start: start)
+  }
+}
+
+fn repoint_scan_step(scan: RepointScan, tok: Token, segments: List<String>, repoint: ReferenceRepoint) -> RepointScan {
+  let is_dot = tok.class == ^ShDot
+  if is_dot && scan.matched > 0 && scan.after_word {
+    repoint_scan_carry(scan: scan, tok: tok, edits: scan.edits, matched: scan.matched, after_word: false, start: scan.start)
+  } else if scan.matched > 0 && !scan.after_word && token_is_word(tok: tok, word: segment_at(segments: segments, at: scan.matched)) {
+    repoint_scan_word(scan: scan, tok: tok, segments: segments, repoint: repoint, matched: scan.matched + 1, start: scan.start)
+  } else if !scan.prev_dot && token_is_word(tok: tok, word: segment_at(segments: segments, at: 0)) {
+    repoint_scan_word(scan: scan, tok: tok, segments: segments, repoint: repoint, matched: 1, start: tok.start)
+  } else if tok.class == ^ShLitStr && tok.lexeme == join(["\"", repoint.from_path, "\""], "") && scan.prev_colon && scan.before_colon_is_module_path {
+    repoint_scan_carry(scan: scan, tok: tok, edits: list_push(scan.edits, SourceEdit { start: tok.start + 1, end: tok.end - 1, replacement: repoint.to_path }), matched: 0, after_word: false, start: 0)
+  } else {
+    repoint_scan_carry(scan: scan, tok: tok, edits: scan.edits, matched: 0, after_word: false, start: 0)
+  }
+}
+
+fn module_path_repoint_edits(tokens: List<Token>, repoint: ReferenceRepoint) -> List<SourceEdit> {
+  let segments = split(s: repoint.from_path, delimiter: ".")
+  if count(segments) == 0 || repoint.from_path == "" { [] }
+  else {
+    fold(tokens, init: RepointScan { edits: [], matched: 0, after_word: false, start: 0, prev_dot: false, prev_colon: false, prev_is_module_path: false, before_colon_is_module_path: false }, f: (scan, tok) =>
+      repoint_scan_step(scan: scan, tok: tok, segments: segments, repoint: repoint)).edits
+  }
+}
+
+// The whole rewrite of one file's text. A file that does not mention the path is not tokenized:
+// containing the path's spelling is necessary for holding a reference to it.
+fn repointed_source_text(path: String, text: String, repoints: List<ReferenceRepoint>) -> String {
+  fold(repoints, init: text, f: (current, r) =>
+    if string_contains(s: current, pattern: r.from_path) {
+      apply_source_edits(text: current, edits: module_path_repoint_edits(tokens: parsed_import_observation_live(file: path, source: current).tokens, repoint: r))
+    } else { current })
+}
+
+// THE MOVES THIS TREE HAS MADE THROUGH THIS INSTRUMENT. Re-running after a move is a no-op: the
+// rewritten text holds no reference to the old path, so no edit is produced.
+data source_reference_repoints: List<ReferenceRepoint> = [
+  ReferenceRepoint { from_path: "v2.std.optional", to_path: "std.optional" }
+]
+
+// A MEMBER RETIRED FROM ITS MODULE: a name an import list names from `module_path` that no longer lives
+// there (it resolves through another authority, so there is nothing to repoint it TO). The second
+// producer the applier was built for: it reads the same token stream, finds each `import <module_path>
+// { ... }` statement, and deletes the retired entry with exactly one adjacent comma, so a single-line
+// list, a multi-line list and a trailing comma all keep their layout. A statement left with no member
+// loses its whole line. A comment is not a token and a string is one token, so neither is touched.
+type ImportMemberRetirement {
+  module_path: String
+  member: String
+}
+
+// One entry of an import list: its first token names it; `comma_end` is -1 when no comma follows it.
+type ImportListEntry {
+  name: String
+  start: Int
+  end: Int
+  comma_end: Int
+}
+
+// stage 0 outside an import; 1 reading its dotted path; 2 inside its braces.
+type ImportListScan {
+  edits: List<SourceEdit>
+  stage: Int
+  import_start: Int
+  path: String
+  lbrace_end: Int
+  entries: List<ImportListEntry>
+  open_entry: Bool
+}
+
+fn import_scan_reset(scan: ImportListScan, edits: List<SourceEdit>) -> ImportListScan {
+  ImportListScan { edits: edits, stage: 0, import_start: 0, path: "", lbrace_end: 0, entries: [], open_entry: false }
+}
+
+fn entry_is_retired(name: String, path: String, retirements: List<ImportMemberRetirement>) -> Bool {
+  count(retirements |> filter(r => r.module_path == path && r.member == name)) > 0
+}
+
+fn last_entry(entries: List<ImportListEntry>) -> ImportListEntry {
+  match entries |> skip(count(entries) - 1) |> first {
+    Present { value: e } => e
+    Absent => ImportListEntry { name: "", start: 0, end: 0, comma_end: -1 }
+  }
+}
+
+fn entry_at(entries: List<ImportListEntry>, at: Int) -> ImportListEntry {
+  match entries |> skip(at) |> first {
+    Present { value: e } => e
+    Absent => ImportListEntry { name: "", start: 0, end: 0, comma_end: -1 }
+  }
+}
+
+// The nearest KEPT entry before position i (the caller guarantees one exists).
+fn kept_before(entries: List<ImportListEntry>, at: Int, path: String, retirements: List<ImportMemberRetirement>) -> ImportListEntry {
+  last_entry(entries |> take(at) |> filter(e => !entry_is_retired(name: e.name, path: path, retirements: retirements)))
+}
+
+// The span one retired entry occupies, with one comma. Not last: from the entry to the next entry, which
+// takes its comma and the whitespace after it. Last: from the previous KEPT entry's comma (or its end,
+// when the retired entry has no comma) to the retired entry's own end, which takes the separator in front.
+fn retired_entry_span(entries: List<ImportListEntry>, at: Int, path: String, retirements: List<ImportMemberRetirement>) -> SourceEdit {
+  let e = entry_at(entries: entries, at: at)
+  if at + 1 < count(entries) {
+    SourceEdit { start: e.start, end: entry_at(entries: entries, at: at + 1).start, replacement: "" }
+  } else {
+    let k = kept_before(entries: entries, at: at, path: path, retirements: retirements)
+    if e.comma_end >= 0 { SourceEdit { start: k.comma_end, end: e.comma_end, replacement: "" } }
+    else { SourceEdit { start: k.end, end: e.end, replacement: "" } }
+  }
+}
+
+// Overlapping deletions (two retired neighbours) are one deletion: the applier requires disjoint spans.
+fn merged_deletions(spans: List<SourceEdit>) -> List<SourceEdit> {
+  fold(spans |> sort_by(e => e.start), init: [], f: (acc, e) =>
+    if count(acc) > 0 && e.start <= last_deletion(acc).end {
+      list_push(acc |> take(count(acc) - 1), SourceEdit { start: last_deletion(acc).start, end: max_int(a: last_deletion(acc).end, b: e.end), replacement: "" })
+    } else { list_push(acc, e) })
+}
+
+fn last_deletion(spans: List<SourceEdit>) -> SourceEdit {
+  match spans |> skip(count(spans) - 1) |> first {
+    Present { value: e } => e
+    Absent => SourceEdit { start: 0, end: 0, replacement: "" }
+  }
+}
+
+fn max_int(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+// The edits for one closed import statement: none when nothing it names is retired; the whole line (and
+// its newline) when everything is; otherwise one merged deletion per retired run.
+fn import_list_edits(scan: ImportListScan, rbrace_end: Int, newline_after: Bool, retirements: List<ImportMemberRetirement>) -> List<SourceEdit> {
+  let retired_at = scan.entries |> enumerate |> filter(p => entry_is_retired(name: p.second.name, path: scan.path, retirements: retirements)) |> map(p => p.first)
+  if count(retired_at) == 0 { [] }
+  else if count(retired_at) == count(scan.entries) {
+    [SourceEdit { start: scan.import_start, end: if newline_after { rbrace_end + 1 } else { rbrace_end }, replacement: "" }]
+  } else {
+    merged_deletions(spans: retired_at |> map(i => retired_entry_span(entries: scan.entries, at: i, path: scan.path, retirements: retirements)))
+  }
+}
+
+fn import_scan_step(scan: ImportListScan, tok: Token, cs: List<Int>, retirements: List<ImportMemberRetirement>) -> ImportListScan {
+  if tok.class == ^ShNewline { scan }
+  else if scan.stage == 0 {
+    if token_is_word(tok: tok, word: "import") {
+      ImportListScan { edits: scan.edits, stage: 1, import_start: tok.start, path: "", lbrace_end: 0, entries: [], open_entry: false }
+    } else { scan }
+  } else if scan.stage == 1 {
+    if tok.class == ^ShLBrace {
+      ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: tok.end, entries: [], open_entry: false }
+    } else if tok.class == ^ShDot || tok.class == ^ShIdent || tok.class == ^ShKeyword {
+      ImportListScan { edits: scan.edits, stage: 1, import_start: scan.import_start, path: join([scan.path, tok.lexeme], ""), lbrace_end: 0, entries: [], open_entry: false }
+    } else { import_scan_reset(scan: scan, edits: scan.edits) }
+  } else if tok.class == ^ShRBrace {
+    let newline_after = match cs |> skip(tok.end) |> first {
+      Present { value: c } => c == 10
+      Absent => false
+    }
+    import_scan_reset(scan: scan, edits: concat(scan.edits, import_list_edits(scan: scan, rbrace_end: tok.end, newline_after: newline_after, retirements: retirements)))
+  } else if tok.class == ^ShComma {
+    let e = last_entry(scan.entries)
+    ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: scan.lbrace_end,
+      entries: list_push(scan.entries |> take(count(scan.entries) - 1), ImportListEntry { name: e.name, start: e.start, end: e.end, comma_end: tok.end }),
+      open_entry: false }
+  } else if scan.open_entry {
+    let e = last_entry(scan.entries)
+    ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: scan.lbrace_end,
+      entries: list_push(scan.entries |> take(count(scan.entries) - 1), ImportListEntry { name: e.name, start: e.start, end: tok.end, comma_end: -1 }),
+      open_entry: true }
+  } else {
+    ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: scan.lbrace_end,
+      entries: list_push(scan.entries, ImportListEntry { name: tok.lexeme, start: tok.start, end: tok.end, comma_end: -1 }),
+      open_entry: true }
+  }
+}
+
+fn import_member_retirement_edits(tokens: List<Token>, text: String, retirements: List<ImportMemberRetirement>) -> List<SourceEdit> {
+  let cs = chars(text)
+  fold(tokens, init: import_scan_reset(scan: ImportListScan { edits: [], stage: 0, import_start: 0, path: "", lbrace_end: 0, entries: [], open_entry: false }, edits: []), f: (scan, tok) =>
+    import_scan_step(scan: scan, tok: tok, cs: cs, retirements: retirements)).edits
+}
+
+// A file that spells neither a retired member nor its module is not tokenized.
+fn retired_source_text(path: String, text: String, retirements: List<ImportMemberRetirement>) -> String {
+  let relevant = retirements |> filter(r => string_contains(s: text, pattern: r.module_path) && string_contains(s: text, pattern: r.member))
+  if count(relevant) == 0 { text }
+  else { apply_source_edits(text: text, edits: import_member_retirement_edits(tokens: parsed_import_observation_live(file: path, source: text).tokens, text: text, retirements: relevant)) }
+}
+
+// THE MEMBERS THIS TREE HAS RETIRED THROUGH THIS INSTRUMENT. Re-running is a no-op: the rewritten
+// text names no retired member, so no edit is produced.
+data source_import_member_retirements: List<ImportMemberRetirement> = []
+
+// Every rewrite this instrument knows, in one pass per file: moves first, then retirements.
+fn rewritten_source_text(path: String, text: String) -> String {
+  retired_source_text(path: path, text: repointed_source_text(path: path, text: text, repoints: source_reference_repoints), retirements: source_import_member_retirements)
+}
+
+data source_reference_repoint_roots: List<String> = ["dag", "src/v2", "src/v1", "fixtures"]
+
+fn repoint_write(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success { ExitSuccess }
+  else { exit_failure(reason: join(["source reference repoint: write failed for ", path, ": ", w.error], "")) }
+}
+
+// ONE FILE AT A TIME. The walk yields paths; each file is read, rewritten and written before the
+// next is read, so nothing is held but the path list. A file that does not mention a moved path is
+// read and dropped without being tokenized.
+fn repoint_one_path(path: String) -> ProcessExit {
+  match source_root_read_file(path: path) {
+    FilesystemExactPathRead { path: observed, content: content } =>
+      repoint_one_text(path: observed, content: content)
+    FilesystemExactPathAbsent { path: missing } =>
+      exit_failure(reason: join(["source reference repoint: cannot read ", missing, " (absent)"], ""))
+    FilesystemExactPathUnreadable { path: unreadable, kind: _, error: error } =>
+      exit_failure(reason: join(["source reference repoint: cannot read ", unreadable, ": ", error], ""))
+    FilesystemExactPathKindUnrecognized { path: unrecognized, observed: observed, error: error } =>
+      exit_failure(reason: join(["source reference repoint: cannot read ", unrecognized, " (", observed, "): ", error], ""))
+  }
+}
+
+fn repoint_one_text(path: String, content: String) -> ProcessExit {
+  let next = rewritten_source_text(path: path, text: content)
+  if next == content { ExitSuccess }
+  else { repoint_write(path: path, content: next) }
+}
+
+// A file the walk listed but cannot read is reported as pending, so the verdict refuses and
+// names it: an unread file is never counted as already repointed.
+fn repoint_path_is_pending(path: String) -> Bool {
+  match source_root_read_file(path: path) {
+    FilesystemExactPathRead { path: observed, content: content } =>
+      rewritten_source_text(path: observed, text: content) != content
+    FilesystemExactPathAbsent { path: _ } => true
+    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => true
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => true
+  }
+}
+
+fn repoint_pending_verdict(pending: List<String>) -> ProcessExit {
+  if count(pending) == 0 { ExitSuccess }
+  else { exit_failure(reason: join(["source reference repoint: ", join(pending, " "), " still reference a moved module or name a retired member; run the repoint entry"], "")) }
+}
+
+fn repoint_root_tasks() -> List<SourceRootWalkTask> {
+  source_reference_repoint_roots |> map(path => SourceRootWalkTask { path: path, root: true })
+}
+
+// The wet entry: rewrite every file under the roots that still references a moved module.
+fn repoint() -> ProcessExit {
+  match source_root_walk(pending: repoint_root_tasks(), paths: []) {
+    SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
+      exit_failure(reason: join(["source reference repoint: cannot walk ", path, " (", kind, "): ", cause], ""))
+    SourceRootPathsRead { paths: paths } =>
+      fold(paths, init: ExitSuccess, f: fn(acc, path) {
+        match acc {
+          ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+          ExitSuccess => repoint_one_path(path: path)
+        }
+      })
+  }
+}
+
+// The read-only entry: fails, naming the files, while any reference to a moved module remains.
+fn repoint_pending() -> ProcessExit {
+  match source_root_walk(pending: repoint_root_tasks(), paths: []) {
+    SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
+      exit_failure(reason: join(["source reference repoint: cannot walk ", path, " (", kind, "): ", cause], ""))
+    SourceRootPathsRead { paths: paths } =>
+      repoint_pending_verdict(pending: paths |> filter(path => repoint_path_is_pending(path: path)))
+  }
+}
