@@ -158,6 +158,21 @@ fn receiver_profile_generator(name: String) -> String? {
   }
 }
 
+// A CALLBACK'S ELEMENT OVER A RECEIVER: the profile's generator where the receiver names no element of its own (the
+// host text, free over Char), else the for-each element. Scoped to a method callback's element; a `for` over a
+// String keeps for_each_element_type_node's own reading.
+fn callback_element_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let normed = normalize_access_type_node(n: n)
+  if normed.children |> count == 0 {
+    match receiver_profile_generator(name: container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: normed))) {
+      Present { value: g } => nominal_type_ref(name: g)
+      Absent => for_each_element_type_node(n: n, source_indices: source_indices)
+    }
+  } else {
+    for_each_element_type_node(n: n, source_indices: source_indices)
+  }
+}
+
 fn receiver_element_or_generator(base: Node, source_indices: Map<String, NewlineIndex>) -> KernelTypeBuild {
   match base.children |> first {
     Present { value: _ } => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")

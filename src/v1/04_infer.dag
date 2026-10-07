@@ -112,7 +112,7 @@ import v1.compiler.infer_types {
   node_type_deps,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node, subtraction_refinement_of,
-  extract_optional_inner_node, for_each_element_type_node,
+  extract_optional_inner_node, for_each_element_type_node, callback_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has,
   callable_return_type
@@ -8569,7 +8569,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
-            let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
+            let elem_type = callback_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
@@ -9078,7 +9078,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
       let recv_rt = resolve_method_receiver_type(receiver_type: resolved_type(n: recv_typed), env: scope.type_env)
-      let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
+      let recv_elem_type = callback_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
       let fold_acc_type = match fold_info {
