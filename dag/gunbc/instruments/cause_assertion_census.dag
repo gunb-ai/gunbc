@@ -244,7 +244,7 @@ fn cause_join_declaration(
   spelling: String,
   declarations: Map<String, List<DataDeclTypeFact>>
 ) -> CauseIdentityJoin {
-  let candidates = match map_lookup(m: declarations, key: spelling) {
+  let candidates: List<DataDeclTypeFact> = match map_lookup(m: declarations, key: spelling) {
     Present { value: rows } => rows
     Absent => []
   }
