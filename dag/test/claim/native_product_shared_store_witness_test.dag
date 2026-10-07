@@ -6,20 +6,20 @@ import std.fabric_blob { FabricBlobGetUnavailable, FabricBlobUnauthorized }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.native_product_shared_store {
   ForkPullRequestRun, SameRepoPullRequestRun, MergeGroupRun, UnattributedRun,
-  NativeProductStoreReadWrite, NativeProductStoreNoAccess, native_product_store_access,
+  NativeProductStoreReadOnly, NativeProductStoreReadWrite, NativeProductStoreNoAccess, native_product_store_access,
   native_product_blob_address,
   NativeProductSharedGetNotAdmitted, NativeProductSharedGetAnswered, native_product_shared_get,
 }
 
 data live_key: String = "78fa374e0d6cd0df1339bb3a25abf2e96e9c22bcc6d61d72e2c179d168c8322a"
 
-// A fork has no standing, an unattributed run has none, the merge group has none (it builds its own
-// compiler), a same-repo pull request does.
-test fn only_same_repo_pull_requests_have_standing_and_the_merge_group_builds_its_own() -> Bool {
-  let fork = match native_product_store_access(standing: ForkPullRequestRun) { NativeProductStoreNoAccess { cause: _ } => true, NativeProductStoreReadWrite => false }
-  let other = match native_product_store_access(standing: UnattributedRun) { NativeProductStoreNoAccess { cause: _ } => true, NativeProductStoreReadWrite => false }
-  let pr = match native_product_store_access(standing: SameRepoPullRequestRun) { NativeProductStoreReadWrite => true, NativeProductStoreNoAccess { cause: _ } => false }
-  let mg = match native_product_store_access(standing: MergeGroupRun) { NativeProductStoreNoAccess { cause: _ } => true, NativeProductStoreReadWrite => false }
+// A fork and an unattributed run have no standing, a same-repo pull request may only read, and the
+// merge group is the sole writer.
+test fn only_the_merge_group_writes_and_pull_requests_only_read() -> Bool {
+  let fork = match native_product_store_access(standing: ForkPullRequestRun) { NativeProductStoreNoAccess { cause: _ } => true, _ => false }
+  let other = match native_product_store_access(standing: UnattributedRun) { NativeProductStoreNoAccess { cause: _ } => true, _ => false }
+  let pr = match native_product_store_access(standing: SameRepoPullRequestRun) { NativeProductStoreReadOnly => true, _ => false }
+  let mg = match native_product_store_access(standing: MergeGroupRun) { NativeProductStoreReadWrite => true, _ => false }
   fork && other && pr && mg
 }
 
@@ -41,7 +41,7 @@ test fn a_read_without_standing_or_credential_refuses_closed() -> Bool {
         NativeProductSharedGetNotAdmitted { cause: _ } => true
         NativeProductSharedGetAnswered { result: _ } => false
       }
-      let unminted = match native_product_shared_get(standing: SameRepoPullRequestRun, address: addr, token_source: WorkloadIdentityToken) {
+      let unminted = match native_product_shared_get(standing: MergeGroupRun, address: addr, token_source: WorkloadIdentityToken) {
         NativeProductSharedGetAnswered { result: r } =>
           match r.verdict {
             FabricBlobGetUnavailable { address: _, fault: FabricBlobUnauthorized { cause: _ } } => true

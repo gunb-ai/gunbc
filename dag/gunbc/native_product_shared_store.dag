@@ -24,14 +24,14 @@ import gunbc.fabric.fabric_blob_r2 {
 //
 // WHAT THIS MODULE OWNS IS THE ONE FACT NO OTHER HOME DOES: WHICH RUN MAY USE THE STORE, AND HOW.
 // A fork's pull request is handed no workload identity at all, so it has no access and falls back to
-// the per-host L1 alone. A same-repo pull request may read and write: a pull request's tree is not any
-// merged tree, so a write from a pull request is the only way a later run of that pull request hits.
-// The merge queue's composed revision has NO access: it is the required run that proves the sha that
-// lands, so it builds its own compiler (the L1 is bound the same way, in compiler_gate_workflow
-// compiler_gate_native_cache_condition). The residual this accepts is stated, not hidden: an entry is
+// the per-host L1 alone. A same-repo pull request may only READ, and holds no write credential: a pull
+// request controls its own CI code, so whatever it wrote would be untrustworthy to every other run.
+// The merge queue's composed revision is trusted code on the revision that lands, so it is the ONLY
+// writer, and it reads too: a pull request whose native closure equals main's hits the queue's product.
+// The queue binds no per-host L1 (compiler_gate_workflow compiler_gate_native_cache_condition), so
+// nothing a pull request wrote on a host reaches it. The residual is stated, not hidden: an entry is
 // verified on read only against its own manifest, which whoever wrote it controls, so the trust
-// boundary is "who may write", and it is this function's, not a check; the only runs that may read
-// what a pull request wrote are pull requests.
+// boundary is "who may write", and it is this function's, not a check.
 //
 // DECLARED FRONTIER (DESIGN 3c), NOT YET CONSUMED BY EXECUTION. The named consumer is the seed's
 // preparation step (cli_run native_lane_runner prepare_emitted_compiler_for_entry), which today
@@ -51,15 +51,16 @@ type NativeProductRunStanding
   | UnattributedRun
 
 type NativeProductStoreAccess
-  = NativeProductStoreReadWrite
+  = NativeProductStoreReadOnly
+  | NativeProductStoreReadWrite
   | NativeProductStoreNoAccess { cause: NonEmptyStr }
 
 fn native_product_store_access(standing: NativeProductRunStanding) -> NativeProductStoreAccess {
   match standing {
     ForkPullRequestRun => NativeProductStoreNoAccess { cause: "a fork's pull request is handed no workload identity: the shared store is unreachable, the per-host store alone applies" as NonEmptyStr }
     UnattributedRun => NativeProductStoreNoAccess { cause: "the run's origin is not one of fork pull request, same-repo pull request or merge group: no standing to read or publish a shared product" as NonEmptyStr }
-    SameRepoPullRequestRun => NativeProductStoreReadWrite
-    MergeGroupRun => NativeProductStoreNoAccess { cause: "the merge queue's composed revision is the proof of the sha that lands: it builds its own compiler and neither reads nor publishes a product a pull request could have written" as NonEmptyStr }
+    SameRepoPullRequestRun => NativeProductStoreReadOnly
+    MergeGroupRun => NativeProductStoreReadWrite
   }
 }
 
@@ -86,6 +87,7 @@ type NativeProductSharedPut
 fn native_product_shared_get(standing: NativeProductRunStanding, address: FabricBlobAddress, token_source: AccessTokenSource) -> NativeProductSharedGet {
   match native_product_store_access(standing: standing) {
     NativeProductStoreNoAccess { cause: cause } => NativeProductSharedGetNotAdmitted { cause: cause }
+    NativeProductStoreReadOnly => NativeProductSharedGetAnswered { result: get_cache_blob(address: address, token_source: token_source) }
     NativeProductStoreReadWrite => NativeProductSharedGetAnswered { result: get_cache_blob(address: address, token_source: token_source) }
   }
 }
@@ -93,6 +95,7 @@ fn native_product_shared_get(standing: NativeProductRunStanding, address: Fabric
 fn native_product_shared_put(standing: NativeProductRunStanding, address: FabricBlobAddress, reading: FabricBlobReading, token_source: AccessTokenSource) -> NativeProductSharedPut {
   match native_product_store_access(standing: standing) {
     NativeProductStoreNoAccess { cause: cause } => NativeProductSharedPutNotAdmitted { cause: cause }
+    NativeProductStoreReadOnly => NativeProductSharedPutNotAdmitted { cause: "only the merge queue's composed revision publishes a shared product: a pull request controls its own CI code, so its write would be untrustworthy to every other run" as NonEmptyStr }
     NativeProductStoreReadWrite => NativeProductSharedPutAnswered { result: put_cache_blob(address: address, reading: reading, token_source: token_source) }
   }
 }
