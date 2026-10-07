@@ -1,12 +1,72 @@
 module gunbc.machine_intake_arrival_run
 
-import std.process { ProcessExit }
+import std.types { NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  fleet_converge_arrival_subject_env_name,
+}
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.auth.access_token_source {
+  select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  WorkloadIdentityToken,
+}
 import gunbc.machine_intake_arrival_admission { arrival_admit_executor }
+import gunbc.machine_intake_arrival_subject {
+  admit_arrival_subject, ArrivalSubjectAdmitted, ArrivalSubjectInPopulation,
+}
+import gunbc.machine_intake_arrival_interlock {
+  arrival_archive_interlock_from_live_slot,
+  ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
+}
 
-// THE ARRIVAL JOB'S WET DOOR. Re-runs the credential-free admit so WIF cannot outrun a refused
-// subject. O1c-2/O1c-3 writes stay behind this door; this inhabitance is the federated job itself
-// (census RealizedFederatedGrant). Names signed off msg_f03558d1.
+// THE ARRIVAL JOB'S WET DOOR (review 77263). Re-runs credential-free admit so WIF cannot
+// outrun a refused subject, then requires WorkloadIdentityToken (the minted WIF bearer,
+// in-process — not interpolated onto argv) and takes the archive interlock by a live
+// file_hold_acquire of arrival_slot_key. BMC account writes and the pinned bmc-mtjade1-gunbc
+// accessor stay behind this door: the locus is SecretLocusReservedNotOnAccessorRoster until
+// FamilyObserved, and version 1 does not exist until secret_provision mints it.
 
 fn arrival_converge_wet() -> ProcessExit {
-  arrival_admit_executor()
+  match arrival_admit_executor() {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => arrival_converge_after_admit()
+  }
+}
+
+fn arrival_converge_after_admit() -> ProcessExit {
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: c } =>
+      exit_failure(reason: concat("arrival_converge: ", c as String))
+    AccessTokenSourceSelected { source: WorkloadIdentityToken } =>
+      match actions_variable_read(name: fleet_converge_arrival_subject_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } =>
+          exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
+        ActionsVariablePresent { value: wire } =>
+          match admit_arrival_subject(wire: wire) {
+            ArrivalSubjectInPopulation { subject: s } => arrival_converge_under_archive_interlock(subject: s)
+            _ =>
+              exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(wire, "' after admit")))
+          }
+      }
+    AccessTokenSourceSelected { source: _ } =>
+      exit_failure(reason: "arrival_converge: this job federates; select_access_token_source must be WorkloadIdentityToken, not an operator credential")
+  }
+}
+
+fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> ProcessExit {
+  match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
+    ActionsVariablePresent { value: run_id } =>
+      match arrival_archive_interlock_from_live_slot(
+        subject: subject,
+        owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
+      ) {
+        ArrivalArchiveInterlockAdmitted { subject: _ } => ExitSuccess
+        ArrivalArchiveInterlockRefused { cause: c } =>
+          exit_failure(reason: concat("arrival_converge: ", c as String))
+      }
+  }
 }
