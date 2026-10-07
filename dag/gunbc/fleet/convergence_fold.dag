@@ -108,21 +108,11 @@ type StepGate
   = StepUngated
   | StepGatedOnAuthorization
 
-type StepPrincipalNeed
-  = PrincipalNotRequired
-  | PrincipalRequired
-
-type StepHostMutation
-  = StepDoesNotMutate
-  | StepMutatesSubject
-
 type ConvergenceStep<M> {
   identity: DeclarationRef
   order_member: M
   preconditions: List<StepPrecondition>
   gate: StepGate
-  principal: StepPrincipalNeed
-  mutation: StepHostMutation
 }
 
 fn ungated_readonly_step<M>(identity: DeclarationRef, order_member: M, preconditions: List<StepPrecondition>) -> ConvergenceStep<M> {
@@ -131,8 +121,6 @@ fn ungated_readonly_step<M>(identity: DeclarationRef, order_member: M, precondit
     order_member: order_member,
     preconditions: preconditions,
     gate: StepUngated,
-    principal: PrincipalNotRequired,
-    mutation: StepDoesNotMutate,
   }
 }
 
