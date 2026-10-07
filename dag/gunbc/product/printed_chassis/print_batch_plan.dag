@@ -10,6 +10,7 @@ import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json
 import gunbc.fleet_asset_identity {PhysicalAssetIdentity}
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected}
 import std.measure {micrometer}
+import std.checked_arithmetic {checked_int_to_nat}
 import product.printed_chassis.print_preparation {PlatePlacement,PlatePreparation,placement_admitted}
 
 type PlateSpec {attempt:String,plan:PlatePreparation}
@@ -21,8 +22,9 @@ fn placement(v:JsonValue) -> PlatePlacement? {
  let rz=match json_field_int(obj:v,key:"rz") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  let x=match json_field_int(obj:v,key:"x_um") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  let y=match json_field_int(obj:v,key:"y_um") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
- if x<0 || y<0 {return none}
- let p=PlatePlacement {id:id,rx:rx,ry:ry,rz:rz,x_um:micrometer(count: x as Nat),y_um:micrometer(count: y as Nat)}
+ let xn=match checked_int_to_nat(n:x) {Absent=>return none Present {value:v}=>v}
+ let yn=match checked_int_to_nat(n:y) {Absent=>return none Present {value:v}=>v}
+ let p=PlatePlacement {id:id,rx:rx,ry:ry,rz:rz,x_um:micrometer(count: xn),y_um:micrometer(count: yn)}
  if placement_admitted(p:p) {Present {value:p}} else {none}
 }
 fn plate(v:JsonValue) -> PlateSpec? {
