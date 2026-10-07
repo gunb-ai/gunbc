@@ -23,14 +23,17 @@ type SemVerConstraint = VersionConstraint
 // size limit on X.Y.Z (§2) or on numeric identifiers (§9), so an Int conversion on the
 // comparison path would invent a grammar failure the spec does not have.
 //
-// CONSTRUCTOR-CONFINED: the only admission is `semver_numeric_field`, which refuses an empty
-// sequence, anything outside ASCII digits 48..57, and a leading zero unless the sequence is
-// the single digit 0. Comparison and rendering project `.digits`; the parsed wire never
-// carries a bare list. The emitter lowers this one-field record to a plain alias, so the
-// confinement's rung is BY-SOURCE (only this constructor produces field values; every
-// consumer derives through it or the parser) — the witness file states the rung honestly and
-// pins the refusals as executing negative controls.
-type SemVerNumericField {
+// CONSTRUCTOR-SEALED: `sole_constructor` makes this record constructible ONLY inside this
+// module, so the one admission is `semver_numeric_field` (refuses an empty sequence, anything
+// outside ASCII digits 48..57, and a leading zero unless the sequence is the single digit 0).
+// An outside module writing `SemVerNumericField { .. }` meets the SoleConstructorViolation
+// refusal at compile time — the witness file holds that probe as an executing negative control
+// plus the via-constructor positive control. The native (stage0) route's modifier-parse gap is
+// a separate known defect, carried by g0_type_decl_modifier_parse_without_sealing_property and
+// cited here, not restated. Comparison and rendering project `.digits`. The emitter lowers this
+// one-field record to a plain alias, so the confinement's rung is BY-SOURCE plus the executing
+// controls — the witness file states the rung honestly.
+type SemVerNumericField sole_constructor {
   digits: List<Int>
 }
 
@@ -64,8 +67,14 @@ type SemVerVersion {
 
 // §11 decides major, then minor, then patch "as numbers". With admission refusing leading
 // zeroes, a digit run's LENGTH is its magnitude and equal lengths compare digit-wise in ASCII
-// order — section 11's numeric comparison at any width.
-fn semver_compare_numeric_digits(a: List<Int>, b: List<Int>) -> Ordering {
+// order — section 11's numeric comparison at any width. The comparator takes CONFINED fields
+// and projects .digits itself, so no raw code-point list can reach it (side chat review
+// 5435818773); the run-length helper below stays internal over plain lists.
+fn semver_compare_numeric_digits(a: SemVerNumericField, b: SemVerNumericField) -> Ordering {
+  semver_compare_digit_runs(a: a.digits, b: b.digits)
+}
+
+fn semver_compare_digit_runs(a: List<Int>, b: List<Int>) -> Ordering {
   if a.count() < b.count() { Less } else if a.count() > b.count() { Greater } else { semver_compare_digits_lexical(a: a, b: b) }
 }
 
@@ -94,7 +103,7 @@ fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Orderi
   match a {
     SemVerNumericIdentifier { digits: ad } => match b {
       SemVerNumericIdentifier { digits: bd } =>
-        semver_compare_numeric_digits(a: ad.digits, b: bd.digits)
+        semver_compare_numeric_digits(a: ad, b: bd)
       SemVerAlphanumericIdentifier { label: _ } => Less
     }
     SemVerAlphanumericIdentifier { label: al } => match b {
@@ -137,11 +146,11 @@ fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifie
 }
 
 fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
-  match semver_compare_numeric_digits(a: a.major.digits, b: b.major.digits) {
+  match semver_compare_numeric_digits(a: a.major, b: b.major) {
     Equal =>
-      match semver_compare_numeric_digits(a: a.minor.digits, b: b.minor.digits) {
+      match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
         Equal =>
-          match semver_compare_numeric_digits(a: a.patch.digits, b: b.patch.digits) {
+          match semver_compare_numeric_digits(a: a.patch, b: b.patch) {
             Equal => semver_compare_pre_release(a: a.pre_release, b: b.pre_release)
             other => other
           }

@@ -39,9 +39,14 @@ pub type SemVerIdentity = NonEmptyStr;
 
 pub type SemVerConstraint = NonEmptyStr;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SemVerNumericField {
-    pub digits: Rc<Vec<i64>>,
+    digits: Rc<Vec<i64>>,
+}
+impl SemVerNumericField {
+    pub fn digits(&self) -> Rc<Vec<i64>> {
+        self.digits.clone()
+    }
 }
 
 pub fn semver_numeric_field(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerNumericField>> {
@@ -77,14 +82,14 @@ pub fn semver_numeric_field(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerNumericField>>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "_variant")]
 pub enum SemVerIdentifier {
     SemVerNumericIdentifier { digits: Rc<SemVerNumericField> },
     SemVerAlphanumericIdentifier { label: NonEmptyStr },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SemVerVersion {
     pub major: Rc<SemVerNumericField>,
     pub minor: Rc<SemVerNumericField>,
@@ -93,7 +98,14 @@ pub struct SemVerVersion {
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
 
-pub fn semver_compare_numeric_digits(a: Rc<Vec<i64>>, b: Rc<Vec<i64>>) -> Ordering {
+pub fn semver_compare_numeric_digits(
+    a: Rc<SemVerNumericField>,
+    b: Rc<SemVerNumericField>,
+) -> Ordering {
+    semver_compare_digit_runs(a.digits(), b.digits())
+}
+
+pub fn semver_compare_digit_runs(a: Rc<Vec<i64>>, b: Rc<Vec<i64>>) -> Ordering {
     if ((a.clone().len() as i64) < (b.clone().len() as i64)) {
         Ordering::Less
     } else {
@@ -157,7 +169,7 @@ pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier
         SemVerIdentifier::SemVerNumericIdentifier { digits: ad, .. } => {
             match (*b.clone()).clone() {
                 SemVerIdentifier::SemVerNumericIdentifier { digits: bd, .. } => {
-                    semver_compare_numeric_digits(ad.digits.clone(), bd.digits.clone())
+                    semver_compare_numeric_digits(ad.clone(), bd.clone())
                 }
                 SemVerIdentifier::SemVerAlphanumericIdentifier { label: _, .. } => Ordering::Less,
             }
@@ -251,23 +263,16 @@ pub fn semver_compare_pre_release(
 }
 
 pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
-    match semver_compare_numeric_digits(
-        a.major.clone().digits.clone(),
-        b.major.clone().digits.clone(),
-    ) {
-        Ordering::Equal => match semver_compare_numeric_digits(
-            a.minor.clone().digits.clone(),
-            b.minor.clone().digits.clone(),
-        ) {
-            Ordering::Equal => match semver_compare_numeric_digits(
-                a.patch.clone().digits.clone(),
-                b.patch.clone().digits.clone(),
-            ) {
-                Ordering::Equal => {
-                    semver_compare_pre_release(a.pre_release.clone(), b.pre_release.clone())
+    match semver_compare_numeric_digits(a.major.clone(), b.major.clone()) {
+        Ordering::Equal => match semver_compare_numeric_digits(a.minor.clone(), b.minor.clone()) {
+            Ordering::Equal => {
+                match semver_compare_numeric_digits(a.patch.clone(), b.patch.clone()) {
+                    Ordering::Equal => {
+                        semver_compare_pre_release(a.pre_release.clone(), b.pre_release.clone())
+                    }
+                    other => other.clone(),
                 }
-                other => other.clone(),
-            },
+            }
             other => other.clone(),
         },
         other => other.clone(),
@@ -277,7 +282,7 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
     match (*id.clone()).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { digits: d, .. } => {
-            semver_label_from_code_points(d.digits.clone())
+            semver_label_from_code_points(d.digits())
         }
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
@@ -297,14 +302,14 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
 pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
     {
         let core = v1_rt::concat(
-            semver_label_from_code_points(v.major.clone().digits.clone()),
+            semver_label_from_code_points(v.major.clone().digits()),
             v1_rt::concat(
                 ".".to_string(),
                 v1_rt::concat(
-                    semver_label_from_code_points(v.minor.clone().digits.clone()),
+                    semver_label_from_code_points(v.minor.clone().digits()),
                     v1_rt::concat(
                         ".".to_string(),
-                        semver_label_from_code_points(v.patch.clone().digits.clone()),
+                        semver_label_from_code_points(v.patch.clone().digits()),
                     ),
                 ),
             ),

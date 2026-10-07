@@ -357,3 +357,40 @@ test fn w_numeric_field_constructor_refuses_forged_sequences() -> Bool {
     Present { value: _ } => false
   }
 }
+
+// THE SEAL'S OUTSIDE-MODULE PROBE (side chat review 5435818773): `sole_constructor` makes the
+// record constructible only inside extdeps.version.semver, so a module OUTSIDE it writing one
+// of the three forged literals — a leading-zero run, a non-digit code point, an empty run —
+// must meet the SoleConstructorViolation refusal at compile time, and a module that goes
+// through the checking constructor must compile with no such refusal. The .dag route is what
+// this probe executes; the native route's modifier-parse gap is a separate known defect
+// (g0_type_decl_modifier_parse_without_sealing_property), cited not restated.
+fn sole_constructor_refusals(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_leading_zero_field_source: String = "module probe_forged_leading_zero_field\nimport extdeps.version.semver { SemVerNumericField }\nfn forged() -> SemVerNumericField { SemVerNumericField { digits: [48, 49] } }\n"
+
+data forged_non_digit_field_source: String = "module probe_forged_non_digit_field\nimport extdeps.version.semver { SemVerNumericField }\nfn forged() -> SemVerNumericField { SemVerNumericField { digits: [65] } }\n"
+
+data forged_empty_field_source: String = "module probe_forged_empty_field\nimport extdeps.version.semver { SemVerNumericField }\nfn forged() -> SemVerNumericField { SemVerNumericField { digits: [] } }\n"
+
+test fn w_semver_numeric_field_construction_is_sealed_outside_its_module() -> Bool {
+  sole_constructor_refusals(source: forged_leading_zero_field_source) >= 1
+    && sole_constructor_refusals(source: forged_non_digit_field_source) >= 1
+    && sole_constructor_refusals(source: forged_empty_field_source) >= 1
+}
+
+data admitted_field_source: String = "module probe_admitted_field\nimport extdeps.version.semver { SemVerNumericField, semver_numeric_field }\nfn admitted() -> SemVerNumericField? { semver_numeric_field(cps: [50]) }\n"
+
+test fn w_semver_numeric_field_admission_has_no_sole_constructor_refusal() -> Bool {
+  match compile_dag_diagnostic_census(source: admitted_field_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation")) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}

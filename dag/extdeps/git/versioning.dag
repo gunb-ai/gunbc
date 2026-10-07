@@ -56,9 +56,9 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
 }
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
-  match semver_compare_numeric_digits(a: a.major.digits, b: b.major.digits) {
-    Equal => match semver_compare_numeric_digits(a: a.minor.digits, b: b.minor.digits) {
-      Equal => semver_compare_numeric_digits(a: a.patch.digits, b: b.patch.digits)
+  match semver_compare_numeric_digits(a: a.major, b: b.major) {
+    Equal => match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
+      Equal => semver_compare_numeric_digits(a: a.patch, b: b.patch)
       other => other
     }
     other => other
