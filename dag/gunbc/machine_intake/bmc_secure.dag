@@ -1200,7 +1200,11 @@ type ObservedReading sole_constructor {
   observed_at: ObserverClockInstant
 }
 
-fn observed_reading(evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedReading {
+fn observed_reading(evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedReading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_probe"),
+  ]
+{
   ObservedReading { evidence: evidence, observed_at: observed_at }
 }
 
@@ -1226,7 +1230,11 @@ type ObservedPublishedAccount sole_constructor {
   observed_at: ObserverClockInstant
 }
 
-fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedPublishedAccount {
+fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedPublishedAccount
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+  ]
+{
   ObservedPublishedAccount { kind: kind, evidence: evidence, observed_at: observed_at }
 }
 
@@ -2173,7 +2181,16 @@ fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<Evi
 
 data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake_bmc_secure dry realization over gunbc.bmc_model BmcWorld" as NonEmptyStr
 
-fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant {
+// THE DRY REALIZATION'S OBSERVER SCHEDULE, SEALED. An EpochMs is turned into a sealed observer instant
+// only on behalf of the dry read and the dry apply, which are themselves admitted only to the named
+// witness callers: the seed does not refuse a record at an EpochMs formal (gunbc#13385), so these admit
+// lists are the only wall between a supplied number and a sealed instant.
+fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
+  ]
+{
   observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
 }
 
@@ -2181,7 +2198,12 @@ fn dry_evidence(text: String) -> EvidenceRef {
   EvidenceRef { label: text as NonEmptyStr, digest: content_hash_of_value(value: text) }
 }
 
-fn dry_probe(world: BmcWorld, user: IpmiUserId, password: String, what: String, at: ObserverClockInstant) -> ObservedCredentialProbe {
+fn dry_probe(world: BmcWorld, user: IpmiUserId, password: String, what: String, at: ObserverClockInstant) -> ObservedCredentialProbe
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_published_lan_probes"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+  ]
+{
   let text = join(["dry ipmi probe ", what, " user ", to_string(user as Int), " at ", to_string(observer_instant_millis(instant: at) as Int)], "")
   if bmc_ipmi_user_accepts(world: world, user: user, password: password) {
     ObservedCredentialAccepted { reading: observed_reading(evidence: dry_evidence(text: concat(text, " -> accepted")), observed_at: at) }
@@ -2196,7 +2218,11 @@ fn dry_published_lan_probes(
   published_user: IpmiUserId,
   published_password: String,
   at: ObserverClockInstant,
-) -> List<ObservedPublishedLanProbe> {
+) -> List<ObservedPublishedLanProbe>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+  ]
+{
   fold(census.members, init: [], f: (acc, m) =>
     match m {
       IpmiNonLanChannelMember { channel: _, medium: _ } => acc
@@ -2231,7 +2257,11 @@ fn dry_read_bmc_account_state(
   break_glass_password: String,
   attempt: AttemptIdentity,
   read_at_millis: EpochMs,
-) -> BmcAccountStateObservation {
+) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
+  ]
+{
   let at = dry_bmc_account_instant(millis: read_at_millis)
   observed_bmc_account_state(
     subject: subject,
@@ -2288,7 +2318,13 @@ fn dry_apply_bmc_account_plan(
   managed_fetch: SecretCredentialFetch,
   published_fetch: SecretCredentialFetch,
   applied_at_millis: EpochMs,
-) -> BmcAccountDryStep {
+) -> BmcAccountDryStep
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+  ]
+{
   let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
     Absent => BmcIpmiSetUserPasswordStep { world: world, completed: false }
     Present { value: pw } => bmc_ipmi_set_user_password(world: world, user: plan.managed_write.user, password: pw)

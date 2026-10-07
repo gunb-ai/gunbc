@@ -772,7 +772,7 @@ fn served_observation_issue_query_surface(instance: HostDashboardInstance, plan:
   let attempts = match observed { WorkflowAttemptsObserved { attempts } => attempts WorkflowAttemptsRefused { reason: _ } => [] }
   let body = issue_query_snapshot_for_projection(proj: plan, attempts: attempts,
     attempts_refused: match observed { WorkflowAttemptsObserved { attempts: _ } => none WorkflowAttemptsRefused { reason } => Present { value: reason } },
-    standings: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance)), launch: launch,
+    standings: served_standings_after_snapshot_close(read: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))), launch: launch,
     stale_nodes: stale_attempt_nodes(observations: served_attempt_revision_observations(instance: instance, attempts: attempts), current_revision_hex: served_current_revision_hex(launch: launch)),
     profiles: served_observation_profiles_for_instance(instance: instance))
   match body {

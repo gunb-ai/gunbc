@@ -8706,15 +8706,18 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 }
             }
             _ => {
-                if let (Some(mut a), Some(b)) =
-                    (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                // A persistent RRB append, never an element copy: a `Value::List` operand is
+                // shared as-is and only a free-monoid chain is materialized (and charged).
+                if let (Some((a_items, a_copied)), Some((b_items, b_copied))) =
+                    (value_to_list_carrier(&left), value_to_list_carrier(&right))
                 {
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += (a.len() + b.len()) as u64;
+                    counters.list_concat_items_copied += a_copied + b_copied;
                     drop(counters);
-                    a.extend(b);
-                    return Ok(list_value((a)));
+                    let mut result = (*a_items).clone();
+                    result.append((*b_items).clone());
+                    return Ok(list_value(result));
                 }
             }
         }
@@ -10517,27 +10520,6 @@ fn match_pattern(
                 field_bindings,
                 parent_identity,
             } => {
-                // A variant pattern against a HOST bool is a native arm or nothing: the identity
-                // inference carried decides which value it denotes, and an undecidable one refuses.
-                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
-                // never reach this branch and keep their structural match below.
-                if let Value::Bool(held) = value {
-                    let arm = name.rsplit('.').next().unwrap_or(name);
-                    return match native_variant_reading(parent_identity, arm) {
-                        NativeVariantReading::HostBool(b) => {
-                            if *held == b {
-                                Some(HashMap::new())
-                            } else {
-                                None
-                            }
-                        }
-                        NativeVariantReading::Structural => None,
-                        NativeVariantReading::Refused(detail) => {
-                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
-                            None
-                        }
-                    };
-                }
                 // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
                 // containment path, but values are constructed with the bare last segment (the
                 // short-name normalization at value construction). Every name-vs-literal
@@ -10554,7 +10536,11 @@ fn match_pattern(
                 // { value: t } => ... }` failed non-exhaustive on any record element (pre-existing
                 // on main; located via the interpreted-parse suite reds). Hoisted here verbatim;
                 // Variant payloads excluded so the Variant arm's inline raw-value handling stays
-                // authoritative.
+                // authoritative. A host Bool payload is a raw value like any other: these unwraps
+                // run BEFORE the host-bool arm below, which otherwise answered `Present`/`Absent`
+                // against a raw `Bool?` as a native True/False arm and missed, so a REST-decoded
+                // `email_verified: Bool?` failed non-exhaustive on `true` (gunbc.recurring_failure_mode
+                // optional_bool_payload_read_as_a_native_arm).
                 if name_last == "Present"
                     && parent_enum_is(parent_enum.as_ref(), "Optional")
                     && !matches!(value, Value::Null)
@@ -10580,6 +10566,27 @@ fn match_pattern(
                         bindings.extend(sub_bindings);
                     }
                     return Some(bindings);
+                }
+                // Otherwise a variant pattern against a HOST bool is a native arm or nothing: the identity
+                // inference carried decides which value it denotes, and an undecidable one refuses.
+                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
+                // never reach this branch and keep their structural match below.
+                if let Value::Bool(held) = value {
+                    let arm = name.rsplit('.').next().unwrap_or(name);
+                    return match native_variant_reading(parent_identity, arm) {
+                        NativeVariantReading::HostBool(b) => {
+                            if *held == b {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        }
+                        NativeVariantReading::Structural => None,
+                        NativeVariantReading::Refused(detail) => {
+                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
+                            None
+                        }
+                    };
                 }
                 if name_last == "Absent" && field_bindings.is_empty() {
                     return match value {
@@ -23687,15 +23694,15 @@ macro_rules! v1_builtin_arms {
                             }
                             None => Ok(None),
                         },
-                        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
-                            (Some(mut a_items), Some(b_items)) => {
+                        _ => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
+                            (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
                                 let mut counters = $ctx.mutation_counters.borrow_mut();
                                 counters.list_concat_calls += 1;
-                                counters.list_concat_items_copied +=
-                                    (a_items.len() + b_items.len()) as u64;
+                                counters.list_concat_items_copied += a_copied + b_copied;
                                 drop(counters);
-                                a_items.extend(b_items);
-                                Ok(Some(list_value((a_items))))
+                                let mut result = (*a_items).clone();
+                                result.append((*b_items).clone());
+                                Ok(Some(list_value(result)))
                             }
                             _ => Ok(None),
                         },
