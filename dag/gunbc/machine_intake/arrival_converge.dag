@@ -1018,6 +1018,9 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } => {
       let key = step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject)
+      // Apply mints through discharge_bmc_secure_apply. Noop never requires a fold discharge
+      // (arrival_receipt_authorization_required is false on BmcSecurePhaseNoop), so a grant
+      // copied here would be unused.
       let discharges = match bmc.apply {
         Present { value: ap } =>
           match discharge_bmc_secure_apply(
@@ -1029,20 +1032,7 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
             Present { value: d } => [d]
             Absent => []
           }
-        Absent =>
-          match bmc.grant {
-            Present { value: g } =>
-              match bound_bmc_secure_host(key: key) {
-                Absent => []
-                Present { value: host } =>
-                  if grant_discharges_bmc_secure_account_write(g: g, host: host) {
-                    [instance_authorization(key: key, principal: g.principal)]
-                  } else {
-                    []
-                  }
-              }
-            Absent => []
-          }
+        Absent => []
       }
       fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc), discharges: discharges)
     }
