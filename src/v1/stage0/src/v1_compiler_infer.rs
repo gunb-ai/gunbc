@@ -3132,7 +3132,9 @@ pub fn produced_is_unsolved_generic_at_conformance(
                 continue;
             }
             _ => {
-                break unify_binding_is_uninformative(n.clone());
+                let label = type_node_label(n.clone(), source_indices.clone());
+                break ((label.clone() == empty_list_element_placeholder_id())
+                    || unify_binding_is_uninformative(n.clone()));
             }
         }
     }
@@ -12105,6 +12107,12 @@ pub fn type_is_bare_collection_carrier(
 ) -> bool {
     if (n.connective.clone() == Connective::Disj)
         && formal_type_is_container_name(n.clone(), source_indices.clone())
+    {
+        true
+    } else if crate::v1_std_core::qualified_last_segment(type_node_label(
+        n.clone(),
+        source_indices.clone(),
+    )) == "Empty".to_string()
     {
         true
     } else if formal_type_is_unary_container(n.clone(), source_indices.clone())

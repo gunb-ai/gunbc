@@ -2147,7 +2147,9 @@ fn produced_is_unsolved_generic_at_conformance(
     Present { value: TypeVariable { id: id } } => id == empty_list_element_placeholder_id()
     Present { value: Resolved { node: inner } } =>
       produced_is_unsolved_generic_at_conformance(n: inner, source_indices: source_indices)
-    _ => unify_binding_is_uninformative(n: n)
+    _ =>
+      let label = type_node_label(n: n, source_indices: source_indices)
+      label == empty_list_element_placeholder_id() || unify_binding_is_uninformative(n: n)
   }
 }
 
@@ -7947,6 +7949,8 @@ fn bind_unbound_collection_element_generic(
 
 fn type_is_bare_collection_carrier(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.connective == Disj && formal_type_is_container_name(n: n, source_indices: source_indices) {
+    true
+  } else if qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices)) == "Empty" {
     true
   } else if formal_type_is_unary_container(n: n, source_indices: source_indices) && (n.children |> count) != 1 {
     true
