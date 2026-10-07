@@ -32,6 +32,14 @@ data operator_host_srv4: HostIdentity = "srv4"
 // So this row names the unit and licenses nothing.
 data operator_host_mtcollins1: HostIdentity = "mtcollins1"
 
+// MTJADE1 (2026-10-06). The operator's Foxconn Ampere Mt. Jade unit. Named here for the same reason
+// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a §3 fork.
+// NAMING IS NOT ENROLLMENT. This unit is not an executor fleet host and is not a row of
+// gunbc.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
+// there would enroll a unit). The standing live-ops grant (gunbc.auth.standing_operator_grant
+// mtjade1_live_standing_grant) binds this identity as its host scope.
+data operator_host_mtjade1: HostIdentity = "mtjade1"
+
 // GROUP A DECOMMISSIONED (operator, 2026-10-07): srv5, srv6, srv7 and srv8 -- the DGX Spark units spark-a3ee,
 // spark-3bd5, spark-c2b1 and spark-ac79 on fabric cage 1 -- were sold and wiped, and their identity slots are
 // deleted with every consumer. Their history (procurement, the wireless move, the fabric cabling, the pair
