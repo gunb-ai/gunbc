@@ -1,6 +1,5 @@
 module v2.test.claim.variant_field_infer_probe
 
-import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding }
 import v2.compiler.infer {
   ConstructIsRecord,
   ConstructIsVariantArm,
@@ -14,7 +13,7 @@ import v2.std.witness { Holds, Violates }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.extdeps.languages.dag { dag_binding_denotation, dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, list_append }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -41,8 +40,7 @@ import v2.std.node {
 }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import std.types { Map }
-import v2.std.collection { List, empty_map, map_insert, map_lookup }
+import v2.std.collection { List }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
 
@@ -360,7 +358,7 @@ fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
 // conventions by hand made the probe a second copy of the lowering rather than an observation of
 // it, and its binder minting refused on exactly the conventions it copied (DESIGN 5: the reading
 // must come from the thing itself). The resolve-side and refusal controls ride the same route
-// (vfp_partial_src, vfp_nullary_sum_src, vfp_fx2_src).
+// (vfp_partial_src; vfp_nullary_sum_src and vfp_fx2_src sit below).
 
 data vfp_fixture_src: String = "module vfp_fixture\n\ntype ParseTree {\n  root: Int\n}\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn make() -> Verdict {\n  Pass { at: 1 }\n}\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n    Fail => 0\n  }\n}\n\nfn pick(t: ParseTree) -> Int {\n  t.root\n}"
 
@@ -385,36 +383,6 @@ fn vfp_assemble_module(src: String, name: Symbol, artifact: Artifact, cu: Symbol
     admission: Admission { subject: ResolutionSubject { name: Cons { head: name, tail: Empty } }, imports: Empty },
     lm: dag_language_model()
   )
-}
-
-// DIAGNOSTIC VARIANTS: (a) explicit binder dropped to the shorthand form; (b) single arm, to
-// discriminate the coproduct route (non_exhaustive) from any other refusal.
-data vfp_shorthand_src: String = "module p\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at } => at\n    Fail => 0\n  }\n}"
-
-data vfp_onearm_src: String = "module p\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n  }\n}"
-
-fn vfp_decode_shorthand_reasons() -> CliWireResponse {
-  let r = vfp_reading(src: vfp_shorthand_src)
-  CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
-}
-
-fn vfp_decode_onearm_reasons() -> CliWireResponse {
-  let r = vfp_reading(src: vfp_onearm_src)
-  CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
-}
-
-data vfp_twobinder_src: String = "module p\n\ntype Pair = A { x: Int } | B { y: Int }\n\nfn unbox(s: Pair) -> Int {\n  match s {\n    A { x: p } => p\n    B { y: q } => q\n  }\n}"
-
-data vfp_intlit_src: String = "module p\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n    Fail => 5\n  }\n}"
-
-fn vfp_decode_twobinder() -> CliWireResponse {
-  let r = vfp_reading(src: vfp_twobinder_src)
-  CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
-}
-
-fn vfp_decode_intlit() -> CliWireResponse {
-  let r = vfp_reading(src: vfp_intlit_src)
-  CliWirePrintable { bytes: "arm=" + symbol_lexeme(sym: r.arm_body_fact) + " match=" + symbol_lexeme(sym: r.match_fact), exit: ExitSuccess }
 }
 
 data vfp_variant_artifact: Artifact = Artifact {
@@ -729,185 +697,3 @@ fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
 
 fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
 
-// TEMPORARY FINDER INSTRUMENT -- prints which link of the subject chain is Absent on the arrow
-// fixture's resolved tree (the finder runs on the RESOLVED tree, independent of infer's outcome).
-// DELETED WITH THE RFM RETIREMENT RECEIPT.
-// TEMPORARY PATTERN DECODE: renders the resolved arm's PATTERN subtree, so the tag edge's state
-// (raw cell vs resolved) and the field edges are visible. Same receipt as vfp_decode_dup.
-
-// TEMPORARY decode: the binder's recorded declared type, to locate the arm mismatch.
-fn vfp_decl_shape_text(d: Optional<Node>) -> String {
-  match d {
-    Absent => "absent"
-    Present { value: t } =>
-      match t.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          if symbol_eq(a: id, b: ^Int) { "atom:^Int(canonical)" } else { "atom:" + symbol_lexeme(sym: id) + "(non-canonical)" }
-        TypeNode { connective: Conj } => "conj"
-        TypeNode { connective: Disj } => "disj"
-        TypeNode { connective: _ } => "type"
-        ComputationNode { behavior: _ } => "comp"
-        _ => "other"
-      }
-  }
-}
-
-fn vfp_decode_binder_type() -> CliWireResponse {
-  match vfp_fixture_resolved() {
-    Rejected { diagnostics: _ } => CliWirePrintable { bytes: "refused", exit: ExitSuccess }
-    Accepted { value: resolved, diagnostics: _ } => {
-      let body = vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
-      match body {
-        Absent => CliWirePrintable { bytes: "no-arm", exit: ExitSuccess }
-        Present { value: b } =>
-          match resolved_tree_lexical_binding(tree: resolved, reference: b) {
-            Absent => CliWirePrintable { bytes: "no-binding", exit: ExitSuccess }
-            Present { value: binding } =>
-              CliWirePrintable { bytes: vfp_decl_shape_text(d: binding.declared), exit: ExitSuccess }
-          }
-      }
-    }
-  }
-}
-
-fn vfp_reasons_of(o: Outcome<ResolvedTree>) -> CliWireResponse {
-  match o {
-    Rejected { diagnostics: r } =>
-      CliWirePrintable { bytes: vfp_cat_reasons(xs: vfp_reasons(r: r)), exit: ExitSuccess }
-    Accepted { value: _, diagnostics: r } =>
-      CliWirePrintable { bytes: "ok:" + vfp_cat_reasons(xs: vfp_reasons(r: r)), exit: ExitSuccess }
-  }
-}
-
-fn vfp_cat_reasons(xs: List<Symbol>) -> String {
-  match xs {
-    Empty => ""
-    Cons { head: h, tail: t } => symbol_lexeme(sym: h) + "/" + vfp_cat_reasons(xs: t)
-  }
-}
-
-fn vfp_decode_binder_type_twobinder() -> CliWireResponse {
-  match vfp_assemble_module(src: vfp_twobinder_src, name: ^p, artifact: vfp_arrow_artifact, cu: ^vfp_twobinder_cu) {
-    Rejected { diagnostics: _ } => CliWirePrintable { bytes: "refused", exit: ExitSuccess }
-    Accepted { value: resolved, diagnostics: _ } => {
-      let body = vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
-      match body {
-        Absent => CliWirePrintable { bytes: "no-arm", exit: ExitSuccess }
-        Present { value: b } =>
-          match resolved_tree_lexical_binding(tree: resolved, reference: b) {
-            Absent => CliWirePrintable { bytes: "no-binding", exit: ExitSuccess }
-            Present { value: binding } =>
-              CliWirePrintable { bytes: vfp_decl_shape_text(d: binding.declared), exit: ExitSuccess }
-          }
-      }
-    }
-  }
-}
-
-fn vfp_decode_int_identity() -> CliWireResponse {
-  let same = symbol_eq(a: ^Int, b: ^dag_binding_type_int)
-  match dag_binding_denotation(sym: ^dag_binding_type_int) {
-    Absent => CliWirePrintable { bytes: "denotation=absent same=" + vfp_bool_text(b: same), exit: ExitSuccess }
-    Present { value: t } =>
-      CliWirePrintable { bytes: "denotation=" + vfp_decl_shape_text(d: t) + " same=" + vfp_bool_text(b: same), exit: ExitSuccess }
-  }
-}
-
-fn vfp_bool_text(b: Bool) -> String {
-  match b {
-    True => "true"
-    False => "false"
-  }
-}
-
-fn vfp_probe_kids(n: Node) -> String {
-  fold(n.children, init: "", f: fn(acc, e) {
-        let tag = match e.label {
-          StructuralLabel { label: CoreMarker { marker: _ } } => "core"
-          Authored { name: nm } => "fld:" + symbol_lexeme(sym: nm)
-          Positional => "pos"
-          _ => "other"
-        }
-        let tgt = match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } => "atom(" + symbol_lexeme(sym: id) + "|occ" + "?" + ")"
-          TypeNode { connective: Conj } => "conj(occ?)"
-          ComputationNode { behavior: Match } => "MATCH(o" + "?" + ")"
-          ComputationNode { behavior: _ } => "comp(o" + "?" + ")"
-          _ => "node(o" + "?" + ")"
-        }
-        acc + " " + tag + "->" + tgt
-      })
-}
-
-fn vfp_probe_anchor(d: Diagnostic) -> String {
-  match d.at {
-    NodeLocus { anchor: a } =>
-      match a.at.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          "atom:" + symbol_lexeme(sym: id) + "|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
-        TypeNode { connective: Conj } =>
-          "conj|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
-        ComputationNode { behavior: Match } =>
-          "MATCH|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
-        ComputationNode { behavior: _ } =>
-          "comp|o" + "?" + "[" + vfp_probe_kids(n: a.at) + "]"
-        _ => "node|o" + "?"
-      }
-    DeclarationLocus { declaration: dd } => "decl"
-    _ => "other-locus"
-  }
-}
-
-fn vfp_last_diag(xs: List<Diagnostic>) -> Optional<Diagnostic> {
-  match xs {
-    Empty => Absent
-    Cons { head: h, tail: t } =>
-      match vfp_last_diag(xs: t) {
-        Absent => Present { value: h }
-        Present { value: last } => Present { value: last }
-      }
-  }
-}
-
-fn vfp_decode_refusal_locus() -> CliWireResponse {
-  match vfp_fixture_resolved() {
-    Rejected { diagnostics: _ } => CliWirePrintable { bytes: "resolve-refused", exit: ExitSuccess }
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: r } =>
-          match vfp_last_diag(xs: r.tail) {
-            Absent => CliWirePrintable { bytes: symbol_lexeme(sym: r.head.reason) + " @" + vfp_probe_anchor(d: r.head), exit: ExitSuccess }
-            Present { value: d } =>
-              CliWirePrintable { bytes: symbol_lexeme(sym: d.reason) + " @" + vfp_probe_anchor(d: d), exit: ExitSuccess }
-          }
-        Accepted { value: _, diagnostics: _ } => CliWirePrintable { bytes: "infer-ok", exit: ExitSuccess }
-      }
-  }
-}
-
-// TEMPORARY (xl2 cost bisect): the Map primitive's per-op cost shape. Steps for inserting N keys;
-// comparing N=512 vs N=2048 decides O(1)/O(log n) (4x steps) vs O(n) per op (16x).
-fn vfp_map_built(n: Int) -> Map<Int, Int> {
-  vfp_map_build(m: empty_map(), i: 0, n: n)
-}
-
-fn vfp_map_build(m: Map<Int, Int>, i: Int, n: Int) -> Map<Int, Int> {
-  match i < n {
-    True => vfp_map_build(m: map_insert(m: m, key: i, value: i), i: i + 1, n: n)
-    False => m
-  }
-}
-
-fn vfp_map_bench_512_holds() -> Bool {
-  match map_lookup(m: vfp_map_built(n: 512), key: 511) {
-    Present { value: v } => v == 511
-    Absent => false
-  }
-}
-
-fn vfp_map_bench_2048_holds() -> Bool {
-  match map_lookup(m: vfp_map_built(n: 2048), key: 2047) {
-    Present { value: v } => v == 2047
-    Absent => false
-  }
-}
