@@ -820,7 +820,6 @@ fn vfp_probe_kids(n: Node) -> String {
           CoreMarker { marker: m } => "core:" + symbol_lexeme(sym: m)
           Authored { name: nm } => "fld:" + symbol_lexeme(sym: nm)
           Positional => "pos"
-          Instantiation => "inst"
           _ => "other"
         }
         let tgt = match e.target.kind {
