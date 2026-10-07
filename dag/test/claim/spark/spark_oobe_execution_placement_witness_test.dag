@@ -8,7 +8,7 @@ import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv10 }
 import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdmission,
   ForwardingAdmitted,
@@ -165,12 +165,12 @@ test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool {
 // refusal is attributable to the allocation and to nothing else.
 test fn w_the_same_relay_with_an_allocated_identity_has_complete_evidence() -> Bool {
   match relay_assessment(obs: RadioAssociated {
-    machine: FleetAllocatedMachine { host: operator_host_srv7 },
+    machine: FleetAllocatedMachine { host: operator_host_srv10 },
     radio_interface: "wlan0" as RadioInterfaceName,
     associated_ssid: "spark-0c75" as ObservedUnitAccessPointSsid,
   }) {
     RelayMeetsRequirements { host: h, radio_interface: _, associated_ssid: ssid } =>
-      h == operator_host_srv7 && ssid == "spark-0c75"
+      h == operator_host_srv10 && ssid == "spark-0c75"
     RelayAssessmentDeclined { cause: _ } => false
   }
 }

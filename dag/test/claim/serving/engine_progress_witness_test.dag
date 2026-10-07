@@ -1,5 +1,6 @@
 module test.claim.serving.engine_progress_witness
 
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { second, second_count }
@@ -25,10 +26,10 @@ import gunbc.serving.engine_progress {
   ServingStepBoundStanding, StepBoundMeasured, StepBoundDeclaredUnmeasured,
 }
 
-data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupB, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
 
 fn w_launch(field: String) -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+  vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
 }
 
 fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
@@ -141,7 +142,7 @@ test fn samples_across_a_replaced_exporter_are_unread() -> Bool {
   !w_is_not_progressing(p: p) && w_unread_cause(p: p).contains("replaced")
     && w_unread_cause(p: engine_progress_read(
       endpoint: w_endpoint,
-      before_launch: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr },
+      before_launch: LaunchUnobserved { group: FabricGroupB, obligation: "metrics did not answer" as NonEmptyStr },
       after_launch: w_seen(field: "1789300000.12"),
       before: none,
       after: w_sample(running: 3, counter: "4.0", at: 1789400600),

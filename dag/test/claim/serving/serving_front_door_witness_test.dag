@@ -37,7 +37,7 @@ import gunbc.serving.serving_front_door {
   DoorSeatHeldByAnotherCaller, DoorSeatLeaseExpired, DoorPermitPartitionNotThisPool, DoorPermitClassNotServed,
   DoorSeatAmountNotOneSeat, DoorSeatAcquiredMoreThanOnce, DoorSeatFenceGenerationDisagrees, DoorPermitAlreadyRedeemed,
   FrontDoorRedemption, DoorRedeemed, DoorRedemptionRefused,
-  DoorPoolConfiguredForAnotherGroup, DoorPoolConfiguredTwice, DoorPoolSelected, front_door_pool_for,
+  DoorPoolConfiguredTwice, DoorPoolSelected, front_door_pool_for,
   PlanLeaveWithHolder, PlanRelease, front_door_recovery_plan,
   SeatGrantCurrency, FrontDoorTally,
   serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
@@ -61,7 +61,6 @@ data witness_key: MacKey = MacKey {
 
 data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB, class: InteractiveQualitySensitive, seats: 1)
 data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB, class: BatchQualityTolerant, seats: 2)
-data group_a_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupA, class: InteractiveQualitySensitive, seats: 1)
 data witness_partition: PartitionId = quality_pool.partition
 data witness_attempt: NonEmptyStr = "attempt-7" as NonEmptyStr
 data witness_admitting: EventId = "ev-acquire-7" as EventId
@@ -73,9 +72,6 @@ data group_b_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
 )
 data group_b_relaunch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
   group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
-)
-data group_a_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
-  group: FabricGroupA, endpoint: "http://192.168.1.232:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
 )
 
 fn seat_for(attempt: NonEmptyStr, launch: VllmEndpointProcessLaunch) -> HarnessSeatReference {
@@ -216,7 +212,7 @@ test fn a_valid_caller_with_no_seat_grant_is_refused_and_the_refusal_is_counted(
 }
 
 test fn a_permit_granted_on_another_group_is_refused() -> Bool {
-  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_a_launch, group_wire: "group-a")), at: 1100, history: held_history)
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_launch, group_wire: "group-not-this-door")), at: 1100, history: held_history)
   match v {
     FrontDoorRefused { cause: DoorPermitForAnotherGroup { permit_group: _, door_group: _ } } => true
     _ => false
@@ -384,7 +380,7 @@ test fn a_permit_naming_a_same_group_partition_that_is_not_a_seat_pool_is_refuse
 }
 
 test fn a_permit_naming_another_groups_seat_partition_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: group_a_pool.partition, expires_at: 1600), at: 1100, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: "group-group-not-this-door-quality-seat-v1" as PartitionId, expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
     _ => false
   }
@@ -614,13 +610,6 @@ fn verdict_at_door(door: FrontDoorIdentity) -> FrontDoorVerdict {
     ledger: fn(pool, reference, grant, generation) { seat_grant_currency_of(pool: pool, walk: held_history, reference: reference, grant: grant, generation: generation) },
     redeem: redeem_against(redemptions: no_redemptions),
   )
-}
-
-test fn a_door_configured_with_another_groups_pool_for_the_class_refuses() -> Bool {
-  match verdict_at_door(door: door_with(pools: [group_a_pool, tolerant_pool])) {
-    FrontDoorRefused { cause: DoorPoolConfiguredForAnotherGroup { class: _, pool_group: g } } => (g as String) == "group-a"
-    _ => false
-  }
 }
 
 test fn a_door_configured_with_two_pools_for_one_class_refuses_rather_than_choosing() -> Bool {

@@ -17,7 +17,7 @@ import extdeps.networkmanager.nmcli {
   NmDeviceActivated, NmDeviceDisconnected, nm_device_state_of_getter,
 }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.fleet_host_identity { operator_host_srv12 }
+import gunbc.fleet_host_identity { operator_host_srv11, operator_host_srv12 }
 import gunbc.fleet_wireless_link {
   WirelessLinkDesired, WirelessLinkObservation, WirelessLinkPlan,
   DisconnectCountRead, kernel_disconnect_line_count,
@@ -28,7 +28,7 @@ import gunbc.fleet_wireless_link {
   WirelessLinkAlreadyConverged, WirelessLinkApplied, WirelessLinkRefused,
 }
 
-fn srv7_desired() -> WirelessLinkDesired { spark_wireless_link_desired(host: operator_host_srv7) }
+fn srv11_desired() -> WirelessLinkDesired { spark_wireless_link_desired(host: operator_host_srv11) }
 
 // ── upstream parses ──────────────────────────────────────────────────────────
 
@@ -67,14 +67,14 @@ test fn witness_iw_link_not_connected_and_missing_signal_is_unreadable() -> Bool
 }
 
 test fn witness_disconnect_count_matches_only_the_interface() -> Bool {
-  let log = "1.0 srv7 kernel: wlP9s9: disconnect from AP ac:91:9b:c4:4d:b6 for new auth\n1.1 srv7 kernel: wlP9s9: authenticate with ac:91:9b:c4:4d:b6\n2.0 srv7 kernel: wlP9s9: disconnect from AP ac:91:9b:c4:4d:b6 for new auth\n3.0 srv7 kernel: wlan1: disconnect from AP 00:00:00:00:00:01 for new auth\n"
+  let log = "1.0 srv11 kernel: wlP9s9: disconnect from AP ac:91:9b:c4:4d:b6 for new auth\n1.1 srv11 kernel: wlP9s9: authenticate with ac:91:9b:c4:4d:b6\n2.0 srv11 kernel: wlP9s9: disconnect from AP ac:91:9b:c4:4d:b6 for new auth\n3.0 srv11 kernel: wlan1: disconnect from AP 00:00:00:00:00:01 for new auth\n"
   kernel_disconnect_line_count(interface: "wlP9s9" as NonEmptyStr, kernel_log: log) == 2
 }
 
 // ── desired roster ───────────────────────────────────────────────────────────
 
 test fn witness_spark_rows_present_including_srv12() -> Bool {
-  let srv7 = match wireless_link_desired_for(host: operator_host_srv7) {
+  let srv11 = match wireless_link_desired_for(host: operator_host_srv11) {
     Present { value: d } => d.interface as String == "wlP9s9" && d.connection as String == "Verizon_39TTYV"
     Absent => false
   }
@@ -82,7 +82,7 @@ test fn witness_spark_rows_present_including_srv12() -> Bool {
     Present { value: d } => d.interface as String == "wlP9s9" && d.connection as String == "Verizon_39TTYV"
     Absent => false
   }
-  srv7 && srv12
+  srv11 && srv12
 }
 
 // THE COVERAGE JOIN: every procured Spark identity has a wireless row. Removing srv12's row (the
@@ -111,7 +111,7 @@ test fn witness_auth_retries_modify_argv_is_zero_for_indefinitely() -> Bool {
 
 // spark-2196 read 2026-10-04: auth-retries -1 (global default, 3 attempts, the last one prompts).
 test fn witness_default_auth_retries_is_drift_planned_to_zero() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_retries(auth: "-1", autoconnect: "0")) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_retries(auth: "-1", autoconnect: "0")) {
     Apply { plan: p } =>
       (match p.auth_retries { Present { value: NmRetryIndefinitely } => true  _ => false })
       && (match p.autoconnect_retries { Absent => true  Present { value: _ } => false })
@@ -124,7 +124,7 @@ test fn witness_default_auth_retries_is_drift_planned_to_zero() -> Bool {
 // spark-2196 read 2026-10-04: autoconnect-retries -1 (global default, 4 tries then blocked). Still
 // at the upstream default is drift, planned to 0 on the governing profile.
 test fn witness_default_autoconnect_retries_is_drift_planned_to_zero() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_retries(auth: "0", autoconnect: "-1")) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_retries(auth: "0", autoconnect: "-1")) {
     Apply { plan: p } =>
       (match p.autoconnect_retries { Present { value: NmRetryIndefinitely } => true  _ => false })
       && (match p.auth_retries { Absent => true  Present { value: _ } => false })
@@ -153,25 +153,25 @@ test fn witness_active_parser_picks_the_interface_row_and_unescapes_the_name() -
 
 test fn witness_a_different_active_profile_refuses() -> Bool {
   let o = obs_with_active(active: "44444444-0000-0000-0000-000000000000:wlP9s9:Neighbour")
-  match wireless_link_decide(desired: srv7_desired(), observed: o) { Refuse { reason: r } => (r as String).contains("Neighbour")  _ => false }
+  match wireless_link_decide(desired: srv11_desired(), observed: o) { Refuse { reason: r } => (r as String).contains("Neighbour")  _ => false }
 }
 
 test fn witness_no_active_profile_refuses() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_active(active: "")) { Refuse { reason: _ } => true  _ => false }
+  match wireless_link_decide(desired: srv11_desired(), observed: obs_with_active(active: "")) { Refuse { reason: _ } => true  _ => false }
 }
 
 // THE RED THE REVIEW OF gunbc#13199 ASKED FOR: the desired profile, looked up by NAME, is correct
 // (disable), while the profile actually active on wlP9s9, looked up by UUID, is drifting (enable).
 // An observe that reads by name reports converged; this one reads the governing profile.
 test fn witness_desired_profile_correct_active_profile_drifting_is_drift() -> Bool {
-  match wireless_link_converge(desired: srv7_desired(), run: fake_run_split(name_persisted: "disable", uuid_persisted: "enable")) {
+  match wireless_link_converge(desired: srv11_desired(), run: fake_run_split(name_persisted: "disable", uuid_persisted: "enable")) {
     WirelessLinkAlreadyConverged { observed: _ } => false
     WirelessLinkApplied { before: _, plan: _, after: _ } => false
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "readback"
   }
 }
 
-data nm_no_secrets_journal: String = "1759470000.0 srv8 NetworkManager[1022]: <warn>  [1759470000.0] device (wlP9s9): no secrets: No agents were available for this request.\n1759470001.0 srv8 NetworkManager[1022]: <info>  [1759470001.0] device (wlP9s9): state change: need-auth -> failed\n"
+data nm_no_secrets_journal: String = "1759470000.0 srv10 NetworkManager[1022]: <warn>  [1759470000.0] device (wlP9s9): no secrets: No agents were available for this request.\n1759470001.0 srv10 NetworkManager[1022]: <info>  [1759470001.0] device (wlP9s9): state change: need-auth -> failed\n"
 
 test fn witness_disconnected_with_no_secrets_is_named() -> Bool {
   let o = obs_full(runtime: "Power save: off", persisted: "disable", auth: "0", device: "30 (disconnected)", journal: nm_no_secrets_journal)
@@ -217,14 +217,14 @@ fn obs(runtime: String, persisted: String) -> WirelessLinkObservation {
 }
 
 test fn witness_both_off_is_noop() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs(runtime: "Power save: off", persisted: "disable")) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs(runtime: "Power save: off", persisted: "disable")) {
     Noop => true
     _ => false
   }
 }
 
 test fn witness_persisted_enable_is_drift_runtime_untouched() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs(runtime: "Power save: off", persisted: "enable")) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs(runtime: "Power save: off", persisted: "enable")) {
     Apply { plan: p } =>
       (match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false })
       && (match p.runtime { Absent => true  Present { value: _ } => false })
@@ -233,22 +233,22 @@ test fn witness_persisted_enable_is_drift_runtime_untouched() -> Bool {
 }
 
 test fn witness_persisted_default_is_drift_not_converged() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs(runtime: "Power save: off", persisted: "default")) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs(runtime: "Power save: off", persisted: "default")) {
     Apply { plan: _ } => true
     _ => false
   }
 }
 
 test fn witness_runtime_on_is_drift() -> Bool {
-  match wireless_link_decide(desired: srv7_desired(), observed: obs(runtime: "Power save: on", persisted: "disable")) {
+  match wireless_link_decide(desired: srv11_desired(), observed: obs(runtime: "Power save: on", persisted: "disable")) {
     Apply { plan: p } => match p.runtime { Present { value: IwPowerSaveOff } => true  _ => false }
     _ => false
   }
 }
 
 test fn witness_unreadable_is_refusal_not_absence() -> Bool {
-  let rt = match wireless_link_decide(desired: srv7_desired(), observed: obs(runtime: "", persisted: "disable")) { Refuse { reason: _ } => true  _ => false }
-  let ps = match wireless_link_decide(desired: srv7_desired(), observed: obs(runtime: "Power save: off", persisted: "")) { Refuse { reason: _ } => true  _ => false }
+  let rt = match wireless_link_decide(desired: srv11_desired(), observed: obs(runtime: "", persisted: "disable")) { Refuse { reason: _ } => true  _ => false }
+  let ps = match wireless_link_decide(desired: srv11_desired(), observed: obs(runtime: "Power save: off", persisted: "")) { Refuse { reason: _ } => true  _ => false }
   rt && ps
 }
 
@@ -287,28 +287,28 @@ fn fake_run_split(name_persisted: String, uuid_persisted: String) -> fn(List<Str
 }
 
 test fn witness_converge_already_off_is_noop() -> Bool {
-  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "Power save: off", persisted: "disable", modify_exit: 0)) {
+  match wireless_link_converge(desired: srv11_desired(), run: fake_run(runtime: "Power save: off", persisted: "disable", modify_exit: 0)) {
     WirelessLinkAlreadyConverged { observed: o } => match o.link { IwLinkConnected { bssid: _, freq_mhz: f, signal_dbm: _ } => f == 5180  _ => false }
     _ => false
   }
 }
 
 test fn witness_converge_readback_still_drifted_refuses() -> Bool {
-  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "Power save: on", persisted: "enable", modify_exit: 0)) {
+  match wireless_link_converge(desired: srv11_desired(), run: fake_run(runtime: "Power save: on", persisted: "enable", modify_exit: 0)) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "readback"
     _ => false
   }
 }
 
 test fn witness_converge_failed_modify_refuses_at_apply() -> Bool {
-  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "Power save: off", persisted: "enable", modify_exit: 1)) {
+  match wireless_link_converge(desired: srv11_desired(), run: fake_run(runtime: "Power save: off", persisted: "enable", modify_exit: 1)) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "apply"
     _ => false
   }
 }
 
 test fn witness_converge_unreadable_refuses_at_observe() -> Bool {
-  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "garbage", persisted: "disable", modify_exit: 0)) {
+  match wireless_link_converge(desired: srv11_desired(), run: fake_run(runtime: "garbage", persisted: "disable", modify_exit: 0)) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "observe"
     _ => false
   }

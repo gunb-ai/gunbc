@@ -42,7 +42,7 @@ test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
 // oracle, and automating the literal's update collapses the assertion to `measure() == measure()`.
 // A count also cannot distinguish "every expected endpoint is present" from "some other endpoint
 // answered instead": it stays green under any substitution of one row for another, which is exactly
-// the fabrication the srv5/srv6 row below was originally written to catch and which the count could
+// the fabrication the per-host address rows below were originally written to catch and which the count could
 // not see.
 //
 // So completeness is asserted as an IDENTITY JOIN over the endpoint labels, in both directions and
@@ -82,10 +82,6 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv2_host_lan_endpoint,
   srv3_host_lan_endpoint,
   srv4_host_lan_endpoint,
-  srv5_host_lan_endpoint,
-  srv6_host_lan_endpoint,
-  srv7_host_lan_endpoint,
-  srv8_host_lan_endpoint,
   srv9_host_lan_endpoint,
   srv10_host_lan_endpoint,
   srv11_host_lan_endpoint,
@@ -130,38 +126,14 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
     && srv3_bmc_endpoint.role == BmcOutOfBand
 }
 
-// DCH-0 (2026-09-02). THIS ROW IS THE INVERSE OF THE ONE IT REPLACES, and the replacement is the
-// honest shape rather than a deletion. The prior row asserted that srv5/srv6 were NAMED as
-// HostIdentity slots and bound to NO endpoint in the topology -- naming is not enrollment -- and it
-// was written to red the moment someone authored an address for a machine that had not arrived.
-// Enrollment has now been taken as a decision by the DCH-0 roadmap node, so that assertion is false
-// by intent and cannot simply be retired: retiring it would leave the addresses themselves
-// unwitnessed, which is precisely the fabrication half the old row was defending.
-//
-// So the guard is inverted and kept discriminating, mirroring the srv3 row above: both slots are
-// enrolled, each bound to its own identity, at the address its CR1000A static reservation carries in
-// gunbc.spark.dgx_procurement (srv5 -> spark_a3ee_reservation 192.168.1.226, srv6 ->
-// spark_3bd5_reservation 192.168.1.225, joined by the attributable
-// dgx_spark_router_binding_operator_allocation), with the role split asserted so a model that
-// collapses a Spark's host OS onto some other attachment role reds rather than shifting a count.
-// Swapping the two addresses -- the live risk, since the ascending-order tie-break no longer
-// describes them after the wifi re-key -- reds here.
-//
-// WHAT THIS ROW DOES NOT ASSERT, and must not be read as asserting: that either address was observed
-// from a host. It pins the corpus against the transcribed reservation authority, which is a §3
-// citation check, not a readback. The live observed-vs-desired reconciliation of the rendered
-// serving unit on both hosts is outstanding and is reported by
-// gunbc.spark.serving_observation_scope `spark_observation_coverage`, which answers
-// SparkObservationIncomplete with srv5 and srv6 in `missing` until a probe transaction supplies them.
+// The Spark host slots are enrolled, each bound to its own identity, at the address its CR1000A
+// static reservation carries in gunbc.spark.dgx_procurement, with the role split asserted so a model
+// that collapses a Spark's host OS onto some other attachment role reds rather than shifting a count.
+// It pins the corpus against the transcribed reservation authority -- a citation check, not a
+// readback from the host.
 
-test fn fleet_intent_network_srv7_to_srv11_enrolled_at_their_reserved_addresses() -> Bool {
-  srv7_host_lan_endpoint.address == "192.168.1.232"
-    && srv7_host_lan_endpoint.role == HostOperatingSystem
-    && srv7_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv7 }
-    && srv8_host_lan_endpoint.address == "192.168.1.233"
-    && srv8_host_lan_endpoint.role == HostOperatingSystem
-    && srv8_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv8 }
-    && srv9_host_lan_endpoint.address == "192.168.1.236"
+test fn fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses() -> Bool {
+  srv9_host_lan_endpoint.address == "192.168.1.236"
     && srv9_host_lan_endpoint.role == HostOperatingSystem
     && srv9_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv9 }
     && srv10_host_lan_endpoint.address == "192.168.1.237"
@@ -171,17 +143,6 @@ test fn fleet_intent_network_srv7_to_srv11_enrolled_at_their_reserved_addresses(
     && srv11_host_lan_endpoint.role == HostOperatingSystem
     && srv11_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv11 }
     && operator_host_srv9 == "srv9" && operator_host_srv10 == "srv10" && operator_host_srv11 == "srv11"
-}
-
-test fn fleet_intent_network_srv5_srv6_enrolled_at_their_reserved_addresses() -> Bool {
-  srv5_host_lan_endpoint.address == "192.168.1.226"
-    && srv5_host_lan_endpoint.role == HostOperatingSystem
-    && srv5_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv5 }
-    && srv6_host_lan_endpoint.address == "192.168.1.225"
-    && srv6_host_lan_endpoint.role == HostOperatingSystem
-    && srv6_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv6 }
-    && operator_host_srv5 == "srv5"
-    && operator_host_srv6 == "srv6"
 }
 
 // THE BINDING review 59815 REQUIRED, MADE EXECUTABLE. Before the repair the printer endpoint and the

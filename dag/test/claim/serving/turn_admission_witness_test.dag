@@ -145,7 +145,7 @@ test fn unreadable_admission_evidence_never_admits() -> Bool {
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) != "pending-retry")
     && (t_disposition(a: a) == "refused-measure")
-    && string_contains(s: serving_admission_detail(group: FabricGroupA, admission: a), pattern: "occupancy unread, which is not idle")
+    && string_contains(s: serving_admission_detail(group: FabricGroupB, admission: a), pattern: "occupancy unread, which is not idle")
 }
 
 // ── AN OCCUPIED GROUP IS NOT A WORSE CANDIDATE; IT IS NOT A CANDIDATE ─────────────────────────
@@ -208,7 +208,7 @@ test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
 
 // ── A RESTART IS A NEW OFFER SUBJECT ──────────────────────────────────────────────────────────
 //
-// Keyed on the group, group A's first invocation and its successor are one offer, and the
+// Keyed on the group, a group's first invocation and its successor are one offer, and the
 // predecessor's readiness, queue and capacity evidence price the successor. Keyed on the launch they
 // are two, which is what lets a seat taken against one engine fail to authorize a request against
 // the engine that replaced it.
@@ -217,12 +217,10 @@ test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
 // a field the key and the equality both ignored, which is the shape where a carrier holds a fact its
 // identity does not agree to.
 test fn a_restarted_engine_is_a_different_offer_subject() -> Bool {
-  let first = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
-  let second = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
-  let other_group = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.233" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
-  let relocated = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.240" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  let first = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  let second = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
+  let relocated = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.240" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
   !vllm_endpoint_process_launch_is(launch: first, other: second)
-    && !vllm_endpoint_process_launch_is(launch: first, other: other_group)
     && vllm_endpoint_process_launch_is(launch: first, other: first)
     && ((vllm_endpoint_process_launch_key(launch: first) as String) != (vllm_endpoint_process_launch_key(launch: second) as String))
     && !vllm_endpoint_process_launch_is(launch: first, other: relocated)
@@ -235,11 +233,11 @@ test fn an_unnameable_launch_is_not_offered() -> Bool {
     "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
     "vllm:num_requests_running\{model_name=\"deepseek\"} 0.0\n",
   ], "")
-  (match harness_launch_from_body(group: FabricGroupA, address: "192.168.1.232", body: no_process_line) {
+  (match harness_launch_from_body(group: FabricGroupB, address: "192.168.1.232", body: no_process_line) {
      LaunchUnobserved { group: _, obligation: o } => string_contains(s: o as String, pattern: "cannot be named")
      LaunchObserved { launch: _, receipt: _ } => false
    })
-    && (match harness_launch_from_body(group: FabricGroupA, address: "192.168.1.232", body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
+    && (match harness_launch_from_body(group: FabricGroupB, address: "192.168.1.232", body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
           LaunchObserved { launch: l, receipt: _ } => (l.process_start_field as String) == "1757200000.5"
           LaunchUnobserved { group: _, obligation: _ } => false
         })

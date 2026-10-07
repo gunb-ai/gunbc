@@ -1,5 +1,6 @@
 module test.claim.spark.vllm_kv_layout_receipt_witness
 
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
 import std.optional { Present, Absent }
 import std.nat { Nat }
@@ -52,8 +53,8 @@ fn w_fork_revision() -> VllmSourceRevision {
 
 fn w_launch_id(invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupA,
-    head: spark_pair_serving_head(group: FabricGroupA),
+    group: FabricGroupB,
+    head: spark_pair_serving_head(group: FabricGroupB),
     systemd_invocation: invocation as NonEmptyStr,
     container_id: "gunbc-spark-pair" as NonEmptyStr,
     executable_digest: w_digest(hex: w_exe),

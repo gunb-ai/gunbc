@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.content_hash { ContentHash, Sha256Hash, Sha1Hash, Sha256Digest, Sha1Digest, Sha256DigestHex, Sha1DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.fleet_host_identity { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv10 }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, vllm_serving_launch,
   LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
@@ -23,13 +23,13 @@ data w_exe_a: String = "11111111111111111111111111111111111111111111111111111111
 data w_exe_b: String = "2222222222222222222222222222222222222222222222222222222222222222"
 data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
 
-// The three launches the group A head actually produced on 2026-09-05 differ only by invocation:
+// The three launches the (since-decommissioned) group A head actually produced on 2026-09-05 differ only by invocation:
 // one rendered unit, one image, three engine cores with different KV. That is the shape this
 // witness fixtures.
 fn w_launch(invocation: String, container: String, exe: String, started: EpochSecs) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupA,
-    head: spark_pair_serving_head(group: FabricGroupA),
+    group: FabricGroupB,
+    head: spark_pair_serving_head(group: FabricGroupB),
     systemd_invocation: invocation as NonEmptyStr,
     container_id: container as NonEmptyStr,
     executable_digest: w_sha256(hex: exe),
@@ -62,29 +62,16 @@ test fn two_launches_of_one_unit_are_not_one_incarnation() -> Bool {
 // other about one launch, and it gets its own arm so it cannot be actioned as a restart.
 test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover() -> Bool {
   let rebuilt = w_launch(invocation: "inv-16-36", container: "gunbc-spark-pair", exe: w_exe_b, started: 1788000000)
-  let moved = vllm_serving_launch(
-    group: FabricGroupB,
-    head: spark_pair_serving_head(group: FabricGroupA),
-    systemd_invocation: "inv-16-36" as NonEmptyStr,
-    container_id: "gunbc-spark-pair" as NonEmptyStr,
-    executable_digest: w_sha256(hex: w_exe_a),
-    unit_digest: w_sha256(hex: w_unit),
-    started_at: 1788000000,
-  )
   (match same_launch(a: w_first(), b: rebuilt) {
      LaunchContradiction { invocation: i, field: f } => (i as String) == "inv-16-36" && (f as String) == "executable_digest"
      _ => false
    })
-    && (match same_launch(a: w_first(), b: moved) {
-          LaunchContradiction { invocation: _, field: f } => (f as String) == "group"
-          _ => false
-        })
     && !join_is_admissible(j: same_launch(a: w_first(), b: rebuilt))
     && (match same_launch(
           a: w_first(),
           b: vllm_serving_launch(
-            group: FabricGroupA,
-            head: operator_host_srv9,
+            group: FabricGroupB,
+            head: operator_host_srv10,
             systemd_invocation: "inv-16-36" as NonEmptyStr,
             container_id: "gunbc-spark-pair" as NonEmptyStr,
             executable_digest: w_sha256(hex: w_exe_a),
@@ -104,8 +91,8 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
 // legible rather than reading as a rebuild.
 test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_rebuild() -> Bool {
   let other_family = vllm_serving_launch(
-    group: FabricGroupA,
-    head: spark_pair_serving_head(group: FabricGroupA),
+    group: FabricGroupB,
+    head: spark_pair_serving_head(group: FabricGroupB),
     systemd_invocation: "inv-16-36" as NonEmptyStr,
     container_id: "gunbc-spark-pair" as NonEmptyStr,
     executable_digest: w_sha1(hex: "4444444444444444444444444444444444444444"),

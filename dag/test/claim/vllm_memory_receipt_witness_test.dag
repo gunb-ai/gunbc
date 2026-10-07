@@ -1,5 +1,6 @@
 module test.claim.vllm_memory_receipt
 
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, EpochSecs }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
@@ -31,7 +32,7 @@ data w_digest_hex: String = "444444444444444444444444444444444444444444444444444
 
 fn w_launch(invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupA,
+    group: FabricGroupB,
     head: operator_host_srv9,
     systemd_invocation: invocation as NonEmptyStr,
     container_id: "glm-canary" as NonEmptyStr,

@@ -9,10 +9,11 @@ import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
   RenderedUnitDigested, RenderedUnitDigestUnavailable,
-  spark_pair_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
+  spark_pair_realization, spark_pair_container_env_covers_every_baked_name,
   spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
   spark_pair_head_unit_name, spark_pair_rendered_unit_digest,
 }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
@@ -23,8 +24,6 @@ import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, glm_5_3_flash_snapshot,
   SnapshotPlacement, HubCachePlacement, spark_hub_cache_root,
 }
-
-fn w_first() -> SparkPairRealization? { first(spark_pair_realizations()) }
 
 // THE CONTROLLED FIXTURE, AND WHY THE UNIT-FILE TESTS BELOW NEED ONE NOW. The live desired roster
 // refuses -- its sequence capacity is unmeasured for GLM-5.3-Flash, and its weights snapshot is
@@ -58,7 +57,7 @@ data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
 }
 
 fn w_fixture_unit() -> SparkPairServingUnit {
-  spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
+  spark_pair_serving_unit_with(group: FabricGroupB, capacity: SeqCapacityMeasured {
     max_num_seqs: 32,
     basis: "controlled fixture: this witness asserts renderer shape, never a measured capacity" as NonEmptyStr,
   })
@@ -78,35 +77,6 @@ fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) ->
       match r {
         SparkPairRealizationRefused { group: _, cause: _ } => false
         SparkPairRealized { group: _, head: h, workers: ws } => f(h, ws)
-      }
-  }
-}
-
-// THE LIVE ROSTER RENDERS DEEPSEEK, AND THIS WITNESS IS WHY IT DOES. A revision of this branch
-// pointed the production served-model name at GLM-5.3-Flash while this module still built its
-// runtime from `extdeps.docker.images.sparkrun_vllm_ds4_gb10` -- whose vLLM was measured on
-// 2026-09-08 not to register `Glm5NextForConditionalGeneration` at all. This witness was RED on that
-// revision, and it was right: the production planner had begun admitting a tuple that cannot start.
-//
-// IT WOULD HAVE BEEN EASY TO MAKE GREEN THE WRONG WAY, by relaxing it to accept whatever the roster
-// now renders. That would have blessed the impossible combination instead of reporting it. The
-// combination is removed instead: GLM lives behind gunbc.spark.glm_canary_converge, which admits its
-// exact arm through `serving_arm_admits` -- the wall that refuses an image that cannot load the
-// checkpoint.
-test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool {
-  match w_first() {
-    Absent => false
-    Present { value: r } =>
-      match r {
-        SparkPairRealizationRefused { group: _, cause: _ } => false
-        SparkPairRealized { group: _, head: h, workers: _ } => {
-          let t = w_unit_text(u: h.unit)
-          string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
-            && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
-            && string_contains(s: t, pattern: "--kv-cache-dtype fp8_ds_mla")
-            && !string_contains(s: t, pattern: "GLM")
-            && !string_contains(s: t, pattern: "glm")
-        }
       }
   }
 }

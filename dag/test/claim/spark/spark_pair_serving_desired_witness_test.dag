@@ -16,7 +16,7 @@ import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
 import gunbc.spark.pair_serving_realization { spark_pair_vllm_serve_argv }
 import gunbc.spark.model_snapshot_acquisition { deepseek_v4_flash_snapshot }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
-import gunbc.fleet_host_identity { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired {
@@ -24,7 +24,7 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit, spark_pair_serving_unit_with,
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
   SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured, SeqCapacityByOperatorPolicy,
-  spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for, spark_pair_serving_groups, spark_pair_serving_desired_hosts,
+  spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for,
   spark_pair_serving_unit_wire,
 }
 
@@ -102,7 +102,7 @@ fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
 // though it is not the live state: it is the wall against a group that has neither a measurement nor
 // an operator choice.
 test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
-  w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
+  w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupB, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
 }
 
 // THE LIVE COUNT IS A CHOSEN LAUNCH ARGUMENT. Dressing `--max-num-seqs` as SeqCapacityMeasured would
@@ -124,53 +124,29 @@ test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool {
 // destroyed by answering Unmeasured: the unit refused, the realization refused, the apply plan
 // refused, and no engine could ever start to produce the launch line a measurement needs.
 test fn the_promoted_group_is_launchable() -> Bool {
-  match spark_pair_serving_unit(group: FabricGroupA) {
+  match spark_pair_serving_unit(group: FabricGroupB) {
     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
     SparkPairServingUnitRefused { group: _, cause: _ } => false
   }
 }
 
-// GROUP A IS srv6 AT THE HEAD WITH srv5, srv7 AND srv8 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
+// GROUP B IS srv9 AT THE HEAD WITH srv10, srv11 AND srv12 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
 // tensor-parallel four, and the engine is vLLM.
-test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool {
-  match spark_pair_serving_unit(group: FabricGroupA) {
+test fn group_b_is_four_ranks_headed_by_srv9_at_their_rail_addresses() -> Bool {
+  match spark_pair_serving_unit(group: FabricGroupB) {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: e, head: h, workers: ws } =>
-      host_identity_eq(a: h.host, b: operator_host_srv6)
+      host_identity_eq(a: h.host, b: operator_host_srv9)
         && length(ws) == 3
-        && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv5)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv7)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv8))
+        && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv10)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv11)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv12))
         && (match e { VllmServing { args: a } => a.tensor_parallel_size == 4  OllamaServing { profile: _ } => false })
         && (match fabric_rail_address(host: h.host) { Present { value: a } => ipv4_address_eq(a: a, b: h.host_ip)  Absent => false })
         && all(ws, w => match fabric_rail_address(host: w.host) { Present { value: a } => ipv4_address_eq(a: a, b: w.host_ip)  Absent => false })
   }
 }
 
-// EACH GROUP HAS EXACTLY ONE OWNER, AND THIS WITNESS ASSERTED BOTH BELONGED TO DEEPSEEK PRODUCTION.
-// It required two promoted groups and all eight fabric hosts in the desired projection, which was
-// true when written and stopped being true when group B was withdrawn for the GLM canary. A roster
-// witness that outlives the roster it describes is the same defect as an annotation that outlives its
-// declaration: it keeps asserting a fact nobody holds any more, and it is CI rather than a reader that
-// finds out.
-//
-// THE OWNERSHIP IT NOW ASSERTS: group A is DeepSeek production and reaches the desired hosts; group B
-// is NOT in that projection, because it is reserved for the canary. That group B still RESOLVES to a
-// ready unit when asked directly is a separate fact and deliberately left alone -- the unit function
-// is total, and its arm being reachable is not the same as the roster claiming it.
-test fn group_a_is_the_only_promoted_group_and_group_b_is_not_in_the_projection() -> Bool {
-  length(spark_pair_serving_groups) == 1
-    && length(spark_pair_serving_desired_hosts()) == 4
-    && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv6))
-    && !any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv9))
-}
-
 test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool {
   let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupB))
   string_contains(s: w, pattern: "group group-b tp=4 head=srv9@192.168.110.17 workers=")
     && string_contains(s: w, pattern: "srv12@192.168.110.16")
-}
-
-test fn the_wire_names_the_group_its_degree_and_every_rank() -> Bool {
-  let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupA))
-  string_contains(s: w, pattern: "group group-a tp=4 head=srv6@192.168.110.14 workers=")
-    && string_contains(s: w, pattern: "srv5@192.168.110.11")
 }

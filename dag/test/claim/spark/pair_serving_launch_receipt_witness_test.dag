@@ -6,6 +6,8 @@ import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv10 }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.pair_serving_launch_receipt {
   LaunchTerminal, LaunchServing, LaunchExited, LaunchKilled, LaunchReadinessTimedOut, LaunchTerminalUnobserved,
@@ -37,7 +39,7 @@ fn w_launch_on(group: FabricGroup, invocation: String) -> VllmServingLaunch {
 }
 
 fn w_launch(invocation: String) -> VllmServingLaunch {
-  w_launch_on(group: FabricGroupA, invocation: invocation)
+  w_launch_on(group: FabricGroupB, invocation: invocation)
 }
 
 fn w_attempt_from(group: FabricGroup, invocation: String, n: Nat, terminal: LaunchTerminal, digest_hex: String) -> PairServingLaunchAttempt {
@@ -51,11 +53,30 @@ fn w_attempt_from(group: FabricGroup, invocation: String, n: Nat, terminal: Laun
   }
 }
 
-fn w_attempt(invocation: String, n: Nat, terminal: LaunchTerminal) -> PairServingLaunchAttempt {
-  w_attempt_from(group: FabricGroupA, invocation: invocation, n: n, terminal: terminal, digest_hex: w_unit)
+fn w_attempt_on_head(head: HostIdentity, invocation: String, n: Nat, terminal: LaunchTerminal, digest_hex: String) -> PairServingLaunchAttempt {
+  PairServingLaunchAttempt {
+    launch: vllm_serving_launch(
+      group: FabricGroupB,
+      head: head,
+      systemd_invocation: invocation as NonEmptyStr,
+      container_id: "gunbc-spark-pair" as NonEmptyStr,
+      executable_digest: w_digest(hex: w_exe),
+      unit_digest: w_digest(hex: w_unit),
+      started_at: 1788000000,
+    ),
+    desired_digest: w_digest(hex: digest_hex),
+    attempt_number: n,
+    started_at: 1788000000,
+    terminal: terminal,
+    layout_receipt: none,
+  }
 }
 
-// EXIT 137 IS A SIGKILL SHAPE. 128+n is the convention for "terminated by signal n", so the group A
+fn w_attempt(invocation: String, n: Nat, terminal: LaunchTerminal) -> PairServingLaunchAttempt {
+  w_attempt_from(group: FabricGroupB, invocation: invocation, n: n, terminal: terminal, digest_hex: w_unit)
+}
+
+// EXIT 137 IS A SIGKILL SHAPE. 128+n is the convention for "terminated by signal n", so the group B
 // head's status=137 classifies as signal 9 and NOT as an ordinary exit status.
 test fn exit_codes_above_128_classify_as_the_signal_they_encode() -> Bool {
   (match launch_terminal_from_exit(code: 137) { LaunchKilled { signal: s } => s == 9  _ => false })
@@ -157,8 +178,8 @@ test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool {
 
 test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool {
   let mixed = [
-    w_attempt_from(group: FabricGroupA, invocation: "inv-old", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
-    w_attempt_from(group: FabricGroupA, invocation: "inv-new", n: 2, terminal: LaunchServing, digest_hex: w_exe),
+    w_attempt_from(group: FabricGroupB, invocation: "inv-old", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
+    w_attempt_from(group: FabricGroupB, invocation: "inv-new", n: 2, terminal: LaunchServing, digest_hex: w_exe),
   ]
   (match serving_standing(attempts: mixed) {
      ServingStandingUnobserved { cause: c } => string_contains(s: c as String, pattern: "desired_digest")
@@ -169,8 +190,8 @@ test fn a_mixed_digest_list_is_unobserved_rather_than_a_recovered_bring_up() -> 
 
 test fn a_mixed_host_list_is_unobserved_rather_than_a_recovered_bring_up() -> Bool {
   let mixed = [
-    w_attempt_from(group: FabricGroupA, invocation: "inv-a", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
-    w_attempt_from(group: FabricGroupB, invocation: "inv-b", n: 2, terminal: LaunchServing, digest_hex: w_unit),
+    w_attempt_from(group: FabricGroupB, invocation: "inv-a", n: 1, terminal: launch_terminal_from_exit(code: 137), digest_hex: w_unit),
+    w_attempt_on_head(head: operator_host_srv10, invocation: "inv-b", n: 2, terminal: LaunchServing, digest_hex: w_unit),
   ]
   match serving_standing(attempts: mixed) {
     ServingStandingUnobserved { cause: c } => string_contains(s: c as String, pattern: "mixes heads")

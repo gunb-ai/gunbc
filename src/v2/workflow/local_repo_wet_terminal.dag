@@ -668,12 +668,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_incumbent_identity_wet_witness", function: "the_production_declaration_keys_group_a_and_refuses_group_b" },
-      entry: "dag/test/claim/spark/pair_incumbent_identity_wet_witness_test.dag",
-      function: "the_production_declaration_keys_group_a_and_refuses_group_b",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "an_assembled_looking_arm_with_adrift_ranks_refuses" },
       entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
       function: "an_assembled_looking_arm_with_adrift_ranks_refuses",
@@ -1280,60 +1274,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_authorization_witness", function: "a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction" },
-      entry: "dag/test/claim/spark/pair_serving_d0_authorization_witness_test.dag",
-      function: "a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_production_route_settles_and_the_lease_governs_launch_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "the_production_route_settles_and_the_lease_governs_launch_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_seat_granted_after_the_suspension_landed_is_released_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_seat_granted_after_the_suspension_landed_is_released_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_fabric_storage_real_execution", function: "one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution" },
       entry: "dag/test/claim/durable_cas_fabric_storage_real_execution_witness_test.dag",
       function: "one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution",
@@ -1343,90 +1283,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_fabric_storage_real_execution", function: "a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution" },
       entry: "dag/test/claim/durable_cas_fabric_storage_real_execution_witness_test.dag",
       function: "a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
-      function: "an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
-      function: "a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_fresh_authorization_under_a_reused_word_is_not_completed_from_the_old_history_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_fresh_authorization_under_a_reused_word_is_not_completed_from_the_old_history_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_population_change_after_the_claim_aborts_before_a_write_and_fences_after_one_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_population_change_after_the_claim_aborts_before_a_write_and_fences_after_one_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_absent_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
-      function: "a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_absent_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_under_a_quiet_one_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
-      function: "a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_under_a_quiet_one_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
-      function: "a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -2240,12 +2096,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_authorization_witness", function: "the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back" },
-      entry: "dag/test/claim/spark/pair_serving_d0_authorization_witness_test.dag",
-      function: "the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_engram_runtime_witness", function: "control_published_infeasibility_is_not_weakened_by_a_keyed_specification" },
       entry: "dag/test/claim/spark/v41_engram_runtime_witness_test.dag",
       function: "control_published_infeasibility_is_not_weakened_by_a_keyed_specification",
@@ -2933,12 +2783,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_state_namespace_wet_witness", function: "witness_public_head_cannot_alias_private_state_object" },
       entry: "dag/test/claim/fabric/fabric_state_namespace_wet_witness_test.dag",
       function: "witness_public_head_cannot_alias_private_state_object",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_grant_row_wet_witness", function: "the_captured_row_is_hashed_as_its_exact_bytes_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_grant_row_wet_witness_test.dag",
-      function: "the_captured_row_is_hashed_as_its_exact_bytes_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

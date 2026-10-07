@@ -531,7 +531,6 @@ data reference_conservation_stratified_sample_paths: List<String> = [
   "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag",
   "dag/test/claim/service_effect_expansion_budget_witness_test.dag",
   "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
-  "dag/test/claim/spark/pair_incumbent_identity_wet_witness_test.dag",
   "dag/test/claim/spark/spark_pair_serving_apply_witness_test.dag",
   "dag/test/claim/srv3/srv3_bmc_credential_resolve_witness_test.dag",
   "dag/test/claim/srv3/srv3_runner_memory_converge_witness_test.dag",

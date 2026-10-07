@@ -1,5 +1,6 @@
 module test.claim.serving.serving_availability_witness
 
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import std.types { Bool, String, NonEmptyStr }
 import std.measure { second_count }
 import product.fabric.demand { ObservationReceiptRef }
@@ -22,11 +23,11 @@ import gunbc.serving.serving_availability {
 }
 import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of, spark_serving_incarnation_unobserved_obligation }
 
-data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupB, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
 
 // An address from TEST-NET-1 (RFC 5737): reserved for documentation and never routed, so a live run
 // cannot reach a real engine, and the bounded probe must give up inside its bound rather than hang.
-data w_unroutable_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.0.2.1" as NonEmptyStr, port: 30000 }
+data w_unroutable_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupB, address: "192.0.2.1" as NonEmptyStr, port: 30000 }
 
 data w_now: String = "1789400000"
 
@@ -39,7 +40,7 @@ fn w_serving_standing() -> HarnessBackendStanding {
 }
 
 fn w_launch(field: String) -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+  vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
 }
 
 fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
@@ -122,7 +123,7 @@ test fn the_launch_only_read_reports_continuity_and_its_three_arms() -> Bool {
   let bound = w_launch(field: "1789300000.12")
   let unchanged = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: w_seen(field: "1789300000.12"), now: w_now).reading
   let replaced = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: w_seen(field: "1789399999.50"), now: w_now).reading
-  let unread = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr }, now: w_now).reading
+  let unread = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: LaunchUnobserved { group: FabricGroupB, obligation: "metrics did not answer" as NonEmptyStr }, now: w_now).reading
   (match unchanged {
     EndpointProcessUnchanged { endpoint: _, launch: l, observed_at: _, receipt: _ } => (vllm_endpoint_process_launch_key(launch: l) as String).contains("1789300000.12")
     EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } => false
@@ -163,8 +164,8 @@ test fn a_front_door_that_did_not_answer_within_the_bound_is_unavailable_and_not
 test fn an_unadmitted_model_is_still_available_and_unreadable_readings_are_unread() -> Bool {
   let not_admitted = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: HarnessBackendModelNotAdmitted { advertised: "tinyllama-1.1b" }, after: w_seen(field: "1789300000.12"), now: w_now)
   let unreadable = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: HarnessBackendUnreadable { cause: "unexpected token" }, after: w_seen(field: "1789300000.12"), now: w_now)
-  let before_unread = harness_route_availability(endpoint: w_endpoint, before: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr }, standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
-  let after_unread = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr }, now: w_now)
+  let before_unread = harness_route_availability(endpoint: w_endpoint, before: LaunchUnobserved { group: FabricGroupB, obligation: "metrics did not answer" as NonEmptyStr }, standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
+  let after_unread = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: LaunchUnobserved { group: FabricGroupB, obligation: "metrics did not answer" as NonEmptyStr }, now: w_now)
   w_available_from(a: not_admitted, field: "1789300000.12")
     && w_is_unread(a: unreadable)
     && w_is_unread(a: before_unread)

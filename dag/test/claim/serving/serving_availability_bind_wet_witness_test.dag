@@ -1,6 +1,7 @@
 module test.claim.serving.serving_availability_bind_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
@@ -29,7 +30,7 @@ import gunbc.harness.harness_seat {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupB, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
 
 data w_model: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
 
@@ -44,7 +45,7 @@ fn w_serving_standing() -> HarnessBackendStanding {
 }
 
 fn w_launch(field: String) -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+  vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
 }
 
 fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
@@ -84,21 +85,20 @@ fn w_place(declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
     now: 1789400000,
     access: FleetSshContextRefused { cause: "wet witness supplies a refused fleet context so incarnation is unobserved" },
     declared_units: declared_units,
-    participation_roster: HarnessGroupParticipationRoster { group_a: none, group_b: none },
+    participation_roster: HarnessGroupParticipationRoster { group_b: none },
   )
 }
 
-data w_withdrawn_obligation: NonEmptyStr = "fixture: a roster whose Group A standing is unavailable, so the declared unit is the refusal this fold reports" as NonEmptyStr
+data w_withdrawn_obligation: NonEmptyStr = "fixture: a roster whose Group B standing is unavailable, so the declared unit is the refusal this fold reports" as NonEmptyStr
 
 fn w_withdrawn_roster() -> HarnessDeclaredUnitRoster {
   HarnessDeclaredUnitRoster {
-    group_a: DeclaredUnitDigestUnavailable { obligation: w_withdrawn_obligation },
     group_b: DeclaredUnitDigestUnavailable { obligation: w_withdrawn_obligation },
   }
 }
 
 // THE PRODUCTION MINT REACHES THE PRODUCTION FOLD. harness_declared_unit_roster is the function
-// harness_bind_seat calls once per bind; it renders the Group A head unit and DigestStdins those
+// harness_bind_seat calls once per bind; it renders the Group B head unit and DigestStdins those
 // exact bytes, so this row executes the real producer (which is why this file is on the wet lane)
 // AND the real consumer in one claim. With a real digest in hand the fold moves PAST the
 // declared-unit gate and stops at the incarnation, which is unobserved because the fleet context
@@ -110,7 +110,7 @@ fn w_withdrawn_roster() -> HarnessDeclaredUnitRoster {
 // fold decides, this one is about the standing being real and arriving.
 test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier() -> Bool {
   let roster = harness_declared_unit_roster()
-  let minted = match harness_declared_unit_from_roster(roster: roster, group: FabricGroupA) {
+  let minted = match harness_declared_unit_from_roster(roster: roster, group: FabricGroupB) {
     DeclaredUnitDigested { evidence: _ } => true
     DeclaredUnitDigestUnavailable { obligation: _ } => false
   }
@@ -121,7 +121,7 @@ test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_fro
 }
 
 // RED, AND IT IS THE DISCRIMINATOR FOR THE ROW ABOVE. The same fold, the same supplied observations,
-// a roster whose Group A standing is unavailable: now the declared unit is what refuses, and the
+// a roster whose Group B standing is unavailable: now the declared unit is what refuses, and the
 // incarnation is never consulted. Without this row the green above could not distinguish "the fold
 // consumed a real digest" from "the fold ignores its roster and always reports the incarnation".
 test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool {
@@ -147,13 +147,13 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now)
   let bound = harness_bind_candidate(
     acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
-    group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
+    group: FabricGroupB, endpoint: w_endpoint, launch: launch, availability: a,
     readback: w_readback(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
     route: harness_serving_route(
-      group: FabricGroupA, launch: launch, readback: w_readback(),
+      group: FabricGroupB, launch: launch, readback: w_readback(),
       incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
-      declared_unit: harness_declared_unit_from_roster(roster: harness_declared_unit_roster(), group: FabricGroupA),
+      declared_unit: harness_declared_unit_from_roster(roster: harness_declared_unit_roster(), group: FabricGroupB),
       participation: none,
     ),
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
