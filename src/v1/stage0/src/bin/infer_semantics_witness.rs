@@ -44,48 +44,6 @@ fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v1"), ws.join("dag")]
 }
 
-fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("//") {
-            continue;
-        }
-        return trimmed
-            .strip_prefix("module ")
-            .and_then(|rest| rest.split_whitespace().next())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-    }
-    None
-}
-
-fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            scan_dag_files(&path, index);
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            if let Some(module_path) = extract_module_declaration(&path) {
-                index.insert(module_path, path);
-            }
-        }
-    }
-}
-
-fn build_module_index() -> HashMap<String, std::path::PathBuf> {
-    let mut index = HashMap::new();
-    for root in source_roots() {
-        if root.exists() {
-            scan_dag_files(&root, &mut index);
-        }
-    }
-    index
-}
-
 fn pool_root_strings() -> std::vec::Vec<String> {
     source_roots()
         .iter()
@@ -94,11 +52,7 @@ fn pool_root_strings() -> std::vec::Vec<String> {
 }
 
 /// Compile-subject closure of a witness entry. Not an import-line BFS.
-fn resolve_imports_transitively(
-    entry_path: &str,
-    entry_content: &str,
-    _module_index: &HashMap<String, std::path::PathBuf>,
-) -> Vec<Rc<SourceFile>> {
+fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
     v1_compiler::cli_run::resolve_seeded_compile_closure(
         std::vec![Rc::new(SourceFile {
             path: entry_path.to_string(),
@@ -111,14 +65,12 @@ fn resolve_imports_transitively(
 }
 
 fn compile_dag(source: &str) -> Rc<PipelineResult> {
-    let module_index = build_module_index();
-    let sources = resolve_imports_transitively("test.dag", source, &module_index);
+    let sources = resolve_imports_transitively("test.dag", source);
     compile_sources(Rc::new(sources), RenderTarget::Rust)
 }
 
 fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
-    let module_index = build_module_index();
-    let sources = resolve_imports_transitively("test.dag", source, &module_index);
+    let sources = resolve_imports_transitively("test.dag", source);
     compile_to_resolved(Rc::new(sources))
 }
 
