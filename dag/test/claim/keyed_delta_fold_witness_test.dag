@@ -118,8 +118,9 @@ fn fixture_removed_hunk() -> KeyedPatch<String, FixtureVal> {
 }
 
 test fn witness_patch_monoid_left_identity() -> Bool {
+  let monoid = keyed_patch_monoid()
   keyed_patches_equal(
-    left: keyed_patch_append(left: fixture_empty_patch(), right: fixture_modified_hunk()),
+    left: keyed_patch_append(left: monoid.identity, right: fixture_modified_hunk()),
     right: fixture_modified_hunk(),
     key_eq: fixture_key_eq,
     value_eq: fixture_val_eq,
@@ -127,8 +128,9 @@ test fn witness_patch_monoid_left_identity() -> Bool {
 }
 
 test fn witness_patch_monoid_right_identity() -> Bool {
+  let monoid = keyed_patch_monoid()
   keyed_patches_equal(
-    left: keyed_patch_append(left: fixture_modified_hunk(), right: fixture_empty_patch()),
+    left: keyed_patch_append(left: fixture_modified_hunk(), right: monoid.identity),
     right: fixture_modified_hunk(),
     key_eq: fixture_key_eq,
     value_eq: fixture_val_eq,
