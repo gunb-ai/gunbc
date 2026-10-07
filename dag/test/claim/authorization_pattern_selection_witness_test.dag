@@ -15,6 +15,7 @@ import gunbc.auth.authorization_pattern_selection {
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   AuthorizationPatternSelection,
+  InterlockPending, UnconditionalStanding, InterlockedBy,
   select_authorization_pattern, witness_required,
 }
 import gunbc.auth.privileged_effect_census {
@@ -22,8 +23,9 @@ import gunbc.auth.privileged_effect_census {
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
-  mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
+  mtcollins1_boot_effect, privileged_effect_interlocks, privileged_effect_interlock_hold, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
   ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
+  mtcollins1_operator_ruling,
   RealizedFederatedGrant, RealizedRunSelected, RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession, RealizedUnauthorized,
 }
 import std.human_intervention {
@@ -364,6 +366,21 @@ test fn a_standing_ruling_does_not_discharge_a_wide_credential() -> Bool {
 // EVERY STANDING RULING IN THE CENSUS NAMES AN INTERLOCK ROSTERED AGAINST ITS OWN SITE.
 test fn every_standing_ruling_has_its_interlock_rostered() -> Bool {
   (rulings_without_a_rostered_interlock() |> count) == 0
+}
+
+test fn pending_and_unconditional_rulings_do_not_invent_a_rostered_hold() -> Bool {
+  match privileged_effect_interlock_hold(interlock: InterlockPending { obligation: "unnamed" as NonEmptyStr }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match privileged_effect_interlock_hold(interlock: UnconditionalStanding { reason: "no hold" as NonEmptyStr }) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock) {
+      Absent => false
+      Present { value: h } => (h.decl_name as String) == "UnitHoldProof"
+    }
 }
 
 // THE CENSUS SHOWS THE INTERLOCK: every interlocked site is a census row, and the boot's names the

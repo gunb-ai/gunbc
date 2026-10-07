@@ -127,6 +127,7 @@ test fn w_an_effect_outside_the_mtjade1_arms_is_not_covered() -> Bool {
     && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
     && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
     && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
+    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingBmcSecureAccountWrite)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingArmLaunch)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingHostEffectRecover)
@@ -141,11 +142,13 @@ test fn w_host_scope_hosts_are_derived_from_the_arm() -> Bool {
 test fn w_the_ruling_text_is_the_operator_quote() -> Bool {
   (mtjade1_live_standing_grant.ruling.ruling_text as String) == "Operator ruling 2026-10-06, given directly in eager-gull-22's session and relayed by dashboard message msg_7402f8df-7917-4b24-bb86-c4e7d51991f7: 'live operations on mtjade1 are authorized whenever, indefinitely. That covers BMC reads and writes (history archive, login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead.'"
     && match mtjade1_live_standing_grant.ruling.interlock {
-      InterlockPending { obligation: _ } => true
-      InterlockedBy { hold: _ } => false
+      InterlockedBy { hold: h } =>
+        (h.module_path as String) == "gunbc.machine_intake_bmc_rotation_route"
+          && (h.decl_name as String) == "admit_rotation_apply"
+      InterlockPending { obligation: _ } => false
       UnconditionalStanding { reason: _ } => false
     }
-    && !standing_ruling_discharges_irreversibility(r: mtjade1_live_standing_grant.ruling)
+    && standing_ruling_discharges_irreversibility(r: mtjade1_live_standing_grant.ruling)
 }
 
 test fn w_the_selection_fold_over_true_mtjade1_session_attributes() -> Bool {
@@ -166,6 +169,12 @@ test fn w_the_selection_fold_over_true_mtjade1_session_attributes() -> Bool {
     && !selected_federated(s: fw_ruled)
 }
 
+test fn w_operator_ssh_bmc_write_still_selects_operator_approved_capability() -> Bool {
+  selected_approved(s: select_authorization_pattern(e: mtjade1_credential_write_effect(discharge: mtjade1_discharge)))
+    && selected_approved(s: select_authorization_pattern(e: mtjade1_credential_write_effect(discharge: NoWitnessDischarge)))
+    && !selected_federated(s: select_authorization_pattern(e: mtjade1_credential_write_effect(discharge: mtjade1_discharge)))
+}
+
 fn mtjade1_bindable_identity() -> WorkloadIdentityStanding {
   WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr }
 }
@@ -183,6 +192,14 @@ fn mtjade1_bindable_boot_effect(discharge: WitnessDischarge) -> PrivilegedEffect
   }
 }
 
+fn mtjade1_pending_ruling() -> StandingDestructiveAuthorization {
+  StandingDestructiveAuthorization {
+    ruling_text: mtjade1_live_standing_grant.ruling.ruling_text,
+    effect_subject: mtjade1_live_standing_grant.ruling.effect_subject,
+    interlock: InterlockPending { obligation: "hold not named" as NonEmptyStr },
+  }
+}
+
 fn mtjade1_interlocked_ruling() -> StandingDestructiveAuthorization {
   StandingDestructiveAuthorization {
     ruling_text: mtjade1_live_standing_grant.ruling.ruling_text,
@@ -192,7 +209,7 @@ fn mtjade1_interlocked_ruling() -> StandingDestructiveAuthorization {
 }
 
 test fn w_bindable_boot_pending_interlock_refuses() -> Bool {
-  let pending = select_authorization_pattern(e: mtjade1_bindable_boot_effect(discharge: mtjade1_discharge))
+  let pending = select_authorization_pattern(e: mtjade1_bindable_boot_effect(discharge: StandingRulingUnderInterlock { ruling: mtjade1_pending_ruling() }))
   no_admissible(s: pending) && !selected_federated(s: pending)
 }
 
@@ -201,7 +218,7 @@ test fn w_bindable_boot_interlocked_selects_federation() -> Bool {
 }
 
 test fn w_census_pending_interlock_is_a_defect() -> Bool {
-  match ruling_discharge_interlock_defect(site_ref: decl_ref(module_path: "gunbc.auth.standing_operator_grant", decl_name: "mtjade1_live_standing_grant"), ruling: mtjade1_live_standing_grant.ruling) {
+  match ruling_discharge_interlock_defect(site_ref: decl_ref(module_path: "gunbc.auth.standing_operator_grant", decl_name: "mtjade1_live_standing_grant"), ruling: mtjade1_pending_ruling()) {
     Present { value: _ } => true
     Absent => false
   }

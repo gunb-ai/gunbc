@@ -2260,6 +2260,7 @@ fn dry_read_bmc_account_state(
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_bmc_account_reading"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)

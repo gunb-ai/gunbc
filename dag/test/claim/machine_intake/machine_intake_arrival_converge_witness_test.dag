@@ -1,6 +1,6 @@
 module test.claim.machine_intake_arrival_converge_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.scoped_authorization { AttemptIdentity }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -8,11 +8,12 @@ import v2.std.algebra { filter, length }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
+import product.host_identity { HostIdentity }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
-import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, IntakePhase }
+import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake_subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
-  FirmwareEntry, FirmwareManifest, UnitKey,
+  FirmwareEntry, FirmwareManifest, UnitKey, MachineIntakeSubject, IntakeAttemptId,
   qualification_subject_of,
 }
 import gunbc.machine_intake_mtjade1_access_observation {
@@ -24,6 +25,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   RedfishAccountPasswordWrite, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead, PublicStandardOperation,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded,
   rotation_apply_authority, rotation_route_request_identity, rotation_route_is_grounded, admit_rotation_apply,
+  canonical_component, route_qualification_authority,
 }
 import gunbc.host_convergence_census {
   HostConvergenceCensus, CensusWellFormed, host_convergence_census_rows, host_convergence_census_standing,
@@ -40,6 +42,8 @@ import gunbc.fleet.convergence_fold {
   admit_convergence_plan, classify_convergence_plan, PlanClassifiedAdmissible, PlanClassifiedRefused,
   ConvergenceReceiptProjection, convergence_receipt_projection,
   fold_convergence_run, step_instance_key, step_outcome_receipt, step_outcome_refusal,
+  ungated_readonly_step, AuthorizationUndischarged, mutation_lanes, instance_authorization,
+  step_instance_key_eq, InstanceAuthorization,
 }
 import gunbc.machine_intake_prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
@@ -48,6 +52,16 @@ import gunbc.machine_intake_prior_life_boundary {
 }
 import std.content_hash { content_hash_equal }
 import test.claim.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
+import gunbc.auth.standing_operator_grant {
+  mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingBmcSecureAccountWrite,
+  StandingOperatorGrant,
+}
+import gunbc.auth.authorization_pattern_selection {
+  InterlockPending, UnconditionalStanding, InterlockedBy, StandingDestructiveAuthorization,
+  select_authorization_pattern, StandingRulingUnderInterlock, NoWitnessDischarge,
+  PatternSelected, OperatorApprovedCapability, AuthorizationPatternSelection,
+}
+import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, PriorLifeBoundaryReceipt, ArrivalStepRefusal,
@@ -57,8 +71,25 @@ import gunbc.machine_intake_arrival_converge {
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
-  converge_mtjade1_arrival_prefix, converge_arrival_prefix, mtjade1_identity_bind_inputs,
+  converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, mtjade1_identity_bind_inputs,
+  bmc_secure_step_ref, arrival_bmc_secure_mutation_lanes, BmcSecureReceipt,
+  BmcSecureInputs, BmcSecureAuthorizationUndischarged,
+  grant_discharges_bmc_secure_account_write,
+  capability_discharges_bmc_secure_account_write,
 }
+import gunbc.machine_intake_bmc_secure {
+  BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, PublishedAccountRetired, ManagedCredentialReference, BmcSecurePhaseNoop, BmcSecurePhaseApplied,
+}
+import gunbc.deployment_risk { TestRisk }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.ipmi_channel {
+  IpmiControllerChannelCensus, IpmiMedium8023Lan, IpmiMediumSerialAsync, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator,
+  IpmiUserId, ipmi_controller_channel_census, ipmi_lan_channel_member, ipmi_non_lan_channel_member, ipmi_user_channel_access,
+}
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -109,6 +140,7 @@ fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, Arriva
               && route_is_redfish_write_candidate_on_manager_read(route: a.route)
           IdentityBindReceipt { receipt: _ } => false
           PriorLifeBoundaryReceipt { receipt: _ } => false
+          BmcSecureReceipt { receipt: _ } => false
         }
     InstanceRefused { key: _, cause: _ } => false
     InstanceIncomplete { key: _, cause: _ } => false
@@ -132,6 +164,7 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
               && i.subject.subject == qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
           AccessDiscoverReceipt { receipt: _ } => false
           PriorLifeBoundaryReceipt { receipt: _ } => false
+          BmcSecureReceipt { receipt: _ } => false
         }
     InstanceRefused { key: _, cause: _ } => false
     InstanceIncomplete { key: _, cause: _ } => false
@@ -169,6 +202,7 @@ fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalSte
               && ((prior_life_receipt_realization(r: p) as NonEmptyStr) as String) == "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
           AccessDiscoverReceipt { receipt: _ } => false
           IdentityBindReceipt { receipt: _ } => false
+          BmcSecureReceipt { receipt: _ } => false
         }
     InstanceRefused { key: _, cause: _ } => false
     InstanceIncomplete { key: _, cause: _ } => false
@@ -198,6 +232,152 @@ test fn w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive() -> B
       }
     ArrivalPlanRefused { cause: _ } => false
     ArrivalPrefixUnstepped { phase: _ } => false
+  }
+}
+
+data mtjade1_bmc_read_at: EpochMs = 1791072000000
+data mtjade1_managed_ipmi_user: IpmiUserId = 3
+data mtjade1_published_ipmi_user: IpmiUserId = 2
+
+fn mtjade1_intake_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
+    attempt_id: "o1c1-witness-run-a" as IntakeAttemptId,
+  }
+}
+
+fn mtjade1_bmc_goal() -> BmcSecureGoal {
+  BmcSecureGoal {
+    managed: ManagedCredentialReference {
+      account: "gunbc",
+      role: AccountRoleAdministrator,
+      secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-gunbc", version: "1", hash_state: HashPending },
+      credential_epoch: 1,
+    },
+    published_break_glass: ManagedCredentialReference {
+      account: "admin",
+      role: AccountRoleAdministrator,
+      secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-admin", version: "4", hash_state: HashPending },
+      credential_epoch: 4,
+    },
+    policy: machine_qualification_policy(admits: TestRisk),
+  }
+}
+
+fn mtjade1_bmc_census(published_lan_privilege_closed: Bool) -> IpmiControllerChannelCensus {
+  let lan_privilege = if published_lan_privilege_closed { IpmiPrivilegeNoAccess } else { IpmiPrivilegeAdministrator }
+  ipmi_controller_channel_census(
+    members: [
+      ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 246)),
+      ipmi_non_lan_channel_member(channel: 2, medium: IpmiMediumSerialAsync),
+      ipmi_lan_channel_member(channel: 8, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 247)),
+    ],
+    user_access: [
+      ipmi_user_channel_access(channel: 1, user: mtjade1_published_ipmi_user, privilege: lan_privilege),
+      ipmi_user_channel_access(channel: 2, user: mtjade1_published_ipmi_user, privilege: IpmiPrivilegeNoAccess),
+      ipmi_user_channel_access(channel: 8, user: mtjade1_published_ipmi_user, privilege: lan_privilege),
+    ],
+  )
+}
+
+fn mtjade1_bmc_account_reading(users: List<BmcIpmiUser>, published_lan_privilege_closed: Bool) -> BmcAccountStateObservation {
+  let census_value = mtjade1_bmc_census(published_lan_privilege_closed: published_lan_privilege_closed)
+  let world = bmc_with_ipmi_user_access(
+    world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: users),
+    rows: census_value.user_access,
+  )
+  dry_read_bmc_account_state(
+    world: world,
+    subject: mtjade1_intake_subject(),
+    endpoint: BmcControllerEndpoint { host: "192.168.1.246" },
+    firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11.104000" as NonEmptyStr),
+    managed: mtjade1_bmc_goal().managed,
+    managed_user: mtjade1_managed_ipmi_user,
+    managed_password: "managed-generation-1!",
+    census: census_value,
+    published_user: mtjade1_published_ipmi_user,
+    published_password: "admin",
+    published_account: PublishedAccountRetired,
+    break_glass: mtjade1_bmc_goal().published_break_glass,
+    break_glass_password: "break-glass-generation-4!",
+    attempt: "o1c1-witness-run-a" as AttemptIdentity,
+    read_at_millis: mtjade1_bmc_read_at,
+  )
+}
+
+fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?) -> BmcSecureInputs {
+  BmcSecureInputs {
+    goal: mtjade1_bmc_goal(),
+    reading: reading,
+    host: operator_host_mtjade1,
+    grant: grant,
+    capability: none,
+    apply: none,
+  }
+}
+
+fn bmc_secure_noop_established(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: bmc_secure_step_ref)
+        && match r {
+          BmcSecureReceipt { receipt: b } =>
+            match b.phase.decision {
+              BmcSecurePhaseNoop { observation: _ } => true
+              BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => false
+            }
+          AccessDiscoverReceipt { receipt: _ } => false
+          IdentityBindReceipt { receipt: _ } => false
+          PriorLifeBoundaryReceipt { receipt: _ } => false
+        }
+    _ => false
+  }
+}
+
+test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool {
+  let reading = mtjade1_bmc_account_reading(
+    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "break-glass-generation-4!" }],
+    published_lan_privilege_closed: true,
+  )
+  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none)) {
+    ArrivalRunFolded { verdict: v } =>
+      match v {
+        RunConverged { run: r } =>
+          length(xs: r.ledger.instances) == 4
+            && match r.ledger.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
+            && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: identity_bind_provisional_step_ref)) |> first() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+            && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() { Present { value: s } => prior_life_archived_from_the_bound_subject(s: s)  Absent => false }
+            && match r.ledger.instances.last() { Present { value: s } => bmc_secure_noop_established(s: s)  Absent => false }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path() -> Bool {
+  let reading = mtjade1_bmc_account_reading(
+    users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
+    published_lan_privilege_closed: false,
+  )
+  match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none)) {
+    ArrivalRunFolded { verdict: v } =>
+      match v {
+        RunStopped { ledger: l, at: at } =>
+          declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceRefused { key: _, cause: c } => match c {
+                  DomainRefused { cause: d } => match d { BmcSecureAuthorizationUndischarged => true  _ => false }
+                  AuthorizationUndischarged => true
+                  _ => false
+                }
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
+    _ => false
   }
 }
 
@@ -315,8 +495,8 @@ test fn w_the_roster_is_the_three_phase_prefix_of_the_authority() -> Bool {
 // A phase of the prefix with no step refuses rather than being skipped: through BmcSecure the prefix
 // reaches BmcSecure itself, which has no step in this cut (O1c-3 brings it with its gate).
 test fn w_a_prefix_phase_with_no_step_refuses() -> Bool {
-  match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) {
-    ArrivalPrefixPhaseUnstepped { phase: p } => p == Arrival { phase: BmcSecure }
+  match arrival_prefix_steps(phases: arrival_prefix_through(last: BootDeliveryEstablish)) {
+    ArrivalPrefixPhaseUnstepped { phase: p } => p == Arrival { phase: BootDeliveryEstablish }
     ArrivalPrefixStepped { steps: _ } => false
   }
 }
@@ -331,11 +511,11 @@ fn real_steps() -> List<ConvergenceStep<IntakePhase>> {
 }
 
 fn access_step_bound_to(phase: IntakePhase) -> ConvergenceStep<IntakePhase> {
-  ConvergenceStep { identity: access_discover_step_ref, order_member: phase, preconditions: [] }
+  ungated_readonly_step(identity: access_discover_step_ref, order_member: phase, preconditions: [])
 }
 
 fn identity_step_with(preconditions: List<StepPrecondition>) -> ConvergenceStep<IntakePhase> {
-  ConvergenceStep { identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: preconditions }
+  ungated_readonly_step(identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: preconditions)
 }
 
 fn plan_refusal(admission: ConvergencePlanAdmission<IntakePhase>) -> ConvergencePlanRefusal<IntakePhase>? {
@@ -381,7 +561,7 @@ test fn w_an_unknown_precondition_refuses() -> Bool {
 // converge_arrival_prefix is a real declaration with no census row: as a step it refuses.
 test fn w_a_step_with_no_census_row_refuses() -> Bool {
   let uncensused = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix")
-  match plan_refusal(admission: admit_convergence_plan(planning: arrival_planning_authority(), steps: [ConvergenceStep { identity: uncensused, order_member: Arrival { phase: AccessDiscover }, preconditions: [] }])) {
+  match plan_refusal(admission: admit_convergence_plan(planning: arrival_planning_authority(), steps: [ungated_readonly_step(identity: uncensused, order_member: Arrival { phase: AccessDiscover }, preconditions: [])])) {
     Present { value: c } => match c { StepMissingFromCensus { step: s } => declaration_ref_eq(a: s, b: uncensused)  _ => false }
     Absent => false
   }
@@ -409,14 +589,14 @@ fn real_access(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentMana
 
 fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> AccessDiscoverEstablished? {
   match step_outcome_receipt(outcome: o) {
-    Present { value: r } => match r { AccessDiscoverReceipt { receipt: a } => Present { value: a }  IdentityBindReceipt { receipt: _ } => none  PriorLifeBoundaryReceipt { receipt: _ } => none }
+    Present { value: r } => match r { AccessDiscoverReceipt { receipt: a } => Present { value: a }  IdentityBindReceipt { receipt: _ } => none  PriorLifeBoundaryReceipt { receipt: _ } => none  BmcSecureReceipt { receipt: _ } => none }
     Absent => none
   }
 }
 
 fn fold_real(run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>>) -> ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>? {
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
-    ConvergencePlanAdmitted { plan: p } => Present { value: fold_convergence_run(plan: p, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection()) }
+    ConvergencePlanAdmitted { plan: p } => Present { value: fold_convergence_run(plan: p, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection(), discharges: []) }
     ConvergencePlanRefused { cause: _ } => none
   }
 }
@@ -471,6 +651,224 @@ fn probe_consumed(r: ProbeReceipt) -> List<StepInstanceKey> {
   r.consumed
 }
 
+fn probe_auth_never(r: ProbeReceipt) -> Bool {
+  false
+}
+
+fn probe_auth_on_bmc_secure(r: ProbeReceipt) -> Bool {
+  declaration_ref_eq(a: r.key.step_identity, b: bmc_secure_step_ref)
+}
+
+fn four_steps() -> List<ConvergenceStep<IntakePhase>> {
+  match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) {
+    ArrivalPrefixStepped { steps: ss } => ss
+    ArrivalPrefixPhaseUnstepped { phase: _ } => []
+  }
+}
+
+test fn w_the_four_step_plan_through_bmc_secure_is_admitted() -> Bool {
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+    ConvergencePlanAdmitted { plan: _ } => length(xs: four_steps()) == 4
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
+test fn w_mutation_lanes_name_the_instance_subject_not_the_executor() -> Bool {
+  let lanes = arrival_bmc_secure_mutation_lanes(run: run_a, subject: mtjade1_key)
+  length(xs: lanes) == 1
+    && match lanes.first() {
+      Present { value: l } => ((l.mutated_subject as NonEmptyStr) as String) == "mtjade1"
+      Absent => false
+    }
+}
+
+test fn w_bmc_secure_noop_needs_no_discharge() -> Bool {
+  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
+    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
+    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
+    StepEstablished { receipt: ProbeReceipt { key: bmc, consumed: [prior] } },
+  ]
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+    ConvergencePlanAdmitted { plan: p } =>
+      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_never), discharges: []) {
+        RunConverged { run: r } => length(xs: r.ledger.instances) == 4
+        _ => false
+      }
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
+test fn w_bmc_secure_apply_without_discharge_refuses() -> Bool {
+  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
+    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
+    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
+    StepEstablished { receipt: ProbeReceipt { key: bmc, consumed: [prior] } },
+  ]
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+    ConvergencePlanAdmitted { plan: p } =>
+      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: []) {
+        RunStopped { ledger: l, at: at } =>
+          step_instance_key_eq(a: at, b: bmc)
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceRefused { key: _, cause: c } => match c { AuthorizationUndischarged => true  _ => false }
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
+fn mtjade1_grant_without_bmc_secure_effect() -> StandingOperatorGrant {
+  let g = mtjade1_live_standing_grant
+  StandingOperatorGrant {
+    identity: g.identity,
+    principal: g.principal,
+    ruled_at: g.ruled_at,
+    ruling: g.ruling,
+    scope: g.scope,
+    effects: [],
+  }
+}
+
+fn apply_fold_undischarged(discharges: List<InstanceAuthorization>) -> Bool {
+  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
+    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
+    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
+    StepEstablished { receipt: ProbeReceipt { key: bmc, consumed: [prior] } },
+  ]
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+    ConvergencePlanAdmitted { plan: p } =>
+      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: discharges) {
+        RunStopped { ledger: l, at: at } =>
+          step_instance_key_eq(a: at, b: bmc)
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceRefused { key: _, cause: c } => match c { AuthorizationUndischarged => true  _ => false }
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
+test fn w_bmc_secure_apply_pending_interlock_refuses_at_discharge() -> Bool {
+  grant_discharges_bmc_secure_account_write(g: mtjade1_grant_without_bmc_secure_effect(), host: operator_host_mtjade1) == false
+    && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
+}
+
+test fn w_mtcollins1_is_not_discharged_by_the_mtjade1_grant() -> Bool {
+  grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1) == false
+}
+
+fn rotation_capability_for(host: HostIdentity, attempt_text: String, authority: NonEmptyStr) -> Redemption {
+  RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: authority,
+      escalation_id: "o1c3b-witness" as NonEmptyStr,
+      request_revision: join(["gunbc.bmc.rotation-route/v1;", canonical_component(text: host as String)], "") as NonEmptyStr,
+      decision: ProposeApprove,
+      attempt: attempt_text as AttemptIdentity,
+      issued_at: "2026-10-04T00:00:00Z",
+      expires_at: "2026-10-04T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
+  }
+}
+
+fn bmc_secure_apply_key() -> StepInstanceKey {
+  step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+}
+
+test fn w_bmc_secure_apply_capability_for_another_authority_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_a as String, authority: route_qualification_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_capability_for_another_host_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtcollins1, attempt_text: run_a as String, authority: rotation_apply_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_capability_for_another_run_does_not_discharge() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_b as String, authority: rotation_apply_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  ) == false
+}
+
+test fn w_bmc_secure_apply_admitted_capability_for_this_host_and_rotation_authority_discharges() -> Bool {
+  capability_discharges_bmc_secure_account_write(
+    r: rotation_capability_for(host: operator_host_mtjade1, attempt_text: run_a as String, authority: rotation_apply_authority),
+    host: operator_host_mtjade1,
+    key: bmc_secure_apply_key(),
+  )
+}
+
+test fn w_bmc_secure_apply_discharge_for_another_run_refuses() -> Bool {
+  let foreign = step_instance_key(run: run_b, step: bmc_secure_step_ref, subject: mtjade1_key)
+  apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
+}
+
+test fn w_bmc_secure_apply_discharge_for_another_unit_refuses() -> Bool {
+  let foreign = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: "mtcollins1" as StepSubjectKey)
+  apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
+}
+
+test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
+  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
+    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
+    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
+    StepEstablished { receipt: ProbeReceipt { key: bmc, consumed: [prior] } },
+  ]
+  let covered = standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+    ConvergencePlanAdmitted { plan: p } =>
+      covered && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1) && match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: [instance_authorization(key: bmc, principal: mtjade1_live_standing_grant.principal)]) {
+        RunConverged { run: r } => length(xs: r.ledger.instances) == 4
+        _ => false
+      }
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
 test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> Bool {
   let own_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let foreign_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: "mtjade2" as StepSubjectKey)
@@ -481,7 +879,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> 
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
+      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_never), discharges: []) })
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -497,7 +895,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run() -> Boo
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
+      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_never), discharges: []) })
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -518,7 +916,7 @@ test fn w_an_incomplete_instance_satisfies_no_dependent_and_the_run_is_incomplet
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) {
+      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_never), discharges: []) {
         RunIncomplete { ledger: l, at: at } =>
           declaration_ref_eq(a: at.step_identity, b: identity_bind_provisional_step_ref)
             && match l.instances.last() {

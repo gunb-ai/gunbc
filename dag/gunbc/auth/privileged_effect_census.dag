@@ -29,7 +29,7 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
-  InterlockPending, UnconditionalStanding, InterlockedBy,
+  InterlockPending, UnconditionalStanding, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
   OperatorOwnSession, PastedOperatorToken,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -366,10 +366,18 @@ fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
 // active hold.
 type PrivilegedEffectInterlock {
   site: DeclarationRef
-  hold: DeclarationRef
+  hold: DeclarationRef?
   refusal: DeclarationRef
   premise: NonEmptyStr
   hold_owning_roots: List<InterlockRoot>
+}
+
+fn privileged_effect_interlock_hold(interlock: StandingRulingInterlock) -> DeclarationRef? {
+  match interlock {
+    InterlockedBy { hold: i } => Present { value: i }
+    InterlockPending { obligation: _ } => none
+    UnconditionalStanding { reason: _ } => none
+  }
 }
 
 // EVERY PRODUCTION ROOT THAT REACHES A GATED WRITE ON THE UNIT, and the live acquire it owns. The set
@@ -414,28 +422,28 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
+    hold: privileged_effect_interlock_hold(interlock: group_a_dev_standing_grant.ruling.interlock),
     refusal: site(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_decide_release"),
     premise: "the release runs only under D0's durable claim of the consent slot and its pending state, and refuses (D0HostNotQuiescent) unless a fresh reading taken at filing time finds every host quiescent; an unanswering host refuses as unobserved" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+    hold: privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+    hold: privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
-    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire") },
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and keeps ArrivalArchiveSlotHeld across converge_mtjade1_arrival_prefix before arrival_archive_slot_release" as NonEmptyStr,
     hold_owning_roots: [
@@ -451,7 +459,7 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
-    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock") },
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
     premise: "supplied-slot conjunction (slot standing plus grounded rotation route), not a live file_hold; firmware qualification is not executed under ArrivalArchiveSlotHeld. The live exclusive slot today wraps only the PriorLifeBoundary prefix via arrival_archive_slot_acquire" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
@@ -462,7 +470,12 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
 // always a defect. UnconditionalStanding discharges without a rostered hold. InterlockedBy discharges
 // only when that hold is rostered against the same site.
 fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
-  any(privileged_effect_interlocks, i => declaration_ref_eq(a: i.site, b: site_ref) && declaration_ref_eq(a: i.hold, b: interlock))
+  any(privileged_effect_interlocks, i =>
+    declaration_ref_eq(a: i.site, b: site_ref)
+      && match i.hold {
+        Present { value: h } => declaration_ref_eq(a: h, b: interlock)
+        Absent => false
+      })
 }
 
 fn ruling_discharge_interlock_defect(site_ref: DeclarationRef, ruling: StandingDestructiveAuthorization) -> DeclarationRef? {

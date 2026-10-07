@@ -1,7 +1,9 @@
 module gunbc.auth.standing_operator_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
+import v2.std.algebra { length }
 import product.host_identity { HostIdentity, host_identity_eq }
+import std.optional { Present }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -38,10 +40,11 @@ import gunbc.auth.authorization_pattern_selection {
 // nothing reads would pre-authorize what no wall asks about.
 //
 // MTJADE1 LIVE OPS (operator ruling 2026-10-06, msg_7402f8df-7917-4b24-bb86-c4e7d51991f7) names BMC
-// reads/writes, boots, and firmware qualification. Route A consumes archive and firmware-qualification
-// arms (admit_arrival_subject). BmcSecure account-write is StandingBmcSecureAccountWrite -- the same
-// arm name as gunbc#13517 (O1c-3b), InterlockedBy admit_rotation_apply, read by
-// grant_discharges_bmc_secure_account_write. J6 boot stays a frontier until managed_host_boot.
+// reads/writes, boots, and firmware qualification. StandingBmcSecureAccountWrite is owned by
+// gunbc#13517 (O1c-3b): the variant, wire key, and InterlockedBy admit_rotation_apply. This module
+// consumes that arm on the mtjade1 effects list and standing_grant_arm_interlock overlay; J4 reads
+// it via grant_discharges_bmc_secure_account_write. Route A also consumes archive and firmware
+// arms (admit_arrival_subject). J6 boot stays a frontier until managed_host_boot.
 type StandingGrantEffect
   = StandingD0ReleaseToFleet
   | StandingArmLaunch
@@ -124,9 +127,9 @@ data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
 // login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval
 // needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead." Quote unchanged.
 // Grant grain stays InterlockPending (no blanket hold; unnamed classes such as J6 boot still refuse
-// to discharge). Every arm this module lists is InterlockedBy a named hold via
-// standing_grant_arm_interlock -- never pending, never unconditional. Mode, pool, SA and secret
-// names: operator sign-off msg_f03558d1.
+// to discharge). Landed arms are InterlockedBy named holds via standing_grant_arm_interlock.
+// StandingBmcSecureAccountWrite's overlay hold is #13517's admit_rotation_apply. Mode, pool, SA and
+// secret names: operator sign-off msg_f03558d1.
 data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
   identity: "mtjade1-live-standing-grant-2026-10-06" as NonEmptyStr,
   principal: "operator" as NonEmptyStr,

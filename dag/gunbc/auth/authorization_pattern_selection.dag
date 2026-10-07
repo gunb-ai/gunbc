@@ -117,6 +117,7 @@ type BillingConsequence
 // is a named hold the census must roster against the site. Only UnconditionalStanding and
 // InterlockedBy discharge the irreversibility ground. Route A overlays InterlockedBy per arm
 // (standing_grant_arm_interlock); grant grain may stay InterlockPending for unnamed classes.
+// StandingBmcSecureAccountWrite (#13517) is consumed as InterlockedBy admit_rotation_apply on that overlay.
 type StandingRulingInterlock
   = InterlockPending { obligation: NonEmptyStr }
   | UnconditionalStanding { reason: NonEmptyStr }
