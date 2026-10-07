@@ -38,8 +38,7 @@ import gunbc.fabric.fabric_blob_r2 {
 // reads and writes only the per-host L1 under GUNBC_NATIVE_CACHE_ROOT; that L1 keeps working, and
 // this module is the second tier behind it, never a second store of a different key. TRIGGER, the
 // capability and not an artifact: the cache-blobs read and write tokens are minted and pinned in
-// gunbc.cloudflare.r2_origin fabric_cache_blobs_standing (they are OriginCredentialUnminted, so
-// every transfer below refuses closed, naming the unminted credential) AND the required emit-build
+// gunbc.cloudflare.r2_origin fabric_cache_blobs_standing (pinned 2026-10-07) AND the required emit-build
 // job carries a workload identity (an id-token grant and the federation step) so an
 // AccessTokenSource of WorkloadIdentityToken is selectable there. Until both hold, the arms below
 // refuse and the run proceeds on the L1 and a rebuild; nothing here widens to a different store.
