@@ -44,6 +44,7 @@ import gunbc.instruments.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
 import v2.compiler.name_resolve {
+  subject_member_kind_channel,
   resolution_context_namespace,
   closure_declarations_demand,
   Admission,
@@ -200,7 +201,8 @@ import v2.extdeps.languages.dag {
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
-import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate, mandatory_tag_compile_gate_with_provenance }
+import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -795,6 +797,34 @@ fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   machine_shape_compile_gate(node: tree.root)
 }
 
+// The native door's channel for its resolved subject, read from the same validated roots resolve_in_context reads.
+// A duplicate-member refusal cannot be returned from this verdict, so it reads as Unavailable and mandatory_tag
+// refuses on provenance -- never "fine", never "every module lacks its data decl".
+fn native_subject_member_kinds(shared: ResolutionContext, resolved: Node) -> MemberKindChannel {
+  match qualified_name_from_module_node(root: resolved) {
+    Rejected { diagnostics: _ } => no_member_declaration_kinds()
+    Accepted { value: qn, diagnostics: _ } =>
+      match subject_member_kind_channel(roots: shared.roots, name: qn) {
+        Accepted { value: c, diagnostics: _ } => c
+        Rejected { diagnostics: _ } => no_member_declaration_kinds()
+      }
+  }
+}
+
+// The compile door's binding of the mandatory_tag gate: the same gate, handed the member-kind provenance
+// the resolved subject carries (ResolvedTree.member_kinds).
+fn mandatory_tag_root_lens_with_provenance(lens: CompileLens, channel: MemberKindChannel) -> CompileLens {
+  if lens.identity == mandatory_tag_lens.identity {
+    CompileLens {
+      identity: lens.identity,
+      grain: lens.grain,
+      gate: fn(tree) { mandatory_tag_compile_gate_with_provenance(node: tree.root, channel: channel) }
+    }
+  } else {
+    lens
+  }
+}
+
 fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   mandatory_tag_compile_gate(node: tree.root)
 }
@@ -1042,9 +1072,13 @@ fn validate_then_compile(
           bind_outcome(
             o: run_required_lens_gates(
               inferred: inferred,
-              lenses: list_append(
-                left: required_lenses_at_grain(grain: CompileLensRoot),
-                right: lenses_at_grain(lenses: lenses, grain: CompileLensRoot)
+              lenses: fold(
+                list_append(
+                  left: required_lenses_at_grain(grain: CompileLensRoot),
+                  right: lenses_at_grain(lenses: lenses, grain: CompileLensRoot)
+                ),
+                init: [],
+                f: fn(acc, l) { list_snoc_item(xs: acc, item: mandatory_tag_root_lens_with_provenance(lens: l, channel: source.member_kinds)) }
               )
             ),
             f: fn(root_witnesses) {
@@ -3506,6 +3540,7 @@ fn native_module_resolve_verdict(
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
                     unavailable_providers: closure.refused,
+                    member_kinds: native_subject_member_kinds(shared: shared, resolved: resolved),
                     lexical: lexical
                   )
                 },

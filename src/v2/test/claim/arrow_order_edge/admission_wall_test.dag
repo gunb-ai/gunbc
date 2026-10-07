@@ -1,5 +1,6 @@
 module v2.test.claim.arrow_order_edge.admission_wall
 
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.compiler.infer { infer }
@@ -80,7 +81,7 @@ test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
 
 // PATH: infer, entered directly with a ResolvedTree.
 fn aoe_infer_reason(arrow: Node) -> Symbol {
-  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [] }) {
+  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds() }) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
     Accepted { value: _, diagnostics: _ } => ^aoe_accepted
   }

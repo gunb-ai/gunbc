@@ -208,7 +208,8 @@ fn fmi_infer_with_member_formal_authored(tree: ResolvedTree) -> Outcome<Bool> {
                     symbol_index: tree.symbol_index,
                     resolved_declarations: tree.resolved_declarations,
                     lexical_bindings: tree.lexical_bindings,
-                    unavailable_providers: tree.unavailable_providers
+                    unavailable_providers: tree.unavailable_providers,
+    member_kinds: tree.member_kinds
                   }) {
                     Rejected { diagnostics: d } => Rejected { diagnostics: d }
                     Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }

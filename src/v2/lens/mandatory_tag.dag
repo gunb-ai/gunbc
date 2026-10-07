@@ -44,6 +44,17 @@ import v2.std.node {
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
+import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
+import v2.std.member_declaration_kind {
+  DeclaredDataMember,
+  DeclaredFnMember,
+  MemberKindChannel,
+  MemberKindDeclared,
+  MemberKindNotDeclared,
+  MemberKindProvenanceUnavailable,
+  member_kind_lookup,
+  no_member_declaration_kinds
+}
 import v2.std.witness { Holds, Witness }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
@@ -340,19 +351,27 @@ fn mandatory_tag_lowered_body(d: Node) -> Optional<Node> {
   })
 }
 
-fn mandatory_tag_lowered_member(n: Node, required_name: Symbol) -> Optional<Node> {
-  fold(n.children, init: optional_absent(), f: fn(acc, e) {
-    match e.label {
-      Authored { name: nm } =>
-        if (nm == required_name) && mandatory_tag_is_arrow(n: e.target) {
-          optional_present(value: e.target)
-        } else {
-          acc
+// A DIRECT top-level member of the module body: an Authored edge on the grafted module body (never a
+// descendant of a member, so a nested Arrow-valued member of the same name is not it) whose target is an
+// Arrow. That a lowered Arrow is a DATA declaration is not readable here -- a zero-argument fn lowers to the
+// same shape -- so this finds the candidate and the member-kind channel decides what it is.
+fn mandatory_tag_lowered_member(module_node: Node, required_name: Symbol) -> Optional<Node> {
+  match namespace_graft_module_body_optional(root: module_node) {
+    Absent => optional_absent()
+    Present { value: body } =>
+      fold(body.children, init: optional_absent(), f: fn(acc, e) {
+        match e.label {
+          Authored { name: nm } =>
+            if (nm == required_name) && mandatory_tag_is_arrow(n: e.target) {
+              optional_present(value: e.target)
+            } else {
+              acc
+            }
+          StructuralLabel { label: _ } => acc
+          Positional => acc
         }
-      StructuralLabel { label: _ } => acc
-      Positional => acc
-    }
-  })
+      })
+  }
 }
 
 fn mandatory_tag_decl_type_node(d: Node) -> Optional<Node> {
@@ -397,10 +416,6 @@ fn mandatory_tag_scan_decls(subtree: Node, required_name: Symbol) -> MandatoryTa
         MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 1 }
     }
   } else {
-    match mandatory_tag_lowered_member(n: subtree, required_name: required_name) {
-      Present { value: arrow } =>
-        MandatoryTagDeclScan { found: optional_present(value: arrow), projection_gated_count: 0 }
-      Absent =>
     fold(subtree.children, init: MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
       match acc.found {
         Present { value: _ } => acc
@@ -412,13 +427,20 @@ fn mandatory_tag_scan_decls(subtree: Node, required_name: Symbol) -> MandatoryTa
           }
       }
     })
-    }
   }
 }
 
 fn mandatory_tag_missing_decl_diagnostic(module_node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^mandatory_tag_missing_required_decl,
+    at: node_locus(node: module_node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn mandatory_tag_member_provenance_unavailable_diagnostic(module_node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^mandatory_tag_member_provenance_unavailable,
     at: node_locus(node: module_node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -510,10 +532,45 @@ fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<Dia
   }
 }
 
+// A lowered Arrow candidate classified by the channel. Data: the declaration's codomain and body are
+// REQUIRED -- a positively identified data declaration missing either refuses, it is never an empty finding
+// set. Fn, or not declared by this module: the candidate is not a data declaration, so the required one is
+// missing. Unavailable: the provenance that would say which it is was never read for this module.
+fn mandatory_tag_lowered_candidate_findings(
+  region: MandatoryTagRegion,
+  module_node: Node,
+  dotted: String,
+  candidate: Node,
+  channel: MemberKindChannel
+) -> List<Diagnostic> {
+  match member_kind_lookup(channel: channel, module: dotted, name: region.required_decl_name) {
+    MemberKindProvenanceUnavailable => [mandatory_tag_member_provenance_unavailable_diagnostic(module_node: module_node)]
+    MemberKindNotDeclared => [mandatory_tag_missing_decl_diagnostic(module_node: module_node)]
+    MemberKindDeclared { kind: kind } =>
+      match kind {
+        DeclaredFnMember => [mandatory_tag_missing_decl_diagnostic(module_node: module_node)]
+        DeclaredDataMember =>
+          match mandatory_tag_lowered_codomain(d: candidate) {
+            Absent => [mandatory_tag_type_mismatch_diagnostic(d: candidate)]
+            Present { value: _ } =>
+              match mandatory_tag_lowered_body(d: candidate) {
+                Absent => [mandatory_tag_value_unreadable_diagnostic(d: candidate)]
+                Present { value: _ } =>
+                  concat(
+                    mandatory_tag_type_findings(d: candidate, region: region),
+                    mandatory_tag_value_findings(d: candidate, region: region)
+                  )
+              }
+          }
+      }
+  }
+}
+
 fn mandatory_tag_region_module_findings(
   region: MandatoryTagRegion,
   module_node: Node,
-  dotted: String
+  dotted: String,
+  channel: MemberKindChannel
 ) -> List<Diagnostic> {
   if mandatory_tag_region_applies(region: region, dotted: dotted) {
     let scan = mandatory_tag_scan_decls(
@@ -528,7 +585,17 @@ fn mandatory_tag_region_module_findings(
         )
       Absent =>
         if scan.projection_gated_count == 0 {
-          [mandatory_tag_missing_decl_diagnostic(module_node: module_node)]
+          match mandatory_tag_lowered_member(module_node: module_node, required_name: region.required_decl_name) {
+            Absent => [mandatory_tag_missing_decl_diagnostic(module_node: module_node)]
+            Present { value: candidate } =>
+              mandatory_tag_lowered_candidate_findings(
+                region: region,
+                module_node: module_node,
+                dotted: dotted,
+                candidate: candidate,
+                channel: channel
+              )
+          }
         } else {
           [mandatory_tag_projection_gated_diagnostic(module_node: module_node)]
         }
@@ -538,7 +605,7 @@ fn mandatory_tag_region_module_findings(
   }
 }
 
-fn mandatory_tag_module_findings(n: Node) -> List<Diagnostic> {
+fn mandatory_tag_module_findings(n: Node, channel: MemberKindChannel) -> List<Diagnostic> {
   if mandatory_tag_node_production_is(n: n, want: ^dag_surface_module) {
     match qualified_name_from_module_node(root: n) {
       Rejected { diagnostics: _ } => []
@@ -550,7 +617,8 @@ fn mandatory_tag_module_findings(n: Node) -> List<Diagnostic> {
             mandatory_tag_region_module_findings(
               region: region,
               module_node: n,
-              dotted: dotted
+              dotted: dotted,
+              channel: channel
             )
           )
         })
@@ -565,14 +633,19 @@ fn mandatory_tag_module_findings(n: Node) -> List<Diagnostic> {
 // malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable
 // on a tree that reached the lens roster; keying region membership on a fabricated name would be
 // the fabricated-plausible-output trap the arm avoids.
-fn mandatory_tag_findings(root: Node) -> List<Diagnostic> {
+fn mandatory_tag_findings_with_provenance(root: Node, channel: MemberKindChannel) -> List<Diagnostic> {
   fold_node(
     n: root,
     algebra: NodeFold {
-      init: fn(n0) { mandatory_tag_module_findings(n: n0) },
+      init: fn(n0) { mandatory_tag_module_findings(n: n0, channel: channel) },
       step: fn(acc, _edge, child) { concat(acc, child) }
     }
   )
+}
+
+// The parse/emit grain: no provenance is read, so a lowered candidate refuses as provenance-unavailable.
+fn mandatory_tag_findings(root: Node) -> List<Diagnostic> {
+  mandatory_tag_findings_with_provenance(root: root, channel: no_member_declaration_kinds())
 }
 
 fn mandatory_tag_findings_count(root: Node) -> Int {
@@ -580,7 +653,12 @@ fn mandatory_tag_findings_count(root: Node) -> Int {
 }
 
 fn mandatory_tag_compile_gate(node: Node) -> Outcome<Witness<Node>> {
-  match mandatory_tag_findings(root: node) {
+  mandatory_tag_compile_gate_with_provenance(node: node, channel: no_member_declaration_kinds())
+}
+
+// The compile door's entry: the channel is the member-kind provenance ResolvedTree carries for this subject.
+fn mandatory_tag_compile_gate_with_provenance(node: Node, channel: MemberKindChannel) -> Outcome<Witness<Node>> {
+  match mandatory_tag_findings_with_provenance(root: node, channel: channel) {
     Cons { head: first, tail: rest } =>
       Rejected {
         diagnostics: NonEmptyDiagnostics { head: first, tail: rest }

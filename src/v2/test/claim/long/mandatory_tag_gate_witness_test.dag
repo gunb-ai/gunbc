@@ -7,7 +7,22 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.compile { CompileLens, CompileLensRoot, required_lenses_at_grain }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate_with_provenance }
+import v2.compiler.resolve { member_kind_channel_of_tree }
+import v2.std.member_declaration_kind {
+  DeclaredDataMember,
+  DeclaredFnMember,
+  DeclaredMember,
+  MemberKindChannel,
+  MemberKindsCaptured,
+  QualifiedDeclaredMember,
+  declared_members_have_duplicate,
+  no_member_declaration_kinds
+}
+import v2.std.qualified_name { QualifiedName }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Arrow, ArrowBodyEdge, Atom, Edge, Node, Positional, TypeNode, Conj, core_edge_label }
+import v2.lens.mandatory_tag { mandatory_tag_lowered_candidate_findings, extdeps_external_authority_region }
 import std.algebra { Cons, Empty }
 import v2.std.collection { empty_map}
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
@@ -59,7 +74,7 @@ data src_exempt_fixture: String = "module extdeps.fixture.gate_probe_planted\n\n
 
 type GrainProbe
   = GrainStageRejected
-  | GrainTree { root: Node }
+  | GrainTree { root: Node, channel: MemberKindChannel }
 
 fn parse_grain_tree(source: String) -> GrainProbe {
   let lm = dag_language_model()
@@ -68,7 +83,7 @@ fn parse_grain_tree(source: String) -> GrainProbe {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: _ } => GrainStageRejected
-        Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree }
+        Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree, channel: no_member_declaration_kinds() }
       }
   }
 }
@@ -79,7 +94,11 @@ fn normalized_grain_tree(source: String) -> GrainProbe {
     GrainTree { root: parse_root } =>
       match normalize(parse_tree: parse_root) {
         Rejected { diagnostics: _ } => GrainStageRejected
-        Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized.root }
+        Accepted { value: normalized, diagnostics: _ } =>
+          match member_kind_channel_of_tree(tree: normalized) {
+            Rejected { diagnostics: _ } => GrainStageRejected
+            Accepted { value: channel, diagnostics: _ } => GrainTree { root: normalized.root, channel: channel }
+          }
       }
   }
 }
@@ -87,8 +106,8 @@ fn normalized_grain_tree(source: String) -> GrainProbe {
 fn gate_accepts_tree(probe: GrainProbe) -> Bool {
   match probe {
     GrainStageRejected => false
-    GrainTree { root: root } =>
-      match mandatory_tag_compile_gate(node: root) {
+    GrainTree { root: root, channel: channel } =>
+      match mandatory_tag_compile_gate_with_provenance(node: root, channel: channel) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -98,8 +117,8 @@ fn gate_accepts_tree(probe: GrainProbe) -> Bool {
 fn gate_rejects_tree_with(probe: GrainProbe, reason: Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
-    GrainTree { root: root } =>
-      match mandatory_tag_compile_gate(node: root) {
+    GrainTree { root: root, channel: channel } =>
+      match mandatory_tag_compile_gate_with_provenance(node: root, channel: channel) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: d } =>
           if d.head.reason == reason {
@@ -179,7 +198,7 @@ test fn mandatory_tag_normalized_grain_misnamed_rejects() -> Bool {
 fn roster_rejects_with(probe: GrainProbe, reason: Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
-    GrainTree { root: root } =>
+    GrainTree { root: root, channel: _ } =>
       let inferred = InferredTree { root: root, facts: empty_map() }
       fold(required_lenses_at_grain(grain: CompileLensRoot), init: false, f: fn(acc, lens) {
         acc
@@ -201,4 +220,179 @@ test fn mandatory_tag_enrolled_in_root_roster_rejects_violating_module() -> Bool
     probe: parse_grain_tree(source: src_missing),
     reason: ^mandatory_tag_missing_required_decl
   )
+}
+
+
+// SUPPLIED-CARRIER CONTROLS at the lens's own interface (DESIGN section 3, a witness discriminates at one
+// interface): the candidate Arrow and the member-kind channel are supplied values, so no frontend runs. The
+// real route -- normalize capturing the kinds, resolve carrying them, the door binding them to the gate -- is
+// run for real by mandatory_tag_normalized_grain_clean_accepts above; deleting that integration makes it fail.
+fn mt_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn mt_domain() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn mt_candidate(codomain: Symbol, body: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: mt_domain() },
+      Edge { label: Positional, target: mt_atom(s: codomain) },
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: mt_body(atoms: body) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn mt_body(atoms: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold(atoms, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: mt_atom(s: a) }]) }),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn mt_no_codomain() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: mt_domain() }, Edge { label: core_edge_label(marker: ArrowBodyEdge), target: mt_body(atoms: [^Https]) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn mt_no_body() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: mt_domain() }, Edge { label: Positional, target: mt_atom(s: ^ExternalAuthority) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn mt_channel(kind: MemberKindChannel) -> MemberKindChannel {
+  kind
+}
+
+fn mt_captured(kind: MemberKindDeclaredFor) -> MemberKindChannel {
+  MemberKindsCaptured {
+    covered: [mt_module()],
+    members: mt_members(kind: kind)
+  }
+}
+
+type MemberKindDeclaredFor
+  = ForData
+  | ForFn
+  | ForNothing
+
+fn mt_module() -> QualifiedName {
+  [^extdeps, ^gate_probe_supplied]
+}
+
+fn mt_members(kind: MemberKindDeclaredFor) -> List<QualifiedDeclaredMember> {
+  match kind {
+    ForData => [QualifiedDeclaredMember { module: mt_module(), name: ^extdeps_external_authority_anchor, kind: DeclaredDataMember }]
+    ForFn => [QualifiedDeclaredMember { module: mt_module(), name: ^extdeps_external_authority_anchor, kind: DeclaredFnMember }]
+    ForNothing => []
+  }
+}
+
+fn mt_findings(candidate: Node, channel: MemberKindChannel) -> List<Symbol> {
+  fold(
+    mandatory_tag_lowered_candidate_findings(
+      region: extdeps_external_authority_region,
+      module_node: candidate,
+      dotted: "extdeps.gate_probe_supplied",
+      candidate: candidate,
+      channel: channel
+    ),
+    init: [],
+    f: fn(acc, d) { concat(acc, [d.reason]) }
+  )
+}
+
+fn mt_only(candidate: Node, channel: MemberKindChannel, reason: Symbol) -> Bool {
+  match mt_findings(candidate: candidate, channel: channel) {
+    Cons { head: h, tail: Empty } => h == reason
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => false
+    Empty => false
+  }
+}
+
+test fn mandatory_tag_supplied_data_member_with_good_carrier_accepts() -> Bool {
+  match mt_findings(candidate: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]), channel: mt_captured(kind: ForData)) {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+test fn mandatory_tag_supplied_zero_arg_fn_same_shape_refuses_as_missing() -> Bool {
+  mt_only(
+    candidate: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]),
+    channel: mt_captured(kind: ForFn),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+test fn mandatory_tag_supplied_member_not_declared_refuses_as_missing() -> Bool {
+  mt_only(
+    candidate: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]),
+    channel: mt_captured(kind: ForNothing),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+test fn mandatory_tag_supplied_unread_provenance_refuses_as_unavailable() -> Bool {
+  mt_only(
+    candidate: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]),
+    channel: no_member_declaration_kinds(),
+    reason: ^mandatory_tag_member_provenance_unavailable
+  )
+}
+
+test fn mandatory_tag_supplied_uncovered_module_refuses_as_unavailable() -> Bool {
+  mt_only(
+    candidate: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]),
+    channel: MemberKindsCaptured { covered: [[^extdeps, ^some_other_module]], members: [] },
+    reason: ^mandatory_tag_member_provenance_unavailable
+  )
+}
+
+test fn mandatory_tag_supplied_wrong_codomain_refuses_as_type_mismatch() -> Bool {
+  mt_only(
+    candidate: mt_candidate(codomain: ^SomethingElse, body: [^Https]),
+    channel: mt_captured(kind: ForData),
+    reason: ^mandatory_tag_required_decl_type_mismatch
+  )
+}
+
+test fn mandatory_tag_supplied_missing_codomain_or_body_refuses() -> Bool {
+  mt_only(candidate: mt_no_codomain(), channel: mt_captured(kind: ForData), reason: ^mandatory_tag_required_decl_type_mismatch)
+    && mt_only(candidate: mt_no_body(), channel: mt_captured(kind: ForData), reason: ^mandatory_tag_value_vocabulary_unreadable)
+}
+
+test fn mandatory_tag_supplied_wrong_or_missing_vocabulary_atom_refuses() -> Bool {
+  mt_only(
+    candidate: mt_candidate(codomain: ^ExternalAuthority, body: [^File]),
+    channel: mt_captured(kind: ForData),
+    reason: ^mandatory_tag_value_not_accepted
+  )
+    && mt_only(
+      candidate: mt_candidate(codomain: ^ExternalAuthority, body: []),
+      channel: mt_captured(kind: ForData),
+      reason: ^mandatory_tag_value_vocabulary_unreadable
+    )
+}
+
+test fn member_kind_channel_duplicate_declaration_is_detected() -> Bool {
+  declared_members_have_duplicate(members: [
+    DeclaredMember { name: ^extdeps_external_authority_anchor, kind: DeclaredDataMember },
+    DeclaredMember { name: ^extdeps_external_authority_anchor, kind: DeclaredFnMember }
+  ])
+    && !declared_members_have_duplicate(members: [
+      DeclaredMember { name: ^extdeps_external_authority_anchor, kind: DeclaredDataMember },
+      DeclaredMember { name: ^other_member, kind: DeclaredFnMember }
+    ])
 }
