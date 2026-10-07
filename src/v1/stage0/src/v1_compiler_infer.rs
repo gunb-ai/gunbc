@@ -248,7 +248,7 @@ use crate::v1_compiler_infer_types::TextNotAskedReason::{
 pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
     is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
     method_receiver_element_node, node_is_collection, node_is_element_collection,
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
@@ -5797,6 +5797,7 @@ pub enum InhabitanceUndecidableReason {
 pub enum InhabitanceRefusalReason {
     RefusedPayloadAtParent,
     RefusedKernelAtStructured,
+    RefusedProductCoproductHeadMismatch,
     RefusedCollectionAtEstablishedIdentity,
     RefusedDistinctProductConstructor,
     RefusedDistinctAppliedTypeArgument,
@@ -6163,13 +6164,13 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
 })
                                                 } else {
-                                                    if coproduct_at_record_declared_type(
+                                                    if product_versus_coproduct_head_mismatch(
                                                         declared.clone(),
                                                         produced.clone(),
                                                         scope.clone(),
                                                     ) {
                                                         Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
+    reason: InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch,
 })
                                                     } else {
                                                         match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
@@ -6393,7 +6394,7 @@ pub fn record_at_scalar_needs_identity(
     ))
 }
 
-pub fn coproduct_at_record_declared_type(
+pub fn product_versus_coproduct_head_mismatch(
     declared: Rc<Node>,
     produced: Rc<Node>,
     scope: Rc<InferScope>,
@@ -6573,8 +6574,8 @@ pub fn nominal_product_head_name_if_declared_product(
                     scope.type_env.clone(),
                     scope.module_name.clone(),
                 );
-                if ((peeled.connective.clone() == Connective::Conj)
-                    && ((peeled.children.clone().len() as i64) > 0))
+                if (crate::v1_compiler_infer_types::is_product_type(peeled.clone())
+                    && (is_where_refinement_type(peeled.clone()) == false))
                 {
                     name.clone()
                 } else {
@@ -7004,6 +7005,23 @@ pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>)
     }
 }
 
+pub fn inhabitance_refusal_position_label(
+    position: DeclaredTypePosition,
+    subject: String,
+    reason: InhabitanceRefusalReason,
+) -> String {
+    {
+        let base = declared_type_position_label(position.clone(), subject.clone());
+        match reason.clone() {
+            InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch => v1_rt::concat(
+                base.clone(),
+                " [RefusedProductCoproductHeadMismatch]".to_string(),
+            ),
+            _ => base.clone(),
+        }
+    }
+}
+
 pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
     match reason.clone() {
     InhabitanceUndecidableReason::UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone".to_string(),
@@ -7069,12 +7087,13 @@ pub fn declared_type_obligation_diags(
                 scope.module_name.clone(),
             )])
         }
-        InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => {
+        InhabitanceVerdict::InhabitanceRefused { reason: r, .. } => {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
-                    position: declared_type_position_label(
+                    position: inhabitance_refusal_position_label(
                         obligation.position.clone(),
                         obligation.subject.clone(),
+                        r.clone(),
                     ),
                     expected: obligation_type_shape(
                         obligation.declared.clone(),
@@ -32451,6 +32470,8 @@ pub struct UndecidableRefinementPeerChains;
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedProductCoproductHeadMismatch;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedCollectionAtEstablishedIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
