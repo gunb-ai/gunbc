@@ -76,7 +76,11 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // known-red. The row deletes, so the required floor runs the file. The same change deleted
 // cwc_malformed_nary_coproduct_fail_open_control (the negation of its sibling) and repaired the
 // resolve door that cwc_cwc_module_resolve_accepts reads.
-// 2026-09-18 — 4 entries
+// SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
+// renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
+// Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
+// gunbc.offline_local_recipe RecipeFunctions; freeze must not report a passing ratchet. Do not raise the cap.
+// SHRINK LOG. 2026-09-18 — 4 entries
 // (src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag [whole],
 // src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [whole],
 // src/v2/test/claim/long/door_real_module_probe_test.dag [partial],
@@ -424,21 +428,16 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
-  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag", functions: ["roster_lean_zero_suspects_within_ratchet", "roster_bash_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
     functions: [
       "roster_std_change_dag_zero_suspects_within_ratchet"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag", functions: ["roster_swift_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
     functions: [
       "roster_machine_code_zero_suspects_within_ratchet",
-      "roster_compile_stage_zero_suspects_within_ratchet",
-      "roster_glob_discovery_zero_suspects_within_ratchet",
-      "roster_lens_traversal_zero_suspects_within_ratchet",
       "roster_lens_cost_model_zero_suspects_within_ratchet",
       "roster_std_algebra_zero_suspects_within_ratchet"
     ]
