@@ -167,11 +167,8 @@ pub(super) fn derive_key(
     )
     .as_bytes());
     let toolchain = super::emitted_closure_compile_host::probe_toolchain_identity_for_key()?;
-    let build_configuration = hex(format!(
-        "cargo build --release --offline --message-format json --color never;RUSTFLAGS={}",
-        super::emitted_closure_compile_host::WARNING_DENIAL_RUSTFLAGS
-    )
-    .as_bytes());
+    let build_configuration =
+        hex(super::emitted_closure_compile_host::probe_build_configuration_for_key().as_bytes());
     Ok(assemble_key(AxisInputs {
         producer_compiler: producer_axis(workspace)?,
         source_closure,
