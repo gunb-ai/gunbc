@@ -1,0 +1,32 @@
+module gunbc.rung_drop.rust_unit_tests_off_pull_requests
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-10-06, operator-approved (CI short-term relief). The fleet rust-unit-tests job runs
+// on merge_group and workflow_dispatch only (gunbc.compiler_gate_workflow
+// compiler_gate_unit_test_job_condition) and stays a blocking lane there: its row carries
+// GateArmSkippedOnPullRequest, so the aggregate excuses its skip only on a pull_request event and
+// refuses it everywhere else. A unit-test red is therefore found at the queue's composed revision,
+// not on the pull request that introduced it.
+
+data rust_unit_tests_off_pull_requests_population: List<String> = [
+  "pull_request runs of the fleet rust-unit-tests job of gunbc.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command) is not executed per push, so a failing v1-compiler unit test blocks at merge_group instead of on the pull request",
+]
+
+data rust_unit_tests_off_pull_requests: RungDrop = RungDrop {
+  identity: "rust_unit_tests_off_pull_requests" as NonEmptyStr,
+  subject: "a failing v1-compiler --lib unit test turns the required witnesses context red on the pull request that introduced it",
+  declared: "2026-10-06",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "per-push runner cost of the CI programme (docs/plans/ci-end-to-end-accounting.md) brought below the point where the unit lane can run on every pull request"
+    },
+    population: rust_unit_tests_off_pull_requests_population,
+    restoration_trigger: "THE CAPABILITY: a failing v1-compiler --lib unit test is reported on the pull request that introduced it, within the per-push CI budget. WHAT THAT MUST BE SUFFICIENT FOR: the author of a breaking change sees the red before entering the queue; re-adding the job to pull_request without that budget does not retire this row."
+  }
+}

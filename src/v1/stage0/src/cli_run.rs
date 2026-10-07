@@ -86,6 +86,7 @@ use serde::Serialize;
 mod active_workset;
 mod census_heads;
 mod checker_dependency;
+pub use checker_dependency::write_checker_inputs_record;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -119,6 +120,7 @@ pub mod pre_entry_phase;
 mod required_lane_resolution_census;
 mod typecheck_store_session;
 pub(crate) use active_workset::*;
+pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
     entry_closure_module_identities, required_floor_nominal_subject_module_identities,
@@ -4112,7 +4114,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
+        std::collections::HashMap<String, Result<EmitCheckRead, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -41626,6 +41628,8 @@ pub use required_regen_host::RegenRoundCostOutcome;
 pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
     required_regen_host::run_regen_affected_set(source_roots)
 }
+
+pub use required_regen_host::run_regen_one_mirror_emit_probe;
 
 /// One priced regen round — see `required_regen_host::run_regen_round_cost`.
 pub fn run_regen_round_cost(
