@@ -1,7 +1,7 @@
 module test.claim.spark.snapshot_rail_replica_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.snapshot_rail_replica { snapshot_entry_of, is_sha256_name, first_failure, snapshot_hub_paths }
 import gunbc.spark.group_checkpoint_materialize { checkpoint_snapshot }
 import gunbc.spark.serving_arm { Glm53NativeFp8 }

@@ -3,7 +3,7 @@ module test.claim.spark.serving_arm_launch_witness_test
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.serving_promotion { no_promotion_receipts }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { token_count_value }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
 import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }

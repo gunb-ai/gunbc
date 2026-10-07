@@ -13,7 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
   filesystem_listing_observation, filesystem_file_observation, filesystem_read_outcome,
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 

@@ -3,7 +3,7 @@ module gunbc.spark.arm_memory_fit
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.algebra { FreeMonoid }
 import std.nat { Nat, nat_range_inclusive }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, measure_le,
   Gibibyte, gibibyte, gibibyte_count, gibibyte_to_byte_size,

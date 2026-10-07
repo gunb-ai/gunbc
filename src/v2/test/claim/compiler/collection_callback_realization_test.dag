@@ -9,7 +9,7 @@ import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_to_dotted_string }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }

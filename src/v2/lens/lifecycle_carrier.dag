@@ -25,7 +25,7 @@ import v2.std.node {
   StructuralLabel,
 }
 import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

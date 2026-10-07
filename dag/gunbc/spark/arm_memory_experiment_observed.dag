@@ -10,7 +10,7 @@ import std.measure {
   AllocatorBlockCount,
   gibibyte_scale_factor_bytes, concurrent_request_hundredths, basis_point,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.runtime_defaults { Vllm8d09804, defaults_source_revision }
 import extdeps.vllm.log_lines {
   VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency,

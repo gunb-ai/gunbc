@@ -1,7 +1,7 @@
 module gunbc.process_hold_identity
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.durable_exclusive_hold { DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }

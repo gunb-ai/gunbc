@@ -1,8 +1,8 @@
 module gunbc.spark.arm_group_launch_dispatch
 
 import product.host_identity { HostIdentity }
-import std.types { String, List, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.types { String, List, NonEmptyStr, Int }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import gunbc.fleet_multi_principal_probe { env_var_nonempty }
 import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet, group_arm_occupancy_observe_session }
@@ -16,8 +16,12 @@ import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, Spar
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ExitSuccess }
-import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session }
-import gunbc.spark.glm53_arm_staircase { Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire, glm53_step_dry_plan, glm53_step_wet_session }
+import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session, v41_group_a_deployment_env }
+import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import std.measure { Second, second, second_count }
+import std.types { Duration }
+import extdeps.docker.cli { DockerEnvAssignment }
+import gunbc.spark.glm53_arm_staircase { glm53_step_deployment_env, Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire, glm53_step_dry_plan, glm53_step_wet_session }
 
 // ── WHICH ARM A GROUP-LAUNCH MODE RUNS, FROM CLOSED WORKFLOW INPUTS (deforking cut 8a) ────────────
 //
@@ -241,3 +245,49 @@ fn arm_group_load_ci() -> ProcessExit {
     }
   }
 }
+
+// ── THE LAUNCH STEP'S TIMEOUT IS DERIVED, NOT A LITERAL (gunbc.recurring_failure_mode
+// a_step_timeout_shorter_than_the_wait_it_encloses; nvfp4-8, fleet-converge 37190290418) ─────────────
+//
+// The transaction encloses a front-door wait bounded by each arm's own VLLM_ENGINE_READY_TIMEOUT_S, read by
+// the SAME reader the front door uses (gunbc.spark.arm_memory_fit engine_ready_timeout_for over the arm's
+// deployment env) -- one authority. The step must outlast the longest of those plus the transaction's work
+// before the wait (preflight, preserve, head-first apply, container readback) and its rollback after it.
+// Those two budgets are declared, not measured from one run: the apply-to-readback span measured 10-14 min
+// on Group A (launches 37178826027, 37181793223, 37185803198, 37187675945) and a four-host rollback ~15 min.
+// THE BUDGETS ARE DURATIONS (std.measure Second), and so is the derivation: the minute unit appears only
+// at the workflow Step, whose timeout_minutes field is minutes by GitHub's own schema (review 76345).
+data arm_launch_apply_budget: Second = second(count: 1800)
+data arm_launch_rollback_budget: Second = second(count: 1200)
+
+// AN UNREADABLE TIMEOUT REFUSES THE DERIVATION; IT DOES NOT CONTRIBUTE ZERO (review 76374). The
+// derivation is the only check guarding the step's literal timeout, so an arm whose
+// VLLM_ENGINE_READY_TIMEOUT_S cannot be read must make the derivation refuse by name -- a zero would
+// shrink the budget and let the check pass over exactly the arm it cannot account for.
+type ArmLaunchStepNeed
+  = ArmLaunchStepNeedDerived { need: Second }
+  | ArmLaunchStepNeedRefused { causes: List<String> }
+
+// Every arm the step can launch: the GLM staircase's steps and the V4.1 arm.
+fn arm_launch_step_needed() -> ArmLaunchStepNeed {
+  let envs = concat(map(glm53_staircase_steps, s => glm53_step_deployment_env(s: s)), [v41_group_a_deployment_env()])
+  let read = map(envs, e => engine_ready_timeout_for(env: e))
+  let causes = flat_map(read, r => match r {
+    EngineReadyTimeoutResolved { timeout: _ } => [] as List<String>
+    EngineReadyTimeoutUnreadable { cause: c } => [c as String]
+  })
+  if count(causes) > 0 { ArmLaunchStepNeedRefused { causes: causes } }
+  else {
+    let longest = fold(map(read, r => match r { EngineReadyTimeoutResolved { timeout: t } => second_count(s: t)  EngineReadyTimeoutUnreadable { cause: _ } => second_count(s: second(count: 0)) }), init: second_count(s: second(count: 0)), f: fn(a, m) { if m > a { m } else { a } })
+    ArmLaunchStepNeedDerived { need: second(count: longest + second_count(s: arm_launch_apply_budget) + second_count(s: arm_launch_rollback_budget)) }
+  }
+}
+
+// THE STEP'S TIMEOUT IS A LITERAL ONLY BECAUSE THE LANGUAGE CANNOT YET CONSTRUCT A Duration FROM A
+// COMPUTED Int: std.types Duration is `Int where range(min: 0)` and std.coercion's refinement-cast wall
+// refuses an Int-to-refinement cast (no declared conversion route exists), so the derivation above cannot
+// flow into the workflow Step's timeout_minutes field. Until it can, this literal is CHECKED against the
+// derivation -- test.claim.spark.group_arm_launch_witness w_the_launch_step_timeout_covers_every_arms_readiness
+// and drifts loudly. The check compares in seconds: the literal's minutes times sixty against arm_launch_step_needed. NEXT TRIGGER: a declared Int-to-Duration conversion (range-checked, refusing a
+// negative), at which point this row is the derivation itself.
+data arm_launch_step_timeout_minutes: Duration = 110

@@ -759,7 +759,7 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
                 Present { value: c } => ArmLaunchRefused { cause: c }
                 Absent =>
                   arm_memory_gated_plan(
-                    gate: normal_serving_promotion_refusal(intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, verdict: verdict, receipts: promotion_receipts),
+                    gate: normal_serving_promotion_refusal(intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env, verdict: verdict, receipts: promotion_receipts),
                     lines: ls, master: m)
               }
             ArmWallExperimentPlanned { plan: p } =>
@@ -770,7 +770,7 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
   }
 }
 
-fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
+fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
   match intent {
     ArmBoundedExperiment => none
     ArmNormalServing =>
@@ -783,7 +783,7 @@ fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckp
               let subject = serving_subject_for_launch(
                 checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
                 runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
-                collective_transport: none)
+                deployment_env: deployment_env, collective_transport: none)
               let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
               let standing = serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
               match standing {

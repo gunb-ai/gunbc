@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size_count }
 import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_repo_directory }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
