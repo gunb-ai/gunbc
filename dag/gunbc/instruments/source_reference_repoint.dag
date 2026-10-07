@@ -141,6 +141,165 @@ data source_reference_repoints: List<ReferenceRepoint> = [
   ReferenceRepoint { from_path: "v2.std.optional", to_path: "std.optional" }
 ]
 
+// A MEMBER RETIRED FROM ITS MODULE: a name an import list names from `module_path` that no longer lives
+// there (it resolves through another authority, so there is nothing to repoint it TO). The second
+// producer the applier was built for: it reads the same token stream, finds each `import <module_path>
+// { ... }` statement, and deletes the retired entry with exactly one adjacent comma, so a single-line
+// list, a multi-line list and a trailing comma all keep their layout. A statement left with no member
+// loses its whole line. A comment is not a token and a string is one token, so neither is touched.
+type ImportMemberRetirement {
+  module_path: String
+  member: String
+}
+
+// One entry of an import list: its first token names it; `comma_end` is -1 when no comma follows it.
+type ImportListEntry {
+  name: String
+  start: Int
+  end: Int
+  comma_end: Int
+}
+
+// stage 0 outside an import; 1 reading its dotted path; 2 inside its braces.
+type ImportListScan {
+  edits: List<SourceEdit>
+  stage: Int
+  import_start: Int
+  path: String
+  lbrace_end: Int
+  entries: List<ImportListEntry>
+  open_entry: Bool
+}
+
+fn import_scan_reset(scan: ImportListScan, edits: List<SourceEdit>) -> ImportListScan {
+  ImportListScan { edits: edits, stage: 0, import_start: 0, path: "", lbrace_end: 0, entries: [], open_entry: false }
+}
+
+fn entry_is_retired(name: String, path: String, retirements: List<ImportMemberRetirement>) -> Bool {
+  count(retirements |> filter(r => r.module_path == path && r.member == name)) > 0
+}
+
+fn last_entry(entries: List<ImportListEntry>) -> ImportListEntry {
+  match entries |> skip(count(entries) - 1) |> first {
+    Present { value: e } => e
+    Absent => ImportListEntry { name: "", start: 0, end: 0, comma_end: -1 }
+  }
+}
+
+fn entry_at(entries: List<ImportListEntry>, at: Int) -> ImportListEntry {
+  match entries |> skip(at) |> first {
+    Present { value: e } => e
+    Absent => ImportListEntry { name: "", start: 0, end: 0, comma_end: -1 }
+  }
+}
+
+// The nearest KEPT entry before position i (the caller guarantees one exists).
+fn kept_before(entries: List<ImportListEntry>, at: Int, path: String, retirements: List<ImportMemberRetirement>) -> ImportListEntry {
+  last_entry(entries |> take(at) |> filter(e => !entry_is_retired(name: e.name, path: path, retirements: retirements)))
+}
+
+// The span one retired entry occupies, with one comma. Not last: from the entry to the next entry, which
+// takes its comma and the whitespace after it. Last: from the previous KEPT entry's comma (or its end,
+// when the retired entry has no comma) to the retired entry's own end, which takes the separator in front.
+fn retired_entry_span(entries: List<ImportListEntry>, at: Int, path: String, retirements: List<ImportMemberRetirement>) -> SourceEdit {
+  let e = entry_at(entries: entries, at: at)
+  if at + 1 < count(entries) {
+    SourceEdit { start: e.start, end: entry_at(entries: entries, at: at + 1).start, replacement: "" }
+  } else {
+    let k = kept_before(entries: entries, at: at, path: path, retirements: retirements)
+    if e.comma_end >= 0 { SourceEdit { start: k.comma_end, end: e.comma_end, replacement: "" } }
+    else { SourceEdit { start: k.end, end: e.end, replacement: "" } }
+  }
+}
+
+// Overlapping deletions (two retired neighbours) are one deletion: the applier requires disjoint spans.
+fn merged_deletions(spans: List<SourceEdit>) -> List<SourceEdit> {
+  fold(spans |> sort_by(e => e.start), init: [], f: (acc, e) =>
+    if count(acc) > 0 && e.start <= last_deletion(acc).end {
+      list_push(acc |> take(count(acc) - 1), SourceEdit { start: last_deletion(acc).start, end: max_int(a: last_deletion(acc).end, b: e.end), replacement: "" })
+    } else { list_push(acc, e) })
+}
+
+fn last_deletion(spans: List<SourceEdit>) -> SourceEdit {
+  match spans |> skip(count(spans) - 1) |> first {
+    Present { value: e } => e
+    Absent => SourceEdit { start: 0, end: 0, replacement: "" }
+  }
+}
+
+fn max_int(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+// The edits for one closed import statement: none when nothing it names is retired; the whole line (and
+// its newline) when everything is; otherwise one merged deletion per retired run.
+fn import_list_edits(scan: ImportListScan, rbrace_end: Int, newline_after: Bool, retirements: List<ImportMemberRetirement>) -> List<SourceEdit> {
+  let retired_at = scan.entries |> enumerate |> filter(p => entry_is_retired(name: p.second.name, path: scan.path, retirements: retirements)) |> map(p => p.first)
+  if count(retired_at) == 0 { [] }
+  else if count(retired_at) == count(scan.entries) {
+    [SourceEdit { start: scan.import_start, end: if newline_after { rbrace_end + 1 } else { rbrace_end }, replacement: "" }]
+  } else {
+    merged_deletions(spans: retired_at |> map(i => retired_entry_span(entries: scan.entries, at: i, path: scan.path, retirements: retirements)))
+  }
+}
+
+fn import_scan_step(scan: ImportListScan, tok: Token, cs: List<Int>, retirements: List<ImportMemberRetirement>) -> ImportListScan {
+  if tok.class == ^ShNewline { scan }
+  else if scan.stage == 0 {
+    if token_is_word(tok: tok, word: "import") {
+      ImportListScan { edits: scan.edits, stage: 1, import_start: tok.start, path: "", lbrace_end: 0, entries: [], open_entry: false }
+    } else { scan }
+  } else if scan.stage == 1 {
+    if tok.class == ^ShLBrace {
+      ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: tok.end, entries: [], open_entry: false }
+    } else if tok.class == ^ShDot || tok.class == ^ShIdent || tok.class == ^ShKeyword {
+      ImportListScan { edits: scan.edits, stage: 1, import_start: scan.import_start, path: join([scan.path, tok.lexeme], ""), lbrace_end: 0, entries: [], open_entry: false }
+    } else { import_scan_reset(scan: scan, edits: scan.edits) }
+  } else if tok.class == ^ShRBrace {
+    let newline_after = match cs |> skip(tok.end) |> first {
+      Present { value: c } => c == 10
+      Absent => false
+    }
+    import_scan_reset(scan: scan, edits: concat(scan.edits, import_list_edits(scan: scan, rbrace_end: tok.end, newline_after: newline_after, retirements: retirements)))
+  } else if tok.class == ^ShComma {
+    let e = last_entry(scan.entries)
+    ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: scan.lbrace_end,
+      entries: list_push(scan.entries |> take(count(scan.entries) - 1), ImportListEntry { name: e.name, start: e.start, end: e.end, comma_end: tok.end }),
+      open_entry: false }
+  } else if scan.open_entry {
+    let e = last_entry(scan.entries)
+    ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: scan.lbrace_end,
+      entries: list_push(scan.entries |> take(count(scan.entries) - 1), ImportListEntry { name: e.name, start: e.start, end: tok.end, comma_end: -1 }),
+      open_entry: true }
+  } else {
+    ImportListScan { edits: scan.edits, stage: 2, import_start: scan.import_start, path: scan.path, lbrace_end: scan.lbrace_end,
+      entries: list_push(scan.entries, ImportListEntry { name: tok.lexeme, start: tok.start, end: tok.end, comma_end: -1 }),
+      open_entry: true }
+  }
+}
+
+fn import_member_retirement_edits(tokens: List<Token>, text: String, retirements: List<ImportMemberRetirement>) -> List<SourceEdit> {
+  let cs = chars(text)
+  fold(tokens, init: import_scan_reset(scan: ImportListScan { edits: [], stage: 0, import_start: 0, path: "", lbrace_end: 0, entries: [], open_entry: false }, edits: []), f: (scan, tok) =>
+    import_scan_step(scan: scan, tok: tok, cs: cs, retirements: retirements)).edits
+}
+
+// A file that spells neither a retired member nor its module is not tokenized.
+fn retired_source_text(path: String, text: String, retirements: List<ImportMemberRetirement>) -> String {
+  let relevant = retirements |> filter(r => string_contains(s: text, pattern: r.module_path) && string_contains(s: text, pattern: r.member))
+  if count(relevant) == 0 { text }
+  else { apply_source_edits(text: text, edits: import_member_retirement_edits(tokens: parsed_import_observation_live(file: path, source: text).tokens, text: text, retirements: relevant)) }
+}
+
+// THE MEMBERS THIS TREE HAS RETIRED THROUGH THIS INSTRUMENT. Re-running is a no-op: the rewritten
+// text names no retired member, so no edit is produced.
+data source_import_member_retirements: List<ImportMemberRetirement> = []
+
+// Every rewrite this instrument knows, in one pass per file: moves first, then retirements.
+fn rewritten_source_text(path: String, text: String) -> String {
+  retired_source_text(path: path, text: repointed_source_text(path: path, text: text, repoints: source_reference_repoints), retirements: source_import_member_retirements)
+}
+
 data source_reference_repoint_roots: List<String> = ["dag", "src/v2", "src/v1", "fixtures"]
 
 fn repoint_write(path: String, content: String) -> ProcessExit {
@@ -166,7 +325,7 @@ fn repoint_one_path(path: String) -> ProcessExit {
 }
 
 fn repoint_one_text(path: String, content: String) -> ProcessExit {
-  let next = repointed_source_text(path: path, text: content, repoints: source_reference_repoints)
+  let next = rewritten_source_text(path: path, text: content)
   if next == content { ExitSuccess }
   else { repoint_write(path: path, content: next) }
 }
@@ -176,7 +335,7 @@ fn repoint_one_text(path: String, content: String) -> ProcessExit {
 fn repoint_path_is_pending(path: String) -> Bool {
   match source_root_read_file(path: path) {
     FilesystemExactPathRead { path: observed, content: content } =>
-      repointed_source_text(path: observed, text: content, repoints: source_reference_repoints) != content
+      rewritten_source_text(path: observed, text: content) != content
     FilesystemExactPathAbsent { path: _ } => true
     FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => true
     FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => true
@@ -185,7 +344,7 @@ fn repoint_path_is_pending(path: String) -> Bool {
 
 fn repoint_pending_verdict(pending: List<String>) -> ProcessExit {
   if count(pending) == 0 { ExitSuccess }
-  else { exit_failure(reason: join(["source reference repoint: ", join(pending, " "), " still reference a moved module; run the repoint entry"], "")) }
+  else { exit_failure(reason: join(["source reference repoint: ", join(pending, " "), " still reference a moved module or name a retired member; run the repoint entry"], "")) }
 }
 
 fn repoint_root_tasks() -> List<SourceRootWalkTask> {

@@ -3,6 +3,7 @@ module gunbc.native_serve_probe
 import std.types { Int, List, String, Bool, CommitSha }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve { native_serve_stuck_exit_code }
 import gunbc.serve_liveness {
   observe_serve_liveness, serve_liveness_read_reason, ServeLivenessRead,
   ServeLivenessObserved, ServeLivenessUnreachable, ServeLivenessBodyUnparseable, ServeLivenessBodyNotAnObject,
@@ -17,6 +18,12 @@ import gunbc.serve_liveness {
 // decides nothing about a case -- it is the same split gunbc.native_claim_program makes for its
 // programs, so the instrument cannot hold on a judgment written in hand Rust.
 //
+// THE BUDGET CASES RUN LAST because the last one ends the process. They open with five handlers that
+// panic -- more than the stuck-worker ceiling -- each answered as a handler failure, and then an
+// ordinary request that must still be served: a dead worker is never a stuck one. Then: four requests that never return are
+// each refused at the deadline (with an ordinary request served between them), and the next request
+// meets the stuck-worker ceiling and is refused with the 503 before the process exits.
+//
 // THE THREE TERMINATIONS: success is held; code 1 is a case the service answered wrongly; code 2 is
 // no observation (the service never announced, the responses do not join the cases one for one,
 // the refused start did not refuse).
@@ -29,6 +36,12 @@ fn native_serve_probe_release_revision() -> String {
   "0123456789abcdef0123456789abcdef01234567"
 }
 
+// The per-request deadline this run launches under (--request-deadline-ms), short so the budget
+// cases cost half a second each. The default deadline is gunbc.native_serve's, not this.
+fn native_serve_probe_request_deadline_ms() -> String {
+  "500"
+}
+
 // The launch the door must refuse BEFORE it binds: a branch name where a revision belongs.
 fn native_serve_probe_refused_revision() -> String {
   "main"
@@ -38,6 +51,7 @@ type NativeServeExpect
   = ExpectBody { status: Int, body: String }
   | ExpectStatus { status: Int }
   | ExpectHeader { status: Int, line: String }
+  | ExpectBodyPrefix { status: Int, prefix: String }
   | ExpectLiveness
 
 type NativeServeProbeCase {
@@ -102,6 +116,66 @@ fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
       identity: "liveness_is_answered_before_the_handler_and_names_the_release",
       request: "GET /livez HTTP/1.1\r\n\r\n",
       expect: ExpectLiveness,
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_one_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_two_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_three_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_four_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_five_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_after_more_panics_than_the_ceiling_a_request_is_still_served",
+      request: "GET /hello HTTP/1.1\r\nTailscale-User-Login: alice@example\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "hello, alice@example\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_a_handler_that_never_returns_is_refused_at_the_deadline",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_a_later_request_is_still_served",
+      request: "GET /hello HTTP/1.1\r\nTailscale-User-Login: alice@example\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "hello, alice@example\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_second_stuck_worker_is_refused",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_third_stuck_worker_is_refused",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_fourth_stuck_worker_reaches_the_ceiling",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_past_the_stuck_worker_ceiling_the_process_refuses_and_exits",
+      request: "GET /hello HTTP/1.1\r\nTailscale-User-Login: alice@example\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 503, prefix: "service unavailable: 4 requests are still running past their deadline (ceiling 4)" },
     },
   ]
 }
@@ -171,6 +245,10 @@ fn native_serve_case_failure(c: NativeServeProbeCase, response: String) -> Strin
           if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) }
           else if (w.head_lines |> filter(x => x == l) |> count) != 1 { concat(c.identity, concat(": no header line [", concat(l, "]"))) }
           else { "" }
+        ExpectBodyPrefix { status: s, prefix: pre } =>
+          if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) }
+          else if !starts_with(s: w.body, prefix: pre) { concat(c.identity, concat(": body [", concat(w.body, "]"))) }
+          else { "" }
         ExpectStatus { status: s } =>
           if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) } else { "" }
         ExpectLiveness =>
@@ -204,7 +282,11 @@ fn no_observation(reason: String) -> ProcessExit {
 
 // announcement: the line the served process printed once bound. responses: one per request, in
 // order. refused_status / refused_stderr: the run launched with native_serve_probe_refused_revision.
-fn native_serve_probe_standing(announcement: String, responses: List<String>, refused_status: Int, refused_stderr: String) -> ProcessExit {
+// served_exit_status: how the served process ended after the last case, as the host observed it
+// within a bounded wait (negative when it was still running and had to be killed). The last budget
+// case drives it past the stuck-worker ceiling, so it must have exited by itself with the code
+// gunbc.native_serve declares -- not merely answered the 503.
+fn native_serve_probe_standing(announcement: String, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     no_observation(reason: concat("the service did not announce a bound address: ", announcement))
   } else if refused_status != 2 || !starts_with(s: refused_stderr, prefix: "REFUSED: ") {
@@ -213,8 +295,11 @@ fn native_serve_probe_standing(announcement: String, responses: List<String>, re
     match native_serve_case_failures(cases: native_serve_probe_cases(), responses: responses, acc: []) {
       Absent => no_observation(reason: "the responses do not join the cases one for one")
       Present { value: failures } =>
-        if (failures |> count) == 0 { ExitSuccess }
-        else { ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", failures |> join(separator: "; ")) } }
+        if (failures |> count) > 0 {
+          ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", failures |> join(separator: "; ")) }
+        } else if served_exit_status != native_serve_stuck_exit_code {
+          ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: past the stuck-worker ceiling the process did not exit with ", concat(to_string(value: native_serve_stuck_exit_code), concat(" (observed ", concat(to_string(value: served_exit_status), ")")))) }
+        } else { ExitSuccess }
     }
   }
 }

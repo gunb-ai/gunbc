@@ -30,7 +30,7 @@
 //! WRITES ARE ATOMIC AND READS ARE VERIFIED. An entry is committed only after the discriminating
 //! red held on the artifact, by writing a private sibling directory and renaming it into place; a
 //! read re-hashes the executable against the manifest and the manifest against the key, and any
-//! disagreement REFUSES the entry (typed, counted, removed) and falls back to a rebuild -- it never
+//! disagreement REFUSES the entry (typed, counted, left in place) and falls back to a rebuild -- it never
 //! serves the entry and never widens. With `GUNBC_NATIVE_CACHE_ROOT` unset there is no store and no
 //! host-global fallback: the preparation builds exactly as before.
 
@@ -259,11 +259,18 @@ pub(super) fn lookup(root: &Path, key: &ProductKey) -> Lookup {
             executable,
             manifest: Box::new(manifest),
         },
-        Err(cause) => {
-            let _ = std::fs::remove_dir_all(&dir);
-            Lookup::Refused { cause }
-        }
+        // A read never mutates the store: a refused entry is reported and rebuilt around, and
+        // only a protected writer (`writer_standing`) may remove or replace shared entries.
+        Err(cause) => Lookup::Refused { cause },
     }
+}
+
+/// Publication standing: only the merge queue's composed-revision run may publish. Pull-request
+/// code can set any variable inside its own job, so this names the protected event and does not
+/// claim to stop hostile PR code on a shared filesystem; that boundary is the credential
+/// asymmetry of the shared R2 store (`gunbc.native_product_shared_store`).
+pub(super) fn writer_standing() -> bool {
+    std::env::var("GITHUB_EVENT_NAME").ok().as_deref() == Some("merge_group")
 }
 
 /// Commit atomically: write a private sibling, rename into place. WriteOnce -- an entry already
@@ -359,7 +366,7 @@ mod tests {
 
     // A corrupted cached executable is refused, removed, and the next lookup is a plain miss.
     #[test]
-    fn corrupted_executable_is_refused_and_removed() {
+    fn corrupted_executable_is_refused_and_left_for_the_writer() {
         let root = scratch("corrupt");
         let store = root.join("store");
         let bin = root.join("bin");
@@ -368,7 +375,8 @@ mod tests {
         commit(&store, &k, &bin, &manifest_for(&k, b"emitted-compiler")).unwrap();
         std::fs::write(store.join("bbbb").join(EXECUTABLE), b"tampered").unwrap();
         assert!(matches!(lookup(&store, &k), Lookup::Refused { .. }));
-        assert!(matches!(lookup(&store, &k), Lookup::Miss));
+        // A read never deletes: the entry is still there and still refused.
+        assert!(matches!(lookup(&store, &k), Lookup::Refused { .. }));
     }
 
     // An entry whose manifest does not record the red is refused rather than served.
