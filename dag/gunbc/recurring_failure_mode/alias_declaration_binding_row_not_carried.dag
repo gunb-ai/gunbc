@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.alias_declaration_binding_row_not_carried
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data alias_declaration_binding_row_not_carried: RecurringFailureMode = RecurringFailureMode {
+  identity: "alias_declaration_binding_row_not_carried" as NonEmptyStr,
+
+  receipts: [
+    "**An `alias Name = a.b.C` declaration bound Name to its own grafted node on the native route, not to a.b.C** (INVALID STATE: the `alias` keyword form (dag_grammar_alias_decl_expr, kw_alias -- NOT a `type X = Y` type alias, which lowers as a type declaration) was lowered as metadata and grafted as a member named Name, and no alias binding row was read from the normalized tree, so symbol_index_lexical_lookup of Name HIT a node that is not the target. HARM: an accepted program whose alias name means something other than what it says -- a silent wrong answer (DESIGN section 5). DISTINGUISHING FACTS: measured at main 6296275 with v2.test.parse.alias_decl_parse alias_decl_fill_lexical_lookup_holds on the normalized route: target indexed, LexicalHit, hit != target, zero rows accepted by alias_binding_row_from_decl_node over the normalized tree. The claim was ungated and had been fed a raw parse tree, so the defect was invisible twice over (gunbc#13372 census). No .dag source declares an alias, so no compile closure reached it. RUNG FOUND AT: below the ladder (silent). INTERIM (operator ruling via stern-bear-500, 2026-10-05): the native normalize refuses the declaration, typed and located at it (v2.compiler.body_lowering_fold body_lower_alias_decl_refused), so the class now sits at structurally guaranteed-by-refusal with the form unusable. CEILING: structurally guaranteed -- an alias resolves to its declared target. NEXT-RUNG TRIGGER: alias rows carried through normalize so an alias name resolves to its target (owner: the resolve/namespace lane, sharp-raven-357 R1 / calm-ant-675); that change deletes body_lower_alias_decl_refused and turns the claim back to asserting the lexical hit equals the target.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_alias_decl_refused", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.parse.alias_decl_parse", decl_name: "alias_decl_fill_lexical_lookup_holds", field: WholeDeclaration },
+  ],
+}

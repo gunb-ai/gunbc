@@ -2,7 +2,7 @@ module gunbc.seeded_install_media_publish
 
 import std.types { NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.posix.test_utility { test_regular_file_command }

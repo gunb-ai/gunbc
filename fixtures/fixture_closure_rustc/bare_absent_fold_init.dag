@@ -1,6 +1,6 @@
 module fixture.closure.rustc_bare_absent_fold_init
 
-import v2.std.optional { Absent, Optional, optional_present }
+import std.optional { Absent, Optional, optional_present }
 
 // Reduced rustc-red for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target
 // component (vii): a declared Optional return whose fold accumulator is initialized with the

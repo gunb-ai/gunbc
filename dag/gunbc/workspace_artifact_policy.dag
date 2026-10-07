@@ -7,8 +7,3 @@ import std.types { NonEmptyStr }
 fn workspace_demo_image_identity() -> NonEmptyStr {
   "97859b4f8e206e3398f02dc4070fad14cb5b7a7ec29e305a8895405750044305"
 }
-
-// The key bytes remain under the existing fleet SSH principal authority.
-fn workspace_fleet_operator_public_key_ref() -> NonEmptyStr {
-  "gunbc.fleet_ssh_access.operator_ssh_principal"
-}

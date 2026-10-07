@@ -1,5 +1,6 @@
 module gunbc.json_exact_number_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { ExactDecimal, canonical_exact_decimal, exact_decimal_equal, exact_decimal_wire }
@@ -14,6 +15,7 @@ import extdeps.languages.json.number {
   read_json_number_lexeme,
   read_json_number_value,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

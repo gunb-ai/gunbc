@@ -4,7 +4,7 @@ import std.types { Bool, Int, List }
 import std.algebra { FreeSemigroup }
 import v2.std.algebra { non_empty_to_list }
 import std.measure { Watt, watt, watt_count, volt_ampere }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, DensityUnread,

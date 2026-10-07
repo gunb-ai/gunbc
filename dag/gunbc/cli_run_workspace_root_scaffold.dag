@@ -1,5 +1,6 @@
 module gunbc.cli_run_workspace_root_scaffold
 
+import std.disposition { Disposition }
 import std.types { String, Int }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 

@@ -10,7 +10,7 @@ import gunbc.compile_diagnostic_census {
 import std.types { String, Bool, Int }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

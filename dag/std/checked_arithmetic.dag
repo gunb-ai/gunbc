@@ -1,4 +1,5 @@
 module std.checked_arithmetic
+import std.optional { Present }
 
 import std.nat { Nat }
 

@@ -10,7 +10,7 @@ import gunbc.compile_diagnostic_census {
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import std.types { Bool, Int, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // THE DISCRIMINATING PAIR IS THE WHOLE ARGUMENT, so the six sources below differ on exactly one
 // axis at a time and on nothing else. sc_sealed_at_payload_red and sc_plain_at_payload_red are

@@ -1,0 +1,83 @@
+module gunbc.managed_host_boot_milestone
+
+import std.types { Bool, Int, List, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { HardwareThreadCount, hardware_thread_count_value }
+import std.optional { Present }
+import gunbc.machine_intake_host_capture_envelope { HostCaptureWorkloadShape }
+
+// WHAT A MILESTONE BOOT MUST SHOW: exactly `threads` hardware threads, ALL of them on `socket`, and
+// no CPU on any other socket. The count alone is not the milestone -- 80 CPUs split 40/40 across
+// two sockets is a different machine state (both sockets up, each half-enumerated) that nproc
+// cannot tell apart from socket 0 whole.
+//
+// THE MEMORY WORKLOAD IS PART OF THE SAME PROFILE, because the memory a boot can exercise is a fact
+// of the same machine state the topology describes: one socket populated is 16 GiB installed, both
+// sockets is the whole machine. A footprint chosen anywhere else would be a second authority for
+// "which state are we qualifying", and the first one that disagreed wrote 64 GiB into a 16 GiB boot
+// (run 35808203121, `No space left on device` on chunk0).
+type BootTopologyExpectation {
+  socket: Nat
+  threads: HardwareThreadCount
+  workload: HostCaptureWorkloadShape
+}
+
+// ── reading the placement ──────────────────────────────────────────────────────────────────────
+//
+// THE SOCKET IS READ AS THE NUMA NODE, and that identification is a premise the EXPECTATION states,
+// not a general fact: Altra firmware can present a socket as 1, 2 or 4 nodes (monolithic, hemisphere,
+// quadrant). A host whose expectation row is admitted here declares it was observed monolithic (node N
+// is socket N); if the firmware mode changes, a single-socket boot shows another node carrying CPUs
+// and this reading REFUSES -- the premise failing is loud, never absorbed.
+//
+// The source is the capture's `numa` section (`cat /sys/devices/system/node/online; numactl -H`),
+// whose `node N cpus: a b c ...` lines are numactl's own per-node CPU lists.
+type NumaNodeCpus {
+  node: Int
+  cpus: Int
+}
+
+type BootPlacementReading
+  = PlacementHeld
+  | PlacementNoNodeLines
+  | PlacementMismatch { observed: String }
+
+fn numa_node_cpus_line(line: String) -> NumaNodeCpus? {
+  if !starts_with(s: line, prefix: "node ") || !string_contains(s: line, pattern: " cpus:") {
+    none
+  } else {
+    let halves = split(s: line, delimiter: " cpus:")
+    let head = filter(split(s: trim(join(halves.take(n: 1), "")), delimiter: " "), t => t != "")
+    let tail = filter(split(s: trim(join(halves.skip(n: 1), " cpus:")), delimiter: " "), t => t != "")
+    if count(head) != 2 { none } else {
+      match parse_int(s: join(head.skip(n: 1), "")) {
+        Present { value: n } => Present { value: NumaNodeCpus { node: n, cpus: count(tail) } }
+        Absent => none
+      }
+    }
+  }
+}
+
+fn numa_nodes(out: List<String>) -> List<NumaNodeCpus> {
+  flat_map(out, l => match numa_node_cpus_line(line: l) { Present { value: n } => [n]  Absent => [] })
+}
+
+fn numa_nodes_text(nodes: List<NumaNodeCpus>) -> String {
+  join(map(nodes, n => concat("node ", to_string(n.node), "=", to_string(n.cpus))), ", ")
+}
+
+// HELD only when the socket's node carries exactly the expected count AND every other node carries
+// none. A section with no node lines is not a reading of placement at all and refuses as such.
+fn boot_placement_reading(expected: BootTopologyExpectation, out: List<String>) -> BootPlacementReading {
+  let nodes = numa_nodes(out: out)
+  if count(nodes) == 0 {
+    PlacementNoNodeLines
+  } else {
+    let want = hardware_thread_count_value(t: expected.threads) as Int
+    let on_socket = filter(nodes, n => n.node == (expected.socket as Int))
+    let elsewhere = filter(nodes, n => n.node != (expected.socket as Int) && n.cpus != 0)
+    let held = count(on_socket) == 1 && all(on_socket, n => n.cpus == want) && count(elsewhere) == 0
+    if held { PlacementHeld } else { PlacementMismatch { observed: numa_nodes_text(nodes: nodes) } }
+  }
+}

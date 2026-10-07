@@ -1,6 +1,6 @@
 module v2.compiler.native_test_vocabulary
 
-import std.algebra { FreeMonoid, list_snoc_item }
+import std.algebra { FreeMonoid, FreeSemigroup, list_snoc_item }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   Diagnostic,
@@ -16,7 +16,7 @@ import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.source_position { SourceByteColumn }
 import v2.std.collection { List }
@@ -171,30 +171,38 @@ type NativeTestObservation {
   verdict: NativeTestVerdict
 }
 
-// ONE SOURCE'S FRONT-END REFUSAL, AT THE TWO GRAINS THE CLASSIFICATION NEEDS. The rejection's
-// diagnostic list prepends non-fatal pending advisories (rejected_with_pending), so the head
-// reason and the fatal (last) reason are different observations of one refusal — the door
-// ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
-// classifier asks both questions of every row.
+// ONE SOURCE'S FRONT-END REFUSAL. `chain` IS THE REFUSAL'S DIAGNOSTICS, EACH LINK WITH ITS POSITION,
+// in carriage order: rejected_with_pending prepends the non-fatal advisories, so the head may be an
+// advisory and the LAST link is the cause that refused. It is non-empty by construction (a head plus
+// a tail), and the head and fatal reasons are DERIVED from it
+// (native_test_file_refusal_head_reason, native_test_file_refusal_fatal_reason), never stored beside
+// it: stored copies were second spellings of chain[0] and chain[last] (DESIGN section 3).
+// Positions are RESOLVED at the absorb, against the refused file's own span index and text, so the
+// row retains no occurrence id: a refused parse's ids are re-minted by the next file, and a retained
+// NodeLocus would resolve to the wrong one.
 // `module` is the module the refused file DECLARES, read from its header line
 // (v2.compiler.compile native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
 // parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
 // told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
 // told only that a name is unbound. Absent means the file declares no module line.
-//
-// `chain` IS THE REFUSAL'S DIAGNOSTICS, EACH LINK WITH ITS POSITION, in carriage order: the head
-// first, the fatal last. It is what `head_reason` and `fatal_reason` were folded out of
-// (gunbc.recurring_failure_mode located_cause_folded_to_its_reason_at_a_result_boundary named this
-// row as that class's declared remainder). Positions are RESOLVED at the absorb, against the
-// refused file's own span index and text, so the row retains no occurrence id: a refused parse's
-// ids are re-minted by the next file, and a retained NodeLocus would resolve to the wrong one.
-// The two symbols stay because the door ledger and the lane classifier key on them.
 type NativeTestFileRefusal {
   path: Symbol
   module: Optional<QualifiedName>
-  head_reason: Symbol
-  fatal_reason: Symbol
-  chain: List<FileRefusalLink>
+  chain: FreeSemigroup<FileRefusalLink>
+}
+
+// The cause that refused: the chain's LAST link.
+fn native_test_file_refusal_fatal_link(fr: NativeTestFileRefusal) -> FileRefusalLink {
+  fold_list(xs: fr.chain.tail, empty: fr.chain.head, cons: fn(acc, link) { link })
+}
+
+fn native_test_file_refusal_fatal_reason(fr: NativeTestFileRefusal) -> Symbol {
+  native_test_file_refusal_fatal_link(fr: fr).reason
+}
+
+// The chain's first link: an advisory that rode along, or the fatal itself when nothing did.
+fn native_test_file_refusal_head_reason(fr: NativeTestFileRefusal) -> Symbol {
+  fr.chain.head.reason
 }
 
 type FileRefusalLink {

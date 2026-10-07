@@ -2,7 +2,7 @@ module test.claim.spark.pair_incumbent_identity_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import product.host_identity { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }

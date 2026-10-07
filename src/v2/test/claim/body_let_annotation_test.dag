@@ -35,7 +35,7 @@ import v2.std.diagnostic {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalized_tree { admit_normalized_tree }
