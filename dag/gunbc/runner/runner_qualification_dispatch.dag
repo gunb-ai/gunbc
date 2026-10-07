@@ -533,13 +533,6 @@ type QualificationRunCollection
   = QualificationRunCollected { collected: CollectedQualificationRun }
   | QualificationRunRefused { run_id: Int, refusal: QualificationRunRefusal }
 
-fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
-  match c {
-    QualificationRunCollected { collected: _ } => true
-    QualificationRunRefused { run_id: _, refusal: _ } => false
-  }
-}
-
 data dispatched_run_attempt: Int = 1
 
 fn optional_text_is(o: String?, expected: String) -> Bool {
