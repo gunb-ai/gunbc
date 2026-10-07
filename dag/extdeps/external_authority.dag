@@ -30,7 +30,7 @@ type ExternalAuthority {
 //
 // THE RUNG OF A RECEIPT'S BINDING IS STATED BY ITS FOLD, NOT HERE. A fold over rows authored in the
 // corpus (an EEPROM dump transcribed into data rows) and a fold over a CI artifact's bytes committed
-// beside the artifact's recorded digest are both BOUNDARY TRANSCRIPTIONS (DESIGN 4b, outside the
+// beside the recorded digest of its archive are both BOUNDARY TRANSCRIPTIONS (DESIGN 4b, outside the
 // modeled guarantee): the fold executes on the committed bytes, and nothing in the substrate yet checks
 // those bytes against the run that produced them. Each admitted fold names that seam and its trigger.
 type ObservedReceipt sole_constructor {
