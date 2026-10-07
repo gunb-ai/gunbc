@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import std.optional { Present, Absent }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_arm {
-  ArmIntent, ArmBoundedExperiment, ArmOperatorQualificationServing,
+  ArmIntent, ArmBoundedExperiment, ArmNormalServing, ArmOperatorQualificationServing,
   Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4,
   operator_qualification_subject_refusal,
 }
