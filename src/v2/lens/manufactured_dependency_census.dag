@@ -28,15 +28,17 @@ import v2.lens.module_graph {
 // forbids one and is right to; this is a pure reader over the two that module already owns, in the
 // idiom DESIGN section 6 gives a lens.
 //
-// WHAT THE COUNT IS AND IS NOT, because the honest bound matters more than the number. The census
-// counts every module's manufactured edges, import-bearing or not: `src/v2/lens/grounding.dag` has
-// three import lines and calls functions it never imports, and those references are edges here. It
-// is still a LOWER BOUND on the population that binds without an authored dependency, because it
-// counts only what the reference reader collects and resolves to a declared module, and quoting it
-// as the population is the denominator error. The upper half needs a per-REFERENCE census on the
-// value channel, which does not exist: the mask check that emits `UnlistedImportUse` lives in the
-// TYPE resolver (`v1.compiler.infer_resolve` `resolve_node`, keyed on `type_name`), so a bare
-// cross-module CALL the reader does not collect produces neither a refusal nor an advisory.
+// WHAT THE COUNT IS AND IS NOT, because the honest bound matters more than the number. What it
+// counts depends on whether a module imports. An import-LESS module's manufactured edges are every
+// reference the reader resolves, qualified or bare. An import-BEARING module's are its qualified
+// references only: a bare name there is lexically bound (a local, or an import), so the reader
+// resolves no pool declarer for it, and an unimported bare cross-module call in such a module is
+// not an edge here. The count is therefore a LOWER BOUND on the population that binds without an
+// authored dependency, and quoting it as the population is the denominator error. The upper half
+// needs a per-REFERENCE census on the value channel, which does not exist: the mask check that
+// emits `UnlistedImportUse` lives in the TYPE resolver (`v1.compiler.infer_resolve` `resolve_node`,
+// keyed on `type_name`), so a bare cross-module CALL the reader does not collect produces neither a
+// refusal nor an advisory.
 //
 // SUBJECT: `gunbc.recurring_failure_mode`
 // `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`, whose next-rung trigger
