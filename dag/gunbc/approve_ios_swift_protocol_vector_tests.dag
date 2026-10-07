@@ -2,7 +2,7 @@ module gunbc.approve_ios_swift_protocol_vector_tests
 
 import std.types { String, List, Bool }
 import v2.std.algebra { length }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftDeclarationModifier,

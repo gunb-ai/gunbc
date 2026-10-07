@@ -1,7 +1,7 @@
 module gunbc.spark.pair_incumbent_identity
 
 import std.types { String, Bool, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash {
   ContentHash, Fnv1a64Structural,
   content_hash_atom, content_hash_combine_structural, content_hash_tagged, serialize_content_hash,

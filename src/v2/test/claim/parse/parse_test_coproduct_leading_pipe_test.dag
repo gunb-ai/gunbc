@@ -8,7 +8,7 @@ import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tok
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

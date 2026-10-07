@@ -35,7 +35,7 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_receipt_without_assemble_detail,
   RealizationGap
 }
-import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.algebra { Cons, Empty, length }
 
 fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
