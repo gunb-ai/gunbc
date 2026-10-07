@@ -312,17 +312,6 @@ pub mod std_occurrence_binding_resolve;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod std_optional;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod std_reference_binding_observation;
 #[allow(
     unused_imports,
