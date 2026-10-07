@@ -6,6 +6,7 @@ import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
+import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
@@ -833,6 +834,11 @@ data gunbc_ci_r2_cache_object_write_mint_target: GunbcRunStepTarget = GunbcRunSt
   function: "run_cache_object_write",
 }
 
+data gunbc_ci_r2_conditional_put_race_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag",
+  function: "run_r2_conditional_put_race_probe",
+}
+
 data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fabric/workspace_source.dag",
   function: "workspace_source_pack_wet",
@@ -1380,6 +1386,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_workspace_object_write_mint_target,
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_r2_cache_object_write_mint_target,
+    gunbc_ci_r2_conditional_put_race_probe_target,
     gunbc_ci_workspace_source_pack_target,
     gunbc_ci_workspace_checkpoint_measure_target,
     gunbc_ci_workspace_checkpoint_restore_target,
@@ -2705,6 +2712,16 @@ fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
     function: gunbc_ci_r2_cache_object_write_mint_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_conditional_put_race_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_conditional_put_race_probe_target.entry,
+    function: gunbc_ci_r2_conditional_put_race_probe_target.function,
+    claim_run: false,
+    receipt_rel: race_probe_receipt_path
   )
 }
 
