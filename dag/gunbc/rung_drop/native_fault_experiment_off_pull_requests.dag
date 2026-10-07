@@ -1,0 +1,38 @@
+module gunbc.rung_drop.native_fault_experiment_off_pull_requests
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-10-06, operator-approved (CI short-term relief, docs/plans/ci-end-to-end-accounting.md).
+// The emit-build lane's two instruments (//gunbc/instruments:self-host and :v2-native-cli) each run
+// the native fault-and-restoration rebuild (emitted_closure_compile_host establish_discriminating_red,
+// called from native_lane_runner): one injected type error, cargo required to fail alone on a
+// diagnostic naming it, bytes restored, a second cargo run. On pull_request events the workflow now
+// passes GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request (gunbc.emitted_subject_build_gate), and the
+// runner states the skip in the run log. merge_group and workflow_dispatch pass `run`. Every other
+// control still runs on pull requests: the emit, the build, the census pair, the door, the refusal
+// and filesystem controls.
+//
+// THE TRIGGER IS THE CAPABILITY, NOT THE ARTIFACT. Re-enabling the step on pull requests retires
+// nothing by itself; what restores the rung is the experiment running exactly when it can matter.
+
+data native_fault_experiment_off_pull_requests_population: List<String> = [
+  "pull_request runs of the emit-build lane of gunbc.compiler_gate_workflow, for //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli: the fault-and-restoration rebuild is skipped, so a fingerprint alias or replayed cached verdict standing in for a real compile of the emitted crate is caught at merge_group, not per push",
+]
+
+data native_fault_experiment_off_pull_requests: RungDrop = RungDrop {
+  identity: "native_fault_experiment_off_pull_requests" as NonEmptyStr,
+  subject: "the emitted-crate discriminating red (fault injection and byte-exact restoration) is not executed on pull_request runs of emit-build",
+  declared: "2026-10-06",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "programme item R2 (owner: session snappy-ibex-32): the fault experiment keyed on its inputs so it runs only when they change"
+    },
+    population: native_fault_experiment_off_pull_requests_population,
+    restoration_trigger: "THE CAPABILITY: the fault experiment runs whenever its instrument, producer, build wiring, cache or toolchain inputs change. WHAT THAT MUST BE SUFFICIENT FOR: no pull request that changes any of those inputs merges without the experiment having run on its head -- not merely that it runs at merge_group, and not that the step is re-added to every pull request. Re-adding the per-push run does not retire this row."
+  }
+}

@@ -24,7 +24,7 @@ jobs:
   rust-unit-tests:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 25
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
     steps:
@@ -460,6 +460,8 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+        env:
+          GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
         run: |+
@@ -484,6 +486,8 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+        env:
+          GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
       - name: Why this lane is red, and what would be a real finding
         run: |-
           printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
@@ -886,7 +890,7 @@ jobs:
         run: |-
           echo "required lanes: rust-unit-tests=$RUST_UNIT_TESTS seed=$SEED emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
           if [ "$RUST_UNIT_TESTS" = failure ] || [ "$SEED" = failure ] || [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (rust-unit-tests=$RUST_UNIT_TESTS seed=$SEED emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
-          if [ "$RUST_UNIT_TESTS" != success ]; then if [ "$SAME_REPO" = false ] && [ "$RUST_UNIT_TESTS" = skipped ]; then echo "::notice::the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet"; else echo "::error::the v1 unit-test lane produced no success (rust-unit-tests=$RUST_UNIT_TESTS), so this head carries no verdict from that lane"; exit 1; fi; fi
+          if [ "$RUST_UNIT_TESTS" != success ]; then if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$RUST_UNIT_TESTS" = skipped ]; then echo "::notice::the v1 unit-test lane does not run on pull_request: it runs on merge_group and workflow_dispatch on the fleet"; else echo "::error::the v1 unit-test lane produced no success (rust-unit-tests=$RUST_UNIT_TESTS), so this head carries no verdict from that lane"; exit 1; fi; fi
           if [ "$SEED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$SEED" = skipped ]; then echo "::notice::the seed lane is skipped for a fork pull request: no compiler pair was built or restored for this head"; else echo "::error::the seed lane produced no success (seed=$SEED), so this head carries no verdict from that lane"; exit 1; fi; fi
           if [ "$EMIT_BUILD" != success ]; then if [ "$SAME_REPO" = false ] && [ "$EMIT_BUILD" = skipped ]; then echo "::notice::the emit-build lane is skipped for a fork pull request: no self-host or native-CLI emission verdict for this head"; else echo "::error::the emit-build lane produced no success (emit-build=$EMIT_BUILD), so this head carries no verdict from that lane"; exit 1; fi; fi
           if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no verdict from that lane"; exit 1; fi; fi
