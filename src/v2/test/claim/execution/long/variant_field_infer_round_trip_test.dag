@@ -16,9 +16,11 @@ module v2.test.long.variant_field_infer_round_trip
 // reading entry (vfp_reading_direct, a separate computation identity from the probe's warm nullary
 // producer): this call's identity is reached by one planned claim, so the derived producer-share
 // does not admit it and the fill is billed to THIS claim's own frame -- the billed work this module
-// exists to keep on the real path. The route is the LOWERED one (DESIGN 3: the subject as a value);
-// the assembled-text route grounds nothing at infer (gunbc.recurring_failure_mode
-// authored_text_fixtures_ground_nothing_at_infer).
+// exists to keep on the real path. The route is the TEXT one (assemble_program_from_ingest over
+// vfp_fixture_src), the same route the probe's claims ride; the probe's controls carry the route's
+// grounding state (gunbc.recurring_failure_mode
+// authored_text_fixtures_ground_nothing_at_infer), so this row asserts the ROUTE's verdict under
+// own-frame billing, not a lowered-value substitute.
 
 import v2.test.claim.variant_field_infer_probe { vfp_infers, vfp_reading_direct }
 

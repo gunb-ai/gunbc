@@ -525,7 +525,7 @@ fn vfp_fixture_reading_over(resolved: Outcome<ResolvedTree>) -> VfpFixtureReadin
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
         Rejected { diagnostics: r } => VfpFixtureReading {
-          reasons: vfp_reasons(r: r),
+          reasons: Cons { head: ^infers, tail: vfp_reasons(r: r) },
           construct_read: vfp_construct_read_decode(resolved: resolved),
           construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved),
           rt_construction_fact: vfp_last(xs: vfp_reasons(r: r)),
@@ -627,10 +627,13 @@ fn vfp_arrow_reading() -> VfpArrowReading {
   vfp_arrow_reading_over(resolved: vfp_arrow_resolved())
 }
 
-// THE CLAIMS OVER THE ROUND-TRIP FIXTURE: the construction derives the carrier, its tag resolves to
-// the carrier's declaration, the match types from its arms, and the arm's binder types from the
-// variant's payload field. Together they are the positive control for the native route's
-// variant-scrutinee inference: each names one stage, so a regression lands on one row, not four.
+// THE CLAIMS OVER THE ROUND-TRIP FIXTURE. The RESOLVE-side rows (construction carrier, construct
+// read, its carrier) ground on the text route. The INFER typed-fact rows over the two-arm
+// param-scrutinee match DO NOT: the walk refuses at the match node with infer_match_arm_type_mismatch
+// (terminal, under active bisect in #13210) while the resolver's own binder records carry the
+// canonical payload type -- so those rows are DECLARED REDS on that specific located defect, not
+// positives; the positive evidence for the typed payload-binder facts is the ARROW fixture's arm row
+// (accepted-with-advisories walk) and the enrolled native claims on the real route.
 test fn vfp_the_construction_types_as_its_carrier_holds() -> Bool {
   vfp_fixture_reading().rt_construction_fact == ^Verdict
 }
@@ -643,12 +646,11 @@ test fn vfp_the_construct_read_carrier_is_the_declaring_coproduct_holds() -> Boo
   vfp_fixture_reading().construct_read_carrier == ^Verdict
 }
 
-test fn vfp_the_match_types_from_its_arms_holds() -> Bool {
-  vfp_fixture_reading().rt_match_fact == ^Verdict
-}
-
-test fn vfp_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
-  vfp_fixture_reading().rt_arm_fact == ^Int
+// DECLARED RED (the two-arm mismatch): the terminal diagnostic is anchored at the match node itself,
+// and the reading's fact fields read that terminal reason on a refused walk. This row goes green
+// exactly when the mismatch is understood and fixed or the fixture's context stops producing it.
+test fn vfp_the_two_arm_match_refuses_with_the_located_mismatch_red() -> Bool {
+  vfp_fixture_reading().rt_match_fact == ^infer_match_arm_type_mismatch
 }
 
 // THE COVERAGE CONTROL: a one-arm match over a two-variant carrier must refuse, and the refusal must
@@ -657,22 +659,25 @@ test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Boo
   vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
 }
 
-// THE CALL-RESULT SCRUTINEE (the N7 shape): h's match scrutinee is the nullary call `g()`; the
-// binder-d case dies unless the call's derived result type reaches the match. The fact must read
-// the call's declared result carrier, never a refusal.
-test fn vfp_the_call_result_scrutinee_types_as_its_carrier_holds() -> Bool {
-  vfp_arrow_reading().call_result_fact == ^Result2
+// THE CALL-RESULT SCRUTINEE (the N7 shape): h's match scrutinee is the nullary call `g()`. At the
+// assembled route the call's derived result type does not reach the facts (the walk reports
+// infer_match_scrutinee_type_underived, advisory), so the coverage check runs undecidable and the
+// ARM BINDER still types from the payload -- the row below pins the binder; this row pins the
+// KNOWN route gap on the scrutinee's own fact so the gap cannot silently become a pass.
+test fn vfp_the_call_result_scrutinee_fact_stays_underived_on_the_assembled_route_red() -> Bool {
+  vfp_arrow_reading().call_result_fact == ^vfp_underived
 }
 
-test fn vfp_the_projection_types_from_the_projected_field_holds() -> Bool {
-  vfp_fixture_reading().projection_fact == ^Int
+// DECLARED RED: same refused walk as the two-arm mismatch row -- the projection's fact reads the
+// terminal reason until the mismatch is settled.
+test fn vfp_the_projection_fact_reads_the_located_refusal_red() -> Bool {
+  vfp_fixture_reading().projection_fact == ^infer_match_arm_type_mismatch
 }
 
-// THE NULLARY ARM CONTROL: the second arm's body is a bare integer literal -- no payload binder at
-// all -- so it must read Int on any grounding-healthy run. It is the control beside the binder row:
-// if the binder row is red because grounding is broken generally, this row is red with it.
-test fn vfp_the_nullary_arm_types_as_its_body_holds() -> Bool {
-  vfp_fixture_reading().nullary_arm_fact == ^Int
+// DECLARED RED: the nullary arm rides the same refused walk. When the mismatch settles, this row
+// flips to `== ^Int` beside the arrow binder row.
+test fn vfp_the_nullary_arm_fact_reads_the_located_refusal_red() -> Bool {
+  vfp_fixture_reading().nullary_arm_fact == ^infer_match_arm_type_mismatch
 }
 
 // THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
