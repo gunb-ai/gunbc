@@ -519,12 +519,13 @@ data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
 // D0's door does gate on an approval before it writes, but the effect a row counts is the STORE
 // write, and the store does not see that approval: any writer reaching the DB performs the same
 // advance without it, so D0's row realizes RealizedUnauthorized like the rest (review 71933).
-// THE DISSOLUTION IS UNBOUND ON PURPOSE. d0_store_operation_wall is not retired when the capability
+// THE DISSOLUTION IS UNBOUND ON PURPOSE. The store-operation wall (now named at its home,
+// gunbc.fabric_store_operation_admission, since D0 was deleted) is not retired when the capability
 // lands -- it is flipped to StoreOperationWallRestored -- so retires_dissolution over it would fire
 // on the row's deletion, an artifact, while the capability stayed dead (§4b(3)).
 data fabric_store_write_unverified: DivergenceReason = DivergenceReason {
-  statement: "the fabric DB admits an advance of a pair-serving authority partition, the host-placement partition or a D0 consent slot on the writer's host access alone: the placed host writes in process (FabricStorageLocalFiles) and the served door carries no grant, so the pattern selected for this writer is not the one the store enforces" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- the capability gunbc.spark.pair_serving_d0 d0_store_operation_wall names" as NonEmptyStr),
+  statement: "the fabric DB admits an advance of a pair-serving authority partition, the host-placement partition or a consent slot on the writer's host access alone: the placed host writes in process (FabricStorageLocalFiles) and the served door carries no grant, so the pattern selected for this writer is not the one the store enforces" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- that is, gunbc.fabric_store_operation_admission admit_store_operation enforcing on every write path, the placed host's in-process writes included (D0, which first named this wall, was deleted with Group A on 2026-10-07; the per-operation door it named is that module)" as NonEmptyStr),
 }
 
 // THE DECLARATIONS THE BOUND TRIGGERS NAME, PRESENT BY CITATION. Each decl_ref here is checked by
