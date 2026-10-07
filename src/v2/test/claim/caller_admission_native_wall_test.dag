@@ -36,7 +36,7 @@ module v2.test.claim.caller_admission_native_wall
 
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
-import v2.compiler.infer { InferAdmissionCallerKey, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags }
+import v2.compiler.infer { InferAdmissionCallerKey, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags, infer_caller_admission_judged_diags }
 import v2.std.node_query { declaration_reference_path_optional }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_insert }
 import v2.std.optional { optional_absent, optional_present }
