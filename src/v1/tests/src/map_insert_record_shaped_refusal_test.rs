@@ -24,7 +24,7 @@ module test.map_insert_record_shaped_refusal
 
 import std.types { Map }
 import v2.std.collection { empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present, Optional }
+import std.optional { Absent, Present, Optional }
 
 fn record_shaped_insert() -> Map<String, String> {
   map_insert(m: Map { lookup: fn(_) { Absent } }, key: "k", value: "v")
