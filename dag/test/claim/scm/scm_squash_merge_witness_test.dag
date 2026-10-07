@@ -27,7 +27,7 @@ import gunbc.scm.object_store {
   CorpusEntrySourceRefusal,
   CorpusEntrySourceMissing, CorpusEntrySourceIsSemanticNode, CorpusEntrySourceIsCorpusManifest,
 }
-import gunbc.scm.integration { NoSquashIntegration, SquashIntegrated }
+import gunbc.scm.integration { NoSquashIntegration, SquashIntegrated, SquashIntegratedSuperseding }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
 import gunbc.scm.repository_envelope {
   MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit, RepositoryEnvelope,
@@ -220,6 +220,7 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
                 Present { value: c } =>
                   match c.integration {
                     NoSquashIntegration => false
+                    SquashIntegratedSuperseding { source: _, supersedes: _ } => false
                     SquashIntegrated { source: recorded } =>
                       repository_commit_ref_eq(left: recorded, right: source)
                         && match c.ancestry {

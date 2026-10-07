@@ -1,7 +1,7 @@
 module test.claim.vllm_kv_request_vocabulary_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, KvNvfp4, KvNvfp4DsMla, KvFp8DsMla,
   vllm_kv_cache_dtype_wire, vllm_kv_cache_dtype_requests, vllm_kv_cache_dtype_request_matching_wire,

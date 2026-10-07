@@ -24,7 +24,7 @@ import gunbc.megarac_managed_host { AdmittedMegaRacHost }
 import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }

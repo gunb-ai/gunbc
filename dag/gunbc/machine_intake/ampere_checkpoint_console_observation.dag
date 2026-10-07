@@ -3,7 +3,7 @@ module gunbc.machine_intake_ampere_checkpoint_console_observation
 import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.tools.sha256sum { Sha256FileDigest }
 import gunbc.machine_intake_pre_os_bringup_verdict { firmware_checkpoint_line_prefix }
 import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_fw_version_marker, ampere_dram_console_line }

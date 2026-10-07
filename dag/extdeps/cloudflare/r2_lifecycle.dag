@@ -2,7 +2,7 @@ module extdeps.cloudflare.r2_lifecycle
 import std.resources { Network }
 
 import std.types { NonEmptyStr, List, Secret, Int, Bool, Json }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { skip }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -31,9 +31,11 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStat
 //   maxAge: "Condition for lifecycle transitions to apply after an object reaches an age in seconds."
 //
 // THE PUT REPLACES THE BUCKET'S WHOLE RULE SET: the body is the complete list, so a caller converges
-// the set, never one rule. Only the delete-by-age transition is modeled (it is the one this fleet
-// declares); a rule carrying any other transition is read back as a rule this model does not
-// describe, and a converge comparing against it refuses rather than overwriting it unread.
+// the set, never one rule. Two Age transitions are modeled, deleteObjectsTransition and
+// abortMultipartUploadsTransition (the second is how Cloudflare's default rule on a new bucket is
+// written), scoped to a prefix or to the whole bucket. A rule carrying both or neither, a Date
+// condition or storageClassTransitions is read back as a rule this model does not describe, and a
+// converge comparing against it refuses rather than overwriting it unread.
 // The cf-r2-jurisdiction header is not carried, so both operations address the default
 // jurisdiction, as extdeps.cloudflare.r2_buckets states for its own.
 
@@ -65,12 +67,27 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [r2_lifecycle_put_authority]
 }
 
-// ONE MODELED RULE: objects under `prefix` are deleted once they reach `max_age_seconds` of age.
+// A RULE'S ACTION, ONE OF THE TWO AGE TRANSITIONS THIS MODEL DESCRIBES: deleteObjectsTransition and
+// abortMultipartUploadsTransition, each with an { type: "Age", maxAge } condition. A rule carrying both,
+// neither, a Date condition or storageClassTransitions is not modeled and reads as unmodeled.
+type R2LifecycleTransition
+  = R2DeleteObjectsAfterAge { max_age_seconds: Int }
+  | R2AbortMultipartUploadsAfterAge { max_age_seconds: Int }
+
+// A RULE'S SCOPE, BY MEANING RATHER THAN BY SPELLING. The UPDATE reference declares
+// `conditions.prefix: string` and says an empty prefix scopes the rule to every object; the live GET
+// answered Cloudflare's own default with `conditions: {}`. Both spellings are R2BucketWide, so a rule
+// read back in either form compares equal to the one this model writes, which is the documented
+// `prefix: ""`. A non-empty prefix is R2Prefix.
+type R2LifecycleScope
+  = R2BucketWide
+  | R2Prefix { prefix: NonEmptyStr }
+
 type R2LifecycleRule {
   id: NonEmptyStr
   enabled: Bool
-  prefix: String
-  delete_after_age_seconds: Int
+  scope: R2LifecycleScope
+  transition: R2LifecycleTransition
 }
 
 // GetRaw READS ITS BODY AS TEXT, WHOLE, and r2_lifecycle_read_body parses it. Without response_format:
@@ -139,14 +156,31 @@ fn r2_lifecycle_rule_json(rule: R2LifecycleRule) -> JsonValue {
   json_object(members: [
     json_kv(key: "id", value: json_string(s: rule.id as String)),
     json_kv(key: "enabled", value: json_bool(b: rule.enabled)),
-    json_kv(key: "conditions", value: json_object(members: [json_kv(key: "prefix", value: json_string(s: rule.prefix))])),
-    json_kv(key: "deleteObjectsTransition", value: json_object(members: [
+    json_kv(key: "conditions", value: json_object(members: [json_kv(key: "prefix", value: json_string(s: match rule.scope {
+      R2BucketWide => ""
+      R2Prefix { prefix: p } => p as String
+    }))])),
+    json_kv(key: r2_lifecycle_transition_key(t: rule.transition), value: json_object(members: [
       json_kv(key: "condition", value: json_object(members: [
         json_kv(key: "type", value: json_string(s: "Age")),
-        json_kv(key: "maxAge", value: json_int(n: rule.delete_after_age_seconds)),
+        json_kv(key: "maxAge", value: json_int(n: r2_lifecycle_transition_age(t: rule.transition))),
       ])),
     ])),
   ])
+}
+
+fn r2_lifecycle_transition_key(t: R2LifecycleTransition) -> String {
+  match t {
+    R2DeleteObjectsAfterAge { max_age_seconds: _ } => "deleteObjectsTransition"
+    R2AbortMultipartUploadsAfterAge { max_age_seconds: _ } => "abortMultipartUploadsTransition"
+  }
+}
+
+fn r2_lifecycle_transition_age(t: R2LifecycleTransition) -> Int {
+  match t {
+    R2DeleteObjectsAfterAge { max_age_seconds: a } => a
+    R2AbortMultipartUploadsAfterAge { max_age_seconds: a } => a
+  }
 }
 
 fn r2_lifecycle_rules_wire(rules: List<R2LifecycleRule>) -> String {
@@ -156,7 +190,13 @@ fn r2_lifecycle_rules_wire(rules: List<R2LifecycleRule>) -> String {
 // THE CANONICAL TEXT OF A RULE SET, so a desired set and a read-back set compare as one string:
 // one line per rule, sorted by id, every modeled field.
 fn r2_lifecycle_rule_line(rule: R2LifecycleRule) -> String {
-  join([rule.id as String, if rule.enabled { "enabled" } else { "disabled" }, concat("prefix=", rule.prefix), concat("max_age=", to_string(rule.delete_after_age_seconds))], " ")
+  join([
+    rule.id as String,
+    if rule.enabled { "enabled" } else { "disabled" },
+    match rule.scope { R2Prefix { prefix: p } => concat("prefix=", p as String) R2BucketWide => "bucket-wide" },
+    r2_lifecycle_transition_key(t: rule.transition),
+    concat("max_age=", to_string(r2_lifecycle_transition_age(t: rule.transition))),
+  ], " ")
 }
 
 fn r2_lifecycle_rules_canonical(rules: List<R2LifecycleRule>) -> String {
@@ -246,8 +286,8 @@ fn lifecycle_int(v: JsonValue?) -> Int? {
   }
 }
 
-fn lifecycle_delete_age(rule: JsonValue) -> Int? {
-  match lifecycle_member(v: rule, key: "deleteObjectsTransition") {
+fn lifecycle_age_transition(rule: JsonValue, key: String) -> Int? {
+  match lifecycle_member(v: rule, key: key) {
     Absent => none
     Present { value: t } =>
       match lifecycle_member(v: t, key: "condition") {
@@ -262,10 +302,57 @@ fn lifecycle_delete_age(rule: JsonValue) -> Int? {
   }
 }
 
-// A rule is modeled only when it carries exactly the delete-by-age transition and none of the
-// transitions this model omits.
+// EXACTLY ONE MODELED TRANSITION, read only when the other is absent: a rule carrying both, or
+// neither, or one this model cannot read, is not modeled.
+fn lifecycle_transition(rule: JsonValue) -> R2LifecycleTransition? {
+  let has_delete = !lifecycle_member_absent(v: rule, key: "deleteObjectsTransition")
+  let has_abort = !lifecycle_member_absent(v: rule, key: "abortMultipartUploadsTransition")
+  if has_delete && !has_abort {
+    match lifecycle_age_transition(rule: rule, key: "deleteObjectsTransition") {
+      Present { value: a } => Present { value: R2DeleteObjectsAfterAge { max_age_seconds: a } }
+      Absent => none
+    }
+  } else if has_abort && !has_delete {
+    match lifecycle_age_transition(rule: rule, key: "abortMultipartUploadsTransition") {
+      Present { value: a } => Present { value: R2AbortMultipartUploadsAfterAge { max_age_seconds: a } }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+// READING THE SCOPE: an absent prefix and an empty one are both R2BucketWide; a non-empty string is
+// R2Prefix; any other value (a non-string, a duplicated member) is unreadable, and the rule is not
+// modeled.
+type LifecycleScopeRead
+  = LifecycleScopeRead { scope: R2LifecycleScope }
+  | LifecycleScopeUnreadable
+
+fn lifecycle_scope(conditions: JsonValue) -> LifecycleScopeRead {
+  if lifecycle_member_absent(v: conditions, key: "prefix") {
+    LifecycleScopeRead { scope: R2BucketWide }
+  } else {
+    match lifecycle_string(v: lifecycle_member(v: conditions, key: "prefix")) {
+      Present { value: p } =>
+        if p == "" { LifecycleScopeRead { scope: R2BucketWide } } else { LifecycleScopeRead { scope: R2Prefix { prefix: p as NonEmptyStr } } }
+      Absent => LifecycleScopeUnreadable
+    }
+  }
+}
+
+fn lifecycle_rule_with(id: String, enabled: Bool, scope: R2LifecycleScope, rule: JsonValue) -> R2LifecycleRule? {
+  match lifecycle_transition(rule: rule) {
+    Absent => none
+    Present { value: t } =>
+      if id == "" { none } else {
+        Present { value: R2LifecycleRule { id: id as NonEmptyStr, enabled: enabled, scope: scope, transition: t } }
+      }
+  }
+}
+
 fn lifecycle_rule_of(rule: JsonValue) -> R2LifecycleRule? {
-  if !lifecycle_member_absent(v: rule, key: "abortMultipartUploadsTransition") || !lifecycle_member_absent(v: rule, key: "storageClassTransitions") {
+  if !lifecycle_member_absent(v: rule, key: "storageClassTransitions") {
     none
   } else {
     match lifecycle_string(v: lifecycle_member(v: rule, key: "id")) {
@@ -277,16 +364,9 @@ fn lifecycle_rule_of(rule: JsonValue) -> R2LifecycleRule? {
             match lifecycle_member(v: rule, key: "conditions") {
               Absent => none
               Present { value: conditions } =>
-                match lifecycle_string(v: lifecycle_member(v: conditions, key: "prefix")) {
-                  Absent => none
-                  Present { value: prefix } =>
-                    match lifecycle_delete_age(rule: rule) {
-                      Absent => none
-                      Present { value: age } =>
-                        if id == "" { none } else {
-                          Present { value: R2LifecycleRule { id: id as NonEmptyStr, enabled: enabled, prefix: prefix, delete_after_age_seconds: age } }
-                        }
-                    }
+                match lifecycle_scope(conditions: conditions) {
+                  LifecycleScopeUnreadable => none
+                  LifecycleScopeRead { scope: sc } => lifecycle_rule_with(id: id, enabled: enabled, scope: sc, rule: rule)
                 }
             }
         }

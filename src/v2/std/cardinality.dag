@@ -10,7 +10,7 @@ import std.termination {
   descent_evidence_lattice_meet,
   evidence_rank
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

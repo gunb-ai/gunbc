@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_ui_features_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { any }
 import extdeps.bmc.megarac { megarac_ui_features_json, megarac_firmware_0_32 }
 import extdeps.external_authority { TranscribedUncited }

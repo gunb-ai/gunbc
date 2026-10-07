@@ -7,7 +7,7 @@ import std.resources { Network }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.measure { ByteSize, byte_size, byte_size_count, Kibibyte, kibibyte }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
 import extdeps.deepseek.deepseek_v4_1_flash {
