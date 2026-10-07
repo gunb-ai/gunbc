@@ -16,7 +16,7 @@ import extdeps.vllm.engine_args {
   VllmSchedulerAdmissionRequest, vllm_scheduler_admission_omitted, vllm_scheduler_admission_argv, vllm_scheduler_admission_key,
   KvFp8E4m3, KvNvfp4, KvNvfp4DsMla, IndexerKvDtypeOmitted,
   VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_argv, vllm_indexer_kv_dtype_key,
-  VllmServedModelNames, vllm_served_model_names_all,
+  VllmServedModelNames, vllm_served_model_names_key,
 }
 import extdeps.vllm.kv_dtype_capability {
   KvMainDtypeRow, kv_main_dtype_row, FlashInferMlaSparseSm120, KvBasisObservedOnBuild, RowOnBuild, kv_runtime,
@@ -1131,7 +1131,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
     " kv=", vllm_kv_cache_dtype_wire(request: p.kv_cache_dtype) as String,
     " port=", to_string(p.serve_port),
-    " alias=", join(map(vllm_served_model_names_all(n: p.served_names), x => x as String), ","),
+    " alias=", vllm_served_model_names_key(n: p.served_names),
     " prefix=", match p.prefix_caching {
       PrefixCachingOmitted => "omitted"
       PrefixCachingExplicit { enabled: e } => if e { "on" } else { "off" }

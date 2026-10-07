@@ -3,11 +3,17 @@ module test.claim.spark.served_model_names_witness_test
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import v2.std.algebra { length }
-import extdeps.vllm.engine_args { VllmServedModelNames, vllm_served_model_names_all, vllm_served_model_name_argv }
+import extdeps.vllm.engine_args { VllmServedModelNames, vllm_served_model_names_all, vllm_served_model_name_argv, vllm_served_model_names_key }
+import extdeps.docker.cli { DockerEnvAssignment }
+import gunbc.spark.execution_cell { execution_generation_of_intent }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_for_launch, serving_subject_differing_axes, serving_subject_axis_list_contains, AxisLaunchProfile }
+import gunbc.spark.serving_capacity_intent { profile_for_envelope }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_served_name_base }
 import gunbc.spark.serving_arm {
+  ServingLaunchProfile,
   served_name_only, checkpoint_served_name, glm53_native_fp8_row, glm53_flash_nvidia_nvfp4_row,
   group_b_fp8_served_names, glm_native_initial_profile, serving_launch_profile_key,
+  serving_launch_profile, glm53_native_launch_policy, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
 }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines }
 import gunbc.spark.glm53_arm_staircase { glm53_step_profile, Glm53StaircaseStep, Glm53Nvfp4Step, Glm53Fp8Step, Nvfp4Seats8, Fp8Seats8 }
@@ -111,4 +117,49 @@ fn step_names(s: Glm53StaircaseStep) -> String {
 test fn w_staircase_steps_announce_only_their_own_build() -> Bool {
   step_names(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) == "glm-5.3-flash:nvfp4"
     && step_names(s: Glm53Fp8Step { step: Fp8Seats8 }) == "glm-5.3-flash:fp8"
+}
+
+// THE NAME LIST IS KEYED INJECTIVELY (side-chat ruling on #13531). The pair below differs in where the
+// comma sits: different argv, different reported name. A comma-joined key would make them one profile,
+// one execution generation and one performance subject. RED if any of the four collapses.
+data commas_in_reported: VllmServedModelNames = VllmServedModelNames { reported: "a,b" as NonEmptyStr, also_answers: ["c" as NonEmptyStr] }
+data commas_in_alias: VllmServedModelNames = VllmServedModelNames { reported: "a" as NonEmptyStr, also_answers: ["b,c" as NonEmptyStr] }
+
+fn names_profile(n: VllmServedModelNames) -> ServingLaunchProfile {
+  serving_launch_profile(
+    policy: glm53_native_launch_policy,
+    max_model_len: glm_native_initial_profile.max_model_len,
+    max_num_batched_tokens: glm_native_initial_profile.max_num_batched_tokens,
+    max_num_seqs: glm_native_initial_profile.max_num_seqs,
+    guaranteed_cold_seqs: glm_native_initial_profile.guaranteed_cold_seqs,
+    decided_gpu_memory_basis_points: glm_native_initial_profile.decided_gpu_memory_basis_points,
+    serve_port: glm_native_initial_profile.serve_port,
+    served_names: n,
+    prefix_caching: glm_native_initial_profile.prefix_caching,
+    scheduler_admission: glm_native_initial_profile.scheduler_admission,
+  )
+}
+
+fn names_subject(n: VllmServedModelNames) -> ServingPerformanceSubject {
+  serving_subject_for_launch(
+    checkpoint_revision: none, runtime: GunbcGlm53DerivedKvplanV2Gb10, runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
+    topology: FourSparkTp4, profile: names_profile(n: n), deployment_env: [] as List<DockerEnvAssignment>, collective_transport: none)
+}
+
+test fn w_commas_inside_names_do_not_merge_two_launches() -> Bool {
+  let ka = serving_launch_profile_key(p: names_profile(n: commas_in_reported))
+  let kb = serving_launch_profile_key(p: names_profile(n: commas_in_alias))
+  join(vllm_served_model_name_argv(n: commas_in_reported), " ") != join(vllm_served_model_name_argv(n: commas_in_alias), " ")
+    && ka != kb
+    && execution_generation_of_intent(intent_key: ka as NonEmptyStr).of_intent != execution_generation_of_intent(intent_key: kb as NonEmptyStr).of_intent
+    && serving_subject_axis_list_contains(axes: serving_subject_differing_axes(left: names_subject(n: commas_in_reported), right: names_subject(n: commas_in_alias)), a: AxisLaunchProfile)
+}
+
+// THE ENCODING IS THE COUNT AND LENGTH PREFIXES, and a single name that begins with the marker is
+// encoded rather than rendered raw, so it cannot impersonate an encoded list.
+test fn w_the_names_key_is_count_and_length_prefixed() -> Bool {
+  vllm_served_model_names_key(n: commas_in_reported) == "#2|3:a,b1:c"
+    && vllm_served_model_names_key(n: commas_in_alias) == "#2|1:a3:b,c"
+    && vllm_served_model_names_key(n: group_b_fp8_served_names) == "#2|13:glm-5.3-flash17:glm-5.3-flash:fp8"
+    && vllm_served_model_names_key(n: served_name_only(name: "#2|1:a1:b" as NonEmptyStr)) == "#1|9:#2|1:a1:b"
 }

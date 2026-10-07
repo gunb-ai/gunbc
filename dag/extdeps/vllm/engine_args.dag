@@ -867,3 +867,20 @@ fn vllm_served_model_names_all(n: VllmServedModelNames) -> List<NonEmptyStr> {
 fn vllm_served_model_name_argv(n: VllmServedModelNames) -> List<String> {
   concat(["--served-model-name"], map(vllm_served_model_names_all(n: n), x => x as String))
 }
+
+// THE CANONICAL KEY OF A SERVED-NAME LIST, AND IT IS INJECTIVE. vLLM's names are arbitrary strings,
+// commas included, so a comma-joined list would let "a,b" + ["c"] and "a" + ["b,c"] -- two different argv
+// lists with two different reported names -- render one key (side-chat ruling on #13531). Every encoded
+// form is "#", the name count, "|", then each name as <byte length>:<bytes> in authored order, reported
+// first: the count and the length prefixes fix every boundary, the shape the deployment-env key uses
+// (gunbc.spark.serving_arm serving_deployment_env_key). A list of ONE name not beginning with "#" renders
+// as that name alone, which is the text every single-name subject was keyed by before the list existed;
+// no encoded form can equal it, because every encoded form begins with "#".
+fn vllm_served_model_names_key(n: VllmServedModelNames) -> String {
+  if count(n.also_answers) == 0 && !starts_with(s: n.reported as String, prefix: "#") {
+    n.reported as String
+  } else {
+    let all = vllm_served_model_names_all(n: n)
+    join(["#", to_string(count(all)), "|", join(map(all, x => join([to_string(length(x as String)), ":", x as String], "")), "")], "")
+  }
+}
