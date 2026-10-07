@@ -13730,10 +13730,31 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// child_type_node treats inferred != none as Resolved, so a TypeVariable leaf becomes error_type.
+// Unify must keep that leaf: it is fold_list's T. Do not change child_type_node itself — that
+// read is load-bearing for Arrow/Resolved slots across the corpus.
+fn unify_type_slot(ch: Node) -> Node {
+  match ch.inferred {
+    Present { value: TypeVariable { id: _ } } => ch
+    _ => child_type_node(ch: ch)
+  }
+}
+
+fn unify_container_element(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let normed = normalize_access_type_node(n: n)
+  if (normed.connective == NoConnective && (normed.children |> count) == 1) {
+    match normed.children |> first {
+      Present { value: ch } => unify_type_slot(ch: ch)
+      Absent => normed
+    }
+  } else {
+    for_each_element_type_node(n: n, source_indices: source_indices)
+  }
+}
+
 // A CONTAINER SLOT MAY NOT BE THE RAW CHILD. Normalize first (type-annotation wrappers), bind
-// the raw child (first/filter's T), then peel through for_each_element_type_node (fold_list's
-// FreeMonoid<T> against a kernel List). child_type_node must keep a TypeVariable leaf: treating
-// inferred != none as Resolved made T into error_type and left fold_list's T unbound.
+// the raw child (first/filter's T), then peel the element slot (fold_list's FreeMonoid<T>
+// against a kernel List) without erasing a TypeVariable leaf.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -13758,8 +13779,8 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
           match anorm.children |> first {
             Present { value: ac } =>
               unify_generics(
-                formal: child_type_node(ch: fc),
-                actual: child_type_node(ch: ac),
+                formal: unify_type_slot(ch: fc),
+                actual: unify_type_slot(ch: ac),
                 generic_names: generic_names,
                 source_indices: source_indices,
                 acc: unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
@@ -13769,8 +13790,8 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         Absent => acc
       }
     } else { acc }
-    let f_el = for_each_element_type_node(n: fnorm, source_indices: source_indices)
-    let a_el = for_each_element_type_node(n: anorm, source_indices: source_indices)
+    let f_el = unify_container_element(n: fnorm, source_indices: source_indices)
+    let a_el = unify_container_element(n: anorm, source_indices: source_indices)
     if (type_node_label(n: f_el, source_indices: source_indices) != type_node_label(n: fnorm, source_indices: source_indices)
         || (f_el.children |> count) != (fnorm.children |> count)) {
       unify_generics(formal: f_el, actual: a_el, generic_names: generic_names, source_indices: source_indices, acc: after_kids)

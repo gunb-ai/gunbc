@@ -23712,6 +23712,30 @@ pub fn param_is_generic_decl(
     }
 }
 
+pub fn unify_type_slot(ch: Rc<Node>) -> Rc<Node> {
+    match ch.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => ch.clone(),
+        _ => crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+    }
+}
+
+pub fn unify_container_element(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+    if ((normed.connective.clone() == Connective::NoConnective)
+        && ((normed.children.clone().len() as i64) == 1))
+    {
+        match normed.children.clone().first().cloned() {
+            Some(ch) => unify_type_slot(ch),
+            std::option::Option::None => normed,
+        }
+    } else {
+        crate::v1_compiler_infer_types::for_each_element_type_node(n.clone(), source_indices)
+    }
+}
+
 pub fn unify_generics(
     mut __tco_loop_formal: Rc<Node>,
     mut __tco_loop_actual: Rc<Node>,
@@ -23795,8 +23819,8 @@ pub fn unify_generics(
                                     acc.clone(),
                                 );
                                 unify_generics(
-                                    crate::v1_compiler_infer_types::child_type_node(fc.clone()),
-                                    crate::v1_compiler_infer_types::child_type_node(ac.clone()),
+                                    unify_type_slot(fc.clone()),
+                                    unify_type_slot(ac.clone()),
                                     generic_names.clone(),
                                     source_indices.clone(),
                                     after_raw,
@@ -23809,14 +23833,8 @@ pub fn unify_generics(
                 } else {
                     acc.clone()
                 };
-                let f_el = crate::v1_compiler_infer_types::for_each_element_type_node(
-                    fnorm.clone(),
-                    source_indices.clone(),
-                );
-                let a_el = crate::v1_compiler_infer_types::for_each_element_type_node(
-                    anorm.clone(),
-                    source_indices.clone(),
-                );
+                let f_el = unify_container_element(fnorm.clone(), source_indices.clone());
+                let a_el = unify_container_element(anorm.clone(), source_indices.clone());
                 if (type_node_label(f_el.clone(), source_indices.clone())
                     != type_node_label(fnorm.clone(), source_indices.clone())
                     || ((f_el.children.clone().len() as i64)
