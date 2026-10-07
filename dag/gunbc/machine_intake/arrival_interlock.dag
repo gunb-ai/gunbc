@@ -1,7 +1,6 @@
 module gunbc.machine_intake_arrival_interlock
 
 import std.types { NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref }
 import std.durable_compare_and_set { CasGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
 import gunbc.durable_exclusive_hold_file_store {
@@ -27,11 +26,9 @@ import gunbc.machine_intake_arrival_subject { ArrivalSubjectAdmitted }
 // admit_arrival_* are supplied-slot checks, not the live hold.
 //
 // Archive (J2) needs the exclusive slot only (reads, evidence write, no account rotation).
-// BmcSecure (J4) and firmware qualification need the slot AND a grounded rotation route
-// (admit_rotation_apply's premise). The wet arrival door today gates the PriorLifeBoundary prefix
-// under the live slot; firmware/BmcSecure still use the supplied-slot admit until their effect
-// is wired under the same held value. The store host is operator_host_srv1 (fleet_converge_workflow
-// runner labels and concurrency group cite that identity; no second srv1 literal here).
+// BmcSecure (J4) is InterlockedBy admit_rotation_apply (#13517). Firmware qualification's census
+// hold is the live arrival slot (arrival_archive_slot_acquire); the write is not in the prefix yet.
+// admit_arrival_* remain supplied-slot checks for witnesses. The store host is operator_host_srv1.
 
 fn arrival_slot_key(subject_wire: NonEmptyStr) -> NonEmptyStr {
   join(["arrival:", subject_wire as String], "") as NonEmptyStr
@@ -121,12 +118,8 @@ fn arrival_archive_slot_acquire(subject: ArrivalSubjectAdmitted, owner: DurableH
     FileHoldKeyNotSlotAddressable { slot_key: k } =>
       ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldKeyNotSlotAddressable { slot_key: k }) }
     FileHoldAcquired { slot_key: k, owner: o, generation: g } =>
-      match admit_arrival_archive_interlock(subject: subject, slot: ArrivalSlotHeld { subject: subject }) {
-        ArrivalArchiveInterlockRefused { cause: c } => ArrivalArchiveSlotAcquireRefused { cause: c }
-        ArrivalArchiveInterlockAdmitted { subject: s } =>
-          ArrivalArchiveSlotAcquired {
-            held: ArrivalArchiveSlotHeld { subject: s, slot_key: k, owner: o, generation: g },
-          }
+      ArrivalArchiveSlotAcquired {
+        held: ArrivalArchiveSlotHeld { subject: subject, slot_key: k, owner: o, generation: g },
       }
   }
 }
@@ -153,13 +146,3 @@ fn arrival_archive_slot_release(held: ArrivalArchiveSlotHeld) -> ArrivalArchiveS
       }
   }
 }
-
-data arrival_archive_interlock_ref: DeclarationRef = decl_ref(
-  module_path: "gunbc.machine_intake_arrival_interlock",
-  decl_name: "arrival_archive_slot_acquire",
-)
-
-data arrival_bmc_secure_interlock_ref: DeclarationRef = decl_ref(
-  module_path: "gunbc.machine_intake_arrival_interlock",
-  decl_name: "admit_arrival_bmc_secure_interlock",
-)

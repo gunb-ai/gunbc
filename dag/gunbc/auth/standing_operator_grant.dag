@@ -152,7 +152,7 @@ fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect
       hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     }
     StandingJadeFirmwareQualification => InterlockedBy {
-      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
+      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     }
     StandingBmcSecureAccountWrite => InterlockedBy {
       hold: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply"),
