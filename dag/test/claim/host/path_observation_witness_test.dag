@@ -5,6 +5,8 @@ import std.measure { byte_size }
 import gunbc.host_operation_exec { StatFileType, HeadBytes, host_operation_materialize_argv }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.remote_leg_began { remote_leg_began_word }
+import gunbc.spark.model_snapshot_materialize { spark_remote_run_of_session, RemoteRan, RemoteUnreachable }
 import extdeps.tools.stat { StatFileKind, stat_file_kind_word }
 import gunbc.host.path_observation {
   HostPathKind, HostPathPresent, HostPathAbsent, HostPathUnread, host_path_kind,
@@ -80,4 +82,25 @@ test fn w_a_file_longer_than_the_bound_is_too_large_not_its_prefix() -> Bool {
   let read = fn(text) { small_file_read(run: w_host(stat: w_ran(code: 0, out: "regular file\n", err: ""), head: w_ran(code: 0, out: text, err: "")), path: w_path, limit: byte_size(count: 300)) }
   (match read(join(["fp8-16 abcd\n", w_hundred(), w_hundred(), w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, "xxxxxxxxx"], "")) { SmallFileTooLarge { limit: _ } => true  SmallFileText { text: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
     && (match read(join([w_hundred(), w_hundred(), w_hundred()], "")) { SmallFileText { text: t } => length(t) == 300  SmallFileTooLarge { limit: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+}
+
+// THE WHOLE-FILE BOUND SURVIVES THE REAL TRANSPORT (side-chat ruling on #13427 at 52ae7412). The host's
+// answers pass through the production projection -- gunbc.spark.model_snapshot_materialize
+// spark_remote_run_of_session, mapped to ArgvRan exactly as gunbc.spark.host_occupancy_admission
+// spark_ctx_argv_run does -- not a supplied ArgvRun. RED: 300 bytes a committed-record parser would
+// accept, then a newline at byte 301, read TOO LARGE. CONTROL: an exactly-300-byte file ending in a
+// space reads back as itself.
+fn w_via_transport(command_stdout: String) -> ArgvRun {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 0, stdout: join([remote_leg_began_word, "\n", command_stdout], ""), stderr: "") {
+    RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
+    RemoteUnreachable { cause: c, reach: _ } => ArgvLegDidNotRun { cause: c }
+  }
+}
+
+test fn w_a_newline_past_the_bound_through_the_real_transport_is_too_large() -> Bool {
+  let record = join(["fp8-16 abcd ", w_hundred(), w_hundred(), w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, "xxxxxxxx"], "")
+  let file_300_space = join([substring(s: join([w_hundred(), w_hundred(), w_hundred()], ""), start: 0, end: 299), " "], "")
+  let read = fn(head_out) { small_file_read(run: w_host(stat: w_via_transport(command_stdout: "regular file\n"), head: w_via_transport(command_stdout: head_out)), path: w_path, limit: byte_size(count: 300)) }
+  (match read(join([record, "\n"], "")) { SmallFileTooLarge { limit: _ } => true  SmallFileText { text: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+    && (match read(file_300_space) { SmallFileText { text: t } => t == file_300_space  SmallFileTooLarge { limit: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
 }
