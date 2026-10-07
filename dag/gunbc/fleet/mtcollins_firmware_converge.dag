@@ -8,7 +8,7 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, classify_reconciled, EffectConverged, EffectNotConverged }
 import std.decision { SelectionReceipt }
 import std.human_intervention { HumanIntervention, DeviceOnce, DischargedAt }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import extdeps.standards.picmg_hpm1 {
   HpmUpgradeOutcome, HpmUpgradeCompleted, HpmUpgradeFailed, HpmUpgradeStage,

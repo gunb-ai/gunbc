@@ -1,7 +1,7 @@
 module test.claim.spark.serving_load_probe_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.vllm.metrics { GenerationTokensTotal }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
@@ -74,8 +74,7 @@ data fx_subject: ServingPerformanceSubject = serving_performance_subject(
   speculative: Present { value: SpeculativeDecodingOff },
   collective_transport: none,
   indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
-  scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: none
-)
+  scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: none, deployment_env_key: Present { value: "env=none" } )
 
 fn fx_standing() -> ServingPerformanceSubjectStanding {
   serving_subject_standing(subject: fx_subject, believed: "fixture: collective transport unread" as NonEmptyStr, would_settle: "fixture" as NonEmptyStr)

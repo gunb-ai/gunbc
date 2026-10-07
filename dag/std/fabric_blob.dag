@@ -1,7 +1,7 @@
 module std.fabric_blob
 
 import std.types { String, NonEmptyStr, Bool, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic, sha256_hex_digest }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.algebra { trim }

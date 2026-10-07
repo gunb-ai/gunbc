@@ -1,7 +1,7 @@
 module extdeps.standards.rfc_8118
 
 import v2.std.algebra { any }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 
 import std.types { NonEmptyStr, String, List, Bool }
@@ -459,7 +459,15 @@ fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: Po
     sequence.parameters,
     parameter => match parameter {
       OpenPage(PdfOpenPage { page: n }) => n == page
-      _ => false
+      OpenNamedDest(_) => false
+      OpenStructElem(_) => false
+      OpenZoom(_) => false
+      OpenComment(_) => false
+      OpenView(_) => false
+      OpenViewRect(_) => false
+      OpenHighlight(_) => false
+      OpenSearch(_) => false
+      OpenFdf(_) => false
     },
   )
 }

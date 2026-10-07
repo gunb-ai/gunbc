@@ -46,7 +46,7 @@ import v2.std.node {
   resolved_reference_body_kind,
 }
 import v2.std.node_query { find_arrow_body_child }
-import v2.std.optional { Optional, Present, optional_absent, optional_present }
+import std.optional { Optional, Present, optional_absent, optional_present }
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 

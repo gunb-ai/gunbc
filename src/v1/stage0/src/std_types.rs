@@ -11,6 +11,7 @@ pub use crate::std_algebra::{
     carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
+pub use crate::std_optional::Optional;
 pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

@@ -2,7 +2,7 @@ module std.scoped_authorization
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, List, Int, brand }
 import v2.std.algebra { skip, is_empty, length }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,

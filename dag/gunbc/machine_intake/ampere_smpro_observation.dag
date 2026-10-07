@@ -4,7 +4,7 @@ import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.measure { Second }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.bmc.ipmi_master_write_read {

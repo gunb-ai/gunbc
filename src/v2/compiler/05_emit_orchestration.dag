@@ -120,7 +120,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -1147,7 +1147,21 @@ fn orch_emit_retry_1level(
           )
         }
       )
-    _ =>
+    ExitZero { run: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    StrEq { lhs: _, rhs: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    StrEmpty { operand: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    StrNonempty { operand: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    IntNe { lhs: _, rhs: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    Not { inner: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    And { lhs: _, rhs: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    Or { lhs: _, rhs: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
@@ -1208,12 +1222,33 @@ fn orch_emit_retry_levels(
                   )
                 }
               )
-            _ =>
+            ExitZero { run: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            StrEq { lhs: _, rhs: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            StrEmpty { operand: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            StrNonempty { operand: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            IntNe { lhs: _, rhs: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            Not { inner: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            And { lhs: _, rhs: _ } =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+            Or { lhs: _, rhs: _ } =>
               outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
           }
         }
       )
-    _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    ExitZero { run: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    StrEq { lhs: _, rhs: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    StrEmpty { operand: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    StrNonempty { operand: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    IntNe { lhs: _, rhs: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    Not { inner: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    And { lhs: _, rhs: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    Or { lhs: _, rhs: _ } => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
 

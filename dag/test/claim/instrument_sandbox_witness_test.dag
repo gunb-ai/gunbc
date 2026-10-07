@@ -31,7 +31,7 @@ import gunbc.roadmap_program_view {
 }
 import gunbc.v1_deletion_plan { V1FinishLine, CompilerFixedPoint }
 import gunbc.roadmap_model { RoadmapNodeId }
-import v2.std.optional { Absent }
+import std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
