@@ -23781,13 +23781,20 @@ pub fn unify_generics(
                     match formal.children.clone().first().cloned() {
                         Some(fc) => match actual.children.clone().first().cloned() {
                             Some(ac) => {
+                                let after_raw = unify_generics(
+                                    fc.clone(),
+                                    ac.clone(),
+                                    generic_names.clone(),
+                                    source_indices.clone(),
+                                    acc.clone(),
+                                );
                                 let __tco_0 =
                                     crate::v1_compiler_infer_types::child_type_node(fc.clone());
                                 let __tco_1 =
                                     crate::v1_compiler_infer_types::child_type_node(ac.clone());
                                 let __tco_2 = generic_names;
                                 let __tco_3 = source_indices;
-                                let __tco_4 = acc;
+                                let __tco_4 = after_raw;
                                 __tco_loop_formal = __tco_0;
                                 __tco_loop_actual = __tco_1;
                                 __tco_loop_generic_names = __tco_2;

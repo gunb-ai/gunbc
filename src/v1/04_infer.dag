@@ -13730,9 +13730,9 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
-// A CONTAINER SLOT IS READ THROUGH child_type_node, the same total read unify_callable_generics
-// already uses. Walking the raw child left fold_list's T unbound (rfc_8288, type_declaration_use_census)
-// after the leftover unify pass was deleted.
+// A CONTAINER SLOT MAY NOT BE THE RAW CHILD. Bind on the raw child first (a bare T lives there
+// for first/filter), then on child_type_node (the List element slot fold_list needs). One
+// function, two reads of the same 1-child pair — not a second leftover pass.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -13752,7 +13752,14 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: child_type_node(ch: fc), actual: child_type_node(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
+          Present { value: ac } =>
+            unify_generics(
+              formal: child_type_node(ch: fc),
+              actual: child_type_node(ch: ac),
+              generic_names: generic_names,
+              source_indices: source_indices,
+              acc: unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
+            )
           Absent => acc
         }
       Absent => acc
