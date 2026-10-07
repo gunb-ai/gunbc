@@ -37383,6 +37383,58 @@ mod import_bearing_reference_edges {
             vec!["v2.std.refinement".to_string()]
         );
     }
+
+    fn homonym_names() -> entry_resolve::ReferencePoolNames {
+        let mut decl_index = HashMap::new();
+        decl_index.insert(
+            "Present".to_string(),
+            ["std.optional", "test.fixture.planted"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        entry_resolve::ReferencePoolNames {
+            decl_index,
+            module_names: ["std.optional", "test.fixture.planted"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
+    }
+
+    fn homonym_edges(src: &str) -> Vec<String> {
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file(
+                "test/claim/a.dag",
+                Some(src),
+                &homonym_names(),
+            )
+        else {
+            panic!("a parsed file has edges");
+        };
+        edges.into_iter().map(|e| e.target_module).collect()
+    }
+
+    /// RED (reader defect): `Present` is bound by the file's own `import std.optional { Present }`.
+    /// A fixture module declaring the same spelling and nearer in the containment tree must not
+    /// become a phantom dependency of the importer; in a file that imports, a bare name is
+    /// lexically bound, never resolved by proximity.
+    #[test]
+    fn a_bare_name_in_an_import_bearing_file_is_not_resolved_to_a_pool_homonym() {
+        let src =
+            "module test.claim.a\nimport std.optional { Present }\nfn g() -> Int { Present }\n";
+        let t = homonym_edges(src);
+        assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+    }
+
+    /// Control: the same bare name in an IMPORT-LESS file still resolves by proximity (unchanged),
+    /// and a qualified reference in an import-bearing file is still an edge (the other test).
+    #[test]
+    fn the_same_bare_name_without_the_import_still_resolves() {
+        let src = "module test.claim.a\nfn g() -> Int { Present }\n";
+        let t = homonym_edges(src);
+        assert!(t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+    }
 }
 
 #[cfg(test)]

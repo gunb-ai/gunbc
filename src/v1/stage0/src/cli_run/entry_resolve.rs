@@ -3360,7 +3360,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
         Ok(refs) => refs,
         Err(cause) => return FileReferenceEdges::Unaccounted(cause),
     };
-    let ParsedFileReferences { bare, chains, .. } = refs;
+    let ParsedFileReferences {
+        bare,
+        chains,
+        imports,
+        ..
+    } = refs;
     // Resolve to per-file (target_module → strongest confidence).
     let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
         std::collections::BTreeMap::new();
@@ -3382,6 +3387,15 @@ pub(crate) fn reference_edges_for_file_on_demand<
         // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
         // std.string_type, a module the resolver never loads for that spelling.
         if super::is_substrate_vocabulary(name) {
+            continue;
+        }
+        // LEXICAL BINDING, NOT PROXIMITY, IN A FILE THAT IMPORTS: a bare name there is a local
+        // declaration or a name the file imports (the import edge already carries that), so
+        // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
+        // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
+        // merely declares the same spelling. The proximity tier below stays for import-less files,
+        // where it already applied.
+        if !imports.is_empty() {
             continue;
         }
         if let Some(mods) = names.decl_index.get(name) {
