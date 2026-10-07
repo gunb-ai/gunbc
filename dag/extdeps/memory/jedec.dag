@@ -46,6 +46,5 @@ fn jedec_ddr_generation_catalog_row(dram_gen: DramGeneration) -> JedecDdrGenerat
       5 => ddr5_generation_catalog
       _ => unknown_ddr_generation_catalog
     }
-    _ => unknown_ddr_generation_catalog
   }
 }

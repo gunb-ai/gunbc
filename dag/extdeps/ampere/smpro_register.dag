@@ -2,7 +2,7 @@ module extdeps.ampere.smpro_register
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.ampere.scp_diagnostic {

@@ -266,7 +266,7 @@ test fn an_unimplemented_identity_rule_is_a_protocol_gap_not_damage() -> Bool {
     cause: RepositoryIdentityRuleUnrecognized { found: "blake3-structural-v2" }
   )
   let format = repository_envelope_load_standing(
-    cause: RepositoryFormatUnrecognized { found: "gunbc-scm-repository-v9" }
+    cause: RepositoryFormatUnrecognized { found: "gunbc-scm-repository-v99" }
   )
   let member = repository_envelope_load_standing(
     cause: RepositoryUnexpectedMember { context: RepositoryEnvelopeMembers, key: "provenance" }

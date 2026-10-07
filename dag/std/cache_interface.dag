@@ -1,7 +1,7 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand, List }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import std.measure { Nano, ByteSize, Second, second, Nanosecond, nanosecond, nanosecond_count }
@@ -524,7 +524,10 @@ fn cache_layer_beats_recompute_path(
         b: probe,
       ) {
         Dominates => false
-        _ => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        Dominated => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        Equivalent => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        Incomparable => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        DominanceUndecided => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
       }
   }
 }

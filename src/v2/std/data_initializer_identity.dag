@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.node { symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.decl_index { DeclFact }
-import v2.std.optional { optional_present, optional_absent, Optional, Present, Absent }
+import std.optional { optional_present, optional_absent, Optional, Present, Absent }
 
 // Resolved parent/arm projection for DataItem rows — qualified_name, module_path, rel_path, and
 // name locator grain (not occurrence identity). Host bridge marshals projection Node trees from
@@ -19,7 +19,12 @@ fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       optional_present(value: symbol_lexeme(sym: sym))
-    _ => optional_absent()
+    TypeNode { connective: Conj } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 

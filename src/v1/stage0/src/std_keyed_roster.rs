@@ -6,6 +6,7 @@ use self::KeyedRosterInsert::*;
 use self::KeyedRosterSecondRowScan::*;
 pub use crate::std_keyed_row::keyed_row_find;
 pub use crate::std_keyed_row::KeyedRow;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

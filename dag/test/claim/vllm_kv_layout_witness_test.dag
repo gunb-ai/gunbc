@@ -1,7 +1,7 @@
 module test.claim.vllm_kv_layout_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure {
   TokenCount, token_count, token_count_value,

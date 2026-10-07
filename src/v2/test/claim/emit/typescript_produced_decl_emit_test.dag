@@ -46,7 +46,7 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }

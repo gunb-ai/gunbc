@@ -10,7 +10,7 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
   find_wet_receipt_binding
 }
 import v2.std.algebra { length }
-import v2.std.optional {
+import std.optional {
   Absent,
   Present
 }

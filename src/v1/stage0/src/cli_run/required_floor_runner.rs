@@ -661,6 +661,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
                     "ExactReplayBaseline",
                     "PushBeforeBaseline",
                     "PushParentBaseline",
+                    "MergeGroupBaseBaseline",
                     "OperatorOverrideBaseline",
                 ] {
                     if ctx.sym_eq(*variant_name, name) {
@@ -710,6 +711,89 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
              FloorDiffComparisonReadout",
             ctx.format_value(other)
         )),
+    }
+}
+
+/// THE FLOOR RUN'S BASE TREE, resolved at most once per run and lent to every base-tree reader.
+/// `gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`:
+/// the interface planner applied the merge-base arm while the unimported-bare-provider roster gate
+/// and the cost-debt edit budget each read the base TIP, so on a branch behind main a row main
+/// retired after the branch point read as this change's edit. The repair is not a merge-base call
+/// at each site -- that leaves N relation choices to drift -- but one window, resolved by
+/// `FreezeBaselineComparison::resolve_window`, that every reader receives. Lazy because a local
+/// run without a diff baseline never needs a base side, and a refusal is held so every reader
+/// reports the same cause rather than re-asking the resolver.
+pub(crate) struct FloorBaseTree {
+    /// `None` reads the run's own comparison (`floor_diff_comparison_readout`) at the process
+    /// workspace; `Some` is a supplied comparison over a supplied repository, the same resolver.
+    supplied: Option<(FreezeBaselineComparison, PathBuf)>,
+    window: std::cell::OnceCell<
+        Result<
+            (
+                FreezeBaselineComparison,
+                comparison_window::ResolvedComparisonWindow,
+            ),
+            String,
+        >,
+    >,
+}
+
+impl FloorBaseTree {
+    pub(crate) fn unresolved() -> Self {
+        Self {
+            supplied: None,
+            window: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// A supplied comparison over a supplied repository, resolved by the same `resolve_window`.
+    pub(crate) fn for_comparison(comparison: FreezeBaselineComparison, root: PathBuf) -> Self {
+        Self {
+            supplied: Some((comparison, root)),
+            window: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn window(
+        &self,
+    ) -> Result<
+        &(
+            FreezeBaselineComparison,
+            comparison_window::ResolvedComparisonWindow,
+        ),
+        String,
+    > {
+        self.window
+            .get_or_init(|| {
+                let (comparison, root) = match &self.supplied {
+                    Some((comparison, root)) => (comparison.clone(), root.clone()),
+                    None => (floor_diff_comparison_readout()?, process_workspace_root()),
+                };
+                let window = comparison.resolve_window(&root)?;
+                Ok((comparison, window))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// The commit whose tree is the base side of this run's comparison.
+    pub(crate) fn commit(&self) -> Result<&comparison_window::BaseTreeCommit, String> {
+        Ok(self.window()?.1.base_tree())
+    }
+
+    /// The resolved head commit of this run's comparison.
+    pub(crate) fn head(&self) -> Result<&str, String> {
+        Ok(self.window()?.1.head())
+    }
+
+    /// The base REF and the base-tree commit, for a located line. Never a tree route.
+    pub(crate) fn located(&self) -> Result<String, String> {
+        let (comparison, window) = self.window()?;
+        Ok(format!(
+            "base_ref={} base_tree={}",
+            comparison.base_ref(),
+            window.base_tree()
+        ))
     }
 }
 
@@ -808,7 +892,7 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
 /// resolves a removed call against. Returns an exact identity map of the model's edit labels and budgets.
 /// Tokenization is shared only within this observed file pair, never across revisions.
 pub(crate) fn cost_debt_changed_witness_ceilings(
-    base: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
     rel_path: &str,
     functions: &[String],
     head_source: &str,
@@ -821,7 +905,7 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
         .map_err(|e| format!("floor_cost_debt_edit resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
-        (Some("base".to_string()), str_value(base)),
+        (Some("base".to_string()), str_value(base_tree.as_str())),
         (Some("path".to_string()), str_value(rel_path)),
         (
             Some("functions".to_string()),
@@ -894,16 +978,19 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
 /// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
 /// `floor_run_base_file_read`): `Ok(None)` when the base does not carry the path, `Err` when the
 /// listing or show refused -- a refusal is never read as an absent or empty file.
-pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String> {
+pub(crate) fn floor_base_file_read(
+    base_tree: &FloorBaseTree,
+    path: &str,
+) -> Result<Option<String>, String> {
     use v1_interpreter::Value;
-    let comparison = floor_diff_comparison_readout()?;
+    let base = base_tree.commit()?.as_str();
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
-        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("base".to_string()), str_value(base)),
         (Some("path".to_string()), str_value(path)),
     ];
     let result =
@@ -942,13 +1029,14 @@ pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String>
 /// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
 /// census is an observation failure and never becomes an empty map.
 pub(crate) fn floor_base_test_decl_census(
+    base_tree: &FloorBaseTree,
     paths: &[String],
 ) -> Result<std::collections::HashMap<String, HashSet<String>>, String> {
     use v1_interpreter::Value;
     if paths.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-    let comparison = floor_diff_comparison_readout()?;
+    let base = base_tree.commit()?.as_str();
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
@@ -956,7 +1044,7 @@ pub(crate) fn floor_base_test_decl_census(
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
     let args = [
-        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("base".to_string()), str_value(base)),
         (Some("paths".to_string()), list_value_from_vec(path_values)),
     ];
     let result = v1_interpreter::run_in_context_with_args(
@@ -1329,21 +1417,78 @@ struct DeclarationTextAttribution {
     changed: HashSet<usize>,
 }
 
-/// A declaration's OWN text: from its first line up to the next declaration, without the
-/// trailing blank and `//` lines. Those trailing lines are the NEXT declaration's leading
-/// annotation (DESIGN §4c: an annotation is not program data), so deleting a neighbour and its
-/// comment never changes this declaration's text.
+/// A declaration's OWN text, ANNOTATION-ERASED: from its first line up to the next declaration,
+/// with every `//` annotation line removed and the trailing blank lines dropped. DESIGN §4c:
+/// semantic passes receive only the annotation-erased projection, so adding, deleting, editing or
+/// moving a `//` block never changes this text and never charges the declaration. Whitespace is
+/// otherwise compared as is.
+///
+/// A `.dag` string literal may span lines (`scan_string_body` does not stop at a newline), so a
+/// line that begins with `//` INSIDE a string is program data, not an annotation, and is kept:
+/// `annotation_line_mask` reads the lexical state at each line start.
 fn declaration_own_text(lines: &[String], start: usize, next: usize) -> String {
-    let mut end = next.min(lines.len());
-    while end > start {
-        let t = lines[end - 1].trim();
-        if t.is_empty() || t.starts_with("//") {
-            end -= 1;
-        } else {
-            break;
+    let span = &lines[start..next.min(lines.len()).max(start)];
+    let mut kept: Vec<&str> = span
+        .iter()
+        .zip(annotation_line_mask(span))
+        .filter(|(_, annotation)| !annotation)
+        .map(|(l, _)| l.as_str())
+        .collect();
+    while kept.last().is_some_and(|l| l.trim().is_empty()) {
+        kept.pop();
+    }
+    kept.join("\n")
+}
+
+/// For each line, whether it is a `//` annotation line: it starts (after indentation) with `//`
+/// while the lexer is in code, not inside a string literal. Strings carry `\` escapes and `${ }`
+/// interpolation whose code may itself open strings, so the state is a stack: `Str` inside a
+/// literal, `Code(depth)` inside an interpolation's braces.
+fn annotation_line_mask(lines: &[String]) -> Vec<bool> {
+    enum Frame {
+        Str,
+        Code(usize),
+    }
+    let mut stack: Vec<Frame> = Vec::new();
+    let mut mask = Vec::with_capacity(lines.len());
+    for line in lines {
+        let in_string = matches!(stack.last(), Some(Frame::Str));
+        mask.push(!in_string && line.trim_start().starts_with("//"));
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            match stack.last_mut() {
+                Some(Frame::Str) => match c {
+                    '\\' => i += 1,
+                    '"' => {
+                        stack.pop();
+                    }
+                    '$' if chars.get(i + 1) == Some(&'{') => {
+                        stack.push(Frame::Code(0));
+                        i += 1;
+                    }
+                    _ => {}
+                },
+                code => {
+                    if c == '/' && chars.get(i + 1) == Some(&'/') {
+                        break;
+                    }
+                    match (c, code) {
+                        ('"', _) => stack.push(Frame::Str),
+                        ('{', Some(Frame::Code(d))) => *d += 1,
+                        ('}', Some(Frame::Code(0))) => {
+                            stack.pop();
+                        }
+                        ('}', Some(Frame::Code(d))) => *d -= 1,
+                        _ => {}
+                    }
+                }
+            }
+            i += 1;
         }
     }
-    lines[start..end].join("\n")
+    mask
 }
 
 /// Whether a line REMOVED by the diff opens a declaration at the base. Removed lines are not
@@ -1413,8 +1558,8 @@ fn declaration_text_attribution(
     base_opens.dedup_by_key(|(b, _)| *b);
     let first_head = (decls[0].0 - 1).max(0) as usize;
     let first_base = base_opens.first().map(|(b, _)| *b).unwrap_or(base.len());
-    let pre_declaration_changed =
-        head_owned[..first_head.min(head_owned.len())] != base[..first_base.min(base.len())];
+    let pre_declaration_changed = declaration_own_text(&head_owned, 0, first_head)
+        != declaration_own_text(&base, 0, first_base);
     let module_line_changed = head_owned.first() != base.first();
     let mut changed = HashSet::new();
     for (i, (line, name)) in decls.iter().enumerate() {
@@ -1497,6 +1642,7 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// the `changed_witness_identities` wrapper above it (already callerless on `main`) are deleted
 /// here rather than left for that later consolidation.
 fn changed_and_enrolled_witness_identities_with_index(
+    base_tree: &FloorBaseTree,
     index: &MultiEntryIndex,
     source_roots: &[String],
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
@@ -1512,6 +1658,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
     // describe different changes.
     unimported_bare_provider_gate(
+        base_tree,
         index,
         source_roots,
         &changed_paths,
@@ -1530,7 +1677,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
     floor_seam("diff-base-decl-census");
-    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    let base_test_decl_names = floor_base_test_decl_census(base_tree, &dag_path_list)?;
     floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
@@ -1552,6 +1699,19 @@ fn changed_and_enrolled_witness_identities_with_index(
         &root,
         &edits.enrolled_test_fns,
         &quarantined,
+    )?;
+    // ADMISSION IS A CHANGE TO THE IDENTITY'S STANDING, SO IT JOINS THE CHANGED SET. A row added
+    // to `v2.workflow.floor_cost_debt` would otherwise be declined at build on the very change
+    // that adds it, and nothing would ever establish that the claim it withholds passes
+    // (`v2.workflow.floor_cost_debt_verdict`). Asked only when the diff modified the roster; a
+    // roster ADDED by this change has no base, and every row it carries is then an admission.
+    let (changed, cost_debt_admitted) = changed_with_cost_debt_admissions(
+        changed,
+        &changed_paths,
+        &added_paths,
+        cost_debt_roster_head_closure,
+        || cost_debt_admitted_identities(base_tree),
+        || cost_debt_admitted_by_fold(&[], None),
     )?;
     // THE THIRD PROJECTION IS THE COMPILE SUBJECT, not another witness roster. A helper-fn
     // or type-decl edit lands in `touched_entry_files` and until this was consumed only by
@@ -1587,7 +1747,8 @@ fn changed_and_enrolled_witness_identities_with_index(
     floor_seam("interface-consumer-planning");
     let touched_declarations =
         declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
-    let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
+    let interface_consumers =
+        interface_consumer_planning(base_tree, planning_index, &touched_declarations)?;
     // THE FIFTH PROJECTION IS THE DIFF'S PATHS THEMSELVES, for the checker-input rule
     // (`v2.workflow.floor_subject_seed` `checker_subject_rule`): a changed non-.dag path is
     // structural-empty for the .dag frontier above and still an input to every Strict verdict
@@ -1603,6 +1764,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
+        cost_debt_admitted,
         diff_paths,
         compile_subject: CompileSubjectSeeds {
             touched_modules,
@@ -1618,6 +1780,9 @@ fn changed_and_enrolled_witness_identities_with_index(
 pub(crate) struct FloorDiffProjections {
     pub changed_witnesses: Vec<String>,
     pub newly_enrolled_witnesses: Vec<String>,
+    /// Rows this change adds to `v2.workflow.floor_cost_debt`, already inside `changed_witnesses`;
+    /// they run for their verdict WITHOUT the eval-step budget (`v2.workflow.floor_cost_debt_verdict`).
+    pub cost_debt_admitted: Vec<String>,
     /// Every path the diff names, changed or departed, as the checker-input rule reads them.
     pub diff_paths: Vec<String>,
     pub compile_subject: CompileSubjectSeeds,
@@ -1703,6 +1868,7 @@ pub(crate) fn declaration_seeds_from_touched_declarations(
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
 /// blind; a local run without a diff baseline never reaches here.
 fn interface_consumer_planning(
+    base_tree: &FloorBaseTree,
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
     touched_declarations: &std::collections::BTreeSet<(String, String)>,
 ) -> Result<InterfaceConsumerPlanning, String> {
@@ -1721,15 +1887,8 @@ fn interface_consumer_planning(
     // direct comparison at the base ref itself -- the same relation the affected-set diff was
     // taken under, so the interface delta and the line-range attribution describe one change.
     let workspace = process_workspace_root();
-    let (base_commit, head_commit) = match floor_diff_comparison_readout()? {
-        FreezeBaselineComparison::Direct { base, head, .. } => (base, head),
-        FreezeBaselineComparison::MergeBase { base, head, .. } => {
-            let merge_base = git_stdout(&workspace, &["merge-base", &base, &head])?;
-            (merge_base, head)
-        }
-    };
-    let base_commit = git_stdout(&workspace, &["rev-parse", &base_commit])?;
-    let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
+    let base_commit = base_tree.commit()?.as_str().to_string();
+    let head_commit = base_tree.head()?.to_string();
     match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
             Ok(InterfaceConsumerPlanning::NoSubject { head })
@@ -2572,6 +2731,371 @@ pub(crate) fn floor_enrolment_typed_cost_debt_identities(
     Ok(out)
 }
 
+/// `v2.workflow.floor_cost_debt`: the roster whose admissions `v2.workflow.floor_cost_debt_verdict`
+/// reads against the diff base.
+const FLOOR_COST_DEBT_ROSTER: &str = "src/v2/workflow/floor_cost_debt.dag";
+/// `v2.workflow.floor_cost_debt_verdict`: every decision about a cost row's verdict.
+const FLOOR_COST_DEBT_VERDICT: &str = "src/v2/workflow/floor_cost_debt_verdict.dag";
+
+/// THE ROWS THIS CHANGE ADMITS TO THE COST-DEBT ROSTER: the head roster's rows its base result
+/// does not carry, decided by `v2.workflow.floor_cost_debt_verdict`
+/// `cost_debt_admitted_identities_against_base`. BOTH ENDS ARE THE ROSTER'S EVALUATED RESULT, and
+/// the base end is evaluated over the BASE TREE: the roster and every module its result depends on
+/// are read at the base commit (`cost_debt_base_tree_extract`), so a provider changed at head
+/// cannot change the base population (review on gunbc#13332). A roster this change modifies must
+/// exist and evaluate at the base; anything else refuses rather than reading as carried.
+fn cost_debt_admitted_identities(base_tree: &FloorBaseTree) -> Result<Vec<String>, String> {
+    cost_debt_admitted_at_base_tree(
+        base_tree,
+        |base_commit| {
+            let workspace = process_workspace_root();
+            let tree = cost_debt_scratch_dir("base")?;
+            let read = cost_debt_base_tree_extract(&workspace, base_commit, &tree)
+                .and_then(|()| cost_debt_roster_in_tree(&tree));
+            std::fs::remove_dir_all(&tree).ok();
+            read
+        },
+        |base_rows| cost_debt_admitted_by_fold(base_rows, None),
+    )
+}
+
+/// THE BASE SIDE OF ADMISSION: the base roster is read at the run's base-tree commit and nowhere
+/// else, then folded against head. The read and the fold are parameters so the stale-base RED
+/// drives THIS selection with supplied values inside the unit budget (gunbc#13452); production
+/// supplies the base-tree extraction and the `.dag` fold above.
+fn cost_debt_admitted_at_base_tree(
+    base_tree: &FloorBaseTree,
+    read_base_rows: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<Vec<String>, String>,
+    fold: impl FnOnce(&[String]) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, String> {
+    let base_rows = read_base_rows(base_tree.commit()?)?;
+    fold(&base_rows)
+}
+
+/// A fresh scratch directory under the ignored build tree, one per read.
+fn cost_debt_scratch_dir(label: &str) -> Result<PathBuf, String> {
+    static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let dir = process_workspace_root().join(format!(
+        "target/floor-cost-debt-{label}-{}-{}",
+        std::process::id(),
+        READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("scratch dir {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// THE SOURCE ROOTS AS THEY STOOD AT `commit`, written under `into`: `git archive` of the floor's
+/// two roots, so the base roster resolves every import against the same revision it was authored
+/// beside. A refused archive or extraction is a typed refusal, never an empty tree.
+pub(crate) fn cost_debt_base_tree_extract(
+    workspace: &Path,
+    base_tree: &comparison_window::BaseTreeCommit,
+    into: &Path,
+) -> Result<(), String> {
+    let commit = base_tree.as_str();
+    let refuse = |why: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable base={commit} -- the base \
+             tree could not be materialized ({why}); which rows the base roster carried cannot be \
+             established, and is never assumed"
+        )
+    };
+    let archive = std::process::Command::new("git")
+        .args(["archive", "--format=tar", commit, "dag", "src/v2"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| refuse(format!("spawn git archive: {e}")))?;
+    if !archive.status.success() {
+        return Err(refuse(format!(
+            "git archive: {}",
+            String::from_utf8_lossy(&archive.stderr).trim()
+        )));
+    }
+    let mut tar = std::process::Command::new("tar")
+        .args(["-x", "-C"])
+        .arg(into)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| refuse(format!("spawn tar: {e}")))?;
+    tar.stdin
+        .take()
+        .ok_or_else(|| refuse("tar has no stdin".to_string()))?
+        .write_all(&archive.stdout)
+        .map_err(|e| refuse(format!("feed tar: {e}")))?;
+    let status = tar.wait().map_err(|e| refuse(format!("wait tar: {e}")))?;
+    if !status.success() {
+        return Err(refuse(format!("tar exited {status}")));
+    }
+    Ok(())
+}
+
+/// `floor_cost_debt_roster` evaluated inside ONE source tree (its `dag` and `src/v2` roots), through
+/// an index this read owns -- never the thread's shared slot, which holds the head tree's pool
+/// (`SharedIndexSecondResidentPool`). A tree whose roster does not resolve or evaluate to a list of
+/// identities REFUSES as `CostDebtBaseRosterUnevaluable`.
+pub(crate) fn cost_debt_roster_in_tree(tree: &Path) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    let refuse = |why: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable path={FLOOR_COST_DEBT_ROSTER} \
+             -- {why}; which rows the base roster carried cannot be established, and is never \
+             assumed"
+        )
+    };
+    let roots = vec![
+        tree.join("dag").to_string_lossy().to_string(),
+        tree.join("src/v2").to_string_lossy().to_string(),
+    ];
+    let entry = tree.join(FLOOR_COST_DEBT_ROSTER);
+    if !entry.is_file() {
+        return Err(refuse(format!(
+            "{} is absent from the tree",
+            entry.display()
+        )));
+    }
+    let index = build_multi_entry_index(&roots);
+    let (graph, indices) = resolve_entry_with_index(&index, &entry.to_string_lossy())
+        .map_err(|e| refuse(format!("resolve: {e}")))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        "v2.workflow.floor_cost_debt.floor_cost_debt_roster",
+        false,
+    )
+    .map_err(|e| refuse(format!("floor_cost_debt_roster: {e}")))?;
+    floor_decode_list(&ctx, Some(&value))
+        .map_err(|e| refuse(format!("floor_cost_debt_roster result: {e}")))?
+        .into_iter()
+        .map(|v| match v {
+            Value::Str(s) => Ok(s.to_string()),
+            other => Err(refuse(format!(
+                "a roster row is {}, not a String",
+                floor_value_shape(Some(other))
+            ))),
+        })
+        .collect()
+}
+
+/// The head roster's rows `base_roster` does not carry, by the `.dag` fold. `head_roster` is the
+/// evaluated head roster when `None`; a supplied head is for controls that plant their own roster.
+pub(crate) fn cost_debt_admitted_by_fold(
+    base_roster: &[String],
+    head_roster: Option<&[String]>,
+) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    let entry = process_workspace_root().join(FLOOR_COST_DEBT_VERDICT);
+    let (graph, indices) =
+        resolve_entry_graph_shared(&default_source_roots(), &entry.to_string_lossy())
+            .map_err(|e| format!("floor_cost_debt_verdict resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let list = |xs: &[String]| list_value_from_vec(xs.iter().map(str_value).collect());
+    let mut args = vec![(Some("base_roster".to_string()), list(base_roster))];
+    let function = match head_roster {
+        None => "cost_debt_admitted_identities_against_base",
+        Some(head) => {
+            args.push((Some("head_roster".to_string()), list(head)));
+            "cost_debt_admitted_identities"
+        }
+    };
+    let value = v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+        .map_err(|e| format!("cost_debt_admitted_identities_against_base: {e}"))?;
+    floor_decode_list(&ctx, Some(&value))
+        .map_err(|e| format!("cost_debt_admitted_identities_against_base: {e}"))?
+        .into_iter()
+        .map(|v| match v {
+            Value::Str(s) => Ok(s.to_string()),
+            other => Err(format!(
+                "cost_debt_admitted_identities_against_base returned a non-String row {}",
+                floor_value_shape(Some(other))
+            )),
+        })
+        .collect()
+}
+
+/// THE ADMISSION STEP OF THE DIFF PROJECTION, as `changed_and_enrolled_witness_identities_with_index`
+/// runs it: decide whether the diff touched the roster or its dependency closure, read the admitted rows (`read_modified`
+/// for a modified roster, against the base; `read_added` for a roster this change adds, where
+/// every row is new), and merge them into the changed set the floor plans from and the wall owes.
+/// Returns the merged changed set and the admitted rows. The readers are parameters so the
+/// integration control drives THIS function -- removing the merge here turns it red.
+pub(crate) fn changed_with_cost_debt_admissions(
+    mut changed: Vec<String>,
+    changed_paths: &[String],
+    added_paths: &HashSet<String>,
+    roster_closure: impl FnOnce() -> Result<HashSet<String>, String>,
+    read_modified: impl FnOnce() -> Result<Vec<String>, String>,
+    read_added: impl FnOnce() -> Result<Vec<String>, String>,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    // MEMBERSHIP CAN CHANGE WITHOUT THE ROSTER FILE CHANGING: the roster's result is computed, and
+    // any module in its dependency closure can add a row (an imported provider's `selected_rows()`).
+    // So the question is asked whenever the diff touches the roster OR any file its head closure
+    // loads -- never by whether the roster's own path is in the diff (review on gunbc#13332). A
+    // closure that cannot be read refuses rather than answering "untouched".
+    let touched = changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER) || {
+        let closure = roster_closure()?;
+        changed_paths.iter().any(|p| closure.contains(p))
+    };
+    let admitted = if added_paths.contains(FLOOR_COST_DEBT_ROSTER) {
+        read_added()?
+    } else if touched {
+        read_modified()?
+    } else {
+        Vec::new()
+    };
+    if touched || !admitted.is_empty() {
+        eprintln!("[floor-cost-debt-admission] admitted={}", admitted.len());
+        for identity in &admitted {
+            eprintln!("[floor-cost-debt-admission] identity={identity} run=unbudgeted-for-verdict");
+        }
+    }
+    merge_cost_debt_admissions(&mut changed, &admitted);
+    Ok((changed, admitted))
+}
+
+/// THE FINALIZATION STEP: the wall's refusals written onto the floor's outcome, where
+/// `v1_compiler.cli_run` `required_floor_outcome_is_clean` reads them and the run goes unclean.
+/// `run_required_floor` calls this, and the integration control drives it into that predicate.
+pub(crate) fn record_cost_debt_verdict(
+    outcome: &mut RequiredFloorOutcome,
+    changed_witnesses: Option<&[String]>,
+    head_roster: &HashSet<String>,
+    terminal: &[ClaimTerminalRow],
+) -> Result<(), String> {
+    outcome.cost_debt_verdict_refused =
+        cost_debt_verdict_wall(changed_witnesses, head_roster, terminal)?;
+    Ok(())
+}
+
+/// THE FILES THE HEAD ROSTER'S RESULT DEPENDS ON: every source file the resolver loaded for
+/// `v2.workflow.floor_cost_debt`, as workspace-relative paths, so a diff path can be tested against
+/// it. Read from the resolved graph's own file table, never re-derived from import lines.
+fn cost_debt_roster_head_closure() -> Result<HashSet<String>, String> {
+    let workspace = process_workspace_root();
+    let entry = workspace.join(FLOOR_COST_DEBT_ROSTER);
+    let (_graph, indices) =
+        resolve_entry_graph_shared(&default_source_roots(), &entry.to_string_lossy()).map_err(
+            |e| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterClosureUnreadable -- the head \
+                     roster's dependency closure could not be resolved ({e}), so whether this \
+                     change altered its membership cannot be decided"
+                )
+            },
+        )?;
+    let prefix = format!("{}/", workspace.to_string_lossy());
+    Ok(indices
+        .keys()
+        .map(|path| normalize_repo_path(path.strip_prefix(&prefix).unwrap_or(path)))
+        .collect())
+}
+
+/// ADMISSION JOINS THE CHANGED SET, here and nowhere else: the diff projection calls this, so the
+/// population the verdict wall owes is the population the floor plans from.
+pub(crate) fn merge_cost_debt_admissions(changed: &mut Vec<String>, admitted: &[String]) {
+    for identity in admitted {
+        if !changed.contains(identity) {
+            changed.push(identity.clone());
+        }
+    }
+}
+
+/// THE WALL AS THE FLOOR CALLS IT: over the diff projection's changed identities exactly as the
+/// projection produced them (admissions already merged), the head roster, and the terminal ledger.
+/// It takes the projection rather than a set the call site derives, so a re-filter at the call site
+/// (by planning, by verdict-only policy) has nowhere to stand. `None` is a run that could not
+/// observe the diff, which owes nothing it can name and is reported elsewhere as not evaluated.
+pub(crate) fn cost_debt_verdict_wall(
+    changed_witnesses: Option<&[String]>,
+    head_roster: &HashSet<String>,
+    terminal: &[ClaimTerminalRow],
+) -> Result<Vec<ChangedWitnessBlocker>, String> {
+    let changed: HashSet<String> = changed_witnesses.unwrap_or(&[]).iter().cloned().collect();
+    cost_debt_verdict_refusals(&changed, head_roster, terminal)
+}
+
+/// THE COST-DEBT VERDICT WALL over the identities this change owes a verdict for. The verdict is
+/// the `.dag`'s: each owed identity's terminal outcome is handed to
+/// `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_cause_for_reading`, and the host keeps
+/// no table of its own (review 76257: a Rust copy had already drifted from the model by one arm).
+/// The host's share is the reading -- the `ClaimDisposition` arm, spelled as the model spells it
+/// (the terminal ledger's wire comparator already holds the two mappings to one spelling), or the
+/// absence of a terminal row.
+///
+/// THE OWED POPULATION IS DERIVED FROM THE CHANGE AND THE HEAD ROSTER, NEVER FROM PLANNING: every
+/// head-rostered identity in `changed` (which carries this change's admissions as well as the
+/// witnesses it touched) owes a verdict. Planning may decline such an identity -- a declared
+/// `BinWitnessWet` row takes `DeclinedNoCiWetLane` -- and then no terminal row exists; that is
+/// `CostDebtRowVerdictUnreached`, not a row that owed nothing (review on gunbc#13332).
+pub(crate) fn cost_debt_verdict_refusals(
+    changed: &HashSet<String>,
+    head_roster: &HashSet<String>,
+    terminal: &[ClaimTerminalRow],
+) -> Result<Vec<ChangedWitnessBlocker>, String> {
+    use v1_interpreter::Value;
+    let verdict_required: BTreeSet<&String> = changed
+        .iter()
+        .filter(|id| head_roster.contains(*id))
+        .collect();
+    if verdict_required.is_empty() {
+        return Ok(Vec::new());
+    }
+    let outcomes: HashMap<&str, ClaimDisposition> = terminal
+        .iter()
+        .map(|row| (row.qualified.as_str(), claim_disposition(row)))
+        .collect();
+    let entry = process_workspace_root().join(FLOOR_COST_DEBT_VERDICT);
+    let (graph, indices) =
+        resolve_entry_graph_shared(&default_source_roots(), &entry.to_string_lossy())
+            .map_err(|e| format!("floor_cost_debt_verdict resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(v1_interpreter::sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    };
+    let mut refused = Vec::new();
+    for identity in verdict_required {
+        let reading = match outcomes.get(identity.as_str()) {
+            Some(outcome) => variant(
+                "CostDebtVerdictReading",
+                "CostDebtTerminalOutcome",
+                vec![(
+                    "outcome",
+                    variant("ClaimDisposition", &format!("{outcome:?}"), Vec::new()),
+                )],
+            ),
+            None => variant(
+                "CostDebtVerdictReading",
+                "CostDebtNoTerminalOutcome",
+                Vec::new(),
+            ),
+        };
+        let cause = v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "cost_debt_verdict_cause_for_reading",
+            &[(Some("reading".to_string()), reading)],
+            false,
+        )
+        .map_err(|e| format!("cost_debt_verdict_cause_for_reading({identity}): {e}"))?;
+        match &cause {
+            Value::Str(c) if c.is_empty() => {}
+            Value::Str(c) => refused.push(ChangedWitnessBlocker {
+                identity: identity.clone(),
+                cause: c.to_string(),
+            }),
+            other => {
+                return Err(format!(
+                    "cost_debt_verdict_cause_for_reading({identity}) returned {}, not a String",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        }
+    }
+    Ok(refused)
+}
+
 /// `v2.workflow.floor_unimported_bare_provider_debt_roster`: the debt the rule inherited.
 const UNIMPORTED_BARE_PROVIDER_ROSTER: &str =
     "src/v2/workflow/floor_unimported_bare_provider_debt_roster.dag";
@@ -2745,8 +3269,8 @@ impl UnimportedBareProviderRosterReading {
 /// file carries (through the loader's own `unimported_bare_providers`). The `.dag`
 /// (`unimported_bare_provider_roster_standing`) decides everything: delete-without-retire, each
 /// cause's truth, staleness, and whether a carried pair is active debt. `checked` is the route's own
-/// files (touched, or entry) plus every ImportsFixed row's file, so a retirement is re-derived on
-/// every run rather than trusted once.
+/// files (the whole pool on the floor, the entry files on the entry route) plus every ImportsFixed
+/// row's file, so a retirement is re-derived on every run rather than trusted once.
 fn unimported_bare_provider_standing_refusals(
     route: &str,
     index: &MultiEntryIndex,
@@ -2833,12 +3357,13 @@ fn unimported_bare_provider_standing_refusals(
         .collect())
 }
 
-/// THE RULE ON THE REQUIRED FLOOR, applied where the floor already knows what the diff touched.
-/// Coherence and standing run on every diff; the edit judgment runs when the roster itself changed,
+/// THE RULE ON THE REQUIRED FLOOR. Coherence runs on every diff and standing over every pool file;
+/// the edit judgment runs when the roster itself changed,
 /// against the roster evaluated at the diff base. The change that ADDS the roster has no base, and
 /// that is decided from the diff's own added paths, never from a failed base read. Every refusal is
 /// reported before the line stops.
 pub(crate) fn unimported_bare_provider_gate(
+    base_tree: &FloorBaseTree,
     index: &MultiEntryIndex,
     source_roots: &[String],
     changed_paths: &[String],
@@ -2869,32 +3394,42 @@ pub(crate) fn unimported_bare_provider_gate(
                 head.rows.len()
             );
         } else {
-            let base = floor_diff_comparison_readout()?.base().to_string();
-            let base_source = unimported_bare_provider_roster_source_at_base(source_roots, &base)?;
-            let base_reading = unimported_bare_provider_base_reading(&base_source)?;
-            let base_coherence = head.refusals(
-                "unimported_bare_provider_roster_coherence",
-                &[(Some("rows".to_string()), base_reading.rows_value.clone())],
-            )?;
-            for r in base_coherence
-                .into_iter()
-                .chain(head.judge_edit(&base_reading, &head)?)
-            {
+            let located = base_tree.located()?;
+            for r in unimported_bare_provider_edit_refusals(base_tree, &head, &head, |base| {
+                unimported_bare_provider_roster_source_at_base(source_roots, base)
+            })? {
                 refusals.push(format!(
-                    "{ROUTE} cause=UnimportedBareProvider {r} base={base}"
+                    "{ROUTE} cause=UnimportedBareProvider {r} {located}"
                 ));
             }
         }
     }
+    // THE STANDING JUDGMENT RUNS OVER THE WHOLE POOL, NOT THE DIFF. Scoped to touched files, a
+    // pair born in an UNTOUCHED file -- by a resolver change elsewhere, as #12540 made every bare
+    // kernel-type spelling resolve by its declaration -- never refused here, while the entry route
+    // (`unimported_bare_provider_entry_refusals`) refused the same file the first time anyone ran it:
+    // two harnesses disagreeing about admission of one file. The roster is a monotone debt contract,
+    // which DESIGN 5 admits only over a closed subject universe checked at identity grain, and a
+    // diff is not that universe. It reads the floor's warm index and never resolves; its cost and
+    // population are re-derived on every run by the `unimported-bare-provider-gate` phase line
+    // below (`judged_files=`, `standing_ms=`).
+    let standing_started = std::time::Instant::now();
+    let pool_files: Vec<String> = index
+        .source_files
+        .values()
+        .map(|sf| workspace_relative_repo_path(&sf.path))
+        .collect();
     refusals.extend(unimported_bare_provider_standing_refusals(
         ROUTE,
         index,
         &head,
-        changed_paths,
+        &pool_files,
     )?);
     eprintln!(
-        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} refusals={}",
+        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} judged_files={} standing_ms={} refusals={}",
         changed_paths.len(),
+        pool_files.len(),
+        standing_started.elapsed().as_millis(),
         refusals.len()
     );
     if refusals.is_empty() {
@@ -2934,10 +3469,31 @@ pub fn unimported_bare_provider_entry_refusals(
 
 /// The roster's bytes at the diff base, read through the `.dag` (`unimported_bare_provider_roster_at_base`),
 /// whose unreadable arm refuses here rather than reading as an empty roster.
+/// THE ROSTER EDIT JUDGMENT AT THE RUN'S BASE TREE: the base side is read at `base_tree.commit()`
+/// and nowhere else, then evaluated for coherence and judged against the head. The reader is the
+/// one seam: the gate supplies the `.dag` read (`unimported_bare_provider_roster_source_at_base`),
+/// and it can only be handed a `BaseTreeCommit`, so a tip ref does not type-check here.
+fn unimported_bare_provider_edit_refusals(
+    base_tree: &FloorBaseTree,
+    judge: &UnimportedBareProviderRosterReading,
+    head: &UnimportedBareProviderRosterReading,
+    read_base: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    let base_source = read_base(base_tree.commit()?)?;
+    let base_reading = unimported_bare_provider_base_reading(&base_source)?;
+    let mut refusals = judge.refusals(
+        "unimported_bare_provider_roster_coherence",
+        &[(Some("rows".to_string()), base_reading.rows_value.clone())],
+    )?;
+    refusals.extend(judge.judge_edit(&base_reading, head)?);
+    Ok(refusals)
+}
+
 fn unimported_bare_provider_roster_source_at_base(
     source_roots: &[String],
-    base: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
 ) -> Result<String, String> {
+    let base = base_tree.as_str();
     let (graph, indices) = resolve_entry_graph_shared(
         source_roots,
         &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
@@ -3211,7 +3767,8 @@ pub(crate) fn enrolment_margin_standing_for(
     // block exists to repair, and asking the cost population first rebuilds it one gate over.
     match enrolment_gate_execution_disposition(identity, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
-        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsReachConsumer) => {}
         // Named, not caught: a new arm must state whether the margin gate runs for it.
         Some(
             other @ (crate::cli_run::RequiredFloorDisposition::DeclinedLongModule { .. }
@@ -3648,7 +4205,8 @@ pub(crate) fn changed_witness_projection_rows(
             },
             Some(
                 RequiredFloorDisposition::Planned
-                | RequiredFloorDisposition::PlannedAsChangedWitness,
+                | RequiredFloorDisposition::PlannedAsChangedWitness
+                | RequiredFloorDisposition::PlannedAsReachConsumer,
             ) => {
                 let outcome = outcomes.get(identity.as_str()).copied();
                 // THE COST POLICY THIS IDENTITY EXECUTED UNDER, and the measurement published
@@ -3932,7 +4490,7 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
         // THE ROUTE OR THE PROGRAM REFUSED. Each is a located typed refusal in its own right; the
         // lane keeps the class and hands the reader that diagnostic.
         O::NotBool { got } => LocalRepoWetObserved::Refused(format!("not a Bool: {got}")),
-        O::RuntimeError { cause, message } => {
+        O::RuntimeError { cause, message, .. } => {
             LocalRepoWetObserved::Refused(format!("runtime error {cause:?}: {message}"))
         }
         O::HostToolUnresolved { name, probed } => LocalRepoWetObserved::Refused(format!(
@@ -7467,6 +8025,9 @@ pub fn run_required_floor(
     floor_cgroup_stat_beat("floor-entry", None);
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
+    // The fixture-closure union is per run: whatever an earlier run in this process recorded is
+    // not this run's population (`crate::cli_run::fixture_closure_union_emit_receipt`).
+    drop(crate::cli_run::take_fixture_closure_union());
     eprintln!("[floor-phase] phase=strict-preparation state=started");
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
@@ -7497,40 +8058,52 @@ pub fn run_required_floor(
     // that ancestor. The entry index one line above was already shared for exactly this reason --
     // the corpus read simply never was.
     let floor_corpus = crate::cli_run::read_source_corpus_once(source_roots);
+    // ONE BASE TREE FOR THE RUN (`FloorBaseTree`): every base-side read below takes this commit.
+    let floor_base_tree = FloorBaseTree::unresolved();
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
     // that diff changed. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let (changed_witnesses, newly_enrolled_witnesses, compile_subject, diff_paths) =
-        match changed_and_enrolled_witness_identities_with_index(
-            &gate_entry_index,
-            source_roots,
-            planning_index.as_ref(),
-        ) {
-            Ok(projections) => (
-                Some(projections.changed_witnesses),
-                Some(projections.newly_enrolled_witnesses),
-                Some(projections.compile_subject),
-                Some(projections.diff_paths),
-            ),
-            Err(e) if commit != "local" && !commit.is_empty() => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
+    let (
+        changed_witnesses,
+        newly_enrolled_witnesses,
+        compile_subject,
+        diff_paths,
+        cost_debt_admitted,
+    ) = match changed_and_enrolled_witness_identities_with_index(
+        &floor_base_tree,
+        &gate_entry_index,
+        source_roots,
+        planning_index.as_ref(),
+    ) {
+        Ok(projections) => (
+            Some(projections.changed_witnesses),
+            Some(projections.newly_enrolled_witnesses),
+            Some(projections.compile_subject),
+            Some(projections.diff_paths),
+            projections
+                .cost_debt_admitted
+                .into_iter()
+                .collect::<HashSet<String>>(),
+        ),
+        Err(e) if commit != "local" && !commit.is_empty() => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
                  changed-witness execution sublane could not observe or attribute the CI diff"
-                ));
-            }
-            Err(e) => {
-                eprintln!(
+            ));
+        }
+        Err(e) => {
+            eprintln!(
                 "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
             );
-                // ALL FOUR PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
-                // `None` here is "this run could not look", which is a different fact from "this run
-                // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
-                // own not-measured arm turns on, so it may not be lost at its source.
-                (None, None, None, None)
-            }
-        };
+            // ALL FOUR PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
+            // `None` here is "this run could not look", which is a different fact from "this run
+            // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
+            // own not-measured arm turns on, so it may not be lost at its source.
+            (None, None, None, None, HashSet::new())
+        }
+    };
     // THE PARSE INDEX'S LAST READER HAS RETURNED. It was lent for the planning row alone, and
     // holding it for the rest of the floor kept a corpus-wide index resident through preparation
     // and evaluation that nothing after this line reads.
@@ -7746,6 +8319,59 @@ pub fn run_required_floor(
             }
         }
     }
+    // THE PER-PR v2 DIFFERENTIAL'S POPULATION: reached witness declarations homed under the v2
+    // claim root. Which of them are claims is the discovery loop's answer, not this one's.
+    // PLANNED ON THE MERGE GROUP ONLY (operator ruling, 2026-10-01; `v2.workflow.floor_subject_seed`
+    // `reach_planned_for_event`). The event is read through the authority that chose this run's
+    // diff window. On any other event no reach consumer is planned, and the floor says so with the
+    // count it would have reached, so the deferral is announced and never silent.
+    // AN UNREADABLE EVENT REFUSES ON CI: read as "not a merge group" it would silently defer the
+    // differential on the one event that must run it. A local run has no CI event and is a
+    // pull-request-shaped run for this purpose.
+    let reach_event = match floor_diff_baseline_readout() {
+        Ok((_, event)) => event,
+        Err(e) if commit != "local" && !commit.is_empty() => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ReachEventUnreadable {e} -- whether this run is the \
+                 merge group's, and so whether it judges the reach differential, is unknown"
+            ))
+        }
+        Err(_) => String::new(),
+    };
+    let reach_planned =
+        crate::cli_run::reach_base_standings::reach_planned_for_event(source_roots, &reach_event)?;
+    let reached_v2_witness_declarations = compile_subject
+        .iter()
+        .filter_map(|subject| match &subject.interface_consumers {
+            InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
+            _ => None,
+        })
+        .flat_map(|reach| reach.reached.iter())
+        .filter(|r| r.witness_carrier && r.rel_path.starts_with("src/v2/"))
+        .count();
+    if !reach_planned {
+        eprintln!(
+            "{}",
+            crate::cli_run::reach_base_standings::reach_deferred_line(
+                &reach_event,
+                reached_v2_witness_declarations
+            )
+        );
+    }
+    let reach_consumer_candidates: HashSet<String> = compile_subject
+        .iter()
+        .filter_map(|subject| match &subject.interface_consumers {
+            InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
+            _ => None,
+        })
+        .flat_map(|reach| reach.reached.iter())
+        .filter(|r| reach_planned && r.witness_carrier && r.rel_path.starts_with("src/v2/"))
+        .map(|r| format!("{}.{}", r.module_path, r.declaration))
+        .collect();
+    let reach_consumer_module_seeds: BTreeSet<String> = reach_consumer_candidates
+        .iter()
+        .filter_map(|identity| identity.rsplit_once('.').map(|(m, _)| m.to_string()))
+        .collect();
     // A ROW-ONLY ROSTER EDIT names subjects the diff never touched: the typed non-fold-residue
     // check can only judge a row whose subject module is PREPARED, so the subjects of rows the diff
     // added or deleted become seeds here (read at the floor's own diff base; an unreadable base
@@ -7757,9 +8383,9 @@ pub fn run_required_floor(
                 .iter()
                 .any(|m| m == "gunbc.non_fold_residue") =>
         {
-            crate::cli_run::non_fold_residue_changed_row_subjects().map_err(|e| {
-                format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}")
-            })?
+            crate::cli_run::non_fold_residue_changed_row_subjects(&floor_base_tree).map_err(
+                |e| format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}"),
+            )?
         }
         _ => Vec::new(),
     };
@@ -7865,6 +8491,7 @@ pub fn run_required_floor(
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
     .chain(interface_consumer_seeds.iter().cloned())
+    .chain(reach_consumer_module_seeds.iter().cloned())
     .chain(nfr_row_subject_modules.iter().cloned())
     .collect();
     // The strict resolve's graph is attributed by bytes where the floor frees it (entry_resolve
@@ -7899,6 +8526,12 @@ pub fn run_required_floor(
     let prepared_module_paths: HashSet<String> = prepared_sources
         .iter()
         .map(|view| view.module_path.clone())
+        .collect();
+    // The prepared closure's source paths, kept (strings only) so the fixture-closure union phase
+    // can state how many of its members lie outside this closure.
+    let prepared_source_paths: HashSet<String> = prepared_sources
+        .iter()
+        .map(|view| view.source.path.clone())
         .collect();
     // BOUNDED RETENTION, NOT A CORPUS COPY HELD FOR THE CLAIM RUN. The full-index views are
     // taken OUT of `prepared` here and consumed, by value, inside the discovery-authority phase
@@ -9070,6 +9703,7 @@ pub fn run_required_floor(
     // read off this set rather than maintained beside it: a count and a population kept in step
     // by hand are two computations of one fact, and the count is the weaker one.
     let mut declared_identity_set: HashSet<String> = HashSet::new();
+    let mut reach_consumer_planned: HashSet<String> = HashSet::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -9092,6 +9726,8 @@ pub fn run_required_floor(
     } else {
         Vec::new()
     };
+    // The control for the one-judgment-per-file rule: judgments (each lexing base and head once)
+    // must equal changed files, not changed identities.
     for file in files {
         let matched_prefix = long_home_prefixes
             .iter()
@@ -9230,12 +9866,18 @@ pub fn run_required_floor(
                 // other edit takes the new-witness one. The decision and the budget are the .dag's;
                 // the host supplies the head bytes and the comparison base it already resolved.
                 // Computed before the claim is built because the identity moves into it.
-                let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                // AN ADMITTED ROW RUNS WITHOUT THE BUDGET (`v2.workflow.floor_cost_debt_verdict`):
+                // being over it is the row's whole reason to exist, so the question this run asks
+                // is only whether the claim passes. The figure below is never compared -- the step
+                // gate stands down for `cost_debt_admitted` -- and the wall deadline stays armed.
+                let eval_step_budget = if cost_debt_admitted.contains(&identity) {
+                    grandfathered_eval_step_budget
+                } else if let Some(census) = corpus_census.get(&identity) {
                     census.budget_steps
                 } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
-                    let base = floor_diff_comparison_readout()?.base().to_string();
+                    let base = floor_base_tree.commit()?;
                     let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
                     if file_cost_debt_ceilings.is_none() {
                         let head_source = std::fs::read_to_string(&file.path).map_err(|e| {
@@ -9250,6 +9892,7 @@ pub fn run_required_floor(
                             .filter(|name| {
                                 let id = format!("{}.{}", file.module_path, name);
                                 changed_witness_set.contains(&id)
+                                    && !cost_debt_admitted.contains(&id)
                                     && cost_debt_roster.contains(&id)
                                     && !grandfathered_roster.contains(&id)
                                     && !corpus_census.contains_key(&id)
@@ -9262,7 +9905,7 @@ pub fn run_required_floor(
                             functions.len()
                         );
                         file_cost_debt_ceilings = Some(cost_debt_changed_witness_ceilings(
-                            &base, &rel_path, &functions, &head_source,
+                            base, &rel_path, &functions, &head_source,
                             &discovered_test_fn_identities,
                         ).map_err(|e| format!(
                             "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved identity={identity} — {e}"
@@ -9338,12 +9981,22 @@ pub fn run_required_floor(
             }
             // THE FOURTH DECLINE, AFTER COST DEBT so a rostered identity outside the gate still
             // enters `cost_debt_seen` and the roster's staleness check keeps its meaning.
-            if !inside_required_gate {
+            // A REACH CONSUMER REPLACES ONLY THIS DECLINE. Inside the gate a claim keeps its
+            // absolute verdict (a differential would weaken it); a changed witness keeps its own
+            // arm above; a long-home, fixture or cost-debt decline is a separate authority and
+            // stands. What changes is that an out-of-gate v2 claim whose evaluation this diff can
+            // move is run, and judged by whether its verdict moved.
+            let reach_consumer =
+                !inside_required_gate && reach_consumer_candidates.contains(&identity);
+            if !inside_required_gate && !reach_consumer {
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedOutsideRequiredGate,
                 });
                 continue;
+            }
+            if reach_consumer {
+                reach_consumer_planned.insert(identity.clone());
             }
             // NO SECOND DUPLICATE WALL LIVES HERE. This arm used to re-test uniqueness over the
             // PLANNED identities only, which is the same invariant the offered-side insert above
@@ -9355,7 +10008,11 @@ pub fn run_required_floor(
             planned_identities.insert(identity.clone());
             disposition_rows.push(RequiredFloorDispositionRow {
                 identity: identity.clone(),
-                disposition: RequiredFloorDisposition::Planned,
+                disposition: if reach_consumer {
+                    RequiredFloorDisposition::PlannedAsReachConsumer
+                } else {
+                    RequiredFloorDisposition::Planned
+                },
             });
             // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE -- after the corpus-census
             // arm, whose members are judged by their evaluated allowance alone.
@@ -9573,7 +10230,8 @@ pub fn run_required_floor(
     for row in &disposition_rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned
-            | RequiredFloorDisposition::PlannedAsChangedWitness => {}
+            | RequiredFloorDisposition::PlannedAsChangedWitness
+            | RequiredFloorDisposition::PlannedAsReachConsumer => {}
             RequiredFloorDisposition::DeclinedLongModule { .. } => long_declined += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => fixture_declined += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => outside_gate_declined += 1,
@@ -10208,6 +10866,22 @@ pub fn run_required_floor(
     // over a folded manifest plausibly does. Whether that is what this recovers is exactly what
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
+    // THE REACH DIFFERENTIAL'S STANDING is read here, while the policy frame is alive, because
+    // the frame is released on the next line and the differential is decided after the fold.
+    let reach_blocking_budget_ms = match v1_interpreter::run_in_context(
+        &hermetic,
+        "v2.workflow.required_floor.reach_differential_blocking_budget",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ReachDifferentialStandingUnreadable \
+                 reach_differential_blocking_budget (Milliseconds) returned {}",
+                floor_value_shape(other.as_ref().ok())
+            ))
+        }
+    };
     drop(hermetic);
     drop(policy_scope);
 
@@ -10247,6 +10921,7 @@ pub fn run_required_floor(
         modules_resolved: prepared.modules_resolved,
         modules_excluded: prepared.modules_excluded,
         sites_offered,
+        reach_differential_blocking: Vec::new(),
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
         declined_outside_required_gate: outside_gate_declined,
@@ -10285,6 +10960,7 @@ pub fn run_required_floor(
         changed_witness_rows: 0,
         changed_witness_blocking: Vec::new(),
         enrolment_margin_blocking: Vec::new(),
+        cost_debt_verdict_refused: Vec::new(),
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -10357,6 +11033,7 @@ pub fn run_required_floor(
     // `Some(identity)` exactly when a claim's evaluation unwound and stopped the fold.
     let mut halted_by: Option<String> = None;
     let mut known_red_held: usize = 0;
+    let mut reach_head_standings: Vec<(String, String)> = Vec::new();
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
@@ -10606,6 +11283,7 @@ pub fn run_required_floor(
         if matches!(terminality, ClaimTerminality::VerdictReached { .. })
             && receipt.eval_steps > claim.eval_step_budget
             && !eval_step_cost_drop.contains(&claim.qualified)
+            && !cost_debt_admitted.contains(&claim.qualified)
         {
             // WHICH TIER REFUSED, NAMED IN THE SENTENCE THAT BLOCKS. The two are different facts
             // with different remedies: a grandfathered row over 500ms-equivalent has grown past the
@@ -10718,6 +11396,7 @@ pub fn run_required_floor(
                 &result,
                 expected_red_roster.contains(claim.qualified.as_str()),
             ),
+            &result,
         );
         // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
@@ -10798,6 +11477,23 @@ pub fn run_required_floor(
             outcome: result.clone(),
         });
         let passed = matches!(result, ClaimOutcome::Pass);
+        // A REACH CONSUMER'S VERDICT IS A HEAD STANDING, NOT A PASS/FAIL OF THIS FLOOR. It was
+        // never gated, so main may already carry it red; whether THIS change moved it is the
+        // differential's question (`v2.workflow.required_floor` `claim_differential`), answered
+        // against the base standing. It leaves the fold here, after its terminal row, so no
+        // arm below can count it as a failure, a route gap or a budget refusal.
+        if reach_consumer_planned.contains(&claim.qualified) {
+            // THE HEAD STANDING USES THE BASE ARM'S OWN CLASSIFIER, so one function decides what
+            // is a verdict on both sides: a non-verdict at head (a wall interruption under host
+            // load, say) is not_measured, never failed. Read as failed it would make a passing
+            // base a regression and block on load (neat-boar-16, srv1 rerun, 2026-10-01).
+            let head_name = match crate::cli_run::reach_base_standings::base_standing_of(&result) {
+                Ok(standing) => standing.name().to_string(),
+                Err(_) => "not_measured".to_string(),
+            };
+            reach_head_standings.push((claim.qualified.clone(), head_name));
+            continue;
+        }
         if expected_red {
             // ONE DISPATCH. Every arm does its own work here rather than classifying once and
             // re-deriving the answer below: two dispatches over one value agree only as long
@@ -11001,7 +11697,7 @@ pub fn run_required_floor(
                     // population. The comment it replaced described the key as normalizing away
                     // per-row identities; it did the opposite.
                     let detail = match &result {
-                        ClaimOutcome::RuntimeError { cause, message } => {
+                        ClaimOutcome::RuntimeError { cause, message, .. } => {
                             *known_red_runtime_error_causes
                                 .entry(cause.token())
                                 .or_insert(0) += 1;
@@ -11639,6 +12335,237 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    // THE HEAD SIDE OF THE PER-PR v2 DIFFERENTIAL. Observed and published; the base side and
+    // the blocking join arrive with the main-sha baseline (adhoc-be476b8f-943 follow-up).
+    reach_head_standings.sort();
+    // THE BASE SIDE AND THE VERDICT. Head standings were observed above. The base standing for
+    // exactly these identities comes from a separate process at the diff base
+    // (`reach_base_standings`), and each verdict, and whether it blocks, is
+    // `v2.workflow.required_floor` `reach_claim_verdict`, which delegates to `claim_differential`
+    // and `claim_differential_blocks`. This function decides neither (review 72143).
+    if !reach_head_standings.is_empty() {
+        let diff_base: Option<String> = compile_subject.as_ref().and_then(|subject| match &subject
+            .interface_consumers
+        {
+            InterfaceConsumerPlanning::Selected { base, .. } => Some(base.clone()),
+            _ => None,
+        });
+        let blocking_budget_ms = reach_blocking_budget_ms;
+        // A FRAME OVER THE DIFFERENTIAL'S OWN AUTHORITY, built only when there are reached
+        // claims: the policy frame was released before the fold (see the drop above).
+        let verdict_frame = {
+            let entry = process_workspace_root().join("src/v2/workflow/required_floor.dag");
+            let (graph, indices) =
+                resolve_entry_graph_shared(source_roots, &entry.to_string_lossy())
+                    .map_err(|e| format!("reach differential authority resolve: {e}"))?;
+            make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic)
+        };
+        // ONLY A CLAIM THAT CAN BLOCK NEEDS A BASE. `reach_head_cannot_block` is derived from
+        // claim_differential_blocks over every base arm; a claim it exempts is never run at base
+        // and never blocks. That is 60 of 1481 for a one-line v2.std.node edit (srv1, 2026-10-01).
+        let (identities, head_cannot_block) =
+            reach_base_identities(&verdict_frame, &reach_head_standings)?;
+        // A claim's entry FILE, which the explicit-witness-admission roster keys on, from the
+        // corpus index this floor already read; an unindexed module answers "" and so matches no
+        // roster row rather than a guessed one.
+        let reach_claim_entry = |identity: &str| -> String {
+            identity
+                .rsplit_once('.')
+                .and_then(|(module, _)| floor_corpus.index.get(module))
+                .map(|source| source.path.clone())
+                .unwrap_or_default()
+        };
+        // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM: running it without blocking would charge
+        // the run that cost while deciding nothing. So the run names what it did not do.
+        let base_arm = if blocking_budget_ms == 0 {
+            Err("BaseArmNotRun reach_differential_standing is DifferentialReportOnly".to_string())
+        } else {
+            match &diff_base {
+                Some(_) if identities.is_empty() => Ok(HashMap::new()),
+                Some(base) => run_reach_base_arm(
+                    source_roots,
+                    base,
+                    &identities,
+                    claim_wall_safety_limit_ms,
+                    blocking_budget_ms,
+                ),
+                None => {
+                    Err("no diff base: the interface-consumer planning did not select".to_string())
+                }
+            }
+        };
+        let base_sha = diff_base.clone().unwrap_or_default();
+        // THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED: not-measured when the base
+        // side was not run, ran-at-merge-base when it was (review 73484).
+        let baseline_line = reach_baseline_line(&verdict_frame, blocking_budget_ms, &base_sha)?;
+        match base_arm {
+            Err(cause) => {
+                // THE HEAD SIDE IS STILL REPORTED, CLAIM BY CLAIM. These claims were executed at
+                // head by the fold above; without a base there is no verdict, but a reached claim
+                // that FAILS at head is a typed, counted finding the queue must see, never silence
+                // (the gunbc#12582 shape: five reached claims failing with nothing printed).
+                let head_failed: Vec<&String> = reach_head_standings
+                    .iter()
+                    .filter(|(_, head)| head == "failed")
+                    .map(|(identity, _)| identity)
+                    .collect();
+                for (identity, head) in &reach_head_standings {
+                    eprintln!(
+                        "[floor-reach-differential] identity={identity} head={head} base=not-measured"
+                    );
+                }
+                for identity in &head_failed {
+                    eprintln!(
+                        "[floor-reach-finding] ReachedClaimFailedAtHead identity={identity} -- \
+                         reached by this change's body edits and failing at its head; whether it \
+                         passed at base was not measured"
+                    );
+                }
+                let failure = format!(
+                    "REACH-DIFFERENTIAL REFUSAL cause=BaseArmRefused {cause} -- the base side of \
+                     {} reached claims was not measured, so no verdict is read and none is \
+                     assumed; head_failed={}",
+                    identities.len(),
+                    head_failed.len()
+                );
+                eprintln!("[floor-phase] phase=reach-differential {baseline_line} {failure}");
+                if blocking_budget_ms > 0 {
+                    // EVERY CLAIM THE REFUSED ARM LEFT UNJUDGED, BY NAME: the arm refused as a
+                    // whole, so each identity it would have judged blocks as base_arm_refused.
+                    outcome.reach_differential_blocking.extend(
+                        identities
+                            .iter()
+                            .map(|identity| (identity.clone(), "base_arm_refused".to_string())),
+                    );
+                }
+            }
+            Ok(base) => {
+                let mut blocking: Vec<(String, String)> = Vec::new();
+                let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+                for (identity, head_name) in &reach_head_standings {
+                    if head_cannot_block.contains(identity) {
+                        *counts.entry("head_cannot_block".to_string()).or_default() += 1;
+                        eprintln!(
+                            "[floor-reach-differential] identity={identity} base=not-run \
+                             head={head_name} differential=head_cannot_block blocks=false"
+                        );
+                        continue;
+                    }
+                    let base_name = base.get(identity).map(String::as_str).unwrap_or("missing");
+                    let verdict = v1_interpreter::run_in_context_with_args(
+                        &verdict_frame,
+                        "v2.workflow.required_floor.reach_claim_verdict",
+                        &[
+                            (
+                                Some("identity".to_string()),
+                                v1_interpreter::str_value(identity),
+                            ),
+                            (
+                                Some("entry".to_string()),
+                                v1_interpreter::str_value(reach_claim_entry(identity)),
+                            ),
+                            (
+                                Some("function".to_string()),
+                                v1_interpreter::str_value(
+                                    identity.rsplit_once('.').map(|(_, f)| f).unwrap_or(""),
+                                ),
+                            ),
+                            (
+                                Some("base".to_string()),
+                                v1_interpreter::str_value(base_name),
+                            ),
+                            (
+                                Some("head".to_string()),
+                                v1_interpreter::str_value(head_name),
+                            ),
+                        ],
+                        false,
+                    )
+                    .map_err(|e| format!("reach_claim_verdict({identity}): {e}"))?;
+                    let (differential, blocks) = match &verdict {
+                        v1_interpreter::Value::Variant {
+                            variant_name,
+                            fields,
+                            ..
+                        } if verdict_frame.sym_eq(*variant_name, "ReachVerdict") => {
+                            match (
+                                verdict_frame.field(fields, "differential"),
+                                verdict_frame.field(fields, "blocks"),
+                            ) {
+                                (
+                                    Some(v1_interpreter::Value::Str(d)),
+                                    Some(v1_interpreter::Value::Bool(b)),
+                                ) => (d.to_string(), *b),
+                                _ => {
+                                    return Err(format!(
+                                        "reach_claim_verdict({identity}): malformed ReachVerdict"
+                                    ))
+                                }
+                            }
+                        }
+                        v1_interpreter::Value::Variant {
+                            variant_name,
+                            fields,
+                            ..
+                        } if verdict_frame.sym_eq(*variant_name, "ReachVerdictRefused") => {
+                            let reason = match verdict_frame.field(fields, "reason") {
+                                Some(v1_interpreter::Value::Str(r)) => r.to_string(),
+                                _ => String::new(),
+                            };
+                            ("refused".to_string(), {
+                                blocking.push((identity.clone(), format!("refused: {reason}")));
+                                true
+                            })
+                        }
+                        other => {
+                            return Err(format!(
+                                "reach_claim_verdict({identity}) returned an arm this host does \
+                                 not know: {}",
+                                verdict_frame.format_value(other)
+                            ))
+                        }
+                    };
+                    *counts.entry(differential.clone()).or_default() += 1;
+                    eprintln!(
+                        "[floor-reach-differential] identity={identity} base={base_name} \
+                         head={head_name} differential={differential} blocks={blocks}"
+                    );
+                    if blocks && differential != "refused" {
+                        blocking.push((identity.clone(), differential.clone()));
+                        // THE DEQUEUED AUTHOR'S RECEIPT: each identity this change newly broke, by
+                        // name, so nobody has to rerun the queue to learn what failed.
+                        if differential == "regressed" || differential == "new_claim" {
+                            eprintln!(
+                                "[floor-reach-finding] NewlyFailedAtHead identity={identity} \
+                                 base={base_name} head={head_name} differential={differential}"
+                            );
+                        }
+                    }
+                }
+                let mode = if blocking_budget_ms > 0 {
+                    "blocking"
+                } else {
+                    "report_only"
+                };
+                eprintln!(
+                    "[floor-phase] phase=reach-differential {baseline_line} mode={mode} \
+                     planned={} verdicts={counts:?} {}={}",
+                    reach_head_standings.len(),
+                    if blocking_budget_ms > 0 {
+                        "blocking"
+                    } else {
+                        "would_block"
+                    },
+                    blocking.len()
+                );
+                if blocking_budget_ms > 0 {
+                    outcome.reach_differential_blocking.extend(blocking);
+                }
+            }
+        }
+    } else {
+        eprintln!("[floor-phase] phase=reach-differential planned=0");
+    }
     outcome.route_gap_held = route_gap_held;
     outcome.known_red_now_passing = known_red_now_passing;
     outcome.known_red_budget_refused = known_red_budget_refused;
@@ -12369,6 +13296,33 @@ pub fn run_required_floor(
     if let Some(rows) = &changed_projection_rows {
         outcome.changed_witness_rows = rows.len();
     }
+    // THE COST-DEBT VERDICT WALL (`v2.workflow.floor_cost_debt_verdict`). Every rostered identity
+    // this change admits or restores ran for its verdict; a row over a claim that did not pass is
+    // refused here whatever the expected-red roster says, because a withhold suppresses that
+    // enrolment and the red would stop being read.
+    record_cost_debt_verdict(
+        &mut outcome,
+        changed_witnesses.as_deref(),
+        &cost_debt_roster,
+        &terminal_rows,
+    )?;
+    eprintln!(
+        "[floor-cost-debt-verdict] required={} admitted={} refused={} (authority \
+         v2.workflow.floor_cost_debt_verdict)",
+        changed_witness_set
+            .iter()
+            .filter(|id| cost_debt_roster.contains(*id))
+            .count(),
+        cost_debt_admitted.len(),
+        outcome.cost_debt_verdict_refused.len()
+    );
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "REQUIRED-FLOOR REFUSAL cause={} identity={} -- a floor_cost_debt row this change \
+             admits or restores stands over a claim that did not pass",
+            blocker.cause, blocker.identity
+        );
+    }
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -12545,6 +13499,44 @@ pub fn run_required_floor(
     // The prepared subject's last reader has returned; it is freed here either way, so its bytes
     // are attributed by class as it goes (`typed_graph_byte_attribution`).
     crate::cli_run::typed_graph_byte_attribution("prepared-teardown", prepared.graph);
+    // THE FIXTURE-CLOSURE UNION RENDER (retires `gunbc.rung_drop`
+    // `fixture_closure_corpus_emit_refusals_lost_as_passenger`). Every corpus module a fixture
+    // instrument resolved on this run is rendered once through the rust emitter, and a per-module
+    // emit refusal refuses the floor, typed and located. It runs here, after the claims (which
+    // produce the population) and after the prepared graph is freed (so the union compile never
+    // sits beside it). The population's size and digest are printed so the log names what was
+    // rendered; `outside_prepared` shows whether the union is the prepared closure, rather than
+    // assuming either way.
+    floor_seam("fixture-closure-union-emit");
+    let union = crate::cli_run::take_fixture_closure_union();
+    let outside_prepared = union
+        .members
+        .keys()
+        .filter(|path| !prepared_source_paths.contains(*path))
+        .count();
+    // The enrolled red and positive control run first, on every required run, so a disabled
+    // refusal arm or a broken clean render is a required red rather than a unit test nobody runs.
+    let (control_red_ms, control_clean_ms) = crate::cli_run::fixture_closure_union_controls()?;
+    eprintln!(
+        "[floor-receipt] receipt=fixture-closure-union-controls state=held red_wall_ms={control_red_ms} \
+         clean_wall_ms={control_clean_ms}"
+    );
+    let union_started = std::time::Instant::now();
+    let union_cpu_started = v1_interpreter::thread_cpu_nanos();
+    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
+    eprintln!(
+        "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
+         memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         cpu_ms={} wall_ms={}",
+        union.fixture_compiles,
+        union.memo_hits,
+        union_observed.members,
+        union_observed.digest,
+        union_observed.files,
+        union_observed.emit_diagnostics,
+        v1_interpreter::thread_cpu_nanos().saturating_sub(union_cpu_started) / 1_000_000,
+        union_started.elapsed().as_millis(),
+    );
     Ok(outcome)
 }
 
@@ -12569,6 +13561,7 @@ pub(crate) fn required_floor_disposition_label(
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::PlannedAsChangedWitness => "planned_as_changed_witness",
+        RequiredFloorDisposition::PlannedAsReachConsumer => "planned_as_reach_consumer",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
@@ -12607,6 +13600,7 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         RequiredFloorDisposition::DeclinedNoCiWetLane { pattern } => pattern,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedOutsideGateClosure
         | RequiredFloorDisposition::DeclinedCostDebt => "",
@@ -12617,143 +13611,6 @@ pub(crate) fn required_floor_disposition_matched_prefix(
 mod pure_producer_share_tests {
     use super::*;
     use std::rc::Rc;
-
-    /// The base-comparison half of the unimported-bare-provider gate, executed through the path the
-    /// floor takes: each roster is evaluated ALONE from its source, its rows cross into the real
-    /// verdict frame as values, and the `.dag` edit judgment decides. An unchanged roster admits;
-    /// a gained row refuses by name; a rewritten retirement cause refuses, except a retirement
-    /// moving to FileDeleted. Two reads at distinct
-    /// scratch paths also pin the memoization defect this path once had.
-    #[test]
-    fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
-        crate::cli_run::on_live_pool_thread(|| {
-            let root = process_workspace_root();
-            let roots: Vec<String> = ["dag", "src/v2"]
-                .iter()
-                .map(|r| root.join(r).to_string_lossy().to_string())
-                .collect();
-            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-            let roster = |rows: &str| {
-                std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
-                .expect("roster source")
-                .split("data unimported_bare_provider_dispositions:")
-                .next()
-                .expect("roster head")
-                .to_string()
-                + "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n"
-                + rows
-                + "]\n"
-            };
-            let row = |file: &str, name: &str, standing: &str| {
-                format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
-            };
-            let a_active = row("dag/a.dag", "f", "ActiveDebt");
-            let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
-            let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
-            let b_active = row("dag/b.dag", "g", "ActiveDebt");
-            let read =
-                |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
-            let base = read(roster(&a_active));
-            assert_eq!(
-                judge
-                    .judge_edit(&base, &read(roster(&a_active)))
-                    .expect("verdict"),
-                Vec::<String>::new()
-            );
-            assert_eq!(
-                judge
-                    .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
-                    .expect("verdict"),
-                vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
-            );
-            // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
-            // under either cause is a typed disposition and admits; dropping the row instead refuses.
-            for retired in [&a_fixed, &a_deleted] {
-                assert_eq!(
-                    judge
-                        .judge_edit(&base, &read(roster(retired)))
-                        .expect("verdict"),
-                    Vec::<String>::new()
-                );
-            }
-            assert_eq!(
-                judge
-                    .judge_edit(
-                        &read(roster(&format!("{a_active}{b_active}"))),
-                        &read(roster(&a_active))
-                    )
-                    .expect("verdict"),
-                vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
-            );
-            // A retirement whose file was later deleted may become FileDeleted (gunbc#12787, the
-            // one admitted transition in `unimported_bare_provider_roster_edit`); any other
-            // rewritten cause, including the reverse, refuses.
-            assert_eq!(
-                judge
-                    .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
-                    .expect("verdict"),
-                Vec::<String>::new()
-            );
-            assert_eq!(
-                judge
-                    .judge_edit(&read(roster(&a_deleted)), &read(roster(&a_fixed)))
-                    .expect("verdict"),
-                vec![
-                "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
-                    .to_string()
-            ]
-            );
-        });
-    }
-
-    /// THE REAL BASE READ, END TO END: the roster at `HEAD` is read through the `.dag`
-    /// `unimported_bare_provider_roster_at_base` (a real `git show`), decoded, evaluated alone and
-    /// judged against a head that retires its first active row -- which admits -- and against a head
-    /// that gains a row -- which refuses by name. This is the route gunbc#12205 broke for every
-    /// roster-editing change; the fixture-coproduct control beside it cannot fail for that reason.
-    #[test]
-    fn a_retirement_against_the_real_base_read_admits_and_a_growth_refuses() {
-        crate::cli_run::on_live_pool_thread(|| {
-            let root = process_workspace_root();
-            let roots: Vec<String> = ["dag", "src/v2"]
-                .iter()
-                .map(|r| root.join(r).to_string_lossy().to_string())
-                .collect();
-            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
-            let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
-            let base = read(&base_source);
-            let active = "standing: ActiveDebt }";
-            assert!(
-                base_source.contains(active),
-                "the base roster carries active debt"
-            );
-            let retired =
-                base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
-            assert_eq!(
-                judge.judge_edit(&base, &read(&retired)).expect("verdict"),
-                Vec::<String>::new()
-            );
-            let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
-            assert!(
-                base_source.contains(marker),
-                "the roster's data row opens as expected"
-            );
-            let grown = base_source.replacen(
-            marker,
-            &format!("{marker}  UnimportedBareProviderDisposition {{ file: \"dag/zz_new.dag\", name: \"g\", standing: ActiveDebt }},\n"),
-            1,
-        );
-            let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
-            assert!(
-                refused
-                    .iter()
-                    .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
-                "{refused:?}"
-            );
-        });
-    }
 
     /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
     /// Record, so every roster-editing change refused). Values come from a fixture module that
@@ -13624,6 +14481,131 @@ mod changed_witness_projection_tests {
         }
     }
 
+    fn ids(xs: &[&str]) -> HashSet<String> {
+        xs.iter().map(|x| x.to_string()).collect()
+    }
+
+    /// A real source tree at HEAD (the production extraction), with the roster replaced by a
+    /// fixture whose result comes from an IMPORTED provider and that also spells `t.new` in an
+    /// unselected chunk.
+    fn cost_debt_fixture_tree(provider_rows: &str, roster_has_entry: bool) -> PathBuf {
+        let workspace = process_workspace_root();
+        let tree = cost_debt_scratch_dir("fixture").expect("scratch");
+        let head_tree = FloorBaseTree::for_comparison(
+            FreezeBaselineComparison::Direct {
+                base: "HEAD".to_string(),
+                head: "HEAD".to_string(),
+                kind: "OperatorOverrideBaseline".to_string(),
+            },
+            workspace.clone(),
+        );
+        cost_debt_base_tree_extract(&workspace, head_tree.commit().expect("HEAD"), &tree)
+            .expect("extract HEAD");
+        let provider = format!(
+            "module v2.workflow.cost_debt_fixture_provider\n\nimport std.types {{ List }}\n\nfn selected_rows() -> List<String> {{\n  {provider_rows}\n}}\n"
+        );
+        std::fs::write(
+            tree.join("src/v2/workflow/cost_debt_fixture_provider.dag"),
+            provider,
+        )
+        .expect("write provider");
+        let entry = if roster_has_entry {
+            "fn floor_cost_debt_roster() -> List<String> {\n  selected_rows()\n}\n"
+        } else {
+            ""
+        };
+        let roster = format!(
+            "module v2.workflow.floor_cost_debt\n\nimport std.types {{ List }}\nimport v2.workflow.cost_debt_fixture_provider {{ selected_rows }}\n\nfn unused_chunk() -> List<String> {{\n  [\"t.new\"]\n}}\n\n{entry}"
+        );
+        std::fs::write(tree.join(FLOOR_COST_DEBT_ROSTER), roster).expect("write roster");
+        tree
+    }
+
+    /// An outcome with every blocking population empty: the state `run_required_floor` starts from.
+    fn cost_debt_clean_outcome() -> RequiredFloorOutcome {
+        RequiredFloorOutcome {
+            subject_digest: String::new(),
+            modules_resolved: 0,
+            modules_excluded: 0,
+            sites_offered: 0,
+            declined_long_module: 0,
+            declined_fixture_member: 0,
+            declined_outside_required_gate: 0,
+            declared_identities: 0,
+            declined_outside_gate_closure: 0,
+            declined_discovery_excluded: 0,
+            claims_planned: 0,
+            claims_executed: 0,
+            receipt_identities: 0,
+            not_attempted_after_abort: 0,
+            passed: 0,
+            known_red_held: 0,
+            route_gap_held: 0,
+            known_red_now_passing: 0,
+            known_red_budget_refused: 0,
+            known_red_passed_over_budget: 0,
+            known_red_host_tool_unresolved_held: 0,
+            known_red_host_effect_refused: 0,
+            reach_differential_blocking: Vec::new(),
+            stale_quarantine: Vec::new(),
+            interrupted_before_verdict: Vec::new(),
+            completed_over_cost_requirement: Vec::new(),
+            withheld_cost_debt: Vec::new(),
+            stale_cost_debt: Vec::new(),
+            known_red_runtime_errored: Vec::new(),
+            non_verdict_unenrolled: Vec::new(),
+            stale_non_verdict: Vec::new(),
+            known_red_observation_unreadable: Vec::new(),
+            host_tool_unresolved: Vec::new(),
+            route_gap: Vec::new(),
+            stale_route_gap: Vec::new(),
+            over_cost_line_diagnostic: 0,
+            claim_cost: Vec::new(),
+            failures: Vec::new(),
+            required_floor_disposition: Vec::new(),
+            long_home_storage_agreement: Vec::new(),
+            changed_witness_rows: 0,
+            changed_witness_blocking: Vec::new(),
+            enrolment_margin_blocking: Vec::new(),
+            cost_debt_verdict_refused: Vec::new(),
+        }
+    }
+
+    /// RED (provider-only change): the diff edits only a module the roster IMPORTS, not the roster
+    /// file. Membership can still change, so the admission step must consult the closure and read
+    /// the admissions; a path outside the closure must not.
+    #[test]
+    fn cost_debt_provider_only_change_is_admitted() {
+        const PROVIDER: &str = "src/v2/workflow/cost_debt_fixture_provider.dag";
+        let closure = || -> Result<HashSet<String>, String> {
+            Ok([FLOOR_COST_DEBT_ROSTER, PROVIDER]
+                .iter()
+                .map(|p| p.to_string())
+                .collect())
+        };
+        let (changed, admitted) = changed_with_cost_debt_admissions(
+            Vec::new(),
+            &[PROVIDER.to_string()],
+            &HashSet::new(),
+            closure,
+            || Ok(vec!["t.new".to_string()]),
+            || panic!("the roster is not added"),
+        )
+        .expect("admission step");
+        assert_eq!(admitted, vec!["t.new".to_string()]);
+        assert_eq!(changed, vec!["t.new".to_string()]);
+        let (_, untouched) = changed_with_cost_debt_admissions(
+            Vec::new(),
+            &["src/v2/workflow/unrelated.dag".to_string()],
+            &HashSet::new(),
+            closure,
+            || panic!("a path outside the closure must not ask for admissions"),
+            || panic!("the roster is not added"),
+        )
+        .expect("admission step");
+        assert!(untouched.is_empty());
+    }
+
     /// Positive control: a planned changed identity with a terminal Pass is the ONE green
     /// standing — this is the seed-prefix arm of the falsifier set (a witness added under a
     /// gate prefix executes and projects green).
@@ -13966,56 +14948,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         assert!(rel.contains("target/"), "fixture under target/: {rel}");
     }
 
-    // ── THE gunbc#12441 SHAPE, EXECUTED END TO END ───────────────────────────────────────────
-    //
-    // A checker edit that newly refuses a module outside the edited closure. `armset.victim` is
-    // in no seed the diff produces, so the narrow subject prepares green without it, which is how
-    // v2.test.claim.type_param_binder_frame reached main. The checker-input rule, evaluated from
-    // `v2.workflow.floor_subject_seed`, seeds every admitted module, and the same preparation then
-    // refuses on the victim. The positive control is the same fixture under a non-checker diff.
-    #[test]
-    fn a_checker_edit_prepares_the_module_its_check_refuses_outside_the_edited_closure() {
-        use crate::cli_run::checker_dependency::{
-            checker_module_seeds, checker_subject_application_when_applied,
-        };
-        const EDITED: &str = "module armset.edited\n\nfn ok() -> Int {\n  1\n}\n";
-        const VICTIM: &str = "module armset.victim\n\nfn wrong() -> String {\n  1\n}\n";
-        let fx = interface_fixture(
-            "checker_edge",
-            "head",
-            &[("edited.dag", EDITED), ("victim.dag", VICTIM)],
-        );
-        let roots = [fx.to_string_lossy().into_owned()];
-        let index = build_multi_entry_index(&roots);
-        let corpus = crate::cli_run::read_source_corpus_once(&roots);
-        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
-        let record = Ok(vec![infer.clone()]);
-        let authority_roots = default_source_roots();
-        let subject_under = |changed: &[String]| {
-            let application =
-                checker_subject_application_when_applied(&authority_roots, &record, changed)
-                    .expect("application");
-            let seeds: Vec<String> = std::iter::once("armset.edited".to_string())
-                .chain(checker_module_seeds(&application, &corpus))
-                .collect();
-            crate::cli_run::prepare_repository_from_corpus(
-                &corpus,
-                &[],
-                Some((&index, &[], &seeds)),
-            )
-        };
-        let narrow = subject_under(&["edited.dag".to_string()]);
-        let wide = subject_under(std::slice::from_ref(&infer));
-        let _ = std::fs::remove_dir_all(&fx);
-        let (_, views) = narrow.expect("a non-checker diff prepares the edited closure green");
-        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
-        assert!(!modules.contains(&"armset.victim"), "{modules:?}");
-        let refusal = wide
-            .err()
-            .expect("a checker edit prepares every admitted module, and the victim refuses");
-        assert!(refusal.contains("victim"), "{refusal}");
-    }
-
     // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────
     //
     // A fixture coproduct in module X gains an arm; an UNTOUCHED exhaustive match over it in
@@ -14107,44 +15039,6 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "the indexed selector diverged from the scan it replaced"
         );
         (selection, head_fx)
-    }
-
-    /// THE COST RECEIPT, on the real corpus rather than a fixture: the base index is reconstructed
-    /// over `GUNBC_SELECTION_BASE..HEAD` exactly as the floor does, both selectors run on it, their
-    /// selections must be equal, and both times are printed. Run by hand on a wide interface change
-    /// (`cargo test ... -- --ignored --nocapture`); it is not a merge gate.
-    #[test]
-    #[ignore]
-    fn indexed_selection_equals_the_scan_on_a_real_diff_window() {
-        use crate::cli_run::namespace_baseline::{
-            git_stdout, interface_changed_consumers, interface_changed_consumers_by_scan,
-            reconstruct_base_index, BaselineReconstruction,
-        };
-        let workspace = process_workspace_root();
-        let base = std::env::var("GUNBC_SELECTION_BASE").expect("GUNBC_SELECTION_BASE");
-        let base = git_stdout(&workspace, &["rev-parse", &base]).expect("base rev");
-        let head = git_stdout(&workspace, &["rev-parse", "HEAD"]).expect("head rev");
-        let head_index =
-            crate::cli_run::run_dag_parse_sweep(&workspace, &crate::cli_run::DAG_PARSE_SWEEP_ROOTS)
-                .expect("head sweep")
-                .index;
-        let BaselineReconstruction::Reconstructed { base_index, .. } =
-            reconstruct_base_index(&workspace, &base, &head, &head_index).expect("reconstruct")
-        else {
-            panic!("base side not reconstructed");
-        };
-        let t = std::time::Instant::now();
-        let indexed = interface_changed_consumers(&base_index, &head_index);
-        let indexed_ms = t.elapsed().as_millis();
-        let t = std::time::Instant::now();
-        let scanned = interface_changed_consumers_by_scan(&base_index, &head_index);
-        let scanned_ms = t.elapsed().as_millis();
-        eprintln!(
-            "selection receipt: changes={} consumers={} indexed_ms={indexed_ms} scanned_ms={scanned_ms}",
-            indexed.changes.len(),
-            indexed.consumers.len()
-        );
-        assert_eq!(indexed, scanned);
     }
 
     fn consumers_of(
@@ -15075,72 +15969,6 @@ fn nested() -> Int {\n  id(x: u())\n}\n";
             vec!["flatu.n", "flatu.r", "flatu.v"],
             "{:?}",
             selection.consumers
-        );
-    }
-
-    /// THE WINDOW INSTRUMENT: the floor's dependents selector over an arbitrary historical
-    /// window, printing the same counts as the floor's `[floor-phase]
-    /// phase=interface-changed-consumers` line. The floor itself only ever measures its own diff,
-    /// so a before/after figure for a PAST change needs this entry. The head tree is read from a
-    /// checkout (`GUNBC_SELECTOR_HEAD_TREE`) and swept over the parse phase's own roster
-    /// (`DAG_PARSE_SWEEP_ROOTS`); the base side is reconstructed from git exactly as the floor
-    /// reconstructs it.
-    ///
-    ///   GUNBC_SELECTOR_BASE=<sha> GUNBC_SELECTOR_HEAD=<sha> GUNBC_SELECTOR_HEAD_TREE=<checkout> \
-    ///     cargo test --release -p v1-compiler --lib -- --ignored interface_consumer_window_census
-    #[test]
-    #[ignore = "instrument: needs a head checkout and a commit window from the environment"]
-    fn interface_consumer_window_census() {
-        use crate::cli_run::namespace_baseline::{
-            reconstruct_base_index, BaselineReconstruction, InterfaceConsumerBinding,
-        };
-        let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
-        let (base, head) = (var("GUNBC_SELECTOR_BASE"), var("GUNBC_SELECTOR_HEAD"));
-        let tree = PathBuf::from(var("GUNBC_SELECTOR_HEAD_TREE"));
-        let head_index = match crate::cli_run::run_dag_parse_sweep(
-            &tree,
-            &crate::cli_run::DAG_PARSE_SWEEP_ROOTS,
-        ) {
-            Ok(sweep) => sweep.index,
-            Err(errors) => panic!("head tree must parse; sweep refused: {errors:?}"),
-        };
-        let reconstructed = reconstruct_base_index(&tree, &base, &head, &head_index)
-            .expect("base side reconstructs");
-        let BaselineReconstruction::Reconstructed { base_index, .. } = reconstructed else {
-            panic!("window has no reconstructable base side");
-        };
-        let selection = crate::cli_run::namespace_baseline::interface_changed_consumers(
-            &base_index,
-            &head_index,
-        );
-        for change in &selection.changes {
-            let of_change: Vec<_> = selection
-                .consumers
-                .iter()
-                .filter(|c| {
-                    c.changed_module_path == change.module_path
-                        && c.changed_declaration == change.declaration
-                })
-                .collect();
-            let flat = of_change
-                .iter()
-                .filter(|c| c.binding == InterfaceConsumerBinding::BoundThroughFlatBareChannel)
-                .count();
-            println!(
-                "[selector-window] declaration={}.{} ground={:?} consumers={} flat_channel={}",
-                change.module_path,
-                change.declaration,
-                change.ground,
-                of_change.len(),
-                flat
-            );
-        }
-        println!(
-            "[selector-window] base={base} head={head} changed_declarations={} consumers={} \
-             consumer_modules={}",
-            selection.changes.len(),
-            selection.consumers.len(),
-            consumers_of(&selection).len()
         );
     }
 
@@ -17175,6 +18003,210 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
     })
 }
 
+/// THE BASE ARM'S POPULATION: the reached claims whose head standing CAN block under some base,
+/// as `v2.workflow.required_floor` `reach_head_cannot_block` decides from claim_differential_blocks.
+/// Returns (identities to run at base, identities exempt because their head cannot block). An
+/// exempt claim is never run at base and never blocks.
+pub(crate) fn reach_base_identities(
+    frame: &v1_interpreter::InterpContext,
+    head_standings: &[(String, String)],
+) -> Result<(Vec<String>, HashSet<String>), String> {
+    let mut exempt: HashSet<String> = HashSet::new();
+    let mut needs_base: Vec<String> = Vec::new();
+    for (identity, head_name) in head_standings {
+        match v1_interpreter::run_in_context_with_args(
+            frame,
+            "v2.workflow.required_floor.reach_head_cannot_block",
+            &[(
+                Some("head".to_string()),
+                v1_interpreter::str_value(head_name),
+            )],
+            false,
+        ) {
+            Ok(v1_interpreter::Value::Bool(true)) => {
+                exempt.insert(identity.clone());
+            }
+            Ok(v1_interpreter::Value::Bool(false)) => needs_base.push(identity.clone()),
+            other => {
+                return Err(format!(
+                    "reach_head_cannot_block({identity}) returned {}",
+                    floor_value_shape(other.as_ref().ok())
+                ))
+            }
+        }
+    }
+    Ok((needs_base, exempt))
+}
+
+/// THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED (review 73484): `not-measured`
+/// when the base side is not run (report-only), `ran-at-merge-base` when it is. Rendered by
+/// `v2.workflow.required_floor` `baseline_standing_line`; this only chooses which arm happened.
+pub(crate) fn reach_baseline_line(
+    frame: &v1_interpreter::InterpContext,
+    blocking_budget_ms: u64,
+    base_sha: &str,
+) -> Result<String, String> {
+    let (function, args) = if blocking_budget_ms == 0 {
+        (
+            "v2.workflow.required_floor.reach_baseline_not_measured_line",
+            vec![(
+                Some("cause".to_string()),
+                v1_interpreter::str_value("reach_differential_standing is DifferentialReportOnly"),
+            )],
+        )
+    } else {
+        (
+            "v2.workflow.required_floor.reach_baseline_ran_at_merge_base_line",
+            vec![
+                (
+                    Some("main_sha".to_string()),
+                    v1_interpreter::str_value(base_sha),
+                ),
+                (
+                    Some("cause".to_string()),
+                    v1_interpreter::str_value("no per-landing baseline store exists yet"),
+                ),
+            ],
+        )
+    };
+    // Matched by reference: `Value` implements Drop (#12886), so a pattern may not move out of it.
+    let result = v1_interpreter::run_in_context_with_args(frame, function, &args, false);
+    match &result {
+        Ok(v1_interpreter::Value::Str(line)) => Ok(line.to_string()),
+        other => Err(format!(
+            "{function} returned {}",
+            floor_value_shape(other.as_ref().ok())
+        )),
+    }
+}
+
+/// Run the base side of the reach differential: a detached worktree at `base`, this binary in
+/// `--reach-base-standings` mode with its working directory there, and the standings it prints.
+/// Every failure to produce a COMPLETE set of standings is an `Err` the caller reports by name;
+/// no identity gets a default standing. With a positive `budget_ms` the whole arm is bounded by
+/// it and an arm over it refuses (`BaseArmOverBudget`), never truncating to the claims that
+/// finished.
+fn run_reach_base_arm(
+    source_roots: &[String],
+    base: &str,
+    identities: &[String],
+    claim_wall_limit_ms: u64,
+    budget_ms: u64,
+) -> Result<HashMap<String, String>, String> {
+    let root = process_workspace_root();
+    let scratch = root.join(format!("target/reach_base_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let worktree = scratch.join("tree");
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("reach base scratch: {e}"))?;
+    let identities_file = scratch.join("identities.txt");
+    std::fs::write(&identities_file, identities.join("\n"))
+        .map_err(|e| format!("reach base identities: {e}"))?;
+    let added = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["worktree", "add", "--detach", "--quiet"])
+        .arg(&worktree)
+        .arg(base)
+        .status()
+        .map_err(|e| format!("git worktree add: {e}"))?;
+    if !added.success() {
+        return Err(format!("git worktree add at {base} exited {added}"));
+    }
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let mut command = std::process::Command::new(exe);
+    command.current_dir(&worktree);
+    for r in source_roots {
+        let rel = std::path::Path::new(r)
+            .strip_prefix(&root)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| r.clone());
+        command.arg("--source-root").arg(rel);
+    }
+    command
+        .arg("--reach-base-standings")
+        .arg(&identities_file)
+        .arg("--claim-wall-limit-ms")
+        .arg(claim_wall_limit_ms.to_string())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit());
+    let started = std::time::Instant::now();
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("spawn base arm: {e}"))?;
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("base arm wait: {e}"))?
+        {
+            break status;
+        }
+        if budget_ms > 0 && started.elapsed().as_millis() as u64 > budget_ms {
+            let _ = child.kill();
+            let _ = child.wait();
+            remove_reach_base_worktree(&root, &worktree, &scratch);
+            return Err(format!(
+                "BaseArmOverBudget wall_ms>{budget_ms} identities={}",
+                identities.len()
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    let mut stdout = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        use std::io::Read;
+        let _ = out.read_to_string(&mut stdout);
+    }
+    let wall_ms = started.elapsed().as_millis();
+    remove_reach_base_worktree(&root, &worktree, &scratch);
+    eprintln!(
+        "[floor-phase] phase=reach-base-arm base={base} identities={} wall_ms={wall_ms} exit={status}",
+        identities.len()
+    );
+    if let Some(line) = stdout
+        .lines()
+        .find(|l| l.starts_with("reach-base-refused "))
+    {
+        return Err(format!("BaseArmNotAVerdict {line}"));
+    }
+    if !status.success() {
+        return Err(format!("BaseArmFailed exit={status}"));
+    }
+    let mut standings: HashMap<String, String> = HashMap::new();
+    for line in stdout.lines() {
+        let Some(rest) = line.strip_prefix("reach-base identity=") else {
+            continue;
+        };
+        let Some((identity, standing)) = rest.split_once(" standing=") else {
+            return Err(format!("BaseArmUnparseable {line:?}"));
+        };
+        standings.insert(identity.to_string(), standing.to_string());
+    }
+    let missing: Vec<&String> = identities
+        .iter()
+        .filter(|i| !standings.contains_key(*i))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "BaseArmIncomplete {} of {} identities have no standing, first {:?}",
+            missing.len(),
+            identities.len(),
+            missing.first()
+        ));
+    }
+    Ok(standings)
+}
+
+fn remove_reach_base_worktree(
+    root: &std::path::Path,
+    worktree: &std::path::Path,
+    scratch: &std::path::Path,
+) {
+    let _ = std::process::Command::new("git")
+        .current_dir(root)
+        .args(["worktree", "remove", "--force"])
+        .arg(worktree)
+        .status();
+    let _ = std::fs::remove_dir_all(scratch);
+}
 /// WHICH DISPOSITIONS DECIDE A CHANGED-WITNESS SELECTION, as an EXHAUSTIVE match: a new
 /// `RequiredFloorDisposition` arm does not compile here until it states whether it counts, which
 /// is the structural ceiling of `gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`
@@ -17184,6 +18216,7 @@ fn decides_a_changed_selection(disposition: &RequiredFloorDisposition) -> bool {
         RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -17205,6 +18238,7 @@ fn suppresses_a_changed_witness_enrollment(disposition: &RequiredFloorDispositio
         RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -17290,6 +18324,24 @@ mod changed_witness_sublane_join_tests {
             .expect("a declined wet selection is decided");
     }
 
+    /// A reach consumer is NOT a changed-witness selection: its row does not satisfy a selection
+    /// (selected_without_disposition) and, unselected, is not foreign (the join stays clean).
+    #[test]
+    fn a_planned_as_reach_consumer_row_is_not_a_changed_selection() {
+        assert!(!decides_a_changed_selection(
+            &RequiredFloorDisposition::PlannedAsReachConsumer
+        ));
+        let rows = vec![row("m.r", RequiredFloorDisposition::PlannedAsReachConsumer)];
+        changed_witness_sublane_join(&HashSet::new(), &rows)
+            .expect("an unselected reach consumer is not foreign to the join");
+        let expected: HashSet<String> = ["m.r"].iter().map(|s| s.to_string()).collect();
+        let missing = changed_witness_sublane_join(&expected, &rows).unwrap_err();
+        assert!(
+            missing.contains("selected_without_disposition=[m.r]"),
+            "{missing}"
+        );
+    }
+
     /// The join is still exact: a selection with no deciding row refuses, and a deciding row with no
     /// selection refuses, whichever arm decided it.
     #[test]
@@ -17351,10 +18403,44 @@ mod changed_selections_outside_discovery_mirror_tests {
             .collect()
     }
 
+    /// A `List<T>` value in either realization the interpreter produces: the host vector, or the
+    /// free-monoid `Cons`/`Empty` chain a `.dag` fold builds (`v2.std.algebra` `list_reverse`
+    /// returns one since gunbc#13138). Anything else is not a list and panics with its own name.
+    fn list_items(ctx: &v1_interpreter::InterpContext, value: &Value) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut cursor = value.clone();
+        loop {
+            let next = match &cursor {
+                Value::List(items) => {
+                    out.extend(items.iter().cloned());
+                    return out;
+                }
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(*variant_name, "Empty") && fields.is_empty() => return out,
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(*variant_name, "Cons") => {
+                    let (Some(head), Some(tail)) =
+                        (ctx.field(fields, "head"), ctx.field(fields, "tail"))
+                    else {
+                        panic!("a Cons cell of the .dag decider's list lacks head or tail");
+                    };
+                    out.push(head.clone());
+                    tail.clone()
+                }
+                _ => panic!("the .dag decider did not return a List"),
+            };
+            cursor = next;
+        }
+    }
+
     fn dag_rows(ctx: &v1_interpreter::InterpContext, value: &Value) -> BTreeMap<String, String> {
-        let Value::List(rows) = value else {
-            panic!("the .dag decider did not return a List");
-        };
+        let rows = list_items(ctx, value);
         let mut out = BTreeMap::new();
         for row in rows.iter() {
             let Value::Record { fields, .. } = row else {
@@ -17405,61 +18491,175 @@ mod changed_selections_outside_discovery_mirror_tests {
             })
             .collect()
     }
+}
 
+/// THE BASE-TREE SELECTION, over a real history and nothing else (`gunbc.recurring_failure_mode`
+/// `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`). Git only, no `.dag`
+/// evaluation, so it fits the v1 unit lane's per-test budget (gunbc#13452); the judgments the
+/// commit feeds are the `.dag`'s and are claimed there.
+#[cfg(test)]
+mod floor_base_tree_tests {
+    use super::*;
+
+    /// The branch departs at P, then main moves on to C. Under the merge-base relation every
+    /// base-tree reader is handed P (RED before `FloorBaseTree`: the readers read C). Under two-dot
+    /// it is C, so a rewritten push stays an exact comparison. An unrelated history refuses typed
+    /// under merge-base rather than degrading to the tip.
     #[test]
-    fn host_and_dag_deciders_agree_on_the_shared_fixture() {
-        crate::cli_run::on_live_pool_thread(|| {
-            let root = process_workspace_root();
-            let roots: Vec<String> = ["dag", "src/v2"]
-                .iter()
-                .map(|r| root.join(r).to_string_lossy().to_string())
-                .collect();
-            let entry = root
-                .join("src/v2/test/fixture/changed_selection_outside_discovery.dag")
-                .to_string_lossy()
-                .to_string();
-            let index = crate::cli_run::process_shared_index(&roots);
-            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
-                .expect("the shared fixture resolves");
-            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-            let read = |name: &str| {
-                v1_interpreter::with_active_context(&ctx, || {
-                    v1_interpreter::run_in_context(&ctx, &format!("{FIXTURE}.{name}"), false)
-                })
-                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
-            };
-            let changed = string_list(&read("changed_selection_fixture_changed"), "changed");
-            let declared = string_list(&read("changed_selection_fixture_declared"), "declared");
-            let as_list = |xs: &[String]| {
-                Value::List(Rc::new(
-                    xs.iter()
-                        .map(v1_interpreter::str_value)
-                        .collect::<Vec<Value>>()
-                        .into(),
-                ))
-            };
-            let decided = v1_interpreter::with_active_context(&ctx, || {
-                v1_interpreter::run_in_context_with_args(
-                    &ctx,
-                    "v2.workflow.required_floor.changed_selections_outside_discovery",
-                    &[
-                        (Some("changed".to_string()), as_list(&changed)),
-                        (Some("declared".to_string()), as_list(&declared)),
-                    ],
-                    false,
-                )
-            })
-            .expect("the .dag decider evaluates over the fixture");
-            let dag = dag_rows(&ctx, &decided);
-            let host = host_rows(&changed, &declared);
+    fn floor_base_tree_is_the_departure_point_under_merge_base_and_the_base_under_two_dot() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-floor-base-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
             assert!(
-                !dag.is_empty(),
-                "the fixture produced no undeclarable selection"
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
             );
-            assert_eq!(
-                host, dag,
-                "host and .dag deciders disagree on the shared fixture"
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commit = |msg: &str| {
+            git(&["commit", "--quiet", "--allow-empty", "-m", msg]);
+            git(&["rev-parse", "HEAD"])
+        };
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+        let departure = commit("P");
+        git(&["checkout", "--quiet", "-b", "subject"]);
+        let head = commit("H");
+        git(&["checkout", "--quiet", "main"]);
+        let tip = commit("C: main moves after the branch point");
+        git(&["checkout", "--quiet", "--orphan", "unrelated"]);
+        let orphan = commit("U");
+        let tree = |merge_base: bool, head: &str| {
+            let (base, head, kind) = (
+                "main".to_string(),
+                head.to_string(),
+                "MergeTargetBaseline".to_string(),
             );
-        });
+            FloorBaseTree::for_comparison(
+                if merge_base {
+                    FreezeBaselineComparison::MergeBase { base, head, kind }
+                } else {
+                    FreezeBaselineComparison::Direct { base, head, kind }
+                },
+                dir.clone(),
+            )
+        };
+        let merge_base = tree(true, &head);
+        assert_eq!(merge_base.commit().expect("window").as_str(), departure);
+        assert_eq!(merge_base.head().expect("head"), head);
+        assert!(merge_base
+            .located()
+            .expect("located")
+            .contains("base_ref=main"));
+        let direct = tree(false, &head);
+        assert_eq!(direct.commit().expect("window").as_str(), tip);
+        let err = tree(true, &orphan)
+            .commit()
+            .expect_err("no common ancestor");
+        assert!(
+            err.contains("cause=FreezeBaselineUnrelatedHistory"),
+            "{err}"
+        );
+        assert!(
+            tree(false, &orphan).commit().is_ok(),
+            "two-dot needs no ancestor"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RED (gunbc#13344, input (c)): a cost-debt row main retired after the branch point is NOT
+    /// admitted as this change's. Drives `cost_debt_admitted_at_base_tree` through `FloorBaseTree`
+    /// over a real history, with the roster read by `git show` and the fold supplied as the set
+    /// difference the `.dag` fold computes (`cost_debt_admitted_identities`), so no corpus is
+    /// evaluated. POSITIVE CONTROL: a row the branch really adds is admitted.
+    #[test]
+    fn cost_debt_row_retired_at_the_tip_but_carried_at_the_merge_base_is_not_admitted() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-cost-debt-base-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commit = |rows: &str, msg: &str| {
+            std::fs::write(dir.join("roster.txt"), rows).expect("write");
+            git(&["add", "-A"]);
+            git(&["commit", "--quiet", "--allow-empty", "-m", msg]);
+            git(&["rev-parse", "HEAD"])
+        };
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+        commit("t.old t.retired", "P");
+        git(&["checkout", "--quiet", "-b", "subject"]);
+        let carried = commit("t.old t.retired", "H: carries the roster unchanged");
+        let added = commit("t.old t.retired t.new", "H2: adds t.new");
+        git(&["checkout", "--quiet", "main"]);
+        commit("t.old", "C: main retires t.retired");
+        let rows_at = |rev: &str| -> Vec<String> {
+            git(&["show", &format!("{rev}:roster.txt")])
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
+        let admitted = |head: &str| {
+            let base_tree = FloorBaseTree::for_comparison(
+                FreezeBaselineComparison::MergeBase {
+                    base: "main".to_string(),
+                    head: head.to_string(),
+                    kind: "MergeTargetBaseline".to_string(),
+                },
+                dir.clone(),
+            );
+            let head_rows = rows_at(head);
+            cost_debt_admitted_at_base_tree(
+                &base_tree,
+                |base| Ok(rows_at(base.as_str())),
+                |base_rows| {
+                    Ok(head_rows
+                        .iter()
+                        .filter(|r| !base_rows.contains(r))
+                        .cloned()
+                        .collect())
+                },
+            )
+            .expect("admission")
+        };
+        assert_eq!(
+            admitted(&carried),
+            Vec::<String>::new(),
+            "t.retired was retired on main after the branch point; it is not this change's"
+        );
+        assert_eq!(admitted(&added), vec!["t.new".to_string()]);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

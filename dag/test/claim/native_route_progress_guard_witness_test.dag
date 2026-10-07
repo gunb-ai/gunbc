@@ -2,7 +2,7 @@ module test.claim.native_route_progress_guard_witness_test
 
 import std.types { List }
 import v2.std.algebra { any, count_where, is_empty, length }
-import v2.std.optional { Present, Absent, optional_present, optional_absent }
+import std.optional { Present, Absent, optional_present, optional_absent }
 import std.content_hash { structural_content_hash }
 import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval

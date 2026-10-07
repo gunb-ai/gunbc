@@ -2,7 +2,7 @@ module gunbc.self_host_behavioral_equivalence_receipt
 
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import v2.std.algebra { filter, any }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bazel.label { render_label }
 import gunbc.instrument_targets { self_host_behavioral_equivalence_label }

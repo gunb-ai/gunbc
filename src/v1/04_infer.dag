@@ -1452,7 +1452,6 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
          subject: "",
          declared: declared,
          produced: expression_value_type(e: returned),
-         produced_by: returned,
          span: returned.span,
          scope: scope))
 }
@@ -1626,24 +1625,23 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // alias or brand between the two, and these positions carry no unfold (only a call argument
 // does, v1.compiler.infer host_text_unfolded_at_code_point_boundary). gunbc.rung_drop
 // text_boundary_identity_wall.
-fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   concat(
     text_unjudged_advisories(
       a: text_representation_by_identity(n: declared, env: scope.type_env),
       b: text_representation_by_identity(n: produced, env: scope.type_env),
       position: "a declared type", span: span, module_name: scope.module_name),
-    declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, produced_by: produced_by, span: span, scope: scope))
+    declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, span: span, scope: scope))
 }
 
-fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  let cardinality_diags = optional_at_required_value_obligation_diags(
+  let cardinality_diags = optional_at_required_obligation_diags(
     obligation: DeclaredTypeObligation {
       position: position, subject: subject, declared: declared, produced: produced, span: span
     },
-    produced_by: produced_by,
     scope: scope)
   if (cardinality_diags |> count) > 0 { cardinality_diags }
   else if text_crossing_by_identity(left: declared, right: produced, env: scope.type_env) {
@@ -4409,41 +4407,6 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
 // relation also asked of branch pairs and of the lift direction, and optional-into-required is a
 // DIRECTED fact about a declared position, which is what the obligation carries.
 //
-// AN INDEX ACCESS IS NOT JUDGED HERE, AND THAT IS A DECLARED RESIDUAL. v1.compiler.infer_access
-// check_index_access_node types `xs[i]` as optional, while the Rust realization of an index is the
-// bare element: the type and the realization disagree about the very fact this verdict reads, so
-// the optionality of an index value is not established across the two acceptance paths. The seed
-// itself stands on that disagreement -- v1.tokenize source_code_point and code_point_at return
-// `chars[pos]` at a declared `-> Int`, and the note on code_point_at says return-position checking
-// would red them. It did: the second-generation regeneration refused on exactly those two sites.
-// Eliminating the optional with a match there would author an elimination the Rust realization
-// cannot satisfy, so the repair is the reconciliation that note names (the index realizes as an
-// optional, or types as the element), not a rewrite of its consumers. Until then a value whose
-// tail expression is an index access produces no cardinality obligation at these four positions.
-// The direct-call argument and list-element positions are untouched by this: they run the whole
-// relation and keep whatever they decided before.
-fn expr_value_is_index_access(e: Node) -> Bool {
-  match e.expr_data {
-    ExprIndex => true
-    ExprLet =>
-      match let_body(texpr: e) {
-        Present { value: body } => expr_value_is_index_access(e: body)
-        Absent => false
-      }
-    ExprBlock =>
-      match e.children |> last {
-        Present { value: tail } => expr_value_is_index_access(e: tail)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
-fn optional_at_required_value_obligation_diags(obligation: DeclaredTypeObligation, produced_by: Node, scope: InferScope) -> List<ErrorNode> {
-  if expr_value_is_index_access(e: produced_by) { [] }
-  else { optional_at_required_obligation_diags(obligation: obligation, scope: scope) }
-}
-
 fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope) {
     [make_error_node(
@@ -7596,12 +7559,21 @@ fn is_lambda_expr(e: Node) -> Bool {
 // again from the substitution the first round ended with, so every argument sees every
 // binding derivable in one forward pass regardless of authored order. Re-running is
 // sound rather than merely convenient because the substitution is a fixed point of the
-// second round: lambda arguments are skipped for unification, so deferring what they
-// would have contributed cannot change the result, and a formal whose generic slot is
-// already bound is substituted to a concrete node that unify_generics no longer binds.
-// It is bounded at two rounds and says so: a binding that is only derivable FROM a
-// substituted expected type -- a lambda return feeding a later formal -- is still out
-// of reach, and that is a narrowing stated rather than implied.
+// second round: a lambda argument contributes to the substitution in ROUND 1 ONLY
+// (unify_lambda_solves), and only informative bindings that fill an Absent slot; in
+// round 2 lambdas are skipped, so deferring what they
+// would contribute cannot change the result, and a formal whose generic slot is already
+// bound is substituted to a concrete node that unify_generics no longer binds.
+// The narrowing this note used to state -- a binding derivable only from a lambda's
+// return -- is LIFTED by
+// that round-1 contribution (unify_callable_generics unifies the callable's params and
+// return). It stays bounded at two rounds: a round-2 return is not fed back again, and a
+// return that depends on a binding only round 2 supplies contributes nothing.
+// A round-2 MISMATCH between a lambda's return and its substituted formal return is ALREADY
+// judged, because the lambda is inferred against the substituted expected callable: a call
+// such as `ap(f: fn(v) { v }, x: 1, r: 's')` refuses the callable mismatch. No second check
+// belongs here. The open gap is the UNSOLVED case, whose specimens and wall are recorded in
+// gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged.
 fn expr_contains_lambda(n: Node) -> Bool {
   is_lambda_expr(e: n) || (n.children |> any(c => expr_contains_lambda(n: c)))
 }
@@ -7762,8 +7734,16 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let ar = if formal_is_code_point_sequence {
       InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
     } else { ar_inferred }
-    let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
+    let next_subst = if !has_formal {
       st.subst
+    } else if is_lambda_expr(e: arg_value(n: a)) {
+      if map_is_empty(init_subst) {
+        unify_lambda_solves(
+          solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
+          generic_names: generic_names,
+          acc: st.subst
+        )
+      } else { st.subst }
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
       unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
     } else {
@@ -9384,7 +9364,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             subject: let_name,
             declared: declared,
             produced: produced_value_type,
-            produced_by: val_typed,
             span: val_expr.span,
             scope: scope)
           if (conformance |> count) > 0 { conformance }
@@ -10796,7 +10775,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
         } else {
-          optional_at_required_value_obligation_diags(
+          optional_at_required_obligation_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField,
               subject: fi_name,
@@ -10804,7 +10783,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               produced: got_node,
               span: ar_typed.span
             },
-            produced_by: ar_typed,
             scope: scope)
         }
         if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
@@ -13480,7 +13458,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
       concat(
-        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), produced_by: body_typed, span: item.body.value.span, scope: scope),
+        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
         explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     } else { [] }
 
@@ -13508,7 +13486,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_diags = if item.type_annotation != none {
       concat(
         val_result.diagnostics,
-        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), produced_by: val_typed, span: item.body.value.span, scope: scope)
+        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope)
       )
     } else { val_result.diagnostics }
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
@@ -13673,6 +13651,8 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
       Absent => map_insert(acc, bind_name, actual)
       Present { value: _ } => acc
     }
+  } else if (formal.connective == Arrow && actual.connective == Arrow) {
+    unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else if formal.children |> count == 1 && actual.children |> count == 1 {
     match formal.children |> first {
       Present { value: fc } =>
@@ -13683,6 +13663,82 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
       Absent => acc
     }
   } else { acc }
+}
+
+// A callable denotes its parameters in params and its return in inferred (make_callable_type), so
+// it has no children for the descent below to walk. Its parameters unify positionally and its
+// return unifies return, each read through child_type_node, the total read of a type position.
+fn unify_callable_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+  let with_params = unify_callable_param_pairs(formals: formal.params, actuals: actual.params, generic_names: generic_names, source_indices: source_indices, acc: acc)
+  match formal.inferred {
+    Present { value: Resolved { node: formal_ret } } =>
+      match actual.inferred {
+        Present { value: Resolved { node: actual_ret } } => unify_generics(formal: formal_ret, actual: actual_ret, generic_names: generic_names, source_indices: source_indices, acc: with_params)
+        _ => with_params
+      }
+    _ => with_params
+  }
+}
+
+// A typed lambda carries its BODY'S RETURN in inferred (infer_expr ExprLambda), not a callable
+// type, and its parameter types on its param children (the children after the body). Unify needs
+// the callable, so it is built here with make_callable_type, the existing authority for one.
+fn lambda_callable_type(lambda: Node) -> Node {
+  make_callable_type(func_params: lambda.children |> skip(1), ret: resolved_type(n: lambda))
+}
+
+fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+  match formals |> first {
+    Present { value: f } =>
+      match actuals |> first {
+        Present { value: a } =>
+          unify_callable_param_pairs(
+            formals: formals |> skip(1),
+            actuals: actuals |> skip(1),
+            generic_names: generic_names,
+            source_indices: source_indices,
+            acc: unify_generics(formal: child_type_node(ch: f), actual: child_type_node(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+          )
+        Absent => acc
+      }
+    Absent => acc
+  }
+}
+
+// What a lambda argument may contribute in round 1: only a binding that carries information. Its
+// return is computed under a substitution that may not yet bind its own parameters, so it can be
+// an unresolved type variable (callable_param), and binding a parameter to that would fix it first
+// and keep it against the informative argument that follows. Such an entry is dropped, so a later
+// argument or round 2 decides it. An entry fills only an Absent binding; it never overrides one.
+fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>) -> Map<String, Node> {
+  fold(generic_names, init: acc, f: (st, g) =>
+    match map_get(solved, g) {
+      Present { value: candidate } =>
+        if unify_binding_is_uninformative(n: candidate) {
+          st
+        } else {
+          match map_get(st, g) {
+            Absent => map_insert(st, g, candidate)
+            Present { value: _ } => st
+          }
+        }
+      Absent => st
+    }
+  )
+}
+
+// A type that is, or holds as its single element, any unresolved type variable.
+fn unify_binding_is_uninformative(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ =>
+      if n.children |> count == 1 {
+        match n.children |> first {
+          Present { value: c } => unify_binding_is_uninformative(n: child_type_node(ch: c))
+          Absent => false
+        }
+      } else { false }
+  }
 }
 
 fn should_unify_record_lit_generics(formal: Node, arg_expr: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {

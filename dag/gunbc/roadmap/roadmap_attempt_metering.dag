@@ -6,7 +6,7 @@ import std.types { path_segment_is_safe }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import std.measure { Second, second, second_count, TokenCount, token_count, token_count_value }
 import std.checked_arithmetic { checked_int_to_nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue,
   json_kv, json_int, json_string, json_object, json_array, serialize_json,

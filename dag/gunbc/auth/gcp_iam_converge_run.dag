@@ -8,7 +8,7 @@ import std.types { Int, List, NonEmptyStr, String, Secret, Bool, Timestamp }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.decimal { decimal_digits_only }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_output_variable_name }
