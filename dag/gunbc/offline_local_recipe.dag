@@ -113,7 +113,13 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
     subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag" },
-    selection: RecipeCallerChosen,
+    selection: RecipeFunctions {
+      names: [
+        "roster_compile_stage_file_gate_walk",
+        "roster_glob_discovery_file_gate_walk",
+        "roster_lens_traversal_file_gate_walk"
+      ]
+    },
     mode: Wet
   },
   OfflineLocalRecipeRow {
@@ -124,14 +130,14 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   },
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
-    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag" },
-    selection: RecipeCallerChosen,
+    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_walk.dag" },
+    selection: RecipeFunctions { names: ["roster_lean_file_gate_walk", "roster_bash_file_gate_walk"] },
     mode: Wet
   },
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
-    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag" },
-    selection: RecipeCallerChosen,
+    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_walk.dag" },
+    selection: RecipeFunctions { names: ["roster_swift_file_gate_walk"] },
     mode: Wet
   },
   OfflineLocalRecipeRow {
