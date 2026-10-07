@@ -110,10 +110,29 @@ type BillingConsequence
 // statically that the interlock is rostered against the site
 // (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
 // realization must take that hold before any write.
+//
+// THREE INTERLOCK STATES, NOT AN OPTIONAL HOLD. InterlockPending is a hold not yet named: it must
+// refuse, never discharge (a bindable irreversible effect under a pending ruling still owes a
+// witness). UnconditionalStanding is an intentional no-hold discharge, with its reason. InterlockedBy
+// is a named hold the census must roster against the site. Only UnconditionalStanding and
+// InterlockedBy discharge the irreversibility ground.
+type StandingRulingInterlock
+  = InterlockPending { obligation: NonEmptyStr }
+  | UnconditionalStanding { reason: NonEmptyStr }
+  | InterlockedBy { hold: DeclarationRef }
+
 type StandingDestructiveAuthorization {
   ruling_text: NonEmptyStr
   effect_subject: NonEmptyStr
-  interlock: DeclarationRef
+  interlock: StandingRulingInterlock
+}
+
+fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorization) -> Bool {
+  match r.interlock {
+    InterlockPending { obligation: _ } => false
+    UnconditionalStanding { reason: _ } => true
+    InterlockedBy { hold: _ } => true
+  }
 }
 
 type WitnessDischarge
@@ -143,7 +162,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
     IrreversibleEffect { what_is_lost: _ } =>
       match e.witness_discharge {
         NoWitnessDischarge => true
-        StandingRulingUnderInterlock { ruling: _ } => false
+        StandingRulingUnderInterlock { ruling: r } => !standing_ruling_discharges_irreversibility(r: r)
       }
     ReversibleByReapply => false
   }
@@ -549,11 +568,19 @@ fn minted_reach_text(m: MintedCredentialReach) -> String {
 
 // THE RULING IS QUOTED WITH ITS AUTHOR, DATE AND INTERLOCK, so a receipt minted under a standing
 // authorization is a different decision scope from one minted without it.
+fn standing_ruling_interlock_label(r: StandingDestructiveAuthorization) -> String {
+  match r.interlock {
+    InterlockPending { obligation: o } => join(["InterlockPending: ", o as String], "")
+    UnconditionalStanding { reason: s } => join(["UnconditionalStanding: ", s as String], "")
+    InterlockedBy { hold: i } => declaration_ref_display_key(ref: i)
+  }
+}
+
 fn witness_discharge_text(d: WitnessDischarge) -> String {
   match d {
     NoWitnessDischarge => "NoWitnessDischarge"
     StandingRulingUnderInterlock { ruling: r } =>
-      join(["StandingRulingUnderInterlock: under ", declaration_ref_display_key(ref: r.interlock), "; ruling ", r.ruling_text as String], "")
+      join(["StandingRulingUnderInterlock: under ", standing_ruling_interlock_label(r: r), "; ruling ", r.ruling_text as String], "")
   }
 }
 
