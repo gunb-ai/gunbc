@@ -16504,15 +16504,6 @@ fn reconcile_with_typed_cache(
                 };
                 let typed_key = store_parts.key.clone();
                 let cached = index_get_typed(index, &typed_key)?;
-                if let Some(hit) = cached.as_ref() {
-                    typecheck_store_session::durable_typecheck_commit(
-                        index,
-                        &store_parts.source_digest_hex,
-                        &store_parts.import_interface_hexes,
-                        &store_parts.compiler_digest_hex,
-                        &typecheck_store_session::own_of_result(hit.as_ref()),
-                    )?;
-                }
                 let was_cache_hit = cached.is_some();
                 // Record this module's cache keys with the armed schedule retention
                 // (idempotent; hit or miss) so its state can be dropped exactly when no

@@ -474,7 +474,11 @@ mod real_module_round_trip {
 
         let warm_index = build_multi_entry_index(&roots);
         resolve_entry_with_index(&warm_index, &entry).expect("warm resolve");
-        let (hit1, miss1, _) = outcome_snapshot();
+        let (hit1, miss1, committed1) = outcome_snapshot();
+        assert_eq!(
+            committed1, committed0,
+            "commit exactly once per key: a warm run (restores and in-process hits) commits nothing"
+        );
         assert_eq!(
             miss1, miss0,
             "warm run must not miss: every module restores"
