@@ -1,0 +1,23 @@
+module gunbc.stderr_capture_gap_exclusion
+
+// THE FIXTURE-CLOSURE UNION'S EXCLUDED OPERATION, as one record the seed compiles and evaluates.
+// gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture consumes this row. Authored names
+// are the compiler's declaration identity for extdeps.gunbc / WitnessBin / Run (RungDrop.population
+// stays List<String> for every other drop; this carrier is the typed field that row cannot grow
+// without migrating the ledger).
+
+type StderrCaptureGapExclusion {
+  drop_identity: String
+  declaring_module: String
+  service: String
+  operation_qualified: String
+  operation_bare: String
+}
+
+data exclusion: StderrCaptureGapExclusion = StderrCaptureGapExclusion {
+  drop_identity: "gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture",
+  declaring_module: "extdeps.gunbc",
+  service: "gunbc.WitnessBin",
+  operation_qualified: "gunbc.WitnessBin.Run",
+  operation_bare: "Run",
+}
