@@ -4,7 +4,8 @@ import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_bod
 import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
 import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
-import extdeps.http.server { ServeResponseHeaderNoStore }
+import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
+import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
 import extdeps.languages.json.emit { JsonNull }
 
 import gunbc.site.document { site_document }
@@ -277,6 +278,7 @@ type RoadmapServeHandler
   | AllocationPageHandler
   | SiteFaviconHandler
   | SiteClientHandler
+  | WebFontStylesheetHandler
   | AllocationCreateHandler
   | AllocationListHandler
   | AllocationGetHandler
@@ -359,6 +361,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: site_favicon_path, handler: SiteFaviconHandler },
     ServedRouteSpec { method: GET, raw: site_client_path, handler: SiteClientHandler },
+    ServedRouteSpec { method: GET, raw: web_font_stylesheet_path(), handler: WebFontStylesheetHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
@@ -411,6 +414,17 @@ fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String
 // process is serving THIS tree, and a digest taken over a body that is merely supposed to match the
 // route's would be validation standing where construction was available — the check would go green
 // while the route lied. Only the STATUS split lives here, because a digest has no status.
+
+// The self-hosted face stylesheet (gunbc.site.web_fonts). Its path is content-addressed, so the
+// response is immutable under that path for as long as any client may hold it.
+fn web_font_stylesheet_response() -> ServeHttpResponse {
+  ServeHttpResponse {
+    status: 200,
+    content_type: text_css_utf8,
+    body: web_font_stylesheet(),
+    headers: [ServeResponseHeaderCacheImmutable { max_age_seconds: web_font_stylesheet_max_age_seconds }],
+  }
+}
 
 fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
@@ -1239,6 +1253,7 @@ fn roadmap_serve_invoke_over(
     AllocationPageHandler => allocation_page_response(request: request)
     SiteFaviconHandler => serve_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source())
     SiteClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: site_client_source())
+    WebFontStylesheetHandler => web_font_stylesheet_response()
     AllocationCreateHandler => workspace_route_create(request: request)
     AllocationListHandler => workspace_route_list(request: request)
     AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)

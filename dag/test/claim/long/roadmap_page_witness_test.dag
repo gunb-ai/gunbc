@@ -1034,6 +1034,7 @@ fn fx_emitted_property(selector: String, property: String, value: String) -> Boo
     StaticRule { selector: subject, decls } => selector_subject_wire(s: subject) == selector && any(decls, d => css_property_wire(p: d.prop) == property && d.value == value)
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => false
     AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+    MediaRule { condition: _, selector: _, decls: _ } => false
   })
 }
 
@@ -2105,6 +2106,7 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
     StaticRule { selector, decls: _ } => selector_subject_wire(s: selector) == ".issue-cell" || selector_subject_wire(s: selector) == ".issue-table"
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => false
     AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+    MediaRule { condition: _, selector: _, decls: _ } => false
   })
   let css = join(map(rules, r => serialize_rule(rule: r)), "\n")
   match fx_long_title_page_html(long: long_title) {
