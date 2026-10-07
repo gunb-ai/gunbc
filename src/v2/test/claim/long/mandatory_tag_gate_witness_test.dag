@@ -21,7 +21,7 @@ import v2.std.member_declaration_kind {
 }
 import v2.std.qualified_name { QualifiedName }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Arrow, ArrowBodyEdge, Atom, Edge, Node, Positional, TypeNode, Conj, core_edge_label }
+import v2.std.node { Arrow, Authored, ArrowBodyEdge, Atom, Edge, Node, Positional, TypeNode, Conj, core_edge_label }
 import v2.lens.mandatory_tag { mandatory_tag_lowered_candidate_findings, extdeps_external_authority_region }
 import std.algebra { Cons, Empty }
 import v2.std.collection { empty_map}
@@ -188,6 +188,49 @@ test fn mandatory_tag_normalized_grain_missing_rejects() -> Bool {
   )
 }
 
+// TOP-LEVEL SELECTOR CONTROL. The module's only direct member is UNRELATED; the required name appears only
+// NESTED inside that member's Arrow, as a valid Arrow, and the supplied channel would admit that name as a
+// data member. The gate must still refuse as missing: restoring a recursive subtree search for the lowered
+// member turns this red. Nesting is planted into the REAL normalized tree of src_missing.
+fn mt_plant_nested_anchor(n: Node) -> Node {
+  let kids = fold(n.children, init: [], f: fn(acc, e) {
+    concat(acc, [Edge { label: e.label, target: mt_plant_nested_anchor(n: e.target) }])
+  })
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      Node {
+        kind: n.kind,
+        children: concat(kids, [Edge {
+          label: Authored { name: ^extdeps_external_authority_anchor },
+          target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https])
+        }]),
+        occurrence_id: n.occurrence_id
+      }
+    _ => Node { kind: n.kind, children: kids, occurrence_id: n.occurrence_id }
+  }
+}
+
+test fn mandatory_tag_normalized_grain_nested_anchor_under_unrelated_member_rejects() -> Bool {
+  match normalized_grain_tree(source: src_missing) {
+    GrainStageRejected => false
+    GrainTree { root: root, channel: _ } =>
+      gate_rejects_tree_with(
+        probe: GrainTree {
+          root: mt_plant_nested_anchor(n: root),
+          channel: MemberKindsCaptured {
+            covered: [[^extdeps, ^gate_probe_missing]],
+            members: [QualifiedDeclaredMember {
+              module: [^extdeps, ^gate_probe_missing],
+              name: ^extdeps_external_authority_anchor,
+              kind: DeclaredDataMember
+            }]
+          }
+        },
+        reason: ^mandatory_tag_missing_required_decl
+      )
+  }
+}
+
 test fn mandatory_tag_normalized_grain_misnamed_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: normalized_grain_tree(source: src_misnamed),
@@ -225,8 +268,11 @@ test fn mandatory_tag_enrolled_in_root_roster_rejects_violating_module() -> Bool
 
 // SUPPLIED-CARRIER CONTROLS at the lens's own interface (DESIGN section 3, a witness discriminates at one
 // interface): the candidate Arrow and the member-kind channel are supplied values, so no frontend runs. The
-// real route -- normalize capturing the kinds, resolve carrying them, the door binding them to the gate -- is
-// run for real by mandatory_tag_normalized_grain_clean_accepts above; deleting that integration makes it fail.
+// real route is executed only as far as: normalize -> captured member channel -> member_kind_channel_of_tree ->
+// mandatory_tag_compile_gate_with_provenance (mandatory_tag_normalized_grain_clean_accepts above; deleting that
+// integration makes it fail). NOT executed by any claim: resolve_in_context -> ResolvedTree.member_kinds ->
+// validate_then_compile rebinding; that link is the standing GuaranteeStall
+// gunbc.guarantee_stall member_kind_door_binding_executed_by_no_claim_stall.
 fn mt_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
