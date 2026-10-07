@@ -6,7 +6,7 @@ import std.measure {
   AttentionLayerCount, attention_layer_count, attention_layer_count_value,
   ByteSize, byte_size, byte_size_count,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.kv_layout {
   KvGroupLayout, FullAttention, SlidingWindowAttention, MambaState,

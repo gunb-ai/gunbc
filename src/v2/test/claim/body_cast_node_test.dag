@@ -46,7 +46,7 @@ import v2.std.node {
   node_synthetic,
   well_formed
 }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.runtime { RuntimeValue }
 import v2.std.type_binder { cast_target_edge, cast_target_optional, type_binder_labels_conform }
 import v2.test.claim.fold_lowering { lowered_fixture_loop }

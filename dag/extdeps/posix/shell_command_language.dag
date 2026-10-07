@@ -1,6 +1,6 @@
 module extdeps.posix.shell_command_language
 
-import std.types { String }
+import std.types { String, NonEmptyStr, Bool }
 import std.algebra { Cons, Empty }
 import v2.std.text { string_all_chars_in, string_contains_char }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -167,5 +167,24 @@ fn posix_name_ok(name: String) -> Bool {
     Cons { head: first, tail: rest } =>
       string_contains_char(s: posix_name_start_alphabet, c: first)
         && string_all_chars_in(s: rest, alphabet: posix_name_continue_alphabet)
+  }
+}
+
+// A NAME IS A CARRIER, NOT A STRING THAT HAPPENS TO PASS (review 76372 on gunbc#13359). A shell
+// program assembled around a variable name executes whatever that name spells, so a name holding
+// `;`, `$(..)` or a space is shell text, not a name. PosixShellName is minted only by
+// admit_posix_shell_name, which applies XBD 3.235 (posix_name_ok) above; a builder that takes this
+// type cannot be handed an unchecked spelling.
+type PosixShellName sole_constructor { spelling: NonEmptyStr }
+
+type PosixShellNameAdmission
+  = PosixShellNameAdmitted { name: PosixShellName }
+  | PosixShellNameRefused { spelling: String }
+
+fn admit_posix_shell_name(spelling: String) -> PosixShellNameAdmission {
+  if posix_name_ok(name: spelling) {
+    PosixShellNameAdmitted { name: PosixShellName { spelling: spelling as NonEmptyStr } }
+  } else {
+    PosixShellNameRefused { spelling: spelling }
   }
 }

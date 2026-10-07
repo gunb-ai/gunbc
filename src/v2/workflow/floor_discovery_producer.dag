@@ -27,7 +27,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_walk_state_zero
 }
 import v2.workflow.witness_admission { witness_row_excluded_from_discovery }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

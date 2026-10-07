@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_census_qemu_host_observe
 
 import std.types { NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import gunbc.command_runner { run_shell_commands, LocalExec }

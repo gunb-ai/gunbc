@@ -14,7 +14,7 @@ import std.measure {
 }
 import std.content_hash { Sha256Digest, Sha256DigestHex, ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.staircase { StepVerdict, StepStops, StepContinues, StaircaseOutcome, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StaircasePlanEmpty, StaircasePlanLevelDuplicated, run_staircase }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }

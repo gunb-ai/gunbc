@@ -52,7 +52,7 @@ import tools.docs_projection_gate {
   docs_projection_producer_coverage_over
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.optional { Absent }
+import std.optional { Absent }
 import std.types { String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

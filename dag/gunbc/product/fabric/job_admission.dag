@@ -4,7 +4,7 @@ import std.types { List }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
 
 // Customer declaration admission precedes provider-route selection. This is a

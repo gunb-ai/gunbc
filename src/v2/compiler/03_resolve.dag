@@ -48,7 +48,7 @@ import v2.std.collection {
   map_lookup
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

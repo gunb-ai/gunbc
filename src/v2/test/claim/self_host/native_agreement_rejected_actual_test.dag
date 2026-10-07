@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   diagnostics_singleton
 }
 import v2.std.node { Node, TypeNode, Atom, OccurrenceSynthetic }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.runtime { RuntimeValue, RuntimePrimitive, RuntimePrimitiveValue }
 import v2.std.machine { Byte }
 import v2.std.host_run { ValueDiff }

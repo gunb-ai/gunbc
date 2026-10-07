@@ -16,6 +16,7 @@ use crate::extdeps_ietf_http_semantics::HttpMethod::{
 };
 pub use crate::extdeps_uri_path::PathTemplate;
 pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
+pub use crate::std_optional::Optional;
 pub use crate::std_realization_schedule::string_list_eq;
 pub use crate::std_types::List;
 use crate::v1_rt;

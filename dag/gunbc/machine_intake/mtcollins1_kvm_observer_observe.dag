@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ExitSuccess, ExitFailure, ProcessExit, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }

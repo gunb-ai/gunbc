@@ -1,7 +1,7 @@
 module test.claim.spark.serving_load_probe_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.vllm.metrics { GenerationTokensTotal }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }

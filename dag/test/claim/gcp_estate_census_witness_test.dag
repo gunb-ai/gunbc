@@ -1,7 +1,7 @@
 module test.claim.gcp_estate_census_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible, Drifted, Apply }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }

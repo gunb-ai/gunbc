@@ -3,7 +3,7 @@ module gunbc.generated_workflow_provenance
 import std.types { String, List }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact }
 import gunbc.generated_artifact_registry { generated_artifact_registry }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
 // visible. Keep the provenance in that boundary rather than asking a reviewer to infer it from the

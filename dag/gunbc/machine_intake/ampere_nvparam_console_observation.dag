@@ -5,7 +5,7 @@ import std.algebra { Cons }
 import std.measure { byte_size_count }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.ampere.nvparam {
   NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
