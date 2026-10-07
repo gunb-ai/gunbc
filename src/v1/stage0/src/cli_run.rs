@@ -18218,7 +18218,7 @@ fn module_emit_repr_fingerprint(
     let mut type_summaries = BTreeMap::<String, TypeSummary>::new();
     for name in type_names {
         let key = format!("{module_path}.{name}");
-        if let Some(summary) = emit_info.type_summaries.get(&key) {
+        if let Some(summary) = emit_info.type_summaries.by_key.get(&key) {
             type_summaries.insert(name, summary.as_ref().clone());
         }
     }
