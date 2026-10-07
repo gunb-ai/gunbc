@@ -757,6 +757,27 @@ fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -
   }
 }
 
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO STOPPED WITH `code` where it would have read Started.
+fn media_stopping(code: Int) -> MegaRacMediaWorld {
+  let w = media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd())
+  MegaRacMediaWorld {
+    sessions: w.sessions, next_session: w.next_session, share: w.share, mount_cd: w.mount_cd, cd_error_code: w.cd_error_code,
+    images: w.images, cd: w.cd, ready_after: w.ready_after, withdraw_at: w.withdraw_at, withdraw_after_ready: w.withdraw_after_ready,
+    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code },
+  }
+}
+
+fn no_error_after_ready() -> Int? {
+  none
+}
+
+// Another census image of this lane: the same name stem with a different digest prefix.
+data stale_lane_image: String = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0000000000000000.iso"
+
+fn presenting(image_name: String) -> MegaRacCdRow {
+  MegaRacCdRow { image_name: image_name, redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
+}
+
 // THE START IS ACCEPTED AND THE ROW FALLS BACK TO A STOPPED STATE with code 16 beside it. Nothing is
 // presented, so there is nothing to boot from: the attempt refuses as a readiness timeout that carries
 // the raw code, with no handoff, and no cause is attributed to the code.

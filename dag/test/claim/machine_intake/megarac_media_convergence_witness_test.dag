@@ -520,7 +520,7 @@ fn nonzero_is(r: CdErrorReading, expected: Int) -> Bool {
   match r { CdErrorRead { code: CdErrorNonzero { wire: w, firmware: _ } } => w == expected  _ => false }
 }
 
-fn policy_admits(r: CdErrorReading) -> Bool {
+fn cd_attach_policy_admits(r: CdErrorReading) -> Bool {
   match r { CdErrorRead { code: c } => cd_error_attach_policy_admits(code: c)  _ => false }
 }
 
@@ -528,9 +528,9 @@ test fn a_nonzero_code_reads_as_the_raw_number_and_only_16_on_0_32_is_admitted_b
   nonzero_is(r: cd_16, expected: 16)
     && nonzero_is(r: cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32), expected: 11)
     && nonzero_is(r: cd_error_reading(body: general_coded(code: "18"), firmware: megarac_firmware_0_32), expected: 18)
-    && policy_admits(r: cd_16)
-    && !policy_admits(r: cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32))
-    && !policy_admits(r: cd_error_reading(body: mtcollins1_media_general_2026_09_27, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33")))
+    && cd_attach_policy_admits(r: cd_16)
+    && !cd_attach_policy_admits(r: cd_error_reading(body: general_coded(code: "11"), firmware: megarac_firmware_0_32))
+    && !cd_attach_policy_admits(r: cd_error_reading(body: mtcollins1_media_general_2026_09_27, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33")))
 }
 
 // ─── STARTED: THE CODE IS RECORDED, NEVER WITHHELD ON ───────────────────────────────────────────
@@ -612,7 +612,7 @@ fn timed_out_at(general: String, expected: Int) -> Bool {
 test fn a_stopped_presentation_is_a_timeout_whatever_the_code_reads() -> Bool {
   timed_out_at(general: mtcollins1_media_general_2026_09_27, expected: 16)
     && timed_out_at(general: general_coded(code: "42"), expected: 42)
-    && (match closed_stopped(general: mtcollins1_media_general_2026_09_27_morning_as_reported) { MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: CdErrorNone } => true  _ => false })
+    && (match closed_stopped(general: mtcollins1_media_general_2026_09_27_morning_as_reported) { MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: CdErrorRead { code: CdErrorNone } } => true  _ => false })
 }
 
 // ─── BEFORE ANY WRITE ───────────────────────────────────────────────────────────────────────────
