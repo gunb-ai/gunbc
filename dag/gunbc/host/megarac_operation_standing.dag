@@ -183,27 +183,17 @@ fn megarac_operation_standings(evidence: MegaRacOperationEvidence) -> List<MegaR
       [MegaRacOperationStanding { operation: rc.operation, identity: rd.identity, grounding: OperationExecutedAtBuild { receipt: rc, build: rd } }]))
 }
 
-fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
-  match g {
-    OperationExecutedAtBuild { receipt: _, build: _ } => true
-  }
+fn standing_grounds(standing: MegaRacOperationStanding, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
+  megarac_operation_eq(a: standing.operation, b: operation) && megarac_identity_eq(a: standing.identity, b: identity)
 }
 
-fn standing_grounds(standing: MegaRacOperationStanding, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
-  megarac_operation_eq(a: standing.operation, b: operation) && megarac_identity_eq(a: standing.identity, b: identity) && (!executed_only || grounding_is_executed(g: standing.grounding))
-}
-
-fn standings_ground(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
-  count(filter(standings, st => standing_grounds(standing: st, operation: operation, identity: identity, executed_only: executed_only))) > 0
-}
-
-fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
-  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: false)
+fn standings_ground(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
+  count(filter(standings, st => standing_grounds(standing: st, operation: operation, identity: identity))) > 0
 }
 
 // EXECUTED AT THIS IDENTITY.
 fn megarac_operation_executed_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
-  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: true)
+  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity)
 }
 
 // ── THE CURRENT BUILD OF A CONTROLLER ────────────────────────────────────────────────────────────

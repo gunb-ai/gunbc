@@ -14,7 +14,7 @@ import gunbc.megarac_operation_standing {
   MegaRacOperation, MegaRacOperationStanding, megarac_operation_eq, MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   OperationExecutedAtBuild,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition,
-  megarac_operation_standings, megarac_operation_grounded_at, megarac_operation_executed_at, megarac_identity_eq,
+  megarac_operation_standings, megarac_operation_executed_at, megarac_identity_eq,
 }
 import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_identity }
@@ -39,9 +39,9 @@ test fn w_a_receipt_beside_a_reading_of_its_build_is_grounded_there() -> Bool {
     receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: controller, receipt: evidence(label: "run"), executed_at: 2000)],
     transitions: [],
   )
-  megarac_operation_grounded_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: identity_at(wire: "0.32"))
-    && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: identity_at(wire: "0.45.3"))
-    && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: identity_at(wire: "0.32"))
+  megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: identity_at(wire: "0.32"))
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: identity_at(wire: "0.45.3"))
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: identity_at(wire: "0.32"))
 }
 
 // RED: THE SAME RECEIPT WITH A REFLASH RECORDED BETWEEN IT AND THE ONLY READING grounds nothing: the
@@ -78,15 +78,15 @@ test fn w_the_committed_rows_ground_0_32_by_route_and_nothing_at_0_45_3() -> Boo
     && grounded_by(standings: standings, operation: MegaRacSdrSocketNaming, executed: true)
     && !grounded_by(standings: standings, operation: MegaRacKvmCanvasStill, executed: true)
     && count(standings) == 2
-    && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: later)
-    && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: later)
-    && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacSdrSocketNaming, identity: later)
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: later)
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: later)
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacSdrSocketNaming, identity: later)
 }
 
 // THE KVM STILL HAS NO STANDING AT 0.32: no committed still exists from that build, and the only KVM
 // receipt sits across the reflash. Virtual media, which ran, is executed there.
 test fn w_the_kvm_still_is_not_grounded_at_0_32_and_virtual_media_is_executed() -> Bool {
   let ev = mtcollins1_megarac_operation_evidence()
-  !megarac_operation_grounded_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: mtcollins1_identity)
+  !megarac_operation_executed_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: mtcollins1_identity)
     && megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: mtcollins1_identity)
 }
