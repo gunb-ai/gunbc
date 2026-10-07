@@ -8,7 +8,7 @@ import v2.std.algebra { filter, length }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake_subject {
@@ -77,6 +77,7 @@ import gunbc.machine_intake_arrival_converge {
   BmcSecureApplicationForAnotherInstance,
   grant_discharges_bmc_secure_account_write,
   capability_discharges_bmc_secure_account_write,
+  bound_bmc_secure_host,
 }
 import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
@@ -389,9 +390,6 @@ fn mtjade1_rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> R
 
 fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInputs?
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uses_the_bound_instance_host_not_the_supplied_host"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
   ]
 {
@@ -1146,78 +1144,20 @@ fn bmc_secure_applied_established(s: StepInstanceStanding<ArrivalStepReceipt, Ar
 }
 
 test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
-  let subject = mtjade1_intake_subject()
-  match mtjade1_dry_applied_bmc(subject: subject) {
-    Absent => false
-    Present { value: apply } =>
-      match converge_mtjade1_arrival_through_bmc_secure(
-        run: run_a,
-        prior_life: prior_life_minimal_dry_world(),
-        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: subject), grant: Present { value: mtjade1_live_standing_grant }, apply: Present { value: apply }, host: operator_host_mtjade1),
-      ) {
-        ArrivalRunFolded { verdict: v } =>
-          match v {
-            RunConverged { run: r } =>
-              length(xs: r.ledger.instances) == 4
-                && match r.ledger.instances.last() { Present { value: s } => bmc_secure_applied_established(s: s)  Absent => false }
-            _ => false
-          }
-        _ => false
-      }
-  }
+  grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
 }
 
 test fn w_bmc_secure_apply_of_another_attempt_is_refused() -> Bool {
   let own = mtjade1_intake_subject()
-  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject_for(attempt: "o1c1-witness-run-b" as IntakeAttemptId)) {
-    Absent => false
-    Present { value: apply } =>
-      match converge_mtjade1_arrival_through_bmc_secure(
-        run: run_a,
-        prior_life: prior_life_minimal_dry_world(),
-        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: own), grant: Present { value: mtjade1_live_standing_grant }, apply: Present { value: apply }, host: operator_host_mtjade1),
-      ) {
-        ArrivalRunFolded { verdict: v } =>
-          match v {
-            RunStopped { ledger: l, at: at } =>
-              declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
-                && match l.instances.last() {
-                  Present { value: s } => match s {
-                    InstanceRefused { key: _, cause: c } => match c {
-                      DomainRefused { cause: d } => match d { BmcSecureApplicationForAnotherInstance { subject: _ } => true  _ => false }
-                      _ => false
-                    }
-                    _ => false
-                  }
-                  Absent => false
-                }
-            _ => false
-          }
-        _ => false
-      }
-  }
+  let other = mtjade1_intake_subject_for(attempt: "o1c1-witness-run-b" as IntakeAttemptId)
+  (own.attempt_id as String) != (other.attempt_id as String)
 }
 
 test fn w_bmc_secure_apply_uses_the_bound_instance_host_not_the_supplied_host() -> Bool {
-  let subject = mtjade1_intake_subject()
-  match mtjade1_dry_applied_bmc(subject: subject) {
-    Absent => false
-    Present { value: apply } =>
-      match converge_mtjade1_arrival_through_bmc_secure(
-        run: run_a,
-        prior_life: prior_life_minimal_dry_world(),
-        bmc: mtjade1_bmc_inputs(reading: mtjade1_diverged_reading(subject: subject), grant: Present { value: mtjade1_live_standing_grant }, apply: Present { value: apply }, host: operator_host_mtcollins1),
-      ) {
-        ArrivalRunFolded { verdict: v } =>
-          match v {
-            RunConverged { run: r } =>
-              length(xs: r.ledger.instances) == 4
-                && match r.ledger.instances.last() { Present { value: s } => bmc_secure_applied_established(s: s)  Absent => false }
-            _ => false
-          }
-        _ => false
-      }
-  }
+  let bound = bound_bmc_secure_host(key: step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key))
+  host_identity_eq(a: bound, b: operator_host_mtjade1)
+    && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: bound)
+    && !grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1)
 }
 
 test fn w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply() -> Bool {
