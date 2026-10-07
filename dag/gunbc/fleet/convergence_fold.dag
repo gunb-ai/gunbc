@@ -45,10 +45,11 @@ import gunbc.host_convergence_census {
 // WHAT THIS HOME CARRIES SINCE O1c-3, with BmcSecure as first gated consumer
 // (gunbc.machine_intake_arrival_converge): a step is Ungated or GatedOnAuthorization; a gated
 // instance whose receipt declares that authorization was required (the Apply arm) refuses without a
-// discharge for that (run, step, subject); Noop does not require one (parent D4). PrincipalRequired
-// is bound by the same discharge row; an unbound required principal refuses. Mutation lanes are
-// derived from StepMutatesSubject instances' subjects -- the executor that dispatches is not a lane
-// key. The pattern itself is selected before the fold (DESIGN §3d); the fold only checks discharge.
+// discharge for that (run, step, subject); Noop does not require one (parent D4). A discharge's
+// principal is NonEmptyStr at the sole constructor, so the fold does not re-check emptiness.
+// Mutation lanes are derived from StepMutatesSubject instances' subjects -- the executor that
+// dispatches is not a lane key. The pattern itself is selected before the fold (DESIGN §3d); the
+// fold only checks discharge.
 //
 // WHAT IT STILL DOES NOT CARRY, because no consumer exercises it yet and a designed fixture is not an
 // inhabitant (DESIGN §3 pairing obligation): pending with re-attach across runs, subject quantifiers
@@ -394,7 +395,6 @@ type StepInstanceRefusal<C>
   | PreconditionUnmet { precondition: StepInstanceKey, consumed: List<StepInstanceKey> }
   | ConsumedReceiptNotAPrecondition { consumed: StepInstanceKey }
   | AuthorizationUndischarged
-  | PrincipalUnbound
 
 type StepInstanceStanding<R, C, I>
   = InstanceConverged { key: StepInstanceKey, receipt: R }
@@ -558,16 +558,7 @@ fn walk_instance<M, R, C, I>(
                 StepGatedOnAuthorization =>
                   match instance_authorization_for(discharges: discharges, key: key) {
                     Absent => InstanceRefused { key: key, cause: AuthorizationUndischarged }
-                    Present { value: a } =>
-                      match ranked.step.principal {
-                        PrincipalNotRequired => InstanceIncomplete { key: key, cause: i }
-                        PrincipalRequired =>
-                          if (a.principal as String) == "" {
-                            InstanceRefused { key: key, cause: PrincipalUnbound }
-                          } else {
-                            InstanceIncomplete { key: key, cause: i }
-                          }
-                      }
+                    Present { value: _ } => InstanceIncomplete { key: key, cause: i }
                   }
               }
             StepEstablished { receipt: r } =>
@@ -580,16 +571,7 @@ fn walk_instance<M, R, C, I>(
                       if projection.authorization_required_of(r) {
                         match instance_authorization_for(discharges: discharges, key: key) {
                           Absent => InstanceRefused { key: key, cause: AuthorizationUndischarged }
-                          Present { value: a } =>
-                            match ranked.step.principal {
-                              PrincipalNotRequired => InstanceConverged { key: key, receipt: r }
-                              PrincipalRequired =>
-                                if (a.principal as String) == "" {
-                                  InstanceRefused { key: key, cause: PrincipalUnbound }
-                                } else {
-                                  InstanceConverged { key: key, receipt: r }
-                                }
-                            }
+                          Present { value: _ } => InstanceConverged { key: key, receipt: r }
                         }
                       } else {
                         InstanceConverged { key: key, receipt: r }
