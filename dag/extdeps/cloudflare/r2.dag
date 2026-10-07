@@ -44,14 +44,27 @@ data r2_consistency_authority: ExternalAuthority = ExternalAuthority {
 
 data r2_put_object_conditional_standing: CitedFigureStanding = CitedToAuthority { authority: r2_s3_api_citation }
 
-// WHAT NEITHER PAGE STATES, TYPED AS A BET (DESIGN 4d): that two concurrent PutObject requests
-// carrying If-Match on the same entity tag cannot both succeed. A compare-and-set is exactly that
-// property, so a head linearized on R2 rests on it; supported headers and read-after-write do not
-// imply it. It is grounded by a discriminating run, not by reading: two writers racing one tag
-// against the live bucket, exactly one 2xx and one 412, repeated.
-data r2_conditional_put_linearizability: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Run two concurrent If-Match PutObject requests on one entity tag against a live R2 bucket, repeated; exactly one may answer 2xx and every other 412. Until that run is receipted, an R2 head is not cited as a linearization point.",
+// WHAT NEITHER PAGE STATES, AND WHAT GROUNDS IT INSTEAD: that two concurrent PutObject requests carrying
+// If-Match on the same entity tag cannot both succeed. A compare-and-set is exactly that property, so a
+// head linearized on R2 rests on it; supported headers and read-after-write do not imply it. It was a
+// typed bet until the discriminating run its read obligation named was receipted, and the authority is
+// that receipt: gunbc.cloudflare.r2_conditional_put_race_probe run_r2_conditional_put_race_probe, under
+// the fleet-converge mode r2_conditional_put_race_probe, GitHub Actions run 37659103953 on c0688c4f40,
+// artifact r2-conditional-put-race-probe-receipt. The receipt states curl 8.5.0 against the 8.2 floor,
+// declared_rounds=200, rounds=200 and verdict=passed, with no inconclusive and no falsifying round: in
+// every round one writer answered 2xx and the other 412, over requests sent before either was answered.
+//
+// WHAT THE CITATION DOES NOT CARRY. "Raced" is read on the client's clock (the curl trace), not the
+// order requests arrived at the store, and the run is 200 rounds against one bucket at one time. A
+// later falsifying receipt from the same instrument supersedes this one; rerunning the mode re-derives it.
+data r2_conditional_put_race_receipt: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/actions/runs/37659103953"
+  }
 }
+
+data r2_conditional_put_linearizability: CitedFigureStanding = CitedToAuthority { authority: r2_conditional_put_race_receipt }
 
 data r2_data_location_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

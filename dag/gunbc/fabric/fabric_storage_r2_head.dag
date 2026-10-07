@@ -50,12 +50,12 @@ import gunbc.fabric_storage_wire { reading_words, decode_reading }
 //     successor's own generation is a move; anything else, a later generation included, stays unknown
 //     (the OriginPutOutcomeUnknown precedent). A store that answered and refused, on a put or a get, is
 //     store-refused, kept apart from no answer (gunbc.cloudflare.r2_staged_transfer R2Fetch).
-//   * THE LINEARIZABILITY BET GATES THE PROJECTION. The raw outcome is this module's own type. It
+//   * THE LINEARIZABILITY CITATION GATES THE PROJECTION. The raw outcome is this module's own type. It
 //     becomes a std.fabric_storage FabricHeadAdvance only through r2_head_fabric_advance, which
 //     requires a sealed R2HeadCasAdmitted -- minted only when the concurrent If-Match guarantee is
-//     CitedToAuthority, which it is not until the live race probe runs (extdeps.cloudflare.r2
-//     r2_conditional_put_linearizability). So no consumer can treat an R2 head as a linearization
-//     point on the strength of a bet.
+//     CitedToAuthority (extdeps.cloudflare.r2 r2_conditional_put_linearizability, cited to the race
+//     probe's receipt). So no consumer can treat an R2 head as a linearization point on the strength
+//     of a bet, and reverting that row to a bet withdraws the admission everywhere at once.
 //   * STAGING IS CLEANED UP AND ITS RESIDUE IS A FACT. The transport discharges every directory it does
 //     not hand over; this module releases the ones it is handed and the put's own. Custody
 //     (r2_staged_transfer R2StagingCustody) is reported beside every outcome and every standalone read,
