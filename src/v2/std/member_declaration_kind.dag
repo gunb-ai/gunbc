@@ -1,8 +1,9 @@
 module v2.std.member_declaration_kind
 
 import std.types { List }
-import std.algebra { Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { fold_list, length }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { fold_list }
+import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -83,13 +84,22 @@ fn member_kind_lookup(channel: MemberKindChannel, module: String, name: Symbol) 
 }
 
 // Two members of one module sharing a name is a duplicate declaration whatever their kinds (a data and a fn of
-// one name conflict as surely as two of one kind); the channel refuses it, never first-wins.
+// one name conflict as surely as two of one kind); the channel refuses it, never first-wins. ONE PASS: the names
+// seen so far ride a map, so each member costs one membership probe instead of a rescan of the list.
+type MemberNamesSeen {
+  seen: Map<Symbol, Bool>
+  duplicate: Bool
+}
+
 fn declared_members_have_duplicate(members: FreeMonoid<DeclaredMember>) -> Bool {
   fold_list(
     xs: members,
-    empty: false,
+    empty: MemberNamesSeen { seen: empty_map(), duplicate: false },
     cons: fn(acc, m) {
-      acc || (length(xs: fold_list(xs: members, empty: Empty, cons: fn(hits, o) { if o.name == m.name { list_snoc_item(xs: hits, item: o) } else { hits } })) > 1)
+      MemberNamesSeen {
+        seen: map_insert(m: acc.seen, key: m.name, value: true),
+        duplicate: acc.duplicate || map_contains_key(m: acc.seen, key: m.name)
+      }
     }
-  )
+  ).duplicate
 }

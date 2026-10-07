@@ -44,7 +44,6 @@ import gunbc.instruments.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
 import v2.compiler.name_resolve {
-  subject_member_kind_channel,
   resolution_context_namespace,
   closure_declarations_demand,
   Admission,
@@ -795,20 +794,6 @@ fn determinism_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
 
 fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   machine_shape_compile_gate(node: tree.root)
-}
-
-// The native door's channel for its resolved subject, read from the same validated roots resolve_in_context reads.
-// A duplicate-member refusal cannot be returned from this verdict, so it reads as Unavailable and mandatory_tag
-// refuses on provenance -- never "fine", never "every module lacks its data decl".
-fn native_subject_member_kinds(shared: ResolutionContext, resolved: Node) -> MemberKindChannel {
-  match qualified_name_from_module_node(root: resolved) {
-    Rejected { diagnostics: _ } => no_member_declaration_kinds()
-    Accepted { value: qn, diagnostics: _ } =>
-      match subject_member_kind_channel(roots: shared.roots, name: qn) {
-        Accepted { value: c, diagnostics: _ } => c
-        Rejected { diagnostics: _ } => no_member_declaration_kinds()
-      }
-  }
 }
 
 // The compile door's binding of the mandatory_tag gate: the same gate, handed the member-kind provenance
@@ -3540,7 +3525,7 @@ fn native_module_resolve_verdict(
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
                     unavailable_providers: closure.refused,
-                    member_kinds: native_subject_member_kinds(shared: shared, resolved: resolved),
+                    member_kinds: no_member_declaration_kinds(),
                     lexical: lexical
                   )
                 },
