@@ -97,7 +97,7 @@ fn witness_totality_reds_on_synthetic_orphan() -> Bool {
   )
   match verdict {
     PartitionOrphan { unclaimed_paths: paths } =>
-      list_length(items: paths) == 1 && paths.first() == "dag/std/orphan_not_in_roster.dag"
+      list_length(items: paths) == 1 && paths.first() == Present { value: "dag/std/orphan_not_in_roster.dag" }
     PartitionTotal { module_count: _ } => false
     PartitionDuplicateClaim { duplicated_paths: _ } => false
     PartitionSurplusClaim { surplus_paths: _ } => false
@@ -114,7 +114,7 @@ fn witness_totality_reds_on_synthetic_double_claim() -> Bool {
   )
   match verdict {
     PartitionDuplicateClaim { duplicated_paths: paths } =>
-      list_length(items: paths) == 1 && paths.first() == "dag/std/logic.dag"
+      list_length(items: paths) == 1 && paths.first() == Present { value: "dag/std/logic.dag" }
     PartitionTotal { module_count: _ } => false
     PartitionOrphan { unclaimed_paths: _ } => false
     PartitionSurplusClaim { surplus_paths: _ } => false
@@ -132,7 +132,7 @@ fn witness_totality_reds_on_synthetic_surplus() -> Bool {
   )
   match verdict {
     PartitionSurplusClaim { surplus_paths: paths } =>
-      list_length(items: paths) == 1 && paths.first() == "dag/std/phantom_not_in_glob.dag"
+      list_length(items: paths) == 1 && paths.first() == Present { value: "dag/std/phantom_not_in_glob.dag" }
     PartitionTotal { module_count: _ } => false
     PartitionOrphan { unclaimed_paths: _ } => false
     PartitionDuplicateClaim { duplicated_paths: _ } => false

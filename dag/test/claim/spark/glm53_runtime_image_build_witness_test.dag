@@ -83,8 +83,8 @@ test fn the_prepare_plan_lands_files_then_runs_sh_path() -> Bool {
     Present { value: steps } =>
       remote_operation_count(operations: map(steps, s => s.operation)) == 4
         && remote_operation_file_write_count(operations: map(steps, s => s.operation)) == 2
-        && steps.first().identity == "derived-context-dir" as NonEmptyStr
-        && steps.skip(n: 3).first().identity == "derived-prepare-run" as NonEmptyStr
+        && steps.first().identity == Present { value: "derived-context-dir" as NonEmptyStr }
+        && steps.skip(n: 3).first().identity == Present { value: "derived-prepare-run" as NonEmptyStr }
         && match steps.skip(n: 3).first() {
           Absent => false
           Present { value: run_step } =>
@@ -92,8 +92,8 @@ test fn the_prepare_plan_lands_files_then_runs_sh_path() -> Bool {
           Absent => false
           Present { value: argv } =>
             argv.length() == 2
-              && argv.first() == "sh"
-              && argv.skip(n: 1).first() == (glm53_derived_prepare_script_path() as String)
+              && argv.first() == Present { value: "sh" }
+              && argv.skip(n: 1).first() == Present { value: (glm53_derived_prepare_script_path() as String) }
         }
         }
         && string_contains(s: glm53_derived_dockerfile_path() as String, pattern: glm53_derived_context_dir() as String)
@@ -129,13 +129,13 @@ test fn the_save_and_load_argv_are_dockers_own_verbs() -> Bool {
   let save = docker_image_save_command(image: "img:tag" as NonEmptyStr, output_path: "/tmp/x.tar" as NonEmptyStr)
   let load = docker_image_load_command(input_path: "/tmp/x.tar" as NonEmptyStr)
   save.arguments.length() == 4
-    && save.arguments.skip(n: 1).first() == "-o"
-    && save.arguments.skip(n: 2).first() == "/tmp/x.tar"
-    && save.arguments.skip(n: 3).first() == "img:tag"
+    && save.arguments.skip(n: 1).first() == Present { value: "-o" }
+    && save.arguments.skip(n: 2).first() == Present { value: "/tmp/x.tar" }
+    && save.arguments.skip(n: 3).first() == Present { value: "img:tag" }
     && load.arguments.length() == 3
-    && load.arguments.first() == "load"
-    && load.arguments.skip(n: 1).first() == "-i"
-    && load.arguments.skip(n: 2).first() == "/tmp/x.tar"
+    && load.arguments.first() == Present { value: "load" }
+    && load.arguments.skip(n: 1).first() == Present { value: "-i" }
+    && load.arguments.skip(n: 2).first() == Present { value: "/tmp/x.tar" }
 }
 
 // THE scp OPERANDS KEEP THEIR DIRECTION: download carries the remote operand first, upload
@@ -146,12 +146,12 @@ test fn the_scp_operand_direction_is_fixed() -> Bool {
   let down = scp_download_command(trust_words: trust, principal: "exec" as NonEmptyStr, endpoint: "h1" as NonEmptyStr, remote_path: "/tmp/r.tar" as NonEmptyStr, local_path: "/tmp/l.tar" as NonEmptyStr)
   let up = scp_upload_command(trust_words: trust, principal: "exec" as NonEmptyStr, endpoint: "h1" as NonEmptyStr, local_path: "/tmp/l.tar" as NonEmptyStr, remote_path: "/tmp/r.tar" as NonEmptyStr)
   down.arguments.length() == 4
-    && down.arguments.first() == "-o"
-    && down.arguments.skip(n: 2).first() == "exec@h1:/tmp/r.tar"
-    && down.arguments.skip(n: 3).first() == "/tmp/l.tar"
+    && down.arguments.first() == Present { value: "-o" }
+    && down.arguments.skip(n: 2).first() == Present { value: "exec@h1:/tmp/r.tar" }
+    && down.arguments.skip(n: 3).first() == Present { value: "/tmp/l.tar" }
     && up.arguments.length() == 4
-    && up.arguments.skip(n: 2).first() == "/tmp/l.tar"
-    && up.arguments.skip(n: 3).first() == "exec@h1:/tmp/r.tar"
+    && up.arguments.skip(n: 2).first() == Present { value: "/tmp/l.tar" }
+    && up.arguments.skip(n: 3).first() == Present { value: "exec@h1:/tmp/r.tar" }
 }
 
 // THE DISTRIBUTION ROSTER IS THE ARM MINUS THE SOURCE: delivering to the host that built the

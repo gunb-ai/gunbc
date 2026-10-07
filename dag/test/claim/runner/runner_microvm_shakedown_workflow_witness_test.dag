@@ -20,8 +20,8 @@ test fn the_shakedown_job_asks_for_the_provenance_label_and_the_attempt_alone() 
   match microvm_shakedown_job(script: "").runner {
     SelfHosted { labels: ls } =>
       count(ls) == 2
-        && ls[0] == self_hosted_provenance_label
-        && ls[1] == microvm_shakedown_attempt_expression()
+        && ls[0] == Present { value: self_hosted_provenance_label }
+        && ls[1] == Present { value: microvm_shakedown_attempt_expression() }
     _ => false
   }
 }

@@ -210,7 +210,7 @@ test fn r2_object_read_create_request_cites_the_documented_permission_group_id()
         jurisdiction: R2JurisdictionDefault,
         bucket_name: "my-bucket"
       )
-    )) == "*"
+    )) == Present { value: "*" }
     && all(
       policy.permission_groups,
       g => g.id == workers_r2_storage_bucket_item_read_permission_group_id

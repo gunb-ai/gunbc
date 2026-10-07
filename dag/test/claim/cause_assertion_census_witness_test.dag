@@ -233,7 +233,7 @@ test fn cause_census_unsupported_import_is_explicitly_unestablished() -> Bool {
   }])
   match observation {
     CauseSourceImportProjectionUnestablished { path: path, tokens: tokens } =>
-      path == "future_import.dag" && count(tokens) == 1 && tokens[0].start == 3
+      path == "future_import.dag" && count(tokens) == 1 && tokens[0].start == Present { value: 3 }
         && string_contains(s: cause_source_observation_report(path: path, observation: observation),
           pattern: "IMPORT_PROJECTION_UNESTABLISHED\tfuture_import.dag\t3\t4")
     _ => false
