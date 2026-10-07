@@ -23811,7 +23811,33 @@ pub fn unify_generics(
                         }
                     }
                 } else {
-                    break acc.clone();
+                    let f_el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                        formal.clone(),
+                        source_indices.clone(),
+                    );
+                    let a_el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                        actual.clone(),
+                        source_indices.clone(),
+                    );
+                    if (type_node_label(f_el.clone(), source_indices.clone())
+                        != type_node_label(formal.clone(), source_indices.clone())
+                        || ((f_el.children.clone().len() as i64)
+                            != (formal.children.clone().len() as i64)))
+                    {
+                        let __tco_0 = f_el;
+                        let __tco_1 = a_el;
+                        let __tco_2 = generic_names;
+                        let __tco_3 = source_indices;
+                        let __tco_4 = acc;
+                        __tco_loop_formal = __tco_0;
+                        __tco_loop_actual = __tco_1;
+                        __tco_loop_generic_names = __tco_2;
+                        __tco_loop_source_indices = __tco_3;
+                        __tco_loop_acc = __tco_4;
+                        continue;
+                    } else {
+                        break acc.clone();
+                    }
                 }
             }
         }
