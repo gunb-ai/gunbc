@@ -12109,7 +12109,7 @@ pub fn type_is_bare_collection_carrier(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    formal_type_is_container_name(n.clone(), source_indices)
+    formal_type_is_unary_container(n.clone(), source_indices)
         && ((n.children.clone().len() as i64) != 1)
 }
 
