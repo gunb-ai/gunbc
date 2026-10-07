@@ -1,0 +1,101 @@
+module gunbc.harness.harness_tool_kind
+
+import std.types { List, String }
+
+// A LEAF, AND DELIBERATELY ONE. The harness turn WRITES the item kind of each tool use into the
+// attempt's event stream and gunbc.roadmap_provider_events READS it back. The reader sits beneath
+// the harness in the import graph (harness_turn reaches it through roadmap_submission), so the
+// declaration both ends share cannot live in gunbc.harness.harness_tool, whose closure carries the
+// wire decoder and the fleet endpoints. It lives here, importing nothing but String, and
+// harness_tool consumes it like every other reader.
+
+// WHICH TOOL, as a closed set rather than a name compared at the call site. An unknown tool name off
+// the wire is a REFUSAL below, never a dispatch to a default.
+type HarnessTool
+  = RunCommandTool
+  | ReadFileTool
+  | WriteFileTool
+  | EditFileTool
+
+fn harness_tool_wire_name(tool: HarnessTool) -> String {
+  match tool {
+    RunCommandTool => "run_command"
+    ReadFileTool => "read_file"
+    WriteFileTool => "write_file"
+    EditFileTool => "edit_file"
+  }
+}
+
+// THE CLOSED VARIANT LIST, the one place the four tools are enumerated as values. Both inverses
+// below fold over it and compare against the forward function, so a spelling lives only in the
+// forward match and adding a tool is one variant, one match arm, and one entry here.
+fn all_harness_tools() -> List<HarnessTool> {
+  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool]
+}
+
+type HarnessToolRead
+  = HarnessToolRecognized { tool: HarnessTool }
+  | HarnessToolUnrecognized { name: String }
+
+// THE INVERSE OF harness_tool_wire_name, derived rather than respelled. A name no tool's forward
+// spelling equals stays a REFUSAL carrying that name.
+fn harness_tool_of_wire_name(name: String) -> HarnessToolRead {
+  fold(all_harness_tools(), init: HarnessToolUnrecognized { name: name }, f: (acc, t) =>
+    if harness_tool_wire_name(tool: t) == name {
+      HarnessToolRecognized { tool: t }
+    } else {
+      acc
+    })
+}
+
+// THE ITEM KIND A TOOL USE IS WRITTEN AS IN THE EVENT STREAM, spelled once and read in both
+// directions. harness_turn's emitter calls harness_tool_read_item_type; the provider-event reader
+// calls harness_tool_item_read, whose recognized arms compare against harness_tool_item_type rather
+// than against a second copy of the strings, so the two ends cannot disagree about a spelling.
+//
+// run_command takes the item type the Codex provider already uses for a command, because the
+// harness emits that provider's stream schema and a command is the same activity in both. The three
+// file tools have no Codex counterpart: Codex's file_change is a patch item that does not separate
+// reading from writing from a single-match edit, so each gets its own kind.
+fn harness_tool_item_type(tool: HarnessTool) -> String {
+  match tool {
+    RunCommandTool => "command_execution"
+    ReadFileTool => "file_read"
+    WriteFileTool => "file_write"
+    EditFileTool => "file_edit"
+  }
+}
+
+// A TOOL USE WHOSE NAME THE HARNESS DOES NOT DECLARE IS WRITTEN AS EXACTLY THAT. The dispatcher
+// refuses it (ToolUnrecognized); the event stream says so rather than labelling the refusal as a
+// command that never ran.
+data harness_unrecognized_tool_item_type: String = "unrecognized_tool"
+
+fn harness_tool_read_item_type(read: HarnessToolRead) -> String {
+  match read {
+    HarnessToolRecognized { tool: t } => harness_tool_item_type(tool: t)
+    HarnessToolUnrecognized { name: _ } => harness_unrecognized_tool_item_type
+  }
+}
+
+// THE INVERSE. ItemIsNotAHarnessToolUse is not a refusal: the stream also carries item types the
+// harness does not own (the Codex provider's, and the harness's own agent_message), and the reader
+// that owns those classifies them.
+type HarnessToolItemRead
+  = ItemIsHarnessToolUse { tool: HarnessTool }
+  | ItemIsUnrecognizedToolUse
+  | ItemIsNotAHarnessToolUse
+
+fn harness_tool_item_read(item_type: String) -> HarnessToolItemRead {
+  let unowned = if item_type == harness_unrecognized_tool_item_type {
+    ItemIsUnrecognizedToolUse
+  } else {
+    ItemIsNotAHarnessToolUse
+  }
+  fold(all_harness_tools(), init: unowned, f: (acc, t) =>
+    if harness_tool_item_type(tool: t) == item_type {
+      ItemIsHarnessToolUse { tool: t }
+    } else {
+      acc
+    })
+}
