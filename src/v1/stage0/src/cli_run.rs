@@ -30145,8 +30145,8 @@ pub fn dependency_resolution_facts(
 ///
 /// WHAT IT DOES NOT DEMAND is the corpus. The declared-module index is the process-cached
 /// `build_module_path_index` the population read also consults; the reference half's pool name
-/// index is built only when the importer carries no `import` line, which is the one case whose
-/// edges depend on other files' names. An importer the population would not walk -- outside every
+/// index is built for every readable importer, since a reference edge depends on other files'
+/// names whether or not the importer carries `import` lines. An importer the population would not walk -- outside every
 /// pool root, or matched by an exclusion -- answers the empty list, as the population carries no
 /// row for it; so does an unreadable one, whose import half the population walk also skips.
 pub fn dependency_resolution_facts_at(
@@ -30179,8 +30179,7 @@ pub fn dependency_resolution_facts_at(
         entry_resolve::FileReferenceEdges::Edges(edges) => {
             reference_edges_as_import_facts(&edges, /* strict */ true)
         }
-        entry_resolve::FileReferenceEdges::ImportBearing
-        | entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
+        entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
     };
     union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
@@ -37307,6 +37306,83 @@ mod output_policy_decode_tests {
             Err(e) => e,
         };
         assert!(err.contains("progress"), "refusal names the channel: {err}");
+    }
+}
+
+#[cfg(test)]
+mod import_bearing_reference_edges {
+    //! An `import` line does not own a module's edge set: the producer unions reference edges for
+    //! every importer. Supplied fixture (pool names handed in), no corpus resolve.
+
+    use super::*;
+
+    fn names() -> entry_resolve::ReferencePoolNames {
+        entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: [
+                "v2.std.artifact",
+                "v2.std.refinement",
+                "v2.std.node",
+                "v2.std.layer",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        }
+    }
+
+    const IMPORTING: &str =
+        "module v2.std.artifact\nimport v2.std.node\nfn g() -> Int { v2.std.refinement.k }\n";
+    const IMPORTLESS: &str = "module v2.std.artifact\nfn g() -> Int { v2.std.refinement.k }\n";
+
+    fn edge_targets(src: &str, imports_only_mutant: bool) -> Vec<String> {
+        if imports_only_mutant && !extract_import_paths(src).is_empty() {
+            return Vec::new();
+        }
+        let n = names();
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file("v2/std/artifact.dag", Some(src), &n)
+        else {
+            panic!("a parsed file has edges");
+        };
+        let import_edges = entry_resolve::import_facts_for_file("v2/std/artifact.dag", src, |m| {
+            n.module_names.contains(m)
+        });
+        union_dedup_import_facts_reference_first(
+            entry_resolve::reference_edges_as_import_facts(&edges, true),
+            import_edges,
+        )
+        .into_iter()
+        .map(|f| f.import_module)
+        .collect()
+    }
+
+    /// RED: the qualified reference to a module the file does not import is an edge.
+    #[test]
+    fn an_import_bearing_file_carries_its_unimported_reference_edge() {
+        let t = edge_targets(IMPORTING, false);
+        assert!(t.contains(&"v2.std.refinement".to_string()), "{t:?}");
+        assert!(t.contains(&"v2.std.node".to_string()), "{t:?}");
+    }
+
+    /// The imports-only mutant is the pre-fix producer; the RED must reject it.
+    #[test]
+    fn the_imports_only_mutant_fails_the_red() {
+        let t = edge_targets(IMPORTING, true);
+        assert!(!t.contains(&"v2.std.refinement".to_string()));
+    }
+
+    /// Control: an import-less file's reference edges are the same under both producers.
+    #[test]
+    fn an_importless_file_is_unchanged() {
+        assert_eq!(
+            edge_targets(IMPORTLESS, false),
+            edge_targets(IMPORTLESS, true)
+        );
+        assert_eq!(
+            edge_targets(IMPORTLESS, false),
+            vec!["v2.std.refinement".to_string()]
+        );
     }
 }
 

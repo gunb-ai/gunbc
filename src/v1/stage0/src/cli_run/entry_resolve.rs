@@ -3155,9 +3155,6 @@ impl ReferenceSelectionTier {
 
 /// One file's answer from the reference-edge producer.
 pub(crate) enum FileReferenceEdges {
-    /// The file carries `import` lines: its edges are owned EXACTLY by `import_resolution_facts`,
-    /// and emitting reference edges for it would only over-connect.
-    ImportBearing,
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
@@ -3338,9 +3335,10 @@ pub(crate) fn reference_edges_for_file(
 }
 
 /// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
-/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
-/// never builds the whole-pool heads index; only an import-less file, whose references must be
-/// resolved against pool names, forces it.
+/// file is decided from its own bytes and never builds the whole-pool heads index. EVERY readable
+/// file, import-bearing or not, answers its reference edges: an `import` line declares some of a
+/// module's dependencies, not all of them (`v2.std.artifact` imports three modules and reaches
+/// `v2.std.refinement` only by qualified reference), so imports never own a file's edge set.
 pub(crate) fn reference_edges_for_file_on_demand<
     R: std::ops::Deref<Target = ReferencePoolNames>,
 >(
@@ -3351,9 +3349,6 @@ pub(crate) fn reference_edges_for_file_on_demand<
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
-    if !extract_import_paths(content).is_empty() {
-        return FileReferenceEdges::ImportBearing;
-    }
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
@@ -3490,7 +3485,6 @@ pub fn reference_resolution_facts(
             }
             let content = std::fs::read_to_string(&file).ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
-                FileReferenceEdges::ImportBearing => {}
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {
                     unaccounted.push(ReferenceAccountingRefusal {
