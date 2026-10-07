@@ -24,7 +24,7 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.node_query { field_projection_node }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // The subject is the refusal body lowering gives a lowered shape no reader recognises
 // (v2.compiler.body_lowering_fold body_lower_is_unrecognised_lowered_shape), so the inputs are

@@ -4,7 +4,7 @@ import std.algebra { trim }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, GitRef }
 import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.realization_reconcile {
   ReconciledEffect, Application, Applied, NotApplied,

@@ -1,7 +1,7 @@
 module gunbc.dispatch_selection
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
-import v2.std.optional { optional_absent, optional_present }
+import std.optional { optional_absent, optional_present }
 import extdeps.llm.cli {
   ProviderModelSelection,
   ProviderAccountDefaultModel,

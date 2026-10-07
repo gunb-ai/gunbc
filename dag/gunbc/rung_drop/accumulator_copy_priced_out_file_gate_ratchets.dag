@@ -1,0 +1,38 @@
+module gunbc.rung_drop.accumulator_copy_priced_out_file_gate_ratchets
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for six accumulator-copy roster `file_gate` walks that left executing
+// `test fn`s (DESIGN 4b(3)): five large-file 300s-census walks, plus glob_discovery_law whose
+// interpreted ingest exceeds the required floor's 8s changed-witness wall. The census is
+// out-of-gate; the cap is not raised; the required floor is not the enrollment surface.
+// Restoration is native or otherwise affordable ingest of those live subjects as claims, not a
+// local claim_batch green.
+// ============================================================================================
+data accumulator_copy_priced_out_file_gate_ratchets: RungDrop = RungDrop {
+  identity: "accumulator_copy_priced_out_file_gate_ratchets" as NonEmptyStr,
+
+  subject: "interpreted file_gate ratchets over lean.dag, bash.dag, swift.dag, 00_compile.dag, analyze.dag, and glob_discovery_law.dag from v2.test.claim.complexity.accumulator_copy_roster_gate_*",
+
+  declared: "2026-10-06",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "interpreted file_gate as 300s census test fns over those live files; family remains operator-ruled offline (gunbc.offline_local_recipe policy accumulator_copy_roster_gate_exclusion_note)" },
+    population: [
+      "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash roster_lean_file_gate_walk",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash roster_bash_file_gate_walk",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate_swift roster_swift_file_gate_walk",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_compile_stage_file_gate_walk",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_lens_traversal_file_gate_walk",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_glob_discovery_file_gate_walk",
+    ],
+    restoration_trigger: "an executing census or lane with a declared ceiling can ingest those six live subjects as claims (native ingest, or interpreted ingest whose per-file cost fits the 300s census and whose glob walk fits the 8s changed-witness wall) so the six identities are test fns that call file_gate and reach PASS or a discriminating RED on that run. Passing under claim_batch is the declared state, not the trigger."
+  }
+}

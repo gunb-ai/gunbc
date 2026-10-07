@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtcollins1_ui_bundle_observe_witness_test
 
 import std.types { Bool, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
 import gunbc.machine_intake_mtcollins1_ui_bundle_observe {

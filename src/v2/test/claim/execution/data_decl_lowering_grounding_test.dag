@@ -41,7 +41,7 @@ import v2.std.node {
   edge_is_core,
   StructuralLabel,
 }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.algebra { fold_list }
 import v2.std.text { String }
 

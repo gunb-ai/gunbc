@@ -131,7 +131,7 @@ pub fn kernel_mint_declaration_rows() -> Rc<Vec<Rc<KernelMintDeclaration>>> {
             static CACHED: Rc<Vec<Rc<KernelMintDeclaration>>> = {
                 Rc::new(vec![Rc::new(KernelMintDeclaration {
         minted_name: kernel_optional_mint_name(),
-        declaration: crate::std_decl_ref::decl_ref("v2.std.optional".to_string(), "Optional".to_string()),
+        declaration: crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string()),
     })])
             };
         }
