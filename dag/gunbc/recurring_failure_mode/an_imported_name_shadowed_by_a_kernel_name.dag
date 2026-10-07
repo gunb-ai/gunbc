@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_imported_name_shadowed_by_a_kernel_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_imported_name_shadowed_by_a_kernel_name" as NonEmptyStr,
+
+  receipts: [
+    "an imported name shadowed by a kernel name -- residual after the Optional mint wall. v1.compiler.infer_env overlay_skips_kernel_name still sits above imports for the kernel types, the container spellings, Unit, Optional, Present, and Absent. lookup_binding still answers from env.bindings (declarations and named imports) before that overlay. INVALID STATE: one spelling, one module, two declarations, chosen by which lookup asks. The Optional instance of that fork is CLOSED: v1.compiler.resolve imported_type_collides_with_kernel_mint refuses a non-mint Optional import (gunbc.recurring_failure_mode.import_collides_with_a_kernel_name). The enrolled regression control is test.claim.infer_kernel_import_collision_witness importing_a_non_mint_optional_refuses_at_the_import (ImportCollidesWithKernelName). Names with no kernel_mint_declaration_rows row are KernelNamedImportAdmitted, so the two-lookup fork remains writable for every overlay_skips spelling that is not Optional.",
+
+    "RESIDUAL POPULATION: overlay_skips_kernel_name minus the one minted name. kernel_type_set is String, Int, Bool, Float, Secret, Json, Unit, Bytes; containers ride is_container_type; Present and Absent are listed beside Optional. Only Optional has a mint row (std.optional Optional). A module that declares a type of any other overlay name and is imported by that name is still admitted on v1, and the overlay can still disagree with lookup_binding. Dual-representation imports (v2.std.text String via carrier_by_spelling) are a declared admitted population, not this class -- a second String is a carrier pair, not a silent mint leak. A rival Int, List, Present, or other overlay spelling that is not a dual-rep carrier is this class.",
+
+    "HARM on the residual: silent wrongness (DESIGN section 5) wherever two readers take different paths on a non-mint overlay name. The Optional emit specimen (HeldChoice<present_value>) is historical of the closed instance; it is not the current red. FOUND 2026-10-06 on gunbc#13454 as the Optional instance; retargeted 2026-10-07 (cursor review 77440) once that instance climbed.",
+
+    "CURRENT RUNG: below the floor on the v1 residual -- the non-mint overlay import is still unrefused, so the two lookups can still disagree. The Optional path is mechanically preventable and is owned by import_collides_with_a_kernel_name; this row does not claim that rung. v2 already refuses an imported user Int at the reference (v2.test.claim.body_let_annotation bla_imported_user_int_refuses_rather_than_binding_the_kernel_int); that is a different class (kernel_type_spelling_captured_a_module_declaration) on a different compiler. ATTAINABLE CEILING: structurally guaranteed -- the residual collision is decidable at the import from overlay_skips_kernel_name and the mint-row set. NEXT-RUNG TRIGGER: the v1 import wall covers every overlay_skips spelling the same way Optional is covered (mint row or equivalent DeclarationRef ownership), except the declared dual-representation carriers, so a non-mint overlay import is unwritable and the two lookups can no longer disagree about it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "overlay_skips_kernel_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "lookup_binding", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.literal_elaboration", decl_name: "kernel_named_import_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.structural_realization_bindings", decl_name: "kernel_mint_declaration_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.import_collides_with_a_kernel_name", decl_name: "import_collides_with_a_kernel_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_kernel_import_collision_witness", decl_name: "importing_a_non_mint_optional_refuses_at_the_import", field: WholeDeclaration },
+  ],
+}
