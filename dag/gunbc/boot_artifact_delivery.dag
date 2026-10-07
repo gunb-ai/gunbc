@@ -1,7 +1,9 @@
 module gunbc.boot_artifact_delivery
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.uri { Uri }
 import product.placement_supply { SiteIdentity }
@@ -204,6 +206,46 @@ type UefiHttpDeliveryStanding
   = UefiHttpDeliveryEstablished { target: BootDeliveryTarget, params: UefiHttpBootParams, evidence: List<DeclarationRef> }
   | UefiHttpDeliveryUnestablished { missing: List<UefiHttpRequirement> }
 
+// BMC-HOSTED SHELL BOOT is the network boot that needs neither a site DHCP edge
+// nor a firmware PXE client. The controller itself serves the bootstrap (kernel,
+// initrd, autoinstall seed) from its own shell over TFTP/HTTP, and the host,
+// directed into its UEFI Shell by the boot-control route, fetches and starts it
+// with shell commands sent over serial-over-LAN. It exists because a firmware
+// PXE client can be off from the factory (the ASRock ALTRAD8UD needed a setup
+// visit to enable it, #7027), and a setup visit is not remotely actuatable.
+// Its failure owners are the controller's shell, its serve, the SOL channel and
+// the host's shell, so its requirements are its own, split from PXE and from
+// UEFI HTTP exactly as those two are split from each other.
+type BmcHostedShellBootRequirement
+  = BmcHostedShellBootControllerShellObserved
+  | BmcHostedShellBootServeObserved
+  | BmcHostedShellBootSolSendObserved
+  | BmcHostedShellBootUefiShellObserved
+  | BmcHostedShellBootArtifacts
+
+data bmc_hosted_shell_boot_requirements_all: List<BmcHostedShellBootRequirement> = [
+  BmcHostedShellBootControllerShellObserved,
+  BmcHostedShellBootServeObserved,
+  BmcHostedShellBootSolSendObserved,
+  BmcHostedShellBootUefiShellObserved,
+  BmcHostedShellBootArtifacts,
+]
+
+// What the realization binds: where on the controller the bootstrap is served
+// from, which host interface the shell fetches over, and the digest of the
+// bootstrap the serve was observed holding. The controller endpoint is not
+// repeated here: it is the bound target's.
+type BmcHostedShellBootParams {
+  serve_port: Port
+  serve_dir: NonEmptyStr
+  host_boot_interface: NonEmptyStr
+  artifact_digest: ContentHash
+}
+
+type BmcHostedShellBootStanding
+  = BmcHostedShellBootEstablished { target: BootDeliveryTarget, params: BmcHostedShellBootParams, evidence: List<DeclarationRef> }
+  | BmcHostedShellBootUnestablished { missing: List<BmcHostedShellBootRequirement> }
+
 // THE BOOT-CONTROL TARGET, protocol-neutral. Which BMC operation sets it — a
 // Redfish BootSourceOverrideTarget, an IPMI bootdev — is realization bound to
 // the route the profile exposes, and the IPMI-controlled no-Redfish MegaRAC
@@ -212,6 +254,7 @@ type BootControlTarget
   = BootFromRemovableMedia
   | BootFromNetworkPxe
   | BootFromUefiHttp
+  | BootFromUefiShell
 
 // THE DELIVERY COPRODUCT. Each arm carries exactly the parameters its
 // realization binds; the PXE arm carries the four-axis establishment because
@@ -223,6 +266,7 @@ type BootArtifactDelivery
   | OpenBmcConfigfsUsbGadget { params: ConfigfsGadgetParams }
   | UefiHttpBoot { params: UefiHttpBootParams }
   | PxeChainBoot { evidence: NetworkBootDeliveryEstablishment }
+  | BmcHostedShellBoot { params: BmcHostedShellBootParams }
 
 fn boot_artifact_delivery_boot_control(delivery: BootArtifactDelivery) -> BootControlTarget {
   match delivery {
@@ -232,6 +276,7 @@ fn boot_artifact_delivery_boot_control(delivery: BootArtifactDelivery) -> BootCo
     OpenBmcConfigfsUsbGadget { params: _ } => BootFromRemovableMedia
     UefiHttpBoot { params: _ } => BootFromUefiHttp
     PxeChainBoot { evidence: _ } => BootFromNetworkPxe
+    BmcHostedShellBoot { params: _ } => BootFromUefiShell
   }
 }
 
@@ -304,6 +349,7 @@ type BoundBootDeliveryEvidence {
   configfs: TargetBoundReinstallPathStanding
   uefi_http: UefiHttpDeliveryStanding
   network_boot: NetworkBootDeliveryStanding
+  bmc_hosted_shell: BmcHostedShellBootStanding
 }
 
 // THE PREFERENCE IS POLICY, NOT SOURCE ORDER (ruling §2), and it is a separate
@@ -324,6 +370,7 @@ type BootDeliveryCandidate
   | CandidateOpenBmcConfigfsUsbGadget
   | CandidateUefiHttpBoot
   | CandidatePxeChainBoot
+  | CandidateBmcHostedShellBoot
 
 fn boot_delivery_preference_order(preference: BootDeliveryPreference) -> List<BootDeliveryCandidate> {
   match preference {
@@ -334,6 +381,7 @@ fn boot_delivery_preference_order(preference: BootDeliveryPreference) -> List<Bo
       CandidateOpenBmcConfigfsUsbGadget,
       CandidateUefiHttpBoot,
       CandidatePxeChainBoot,
+      CandidateBmcHostedShellBoot,
     ]
   }
 }
@@ -364,6 +412,7 @@ type BootDeliveryCandidateIneligibility
   | CandidateConfigfsUnestablished { missing: List<ConfigfsTransportRequirement> }
   | CandidateConfigfsRefused { observed_absent: List<ConfigfsTransportRequirement> }
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
+  | CandidateBmcHostedShellBootUnestablished { missing: List<BmcHostedShellBootRequirement> }
   | CandidateNetworkBootUnestablished { missing: List<NetworkBootRequirement> }
   | CandidateNetworkBootEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
   | CandidateNetworkBootArchitectureRefused { cause: NetworkBootArchitectureRefusal }
@@ -454,6 +503,7 @@ type SelectedCandidateEvidence
   | SelectedFromConfigfsQualification { qualified_by: List<TransportProbeObservation> }
   | SelectedFromUefiHttpEvidence { evidence: List<DeclarationRef> }
   | SelectedFromNetworkBootEstablishment { establishment: NetworkBootDeliveryEstablishment }
+  | SelectedFromBmcHostedShellBootEvidence { evidence: List<DeclarationRef> }
 
 // Where the plan's eligibility came from: the profile's producer, the evidence
 // manifest the intersection was judged against, the selected candidate's own
@@ -676,6 +726,18 @@ fn uefi_http_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
   }
 }
 
+fn bmc_hosted_shell_boot_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
+  match ev.bmc_hosted_shell {
+    BmcHostedShellBootEstablished { target: t, params: p, evidence: _ } =>
+      if same_boot_delivery_target(left: t, right: request.target) == false {
+        CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: t } }
+      } else {
+        staged_digest_standing(offered: p.artifact_digest, requested: request.artifact.digest)
+      }
+    BmcHostedShellBootUnestablished { missing: m } => CandidateIneligible { cause: CandidateBmcHostedShellBootUnestablished { missing: m } }
+  }
+}
+
 fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   match ev.network_boot {
     NetworkBootDeliveryEstablished { evidence: e } =>
@@ -734,6 +796,7 @@ fn boot_delivery_candidate_verdicts(
     BootDeliveryCandidateVerdict { candidate: CandidateOpenBmcConfigfsUsbGadget, standing: configfs_usb_gadget_candidate(ev: ev, request: request) },
     BootDeliveryCandidateVerdict { candidate: CandidateUefiHttpBoot, standing: uefi_http_candidate(ev: ev, request: request) },
     BootDeliveryCandidateVerdict { candidate: CandidatePxeChainBoot, standing: pxe_chain_candidate(ev: ev, request: request) },
+    BootDeliveryCandidateVerdict { candidate: CandidateBmcHostedShellBoot, standing: bmc_hosted_shell_boot_candidate(ev: ev, request: request) },
   ]
 }
 
@@ -863,6 +926,12 @@ fn build_boot_artifact_delivery(
         NetworkBootDeliveryTrustRefused { cause: _ } => none
         NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => none
         NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => none
+      }
+    CandidateBmcHostedShellBoot =>
+      match ev.bmc_hosted_shell {
+        BmcHostedShellBootEstablished { target: _, params: p, evidence: evs } =>
+          Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: BmcHostedShellBoot { params: p }, selected: SelectedFromBmcHostedShellBootEvidence { evidence: evs } } }
+        BmcHostedShellBootUnestablished { missing: _ } => none
       }
   }
 }
@@ -1071,3 +1140,15 @@ fn boot_delivery_candidate_standing_of(
     f: (acc, v) => if v.candidate == candidate { v.standing } else { acc },
   )
 }
+
+// The BMC-hosted shell boot is a consumed candidate with no producer yet: the
+// solver reads its standing and witnesses supply it.
+data boot_artifact_delivery_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.boot_artifact_delivery", decl_name: "BmcHostedShellBootStanding"),
+    reason: "no producer in this tree mints BmcHostedShellBootEstablished; gunbc.bmc_netboot_serve stages and launches the controller-side serve for srv4 from its own constants, and the SOL send, the host's UEFI Shell reachability and the served bootstrap's digest are not yet observed into this standing, so BoundBootDeliveryEvidence.bmc_hosted_shell is constructed only by witnesses",
+    dissolution: unbound_dissolution(
+      description: "dissolves when one producer, given a bound target, observes the controller shell, reads back the served bootstrap's digest from the controller's serve, observes a SOL send and the host's UEFI Shell prompt for that target, and binds the result into BoundBootDeliveryEvidence.bmc_hosted_shell on a real boot attempt, with each unobserved requirement left in missing; a witness over supplied standings does not fire this"
+    )
+  ),
+]

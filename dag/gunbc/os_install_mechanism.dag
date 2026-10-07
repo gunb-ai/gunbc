@@ -67,6 +67,7 @@ import gunbc.boot_artifact_delivery {
   OpenBmcConfigfsUsbGadget,
   OpenBmcNbdProxyWebsocket,
   PxeChainBoot,
+  BmcHostedShellBoot,
   RedfishVirtualMediaPull,
   UefiHttpBoot,
 }
@@ -133,6 +134,7 @@ fn os_install_mechanism_of_plan(plan: BootDeliveryPlan) -> OsInstallMechanismSol
     MegaRacRestRemoteMedia { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
     OpenBmcConfigfsUsbGadget { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
     UefiHttpBoot { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
+    BmcHostedShellBoot { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
   }
 }
 

@@ -8,6 +8,7 @@ import gunbc.boot_artifact_delivery {
   OpenBmcConfigfsUsbGadget,
   OpenBmcNbdProxyWebsocket,
   PxeChainBoot,
+  BmcHostedShellBoot,
   RedfishVirtualMediaPull,
   UefiHttpBoot,
 }
@@ -121,5 +122,8 @@ fn staging_capabilities_required_for(delivery: BootArtifactDelivery) -> List<Int
     OpenBmcConfigfsUsbGadget { params: _ } => [NbdArtifactDelivery]
     UefiHttpBoot { params: _ } => [HttpArtifactDelivery]
     PxeChainBoot { evidence: _ } => [DhcpDnsObservation, PxeArtifactDelivery, HttpArtifactDelivery]
+    // The controller serves its own bootstrap, so no site staging service is required;
+    // the serve is a requirement of the delivery's own standing, not a staging capability.
+    BmcHostedShellBoot { params: _ } => []
   }
 }

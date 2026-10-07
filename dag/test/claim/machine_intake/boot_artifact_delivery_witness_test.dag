@@ -164,11 +164,15 @@ import gunbc.boot_artifact_delivery {
   CandidateConfigfsUnestablished,
   CandidateEvidenceForOtherTarget,
   CandidateIneligible,
+  CandidateEligible,
+  BootDeliveryCandidateStanding,
   CandidateLiveSurfaceAbsent,
   CandidateNetworkBootUnestablished,
   CandidateOemParameterUnset,
   CandidateOpenBmcConfigfsUsbGadget,
   CandidatePxeChainBoot,
+  CandidateBmcHostedShellBoot,
+  CandidateBmcHostedShellBootUnestablished,
   CandidateRedfishProbeAbsent,
   CandidateRedfishProbeBelowPlanFloor,
   CandidateRedfishProbeContradictory,
@@ -195,6 +199,12 @@ import gunbc.boot_artifact_delivery {
   OpenBmcConfigfsUsbGadget,
   PreferStandardRedfishThenOemThenNetwork,
   PxeChainBoot,
+  BmcHostedShellBoot,
+  BmcHostedShellBootParams,
+  BmcHostedShellBootStanding,
+  BmcHostedShellBootEstablished,
+  BmcHostedShellBootUnestablished,
+  BootFromUefiShell,
   RedfishImageOffer,
   RedfishVirtualMediaPull,
   SelectedFromConfigfsQualification,
@@ -204,6 +214,7 @@ import gunbc.boot_artifact_delivery {
   boot_delivery_candidate_standing_of,
   solve_boot_artifact_delivery,
   uefi_http_requirements_all,
+  bmc_hosted_shell_boot_requirements_all,
 }
 import gunbc.os_install_mechanism {
   InstallAccessProfileNotLookedUp,
@@ -555,11 +566,14 @@ data configfs_unestablished: TargetBoundReinstallPathStanding = target_bound_rei
 
 data network_boot_unestablished: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all }
 
+data bmc_hosted_shell_unestablished: BmcHostedShellBootStanding = BmcHostedShellBootUnestablished { missing: bmc_hosted_shell_boot_requirements_all }
+
 fn evidence_of(access: BoundBmcAccessContextStanding, configfs: TargetBoundReinstallPathStanding, network_boot: NetworkBootDeliveryStanding) -> BoundBootDeliveryEvidence {
   BoundBootDeliveryEvidence {
     access: access,
     configfs: configfs,
     uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
+    bmc_hosted_shell: bmc_hosted_shell_unestablished,
     network_boot: network_boot,
   }
 }
@@ -1103,6 +1117,7 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
     access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)),
     configfs: target_bound_reinstall_path(target: target, observations: every_configfs_probe_for(t: other_attempt_target)),
     uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
+    bmc_hosted_shell: bmc_hosted_shell_unestablished,
     network_boot: network_boot_unestablished,
   }
   match solve_boot_artifact_delivery(request: request_with(staging: staging_all), ev: ev, policy: policy) {
@@ -1259,6 +1274,76 @@ test fn established_network_boot_naming_the_artifact_selects_pxe_and_another_dig
     BootDeliveryPlanned { plan: _ } => false
   }
   pxe_planned && pxe_refused && other_target_refused
+}
+
+fn established_bmc_hosted_shell_for(t: BootDeliveryTarget, digest: ContentHash) -> BmcHostedShellBootStanding {
+  BmcHostedShellBootEstablished {
+    target: t,
+    params: BmcHostedShellBootParams {
+      serve_port: 8080,
+      serve_dir: "/tmp/netboot",
+      host_boot_interface: "eth2",
+      artifact_digest: digest,
+    },
+    evidence: [DeclarationRef { module_path: "test.claim.boot_artifact_delivery_witness_test", decl_name: "established_bmc_hosted_shell_for", field: WholeDeclaration }],
+  }
+}
+
+fn evidence_with_shell(network_boot: NetworkBootDeliveryStanding, shell: BmcHostedShellBootStanding) -> BoundBootDeliveryEvidence {
+  BoundBootDeliveryEvidence {
+    access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)),
+    configfs: configfs_unestablished,
+    uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
+    network_boot: network_boot,
+    bmc_hosted_shell: shell,
+  }
+}
+
+fn shell_candidate_cause(solution: BootDeliverySolution) -> BootDeliveryCandidateStanding {
+  match solution {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } => boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateBmcHostedShellBoot)
+        _ => CandidateEligible
+      }
+    BootDeliveryPlanned { plan: _ } => CandidateEligible
+  }
+}
+
+// POSITIVE CONTROL — a BMC with no PXE and no virtual media, whose controller
+// was observed serving the requested bootstrap, plans the BMC-hosted shell boot
+// with the UEFI-shell boot-control target.
+// PREFERENCE — the same evidence beside an established PXE path plans PXE: the
+// BMC-hosted path is the last-ranked network delivery, never a peer of PXE.
+// REDS — a serve holding other bytes, or established for another controller,
+// is ineligible for the named cause; no evidence is Unestablished with every
+// requirement missing.
+test fn bmc_hosted_shell_boot_is_selected_only_when_established_and_outranked_by_pxe() -> Bool {
+  let request = request_with(staging: boot_artifact_staging_unbound)
+  let shell_only = solve_boot_artifact_delivery(request: request, ev: evidence_with_shell(network_boot: network_boot_unestablished, shell: established_bmc_hosted_shell_for(t: target, digest: intake_artifact.digest)), policy: policy)
+  let shell_planned = match shell_only {
+    BootDeliveryPlanned { plan: p } =>
+      (match p.delivery { BmcHostedShellBoot { params: _ } => true _ => false }) && p.boot_control == BootFromUefiShell
+    BootDeliveryRefused { cause: _ } => false
+  }
+  let both = solve_boot_artifact_delivery(request: request, ev: evidence_with_shell(network_boot: established_network_boot_for(t: target, digest: intake_artifact.digest), shell: established_bmc_hosted_shell_for(t: target, digest: intake_artifact.digest)), policy: policy)
+  let pxe_wins = match both {
+    BootDeliveryPlanned { plan: p } => match p.delivery { PxeChainBoot { evidence: _ } => true _ => false }
+    BootDeliveryRefused { cause: _ } => false
+  }
+  let wrong_bytes = match shell_candidate_cause(solution: solve_boot_artifact_delivery(request: request, ev: evidence_with_shell(network_boot: network_boot_unestablished, shell: established_bmc_hosted_shell_for(t: target, digest: other_digest)), policy: policy)) {
+    CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateStagedArtifactMismatch { offered: _, requested: _ } => true _ => false }
+    CandidateEligible => false
+  }
+  let wrong_controller = match shell_candidate_cause(solution: solve_boot_artifact_delivery(request: request, ev: evidence_with_shell(network_boot: network_boot_unestablished, shell: established_bmc_hosted_shell_for(t: other_controller_target, digest: intake_artifact.digest)), policy: policy)) {
+    CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => t.endpoint == other_controller _ => false }
+    CandidateEligible => false
+  }
+  let unobserved = match shell_candidate_cause(solution: solve_boot_artifact_delivery(request: request, ev: evidence_with_shell(network_boot: network_boot_unestablished, shell: bmc_hosted_shell_unestablished), policy: policy)) {
+    CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateBmcHostedShellBootUnestablished { missing: m } => list_length(m) == 5 _ => false }
+    CandidateEligible => false
+  }
+  shell_planned && pxe_wins && wrong_bytes && wrong_controller && unobserved
 }
 
 // THE FROZEN PROJECTION reads the solver's answer and nothing else: a plan
