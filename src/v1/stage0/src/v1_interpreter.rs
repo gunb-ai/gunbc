@@ -839,37 +839,6 @@ pub(crate) fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
 
-/// An optional is carried in two representations by the seed evaluator: the nominal
-/// `Optional` variants (`Present { value }` / `Absent`) and the bare form (the element itself,
-/// or `Null`) that `first()`, `get()` and optional fields produce. `==` between the two used to
-/// answer `false` (or a straddle refusal for numbers). When exactly one side is the nominal form
-/// it is read as the bare form it denotes, so one value compares equal to itself in either carrier.
-fn canonical_optional_pair(left: Value, right: Value, ctx: &InterpContext) -> (Value, Value) {
-    fn nominal(v: &Value, ctx: &InterpContext) -> bool {
-        matches!(v, Value::Variant { type_name, .. } if ctx.resolve(*type_name) == "Optional")
-    }
-    fn bare(v: Value, ctx: &InterpContext) -> Value {
-        if let Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } = &v
-        {
-            match ctx.resolve(*variant_name).as_str() {
-                "Present" => return ctx.field(fields, "value").cloned().unwrap_or(Value::Null),
-                "Absent" => return Value::Null,
-                _ => {}
-            }
-        }
-        v
-    }
-    match (nominal(&left, ctx), nominal(&right, ctx)) {
-        (true, false) => (bare(left, ctx), right),
-        (false, true) => (left, bare(right, ctx)),
-        _ => (left, right),
-    }
-}
-
 fn optional_present(value: Value, ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Optional"),
@@ -4085,34 +4054,6 @@ mod typed_module_index_tests {
             diagnostics: Rc::new(im_vec![]),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
-    }
-
-    #[test]
-    fn present_compares_equal_to_the_bare_value_it_wraps_and_absent_to_null() {
-        use super::{eval_binop, optional_absent, optional_present, BinOp, Value};
-        let ctx = ctx();
-        let s = |x: &str| Value::Str(x.into());
-        let eq = |l: Value, r: Value| match eval_binop(&BinOp::Eq, l, r, &ctx) {
-            Ok(Value::Bool(b)) => b,
-            other => panic!("expected a Bool, got {:?}", other.is_ok()),
-        };
-        assert!(
-            eq(optional_present(s("x"), &ctx), s("x")),
-            "Present{{x}} == x"
-        );
-        assert!(
-            eq(s("x"), optional_present(s("x"), &ctx)),
-            "x == Present{{x}}"
-        );
-        assert!(
-            !eq(optional_present(s("x"), &ctx), s("y")),
-            "Present{{x}} != y"
-        );
-        assert!(eq(optional_absent(&ctx), Value::Null), "Absent == null");
-        assert!(
-            !eq(optional_present(s("x"), &ctx), Value::Null),
-            "Present{{x}} != null"
-        );
     }
 
     #[test]
@@ -8783,7 +8724,6 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
     }
 
     if matches!(op, BinOp::Eq | BinOp::Ne) {
-        let (left, right) = canonical_optional_pair(left, right, ctx);
         let equal = left == right;
         if !equal {
             if let Some(detail) = cross_representation_numeric_straddle(&left, &right) {
