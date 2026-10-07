@@ -538,10 +538,6 @@ fn spark_claimed_serving_group_members() -> List<ClaimedServingGroupMember> {
   spark_claimed_members_under(authorities: spark_pair_serving_authorities)
 }
 
-fn spark_claimed_serving_group_hosts() -> List<HostIdentity> {
-  map(spark_claimed_serving_group_members(), m => m.host)
-}
-
 // THE STANDINGS OVER SUPPLIED AUTHORITIES. The resting projection below hands in the source rows
 // (pure, the population every pure consumer reads); the effectful admission seams hand in the
 // CURRENT authorities read from the event log (spark_host_standings_current), so an effect that

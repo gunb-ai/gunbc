@@ -71,13 +71,6 @@ fn spark_credential_occurrence(host: HostIdentity, kind: SparkCredentialKind) ->
   SparkCredentialOccurrence { host: host, kind: kind }
 }
 
-// THE POPULATION WAS srv5 AND srv6, the first Spark pair, and both were decommissioned with Group A on
-// 2026-10-07 (operator; sold). It is empty rather than deleted because the allocation and custody
-// machinery below still names the credential classes; a new Spark's bootstrap credentials are new rows.
-fn spark_credential_population() -> List<SparkCredentialOccurrence> {
-  [] as List<SparkCredentialOccurrence>
-}
-
 fn spark_occurrence_eq(a: SparkCredentialOccurrence, b: SparkCredentialOccurrence) -> Bool {
   a.host == b.host && spark_credential_kind_eq(a: a.kind, b: b.kind)
 }

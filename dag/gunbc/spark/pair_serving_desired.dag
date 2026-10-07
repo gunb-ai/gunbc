@@ -471,13 +471,6 @@ fn spark_pair_serving_unit(group: FabricGroup) -> SparkPairServingUnit {
 
 data spark_pair_serving_desired: List<SparkPairServingUnit> = map(spark_pair_serving_groups, g => spark_pair_serving_unit(group: g))
 
-fn spark_pair_serving_unit_hosts(u: SparkPairServingUnit) -> List<HostIdentity> {
-  match u {
-    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } => concat([h.host], map(ws, w => w.host))
-    SparkPairServingUnitRefused { group: _, cause: _ } => [] as List<HostIdentity>
-  }
-}
-
 // THE HEAD OF A GROUP'S DESIRED UNIT, for a reader that must ask the host whose engine exports the
 // group's endpoint. A refused unit has no head, and a group not on the roster has none either;
 // both are Absent rather than a fabricated host.
@@ -492,10 +485,6 @@ fn spark_pair_group_head_host(group: FabricGroup) -> HostIdentity? {
           SparkPairServingUnitRefused { group: _, cause: _ } => none
         }
     })
-}
-
-fn spark_pair_serving_desired_hosts() -> List<HostIdentity> {
-  flat_map(spark_pair_serving_desired, u => spark_pair_serving_unit_hosts(u: u))
 }
 
 fn participant_wire(p: SparkPairServingParticipant) -> String {

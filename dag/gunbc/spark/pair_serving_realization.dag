@@ -649,31 +649,6 @@ fn spark_pair_realizations() -> List<SparkPairRealization> {
   map(spark_pair_serving_desired, u => spark_pair_realization(unit: u))
 }
 
-data spark_pair_no_realization_names_group_obligation: NonEmptyStr = "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr
-
-// THE GROUP-LEVEL PRODUCER: render the head unit for this group once, digest it once. Callers hold
-// the resulting standing for the lifetime of their transaction rather than calling this again --
-// harness_bind_seat is the least common ancestor of every consumer and calls it once per bind.
-fn spark_pair_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRender {
-  match first(filter(spark_pair_realizations(), r =>
-    match r {
-      SparkPairRealizationRefused { group: g, cause: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
-      SparkPairRealized { group: g, head: _, workers: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
-    })) {
-    Absent =>
-      SparkPairUnitRenderRefused {
-        unit_name: spark_pair_head_unit_name,
-        cause: spark_pair_no_realization_names_group_obligation,
-      }
-    Present { value: r } =>
-      match r {
-        SparkPairRealizationRefused { group: _, cause: c } =>
-          SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: c }
-        SparkPairRealized { group: _, head: h, workers: _ } => h.unit
-      }
-  }
-}
-
 // THE GROUP'S DECLARED HEAD UNIT IS ITS OWN ARM'S. Group A is served by the pair realization and its
 // head unit is rendered here; group B is served by the native four-rank arm, whose head unit
 // gunbc.spark.native_serving_realization glm_native_head_unit_render renders from the arm's own
