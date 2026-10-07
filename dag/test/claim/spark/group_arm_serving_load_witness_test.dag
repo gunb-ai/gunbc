@@ -3,7 +3,7 @@ module test.claim.spark.group_arm_serving_load_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, microsecond }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.linux.psi { PsiRead }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }

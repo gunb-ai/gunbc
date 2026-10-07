@@ -2,7 +2,7 @@ module extdeps.vllm.kv_dtype_capability
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 import extdeps.vllm.engine_args {

@@ -112,7 +112,7 @@ fn rt_concat_trait() -> String {
     "    fn v1_concat(mut self, other: String) -> String { self.push_str(&other); self }\n",
     "}\n\n",
     "impl<T: Clone> V2Concat for Vec<T> {\n",
-    "    fn v1_concat(mut self, other: Vec<T>) -> Vec<T> { self.extend(other); self }\n",
+    "    fn v1_concat(mut self, other: Vec<T>) -> Vec<T> { self.append(other); self }\n",
     "}\n\n",
     "pub fn concat<T: V2Concat>(a: T, b: T) -> T { a.v1_concat(b) }\n\n")
 }
@@ -253,7 +253,7 @@ fn rt_collection_ops() -> String {
     "    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| Rc::ptr_eq(x, y))\n",
     "}\n\n",
     "pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> { m.values().cloned().collect() }\n\n",
-    "pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }\n\n",
+    "pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.append(b); a }\n\n",
     "pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> { list.push_back(item); list }\n\n",
     "/// std.primitives skip_contract on the persistent carrier: the suffix after `n` members,\n",
     "/// sharing the receiver's tree in O(log n) instead of copying the remainder, so a walk that\n",
@@ -852,7 +852,7 @@ fn rt_rc_container_ops() -> String {
     "}\n\n",
     "pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {\n",
     "    let mut result = a;\n",
-    "    Rc::make_mut(&mut result).extend(b.iter().cloned());\n",
+    "    Rc::make_mut(&mut result).append((*b).clone());\n",
     "    result\n",
     "}\n\n",
     "// Every rc_* update here rides a persistent carrier (im HashMap/Vector/\n",

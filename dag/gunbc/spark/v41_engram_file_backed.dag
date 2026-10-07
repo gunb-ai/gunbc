@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size_count, Microsecond, microsecond, microsecond_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { filter, length, skip }
 import std.list { distinct_by_key }
 import gunbc.spark.v41_engram_row_store {

@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, d
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { hardware_thread_count_value, byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.gpu.types {
   GpuComputeCapability, GpuCapabilityLabelOk, GpuCapabilityLabelRejected, gpu_compute_capability_sm_label,
 }

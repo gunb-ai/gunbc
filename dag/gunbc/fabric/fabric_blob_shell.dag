@@ -2,7 +2,7 @@ module gunbc.fabric.fabric_blob_shell
 
 import std.types { String, NonEmptyStr, List, Bool }
 import v2.std.node { Node }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {

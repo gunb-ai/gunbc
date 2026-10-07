@@ -12,6 +12,7 @@ pub use crate::std_machine_constraints::PointerWidth;
 pub use crate::std_machine_constraints::{Compose, MachineWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::gt_zero;
 pub use crate::std_types::List;
 use crate::v1_rt;
@@ -128,7 +129,13 @@ pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Optio
                     break Some(o.clone());
                 }
                 UInt8Result::UInt8Ready { value: _, .. } => {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     __tco_loop_remaining = __tco_0;
                     continue;
                 }

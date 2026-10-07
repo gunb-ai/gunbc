@@ -358,7 +358,12 @@ pub fn iteration_element_name(
     {
         let params = crate::v1_std_core::lambda_param_names_at(lambda.clone(), si.clone());
         match method_callback_element_position(method_semantics.clone()) {
-            Some(pos) => params.clone().get((pos.clone()) as usize).cloned(),
+            Some(pos) => params
+                .clone()
+                .iter()
+                .cloned()
+                .skip(pos.clone() as usize)
+                .next(),
             std::option::Option::None => std::option::Option::None,
         }
     }
@@ -514,15 +519,15 @@ pub fn parser_state_arg_expr(
                     let idx = pair.0.clone();
                     let arg_node = pair.1.clone();
                     let matches_state =
-                        if (crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone())
-                            .as_deref()
-                            != Some("".to_string()).as_deref())
-                        {
-                            (crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone())
-                                .as_deref()
-                                == Some(state_param.name.clone()).as_deref())
-                        } else {
-                            (idx.clone() == state_param.index.clone())
+                        match crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone()) {
+                            Some(label) => {
+                                if (label.clone() != "".to_string()) {
+                                    (label.clone() == state_param.name.clone())
+                                } else {
+                                    (idx.clone() == state_param.index.clone())
+                                }
+                            }
+                            std::option::Option::None => (idx.clone() == state_param.index.clone()),
                         };
                     if matches_state.clone() {
                         Some(crate::v1_std_core::arg_value(arg_node.clone()))
@@ -705,10 +710,14 @@ pub fn parser_block_state_progress(
     match stmts.clone().last().cloned() {
         std::option::Option::None => DescentEvidence::DescentUnknown,
         Some(last_stmt) => {
-            let leading = Rc::new(v1_rt::list_take(
-                &stmts.clone(),
-                v1_rt::int_sub((stmts.clone().len() as i64), 1),
-            ));
+            let leading = Rc::new(
+                stmts
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
+                    .collect::<Vec<_>>(),
+            );
             let final_env = leading.iter().cloned().fold(
                 env.clone(),
                 |acc_env: Rc<ParserProgressEnv>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
@@ -1355,10 +1364,13 @@ pub fn parser_success_progress(
                 }
             }
             ExprData::ExprBlock => {
-                let prefix = v1_rt::reverse(Rc::new(v1_rt::list_skip(
-                    &v1_rt::reverse(expr.children.clone()),
-                    1,
-                )));
+                let prefix = v1_rt::reverse(Rc::new(
+                    v1_rt::reverse(expr.children.clone())
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                ));
                 let acc = prefix.iter().cloned().fold(
                     Rc::new(ParserProgressAcc {
                         edges: Rc::new(vec![]),
@@ -1474,7 +1486,14 @@ pub fn infer_parser_always_advancing_members_worklist(
         let mut si = __tco_loop_si;
         match queue.clone().first().cloned() {
             Some(name) => {
-                let rest = Rc::new(v1_rt::list_skip(&queue.clone(), 1));
+                let rest = Rc::new(
+                    queue
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 if set_has(proven.clone(), name.clone()) {
                     {
                         let __tco_0 = rest.clone();
@@ -10201,8 +10220,10 @@ pub fn merge_param_evidence(
         DescentEvidence::Strict,
         |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
             .clone()
-            .get((param_index.clone()) as usize)
+            .iter()
             .cloned()
+            .skip(param_index.clone() as usize)
+            .next()
         {
             Some(rel) => crate::std_termination::descent_evidence_lattice_meet(
                 acc.clone(),
@@ -10225,8 +10246,10 @@ pub fn extract_shrink_factor(
             std::option::Option::None => std::option::Option::None,
             Some(prev) => match call_evidence
                 .clone()
-                .get((param_index.clone()) as usize)
+                .iter()
                 .cloned()
+                .skip(param_index.clone() as usize)
+                .next()
             {
                 Some(rel) => match (*rel.clone()).clone() {
                     SubValueRelation::StrictSubValue { factor: f, .. } => {
@@ -10278,8 +10301,10 @@ pub fn max_path_descending(
                     match de.clone() {
                         Some(evidence) => match evidence
                             .clone()
-                            .get((param_index.clone()) as usize)
+                            .iter()
                             .cloned()
+                            .skip(param_index.clone() as usize)
+                            .next()
                         {
                             Some(rel) => match (*rel.clone()).clone() {
                                 SubValueRelation::StrictSubValue { .. } => 1,
@@ -10395,8 +10420,10 @@ pub fn distinct_descended_fields(
             |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| {
                 match call_evidence
                     .clone()
-                    .get((param_index.clone()) as usize)
+                    .iter()
                     .cloned()
+                    .skip(param_index.clone() as usize)
+                    .next()
                 {
                     Some(rel) => match (*rel.clone()).clone() {
                         SubValueRelation::StrictSubValue { field: f, .. } => {

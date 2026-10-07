@@ -13,6 +13,7 @@ pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -548,10 +549,14 @@ pub fn occurrence_id_list_is_prefix_of(
                         Some(head) => {
                             if occurrence_id_eq(head.clone(), expected.clone()) {
                                 Rc::new(OccurrenceIdListPrefixAcc {
-                                    path_remaining: Rc::new(v1_rt::list_skip(
-                                        &acc.path_remaining.clone(),
-                                        1,
-                                    )),
+                                    path_remaining: Rc::new(
+                                        acc.path_remaining
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .collect::<Vec<_>>(),
+                                    ),
                                     ok: true,
                                 })
                             } else {

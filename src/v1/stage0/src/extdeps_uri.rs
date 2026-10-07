@@ -18,6 +18,7 @@ use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
 use self::UriValidatedScalarConstruction::*;
 pub use crate::std_algebra::trim;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::std_unicode_types::{
     unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
@@ -117,15 +118,18 @@ pub fn uri_from_wire(url: String) -> Option<Rc<Uri>> {
             ParsedHrefScheme::UnknownHref => std::option::Option::None,
             ParsedHrefScheme::HrefScheme { scheme: scheme, .. } => {
                 let prefix = uri_scheme_wire(scheme.clone());
-                let locator = Rc::new(v1_rt::list_skip(
-                    &Rc::new(
+                let locator = Rc::new(
+                    Rc::new(
                         s.clone()
                             .split(&prefix.clone())
                             .map(|s| s.to_string())
                             .collect::<Vec<_>>(),
-                    ),
-                    1,
-                ))
+                    )
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+                )
                 .join(&prefix.clone());
                 if (v1_rt::starts_with(s.clone(), prefix.clone())
                     && !(locator.clone() == "".to_string()))
@@ -963,8 +967,7 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
     outcomes.iter().cloned().fold(
         std::option::Option::None,
-        |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
-         outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
+        |acc: _, outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => match (*outcome.clone()).clone() {
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
