@@ -3,7 +3,7 @@ module gunbc.machine_intake_host_capture_historical_binding
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import std.measure { ByteSize }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
   host_capture_argv_open,

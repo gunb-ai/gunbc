@@ -1,7 +1,7 @@
 module gunbc.heal_publication_boundary
 
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
 import extdeps.github.workflow_runs {

@@ -11,7 +11,7 @@ import std.content_hash {
 }
 import extdeps.realization.emit_on_demand_host { ObservedToolIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.disposition { Disposition, Terminal }
 
 // THE RELATION IS TERMINAL; ITS PRODUCTION STANDING IS A STALL. Two facts, kept apart, because

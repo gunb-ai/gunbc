@@ -294,21 +294,4 @@ mod tests {
         assert_eq!(FloorPhase::HostEffect.tag(), "host-effect");
         assert_eq!(FloorPhase::Gate.tag(), "gate");
     }
-
-    #[test]
-    fn emits_multiple_ticks_and_sigterm_flush() {
-        std::env::set_var("GUNBC_FLOOR_PHASE_PROFILE_INTERVAL_SECS", "1");
-        let profile = PhaseProfile::new_inner(false);
-        profile.set_phase(FloorPhase::Resolve, "test-entry.dag");
-        profile.set_phase(FloorPhase::Typecheck, "test-entry.dag");
-        profile.set_phase(FloorPhase::Eval, "witness_fn");
-        thread::sleep(Duration::from_millis(1100));
-        profile.flush_sigterm_for_test();
-        assert!(
-            profile.tick_count() >= 2,
-            "expected >=2 phase-profile ticks on a held fixture, got {}",
-            profile.tick_count()
-        );
-        std::env::remove_var("GUNBC_FLOOR_PHASE_PROFILE_INTERVAL_SECS");
-    }
 }

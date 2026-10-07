@@ -20454,8 +20454,6 @@ pub fn emit_func_def(
             inferred.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
-            emit_info.variant_to_enum.clone(),
-            scope.type_env.clone(),
         );
         let body_scope = crate::v1_compiler_infer::build_params_scope(
             Rc::new(InferScope {
@@ -20925,19 +20923,15 @@ pub fn emit_func_inferred(
     inferred: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
             " -> Result<".to_string(),
-            render_rust_fn_sig_type(
+            render_rust_type(
                 inferred.clone(),
-                Rc::new(vec![]),
                 shared_types.clone(),
                 source_indices.clone(),
-                variant_to_enum.clone(),
-                env.clone(),
+                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
             ),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
@@ -24831,6 +24825,24 @@ pub fn rust_empty_map_kv_type_str(
     }
 }
 
+pub fn type_node_carries_erased_type_argument(n: Rc<Node>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let mut __found = false;
+        for c in n.children.clone().iter().cloned() {
+            if {
+                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                (((t.inferred.clone() != std::option::Option::None)
+                    && crate::v1_std_core::is_compiler_error(t.inferred.clone().clone().unwrap()))
+                    || type_node_carries_erased_type_argument(t.clone()))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
 pub fn rust_empty_map_init_expr(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -24848,13 +24860,14 @@ pub fn rust_empty_map_init_expr(
                 "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
             )
         } else {
-            if rust_fold_rendered_type_has_any_spurious_generic(
+            if (rust_fold_rendered_type_has_any_spurious_generic(
                 v1_rt::concat(
                     v1_rt::concat("<".to_string(), kv_type_str.clone()),
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
-            ) {
+            ) || type_node_carries_erased_type_argument(map_type.clone()))
+            {
                 "v1_rt::rc_empty_map::<_, _>()".to_string()
             } else {
                 v1_rt::concat(
