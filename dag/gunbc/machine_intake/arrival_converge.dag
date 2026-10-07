@@ -724,7 +724,18 @@ fn discharge_bmc_secure_apply(
       if grant_discharges_bmc_secure_account_write(g: g, host: host) {
         Present { value: instance_authorization(key: key, principal: g.principal) }
       } else {
-        none
+        match inputs.capability {
+          Present { value: r } =>
+            if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
+              match r {
+                RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
+                RedemptionRefused { cause: _ } => none
+              }
+            } else {
+              none
+            }
+          Absent => none
+        }
       }
     Absent =>
       match inputs.capability {
