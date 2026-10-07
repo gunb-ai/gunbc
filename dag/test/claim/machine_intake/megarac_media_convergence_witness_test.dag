@@ -487,9 +487,8 @@ test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
   }
 }
 
-// THE CODE IS A LATCHED LAST-STOP REASON; ONLY 16 (DEVICE EJECTED) IS GROUNDED, on the executed receipt
-// of boot run 36721915217. 18:37Z: code 16 while the re-attached
-// image read Started, session 0 -- a healthy presentation with the reason the stale image's stop left.
+// THE CODE IS A RAW OBSERVATION; no meaning is established for it. 18:37Z (boot run 36721915217): code 16
+// while the re-attached image read Started, session 0.
 data cd_clean: CdErrorReading = CdErrorRead { code: CdErrorNone }
 data cd_16: CdErrorReading = cd_error_reading(body: mtcollins1_media_general_2026_09_27, firmware: megarac_firmware_0_32)
 
