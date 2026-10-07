@@ -303,7 +303,7 @@ fn symbol_index_bare_declarations(index: SymbolIndex, name: String) -> List<Node
 }
 
 // A NAMED IMPORT is followed the way lookup_binding follows it: a module that itself imports the name
-// by name re-exports it (v2.std.collection imports v2.std.optional { Optional }), so the chain is
+// by name re-exports it (v2.std.collection imports std.optional { Optional }), so the chain is
 // walked to the module that DECLARES the name. A chain that ends in a module holding no such
 // declaration, or that does not end within the bound, is Undecided and refuses; it never falls
 // through to the kernel.

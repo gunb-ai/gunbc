@@ -745,7 +745,7 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
 
 // THE IDENTITY OF AN ARM WHOSE OWNER IS A KERNEL MINT. A mint that a
 // gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds to a corpus
-// declaration answers with THAT declaration (the kernel Optional is v2.std.optional Optional), so
+// declaration answers with THAT declaration (the kernel Optional is std.optional Optional), so
 // the arm has one identity whether it was reached through `T?` or through an import. A mint with
 // no row is a kernel type or it is unrecovered, as before.
 fn kernel_mint_parent_identity(minted_name: String) -> VariantParentIdentity {
@@ -7037,7 +7037,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // with the absence intact, so it is left to validate_cast.
 //
 // WAS `source_name == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
-// names reach here qualified as often as not, so a source typed `v2.std.optional.Optional`
+// names reach here qualified as often as not, so a source typed `std.optional.Optional`
 // was not recognised as optional at all and its cast escaped OptionalCastNotEliminated
 // entirely. qualified_last_segment is the authority this file already uses for exactly this
 // question (nominal_call_arg_brand_mismatch, is_set_collection); asking it here is using the
@@ -15199,7 +15199,7 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
 
 // THE SEED'S ONE MINT OF THE OPTIONAL COPRODUCT. `T?` resolves to this node in every kernel scope
 // this module builds; it was written out three times, once per builder. It is a mint and not the
-// declaration: a module that uses `T?` need not hold v2.std.optional in its closure. Which
+// declaration: a module that uses `T?` need not hold std.optional in its closure. Which
 // declaration it stands for is gunbc.structural_realization_bindings kernel_mint_declaration_rows,
 // and kernel_mint_shape_diagnostics refuses if the two stop agreeing.
 fn kernel_optional_type_node() -> Node {

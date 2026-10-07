@@ -56,7 +56,7 @@ type TypeSummary {
 // (type_decl_identity: owner module and declared name, the key TypeDeclIndex uses), and a
 // variant-payload summary under `<identity>::<Variant>`. The leaf-keyed map this replaces kept ONE
 // summary per leaf -- whichever module was folded last -- so a second `Optional` anywhere in a
-// closure replaced v2.std.optional's summary for every reader in every module
+// closure replaced std.optional's summary for every reader in every module
 // (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer).
 type TypeSummaryIndex {
   by_key: Map<String, TypeSummary>

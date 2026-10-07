@@ -5162,7 +5162,7 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
 //                       vocabulary, so Vec and BTreeSet -- the Rust spellings of List and Set --
 //                       slip a filter built to remove exactly this.
 //   (b) OUT-OF-CLOSURE  empty_map 33, Optional 25, and Optional's VARIANTS Present 47 and Absent 13
-//                       -- REAL .dag declarations in v2.std.collection and v2.std.optional whose
+//                       -- REAL .dag declarations in v2.std.collection and std.optional whose
 //                       providers were not selected into the measured closure. Movable, and
 //                       precisely the closure-conditioned class this change exists to surface.
 //
