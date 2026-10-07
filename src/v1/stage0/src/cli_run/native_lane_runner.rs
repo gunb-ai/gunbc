@@ -416,7 +416,7 @@ fn prepare_emitted_compiler_for_entry(
             }
             super::native_product_cache::Lookup::Refused { cause } => eprintln!(
                 "v2-native-route: native product REFUSED entry={entry} key={} cause={cause} — \
-                 entry removed, rebuilding",
+                 entry left in place, rebuilding",
                 key.digest
             ),
             super::native_product_cache::Lookup::Miss => eprintln!(

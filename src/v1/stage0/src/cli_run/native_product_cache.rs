@@ -201,7 +201,7 @@ pub(super) enum Lookup {
         manifest: Box<Manifest>,
     },
     Miss,
-    /// The entry existed and failed verification; it has been removed and the caller rebuilds.
+    /// The entry existed and failed verification; it is left in place (a read never mutates the store) and the caller rebuilds.
     Refused {
         cause: String,
     },
@@ -373,7 +373,7 @@ mod tests {
         ));
     }
 
-    // A corrupted cached executable is refused, removed, and the next lookup is a plain miss.
+    // A corrupted cached executable is refused and left in place, so the next lookup refuses it again.
     #[test]
     fn corrupted_executable_is_refused_and_left_for_the_writer() {
         let root = scratch("corrupt");
