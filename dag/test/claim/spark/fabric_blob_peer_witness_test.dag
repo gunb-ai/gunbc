@@ -39,7 +39,7 @@ test fn the_daemon_exports_the_blob_root_read_only() -> Bool {
 // answers and the unit that started it owns its lifetime.
 test fn the_daemon_binds_the_rail_address_in_the_foreground() -> Bool {
   let argv = rsync_daemon_foreground_argv(address: "192.168.110.12" as NonEmptyStr, port: 873, config_path: fabric_blob_rsyncd_conf_path)
-  argv.first() == Present { value: "rsync" }
+  (match argv.first() { Present { value: __v } => __v == "rsync"  Absent => false })
     && any(argv, w => w == "--daemon")
     && any(argv, w => w == "--no-detach")
     && any(argv, w => w == "--address=192.168.110.12")
@@ -59,7 +59,7 @@ test fn the_peer_source_pulls_the_digest_from_the_rail_into_staging() -> Bool {
   match src.locator {
     SourceUrl { url: _ } => false
     SourceArgv { argv: a } =>
-      a.first() == Present { value: "rsync" }
+      (match a.first() { Present { value: __v } => __v == "rsync"  Absent => false })
         && any(a, w => w == "--partial")
         && any(a, w => w == join(["rsync://192.168.110.12:873/blobs/", fixture_hex as String], ""))
         && any(a, w => w == (fabric_blob_staging_path(hex: fixture_hex) as String))
