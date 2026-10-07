@@ -93,7 +93,7 @@ pub enum Commands {
         /// Fnv1a64Structural bundle digest printed by the plan; required for --mode apply
         #[arg(long, default_value = "")]
         plan_hash: String,
-        /// Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere
+        /// Spark target host; required for scope:spark-serving, refused elsewhere
         #[arg(long, default_value = "")]
         target: String,
         /// Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout
