@@ -182,7 +182,6 @@ fn ccr_declared_any_refuses() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
-}
 
 // (1) MAP OVER RECORDS READS A FIELD: the callback's binder `e` is the step's member formal, typed by the
 // domain element Pair, so `e.target` projects a declared field and infer raises no projection refusal.
