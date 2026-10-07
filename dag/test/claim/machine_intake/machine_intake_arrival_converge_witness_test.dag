@@ -84,7 +84,7 @@ import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
   completed_bmc_account_application, bmc_account_action_plan_with_subject,
   BmcAccountPlanned, BmcAccountPlanRefused, PublishedAccountRetired, ManagedCredentialReference,
-  BmcSecurePhaseNoop, BmcSecurePhaseApplied, BmcSecurePhaseConverged, bmc_secure_phase_applied,
+  BmcSecurePhaseNoop, BmcSecurePhaseApplied,
   bmc_secure_state_finding_label,
   admit_stored_generation, admit_fetched_generation, dry_bmc_account_instant,
   GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused, ManagedCredentialGenerationFetched,
@@ -435,17 +435,19 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
         bytes: "break-glass-generation-4!",
       ) {
         Absent => none
-        Present { value: bg } =>
+        Present { value: bg } => {
+          let managed_route = cited_mtjade1_managed_route()
+          let published_route = cited_mtjade1_published_route()
           match plan_bmc_account_action(
             subject: subject,
             goal: mtjade1_bmc_goal(),
             reading: reading,
             managed_user: mtjade1_managed_ipmi_user,
-            managed_route: cited_mtjade1_managed_route(),
-            managed_approval: mtjade1_rotation_approval(s: cited_mtjade1_managed_route(), user: mtjade1_managed_ipmi_user),
+            managed_route: managed_route,
+            managed_approval: mtjade1_rotation_approval(s: managed_route, user: mtjade1_managed_ipmi_user),
             managed_generation: mg,
-            published_route: cited_mtjade1_published_route(),
-            published_approval: mtjade1_rotation_approval(s: cited_mtjade1_published_route(), user: mtjade1_published_ipmi_user),
+            published_route: published_route,
+            published_approval: mtjade1_rotation_approval(s: published_route, user: mtjade1_published_ipmi_user),
             published_generation: bg,
             channel_close: none,
             planned_at: dry_bmc_account_instant(millis: mtjade1_bmc_plan_at),
@@ -459,9 +461,27 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
                 published_fetch: mtjade1_ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: "break-glass-generation-4!"),
                 applied_at_millis: mtjade1_bmc_apply_at,
               )
-              Present { value: BmcSecureApplyInputs { application: step.application, post_read: reading } }
+              let post_read = dry_read_bmc_account_state(
+                world: step.world,
+                subject: subject,
+                endpoint: mtjade1_bmc_endpoint(),
+                firmware: mtjade1_bmc_firmware(),
+                managed: p.goal.managed,
+                managed_user: mtjade1_managed_ipmi_user,
+                managed_password: mtjade1_managed_password_v2,
+                census: census_value,
+                published_user: mtjade1_published_ipmi_user,
+                published_password: "admin",
+                published_account: PublishedAccountRetired,
+                break_glass: p.goal.published_break_glass,
+                break_glass_password: "break-glass-generation-4!",
+                attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
+                read_at_millis: mtjade1_bmc_readback_at,
+              )
+              Present { value: BmcSecureApplyInputs { application: step.application, post_read: post_read } }
             }
           }
+        }
       }
   }
 }
@@ -1086,49 +1106,27 @@ test fn w_bmc_secure_apply_discharge_for_another_unit_refuses() -> Bool {
   apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
 }
 
-fn mtjade1_held_post_read(subject: MachineIntakeSubject, goal: BmcSecureGoal) -> BmcAccountStateObservation
-  admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
-  ]
-{
-  dry_read_bmc_account_state(
-    world: mtjade1_account_world(
-      users: [BmcIpmiUser { id: 3, password: mtjade1_managed_password_v2 }, BmcIpmiUser { id: 2, password: "break-glass-generation-4!" }],
-      published_lan_privilege_closed: true,
-    ),
-    subject: subject,
-    endpoint: mtjade1_bmc_endpoint(),
-    firmware: mtjade1_bmc_firmware(),
-    managed: goal.managed,
-    managed_user: mtjade1_managed_ipmi_user,
-    managed_password: mtjade1_managed_password_v2,
-    census: mtjade1_bmc_census(published_lan_privilege_closed: true),
-    published_user: mtjade1_published_ipmi_user,
-    published_password: "admin",
-    published_account: PublishedAccountRetired,
-    break_glass: goal.published_break_glass,
-    break_glass_password: "break-glass-generation-4!",
-    attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
-    read_at_millis: mtjade1_bmc_readback_at,
-  )
-}
-
 test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
-  let subject = mtjade1_intake_subject()
-  match mtjade1_dry_applied_bmc(subject: subject) {
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
     Present { value: apply } =>
-      grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
-        && match bmc_secure_phase_applied(
-          application: apply.application,
-          post_read: mtjade1_held_post_read(subject: subject, goal: apply.application.plan.goal),
-        ) {
-          BmcSecurePhaseConverged { receipt: r } => match r.decision {
-            BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => true
-            BmcSecurePhaseNoop { observation: _ } => false
+      match converge_mtjade1_arrival_through_bmc_secure(
+        run: run_a,
+        prior_life: prior_life_minimal_dry_world(),
+        bmc: mtjade1_bmc_inputs(
+          reading: apply.application.plan.diverged,
+          grant: Present { value: mtjade1_live_standing_grant },
+          apply: Present { value: apply },
+          host: operator_host_mtjade1,
+        ),
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunConverged { run: r } => length(xs: r.ledger.instances) == 4
+            _ => false
           }
-          _ => false
-        }
+        _ => false
+      }
   }
 }
 
