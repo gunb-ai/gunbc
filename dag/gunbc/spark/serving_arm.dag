@@ -534,6 +534,19 @@ type OperatorQualificationEnd
   = OperatorQualificationVerdictRecorded
   | PromotionReceiptProducersLand
 
+// THE ONE RULING ON RECORD: the operator, 2026-10-07 (relayed by valiant-crab-775) -- GLM-5.3-Flash NVFP4
+// on Group A at four-rank TP4 on the KVPLAN-v2 Group A build, for the operator's qualification against fp8.
+data glm53_nvfp4_8_operator_qualification: OperatorQualificationRuling = OperatorQualificationRuling {
+  ruled_by: "the operator" as NonEmptyStr,
+  ruled_on: "2026-10-07" as NonEmptyStr,
+  relayed_by: "valiant-crab-775" as NonEmptyStr,
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  runtime: GunbcGlm53KvplanV2GroupAProduced,
+  topology: FourSparkTp4,
+  group: FabricGroupA,
+  ends_when: [OperatorQualificationVerdictRecorded, PromotionReceiptProducersLand],
+}
+
 // THE RULING ADMITS EXACTLY ITS OWN SUBJECT. A launch whose checkpoint, runtime, topology or group differs
 // from the ruling's is refused, naming both.
 fn operator_qualification_subject_refusal(ruling: OperatorQualificationRuling, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> NonEmptyStr? {

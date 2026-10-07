@@ -31,7 +31,7 @@ data operator_qualification_serve_waives_promotion_receipts: RungDrop = RungDrop
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: OperatorWaiver { ruling: "the operator, 2026-10-07 (relayed by valiant-crab-775): Group A may serve GLM-5.3-Flash nvfp4-8 persistently for the operator's own qualification against GLM-5.3-Flash fp8 on Group B, as gunbc.spark.serving_arm ArmOperatorQualificationServing with the ruling gunbc.spark.glm53_arm_staircase glm53_nvfp4_8_operator_qualification" },
+    reason: OperatorWaiver { ruling: "the operator, 2026-10-07 (relayed by valiant-crab-775): Group A may serve GLM-5.3-Flash nvfp4-8 persistently for the operator's own qualification against GLM-5.3-Flash fp8 on Group B, as gunbc.spark.serving_arm ArmOperatorQualificationServing with the ruling gunbc.spark.serving_arm glm53_nvfp4_8_operator_qualification" },
     population: [
       "gunbc.spark.glm53_arm_staircase glm53_step_intent at Glm53Nvfp4Step Nvfp4Seats8 on FabricGroupA (checkpoint Glm53FlashNvidiaNvfp4, runtime GunbcGlm53KvplanV2GroupAProduced, topology FourSparkTp4): the only subject the ruling admits",
     ],

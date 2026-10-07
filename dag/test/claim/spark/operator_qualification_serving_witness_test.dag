@@ -7,7 +7,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_arm {
   ArmIntent, ArmBoundedExperiment, ArmNormalServing, ArmOperatorQualificationServing,
   Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4,
-  operator_qualification_subject_refusal,
+  operator_qualification_subject_refusal, glm53_nvfp4_8_operator_qualification,
 }
 import gunbc.spark.arm_memory_fit { arm_memory_launch_gate, ArmMemoryFitUnestablished, ArmMemoryFitRefused, ArmPhaseModelLoad }
 import gunbc.spark.native_serving_realization {
@@ -16,7 +16,7 @@ import gunbc.spark.native_serving_realization {
 }
 import gunbc.spark.serving_compatibility { measured_admission_for, serving_compatibility_subject, spark_gb10_accelerator, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing }
 import gunbc.spark.glm53_staircase_steps { Glm53Nvfp4Step, Glm53Fp8Step, Nvfp4Seats8, Nvfp4Seats16, Fp8Seats8, glm53_step_profile, glm53_step_checkpoint }
-import gunbc.spark.glm53_arm_staircase { glm53_step_intent, glm53_nvfp4_8_operator_qualification }
+import gunbc.spark.glm53_arm_staircase { glm53_step_intent }
 
 // ── THE OPERATOR-QUALIFICATION SERVE (operator ruling 2026-10-07, relayed by valiant-crab-775) ──────
 //
