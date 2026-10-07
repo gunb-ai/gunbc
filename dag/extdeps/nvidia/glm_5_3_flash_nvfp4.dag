@@ -57,8 +57,6 @@ data glm_5_3_flash_nvfp4_manifest: HubCheckpointManifest = hub_checkpoint_manife
 // at the pin): ModelOpt (quant_method, read by the checkpoint row) with NVFP4 weights in groups of 16,
 // and the KV cache in FP8 (below, as the launch request).
 data glm_5_3_flash_nvfp4_quant_method: NonEmptyStr = "modelopt" as NonEmptyStr
-// THE QUANTIZATION ALGORITHM, as hf_quant_config.json's quantization.quant_algo states it at the pin.
-data glm_5_3_flash_nvfp4_quant_algo: NonEmptyStr = "NVFP4" as NonEmptyStr
 // THE KV CACHE SCHEME AS THE REQUEST IT IS: config.json's kv_cache_scheme at the pin is
 // {"num_bits": 8, "type": "float"} and hf_quant_config.json's kv_cache_quant_algo is "FP8" -- an 8-bit
 // float KV cache, which is extdeps.vllm.engine_args KvFp8 in the launch vocabulary. The checkpoint's launch

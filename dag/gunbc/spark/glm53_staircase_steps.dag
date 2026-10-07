@@ -5,13 +5,10 @@ import std.nat { Nat }
 import std.measure { token_count, basis_point }
 import std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, VllmPrefixCachingRequest, PrefixCachingExplicit }
-import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_quant_algo }
 import gunbc.spark.serving_arm { ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization, group_b_restoration_window_tokens, group_b_restoration_max_batched_tokens, group_b_experiment_subject_seats }
 import gunbc.spark.pair_serving_observed { spark_pair_serve_port }
-import gunbc.native_serve { ascii_lower_code_point }
-import std.judgment_contract { string_from_code_points }
 
 // ── THE GLM-5.3-FLASH STAIRCASE'S STEPS AND THEIR LAUNCH PROFILES ──────────────────────────────
 //
@@ -155,23 +152,7 @@ fn glm53_step_envelope(s: Glm53StaircaseStep) -> Glm53StepEnvelope {
 // (gunbc.spark.group_b_serving_capacity group_b_restoration_utilization) -- the same hardware and
 // engine, read rather than re-decided; the memory wall prices it per step. Prefix caching is on, as
 // the GLM arm serves.
-// THE SERVED NAME CARRIES THE QUANTIZATION THAT IS NOT THE MODEL'S OWN (valiant-crab-775, raised by
-// sunny-deer-146): both groups announcing glm-5.3-flash merged the operator's fp8-versus-nvfp4 comparison
-// in ctrl's router. The native FP8 checkpoint serves the model's name; the NVIDIA NVFP4 requantization
-// serves it suffixed with its quant_algo, lowercased from the cited upstream fact
-// (extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_quant_algo), never a hand-typed suffix.
-data glm53_staircase_model_name: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
-
-fn glm53_ascii_lowercase(s: String) -> String {
-  string_from_code_points(cs: map(chars(s: s), c => ascii_lower_code_point(cp: c)))
-}
-
-fn glm53_step_served_alias(s: Glm53StaircaseStep) -> NonEmptyStr {
-  match s {
-    Glm53Fp8Step { step: _ } => glm53_staircase_model_name
-    Glm53Nvfp4Step { step: _ } => join([glm53_staircase_model_name as String, ":", glm53_ascii_lowercase(s: glm_5_3_flash_nvfp4_quant_algo as String)], "") as NonEmptyStr
-  }
-}
+data glm53_staircase_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
 data glm53_staircase_prefix_caching: VllmPrefixCachingRequest = PrefixCachingExplicit { enabled: true }
 
 fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
@@ -182,7 +163,7 @@ fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
       policy: glm53_step_policy(s: s),
       decided_gpu_memory_basis_points: group_b_restoration_utilization,
       serve_port: spark_pair_serve_port,
-      served_alias: glm53_step_served_alias(s: s),
+      served_alias: glm53_staircase_served_alias,
       prefix_caching: glm53_staircase_prefix_caching,
     ) }
   }
