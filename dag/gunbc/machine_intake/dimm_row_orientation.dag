@@ -533,7 +533,7 @@ fn bet_obligation(bet: DimmPhysicalFactStanding) -> String {
     VendorFigureFact { figure: _, standing: st } => match st {
       TranscribedUncited { read_obligation: o } => o
       CitedToAuthority { authority: _ } => "cited."
-      ObservedByReceipt { receipt: _ } => "observed."
+      ObservedByReceipt { observed: _ } => "observed."
     }
     OperatorByEyeReport { observed_on: _, relay: _, method: _ } => "not a vendor figure."
     FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => "not a vendor figure."

@@ -201,7 +201,7 @@ fn cited_figure_lifecycle(standing: CitedFigureStanding) -> LifecycleGrade {
   match standing {
     CitedToAuthority { authority: _ } => LifecycleByConstruction
     TranscribedUncited { read_obligation: _ } => LifecycleByConvention
-    ObservedByReceipt { receipt: _ } => LifecycleByConstruction
+    ObservedByReceipt { observed: _ } => LifecycleByConstruction
   }
 }
 

@@ -5,7 +5,7 @@ import std.measure {
   millivolt_count, micrometer_count, minute_count, celsius_count,
   gram_count, coulomb_count,
 }
-import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited, observed_receipt_ref }
 import extdeps.transceiver.sff_8636 { transceiver_identifier_from_byte }
 import extdeps.instrument.fs_box_v4 {
   fs_box_v4_data_sheet, fs_box_v4_ordering_names_part, fs_box_v4_color_sku_count,
@@ -112,7 +112,7 @@ test fn leg_programming_stays_transcribed_uncited() -> Bool {
     TranscribedUncited { read_obligation: o } =>
       string_contains(s: o as String, pattern: "neither states per-leg programming")
     CitedToAuthority { authority: a } => false
-    ObservedByReceipt { receipt: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
 }
 
@@ -120,8 +120,8 @@ test fn leg_programming_stays_transcribed_uncited() -> Bool {
 // acquiring declaration in the observing layer and cites no FS publication.
 test fn nvidia_eth_coding_is_observed_by_the_leg_eeprom_receipts() -> Bool {
   match fs_nvidia_eth_leg_coding.standing {
-    ObservedByReceipt { receipt: r } =>
-      (r.module_path as String) == "gunbc.spark.fabric_switch_observed" && (r.decl_name as String) == "fabric_leg_eeprom_observations"
+    ObservedByReceipt { observed: o } =>
+      (observed_receipt_ref(observed: o).module_path as String) == "gunbc.spark.fabric_switch_observed" && (observed_receipt_ref(observed: o).decl_name as String) == "fabric_leg_eeprom_observations"
     CitedToAuthority { authority: _ } => false
     TranscribedUncited { read_obligation: _ } => false
   }
@@ -136,14 +136,14 @@ test fn both_publications_are_cited_to_their_pdfs() -> Bool {
     CitedToAuthority { authority: a } =>
       (a.uri.locator as String) == "resource.fs.com/mall/doc/20230224114704wojcth.pdf"
     TranscribedUncited { read_obligation: o } => false
-    ObservedByReceipt { receipt: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
     && match fs_box_v3_v4_v5_faq.standing {
       CitedToAuthority { authority: a } =>
         (a.uri.locator as String)
           == "resource.fs.com/mall/resource/fs-box-v3v4v5-faq-20260824100858.pdf"
       TranscribedUncited { read_obligation: o } => false
-      ObservedByReceipt { receipt: _ } => false
+      ObservedByReceipt { observed: _ } => false
     }
 }
 

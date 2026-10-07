@@ -8,7 +8,7 @@ import std.fabric_storage {
   FabricHeadObserved, FabricHeadReadRefused, FabricStoreUnreachable, FabricStoreRefused,
 }
 import extdeps.object_storage { ObjectEntityTag, PutIfAbsent, PutIfMatch }
-import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, observed_receipt_ref }
 import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url, r2_conditional_put_linearizability }
 import gunbc.secret_provision { fleet_secret_ref }
 import extdeps.shell.exec { process_observation }
@@ -208,15 +208,15 @@ test fn the_r2_cas_is_admitted_on_the_race_probe_receipt() -> Bool {
   let headers_cited = match r2_head_cas_ground_headers(ground: g) {
     CitedToAuthority { authority: _ } => true
     TranscribedUncited { read_obligation: _ } => false
-    ObservedByReceipt { receipt: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
   let upstream_still_a_bet = match r2_conditional_put_linearizability {
     TranscribedUncited { read_obligation: _ } => true
     CitedToAuthority { authority: _ } => false
-    ObservedByReceipt { receipt: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
   let observed_by_the_receipt = match r2_head_cas_ground_linearizability(ground: g) {
-    ObservedByReceipt { receipt: r } => (r.module_path as String) == "gunbc.cloudflare.r2_conditional_put_race_probe" && (r.decl_name as String) == "r2_conditional_put_race_receipt"
+    ObservedByReceipt { observed: o } => (observed_receipt_ref(observed: o).module_path as String) == "gunbc.cloudflare.r2_conditional_put_race_probe" && (observed_receipt_ref(observed: o).decl_name as String) == "r2_conditional_put_race_receipt"
     CitedToAuthority { authority: _ } => false
     TranscribedUncited { read_obligation: _ } => false
   }

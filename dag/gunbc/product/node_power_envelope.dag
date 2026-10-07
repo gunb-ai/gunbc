@@ -191,7 +191,7 @@ fn rank_specific_2dpc_clock(
       }
       CitedToAuthority { authority: _ } =>
         ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
-      ObservedByReceipt { receipt: _ } =>
+      ObservedByReceipt { observed: _ } =>
         ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
     }
   }

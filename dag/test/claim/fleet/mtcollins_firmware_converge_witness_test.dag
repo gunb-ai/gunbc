@@ -1149,7 +1149,7 @@ fn decode_uncited(rb: VersionReadback) -> Bool {
   match rb.decode {
     TranscribedUncited { read_obligation: _ } => true
     CitedToAuthority { authority: _ } => false
-    ObservedByReceipt { receipt: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
 }
 

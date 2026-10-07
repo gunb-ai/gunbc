@@ -838,7 +838,7 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
           JobsNameMatrixParenthetical { standing } => match standing {
             TranscribedUncited { read_obligation } => true
             CitedToAuthority { authority } => false
-            ObservedByReceipt { receipt: _ } => false
+            ObservedByReceipt { observed: _ } => false
           }
           JobsNamePrefixOnly => false
         }
@@ -885,7 +885,7 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
         JobsNameMatrixParenthetical { standing } => match standing {
           TranscribedUncited { read_obligation } => true
           CitedToAuthority { authority } => false
-          ObservedByReceipt { receipt: _ } => false
+          ObservedByReceipt { observed: _ } => false
         }
         JobsNamePrefixOnly => false
       }

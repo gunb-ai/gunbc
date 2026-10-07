@@ -309,7 +309,7 @@ test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Boo
       TranscribedUncited { read_obligation } =>
         string_contains(s: read_obligation as String, pattern: "C14 vs C20")
       CitedToAuthority { authority: _ } => false
-      ObservedByReceipt { receipt: _ } => false
+      ObservedByReceipt { observed: _ } => false
     }
 }
 

@@ -424,7 +424,7 @@ fn docker_host_from_runtime_uid_figure(figure: RunnerJobUserRuntimeUidFigure) ->
   match figure.evidence {
     TranscribedUncited { read_obligation: _ } => none
     CitedToAuthority { authority: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
-    ObservedByReceipt { receipt: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
+    ObservedByReceipt { observed: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
   }
 }
 

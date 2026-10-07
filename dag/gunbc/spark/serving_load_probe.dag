@@ -37,7 +37,7 @@ import gunbc.spark.serving_rank_observe {
   ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
 }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt, observed_receipt_ref }
 
 // ── THROUGHPUT QUALIFICATION FOR THE SERVING SUBJECT (design #11540, serving side) ────────────
 //
@@ -1099,7 +1099,7 @@ fn cited_standing_text(s: CitedFigureStanding) -> String {
   match s {
     CitedToAuthority { authority: _ } => "cited-to-authority"
     TranscribedUncited { read_obligation: o } => join(["transcribed-uncited ", o as String], "")
-    ObservedByReceipt { receipt: r } => join(["observed-by-receipt ", r.module_path as String, " ", r.decl_name as String], "")
+    ObservedByReceipt { observed: o } => join(["observed-by-receipt ", observed_receipt_ref(observed: o).module_path as String, " ", observed_receipt_ref(observed: o).decl_name as String], "")
   }
 }
 
