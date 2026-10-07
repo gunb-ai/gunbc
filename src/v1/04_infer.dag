@@ -8812,7 +8812,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: other } => resolved_type(n: arg_value(n: other))
             Absent => unit_type
           }
-          let bridge_result_type = if func_name == "concat" {
+          let bridge_result_type = if (func_name == "concat") {
             informative_list_concat_result(left: first_arg_type, right: concat_other, fallback: method_tv.ty, source_indices: scope.type_env.source_indices)
           } else { method_tv.ty }
           let template_subst_diags = method_tv.diagnostics
@@ -9190,7 +9190,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: other } => resolved_type(n: arg_value(n: other))
         Absent => unit_type
       }
-      let result_type = if method_name == "concat" {
+      let result_type = if (method_name == "concat") {
         informative_list_concat_result(left: recv_rt, right: mc_concat_other, fallback: method_tv_mc.ty, source_indices: scope.type_env.source_indices)
       } else { method_tv_mc.ty }
       let mc_template_diags = method_tv_mc.diagnostics
@@ -9570,7 +9570,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let left_rt = resolved_type(n: left_typed)
       let right_rt = resolved_type(n: right_typed)
       let binop_info = infer_binop_type_node(op: op, left_type: left_rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
-      let binop_result = if op == Add {
+      let binop_result = if (op == Add) {
         informative_list_concat_result(left: left_rt, right: right_rt, fallback: binop_info.result_type, source_indices: scope.type_env.source_indices)
       } else { binop_info.result_type }
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
@@ -13838,10 +13838,10 @@ fn unify_binding_is_uninformative(n: Node) -> Bool {
 // concat(acc, [x]) or acc + [x]; both were left-typed and left List<empty_list_element> against
 // a declared List<String> (stage0_crate_layout, reference_binding_provenance_calibration).
 fn informative_list_concat_result(left: Node, right: Node, fallback: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if node_is_element_collection(n: left, source_indices: source_indices)
+  if (node_is_element_collection(n: left, source_indices: source_indices)
       && node_is_element_collection(n: right, source_indices: source_indices)
       && unify_binding_is_uninformative(n: left)
-      && !unify_binding_is_uninformative(n: right) {
+      && !unify_binding_is_uninformative(n: right)) {
     right
   } else { fallback }
 }
