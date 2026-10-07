@@ -15013,6 +15013,14 @@ fn dispatch_service_wet(
         return dispatch_env_get_native(op_node, param_env, ctx);
     }
 
+    // Local `command -v`: searching THIS host's PATH is not a host effect (shell-to-dag residual
+    // census §0b), the sibling of shell.Env.Get. The `sh -c 'command -v "$1"'` child was the
+    // wrong hardwired transport; a native in-process search answers it directly. `shell.PosixCommandV.Check`
+    // remains the remote-target realization (a target that is another process on another host).
+    if intent == "shell.PosixCommandV.Check" {
+        return dispatch_posix_command_v_native(op_node, param_env, ctx);
+    }
+
     // Native `posix.Process.StartDetached` + `posix.Process.Reap`: the spawn detaches (own
     // process group, stdio to declared files, NOT waited) and waitpid is answerable only about
     // THIS process's own children (otherwise ECHILD). No foreign argv can realize either edge,
@@ -15113,6 +15121,87 @@ fn dispatch_env_get_native(
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(vec![(ctx.sym("value"), value)]),
+    })
+}
+
+/// Resolve a `command -v` search natively, matching the POSIX shell builtin's observable
+/// behavior (IEEE 1003.1-2017 section 2.9.1.1, Command Search and Execution) exactly, so the
+/// native realization is byte-identical to the former `sh -c 'command -v "$1"'` transport:
+///
+/// - a name CONTAINING a `/` is NOT searched on PATH; the shell reports it present whenever the
+///   path exists, WITHOUT an exec-bit check (verified against dash: a non-executable `/x` and a
+///   directory both resolve, and the name is echoed verbatim, symlinks included).
+/// - a name WITHOUT a `/` searches the `PATH` directories in order and, per POSIX, skips
+///   non-executable entries (verified: a non-executable shadow is passed over for the next
+///   executable match).
+/// - not found → None (the builtin exits non-zero with empty stdout; the exit code itself is
+///   never surfaced — `map_shell_outputs` projects only `exit == 0` into `exists`).
+fn wet_command_v_resolve(command: &str) -> Option<String> {
+    let path = std::path::Path::new(command);
+    if command.contains('/') {
+        // A slash: existence check only, no PATH walk, no exec-bit check, echoed verbatim.
+        if path.exists() {
+            return Some(command.to_string());
+        }
+        return None;
+    }
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(command);
+        // A missing entry in this PATH dir is not a stop: `command -v` continues to the next
+        // directory, so an unresolved candidate just advances the walk.
+        let metadata = match std::fs::metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        // A regular FILE whose owner, group, or other exec bit is set — the POSIX `command -v`
+        // probe, which skips directories and non-executable entries.
+        if metadata.is_file() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if metadata.permissions().mode() & 0o111 == 0 {
+                    continue;
+                }
+            }
+            return Some(candidate.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
+/// Native realization of `shell.PosixCommandV.Check` for OnTarget locality — same Present/Absent
+/// semantics as the `command -v` transport (found → `exists = true` with the resolved `path`;
+/// not found → `exists = false` with `path` absent), with no ObservationEvent and no child
+/// process. The record `type_name` and field set mirror `map_shell_outputs` for this operation's
+/// declared `output { exists: Bool, path: FilePath? }`.
+fn dispatch_posix_command_v_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let command = match param_env.lookup(ctx.sym("command")) {
+        Some(Value::Str(s)) => s.to_string(),
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.PosixCommandV.Check command must be String, got {other}"),
+            });
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "shell.PosixCommandV.Check missing command parameter".to_string(),
+            });
+        }
+    };
+    let resolved = wet_command_v_resolve(&command);
+    let exists = resolved.is_some();
+    let path: Value = resolved.map(str_value).unwrap_or(Value::Null);
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(vec![
+            (ctx.sym("exists"), Value::Bool(exists)),
+            (ctx.sym("path"), path),
+        ]),
     })
 }
 
@@ -28678,6 +28767,137 @@ mod resolve_host_tool_program_tests {
             shim_msg, system_msg,
             "two different exec'd files must not produce one indistinguishable message"
         );
+    }
+}
+
+#[cfg(test)]
+mod wet_command_v_resolve_tests {
+    use super::wet_command_v_resolve;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        path: Option<String>,
+        _guard: MutexGuard<'static, ()>,
+    }
+
+    impl EnvRestore {
+        fn capture() -> Self {
+            let guard = ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Self {
+                path: std::env::var("PATH").ok(),
+                _guard: guard,
+            }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.path.as_deref() {
+                Some(v) => std::env::set_var("PATH", v),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+    }
+
+    // Process-id root so a stale directory from another runner slot (another uid) never makes a
+    // fresh write refuse PermissionDenied — same discipline as the resolve_host_tool suite.
+    fn root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc_command_v_{label}_{}", std::process::id()))
+    }
+
+    #[cfg(unix)]
+    fn chmod_exec(path: &std::path::Path, exec: bool) {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = if exec { 0o755 } else { 0o644 };
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    // A plain name on PATH, executable → resolved to the absolute entry.
+    #[test]
+    fn resolves_executable_plain_name_on_path() {
+        let _env = EnvRestore::capture();
+        let root = root("plain_hit");
+        let _ = std::fs::remove_dir_all(&root);
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let tool = bin.join("mytool");
+        std::fs::write(&tool, b"").unwrap();
+        #[cfg(unix)]
+        chmod_exec(&tool, true);
+
+        std::env::set_var("PATH", &bin);
+        assert_eq!(
+            wet_command_v_resolve("mytool").as_deref(),
+            Some(tool.to_string_lossy().as_ref())
+        );
+    }
+
+    // POSIX `command -v` skips non-executable entries on PATH and continues the search.
+    #[test]
+    fn skips_non_executable_plain_name_and_finds_next_match() {
+        let _env = EnvRestore::capture();
+        let root = root("skip_noexec");
+        let _ = std::fs::remove_dir_all(&root);
+        let shadow = root.join("shadow"); // first on PATH, non-executable
+        let good = root.join("good"); // second on PATH, executable
+        std::fs::create_dir_all(&shadow).unwrap();
+        std::fs::create_dir_all(&good).unwrap();
+        let shadow_tool = shadow.join("mytool");
+        let good_tool = good.join("mytool");
+        std::fs::write(&shadow_tool, b"").unwrap();
+        std::fs::write(&good_tool, b"").unwrap();
+        #[cfg(unix)]
+        chmod_exec(&shadow_tool, false);
+        #[cfg(unix)]
+        chmod_exec(&good_tool, true);
+
+        std::env::set_var("PATH", format!("{}:{}", shadow.display(), good.display()));
+        assert_eq!(
+            wet_command_v_resolve("mytool").as_deref(),
+            Some(good_tool.to_string_lossy().as_ref()),
+            "non-executable shadow must be skipped for the next executable match"
+        );
+    }
+
+    // A plain name with no executable match anywhere on PATH → None.
+    #[test]
+    fn plain_name_not_on_path_is_absent() {
+        let _env = EnvRestore::capture();
+        let root = root("plain_absent");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::env::set_var("PATH", &root);
+        assert_eq!(wet_command_v_resolve("definitely_not_here"), None);
+    }
+
+    // A slash-bearing name is echoed verbatim WHENEVER IT EXISTS — no PATH walk, and (matching
+    // the dash/bourne builtin) NO exec-bit requirement.
+    #[test]
+    fn slash_path_exists_without_exec_bit() {
+        let root = root("slash_noexec");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let f = root.join("afile");
+        std::fs::write(&f, b"").unwrap();
+        #[cfg(unix)]
+        chmod_exec(&f, false);
+        let spelled = f.to_string_lossy().into_owned();
+        assert_eq!(
+            wet_command_v_resolve(&spelled).as_deref(),
+            Some(spelled.as_str())
+        );
+    }
+
+    // A missing slash-bearing name is absent (the builtin exits non-zero, empty stdout).
+    #[test]
+    fn slash_path_missing_is_absent() {
+        let spelled = "/tmp/__gunbc_command_v_missing_slash__";
+        assert_eq!(wet_command_v_resolve(spelled), None);
     }
 }
 
