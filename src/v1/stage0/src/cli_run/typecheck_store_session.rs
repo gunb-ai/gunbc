@@ -7,9 +7,10 @@ use crate::v1_compiler_infer::{TypecheckModuleOwn, TypecheckModuleResult};
 use crate::v1_interpreter::{self, list_value, str_value, ExecutionMode, Value};
 use im::Vector;
 
-use super::{make_eval_context, resolve_entry_graph_shared, witness_layer_roots};
+use super::{make_eval_context, resolve_entry_with_index, MultiEntryIndex};
 
 const STORE_ENTRY: &str = "dag/gunbc/typecheck_module_store.dag";
+const STORE_MODULE: &str = "gunbc.typecheck_module_store";
 
 thread_local! {
     static PREPARING: Cell<bool> = const { Cell::new(false) };
@@ -62,12 +63,14 @@ struct OutcomeCounts {
     commit_missed_open: u64,
     reentry_lookup: u64,
     reentry_commit: u64,
+    unreachable_lookup: u64,
+    unreachable_commit: u64,
 }
 
 thread_local! {
     static OUTCOMES: Cell<OutcomeCounts> = const { Cell::new(OutcomeCounts {
         hit: 0, miss: 0, unavailable: 0, commit_committed: 0, commit_missed_open: 0,
-        reentry_lookup: 0, reentry_commit: 0,
+        reentry_lookup: 0, reentry_commit: 0, unreachable_lookup: 0, unreachable_commit: 0,
     }) };
 }
 
@@ -83,13 +86,18 @@ fn count(f: impl FnOnce(&mut OutcomeCounts)) {
 /// `Some` when the store was exercised or any outcome other than hit/miss/committed occurred.
 pub(crate) fn store_receipt_line() -> Option<String> {
     let c = OUTCOMES.with(|c| c.get());
-    let degraded = c.unavailable + c.commit_missed_open + c.reentry_lookup + c.reentry_commit;
+    let degraded = c.unavailable
+        + c.commit_missed_open
+        + c.reentry_lookup
+        + c.reentry_commit
+        + c.unreachable_lookup
+        + c.unreachable_commit;
     let touched = c.hit + c.miss + c.commit_committed + degraded;
     if touched == 0 {
         return None;
     }
     Some(format!(
-        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} reentry_lookup={} reentry_commit={} largest_entry_bytes={}",
+        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} largest_entry_bytes={}",
         c.hit,
         c.miss,
         c.commit_committed,
@@ -97,6 +105,8 @@ pub(crate) fn store_receipt_line() -> Option<String> {
         c.commit_missed_open,
         c.reentry_lookup,
         c.reentry_commit,
+        c.unreachable_lookup,
+        c.unreachable_commit,
         observed_largest_entry_bytes()
     ))
 }
@@ -137,18 +147,30 @@ pub(crate) fn own_of_result(result: &TypecheckModuleResult) -> TypecheckModuleOw
     }
 }
 
+/// `Ok(None)` when the store's own closure is not reachable from the compiler's roots (the entry
+/// file is absent): the caller counts it as a typed Unavailable, never a Miss and never a panic.
 fn with_session<T>(
+    index: &MultiEntryIndex,
     f: impl FnOnce(&v1_interpreter::InterpContext) -> Result<T, String>,
-) -> Result<T, String> {
+) -> Result<Option<T>, String> {
     if PREPARING.with(|c| c.get()) {
         return Err("typecheck-store session prepare re-entered".to_string());
     }
     SESSION.with(|slot| {
         if slot.borrow().is_none() {
+            // The store closure is resolved through the CALLER's own index (the compiler's
+            // roots; one index per module-name set), never a second pool and never a cwd path.
+            if !index.holds_module(STORE_MODULE) {
+                return Ok(None);
+            }
+            // Anchored at the checkout root: the loader reads the entry path as given.
+            let entry = super::workspace_root()
+                .join(STORE_ENTRY)
+                .to_string_lossy()
+                .into_owned();
             PREPARING.with(|c| c.set(true));
             let prepared = (|| {
-                let roots = witness_layer_roots();
-                let (graph, indices) = resolve_entry_graph_shared(&roots, STORE_ENTRY)?;
+                let (graph, indices) = resolve_entry_with_index(index, &entry)?;
                 Ok(make_eval_context(&graph, indices, ExecutionMode::Wet))
             })();
             PREPARING.with(|c| c.set(false));
@@ -159,7 +181,7 @@ fn with_session<T>(
         }
         let borrow = slot.borrow();
         let ctx = borrow.as_ref().expect("session installed");
-        f(ctx)
+        f(ctx).map(Some)
     })
 }
 
@@ -176,6 +198,7 @@ fn field_str(
 
 /// Distinct from `index_get_typed`: durable TypecheckModuleRequest lookup.
 pub(crate) fn durable_typecheck_lookup(
+    index: &MultiEntryIndex,
     source_digest_hex: &str,
     import_interface_hexes: &[String],
     compiler_digest_hex: &str,
@@ -206,7 +229,7 @@ pub(crate) fn durable_typecheck_lookup(
             str_value(compiler_digest_hex),
         ),
     ]);
-    with_session(|ctx| {
+    let got = with_session(index, |ctx| {
         let result = v1_interpreter::run_in_context_with_args(ctx, function, &args, false)
             .map_err(|e| format!("seed_lookup_typecheck_hex: {e}"))?;
         let Value::Variant {
@@ -248,11 +271,19 @@ pub(crate) fn durable_typecheck_lookup(
             "seed_lookup_typecheck_hex unknown variant {}",
             ctx.resolve(*variant_name)
         ))
+    })?;
+    Ok(match got {
+        Some(g) => g,
+        None => {
+            count(|c| c.unreachable_lookup += 1);
+            DurableTypecheckGet::Unavailable
+        }
     })
 }
 
 /// Distinct from `index_insert_typed`: durable TypecheckModuleRequest commit.
 pub(crate) fn durable_typecheck_commit(
+    index: &MultiEntryIndex,
     source_digest_hex: &str,
     import_interface_hexes: &[String],
     compiler_digest_hex: &str,
@@ -299,7 +330,7 @@ pub(crate) fn durable_typecheck_commit(
             str_value(diagnostics_text),
         ),
     ]);
-    with_session(|ctx| {
+    let got = with_session(index, |ctx| {
         let result = v1_interpreter::run_in_context_with_args(ctx, function, &args, false)
             .map_err(|e| format!("seed_commit_typecheck_hex: {e}"))?;
         let Value::Variant {
@@ -331,7 +362,11 @@ pub(crate) fn durable_typecheck_commit(
             "seed_commit_typecheck_hex unknown variant {}",
             ctx.resolve(*variant_name)
         ))
-    })
+    })?;
+    if got.is_none() {
+        count(|c| c.unreachable_commit += 1);
+    }
+    Ok(())
 }
 
 pub(crate) fn observed_largest_entry_bytes() -> u64 {
@@ -423,13 +458,29 @@ mod real_module_round_trip {
             "every module hit ({hit1} hit, {miss0} cold misses)"
         );
         let warm = typed_results(&warm_index);
-        assert_eq!(warm.len(), cold.len());
-        for ((k, a), (kb, b)) in cold.iter().zip(warm.iter()) {
-            assert_eq!(k, kb);
+        // The cold run also typechecked the store's own closure inside the session prepare
+        // (counted reentry), so it holds MORE modules than the warm run needs; every module the
+        // warm run restored must equal what the cold run computed.
+        assert!(!warm.is_empty());
+        for (k, b) in warm.iter() {
+            let (_, a) = cold
+                .iter()
+                .find(|(ka, _)| ka == k)
+                .unwrap_or_else(|| panic!("module key {k} missing from the cold index"));
+            // What the store persists and a restore grafts is the OWN tail. The import-derived head
+            // is recomputed from the warm index's graph, which can hold fewer modules than the
+            // cold index's (the cold run also typechecked the store closure in the session
+            // prepare), exactly as the in-process content-keyed cache already shares one module
+            // result across entry graphs; so the head is not compared across the two graphs.
+            let (oa, ob) = (own_of_result(a), own_of_result(b));
             assert!(
-                a == b,
-                "restore(head, stored own tail) != computed result for module key {k}"
+                oa.items == ob.items
+                    && oa.func_local == ob.func_local
+                    && oa.item_registry == ob.item_registry
+                    && oa.diagnostics == ob.diagnostics,
+                "restored own tail != computed own tail for module key {k}"
             );
+            assert!(a.typed.module == b.typed.module && a.typed.progress == b.typed.progress);
         }
 
         // size control: the entry is the module's own tail; the closure snapshot (parent envs)
@@ -451,5 +502,75 @@ mod real_module_round_trip {
         );
         set_witness_root(None);
         let _ = std::fs::remove_dir_all(&scratch);
+    }
+}
+
+/// Controls for the session's reach: the lookup resolves the store closure through the CALLER's
+/// own index, so it neither depends on the cwd nor demands a second pool, and a pool that does not
+/// hold the store module is a typed, counted Unavailable.
+#[cfg(test)]
+mod session_reach {
+    use super::*;
+    use crate::cli_run::{build_multi_entry_index, workspace_root};
+
+    fn fixture_index() -> (std::path::PathBuf, MultiEntryIndex) {
+        let root = workspace_root()
+            .join("target")
+            .join(format!("gunbc_tcstore_reach_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("fx")).unwrap();
+        std::fs::write(
+            root.join("fx/one.dag"),
+            "module fx.one\nfn one() -> Int { 1 }\n",
+        )
+        .unwrap();
+        let idx = build_multi_entry_index(&[root.to_string_lossy().into_owned()]);
+        (root, idx)
+    }
+
+    #[test]
+    fn a_pool_without_the_store_module_is_a_counted_unavailable_not_a_miss() {
+        let (root, idx) = fixture_index();
+        let hex = "0".repeat(64);
+        let before = OUTCOMES.with(|c| c.get());
+        let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
+        let own = TypecheckModuleOwn {
+            items: Default::default(),
+            func_local: Default::default(),
+            item_registry: Default::default(),
+            diagnostics: Default::default(),
+        };
+        let committed = durable_typecheck_commit(&idx, &hex, &[], &hex, &own);
+        let after = OUTCOMES.with(|c| c.get());
+        let _ = std::fs::remove_dir_all(root);
+        assert!(matches!(got, Ok(DurableTypecheckGet::Unavailable)));
+        assert!(committed.is_ok());
+        assert_eq!(after.unreachable_lookup, before.unreachable_lookup + 1);
+        assert_eq!(after.unreachable_commit, before.unreachable_commit + 1);
+        assert_eq!(after.miss, before.miss);
+    }
+
+    /// The caller's real pool holds the store: the lookup resolves through that same index from a
+    /// foreign cwd, so no second pool is built and nothing is resolved cwd-relative.
+    #[test]
+    fn the_callers_pool_serves_the_session_from_a_foreign_cwd() {
+        let root = workspace_root();
+        let idx = build_multi_entry_index(&[
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ]);
+        let saved = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(std::env::temp_dir()).expect("leave workspace");
+        let hex = "0".repeat(64);
+        let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
+        std::env::set_current_dir(saved).expect("restore cwd");
+        assert!(
+            matches!(&got, Ok(_))
+                || got
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.contains("digest refused")),
+            "{:?}",
+            got.err()
+        );
     }
 }

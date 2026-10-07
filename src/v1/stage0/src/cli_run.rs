@@ -12144,6 +12144,12 @@ pub fn build_live_read_selection_manifest(
 }
 
 impl MultiEntryIndex {
+    /// Whether this index's pool holds the module (the durable store's own closure must be in
+    /// the caller's pool, or the store is unreachable from these roots).
+    pub(crate) fn holds_module(&self, module_path: &str) -> bool {
+        self.source_files.contains_key(module_path)
+    }
+
     #[cfg(test)]
     pub(crate) fn typed_module_cache_for_tests(
         &self,
@@ -16500,6 +16506,7 @@ fn reconcile_with_typed_cache(
                 let cached = index_get_typed(index, &typed_key)?;
                 if let Some(hit) = cached.as_ref() {
                     typecheck_store_session::durable_typecheck_commit(
+                        index,
                         &store_parts.source_digest_hex,
                         &store_parts.import_interface_hexes,
                         &store_parts.compiler_digest_hex,
@@ -16527,6 +16534,7 @@ fn reconcile_with_typed_cache(
                 if cached.is_none() {
                     if let typecheck_store_session::DurableTypecheckGet::Hit(own) =
                         typecheck_store_session::durable_typecheck_lookup(
+                            index,
                             &store_parts.source_digest_hex,
                             &store_parts.import_interface_hexes,
                             &store_parts.compiler_digest_hex,
@@ -16567,6 +16575,16 @@ fn reconcile_with_typed_cache(
                         let mut compute_on_miss =
                             || -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
                                 if let Some(hit) = index_get_typed(index, &typed_key)? {
+                                    // The durable lookup's own prepare typechecked this module
+                                    // (it is in the store's closure) after the miss was counted:
+                                    // the miss is still owed its commit.
+                                    typecheck_store_session::durable_typecheck_commit(
+                                        index,
+                                        &store_parts.source_digest_hex,
+                                        &store_parts.import_interface_hexes,
+                                        &store_parts.compiler_digest_hex,
+                                        &typecheck_store_session::own_of_result(hit.as_ref()),
+                                    )?;
                                     return Ok(hit);
                                 }
                                 // A miss on a key this index already evicted is a READMISSION —
@@ -16629,6 +16647,7 @@ fn reconcile_with_typed_cache(
                                 let computed =
                                     index_insert_typed(index, typed_key.clone(), computed)?;
                                 typecheck_store_session::durable_typecheck_commit(
+                                    index,
                                     &store_parts.source_digest_hex,
                                     &store_parts.import_interface_hexes,
                                     &store_parts.compiler_digest_hex,
