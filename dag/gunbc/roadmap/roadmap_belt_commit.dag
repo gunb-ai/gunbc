@@ -32,8 +32,9 @@ fn belt_candidate_commit_message(node_id: String, attempt_key: String) -> NonEmp
 // THE INVERSE OF THE CANDIDATE MESSAGE, beside its one producer: the attempt a candidate commit was
 // captured from, read back from the message belt_candidate_commit_message wrote. Absent for any
 // message that producer could not have written -- a caller treats that as underivable, never as
-// "no attempt". (The typed carrier for a commit's capture attempt and base is the BaseAdvance
-// follow-up; until then this producer's format is the only record, and it is read only here.)
+// "no attempt". A commit's BASE is typed since the BaseAdvance follow-up (its parent's intake
+// record, gunbc.scm.intake); its capturing ATTEMPT is not, so this producer's format remains the only
+// record of it, read only here and only for a line that predates the typed base record.
 type CandidateCommitSubject {
   node_id: String
   attempt_key: String

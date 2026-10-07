@@ -25,7 +25,7 @@ import v2.std.service_realization_labels {
 }
 import std.types { List }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Rejected, Unavailable, node_locus }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.node {
   Ambiguous,

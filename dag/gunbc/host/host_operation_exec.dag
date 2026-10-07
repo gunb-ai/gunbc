@@ -115,6 +115,8 @@ type HostOperation =
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
   | SystemctlStart { unit: NonEmptyStr }
+  | SystemctlRestart { unit: NonEmptyStr }
+  | SystemctlResetFailed { unit: NonEmptyStr }
   | SystemctlMaskNow { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowUserProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
@@ -170,6 +172,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     )
     SystemctlStart { unit: u } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Start"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlRestart { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Restart"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlResetFailed { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "ResetFailedUnit"),
       bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
     )
     SystemctlMaskNow { unit: u } => bind_operation_invocation(
@@ -369,6 +379,14 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     SystemctlStart { unit: u } => {
       let result = systemd.Systemctl.Start(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
+    SystemctlRestart { unit: u } => {
+      let result = systemd.Systemctl.Restart(unit: u)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
+    SystemctlResetFailed { unit: u } => {
+      let result = systemd.Systemctl.ResetFailedUnit(unit: u)
+      HostOperationObserved { stdout: "", success: result.success, stderr: result.stderr }
     }
     SystemctlMaskNow { unit: u } => {
       let result = systemd.Systemctl.MaskNow(unit: u)

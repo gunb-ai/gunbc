@@ -10,7 +10,7 @@ import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCo
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import v2.std.operation_argv { OperationRef }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import extdeps.ietf.http_semantics { HttpMethod, HttpStatusClass, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

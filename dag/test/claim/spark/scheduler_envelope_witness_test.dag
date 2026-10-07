@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import gunbc.spark.serving_arm { glm53_native_launch_policy }
 import std.nat { Nat }
 import std.measure { token_count, basis_point, basis_point_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.vllm.server { vllm_source_revision }
 import extdeps.vllm.engine_args { IndexerKvDtypeOmitted,
   VllmSchedulerAdmissionRequest, VllmFullInputAdmissionRequest, VllmKvWatermarkRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,

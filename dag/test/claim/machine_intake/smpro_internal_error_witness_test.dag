@@ -3,7 +3,7 @@ module test.claim.machine_intake.smpro_internal_error_witness_test
 import v2.std.algebra { any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproNamedCode, SmproCodeDefined, SmproCodeUndefined,
   SmproRecordKind, SmproErrorWithData, SmproErrorWithoutData, SmproWarning, SmproEnter, SmproExit,
