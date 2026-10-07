@@ -6,7 +6,7 @@ import std.measure {
   Gram, gram, gram_count, Millinewton, millinewton, millinewton_count, Kilopascal, kilopascal, kilopascal_count,
   Megapascal, megapascal_count, KilogramPerCubicMetre, kilogram_per_cubic_metre_count, Percent, percent_count,
   micrometer_count, MicrometrePerSecondSquared, micrometre_per_second_squared, micrometre_per_second_squared_count,
-  Newton, newton, newton_count,
+  Newton, newton, newton_count, Millimeter, millimeter, millimeter_count,
 }
 import std.optional { Present, Absent }
 import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive, Block, RoundPrism, Printed, Purchased, Metal, Clearance }
@@ -157,14 +157,14 @@ fn pillar_critical_load(sheet: FilamentTechnicalDataSheetRow, policy: StackPolic
 // Approximate uniform-unit CG. Bottom power cassette shifts every node upward one pitch.
 // Top-applied push uses the TOP HEIGHT, not this CG height. The centre
 // of mass of N equal units at pitch p is at N p / 2 above the floor; a station adds its own term.
-fn centre_of_mass_height_mm(unit: Gram, station: PowerCassette, node_count: Nat) -> Nat {
+fn centre_of_mass_height_mm(unit: Gram, station: PowerCassette, node_count: Nat) -> Millimeter {
   let p = stack_pitch() / 1000
   let offset = match station.placement {BottomOfColumn=>p TopOfColumn=>0 BesideColumn=>0}
   let node_moment = node_count * gram_count(g: unit) * (node_count * p + 2 * offset) / 2
   let station_height = match station.placement { TopOfColumn => node_count * p + p / 2 BottomOfColumn => p / 2 BesideColumn => p / 2 }
   let station_term = match station.placement { TopOfColumn => gram_count(g: station.mass) * station_height BottomOfColumn => gram_count(g: station.mass) * station_height BesideColumn => no_mass }
   let total = match station.placement { TopOfColumn => node_count * gram_count(g: unit) + gram_count(g: station.mass) BottomOfColumn => node_count * gram_count(g: unit) + gram_count(g: station.mass) BesideColumn => node_count * gram_count(g: unit) }
-  if total == 0 { total } else { (node_moment + station_term) / total }
+  if total == 0 { millimeter(count: 0) } else { millimeter(count: (node_moment + station_term) / total) }
 }
 
 fn column_mass(unit: Gram, station: PowerCassette, node_count: Nat) -> Gram {
@@ -181,7 +181,7 @@ fn tip_force(unit: Gram, station: PowerCassette, node_count: Nat) -> Newton {
 
 // Lateral acceleration that tips the column: g * half-base / centre-of-mass height.
 fn tip_acceleration(unit: Gram, station: PowerCassette, node_count: Nat) -> MicrometrePerSecondSquared {
-  let h = centre_of_mass_height_mm(unit: unit, station: station, node_count: node_count)
+  let h = millimeter_count(m: centre_of_mass_height_mm(unit: unit, station: station, node_count: node_count))
   if h == 0 { micrometre_per_second_squared(count: no_mass) } else { micrometre_per_second_squared(count: micrometre_per_second_squared_count(a: standard_gravity) * (footprint_half_width() / 1000) / h) }
 }
 
