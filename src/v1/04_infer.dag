@@ -7970,7 +7970,7 @@ fn collection_fold_lambda_expected(results: List<ArgInferResult>, call_args: Lis
     Absent => none
     Present { value: xs_ty } =>
       let elem = for_each_element_type_node(n: xs_ty, source_indices: source_indices)
-      if unify_binding_is_uninformative(n: elem) {
+      if unify_binding_is_uninformative(n: xs_ty) || unify_binding_is_uninformative(n: elem) {
         none
       } else {
         match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.acc_formal_index, source_indices: source_indices) {
@@ -14101,13 +14101,16 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
 fn unify_binding_is_uninformative(n: Node) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: _ } } => true
+    Present { value: Resolved { node: inner } } => unify_binding_is_uninformative(n: inner)
     _ =>
       if n.children |> count == 1 {
         match n.children |> first {
           Present { value: c } => unify_binding_is_uninformative(n: child_type_node(ch: c))
           Absent => false
         }
-      } else { false }
+      } else {
+        n.connective == Coproduct && (n.name == "FreeMonoid" || n.name == "List")
+      }
   }
 }
 

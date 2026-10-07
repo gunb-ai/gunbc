@@ -12166,10 +12166,12 @@ pub fn collection_fold_lambda_expected(
         std::option::Option::None => std::option::Option::None,
         Some(xs_ty) => {
             let elem = crate::v1_compiler_infer_types::for_each_element_type_node(
-                xs_ty,
+                xs_ty.clone(),
                 source_indices.clone(),
             );
-            if unify_binding_is_uninformative(elem.clone()) {
+            if unify_binding_is_uninformative(xs_ty.clone())
+                || unify_binding_is_uninformative(elem.clone())
+            {
                 std::option::Option::None
             } else {
                 match typed_arg_type_for_formal(
@@ -24500,6 +24502,10 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
             Some(InferredNode::TypeVariable { id: _, .. }) => {
                 break true;
             }
+            Some(InferredNode::Resolved { node: inner, .. }) => {
+                __tco_loop_n = inner;
+                continue;
+            }
             _ => {
                 if ((n.children.clone().len() as i64) == 1) {
                     match n.children.clone().first().cloned() {
@@ -24514,7 +24520,9 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
                         }
                     }
                 } else {
-                    break false;
+                    break (n.connective.clone() == Connective::Coproduct
+                        && (n.name.clone() == "FreeMonoid".to_string()
+                            || n.name.clone() == "List".to_string()));
                 }
             }
         }
