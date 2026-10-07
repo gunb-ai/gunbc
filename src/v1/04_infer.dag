@@ -7634,7 +7634,6 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
   if is_fold && method_args |> count >= min_args {
     let init_arg = match method_args |> filter(a =>
       arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)
-        || arg_has_name(arg: a, name: "empty", source_indices: scope.type_env.source_indices)
     ) |> first {
       Present { value: a } => Present { value: a }
       Absent => method_args |> first
@@ -7679,7 +7678,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
     let a = idx_pair.second
     let idx = idx_pair.first
     let is_init_arg = arg_has_name(arg: a, name: "init", source_indices: scope.type_env.source_indices)
-      || arg_has_name(arg: a, name: "empty", source_indices: scope.type_env.source_indices)
       || (arg_name_at(n: a, source_indices: scope.type_env.source_indices) == none && idx == 0)
     if is_fold && fold_info != none && is_init_arg {
       match fold_info {
