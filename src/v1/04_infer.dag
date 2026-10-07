@@ -8887,12 +8887,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_fold_seed_name = match call_target {
         BuiltinCallableResolved { primitive_name: n } =>
           if n == "fold_list" || n == "fold_list_right" { Present { value: "fold" } } else { call_method_name }
-        DeclaredCallableResolved { sig: _, declared: _ } => call_method_name
-        DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => call_method_name
-        LocallyBoundCallee { name: _, binding: _ } => call_method_name
-        CallableUnresolved { name: _ } => call_method_name
-        CallableAmbiguous { candidates: _ } => call_method_name
-        LocallyBoundBindingMissing { name: _ } => call_method_name
+        _ => call_method_name
       }
       let call_fold_info = extract_fold_init_info(method_name: call_fold_seed_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
       let call_fold_acc_type = match call_fold_info {
@@ -10062,7 +10057,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let span = texpr.span
       let cast_inner = cast_expr(texpr: texpr)
       let target_type = cast_target(texpr: texpr)
-      let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: none)
+      let inner_expected = match cast_inner.expr_data {
+        ExprListLit => Present { value: target_type }
+        _ => none
+      }
+      let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: inner_expected)
       let inner_typed = inner_result.typed
       let inner_diags = inner_result.diagnostics
       let si = scope.type_env.source_indices

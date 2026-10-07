@@ -16229,8 +16229,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let span = texpr.span.clone();
             let cast_inner = crate::v1_std_core::cast_expr(texpr.clone());
             let target_type = crate::v1_std_core::cast_target(texpr.clone());
-            let inner_result =
-                infer_expr(cast_inner.clone(), scope.clone(), std::option::Option::None);
+            let inner_expected = match (*cast_inner.expr_data.clone()).clone() {
+                ExprData::ExprListLit => Some(target_type.clone()),
+                _ => std::option::Option::None,
+            };
+            let inner_result = infer_expr(cast_inner.clone(), scope.clone(), inner_expected.clone());
             let inner_typed = inner_result.typed.clone();
             let inner_diags = inner_result.diagnostics.clone();
             let si = scope.type_env.clone().source_indices.clone();
