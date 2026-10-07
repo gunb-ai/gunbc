@@ -755,11 +755,11 @@ fn discharge_bmc_secure_apply(
 }
 
 fn bmc_secure_application_joins_this_instance(
-  identity: IdentityBoundProvisional,
+  identity_subject: MachineIntakeSubject,
   due_label: NonEmptyStr,
   application: BmcAccountApplication,
 ) -> ArrivalStepRefusal? {
-  if !same_intake_subject(left: application.plan.subject, right: identity.subject) {
+  if !same_intake_subject(left: application.plan.subject, right: identity_subject) {
     Present { value: BmcSecureApplicationForAnotherInstance { subject: application.plan.subject } }
   } else if (bmc_secure_state_finding_label(finding: application.plan.due.deviation) as String) != (due_label as String) {
     Present { value: BmcSecureApplicationNotTheInspectedTransition }
@@ -790,7 +790,7 @@ fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: P
               Absent => StepRefused { key: key, cause: BmcSecureApplyInputsMissing }
               Present { value: ap } =>
                 match bmc_secure_application_joins_this_instance(
-                  identity: identity,
+                  identity_subject: identity.subject,
                   due_label: bmc_secure_state_finding_label(finding: due.deviation),
                   application: ap.application,
                 ) {

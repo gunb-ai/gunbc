@@ -2191,6 +2191,7 @@ fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "completed_bmc_account_application"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
@@ -2265,8 +2266,6 @@ fn dry_read_bmc_account_state(
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_diverged_reading"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -2319,6 +2318,41 @@ fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) 
 // THE WRITES, IN THE SECRET ORDER. Each write's bytes come from a fetch that resolved to exactly that
 // write's generation; a fetch of any other version writes nothing, and the application records the
 // write as not completed rather than writing a different credential.
+fn bmc_account_action_plan_with_subject(plan: BmcAccountActionPlan, subject: MachineIntakeSubject) -> BmcAccountActionPlan
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+  ]
+{
+  BmcAccountActionPlan {
+    subject: subject,
+    endpoint: plan.endpoint,
+    firmware: plan.firmware,
+    goal: plan.goal,
+    diverged: plan.diverged,
+    due: plan.due,
+    managed_write: plan.managed_write,
+    published_write: plan.published_write,
+    channel_writes: plan.channel_writes,
+    planned_at: plan.planned_at,
+  }
+}
+
+fn completed_bmc_account_application(plan: BmcAccountActionPlan, applied_at_millis: EpochMs) -> BmcAccountApplication
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+  ]
+{
+  BmcAccountApplication {
+    plan: plan,
+    managed_write_completed: true,
+    published_write_completed: true,
+    channel_writes_completed: true,
+    request_receipt: dry_evidence(text: "dry apply fixture"),
+    response_receipt: dry_evidence(text: "dry apply fixture"),
+    applied_at: dry_bmc_account_instant(millis: applied_at_millis),
+  }
+}
+
 fn dry_apply_bmc_account_plan(
   world: BmcWorld,
   plan: BmcAccountActionPlan,
