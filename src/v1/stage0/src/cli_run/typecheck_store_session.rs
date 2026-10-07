@@ -60,6 +60,9 @@ struct OutcomeCounts {
     commit_missed_open: u64,
     /// Commits whose stored size could not be read back: excluded from the largest-entry reading.
     commit_size_unread: u64,
+    /// Calls made while the invoking workflow configured no store: no open, no write attempted.
+    not_configured_lookup: u64,
+    not_configured_commit: u64,
     reentry_lookup: u64,
     reentry_commit: u64,
     unreachable_lookup: u64,
@@ -72,7 +75,7 @@ struct OutcomeCounts {
 
 thread_local! {
     static OUTCOMES: Cell<OutcomeCounts> = const { Cell::new(OutcomeCounts {
-        hit: 0, miss: 0, unavailable: 0, commit_committed: 0, commit_missed_open: 0, commit_size_unread: 0,
+        hit: 0, miss: 0, unavailable: 0, commit_committed: 0, commit_missed_open: 0, commit_size_unread: 0, not_configured_lookup: 0, not_configured_commit: 0,
         reentry_lookup: 0, reentry_commit: 0, unreachable_lookup: 0, unreachable_commit: 0,
         store_openings: 0, open_refused: 0,
     }) };
@@ -94,6 +97,8 @@ pub(crate) fn store_receipt_line() -> Option<String> {
         + c.open_refused
         + c.commit_missed_open
         + c.commit_size_unread
+        + c.not_configured_lookup
+        + c.not_configured_commit
         + c.reentry_lookup
         + c.reentry_commit
         + c.unreachable_lookup
@@ -103,13 +108,15 @@ pub(crate) fn store_receipt_line() -> Option<String> {
         return None;
     }
     Some(format!(
-        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} commit_size_unread={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} store_openings={} open_refused={} largest_entry_bytes={}",
+        "[typecheck-store] hit={} miss={} committed={} unavailable={} commit_missed_open={} commit_size_unread={} not_configured_lookup={} not_configured_commit={} reentry_lookup={} reentry_commit={} unreachable_lookup={} unreachable_commit={} store_openings={} open_refused={} largest_entry_bytes={}",
         c.hit,
         c.miss,
         c.commit_committed,
         c.unavailable,
         c.commit_missed_open,
         c.commit_size_unread,
+        c.not_configured_lookup,
+        c.not_configured_commit,
         c.reentry_lookup,
         c.reentry_commit,
         c.unreachable_lookup,
@@ -154,6 +161,20 @@ pub(crate) fn own_of_result(result: &TypecheckModuleResult) -> TypecheckModuleOw
         item_registry: result.typed.item_registry.clone(),
         diagnostics: result.diagnostics.clone(),
     }
+}
+
+/// The invoking workflow's explicit choice to use the granted durable store. The root itself is
+/// the one declared datum `std.materialization_store_grant materialization_store_durable_root_path`
+/// (a caller never supplies a path); this variable only says whether this invocation uses it, so a
+/// compile that was not given a store never reaches a host-durable write.
+const STORE_CONFIG_ENV: &str = "GUNBC_TYPECHECK_STORE";
+
+fn store_configured() -> bool {
+    #[cfg(test)]
+    if WITNESS_ROOT.with(|w| w.borrow().is_some()) {
+        return true;
+    }
+    std::env::var(STORE_CONFIG_ENV).is_ok_and(|v| v == "durable")
 }
 
 /// `Ok(None)` when the store's own closure is not reachable from the compiler's roots (the entry
@@ -227,6 +248,10 @@ pub(crate) fn durable_typecheck_lookup(
 ) -> Result<DurableTypecheckGet, String> {
     if PREPARING.with(|c| c.get()) {
         count(|c| c.reentry_lookup += 1);
+        return Ok(DurableTypecheckGet::Miss);
+    }
+    if !store_configured() {
+        count(|c| c.not_configured_lookup += 1);
         return Ok(DurableTypecheckGet::Miss);
     }
     let imports = list_value(
@@ -313,6 +338,10 @@ pub(crate) fn durable_typecheck_commit(
 ) -> Result<(), String> {
     if PREPARING.with(|c| c.get()) {
         count(|c| c.reentry_commit += 1);
+        return Ok(());
+    }
+    if !store_configured() {
+        count(|c| c.not_configured_commit += 1);
         return Ok(());
     }
     let (interface_text, diagnostics_text) = own_payload_texts(own)?;
@@ -595,6 +624,7 @@ mod session_reach {
     fn a_pool_without_the_store_module_is_a_counted_unavailable_not_a_miss() {
         let (root, idx) = fixture_index();
         let hex = "0".repeat(64);
+        set_witness_root(Some("/tmp/gunbc_unused".to_string()));
         let before = OUTCOMES.with(|c| c.get());
         let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
         let own = TypecheckModuleOwn {
@@ -605,12 +635,36 @@ mod session_reach {
         };
         let committed = durable_typecheck_commit(&idx, &hex, &[], &hex, &own);
         let after = OUTCOMES.with(|c| c.get());
+        set_witness_root(None);
         let _ = std::fs::remove_dir_all(root);
         assert!(matches!(got, Ok(DurableTypecheckGet::Unavailable)));
         assert!(committed.is_ok());
         assert_eq!(after.unreachable_lookup, before.unreachable_lookup + 1);
         assert_eq!(after.unreachable_commit, before.unreachable_commit + 1);
         assert_eq!(after.miss, before.miss);
+    }
+
+    /// No store configured by the invoking workflow: no open, no write, a counted outcome of its own
+    /// (neither Miss-as-success nor Unavailable).
+    #[test]
+    fn an_unconfigured_invocation_never_opens_the_store_and_is_counted() {
+        let (root, idx) = fixture_index();
+        let hex = "0".repeat(64);
+        set_witness_root(None);
+        if std::env::var(STORE_CONFIG_ENV).is_ok() {
+            return;
+        }
+        let before = OUTCOMES.with(|c| c.get());
+        let got = durable_typecheck_lookup(&idx, &hex, &[], &hex);
+        let after = OUTCOMES.with(|c| c.get());
+        let _ = std::fs::remove_dir_all(root);
+        assert!(matches!(got, Ok(DurableTypecheckGet::Miss)));
+        assert_eq!(
+            after.not_configured_lookup,
+            before.not_configured_lookup + 1
+        );
+        assert_eq!(after.store_openings, before.store_openings);
+        assert_eq!(after.unavailable, before.unavailable);
     }
 
     /// The caller's real pool holds the store: the lookup resolves through that same index from a
