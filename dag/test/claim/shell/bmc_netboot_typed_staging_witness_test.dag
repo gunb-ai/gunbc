@@ -2,7 +2,7 @@ module test.claim.shell.bmc_netboot_typed_staging_witness_test
 
 import std.types { Bool, String, Int, List, NonEmptyStr, list_length }
 import std.algebra { list_append }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import gunbc.bmc_netboot_serve {

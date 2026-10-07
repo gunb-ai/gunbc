@@ -1,6 +1,6 @@
 module gunbc.workspace_request_consumer
 
-import std.types { String, NonEmptyStr, Timestamp }
+import std.types { String, NonEmptyStr, Timestamp, List }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation_store {
@@ -108,4 +108,17 @@ fn workspace_consumer_reconcile_owner(store: FabricStorageBinding, owner: Princi
       owner: owner, idempotency_key: allocation.request.idempotency_key, observed_at: observed_at)
     other => other
   }
+}
+
+// One pass over the enrolled roster in policy order: the first owner whose ledger carries an
+// obligation (or refuses) decides the pass, and later owners wait for the next pass. An unreadable
+// ledger stops the pass rather than being skipped, so no owner's obligation is silently starved.
+fn workspace_consumer_reconcile_enrolled(store: FabricStorageBinding, owners: List<PrincipalRef>,
+  observed_at: Timestamp) -> WorkspaceConsumerNext {
+  fold(owners, init: WorkspaceConsumerIdle, f: fn(acc, owner) {
+    match acc {
+      WorkspaceConsumerIdle => workspace_consumer_reconcile_owner(store: store, owner: owner, observed_at: observed_at)
+      other => other
+    }
+  })
 }

@@ -4,7 +4,7 @@ import gunbc.fleet_converge_scope { FleetConvergeScope }
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
 import gunbc.fleet_converge_plan {
   ScopeDecoded,

@@ -1,5 +1,6 @@
 module gunbc.spark.vllm_runtime_image_build
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import extdeps.crypto.hash { digest_shell_verify_line, sha256_digest }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -814,7 +815,7 @@ fn vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: Arg
       if code != 0 {
         ImageLegFailed { step: step, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
       } else {
-        ImageLegRan { stdout: trim(s: out) }
+        ImageLegRan { stdout: remote_stdout_as_one_word(stdout: out) }
       }
   }
 }

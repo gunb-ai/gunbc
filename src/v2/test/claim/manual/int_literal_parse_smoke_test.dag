@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag {
   dag_language_model
 }
 import v2.std.compilers.lexing { token_stream_all, token_stream_first }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

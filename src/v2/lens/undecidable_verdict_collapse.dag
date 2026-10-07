@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, list_tail, TailFound, TailAbsent }
 import v2.std.collection { list_at_optional }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

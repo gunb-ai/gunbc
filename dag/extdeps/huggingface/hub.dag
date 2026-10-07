@@ -1,7 +1,7 @@
 module extdeps.huggingface.hub
 
 import std.types { String, Bool, List, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { ByteSize, Gibibyte, gibibyte_ceiling }
 import extdeps.external_authority { ExternalAuthority }

@@ -228,7 +228,7 @@ test fn a_v7_envelope_survives_the_full_shard_circle() -> Bool {
                 match store_assemble_decoded(objects: objects) {
                   StoreAssemblyCollision { identity: _ } => false
                   StoreAssembled { store } =>
-                    match decode_repository_v7_finish(v: index.document, store: store) {
+                    match decode_repository_v7_finish(v: index.document, store: store, commit_policy: index.commit_policy) {
                       RepositoryDecodeRefused { cause: _ } => false
                       RepositoryDecoded { envelope } =>
                         count(envelope.commits) == count(repo.commits)
