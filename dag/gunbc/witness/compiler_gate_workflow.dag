@@ -1138,6 +1138,9 @@ fn compiler_gate_native_cache_condition() -> String {
   join(["github.event_name == '", github_event_name_pull_request, "'"], "")
 }
 
+// Hand-authored two-line shell (scaffold): dissolves when the restore step of the shared native
+// product store is itself an emitted intent that names its job-private directory, at which point this
+// script is derived from that intent rather than spelled here.
 data compiler_gate_native_cache_root_script: String = "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\""
 
 fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
