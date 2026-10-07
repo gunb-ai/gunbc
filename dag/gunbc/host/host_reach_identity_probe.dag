@@ -175,18 +175,6 @@ data host_reach_identity_probe_receipts: List<HostReachIdentityProbeReceipt> = [
     requested_principal: "gunbc-fleet",
     outcome: ProbeAuthenticationRefused { cause: "gunbc-fleet@srv4: Permission denied (publickey)." },
   },
-  HostReachIdentityProbeReceipt {
-    host: "srv5" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
-    requested_principal: "",
-    outcome: ProbeTargetUnobserved { cause: "principal unobserved (no SSH attempted): Spark account that accepted the fleet key at OOBE is unverified recollection; awaits an authorized read-only observation" },
-  },
-  HostReachIdentityProbeReceipt {
-    host: "srv6" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
-    requested_principal: "",
-    outcome: ProbeTargetUnobserved { cause: "principal unobserved (no SSH attempted): Spark account that accepted the fleet key at OOBE is unverified recollection; awaits an authorized read-only observation" },
-  },
 ]
 
 fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentityProbeReceipt? {
