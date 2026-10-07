@@ -22130,16 +22130,10 @@ fn defining_module_for_resolved_type(
     }
     let parent_enum = variant_to_enum.get(type_name).cloned()?;
     // variant_to_enum names the owning enum by its declaration identity, `<module>.<name>`.
-    if let Some((module, _)) = parent_enum.rsplit_once('.') {
-        return Some(module.to_string());
-    }
-    for tm in graph.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        if lookup_type_by_name(tm.type_env.clone(), parent_enum.clone()).is_some() {
-            return Some(mod_name);
-        }
-    }
-    None
+    // An unqualified identity has no module; return None so the caller refuses
+    // (resolved_decl_ref_from_type_name). Do not scan the graph for a leaf match.
+    let (module, _) = parent_enum.rsplit_once('.')?;
+    Some(module.to_string())
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
