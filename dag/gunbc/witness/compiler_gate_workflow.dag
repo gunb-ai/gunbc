@@ -1169,9 +1169,27 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // which is outside the per-job `$RUNNER_TEMP` and so survives to the next run on the same runner
 // host (`cli_run::native_product_cache`, CI programme row R3). The toolchain segment is already part
 // of the root, and the product key carries the toolchain axis besides.
+// THE STORE EXISTS ONLY FOR PULL REQUESTS. The required run on the merge queue's composed revision is
+// the proof of the sha that lands, so it builds its own compiler: with the root unset the seed reads
+// and writes nothing (GUNBC_NATIVE_CACHE_ROOT unset is "no store"). A per-host entry is verified only
+// against its own manifest, which whoever wrote it controls, and a pull request's job runs code the
+// pull request chose; letting the queue read what a pull request could have written would let the
+// merge gate pass on a compiler it never built. A pull request's own reuse stays inside that trust.
+fn compiler_gate_native_cache_condition() -> String {
+  join(["github.event_name == '", github_event_name_pull_request, "'"], "")
+}
+
+fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
+  match ci_native_cache_root_step() {
+    RunStep { name: n, id: i, run: r, shell: s, env: e, working_directory: w, if_condition: _, continue_on_error: c, timeout_minutes: tm } =>
+      RunStep { name: n, id: i, run: r, shell: s, env: e, working_directory: w, if_condition: Present { value: compiler_gate_native_cache_condition() }, continue_on_error: c, timeout_minutes: tm }
+    other => other
+  }
+}
+
 fn compiler_gate_emit_build_native_cache_root_bound_step() -> CompilerGateBoundStep {
   CompilerGateBoundStep {
-    step: ci_native_cache_root_step(),
+    step: compiler_gate_native_cache_root_step_for_pull_requests(),
     role: consumes_only(capabilities: [RustcCapability]),
     step_name: "Derive native-cache root",
   }

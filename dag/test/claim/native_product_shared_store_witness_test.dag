@@ -13,12 +13,13 @@ import gunbc.native_product_shared_store {
 
 data live_key: String = "78fa374e0d6cd0df1339bb3a25abf2e96e9c22bcc6d61d72e2c179d168c8322a"
 
-// A fork has no standing, an unattributed run has none, a same-repo pull request and the merge group do.
-test fn only_same_repo_runs_and_the_merge_group_have_standing() -> Bool {
+// A fork has no standing, an unattributed run has none, the merge group has none (it builds its own
+// compiler), a same-repo pull request does.
+test fn only_same_repo_pull_requests_have_standing_and_the_merge_group_builds_its_own() -> Bool {
   let fork = match native_product_store_access(standing: ForkPullRequestRun) { NativeProductStoreNoAccess { cause: _ } => true, NativeProductStoreReadWrite => false }
   let other = match native_product_store_access(standing: UnattributedRun) { NativeProductStoreNoAccess { cause: _ } => true, NativeProductStoreReadWrite => false }
   let pr = match native_product_store_access(standing: SameRepoPullRequestRun) { NativeProductStoreReadWrite => true, NativeProductStoreNoAccess { cause: _ } => false }
-  let mg = match native_product_store_access(standing: MergeGroupRun) { NativeProductStoreReadWrite => true, NativeProductStoreNoAccess { cause: _ } => false }
+  let mg = match native_product_store_access(standing: MergeGroupRun) { NativeProductStoreNoAccess { cause: _ } => true, NativeProductStoreReadWrite => false }
   fork && other && pr && mg
 }
 

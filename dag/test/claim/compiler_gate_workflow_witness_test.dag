@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, RunsOnExpression }
 import gunbc.compiler_gate_workflow {
+  compiler_gate_emit_build_native_cache_root_bound_step, compiler_gate_native_cache_condition,
   compiler_gate_floor_job, compiler_gate_generated_job, compiler_gate_drift_step_id,
   compiler_gate_stage0_regen_step_id, compiler_gate_lint_step_id,
   compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
@@ -209,4 +210,14 @@ test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool {
     && any(path, id => id == compiler_gate_floor_job_id)
     && any(path, id => id == compiler_gate_generated_job_id)
     && any(path, id => id == compiler_gate_aggregate_job_id)
+}
+
+// THE NATIVE PRODUCT STORE IS BOUND TO PULL REQUESTS ONLY: the merge queue's composed revision builds its
+// own compiler, so a pull request's job cannot seed the compiler the gate then judges with. Deleting the
+// condition makes the step run on merge_group, which this refuses.
+test fn the_native_cache_root_step_runs_on_pull_requests_and_never_on_the_merge_queue() -> Bool {
+  let condition = step_if_text(step: compiler_gate_emit_build_native_cache_root_bound_step().step)
+  condition == compiler_gate_native_cache_condition()
+    && string_contains(s: condition, pattern: "pull_request")
+    && !string_contains(s: condition, pattern: "merge_group")
 }

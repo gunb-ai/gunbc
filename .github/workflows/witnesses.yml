@@ -118,6 +118,7 @@ jobs:
           if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
           mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
           echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+        if: github.event_name == 'pull_request'
       - name: Build the compiler
         id: build_witness_fold
         run: |+
