@@ -46,8 +46,10 @@ requires, what a supplier establishably offers, what is selected, and what is ac
 The earliest unjustified boundary (§6b) is therefore **the invocation**: it does not consume a
 selection result. The served-name string is the second.
 
-Interim mitigation, outside this design: ctrl#2282 delisted Group A's head from ctrl routing. Its
-retirement trigger is stated in §6.
+Interim mitigation, outside this design: ctrl#2282 delisted Group A's head from ctrl routing. Group A
+has since been decommissioned (2026-10-07), so that delisting is permanent. The defect is not Group
+A's: it recurs with any second checkpoint served under a shared name, and it is live today on
+OpenRouter, where one model id spans fp4, fp8 and undisclosed endpoints.
 
 ## 1. Demand and offer are different facts
 
@@ -267,8 +269,9 @@ and provenance are part of the first delivery that executes, not a later one.
      for an identity, the answer is "no reference".
    - Reporting that keeps reported charges apart from estimates.
 
-**ctrl#2282 is retired by working behavior,** not by a published record. Delivery 1 must show that
-ctrl's Sparks route enforces the accepted-alternatives requirement at invocation.
+Group A's decommissioning removes the live nvfp4 Sparks offer, not the acceptance case. The fp8-vs-nvfp4
+case below is exercised with a supplied offer at the selection boundary, paired with one inhabitance
+run over a real Sparks deployment (DESIGN §3, a witness discriminates at one interface).
 
 **Discriminating acceptance for delivery 1:**
 
