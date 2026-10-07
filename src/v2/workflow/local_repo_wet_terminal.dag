@@ -536,6 +536,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "the_issue_query_surface_renders_over_the_carrier_standings_read" },
+      entry: "dag/test/claim/roadmap/roadmap_dogfood_route_wet_witness_test.dag",
+      function: "the_issue_query_surface_renders_over_the_carrier_standings_read",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_terminal_verdict_outside_the_closed_set_is_unreadable" },
       entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
       function: "a_terminal_verdict_outside_the_closed_set_is_unreadable",
@@ -2903,6 +2909,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_typed_unavailable_disables_create" },
       entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
       function: "client_typed_unavailable_disables_create",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.browser_ready_label_real_path_witness", function: "grant_executes_the_dropin_write_for_real_on_a_scratch_root" },
+      entry: "dag/test/claim/runner/browser_ready_label_real_path_witness_test.dag",
+      function: "grant_executes_the_dropin_write_for_real_on_a_scratch_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.browser_ready_label_real_path_witness", function: "revoke_executes_the_dropin_removal_for_real_on_a_scratch_root" },
+      entry: "dag/test/claim/runner/browser_ready_label_real_path_witness_test.dag",
+      function: "revoke_executes_the_dropin_removal_for_real_on_a_scratch_root",
       expectation: ExpectedToHold {}
     }
   ]
