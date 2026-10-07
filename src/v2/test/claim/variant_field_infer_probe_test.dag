@@ -720,7 +720,8 @@ fn vfp_decl_shape_text(d: Optional<Node>) -> String {
     Absent => "absent"
     Present { value: t } =>
       match t.kind {
-        TypeNode { connective: Atom { identity: id } } => "atom:" + symbol_lexeme(sym: id)
+        TypeNode { connective: Atom { identity: id } } =>
+          if symbol_eq(a: id, b: ^Int) { "atom:^Int(canonical)" } else { "atom:" + symbol_lexeme(sym: id) + "(non-canonical)" }
         TypeNode { connective: Conj } => "conj"
         TypeNode { connective: Disj } => "disj"
         TypeNode { connective: _ } => "type"
@@ -761,5 +762,23 @@ fn vfp_cat_reasons(xs: List<Symbol>) -> String {
   match xs {
     Empty => ""
     Cons { head: h, tail: t } => symbol_lexeme(sym: h) + "/" + vfp_cat_reasons(xs: t)
+  }
+}
+
+fn vfp_decode_binder_type_twobinder() -> CliWireResponse {
+  match vfp_assemble_module(src: vfp_twobinder_src, name: ^p, artifact: vfp_arrow_artifact) {
+    Rejected { diagnostics: _ } => CliWirePrintable { bytes: "refused", exit: ExitSuccess }
+    Accepted { value: resolved, diagnostics: _ } => {
+      let body = vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+      match body {
+        Absent => CliWirePrintable { bytes: "no-arm", exit: ExitSuccess }
+        Present { value: b } =>
+          match resolved_tree_lexical_binding(tree: resolved, reference: b) {
+            Absent => CliWirePrintable { bytes: "no-binding", exit: ExitSuccess }
+            Present { value: binding } =>
+              CliWirePrintable { bytes: vfp_decl_shape_text(d: binding.declared), exit: ExitSuccess }
+          }
+      }
+    }
   }
 }
