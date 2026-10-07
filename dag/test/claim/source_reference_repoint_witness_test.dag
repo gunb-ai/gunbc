@@ -121,3 +121,10 @@ test fn a_second_retirement_run_is_a_no_op() -> Bool {
   let once = retired(text: "module p.m\nimport v2.std.algebra \{ filter, fold_list \}\n")
   retired(text: once) == once
 }
+
+// A WHOLE-MODULE IMPORT (no member list) on the line before is its own statement: the next line's retired member is
+// still found. Before this the scanner read the next `import` as more of the first one's path and missed it.
+test fn a_braceless_import_before_does_not_hide_a_retired_member() -> Bool {
+  retired(text: "module p.m\nimport extdeps.filesystem.filesystem_io\nimport v2.std.algebra \{ filter, fold_list \}\n")
+    == "module p.m\nimport extdeps.filesystem.filesystem_io\nimport v2.std.algebra \{ fold_list \}\n"
+}

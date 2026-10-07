@@ -243,8 +243,13 @@ fn import_list_edits(scan: ImportListScan, rbrace_end: Int, newline_after: Bool,
   }
 }
 
+// A NEWLINE ENDS AN IMPORT THAT HAS NOT OPENED ITS BRACES: `import a.b` with no member list is a whole-module
+// import, and the next line's `import` is a new statement, never more of this one's path. Inside the braces a
+// newline is layout and is skipped.
 fn import_scan_step(scan: ImportListScan, tok: Token, cs: List<Int>, retirements: List<ImportMemberRetirement>) -> ImportListScan {
-  if tok.class == ^ShNewline { scan }
+  if tok.class == ^ShNewline {
+    if scan.stage == 1 { import_scan_reset(scan: scan, edits: scan.edits) } else { scan }
+  }
   else if scan.stage == 0 {
     if token_is_word(tok: tok, word: "import") {
       ImportListScan { edits: scan.edits, stage: 1, import_start: tok.start, path: "", lbrace_end: 0, entries: [], open_entry: false }
