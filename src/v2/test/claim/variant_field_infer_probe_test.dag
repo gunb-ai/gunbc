@@ -883,3 +883,30 @@ fn vfp_decode_refusal_locus() -> CliWireResponse {
       }
   }
 }
+
+// TEMPORARY (xl2 cost bisect): the Map primitive's per-op cost shape. Steps for inserting N keys;
+// comparing N=512 vs N=2048 decides O(1)/O(log n) (4x steps) vs O(n) per op (16x).
+fn vfp_map_built(n: Int) -> Map<Int, Int> {
+  vfp_map_build(m: empty_map(), i: 0, n: n)
+}
+
+fn vfp_map_build(m: Map<Int, Int>, i: Int, n: Int) -> Map<Int, Int> {
+  match i < n {
+    True => vfp_map_build(m: map_insert(m: m, key: i, value: i), i: i + 1, n: n)
+    False => m
+  }
+}
+
+fn vfp_map_bench_512_holds() -> Bool {
+  match map_lookup(m: vfp_map_built(n: 512), key: 511) {
+    Present { value: v } -> v == 511
+    Absent => false
+  }
+}
+
+fn vfp_map_bench_2048_holds() -> Bool {
+  match map_lookup(m: vfp_map_built(n: 2048), key: 2047) {
+    Present { value: v } -> v == 2047
+    Absent => false
+  }
+}
