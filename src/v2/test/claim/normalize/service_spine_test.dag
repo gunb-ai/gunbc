@@ -16,7 +16,7 @@ import v2.std.symbol_index { LexicalAmbiguous, LexicalHit, LexicalUnbound, Symbo
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }
 

@@ -10,7 +10,7 @@ import gunbc.declared_import_closure_binding {
   row4_stripped_pool_coincidence_or_refuse
 }
 import gunbc.compile_clean_diagnostic_policy { ListedImport }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.types { Bool, NonEmptyStr }
 
 // Per-PR discovery-admitted unit controls for gunbc.declared_import_closure_binding verdict

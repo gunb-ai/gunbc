@@ -3,7 +3,7 @@ module v2.std.node
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceId,

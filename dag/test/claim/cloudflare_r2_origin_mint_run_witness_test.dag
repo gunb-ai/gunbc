@@ -73,6 +73,8 @@ import gunbc.cloudflare.r2_origin {
   ContentAddressedWorkspaceHistory,
   FabricWorkspace,
   fabric_workspace_standing,
+  fabric_workspace_read_access_key_id, fabric_workspace_write_access_key_id,
+  fabric_workspace_read_secret_version, fabric_workspace_write_secret_version,
   fabric_workspace_read_secret_id,
   fabric_workspace_write_secret_id,
   origin_admission_is_create_only,
@@ -907,20 +909,23 @@ test fn r2_workspace_mints_are_scoped_to_the_workspace_bucket() -> Bool {
     && purpose_bucket_name(purpose: FabricWorkspace {}) != purpose_bucket_name(purpose: FabricCacheBlobs {})
 }
 
-test fn r2_workspace_standing_names_its_mint_entries_and_custody() -> Bool {
+test fn r2_workspace_standing_pins_both_minted_credentials() -> Bool {
   let read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: fabric_workspace_standing())
   let write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: fabric_workspace_standing())
   let entries = match fabric_workspace_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: b } =>
       match b.read_credential {
-        OriginCredentialUnminted { mint_entry: e, secret_id: _ } => e.decl_name == "run_workspace_object_read"
+        OriginCredentialPinned { access_key_id: k, token_value: t } =>
+          (k as String) == (fabric_workspace_read_access_key_id as String) && (t.secret as String) == "cloudflare-r2-workspace-read-token" && (t.version as String) == (fabric_workspace_read_secret_version as String)
         _ => false
       }
         && match b.write_credential {
-          OriginCredentialUnminted { mint_entry: e, secret_id: _ } => e.decl_name == "run_workspace_object_write"
+          OriginCredentialPinned { access_key_id: k, token_value: t } =>
+            (k as String) == (fabric_workspace_write_access_key_id as String) && (t.secret as String) == "cloudflare-r2-workspace-write-token" && (t.version as String) == (fabric_workspace_write_secret_version as String)
           _ => false
         }
+        && (fabric_workspace_read_access_key_id as String) != (fabric_workspace_write_access_key_id as String)
   }
   entries
     && match read {

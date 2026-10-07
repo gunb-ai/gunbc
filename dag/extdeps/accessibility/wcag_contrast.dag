@@ -13,9 +13,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // Cited upstream: W3C WCAG 2.2, definitions of relative luminance and contrast ratio (retrieved
-// 2026-07-21). Relative luminance L = 0.2126 R + 0.7152 G + 0.0722 B where each channel c (sRGB,
-// 0..1) linearizes as: c <= 0.03928 -> c/12.92, else ((c+0.055)/1.055)^2.4 (the 0.03928 knee is
-// WCAG's published constant). Contrast ratio = (L_lighter + 0.05) / (L_darker + 0.05); thresholds
+// 2026-10-05). Relative luminance L = 0.2126 R + 0.7152 G + 0.0722 B where each channel c (sRGB,
+// 0..1) linearizes as: c <= 0.04045 -> c/12.92, else ((c+0.055)/1.055)^2.4 — the 0.04045 knee is
+// the cited constant (the definition's Note 2 records 0.03928 as the threshold before May 2021;
+// 2.2 aligned it with sRGB). Contrast ratio = (L_lighter + 0.05) / (L_darker + 0.05); thresholds
 // 4.5:1 (AA normal text), 3:1 (AA large text and non-text graphical objects, per SC 1.4.11), 7:1
 // (AAA). Arithmetic here is integer at scale 10000 (one unit = 0.0001). The single approximated
 // kernel is the exponent 2.4, computed as x^2.4 = x^2 * (x^2)^(1/5) with the fifth root by integer
@@ -74,8 +75,10 @@ fn pow_2_4_scaled(x_scaled: Int) -> Int {
   }
 }
 
+// The cited knee is 0.04045; c_scaled is an integer at scale 10000, so c <= 0.04045 is
+// c_scaled <= 404 (404.5 is not representable, and 404 is the largest integer at or below it).
 fn linearize_channel_scaled(c_scaled: Int) -> Int {
-  if c_scaled <= 392 {
+  if c_scaled <= 404 {
     (c_scaled * 100) / 1292
   } else {
     pow_2_4_scaled(x_scaled: ((c_scaled + 550) * 10000) / 10550)

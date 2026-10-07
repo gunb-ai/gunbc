@@ -58,7 +58,7 @@ import extdeps.git {
   GitDiffNameStatusComplete, git_diff_name_status_parse, GitDiffRange, TwoDot, ThreeDot
 }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_sha1_object_id }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.lens.module_impact_query {
   ModuleIdentity,
   ImpactStanding,

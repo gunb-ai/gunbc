@@ -53,7 +53,7 @@ import v2.test.execution.emit_host_complement_equals_eval {
 }
 import v2.std.algebra { Cons, Empty, length }
 import std.algebra { Cons, Empty, list_append }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent

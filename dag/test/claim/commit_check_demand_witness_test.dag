@@ -34,7 +34,7 @@ import std.realization_schedule {
 }
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

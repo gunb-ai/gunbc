@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import std.realization_measurement { time_measure_list_total }
 import v2.std.algebra { skip }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
 import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
 import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, smpro_probe_outcome }

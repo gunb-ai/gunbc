@@ -2,7 +2,7 @@ module extdeps.transports.rest_declared
 
 import std.types { HttpStatus, String }
 import extdeps.ietf.http_semantics { HttpStatusClass }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 // THE DECLARED VOCABULARY OF THE REST TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
 // AUTHORS for this transport -- its binding fields, the channels its `from "key"` names (open: a response body member) and its response status patterns -- apart from

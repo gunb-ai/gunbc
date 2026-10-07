@@ -1,7 +1,7 @@
 module v2.workflow.compile_door_cause_ownership
 
 import v2.std.node { Symbol }
-import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.algebra { list_find_first }
 import std.types { String, List }
 import v2.std.integer { Int }
