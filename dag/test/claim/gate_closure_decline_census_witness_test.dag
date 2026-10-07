@@ -1,7 +1,7 @@
 module test.claim.gate_closure_decline_census_witness
 
 import std.types { Bool, Int, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.gate_closure_decline_census {
   DispositionRosterRead,
   DispositionRosterRows,

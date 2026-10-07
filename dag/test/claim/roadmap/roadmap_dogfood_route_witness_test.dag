@@ -1,6 +1,6 @@
 module test.claim.roadmap_dogfood_route_witness_test
 
-import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha }
+import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha, FilePath }
 import std.nat { Nat }
 import std.measure { kibibyte }
 import std.process { ExitSuccess, ExitFailure }
@@ -12,14 +12,22 @@ import gunbc.roadmap_session_placement {
 }
 import gunbc.roadmap_attempt_metering { MeteringNotYetWritten }
 import gunbc.roadmap.roadmap_result_returned { ResultNotReturned }
-import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened }
+import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotCloseFailed }
 import gunbc.roadmap_service_evidence {
-  ServiceEvidenceReceipt, ServiceEvidenceInputs, SessionPlacementRead, MeteringRead, ResultReturnedRead, AttemptBinding,
-  service_evidence_receipt_wire, service_evidence_snapshot_of_receipt, SnapshotDecoded, SnapshotInvalid,
+  ServiceEvidenceReceipt, ServiceEvidenceInputs, SessionPlacementRead, MeteringRead, ResultReturnedRead, AttemptBinding, ServiceEvidenceJoined,
+  service_evidence_receipt_wire, service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode, SnapshotDecoded, SnapshotInvalid,
 }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
+import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestClaimBound, RequestAutonomous }
+import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventId, LegacyEmailPrincipal, ResultPublished }
+import gunbc.roadmap_attempt_metering { AttemptMeteringObservation, AttemptMeteringRecord, MeteredRoleUsage, MeteredWorker, TokensObserved, SeatReleased, ComputeNotAttributable, MeteringObserved, MeteringProvisional, MeteringRefused }
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
+import product.capacity.event_chain { PartitionId }
+import gunbc.roadmap_model { RoadmapNodeId }
+import std.measure { token_count }
 import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.github { Repository }
@@ -43,10 +51,13 @@ import gunbc.roadmap_dogfood_route {
   CleanupReading, CleanupEstablished, CleanupGap, dogfood_cleanup_reading,
   DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
   StageGap, StageOwed, StageRefused,
-  ProducerPending, DogfoodStageReadings, dogfood_occupied_slot_record, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
+  ProducerPending, DogfoodStageReadings,
+  RequestReading, RequestEstablished, RequestGap, dogfood_request_reading,
+  ResultReturnedReading, ResultReturnedEstablished, ResultReturnedGap, dogfood_result_returned_reading,
+  MeteringReading, MeteringEstablished, MeteringGap, dogfood_metering_reading, dogfood_result_returned_reading_of, dogfood_occupied_slot_record, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
   dogfood_route_receipt, dogfood_submission_reading, dogfood_review_reading, dogfood_publication_reading,
-  dogfood_start_receipt_wire, dogfood_start_receipt_decode, StartReceiptDecoded, StartReceiptInvalid,
+  dogfood_start_receipt_wire, dogfood_start_receipt_decode, dogfood_durable_g3_g4_defect, dogfood_pinned_g3_g4_defect_of, StartReceiptDecoded, StartReceiptInvalid,
   dogfood_start_step, StartNoCandidate, StartClockRefused, StartTimestamp, dogfood_unproduced, dogfood_unproduced_stages,
 }
 
@@ -230,6 +241,57 @@ test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool {
     && cleanup_refused(r: dogfood_cleanup_reading(p: SessionPlacementUnreadable { unit: "gunbc-session-n1-k1", detail: "torn" }))
 }
 
+// ── G4 AND G3 STAGES, READ FROM THEIR RECORDS ──
+//
+// Supplied at the readers' interface: the request record, the result reader's observation and the
+// metering reader's observation. The producers' own shapes are their modules' witnesses
+// (test.claim.roadmap.roadmap_result_returned_witness_test, roadmap_attempt_metering_witness_test).
+fn request_bound() -> AttemptRequestBindingRead { RequestBindingRead { binding: RequestClaimBound { claim: "evt-claim" as NonEmptyStr as RoadmapEventId } } }
+
+data pr_url: String = "https://github.com/gunb-ai/gunbc/pull/4242"
+
+fn result_published(claim: String, h: String) -> ResultReturnedObservation { result_published_at(claim: claim, h: h, pr: pr_url) }
+
+fn result_published_at(claim: String, h: String, pr: String) -> ResultReturnedObservation { result_published_when(claim: claim, h: h, pr: pr, at: "2026-10-03T07:00:00Z") }
+
+fn result_published_when(claim: String, h: String, pr: String, at: String) -> ResultReturnedObservation {
+  ResultReturnedObserved {
+    node: "n1" as NonEmptyStr as RoadmapNodeId, attempt: "k1" as NonEmptyStr, event: "evt-result" as NonEmptyStr as RoadmapEventId, claim: claim as NonEmptyStr as RoadmapEventId,
+    return_to: LegacyEmailPrincipal { email: "requester@example.com" as NonEmptyStr, authentication_unestablished: true },
+    outcome: ResultPublished { pr: pr as NonEmptyStr, head: h as NonEmptyStr }, recorded_at: at,
+  }
+}
+
+fn metering_record() -> AttemptMeteringRecord {
+  AttemptMeteringRecord {
+    node_id: "n1", attempt_key: "k1", metered_at: 1000, sealed_roster: Present { value: "seal" },
+    roles: [MeteredRoleUsage {
+      role: MeteredWorker,
+      tokens: TokensObserved { rounds: 1, input_tokens: token_count(count: 10), output_tokens: token_count(count: 5), terminal: true },
+      seat: SeatReleased { pointer: HarnessSeatPointer { partition: "group-b" as NonEmptyStr as PartitionId, reference: "ref" as NonEmptyStr, owner: "owner" as NonEmptyStr }, granted_at: 100, released_at: 142 },
+    }],
+    compute: ComputeNotAttributable { reason: "fixture" as NonEmptyStr },
+  }
+}
+
+test fn a_request_record_naming_a_claim_establishes_the_request_and_an_autonomous_one_refuses() -> Bool {
+  (match dogfood_request_reading(r: request_bound()) { RequestEstablished { evidence } => evidence.claim == "evt-claim"  RequestGap { gap: _ } => false })
+    && (match dogfood_request_reading(r: RequestBindingRead { binding: RequestAutonomous }) { RequestGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  RequestEstablished { evidence: _ } => false })
+    && (match dogfood_request_reading(r: RequestBindingAbsent) { RequestGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  RequestEstablished { evidence: _ } => false })
+}
+
+test fn only_a_published_result_establishes_the_return_and_other_outcomes_refuse() -> Bool {
+  (match dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: head)) { ResultReturnedEstablished { evidence } => evidence.claim == "evt-claim" && evidence.head == head && evidence.event == "evt-result"  ResultReturnedGap { gap: _ } => false })
+    && (match dogfood_result_returned_reading(r: ResultNotReturned { attempt_key: "k1" }) { ResultReturnedGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  ResultReturnedEstablished { evidence: _ } => false })
+    && (match dogfood_result_returned_reading(r: ResultNotOwed { reason: "autonomous" }) { ResultReturnedGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  ResultReturnedEstablished { evidence: _ } => false })
+}
+
+test fn only_a_final_metering_record_establishes_metering() -> Bool {
+  (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }) { MeteringEstablished { evidence: _ } => true  MeteringGap { gap: _ } => false })
+    && (match dogfood_metering_reading(m: MeteringProvisional { record: metering_record() }) { MeteringGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  MeteringEstablished { evidence: _ } => false })
+    && (match dogfood_metering_reading(m: MeteringRefused { cause: "torn" }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
+}
+
 // ── THE FOLD ──
 
 // CLEANUP MUST RETURN THE GRANT THAT WAS PLACED. With every produced stage established, the carried
@@ -237,17 +299,17 @@ test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool {
 // another (dogfood_route_complete_of, the one constructor of the complete arm).
 fn all_readings(placement: SessionPlacementObservation, returned_of: SessionPlacementObservation) -> DogfoodStageReadings {
   DogfoodStageReadings {
-    request: ProducerPending { owed_by: "G4" },
+    request: dogfood_request_reading(r: request_bound()),
     immutable_subject: ProducerPending { owed_by: "G1" },
     shared_computation: ProducerPending { owed_by: "G1" },
     placement_grant: dogfood_placement_grant_reading(p: placement),
     isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: dogfood_submission_reading(attempt_key: "k1", capture: capture_at(h: head)),
-    metering: ProducerPending { owed_by: "G3" },
+    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }),
     independent_review: dogfood_review_reading(node_id: "n1", head_sha: head, report: review_at(complete: true)),
     candidate_published: dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: head) }, evidence_source: ReceiptSourcePresent { text: bound_receipt_text(h: head) }),
     cleanup: dogfood_cleanup_reading(p: returned_of),
-    result_returned: ProducerPending { owed_by: "G4" },
+    result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: head)),
   }
 }
 
@@ -271,6 +333,38 @@ fn fn_complete(c: DogfoodCarried?) -> String {
   }
 }
 
+test fn a_result_answering_another_claim_or_head_does_not_complete() -> Bool {
+  let a = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-7", fence: 7) }, returned: released())
+  let base = all_readings(placement: a, returned_of: a)
+  let other_claim = DogfoodStageReadings { request: base.request, immutable_subject: base.immutable_subject, shared_computation: base.shared_computation, placement_grant: base.placement_grant, isolated_execution: base.isolated_execution, durable_result: base.durable_result, metering: base.metering, independent_review: base.independent_review, candidate_published: base.candidate_published, cleanup: base.cleanup, result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-other", h: head)) }
+  let wrong_head = DogfoodStageReadings { request: base.request, immutable_subject: base.immutable_subject, shared_computation: base.shared_computation, placement_grant: base.placement_grant, isolated_execution: base.isolated_execution, durable_result: base.durable_result, metering: base.metering, independent_review: base.independent_review, candidate_published: base.candidate_published, cleanup: base.cleanup, result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: other_head)) }
+  fn_complete(c: dogfood_route_carried(r: other_claim)) == "result-returned" && fn_complete(c: dogfood_route_carried(r: wrong_head)) == "result-returned"
+}
+
+test fn a_result_naming_another_pull_request_at_the_same_head_does_not_complete() -> Bool {
+  let a = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-7", fence: 7) }, returned: released())
+  let base = all_readings(placement: a, returned_of: a)
+  let other_pr = DogfoodStageReadings { request: base.request, immutable_subject: base.immutable_subject, shared_computation: base.shared_computation, placement_grant: base.placement_grant, isolated_execution: base.isolated_execution, durable_result: base.durable_result, metering: base.metering, independent_review: base.independent_review, candidate_published: base.candidate_published, cleanup: base.cleanup, result_returned: dogfood_result_returned_reading(r: result_published_at(claim: "evt-claim", h: head, pr: "https://github.com/gunb-ai/gunbc/pull/9999")) }
+  fn_complete(c: dogfood_route_carried(r: base)) == "complete" && fn_complete(c: dogfood_route_carried(r: other_pr)) == "result-returned"
+}
+
+// A result read through a carrier snapshot that failed to close is refused, never established, even
+// when the event itself is a published result.
+test fn a_result_read_through_a_failed_snapshot_close_refuses() -> Bool {
+  let joined = ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+    binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+    inputs: ServiceEvidenceInputs {
+      session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
+      metering: MeteringRead { observation: MeteringNotYetWritten },
+      result_returned: ResultReturnedRead { observation: result_published(claim: "evt-claim", h: head), close: SnapshotCloseFailed { worktree: "/tmp/w" as FilePath, exit_code: 1, stderr: "busy" } },
+    },
+  } }
+  match dogfood_result_returned_reading_of(service: joined) {
+    ResultReturnedGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }
+    ResultReturnedEstablished { evidence: _ } => false
+  }
+}
+
 test fn a_cleanup_of_another_grant_does_not_carry_completion() -> Bool {
   let a = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-7", fence: 7) }, returned: released())
   let b = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-9", fence: 9) }, returned: released())
@@ -283,17 +377,17 @@ test fn a_cleanup_of_another_grant_does_not_carry_completion() -> Bool {
 fn readings_with(s: SubmissionReading, r: ReviewReading, p: PublicationReading) -> DogfoodStageReadings {
   let placement = observed(grant: SessionGrantRecorded { record: placement_record() }, returned: released())
   DogfoodStageReadings {
-    request: ProducerPending { owed_by: "G4" },
+    request: dogfood_request_reading(r: request_bound()),
     immutable_subject: ProducerPending { owed_by: "G1" },
     shared_computation: ProducerPending { owed_by: "G1" },
     placement_grant: dogfood_placement_grant_reading(p: placement),
     isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: s,
-    metering: ProducerPending { owed_by: "G3" },
+    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }),
     independent_review: r,
     candidate_published: p,
     cleanup: dogfood_cleanup_reading(p: placement),
-    result_returned: ProducerPending { owed_by: "G4" },
+    result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: head)),
   }
 }
 
@@ -310,7 +404,7 @@ fn established_three() -> DogfoodStageReadings {
 test fn every_existing_producer_established_is_still_incomplete_with_the_rest_named() -> Bool {
   match dogfood_route_receipt(node_id: "n1", attempt_key: "k1", r: established_three()) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed, refused } =>
-      wires(stages: owed) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
+      wires(stages: owed) == "immutable-subject,shared-computation,isolated-execution"
         && length(refused) == 0
     DogfoodRouteComplete { node_id: _, attempt_key: _, placement: _, submission: _, review: _, publication: _, cleanup: _ } => false
   }
@@ -343,11 +437,28 @@ data evidence_wire_n1: String = "{\"schema\": \"service-evidence-receipt/v2\", \
 
 data evidence_wire_n2: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n2\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}, {\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
 
-fn evidence_wire(node: String) -> String { if node == "n2" { evidence_wire_n2 } else { evidence_wire_n1 } }
+// THE PINNED EVIDENCE MUST ESTABLISH G3 AND G4: the canonical wire with the two G3 fields observed from
+// a Final meter and the two G4 fields observed as a published result; and single-edit variants of it.
+// evidence_wire_n1 above is the all-owed wire.
+data evidence_observed_n1: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"observed\", \"value\": {\"seconds\": 42}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"completion_time\", \"standing\": \"observed\", \"value\": {\"recorded_at\": \"2026-10-03T07:00:00Z\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"published\", \"pr\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"head\": \"b04485cffb000000000000000000000000000000\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 10, \"output_tokens\": 5}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+
+data evidence_g3_pending_n1: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"pending\", \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"reason\": \"provisional\"}, {\"field\": \"completion_time\", \"standing\": \"observed\", \"value\": {\"recorded_at\": \"2026-10-03T07:00:00Z\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"published\", \"pr\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"head\": \"b04485cffb000000000000000000000000000000\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"pending\", \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"reason\": \"provisional\"}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+
+data evidence_g4_absent_n1: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"observed\", \"value\": {\"seconds\": 42}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 10, \"output_tokens\": 5}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+
+data evidence_g4_not_owed_n1: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"observed\", \"value\": {\"seconds\": 42}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"completion_time\", \"standing\": \"not_owed\", \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"reason\": \"autonomous\"}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"not_owed\", \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"reason\": \"autonomous\"}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 10, \"output_tokens\": 5}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+
+data evidence_other_pr_n1: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"observed\", \"value\": {\"seconds\": 42}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"completion_time\", \"standing\": \"observed\", \"value\": {\"recorded_at\": \"2026-10-03T07:00:00Z\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"published\", \"pr\": \"https://github.com/gunb-ai/gunbc/pull/9999\", \"head\": \"b04485cffb000000000000000000000000000000\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 10, \"output_tokens\": 5}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+
+fn evidence_wire(node: String) -> String { if node == "n2" { replace(s: evidence_observed_n1, from: "\"node_id\": \"n1\"", to: "\"node_id\": \"n2\"") } else { evidence_observed_n1 } }
 
 fn payload_with(node: String, attempt: String, h: String, subject: String, pr: Int, when: String, ev_wire: String, ev_digest: String) -> String {
+  payload_claimed(node: node, attempt: attempt, h: h, subject: subject, pr: pr, when: when, ev_wire: ev_wire, ev_digest: ev_digest, result_claim: "evt-claim")
+}
+
+fn payload_claimed(node: String, attempt: String, h: String, subject: String, pr: Int, when: String, ev_wire: String, ev_digest: String, result_claim: String) -> String {
   serialize_json(v: json_object([
-    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v3")),
+    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v6")),
     json_kv(key: "node_id", value: json_string(s: node)),
     json_kv(key: "attempt_key", value: json_string(s: attempt)),
     json_kv(key: "head_sha", value: json_string(s: h)),
@@ -360,6 +471,10 @@ fn payload_with(node: String, attempt: String, h: String, subject: String, pr: I
     json_kv(key: "grant_identity", value: json_string(s: "evt-7")),
     json_kv(key: "fence_generation", value: json_int(n: 7)),
     json_kv(key: "cleanup_outcome", value: json_string(s: "released")),
+    json_kv(key: "request_binding_wire", value: json_string(s: attempt_request_binding_json(binding: RequestClaimBound { claim: "evt-claim" as NonEmptyStr as RoadmapEventId }))),
+    json_kv(key: "result_event", value: json_string(s: "evt-result")),
+    json_kv(key: "result_claim", value: json_string(s: result_claim)),
+    json_kv(key: "metering_compute", value: json_string(s: "not-attributable")),
     json_kv(key: "service_evidence_digest", value: json_string(s: ev_digest)),
     json_kv(key: "service_evidence_wire", value: json_string(s: ev_wire)),
     json_kv(key: "established_at", value: json_string(s: when)),
@@ -461,8 +576,8 @@ test fn a_candidate_with_no_usable_clock_refuses() -> Bool {
 // While any stage has no producer, the recorder answers NoCompleteAttempt without scanning history:
 // the stages it reads are the same record the fold reads, and they are exactly the fold's owed set
 // when every existing producer is established (the claim above).
-test fn the_unproduced_stages_are_the_six_owed_in_route_order() -> Bool {
-  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
+test fn the_unproduced_stages_are_the_three_owed_in_route_order() -> Bool {
+  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "immutable-subject,shared-computation,isolated-execution"
 }
 
 // ── THE PINNED SERVICE EVIDENCE ──
@@ -515,6 +630,89 @@ test fn a_partial_evidence_wire_is_not_a_start() -> Bool {
 test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool {
   (match dogfood_occupied_slot_record(defect: Present { value: "the pinned evidence names another instance" }) { DogfoodStartRefused { reason: _ } => true  DogfoodStartAlreadyRecorded => false  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false })
     && (match dogfood_occupied_slot_record(defect: none) { DogfoodStartAlreadyRecorded => true  DogfoodStartRefused { reason: _ } => false  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false })
+}
+
+// ── THE OCCUPIED-SLOT DECODER RE-ESTABLISHES G3 AND G4 ──
+//
+// Each claim decodes one receipt whose only difference from good() is the named edit. The pinned
+// service evidence must establish a Final meter and a published result, the result must answer the
+// pinned request's claim, and its PR and head must be the receipt's publication.
+// Supplied at the snapshot interface the pinned check reads (one decode per claim); the receipt-level
+// decode of the same check is a_result_answering_another_claim_than_the_pinned_request_is_not_a_start
+// and a_complete_start_receipt_decodes.
+fn pinned_with(ev: String) -> Bool {
+  match service_evidence_snapshot_decode(wire: ev) {
+    SnapshotInvalid { reason: _ } => false
+    SnapshotDecoded { snapshot } => match dogfood_pinned_g3_g4_defect_of(snapshot: snapshot, pr_url: pr_url, head_sha: head) { Absent => true  Present { value: _ } => false }
+  }
+}
+
+test fn observed_g3_and_g4_evidence_at_the_publication_establishes_both() -> Bool { pinned_with(ev: evidence_observed_n1) }
+
+test fn all_owed_g3_and_g4_evidence_is_not_a_start() -> Bool { !pinned_with(ev: evidence_wire_n1) }
+
+test fn provisional_g3_evidence_is_not_a_start() -> Bool { !pinned_with(ev: evidence_g3_pending_n1) }
+
+test fn a_result_not_yet_returned_is_not_a_start() -> Bool { !pinned_with(ev: evidence_g4_absent_n1) }
+
+test fn a_result_not_owed_is_not_a_start() -> Bool { !pinned_with(ev: evidence_g4_not_owed_n1) }
+
+test fn a_pinned_result_for_another_pull_request_at_the_same_head_is_not_a_start() -> Bool { !pinned_with(ev: evidence_other_pr_n1) }
+
+test fn a_result_answering_another_claim_than_the_pinned_request_is_not_a_start() -> Bool {
+  !decodes(text: payload_claimed(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: evidence_observed_n1, ev_digest: digest_of(wire: evidence_observed_n1), result_claim: "evt-other"))
+}
+
+// THE PINNED COMPLETION TIME IS THE LIVE EVENT'S: the receipt pins completion_time T1, and the live
+// exact result event -- same id, claim, PR and head -- was recorded at T2; the read-boundary judgment
+// refuses. Driven through dogfood_durable_g3_g4_defect, the function the occupied-slot read calls.
+test fn a_live_result_recorded_at_another_time_than_the_pinned_completion_is_a_defect() -> Bool {
+  match dogfood_start_receipt_decode(payload: good()) {
+    StartReceiptInvalid { reason: _ } => false
+    StartReceiptDecoded { receipt } =>
+      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+        binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+        inputs: ServiceEvidenceInputs {
+          session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
+          metering: MeteringRead { observation: MeteringNotYetWritten },
+          result_returned: ResultReturnedRead { observation: result_published_when(claim: "evt-claim", h: head, pr: pr_url, at: "2026-10-04T09:00:00Z"), close: SnapshotNotOpened },
+        },
+      } }) { Present { value } => string_contains(s: value, pattern: "recorded at another time")  Absent => false }
+  }
+}
+
+// AT THE INSTANCE-BOUND READ: the attempt's result observed through a snapshot that failed to close is
+// a defect, even when the event matches the pinned one.
+test fn a_live_result_read_through_a_failed_close_is_a_read_boundary_defect() -> Bool {
+  match dogfood_start_receipt_decode(payload: good()) {
+    StartReceiptInvalid { reason: _ } => false
+    StartReceiptDecoded { receipt } =>
+      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+        binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+        inputs: ServiceEvidenceInputs {
+          session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
+          metering: MeteringRead { observation: MeteringNotYetWritten },
+          result_returned: ResultReturnedRead { observation: result_published(claim: "evt-claim", h: head), close: SnapshotCloseFailed { worktree: "/tmp/w" as FilePath, exit_code: 1, stderr: "busy" } },
+        },
+      } }) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+// AN EMPTY UPSTREAM REASON IS STILL A DEFECT: the durable joins are String?, so an unobserved result
+// whose reader gave no reason text refuses rather than reading as "no defect".
+test fn an_unobserved_live_result_with_an_empty_reason_is_still_a_defect() -> Bool {
+  match dogfood_start_receipt_decode(payload: good()) {
+    StartReceiptInvalid { reason: _ } => false
+    StartReceiptDecoded { receipt } =>
+      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+        binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+        inputs: ServiceEvidenceInputs {
+          session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
+          metering: MeteringRead { observation: MeteringNotYetWritten },
+          result_returned: ResultReturnedRead { observation: ResultReturnedUnobserved { step: "history", reason: "" }, close: SnapshotNotOpened },
+        },
+      } }) { Present { value } => string_contains(s: value, pattern: "returned result is unobserved")  Absent => false }
+  }
 }
 
 // ── THE START RECORD'S EXIT ──

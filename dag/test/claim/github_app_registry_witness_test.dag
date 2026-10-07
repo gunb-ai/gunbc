@@ -21,6 +21,7 @@ import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,

@@ -55,6 +55,6 @@ fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> B
         && (missing.tail |> count == 1)
         && (missing.tail |> all(gap => declaration_ref_eq(a: gap.producer, b: unknown)
           && gap.cause == ("second" as NonEmptyStr)))
-    _ => false
+    EmissionOriginsObserved { origins: _ } => false
   }
 }

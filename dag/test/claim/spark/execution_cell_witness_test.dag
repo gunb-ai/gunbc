@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count, token_count_value , second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.spark.execution_cell {
   ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,
@@ -112,7 +112,7 @@ fn fx_refused(r: ExecutionCellRefusal<SystemdExecutionMember>) -> ExecutionCellP
 }
 
 fn fx_applied(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
-  SparkPairHostApplied { host: plan.host, detail: "ok", standing: serving_standing(attempts: []) }
+  SparkPairHostApplied { host: plan.host, wire: "management-lan", stdout: "ok", standing: serving_standing(attempts: []) }
 }
 
 fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
@@ -465,7 +465,7 @@ test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
     Absent => false
     Present { value: executable } =>
       let expected = execution_generation_of_intent(intent_key: serving_launch_profile_key(p: executable.profile))
-      let alias = executable.profile.served_alias as String
+      let alias_value = executable.profile.served_alias as String
       match spark_experiment_members(hosts: glm_native_ranked_hosts(), renders: glm_native_experiment_all_unit_renders()) {
         Absent => false
         Present { value: members } =>
@@ -475,7 +475,7 @@ test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
               length(cohort.members) == 4
                 && length(filter(cohort.members, m => (m.unit_name as String) == (glm_native_head_unit_name as String))) == 1
                 && execution_generation_eq(a: cohort.generation, b: expected)
-                && all(cohort.members, m => string_contains(s: m.unit_text, pattern: alias))
+                && all(cohort.members, m => string_contains(s: m.unit_text, pattern: alias_value))
           }
       }
   }

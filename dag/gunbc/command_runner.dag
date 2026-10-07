@@ -3,7 +3,7 @@ module gunbc.command_runner
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.types { List, String, NonEmptyStr, Bool }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.exec.command {
   ArgvCommand,
   CommandTransport,
@@ -127,6 +127,35 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // THE LocalExec ARM'S SHAPE BELOW IS THIS COLLAPSE'S OWN, not a preserved inheritance. Nothing
 // about #8593's earlier LocalExec-only cut constrained what this run site had to look like once
 // SshExec joined it through the same seam.
+// THE STDIN SIBLING OF run_shell_command, LOCAL LEG ONLY. Same admitted shape -- a caller-named
+// program and word list -- plus a payload that reaches the child as STDIN, never as an argv
+// element, so data carrying spaces, quotes or metacharacters cannot change the command's meaning
+// whatever it contains. Built for the typed append (tee -a) whose whole point is that the payload
+// is data. There is NO transport parameter to misread: the name says local, and the ssh leg would
+// forward the payload to a remote shell session -- admitting that is its own change with its own
+// analysis, and until it exists a caller wanting that gets a compile error, not a runtime refusal.
+fn run_shell_command_stdin_local(command: ArgvCommand, stdin_payload: String) -> ProcessExit
+{
+  match command_over_transport(command: command, transport: LocalExec) {
+    CommandOverTransportRefused { cause: c } =>
+      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+    CommandOverTransportBuilt { command: over } => {
+      let run = shell.Exec.RunArgvStdin(
+        program: over.program.invocation,
+        arguments: process_argv_expansion(
+          surface: cli_surface_of_literal_words(words: over.arguments)
+        ),
+        stdin_payload: stdin_payload,
+      )
+      if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("command failed: ", run.stderr))
+      }
+    }
+  }
+}
+
 fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
 {
   match command_over_transport(command: command, transport: transport) {

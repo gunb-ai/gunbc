@@ -3,7 +3,7 @@ module gunbc.spark.spark_file_blob
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
 import extdeps.tools.curl { curl_exit_status_is_unreachable }
 import extdeps.tools.rsync { rsync_exit_status_is_unreachable }

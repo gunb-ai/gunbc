@@ -1,7 +1,7 @@
 module gunbc.gate_closure_decline_census
 
 import std.types { Bool, Int, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.workflow.required_floor {
   changed_selection_identity_module_path,
   required_floor_disposition_name,
@@ -62,12 +62,17 @@ fn read_disposition_line(line: String) -> DispositionLineRead {
     DispositionLineSkipped
   } else {
     let fields = split(s: line, delimiter: "\t")
-    if count(fields) < 2 {
-      DispositionLineRefused { cause: "fewer than two tab-separated columns" }
-    } else if !contains(required_floor_disposition_names, fields[1]) {
-      DispositionLineRefused { cause: "disposition outside the floor's vocabulary: " + fields[1] }
-    } else {
-      DispositionLineRow { identity: fields[0], disposition: fields[1] }
+    match fields[0] {
+      Absent => DispositionLineRefused { cause: "no identity column" }
+      Present { value: identity } => match fields[1] {
+        Absent => DispositionLineRefused { cause: "fewer than two tab-separated columns" }
+        Present { value: disposition } =>
+          if !contains(required_floor_disposition_names, disposition) {
+            DispositionLineRefused { cause: "disposition outside the floor's vocabulary: " + disposition }
+          } else {
+            DispositionLineRow { identity: identity, disposition: disposition }
+          }
+      }
     }
   }
 }

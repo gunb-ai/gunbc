@@ -26,7 +26,7 @@ import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
 import v2.std.collection { list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }

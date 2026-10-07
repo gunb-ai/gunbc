@@ -9,7 +9,7 @@ import std.artifact_store {
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProcess, LocalAccelerator }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_candidate { v41_derivation_obligations,
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   V41RuntimeArtifactInputs,

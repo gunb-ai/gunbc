@@ -195,7 +195,9 @@ fn pdf_safe_parameters_include_page(sequence: PdfSafeParameterSequence, page: Po
     sequence.parameters,
     parameter => match parameter {
       SafeOpenPage(PdfOpenPage { page: n }) => n == page
-      _ => false
+      SafeOpenPage(_) => false
+      SafeOpenNamedDest(_) => false
+      SafeOpenStructElem(_) => false
     },
   )
 }

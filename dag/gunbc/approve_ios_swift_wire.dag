@@ -2,13 +2,17 @@ module gunbc.approve_ios_swift_wire
 
 import std.types { String, List, Bool, Int }
 import v2.std.algebra { list_append }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftCondition,
   SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
   SwiftStaticModifier, SwiftPrivateModifier, SwiftIndirectModifier, SwiftLet, SwiftVar,
   SwiftEnumDecl, SwiftStructDecl, SwiftExtensionDecl, SwiftFunctionDecl, SwiftInitializerDecl, SwiftVariableDecl,
-  SwiftIdentifierPattern, SwiftTuplePattern, SwiftWildcardPattern, SwiftWildcardExpr,
+  SwiftPattern, SwiftIdentifierPattern, SwiftTuplePattern, SwiftWildcardPattern, SwiftWildcardExpr,
+  SwiftIdentifierExpr, SwiftImplicitMemberExpr, SwiftExplicitMemberExpr, SwiftOptionalChainingExpr, SwiftFunctionCallExpr,
+  SwiftSubscriptExpr, SwiftStringLiteral, SwiftIntegerLiteral, SwiftBooleanLiteral, SwiftArrayLiteral, SwiftDictionaryLiteral,
+  SwiftTupleExpr, SwiftParenthesizedExpr, SwiftTryExpr, SwiftAwaitExpr, SwiftPrefixExpr, SwiftInfixExpr,
+  SwiftTernaryConditionalExpr, SwiftTypeCastingExpr, SwiftKeyPathExpr,
   SwiftSwitchStmt, SwiftSwitchCase, SwiftCaseItems, SwiftIfStmt, SwiftNoElse, SwiftClosure,
   SwiftInfixOperator, SwiftLogicalOrOperator, SwiftLogicalAndOperator, SwiftNilCoalescingOperator, SwiftClosedRangeOperator,
   SwiftHalfOpenRangeOperator, SwiftAddAssignmentOperator, SwiftNotEqualOperator, SwiftNilLiteral,
@@ -344,10 +348,39 @@ fn aw_construct_strings(t: String, o: String, fields: List<String>) -> SwiftExpr
   sw_calln(f: t, a: map(fields, f => sw_arg(l: f, v: aw_ostr(o: o, key: f))))
 }
 
+// The sum's kind slot is discarded when the caller binds it to `_`, else bound to `kind`.
+fn aw_sum_kind_pattern(bind: SwiftExpr) -> SwiftPattern {
+  match bind {
+    SwiftIdentifierExpr { name: _ } => sw_pid(n: "kind")
+    SwiftWildcardExpr => SwiftWildcardPattern
+    SwiftImplicitMemberExpr { name: _ } => sw_pid(n: "kind")
+    SwiftExplicitMemberExpr { base: _, member: _ } => sw_pid(n: "kind")
+    SwiftOptionalChainingExpr { base: _ } => sw_pid(n: "kind")
+    SwiftFunctionCallExpr { callee: _, arguments: _, trailing_closure: _ } => sw_pid(n: "kind")
+    SwiftSubscriptExpr { base: _, arguments: _ } => sw_pid(n: "kind")
+    SwiftStringLiteral { delimiter: _, segments: _ } => sw_pid(n: "kind")
+    SwiftIntegerLiteral { value: _ } => sw_pid(n: "kind")
+    SwiftBooleanLiteral { value: _ } => sw_pid(n: "kind")
+    SwiftNilLiteral => sw_pid(n: "kind")
+    SwiftArrayLiteral { elements: _ } => sw_pid(n: "kind")
+    SwiftDictionaryLiteral { elements: _ } => sw_pid(n: "kind")
+    SwiftTupleExpr { elements: _ } => sw_pid(n: "kind")
+    SwiftParenthesizedExpr { inner: _ } => sw_pid(n: "kind")
+    SwiftClosure { closure: _ } => sw_pid(n: "kind")
+    SwiftTryExpr { operator: _, operand: _ } => sw_pid(n: "kind")
+    SwiftAwaitExpr { operand: _ } => sw_pid(n: "kind")
+    SwiftPrefixExpr { operator: _, operand: _ } => sw_pid(n: "kind")
+    SwiftInfixExpr { lhs: _, operator: _, rhs: _ } => sw_pid(n: "kind")
+    SwiftTernaryConditionalExpr { condition: _, then_value: _, else_value: _ } => sw_pid(n: "kind")
+    SwiftTypeCastingExpr { operand: _, operator: _, target: _ } => sw_pid(n: "kind")
+    SwiftKeyPathExpr { components: _ } => sw_pid(n: "kind")
+  }
+}
+
 // let (<bind>, o) = try WireObject.sum(v, at: at, arms: ["<kind>": [...]])
 fn aw_sum(bind: SwiftExpr, kind: String, members: List<String>) -> SwiftStmt {
   sw_let_pat(
-    p: SwiftTuplePattern { elements: [match bind { SwiftWildcardExpr => SwiftWildcardPattern  _ => sw_pid(n: "kind") }, sw_pid(n: "o")] },
+    p: SwiftTuplePattern { elements: [aw_sum_kind_pattern(bind: bind), sw_pid(n: "o")] },
     e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "sum"), a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_id(n: "at")), sw_arg(l: "arms", v: sw_dict(e: [sw_kv(k: sw_str(s: kind), v: sw_strs(e: members))]))]))
   )
 }

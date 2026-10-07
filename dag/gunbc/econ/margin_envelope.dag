@@ -58,13 +58,13 @@ fn derive_margin_envelope_from_filed_facts(
             match margin_envelope_from_whole_dollar_counts(revenue: rev_count, profit: prf_count) {
               Present { value: envelope } =>
                 MarginEnvelopeDerived { envelope: envelope, margin_kind: margin_kind }
-              _ => MarginEnvelopeRefused { cause: EnvelopeDerivationRefused }
+              Absent => MarginEnvelopeRefused { cause: EnvelopeDerivationRefused }
             }
           }
         }
-        _ => MarginEnvelopeRefused { cause: ProfitUnfiled }
+        Absent => MarginEnvelopeRefused { cause: ProfitUnfiled }
       }
-    _ => MarginEnvelopeRefused { cause: RevenueUnfiled }
+    Absent => MarginEnvelopeRefused { cause: RevenueUnfiled }
   }
 }
 
