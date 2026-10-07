@@ -515,8 +515,10 @@ type ArmIntent
 // serving would let one name carry two obligation sets. It is admitted ONLY with the ruling as a typed
 // carrier: who ruled, when, and EXACTLY which subject -- the subject's realization key (arm_realization_key:
 // runtime artifact, checkpoint revision, topology, group, launch profile, deployment environment), so a
-// ruling about one staircase step admits no other step, artifact, revision or environment -- and the named
-// conditions that end it. The key is sealed inside the ruling: no caller can re-pair a ruling with another
+// ruling about one staircase step admits no other step, artifact, revision or environment. What ENDS the
+// ruling is not a field here: it is the declared drop's restoration trigger
+// (gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts) -- the receipt producers landing
+// or the operator recording a verdict -- a declared frontier that removes this arm when it fires. The key is sealed inside the ruling: no caller can re-pair a ruling with another
 // subject, and minting one for another subject is a new ruling, authored as such. What it waives is
 // declared as a section 4b(3) rung drop (gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts);
 // every other gate (execution compatibility, the memory wall, the transport readback, the front door)
@@ -528,14 +530,7 @@ type OperatorQualificationRuling sole_constructor {
   relayed_by: NonEmptyStr
   subject_label: NonEmptyStr
   subject_key: ContentHash
-  ends_when: List<OperatorQualificationEnd>
 }
-
-// THE CONDITIONS THAT END THE RULING: the operator's own qualification verdict, or the promotion receipt
-// producers landing, after which the subject promotes through normal serving or does not serve at all.
-type OperatorQualificationEnd
-  = OperatorQualificationVerdictRecorded
-  | PromotionReceiptProducersLand
 
 // ── THE REALIZATION KEY OF AN ARM WHOSE RUNTIME AND CHECKPOINT ARE ROWS ──────────────────────────
 //
@@ -583,11 +578,11 @@ fn arm_realization_key(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
 // THE ONLY CONSTRUCTOR. A ruling is minted over the exact launch identity it admits; a subject with no
 // realization key (no runtime or checkpoint row, an unpinned artifact) cannot be ruled on, and the
 // constructor says so rather than minting a ruling over a partial identity.
-fn operator_qualification_ruling(ruled_by: NonEmptyStr, ruled_on: NonEmptyStr, relayed_by: NonEmptyStr, subject_label: NonEmptyStr, ends_when: List<OperatorQualificationEnd>, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> OperatorQualificationRuling? {
+fn operator_qualification_ruling(ruled_by: NonEmptyStr, ruled_on: NonEmptyStr, relayed_by: NonEmptyStr, subject_label: NonEmptyStr, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> OperatorQualificationRuling? {
   match arm_realization_key(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env) {
     ArmSuccessorUnkeyed { causes: _ } => none
     ArmSuccessorKeyed { key: k } => Present { value: OperatorQualificationRuling {
-      ruled_by: ruled_by, ruled_on: ruled_on, relayed_by: relayed_by, subject_label: subject_label, subject_key: k, ends_when: ends_when,
+      ruled_by: ruled_by, ruled_on: ruled_on, relayed_by: relayed_by, subject_label: subject_label, subject_key: k,
     } }
   }
 }

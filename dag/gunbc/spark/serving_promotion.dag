@@ -284,7 +284,6 @@ fn promotion_fold(key: ServingSubjectKey, ceiling: Int?, evidence: ServingPromot
 type OperatorQualificationDisposition
   = WaivedByOperatorRuling
   | EnforcedByItsOwnGate { gate: NonEmptyStr }
-  | RequiredUnderTheRuling
 
 fn operator_qualification_disposition(r: PromotionRequirement) -> OperatorQualificationDisposition {
   match r {
@@ -296,19 +295,25 @@ fn operator_qualification_disposition(r: PromotionRequirement) -> OperatorQualif
   }
 }
 
-// A SHORTFALL THE RULING DOES NOT WAIVE AND NO OTHER GATE OWNS REFUSES THE QUALIFICATION SERVE, and so does
-// any outright refusal (a refused memory fit, a refused cache fit).
+// THE RULING'S PROMOTION JUDGMENT REFUSES ONLY OUTRIGHT REFUSALS (a refused memory fit, a refused cache
+// fit): every shortfall's requirement is, by the exhaustive disposition above, either waived or owned by its
+// own gate. Reading the disposition here is what makes a requirement added later a compile-time decision:
+// its author must give it a disposition, and a disposition that does not admit (a new variant, added with
+// the requirement that needs it) refuses here, naming the shortfall.
+fn operator_qualification_disposition_admits(d: OperatorQualificationDisposition) -> Bool {
+  match d {
+    WaivedByOperatorRuling => true
+    EnforcedByItsOwnGate { gate: _ } => true
+  }
+}
+
 fn operator_qualification_promotion_refusal(reading: PromotionShortfallReading) -> NonEmptyStr? {
   match reading {
     PromotionShortfallRefused { cause: c } => Present { value: c }
     PromotionShortfalls { shortfalls: ss } => {
-      let required = filter(ss, s => match operator_qualification_disposition(r: s.requirement) {
-        WaivedByOperatorRuling => false
-        EnforcedByItsOwnGate { gate: _ } => false
-        RequiredUnderTheRuling => true
-      })
-      if length(required) == 0 { none }
-      else { Present { value: join(["the operator-qualification ruling does not waive: ", join(map(required, s => s.cause as String), "; ")], "") as NonEmptyStr } }
+      let unadmitted = filter(ss, s => !operator_qualification_disposition_admits(d: operator_qualification_disposition(r: s.requirement)))
+      if length(unadmitted) == 0 { none }
+      else { Present { value: join(["the operator-qualification ruling does not admit: ", join(map(unadmitted, s => s.cause as String), "; ")], "") as NonEmptyStr } }
     }
   }
 }

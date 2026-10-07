@@ -808,8 +808,9 @@ fn launch_promotion_reading(checkpoint: ServingCheckpoint, runtime: ServingRunti
 
 // NORMAL SERVING NEEDS EVERY REQUIREMENT MET. AN OPERATOR-QUALIFICATION SERVE IS JUDGED BY THE CLOSED
 // DISPOSITION OF EACH REQUIREMENT (gunbc.spark.serving_promotion operator_qualification_disposition):
-// receipts 3-5 waived, compatibility and memory owned by their own gates, and any requirement placed
-// RequiredUnderTheRuling refusing. A bounded experiment needs none.
+// receipts 3-5 waived, compatibility and memory owned by their own gates; its only refusals are an outright
+// refusal (a refused memory or cache fit) and, in intent_refusal, the subject-key mismatch. A bounded
+// experiment needs none.
 fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
   match intent {
     ArmBoundedExperiment => none
