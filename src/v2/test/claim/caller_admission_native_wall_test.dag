@@ -23,6 +23,14 @@
 //   - dropping an uninterpretable entry turns (3) red;
 //   - accepting a non-conj roster (silently narrowing the roster) turns (4) red;
 //   - breaking the record reader's coordinates turns (5) red.
+//
+// THE SEAM CLAIMS close the fail-open review found (side chat review 5439746794): a callee marked
+// as a declaration reference whose declaration is unavailable refuses (typed, located) rather than
+// falling out of the lookup as "absent"; an unmarked callee is not judged at all. The marker
+// closed-list control -- the codec decoding AdmitCallersEdge -- lives in the codec's own witness
+// (dag/test/claim/scm/scm_object_table_json_witness_test.dag), where the decode idiom already
+// stands; hand-building the codec's sealed records here is not possible outside their defining
+// module.
 
 module v2.test.claim.caller_admission_native_wall
 
@@ -304,5 +312,48 @@ test fn a_declared_callee_whose_arrow_is_unreadable_refuses_holds() -> Bool {
             }
           Unavailable { reason: _ } => false
         }
+  }
+}
+
+// THE SEAM CONTROLS (side chat review 5439746794): a callee marked as a declaration reference
+// whose declaration is unavailable is NOT "not declared" -- it is a grounding failure, and the
+// call refuses with a typed, located cause. A callee that is not marked as a declaration
+// reference at all stays outside the judgment: no marker, no admit list to consult.
+
+test fn a_marked_callee_whose_declaration_is_unavailable_refuses_holds() -> Bool {
+  match infer_caller_admission_application_diags(
+    application: wall_unreadable_callee_application(),
+    caller: optional_present(value: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller }),
+    module_symbol: optional_present(value: ^bcb),
+    entries: [],
+    declarations: empty_symbol_index()
+  ) {
+    None => false
+    Some { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_caller_admission_callee_unresolved)
+  }
+}
+
+fn wall_unmarked_application() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: Node {
+      kind: TypeNode { connective: Atom { identity: ^wall_not_a_declaration } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    } }],
+    occurrence_id: wall_call_site_locus
+  }
+}
+
+test fn an_unmarked_callee_is_not_judged_holds() -> Bool {
+  match infer_caller_admission_application_diags(
+    application: wall_unmarked_application(),
+    caller: optional_present(value: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller }),
+    module_symbol: optional_present(value: ^bcb),
+    entries: [],
+    declarations: empty_symbol_index()
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
   }
 }

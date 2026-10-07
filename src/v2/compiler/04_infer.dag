@@ -6820,7 +6820,14 @@ fn infer_caller_admission_application_diags(
             NotMarkedReference => None
             MarkedReference { kind: DeclarationReferenceKind } =>
               match infer_callee_declaration_from_declarations(declarations: declarations, callee_ref: child0) {
-                Absent => None
+                Absent =>
+                  infer_admission_diags_of([
+                    Diagnostic {
+                      reason: ^infer_reason_caller_admission_callee_unresolved,
+                      at: node_locus(node: application),
+                      correction: Suggested { node: child0 }
+                    }
+                  ])
                 Present { value: decl } =>
                   match infer_operator_arrow(operator: decl) {
                     Absent =>
@@ -6914,6 +6921,17 @@ fn infer_caller_admission_judged_diags(
               }
             }
           ])
+        RosterLookupUnresolved =>
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_caller_admission_callee_unresolved,
+              at: node_locus(node: application),
+              correction: match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
+                Absent => Unavailable { reason: ExternalContractUnknown }
+                Present { value: callee_ref } => Suggested { node: callee_ref }
+              }
+            }
+          ])
         RosterLookupFound { target: roster } => infer_admission_from_roster(
           application: application,
           caller: caller,
@@ -6934,12 +6952,15 @@ fn infer_caller_admission_judged_diags(
 // GROUNDING of the callee reference -- a rebuilt copy whose formals and body survive but whose core
 // metadata edges (the carrier's AdmitCallersEdge among them) do not. When the facts copy is
 // unmarked, read the roster off the resolved-declarations arrow for the same declared callee.
-// Absent when the application's operator child is not a declared reference or the resolved arrow
-// carries no roster either (a fn without the clause -- the legitimate admit).
+// Absent when the application's operator child is not a marked reference at all, or the resolved
+// arrow carries no roster (a fn without the clause -- the legitimate admit). Unresolved when the
+// child IS marked as a declaration reference but no declaration stands behind it: that is not
+// "not declared", it is a grounding failure, and the caller admission refuses on it (fail closed).
 type InferAdmitRosterLookup
   = RosterLookupAbsent
   | RosterLookupAmbiguous
   | RosterLookupUnreadable
+  | RosterLookupUnresolved
   | RosterLookupFound { target: Node }
 
 fn infer_caller_admission_roster_from_declarations(
@@ -6953,7 +6974,7 @@ fn infer_caller_admission_roster_from_declarations(
         NotMarkedReference => RosterLookupAbsent
         MarkedReference { kind: DeclarationReferenceKind } =>
           match infer_callee_declaration_from_declarations(declarations: declarations, callee_ref: child0) {
-            Absent => RosterLookupAbsent
+            Absent => RosterLookupUnresolved
             Present { value: decl } =>
               match infer_operator_arrow(operator: decl) {
                 Absent => RosterLookupUnreadable

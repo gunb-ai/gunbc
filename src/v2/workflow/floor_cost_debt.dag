@@ -1037,8 +1037,9 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
 // as fixture-standing. Owner: the long-home changed-witness lane, where required_floor
 // long_home_prefixes admit module v2.test.claim.long.* as ChangedCostDebtVerdictOnly; the
 // claim also PASSES when run for its verdict without the eval budget (runner receipt, PR
-// #13108). It leaves when the native emitter stops billing claims for the interpreter's
-// pipeline.
+// #13108). Retirement: structural (the native emitter stops billing claims for the interpreter's
+// pipeline) or observational -- this identity measures below the charged budget on a required run
+// and is re-enrolled in required execution (side chat review 5439746794).
 fn floor_cost_debt_proven_chunk_22() -> List<String> {
   Cons { head: "v2.test.claim.long.caller_admission_native_wall_red.the_native_route_refuses_an_outside_cross_module_call_holds", tail: Empty {} }
 }

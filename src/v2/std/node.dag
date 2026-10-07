@@ -247,6 +247,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     BinderTypeEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
+    AdmitCallersEdge,
     LexicalReferenceEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
