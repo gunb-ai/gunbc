@@ -1,5 +1,6 @@
 module test.claim.spark.serving_incarnation_observe
 
+import std.optional { Present }
 import std.measure { hertz }
 import std.decimal { ExactDecimal }
 import std.content_hash { ContentHash, Sha256Hash, ContentHashEqual, compare_content_hash, sha256_hex_digest }
@@ -265,7 +266,7 @@ test fn a_non_sha256_image_id_refuses() -> Bool {
 
 test fn the_pgrep_listing_reads_pids() -> Bool {
   match pgrep_pid_listing(stdout: "1809052\n1809081\n") {
-    PgrepPidsRead { pids: ps } => count(ps) == 2 && ps.first() == 1809052
+    PgrepPidsRead { pids: ps } => count(ps) == 2 && ps.first() == Present { value: 1809052 }
     PgrepPidLineUnparseable { line: _ } => false
   }
 }
