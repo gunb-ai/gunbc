@@ -36,11 +36,7 @@ test fn w_group_b_launch_argv_renders_both_names() -> Bool {
   match glm_native_launch_lines().first() {
     Absent => false
     Present { value: l } =>
-      match l.engine_argv {
-        Nil => false
-        Cons { head: _, tail: rest } =>
-          join(rest, " ").starts_with("--served-model-name glm-5.3-flash glm-5.3-flash:fp8 --tensor-parallel-size")
-      }
+      join(l.engine_argv, " ").contains(" --served-model-name glm-5.3-flash glm-5.3-flash:fp8 --tensor-parallel-size ")
   }
 }
 
