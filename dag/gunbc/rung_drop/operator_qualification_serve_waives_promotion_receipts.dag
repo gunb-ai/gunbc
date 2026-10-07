@@ -15,9 +15,9 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // under its own intent, ArmOperatorQualificationServing (gunbc.spark.serving_arm), so the operator can
 // qualify it personally against GLM-5.3-Flash FP8 on Group B.
 //
-// WHICH RECEIPTS, AS A CLOSED SET: gunbc.spark.serving_promotion operator_qualification_disposition places
-// every PromotionRequirement exhaustively -- these three WaivedByOperatorRuling, compatibility and memory
-// EnforcedByItsOwnGate -- so a requirement added later is not waived unless its author places it so.
+// WHICH RECEIPTS, PLACED EXHAUSTIVELY: gunbc.spark.serving_promotion operator_qualification_requirement_refusal
+// has one arm per PromotionRequirement, so a requirement added later does not compile until its author places
+// it there -- it cannot inherit this waiver by omission (a compile-time placement, not a runtime refusal).
 //
 // WHAT IS NOT DROPPED. Execution compatibility still gates (the subject's ExecutionCompatible row in
 // gunbc.spark.serving_compatibility, earned on hardware), and so do the memory wall (a FitRefused verdict

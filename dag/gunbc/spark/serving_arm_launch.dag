@@ -807,7 +807,7 @@ fn launch_promotion_reading(checkpoint: ServingCheckpoint, runtime: ServingRunti
 }
 
 // NORMAL SERVING NEEDS EVERY REQUIREMENT MET. AN OPERATOR-QUALIFICATION SERVE IS JUDGED BY THE CLOSED
-// DISPOSITION OF EACH REQUIREMENT (gunbc.spark.serving_promotion operator_qualification_disposition):
+// PLACEMENT OF EACH REQUIREMENT (gunbc.spark.serving_promotion operator_qualification_requirement_refusal):
 // receipts 3-5 waived, compatibility and memory owned by their own gates; its only refusals are an outright
 // refusal (a refused memory or cache fit) and, in intent_refusal, the subject-key mismatch. A bounded
 // experiment needs none.

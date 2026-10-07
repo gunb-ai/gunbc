@@ -274,36 +274,21 @@ fn promotion_fold(key: ServingSubjectKey, ceiling: Int?, evidence: ServingPromot
 
 // ── WHAT THE OPERATOR-QUALIFICATION RULING DOES WITH EACH REQUIREMENT (operator ruling 2026-10-07) ──────
 //
-// EXHAUSTIVE, so a sixth requirement cannot inherit the 2026-10-07 waiver: its author must place it here.
-// Receipts 3-5 are waived (the declared drop
-// gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts). Execution compatibility is
-// enforced by its own gate, which requires an ExecutionCompatible row for an operator-qualification serve
-// exactly as for normal serving (gunbc.spark.serving_arm_launch intent_refusal). The memory fit is enforced
-// by its own gate too (gunbc.spark.arm_memory_fit arm_memory_launch_gate), which refuses a refused fit and,
-// under the ruling, admits an unestablished one.
-type OperatorQualificationDisposition
-  = WaivedByOperatorRuling
-  | EnforcedByItsOwnGate { gate: NonEmptyStr }
-
-fn operator_qualification_disposition(r: PromotionRequirement) -> OperatorQualificationDisposition {
-  match r {
-    RequirementExecutionCompatibility => EnforcedByItsOwnGate { gate: "gunbc.spark.serving_arm_launch intent_refusal" as NonEmptyStr }
-    RequirementMemoryFit => EnforcedByItsOwnGate { gate: "gunbc.spark.arm_memory_fit arm_memory_launch_gate" as NonEmptyStr }
-    RequirementResolvedLayoutCacheFit => WaivedByOperatorRuling
-    RequirementQualityOnTheAcceptanceSet => WaivedByOperatorRuling
-    RequirementWorkloadCalibration => WaivedByOperatorRuling
-  }
-}
-
-// THE RULING'S PROMOTION JUDGMENT REFUSES ONLY OUTRIGHT REFUSALS (a refused memory fit, a refused cache
-// fit): every shortfall's requirement is, by the exhaustive disposition above, either waived or owned by its
-// own gate. Reading the disposition here is what makes a requirement added later a compile-time decision:
-// its author must give it a disposition, and a disposition that does not admit (a new variant, added with
-// the requirement that needs it) refuses here, naming the shortfall.
-fn operator_qualification_disposition_admits(d: OperatorQualificationDisposition) -> Bool {
-  match d {
-    WaivedByOperatorRuling => true
-    EnforcedByItsOwnGate { gate: _ } => true
+// ONE EXHAUSTIVE MATCH OVER THE CLOSED ROSTER, read for every shortfall. Today every arm admits: receipts 3-5
+// are waived (the declared drop gunbc.rung_drop.operator_qualification_serve_waives_promotion_receipts), and
+// execution compatibility and the memory fit are enforced by their own gates (gunbc.spark.serving_arm_launch
+// intent_refusal; gunbc.spark.arm_memory_fit arm_memory_launch_gate). What this establishes is a
+// COMPILE-TIME PLACEMENT, not a refusal: a requirement added to PromotionRequirement does not compile until
+// its author writes its arm here, so it cannot inherit the 2026-10-07 waiver by omission -- though an author
+// can still write an admitting arm, which is then a visible edit to this waiver. The ruling's refusals are
+// an outright refusal (a refused memory or cache fit) and, in intent_refusal, the subject-key mismatch.
+fn operator_qualification_requirement_refusal(s: PromotionShortfall) -> NonEmptyStr? {
+  match s.requirement {
+    RequirementExecutionCompatibility => none
+    RequirementMemoryFit => none
+    RequirementResolvedLayoutCacheFit => none
+    RequirementQualityOnTheAcceptanceSet => none
+    RequirementWorkloadCalibration => none
   }
 }
 
@@ -311,9 +296,9 @@ fn operator_qualification_promotion_refusal(reading: PromotionShortfallReading) 
   match reading {
     PromotionShortfallRefused { cause: c } => Present { value: c }
     PromotionShortfalls { shortfalls: ss } => {
-      let unadmitted = filter(ss, s => !operator_qualification_disposition_admits(d: operator_qualification_disposition(r: s.requirement)))
-      if length(unadmitted) == 0 { none }
-      else { Present { value: join(["the operator-qualification ruling does not admit: ", join(map(unadmitted, s => s.cause as String), "; ")], "") as NonEmptyStr } }
+      let refused = filter(ss, s => match operator_qualification_requirement_refusal(s: s) { Absent => false  Present { value: _ } => true })
+      if length(refused) == 0 { none }
+      else { Present { value: join(map(refused, s => match operator_qualification_requirement_refusal(s: s) { Absent => s.cause as String  Present { value: c } => c as String }), "; ") as NonEmptyStr } }
     }
   }
 }

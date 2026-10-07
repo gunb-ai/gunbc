@@ -124,8 +124,10 @@ fn w_shortfall(r: PromotionRequirement) -> PromotionShortfall {
   PromotionShortfall { requirement: r, cause: "missing" as NonEmptyStr }
 }
 
-// THE WAIVER IS THE CLOSED SET: shortfalls in cache fit, quality and calibration (and an unestablished
-// memory fit, which its own gate owns) are admitted; an outright refusal still refuses.
+// THE WAIVER, READ THROUGH ITS EXHAUSTIVE PLACEMENT: shortfalls in cache fit, quality and calibration (and an
+// unestablished memory fit, which its own gate owns) are admitted; an outright refusal still refuses. The
+// placement itself is a compile-time property (a new requirement does not compile until placed), not a
+// runtime refusal this claim could exercise.
 test fn w_the_waiver_is_exactly_its_closed_disposition() -> Bool {
   (match operator_qualification_promotion_refusal(reading: PromotionShortfalls { shortfalls: [
       w_shortfall(r: RequirementMemoryFit), w_shortfall(r: RequirementResolvedLayoutCacheFit), w_shortfall(r: RequirementQualityOnTheAcceptanceSet), w_shortfall(r: RequirementWorkloadCalibration)] }) { Absent => true  Present { value: _ } => false })
