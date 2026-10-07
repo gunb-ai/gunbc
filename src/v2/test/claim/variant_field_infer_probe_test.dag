@@ -817,7 +817,7 @@ fn vfp_bool_text(b: Bool) -> String {
 fn vfp_probe_kids(n: Node) -> String {
   fold(n.children, init: "", f: fn(acc, e) {
         let tag = match e.label {
-          StructuralLabel { label: CoreMarker { marker: m } } => "core:" + symbol_lexeme(sym: m)
+          StructuralLabel { label: CoreMarker { marker: _ } } => "core"
           Authored { name: nm } => "fld:" + symbol_lexeme(sym: nm)
           Positional => "pos"
           _ => "other"
