@@ -8265,10 +8265,13 @@ pub fn direct_call_formal_has_unbound_type_variable_at(n: Rc<Node>, depth: i64) 
                 ((here.clone() || {
                     let mut __found = false;
                     for ch in n.children.clone().iter().cloned() {
-                        if direct_call_formal_has_unbound_type_variable_at(
+                        if (direct_call_formal_has_unbound_type_variable_at(
+                            ch.clone(),
+                            v1_rt::int_add(depth.clone(), 1),
+                        ) || direct_call_formal_has_unbound_type_variable_at(
                             crate::v1_compiler_infer_types::child_type_node(ch.clone()),
                             v1_rt::int_add(depth.clone(), 1),
-                        ) {
+                        )) {
                             __found = true;
                             break;
                         }
