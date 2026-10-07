@@ -122,7 +122,14 @@ fn symbol_index_mark_declared_binders(index: SymbolIndex, qualified_path: Qualif
 }
 
 // A labeled child declares a binding at path.segment and its members below it.
-fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, segment: Symbol, edge: Edge) -> SymbolIndex {
+fn symbol_index_fill_declared_child(
+  index: SymbolIndex,
+  path: QualifiedName,
+  segment: Symbol,
+  edge: Edge,
+  counts: Map<Symbol, Int>,
+  module_qn: QualifiedName
+) -> SymbolIndex {
   let child_path = qualified_name_snoc(qn: path, segment: segment)
   let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
   let with_binding = symbol_index_mark_namespace_body_if(
@@ -143,7 +150,9 @@ fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, seg
       symbol_index_fill_containment_node(
         index: with_binding,
         path: child_path,
-        node: member
+        node: member,
+        counts: counts,
+        module_qn: module_qn
       )
     Absent => with_binding
   }
@@ -179,7 +188,9 @@ fn symbol_index_mark_namespace_body_if(index: SymbolIndex, qualified_path: Quali
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
-  edge: Edge
+  edge: Edge,
+  counts: Map<Symbol, Int>,
+  module_qn: QualifiedName
 ) -> SymbolIndex {
   match edge.label {
     StructuralLabel { label: _ } =>
@@ -187,28 +198,34 @@ fn symbol_index_fill_containment_edge(
         symbol_index_fill_containment_node(
           index: index,
           path: path,
-          node: edge.target
+          node: edge.target,
+          counts: counts,
+          module_qn: module_qn
         )
       } else {
-        symbol_index_fill_declared_child(index: index, path: path, segment: label_sort_key(label: edge.label), edge: edge)
+        symbol_index_fill_declared_child(index: index, path: path, segment: label_sort_key(label: edge.label), edge: edge, counts: counts, module_qn: module_qn)
       }
     Authored { name: sym } =>
       if parse_tree_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
-          node: edge.target
+          node: edge.target,
+          counts: counts,
+          module_qn: module_qn
         )
       } else if sym == realization_root_label() {
         index
       } else {
-        symbol_index_fill_declared_child(index: index, path: path, segment: sym, edge: edge)
+        symbol_index_fill_declared_child(index: index, path: path, segment: sym, edge: edge, counts: counts, module_qn: module_qn)
       }
     Positional =>
       symbol_index_fill_containment_node(
         index: index,
         path: path,
-        node: edge.target
+        node: edge.target,
+        counts: counts,
+        module_qn: module_qn
       )
   }
 }
@@ -224,10 +241,12 @@ fn symbol_index_fill_containment_edge(
 fn symbol_index_fill_containment_children(
   index: SymbolIndex,
   path: QualifiedName,
-  node: Node
+  node: Node,
+  counts: Map<Symbol, Int>,
+  module_qn: QualifiedName
 ) -> SymbolIndex {
   fold(node.children, init: index, f: fn(acc, edge) {
-    symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+    symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
   })
 }
 
@@ -236,21 +255,30 @@ fn symbol_index_fill_containment_children(
 // Conj arm: there, namespace_graft_spine_segment_edge_optional read a one-binder domain whose binder is
 // a record (an operation's ^operation_input, a fn of one record-typed parameter) as a dotted-name
 // segment, and indexed the record's fields at the Arrow's path with the binder's level erased.
+// A UNIQUE MODULE-LEVEL VARIANT SPELLING RESOLVES THROUGH THE ALIAS, AND THE ALIAS IS FILED AS A
+// BINDING TO ITS DECLARING PATH (the repair the receipt
+// a_binding_position_recorded_as_a_declaring_identity names): for a uniquely-named variant the
+// walk below files the binding in the same pass where the variant's declared path is in hand, so
+// symbol_index_declaring_path_of answers the variant's declaring path at the alias and the
+// variant's own row answers itself -- one authority, no parallel carrier map. (A second ENTRY over
+// the same arm node was the double-entry defect that row describes.)
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
   path: QualifiedName,
-  node: Node
+  node: Node,
+  counts: Map<Symbol, Int>,
+  module_qn: QualifiedName
 ) -> SymbolIndex {
   match node.kind {
     TypeNode { connective: Conj } =>
       match namespace_graft_spine_body_optional(node: node) {
         Present { value: body } =>
           fold(body.children, init: index, f: fn(acc, edge) {
-            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
           })
         Absent =>
           fold(node.children, init: index, f: fn(acc, edge) {
-            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
           })
       }
     TypeNode { connective: Disj } =>
@@ -268,11 +296,33 @@ fn symbol_index_fill_containment_node(
               qualified_path: variant_path,
               kind: VariantArmPayload
             )
-            symbol_index_fill_containment_node(
-              index: with_variant,
-              path: variant_path,
-              node: edge.target
-            )
+            if disj_variant_count_of(counts: counts, sym: sym) == 1 {
+              let alias_path = qualified_name_snoc(qn: module_qn, segment: sym)
+              symbol_index_fill_containment_node(
+                index: symbol_index_mark_declared_payload(
+                  index: symbol_index_bind_at(
+                    index: with_variant,
+                    binding_path: alias_path,
+                    declaring_path: variant_path,
+                    resolved: edge.target
+                  ),
+                  qualified_path: alias_path,
+                  kind: VariantArmPayload
+                ),
+                path: variant_path,
+                node: edge.target,
+                counts: counts,
+                module_qn: module_qn
+              )
+            } else {
+              symbol_index_fill_containment_node(
+                index: with_variant,
+                path: variant_path,
+                node: edge.target,
+                counts: counts,
+                module_qn: module_qn
+              )
+            }
           Positional => acc
         }
       })
@@ -282,21 +332,21 @@ fn symbol_index_fill_containment_node(
           match domain.kind {
             TypeNode { connective: Conj } =>
               fold(domain.children, init: index, f: fn(acc, edge) {
-                symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+                symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
               })
-            TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
-            TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
-            TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
-            TypeNode { connective: Cardinality } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
-            TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
-            ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Cardinality } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
           }
         FirstPositionalAbsent => index
       }
-    TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node)
-    TypeNode { connective: Cardinality } => symbol_index_fill_containment_children(index: index, path: path, node: node)
-    TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node)
-    ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    TypeNode { connective: Cardinality } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
   }
 }
 
@@ -459,50 +509,6 @@ fn symbol_index_fill_alias_bindings(
     pending: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
   )
 }
-
-fn symbol_index_fill_unique_variant_aliases(
-  index: SymbolIndex,
-  module_qn: QualifiedName,
-  root: Node
-) -> SymbolIndex {
-  let counts = disj_variant_counts_in_module(root: root)
-  fold(
-    node_subtree_nodes(root: root),
-    init: index,
-    f: fn(acc, n) {
-      match n.kind {
-        TypeNode { connective: Disj } =>
-          fold(n.children, init: acc, f: fn(a2, e) {
-            match e.label {
-              StructuralLabel { label: _ } => a2
-              Authored { name: sym } =>
-                if disj_variant_count_of(counts: counts, sym: sym) == 1 {
-                  symbol_index_mark_declared_payload(
-                    index: symbol_index_insert(
-                      index: a2,
-                      qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
-                      resolved: e.target
-                    ),
-                    qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
-                    kind: VariantArmPayload
-                  )
-                } else {
-                  a2
-                }
-              Positional => a2
-            }
-          })
-        TypeNode { connective: Atom { identity: _ } } => acc
-        TypeNode { connective: Conj } => acc
-        TypeNode { connective: Arrow } => acc
-        TypeNode { connective: Cardinality } => acc
-        TypeNode { connective: Instantiation } => acc
-        ComputationNode { behavior: _ } => acc
-      }
-    }
-  )
-}
-
 // PASS A -- WHAT THIS ROOT DECLARES. Every path here is rooted at this module's own qualified name,
 // so no other root can write it and the result does not depend on when this root is visited.
 // A RECORD IS MARKED FROM THE CARRIER, AND BY THE ARM THAT ALREADY DECIDED THE MODULE'S NAME.
@@ -529,14 +535,13 @@ fn symbol_index_fill_module_declarations(
       symbol_index_fill_resource_marks(
         index: fold_list(
         xs: record_declarations,
-        empty: symbol_index_fill_unique_variant_aliases(
-          index: symbol_index_fill_containment_node(
-            index: symbol_index_mark_module_root(index: index, qualified_path: module_qn),
-            path: module_qn,
-            node: root
-          ),
-          module_qn: module_qn,
-          root: root
+        empty: symbol_index_fill_containment_node(
+          index: symbol_index_mark_module_root(index: index, qualified_path: module_qn),
+          path: module_qn,
+          node: root,
+          counts: disj_variant_counts_in_module(root: root),
+          module_qn: module_qn
+
         ),
         cons: fn(acc, name) {
           symbol_index_mark_declared_payload(
@@ -552,6 +557,8 @@ fn symbol_index_fill_module_declarations(
     Rejected { diagnostics: _ } => index
   }
 }
+
+
 
 // A RESOURCE IS MARKED FROM THE CARRIER, AS A RECORD IS, by the module's own name: a lowered resource
 // has a service's Conj shape, so the containment walk cannot tell it apart (v2.compiler.body_lowering_fold

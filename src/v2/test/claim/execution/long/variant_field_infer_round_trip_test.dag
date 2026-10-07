@@ -1,0 +1,87 @@
+module v2.test.long.variant_field_infer_round_trip
+
+// THE ONE REAL-PATH CLAIM over the variant round-trip fixture, in its OWN claim frame. The probe
+// module's controls (v2.test.claim.variant_field_infer_probe) read a warm producer, so each is a
+// value read; this module runs the pipeline in its own frame, which is the billed work -- the row
+// that goes red if the warm lane ever short-circuits the route the controls are supposed to
+// witness. Its fixture is self-contained on purpose: importing the probe module would grow this
+// claim's closure by the whole probe (and its frame cost with it), so the fixture text stands here
+// alone and the claim pays only its own walk.
+//
+// The fixture is the enrolled variant_field_native_binding claims' own shape: a positional
+// construction, a variant-scrutinee match over the closed coproduct, and a binder read from the
+// variant's payload. On the rostered refusal (gunbc.recurring_failure_mode
+// native_infer_accepts_only_bool_and_int_match_scrutinees) this fixture refused
+// infer_match_scrutinee_not_bool; on the repaired route it resolves and reaches infer.
+//
+// THE ASSERTION IS THE ROUTE'S ACTUAL VERDICT, LOCATED: the two-arm named-variant mismatch
+// (gunbc.recurring_failure_mode authored_text_fixtures_ground_nothing_at_infer) refuses this
+// fixture's infer module-wide with infer_match_arm_type_mismatch, so the own-frame walk reads that
+// terminal reason today and the row flips when the two-arm fix lands. It is a DECLARED RED on the
+// located defect, not a positive: the positive evidence for grounding is the ARROW fixture's
+// greens on the same route.
+
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.node { Symbol }
+
+// The fixture, byte-identical to the probe's combined one (v2.test.claim.variant_field_infer_probe
+// vfp_fixture_src): a positional construction, a variant-scrutinee match over the closed coproduct,
+// and a binder read from the variant's payload.
+data rtf_fixture_src: String = "module vfp_fixture\n\ntype ParseTree {\n  root: Int\n}\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn make() -> Verdict {\n  Pass { at: 1 }\n}\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n    Fail => 0\n  }\n}\n\nfn pick(t: ParseTree) -> Int {\n  t.root\n}"
+
+data rtf_fixture_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_round_trip_fixture_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_round_trip_fixture_pilot.dag"
+}
+
+fn rtf_assemble() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: rtf_fixture_src, fidelity: Lossless },
+        artifact: rtf_fixture_artifact,
+        compilation_unit: ^variant_field_infer_round_trip_fixture_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^vfp_fixture, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// The terminal reason of the fixture's own-frame walk: ^infers if the route accepts (the flip
+// case), else the walk's LAST diagnostic reason -- the same located value the probe's reds read
+// (vfp_last of the collected reasons), not the first diagnostic.
+fn rtf_terminal_reason() -> Symbol {
+  match rtf_assemble() {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r2 } => rtf_last_reason(xs: r2.tail, last: r2.head.reason)
+        Accepted { value: _, diagnostics: _ } => ^infers
+      }
+  }
+}
+
+fn rtf_last_reason(xs: List<Diagnostic>, last: Symbol) -> Symbol {
+  match xs {
+    Empty => last
+    Cons { head: h, tail: t } => rtf_last_reason(xs: t, last: h.reason)
+  }
+}
+
+test fn vfp_the_own_frame_round_trip_reads_the_located_refusal_red() -> Bool {
+  rtf_terminal_reason() == ^infer_match_arm_type_mismatch
+}

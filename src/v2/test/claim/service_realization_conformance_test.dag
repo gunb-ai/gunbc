@@ -13,7 +13,7 @@ import v2.std.service_realization_labels {
   realization_arm_payload_label,
   realization_status_code_label
 }
-import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
+import v2.compiler.symbol_index_fill { disj_variant_counts_in_module, symbol_index_fill_containment_node }
 import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme, dag_string_literal_node }
 import v2.std.arrow_signature { declared_signature_arrow }
 import v2.std.node_query { binder_edge }
@@ -208,7 +208,13 @@ fn sr_module(realization_label: Symbol) -> Node {
 }
 
 fn sr_index(module: Node) -> SymbolIndex {
-  symbol_index_fill_containment_node(index: empty_symbol_index(), path: Cons { head: ^m, tail: Empty }, node: module)
+  symbol_index_fill_containment_node(
+    index: empty_symbol_index(),
+    path: Cons { head: ^m, tail: Empty },
+    node: module,
+    counts: disj_variant_counts_in_module(root: module),
+    module_qn: Cons { head: ^m, tail: Empty }
+  )
 }
 
 fn sr_indexed(index: SymbolIndex, path: List<Symbol>) -> Bool {

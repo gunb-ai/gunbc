@@ -1,0 +1,704 @@
+module v2.test.claim.variant_field_infer_probe
+
+import v2.compiler.infer {
+  ConstructIsRecord,
+  ConstructIsVariantArm,
+  ConstructNotARecord,
+  infer,
+  infer_record_construct_read,
+  inferred_facts_resolved_type
+}
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.witness { Holds, Violates }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.algebra { contains, list_map }
+import v2.compiler.inferred_tree { ObligatedInferredTree }
+import v2.std.node_query { construct_tag_optional }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  CoreMarker,
+  FieldProjectionBaseEdge,
+  FieldProjectionFieldEdge,
+  Match,
+  MatchArmBodyEdge,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  symbol_eq,
+  symbol_lexeme
+}
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import v2.std.collection { List }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
+
+data vfp_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_pilot.dag"
+}
+
+fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: vfp_variant_artifact,
+        compilation_unit: ^vfp_variant_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn vfp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+}
+
+fn vfp_last(xs: List<Symbol>) -> Symbol {
+  fold(xs, init: ^vfp_no_reason, f: fn(acc, x) { x })
+}
+
+fn vfp_find_match(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Match } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_match(n: e.target)
+      }
+    })
+  }
+}
+
+fn vfp_find_construction(n: Node) -> Optional<Node> {
+  match construct_tag_optional(n: n) {
+    Present { value: _ } => Present { value: n }
+    Absent => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_construction(n: e.target)
+      }
+    })
+  }
+}
+
+// THE PROJECTION FINDER: preorder for the FieldProjection conj (base edge first). The projection
+// now stands as a fn body (pick), not an arm body, so it needs its own walk.
+fn vfp_projection_shape(n: Node) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      fold(n.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match e.label {
+              StructuralLabel { label: CoreMarker { marker: FieldProjectionBaseEdge } } => Present { value: n }
+              _ => Absent
+            }
+        }
+      })
+    _ => Absent
+  }
+}
+
+fn vfp_find_projection(n: Node) -> Optional<Node> {
+  match vfp_projection_shape(n: n) {
+    Present { value: p } => Present { value: p }
+    Absent => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_projection(n: e.target)
+      }
+    })
+  }
+}
+
+// THE MATCH SCRUTINEE: the match's first positional child (the caller's match is optional, so the
+// optional unwraps here like vfp_arm_body_first does).
+fn vfp_match_scrutinee(m: Optional<Node>) -> Optional<Node> {
+  match m {
+    Present { value: n } =>
+      fold(n.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match e.label {
+              Positional => Present { value: e.target }
+              _ => Absent
+            }
+        }
+      })
+    Absent => Absent
+  }
+}
+
+fn vfp_first_arm_body_of(m: Node) -> Optional<Node> {
+  fold(m.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => Present { value: e.target }
+          _ => Absent
+        }
+    }
+  })
+}
+
+fn vfp_type_name(t: Node) -> Symbol {
+  match declaration_reference_path_optional(node: t) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: s } => s
+        Absent => ^vfp_empty_path
+      }
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Atom { identity: s } } => s
+        _ => ^vfp_type_not_named
+      }
+  }
+}
+
+
+fn vfp_fact_in(inferred: ObligatedInferredTree, subject: Optional<Node>) -> Symbol {
+  match subject {
+    Absent => ^vfp_subject_absent
+    Present { value: s } =>
+      match inferred.facts.lookup(s) {
+        Absent => ^vfp_no_facts
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => ^vfp_underived
+            Holds { value: t } => vfp_type_name(t: t)
+          }
+      }
+  }
+}
+
+fn vfp_reports(reading: VfpReading, reason: Symbol) -> Bool {
+  contains(xs: reading.reasons, item: reason, eq: fn(a, b) { a == b })
+}
+
+fn vfp_infers(reading: VfpReading) -> Bool {
+  match reading.reasons {
+    Cons { head: h, tail: _ } => h == ^infers
+    Empty => false
+  }
+}
+
+// THE CONSTRUCT READ, DECODED: what infer_record_construct_read answers for the fixture's
+// construction, read directly on the resolved tree. The variant arm is named by its declaring
+// path's last segment (^Boxed when the read mints the variant row); the sentinels say where the
+// read stopped instead. TEMPORARY decode instrument: goes out with the RFM retirement once the
+// per-identity evidence is recorded.
+fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
+  match vfp_find_construction(n: resolved.root) {
+    Absent => ^vfp_read_subject_absent
+    Present { value: node } =>
+      match infer_record_construct_read(node: node, resolved: resolved) {
+        ConstructIsRecord { construct: _ } => ^vfp_read_record
+        ConstructIsVariantArm { construct: c } =>
+          match qualified_name_last_segment(qn: c.arm_path) {
+            Present { value: s } => s
+            Absent => ^vfp_read_arm_path_absent
+          }
+        ConstructNotARecord => ^vfp_read_not_a_record
+      }
+  }
+}
+
+// THE CARRIER HALF OF THE SAME DECODE: what the read names as the variant's declaring coproduct
+// (^Seal for the fixture) -- the field the alias mechanism exists to fill, since the tag's own
+// path (the module-level alias `p.Boxed`) does not carry it. TEMPORARY: goes out with the RFM
+// retirement.
+fn vfp_construct_read_carrier_decode(resolved: ResolvedTree) -> Symbol {
+  match vfp_find_construction(n: resolved.root) {
+    Absent => ^vfp_read_subject_absent
+    Present { value: node } =>
+      match infer_record_construct_read(node: node, resolved: resolved) {
+        ConstructIsRecord { construct: _ } => ^vfp_read_record
+        ConstructIsVariantArm { construct: c } =>
+          match qualified_name_last_segment(qn: c.variant_path) {
+            Present { value: s } => s
+            Absent => ^vfp_read_no_carrier
+          }
+        ConstructNotARecord => ^vfp_read_not_a_record
+      }
+  }
+}
+
+// WHAT THE FIXTURE ESTABLISHES, decided once per program by one nullary producer enrolled WARM in
+// v2.workflow.floor_pure_producer_share. `reasons` is the whole chain in order: a resolve or infer
+// refusal's reasons, or `^infers` followed by the accepted inference's advisories. A FACT field is
+// the picked node's resolved type name on an accepted inference, or the sentinels where the route
+// stops: ^vfp_subject_absent when the finder found nothing, ^vfp_no_facts when the node carries no
+// facts, ^vfp_underived when the facts do not resolve, or the refusal's reason (the head at resolve,
+// the last at infer).
+type VfpReading {
+  reasons: List<Symbol>
+  construction_fact: Symbol
+  match_fact: Symbol
+  arm_body_fact: Symbol
+  construct_read: Symbol
+  construct_read_carrier: Symbol
+}
+
+// THE COMBINED FIXTURE'S READING: one module exercising every shape the enrolled claims measure
+// (positional + named payload binders, a formal-typed payload field, a compound payload, an arrow
+// payload, a monomorphic projection). ONE nullary producer so every planned claim reaches one
+// closed computation identity and the derived producer-share admits it -- per-claim re-runs of
+// this fill refused the enrolment margin (~609k eval steps each).
+type VfpFixtureReading {
+  reasons: List<Symbol>
+  construct_read: Symbol
+  construct_read_carrier: Symbol
+  rt_construction_fact: Symbol
+  rt_match_fact: Symbol
+  rt_arm_fact: Symbol
+  nullary_arm_fact: Symbol
+  projection_fact: Symbol
+}
+
+// THE ARROW FIXTURE'S READING: the module whose match scrutinee is a NULLARY CALL -- the N7 shape
+// (g_tokenize_parse matching dag_prepared_grammar()). call_result_fact reads the scrutinee, i.e.
+// the call's derived result type; arrow_arm_fact reads the arm's payload binder.
+type VfpArrowReading {
+  reasons: List<Symbol>
+  construct_read: Symbol
+  call_result_fact: Symbol
+  arrow_arm_fact: Symbol
+}
+
+// PREORDER COLLECTORS over the resolved tree: all matches, and a match's arm bodies in order.
+fn vfp_matches_of(n: Node) -> List<Node> { vfp_matches_of_at(n: n, depth: 24) }
+
+fn vfp_matches_of_at(n: Node, depth: Int) -> List<Node> {
+  match depth <= 0 {
+    true => Empty
+    false =>
+      match n.kind {
+        ComputationNode { behavior: Match } =>
+          Cons { head: n, tail: fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1)) }) }
+        _ =>
+          fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1)) })
+      }
+  }
+}
+
+fn vfp_arm_bodies_of(m: Node) -> List<Node> { vfp_arm_bodies_of_at(m: m, depth: 24) }
+
+// The arm-body edges hang under the match's ARM nodes, not under the match itself, so the walk
+// descends and stays bound (a fixture has no nested matches; the bound guards a cyclic tree).
+fn vfp_arm_bodies_of_at(m: Node, depth: Int) -> List<Node> {
+  match depth <= 0 {
+    true => Empty
+    false =>
+      fold(m.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => list_append(left: acc, right: Cons { head: e.target, tail: vfp_arm_bodies_of_at(m: e.target, depth: depth - 1) })
+          _ => list_append(left: acc, right: vfp_arm_bodies_of_at(m: e.target, depth: depth - 1))
+        }
+      })
+  }
+}
+
+fn vfp_first_of(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: h, tail: _ } => Present { value: h }
+    Empty => Absent
+  }
+}
+
+fn vfp_second_of(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: _, tail: t } => vfp_first_of(xs: t)
+    Empty => Absent
+  }
+}
+
+fn vfp_arm_body_first(m: Optional<Node>) -> Optional<Node> {
+  match m {
+    Absent => Absent
+    Present { value: n } => vfp_first_of(xs: vfp_arm_bodies_of(m: n))
+  }
+}
+
+fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
+  match m {
+    Absent => Absent
+    Present { value: n } => vfp_second_of(xs: vfp_arm_bodies_of(m: n))
+  }
+}
+
+// THE EXHAUSTIVENESS CONTROL: the same carrier with one arm dropped, so the match must refuse for
+// want of coverage -- decided by the single inhabitance relation, which surfaces the established
+// non-exhaustive reason (the same one the inline count it replaced reported).
+
+// THE TEXT ROUTE (DESIGN 3: the subject as authored source). The fact-level probes read the REAL
+// pipeline -- assemble_program_from_ingest, the same tokenize/parse/normalize/resolve/admission the
+// corpus compile runs -- over authored fixture modules. The earlier hand-lowered route
+// (ClaimLoweredModule values built node by node) is retired: reproducing the real lowering's
+// conventions by hand made the probe a second copy of the lowering rather than an observation of
+// it, and its binder minting refused on exactly the conventions it copied (DESIGN 5: the reading
+// must come from the thing itself). The resolve-side and refusal controls ride the same route
+// (vfp_partial_src; vfp_nullary_sum_src and vfp_fx2_src sit below).
+
+data vfp_fixture_src: String = "module vfp_fixture\n\ntype ParseTree {\n  root: Int\n}\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn make() -> Verdict {\n  Pass { at: 1 }\n}\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n    Fail => 0\n  }\n}\n\nfn pick(t: ParseTree) -> Int {\n  t.root\n}"
+
+// THE ARROW FIXTURE (the N7 shape): h's match scrutinee is the NULLARY CALL g(), and the arm binds
+// the payload with the SHORTHAND binder (name == field name) -- the two halves of the shape that
+// dies on the native route (g_tokenize_parse matching dag_prepared_grammar(), binding `d`).
+data vfp_arrow_src: String = "module vfp_arrow\n\ntype Result2 = Ok { v: Int } | Bad\n\nfn g() -> Result2 {\n  Ok { v: 7 }\n}\n\nfn h() -> Int {\n  match g() {\n    Ok { v } => v\n    Bad => 0\n  }\n}"
+
+// Each fixture assembles under its own artifact so the two programs never share a source identity;
+// the admission subject must match the module's own declaration.
+fn vfp_assemble_module(src: String, name: Symbol, artifact: Artifact, cu: Symbol) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: artifact,
+        compilation_unit: cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: name, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+data vfp_variant_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_variant_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_variant_pilot.dag"
+}
+
+data vfp_fixture_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_fixture_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_fixture_pilot.dag"
+}
+
+data vfp_arrow_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_arrow_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_arrow_pilot.dag"
+}
+
+// THE WARM PRODUCERS: vfp_fixture_resolved is what the probe claims share; vfp_fixture_resolved_direct
+// is its own identity so the long-home claim that must bill its own frame is not admitted by the
+// derived producer-share.
+fn vfp_fixture_resolved() -> Outcome<ResolvedTree> {
+  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_fixture_artifact, cu: ^vfp_fixture_cu)
+}
+
+fn vfp_fixture_resolved_direct() -> Outcome<ResolvedTree> {
+  vfp_assemble_module(src: vfp_fixture_src, name: ^vfp_fixture, artifact: vfp_fixture_artifact, cu: ^vfp_fixture_cu)
+}
+
+fn vfp_arrow_resolved() -> Outcome<ResolvedTree> {
+  vfp_assemble_module(src: vfp_arrow_src, name: ^vfp_arrow, artifact: vfp_arrow_artifact, cu: ^vfp_arrow_cu)
+}
+
+fn vfp_partial_reading() -> VfpReading { vfp_reading(src: vfp_partial_src) }
+
+// THE ARROW FIXTURE, ITS OWN MODULE: the payload field's type is an arrow whose RESULT is the
+// formal (`f: fn(ParseTree) -> T`) -- the one shape the match_binder fixture never exercises, and
+// the current suspect for the grounding cascade. It rides alone so a refusal here cannot take the
+// other readings' facts down with it, and it carries a second consumer claim (its resolve-side
+// construct read) so the derived producer-share admits its fill.
+
+data vfp_partial_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn partial(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n  }\n}"
+
+
+
+fn vfp_reading(src: String) -> VfpReading {
+  match vfp_assemble(src: src) {
+    Rejected { diagnostics: r } => VfpReading {
+      reasons: vfp_reasons(r: r),
+      construction_fact: r.head.reason,
+      match_fact: r.head.reason,
+      arm_body_fact: r.head.reason,
+      construct_read: ^vfp_refused_at_resolve,
+      construct_read_carrier: ^vfp_refused_at_resolve
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpReading {
+          reasons: vfp_reasons(r: r),
+          construction_fact: vfp_last(xs: vfp_reasons(r: r)),
+          match_fact: vfp_last(xs: vfp_reasons(r: r)),
+          arm_body_fact: vfp_last(xs: vfp_reasons(r: r)),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construction_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_construction(n: resolved.root)
+          ),
+          match_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_match(n: resolved.root)
+          ),
+          arm_body_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: match vfp_find_match(n: resolved.root) {
+              Absent => Absent
+              Present { value: m } => vfp_first_arm_body_of(m: m)
+            }
+          ),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
+        }
+      }
+  }
+}
+
+// THE COMBINED FIXTURE'S PRODUCER: matches appear in fixture declaration order -- unbox, pick,
+// unkeep, useit. The first construct-tagged node in preorder is make's `Boxed(n)`.
+fn vfp_fixture_reading_over(resolved: Outcome<ResolvedTree>) -> VfpFixtureReading {
+  match resolved {
+    Rejected { diagnostics: r } => VfpFixtureReading {
+      reasons: vfp_reasons(r: r),
+      construct_read: ^vfp_refused_at_resolve,
+      construct_read_carrier: ^vfp_refused_at_resolve,
+      rt_construction_fact: r.head.reason,
+      rt_match_fact: r.head.reason,
+      rt_arm_fact: r.head.reason,
+      nullary_arm_fact: r.head.reason,
+      projection_fact: r.head.reason
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpFixtureReading {
+          reasons: Cons { head: ^infers, tail: vfp_reasons(r: r) },
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved),
+          rt_construction_fact: vfp_last(xs: vfp_reasons(r: r)),
+          rt_match_fact: vfp_last(xs: vfp_reasons(r: r)),
+          rt_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
+          nullary_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
+          projection_fact: vfp_last(xs: vfp_reasons(r: r))
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpFixtureReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved),
+          rt_construction_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_construction(n: resolved.root)
+          ),
+          rt_match_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_first_of(xs: vfp_matches_of(n: resolved.root))
+          ),
+          rt_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+          ),
+          nullary_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_second(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+          ),
+          projection_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_projection(n: resolved.root)
+          )
+        }
+      }
+  }
+}
+
+// THE COMBINED FIXTURE'S PRODUCER: matches appear in fixture declaration order -- unbox, pick,
+// unkeep. The first construct-tagged node in preorder is make's `Boxed(n)`.
+fn vfp_fixture_reading() -> VfpFixtureReading {
+  vfp_fixture_reading_over(resolved: vfp_fixture_resolved())
+}
+
+// THE COMBINED FIXTURE'S OWN-FRAME READING: a separate computation identity from the warm producer
+// so the long-home claim that must bill its own frame is not admitted by the derived
+// producer-share.
+fn vfp_reading_direct() -> VfpReading {
+  let r = vfp_fixture_reading_over(resolved: vfp_fixture_resolved_direct())
+  VfpReading {
+    reasons: r.reasons,
+    construction_fact: r.rt_construction_fact,
+    match_fact: r.rt_match_fact,
+    arm_body_fact: r.rt_arm_fact,
+    construct_read: r.construct_read,
+    construct_read_carrier: r.construct_read_carrier
+  }
+}
+
+fn vfp_arrow_reading_over(resolved: Outcome<ResolvedTree>) -> VfpArrowReading {
+  match resolved {
+    Rejected { diagnostics: r } => VfpArrowReading {
+      reasons: vfp_reasons(r: r),
+      construct_read: ^vfp_refused_at_resolve,
+      call_result_fact: r.head.reason,
+      arrow_arm_fact: r.head.reason
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpArrowReading {
+          reasons: vfp_reasons(r: r),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          call_result_fact: vfp_last(xs: vfp_reasons(r: r)),
+          arrow_arm_fact: vfp_last(xs: vfp_reasons(r: r))
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpArrowReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          call_result_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_match_scrutinee(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+          ),
+          arrow_arm_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
+          )
+        }
+      }
+  }
+}
+
+// THE ARROW FIXTURE'S PRODUCER.
+fn vfp_arrow_reading() -> VfpArrowReading {
+  vfp_arrow_reading_over(resolved: vfp_arrow_resolved())
+}
+
+// THE CLAIMS OVER THE ROUND-TRIP FIXTURE. The RESOLVE-side rows (construction carrier, construct
+// read, its carrier) ground on the text route. The INFER typed-fact rows over the two-arm
+// param-scrutinee match DO NOT: the walk refuses at the match node with infer_match_arm_type_mismatch
+// (terminal, under active bisect in #13210) while the resolver's own binder records carry the
+// canonical payload type -- so those rows are DECLARED REDS on that specific located defect, not
+// positives; the positive evidence for the typed payload-binder facts is the ARROW fixture's arm row
+// (accepted-with-advisories walk) and the enrolled native claims on the real route.
+// The construction green cannot hold on the fixture module while the two-arm mismatch stands: infer
+// refuses the fixture MODULE-WIDE (the match's arm types), so every fact field on this reading reads
+// the terminal reason, construction included. The construction-typing invariant is pinned on the
+// route by the ARROW fixture's greens (whose module grounds); this row is a DECLARED RED on the
+// located module refusal until the two-arm fix flips it.
+test fn vfp_the_fixture_construction_fact_reads_the_module_refusal_red() -> Bool {
+  vfp_fixture_reading().rt_construction_fact == ^infer_match_arm_type_mismatch
+}
+
+test fn vfp_the_construct_read_names_the_variant_holds() -> Bool {
+  vfp_fixture_reading().construct_read == ^Pass
+}
+
+test fn vfp_the_construct_read_carrier_is_the_declaring_coproduct_holds() -> Bool {
+  vfp_fixture_reading().construct_read_carrier == ^Verdict
+}
+
+// DECLARED RED (the two-arm mismatch): the terminal diagnostic is anchored at the match node itself,
+// and the reading's fact fields read that terminal reason on a refused walk. This row goes green
+// exactly when the mismatch is understood and fixed or the fixture's context stops producing it.
+test fn vfp_the_two_arm_match_refuses_with_the_located_mismatch_red() -> Bool {
+  vfp_fixture_reading().rt_match_fact == ^infer_match_arm_type_mismatch
+}
+
+// THE COVERAGE CONTROL: a one-arm match over a two-variant carrier must refuse, and the refusal must
+// be the non-exhaustive reason the coverage obligation reports on the inhabitance relation's refusal.
+test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Bool {
+  vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
+}
+
+// THE CALL-RESULT SCRUTINEE (the N7 shape): h's match scrutinee is the nullary call `g()`. At the
+// assembled route the call's derived result type does not reach the facts (the walk reports
+// infer_match_scrutinee_type_underived, advisory), so the coverage check runs undecidable and the
+// ARM BINDER still types from the payload -- the row below pins the binder; this row pins the
+// KNOWN route gap on the scrutinee's own fact so the gap cannot silently become a pass.
+test fn vfp_the_call_result_scrutinee_fact_stays_underived_on_the_assembled_route_red() -> Bool {
+  vfp_arrow_reading().call_result_fact == ^vfp_underived
+}
+
+// DECLARED RED: same refused walk as the two-arm mismatch row -- the projection's fact reads the
+// terminal reason until the mismatch is settled.
+test fn vfp_the_projection_fact_reads_the_located_refusal_red() -> Bool {
+  vfp_fixture_reading().projection_fact == ^infer_match_arm_type_mismatch
+}
+
+// DECLARED RED: the nullary arm rides the same refused walk. When the mismatch settles, this row
+// flips to `== ^Int` beside the arrow binder row.
+test fn vfp_the_nullary_arm_fact_reads_the_located_refusal_red() -> Bool {
+  vfp_fixture_reading().nullary_arm_fact == ^infer_match_arm_type_mismatch
+}
+
+// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
+// 4b(4)): before the payload reader landed, the arm binder's fact lookup was Absent -- NO_ENTRY,
+// warm-ferret-741's N7 locate of #2891785 (facts.lookup Absent under the #2891781
+// GroundingNotDerived parent) -- and the declared-red row asserting that defect value went red the
+// moment the reader landed. Flipped, it does not retire: the binder on the CALL-RESULT scrutinee
+// (the shape that dies on the native route) must read its payload field's type -- the regression
+// guard the param-scrutinee positive control does not cover.
+test fn vfp_the_call_result_arm_binder_types_from_its_payload_field_holds() -> Bool {
+  vfp_arrow_reading().arrow_arm_fact == ^Int
+}
+
+// THE ARROW FIXTURE'S RESOLVE-SIDE CONTROL (its second consumer claim): resolve must bind the
+// module's sole variant tag so the construct read names Ok, separating resolve binding from
+// whatever the infer facts say about the call-result scrutinee.
+test fn vfp_the_arrow_fixture_resolves_and_names_its_variant_holds() -> Bool {
+  vfp_arrow_reading().construct_read == ^Ok
+}
+// THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
+// want of coverage, resolve has already bound the construction's tag to its variant's declaring
+// path -- the control separates the resolve binding (green on both sides of the fix) from the
+// infer facts (red on main, green here), and gives the partial reading its second consumer under
+// the warm-producer sharing conjunct.
+test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
+  vfp_partial_reading().construct_read == ^Boxed
+}
+
+// THE BISECT FIXTURES THE LEDGER CITES (temporary; they go out when their rows' follow-ups
+// land): the nullary single-arm sum the single_arm_sum_parses_as_an_alias row's 2026-10-06
+// receipt cites, and the recursive record the grounding-cascade row cites.
+data vfp_nullary_sum_src: String = "module p\n\ntype A = MkA\n\nfn f() -> A { MkA }"
+
+data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a\n}"
+
+// TEMPORARY DECODE INSTRUMENT -- the one reading for the combined fixture: prints every field
+// through `gunbc run --function` so the actual values are readable, not guessed. DELETED WITH THE
+// RFM RETIREMENT RECEIPT.
+fn vfp_decode_fixture_reading(r: VfpFixtureReading) -> CliWireResponse {
+  CliWirePrintable { bytes: "read=" + symbol_lexeme(sym: r.construct_read) + " carr=" + symbol_lexeme(sym: r.construct_read_carrier) + " rt_constr=" + symbol_lexeme(sym: r.rt_construction_fact) + " rt_match=" + symbol_lexeme(sym: r.rt_match_fact) + " rt_arm=" + symbol_lexeme(sym: r.rt_arm_fact) + " null_arm=" + symbol_lexeme(sym: r.nullary_arm_fact) + " proj=" + symbol_lexeme(sym: r.projection_fact) + " reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
+}
+
+fn vfp_decode_fixture() -> CliWireResponse { vfp_decode_fixture_reading(r: vfp_fixture_reading()) }
+
+fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
+  CliWirePrintable { bytes: "arr_read=" + symbol_lexeme(sym: r.construct_read) + " scrut=" + symbol_lexeme(sym: r.call_result_fact) + " arr=" + symbol_lexeme(sym: r.arrow_arm_fact) + " arr_reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
+}
+
+fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
+
