@@ -111,9 +111,9 @@ type BillingConsequence
 // (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
 // realization must take that hold before any write.
 // INTERLOCK IS PER EFFECT ARM, NOT PER GRANT. A standing ruling may cover several effects whose
-// holds differ. Absent means no consuming effect arm has named a hold yet -- not that coverage is
-// the hold. A census row that carries StandingRulingUnderInterlock with Absent is not owed a
-// rostered interlock until the arm lands with its hold.
+// holds differ; the grant row may therefore carry Absent at grant grain. A census site that
+// discharges StandingRulingUnderInterlock must still carry Present: Absent there is red
+// (rulings_without_a_rostered_interlock), never a skip.
 type StandingDestructiveAuthorization {
   ruling_text: NonEmptyStr
   effect_subject: NonEmptyStr

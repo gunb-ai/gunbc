@@ -1,9 +1,7 @@
 module gunbc.auth.privileged_effect_census
 
 import gunbc.auth.standing_operator_grant {
-  group_a_dev_standing_grant, mtjade1_live_standing_grant,
-  StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification,
-  standing_grant_arm_interlock,
+  group_a_dev_standing_grant,
 }
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_bmc_secure_effect, mtjade1_arrival_firmware_qualification_effect,
@@ -415,60 +413,42 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    hold: match group_a_dev_standing_grant.ruling.interlock {
-      Present { value: i } => i
-      Absent => decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant")
-    },
+    hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
     refusal: site(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_decide_release"),
     premise: "the release runs only under D0's durable claim of the consent slot and its pending state, and refuses (D0HostNotQuiescent) unless a fresh reading taken at filing time finds every host quiescent; an unanswering host refuses as unobserved" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: match mtcollins1_operator_ruling.interlock {
-      Present { value: i } => i
-      Absent => decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof")
-    },
+    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: match mtcollins1_operator_ruling.interlock {
-      Present { value: i } => i
-      Absent => decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof")
-    },
+    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
-    hold: match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalArchive) {
-      Present { value: i } => i
-      Absent => decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock")
-    },
+    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock"),
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock"),
     premise: "the PriorLifeBoundary archive takes the arrival subject's exclusive slot on the store host before it writes evidence" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_bmc_secure_effect"),
-    hold: match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalBmcSecure) {
-      Present { value: i } => i
-      Absent => decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock")
-    },
+    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
     premise: "BmcSecure takes the arrival slot and a grounded rotation route before any account write" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
-    hold: match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
-      Present { value: i } => i
-      Absent => decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock")
-    },
+    hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
     refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
     premise: "firmware qualification takes the same arrival slot and grounded route as BmcSecure" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
@@ -476,7 +456,8 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
 ]
 
 // A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK: for every census row whose effect carries
-// one, the ruling's interlock must be the hold of an interlock rostered against that same site.
+// one, the ruling's interlock must be Present and must be the hold of an interlock rostered against
+// that same site. Absent is red (the discharge name is UnderInterlock); it is not a skip.
 fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
   any(privileged_effect_interlocks, i => declaration_ref_eq(a: i.site, b: site_ref) && declaration_ref_eq(a: i.hold, b: interlock))
 }
@@ -487,7 +468,7 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
       NoWitnessDischarge => []
       StandingRulingUnderInterlock { ruling: r } =>
         match r.interlock {
-          Absent => []
+          Absent => [row.site]
           Present { value: i } =>
             if ruling_interlock_is_rostered(site_ref: row.site, interlock: i) { [] } else { [row.site] }
         }
