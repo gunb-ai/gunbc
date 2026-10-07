@@ -595,13 +595,47 @@ mod real_module_round_trip {
     #[ignore = "live-corpus: resolves and typechecks the live dag+src/v2 closure (minutes); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn restore_equals_compute_and_entry_excludes_parent_envs() {
+        let (entry, roots) = entry_and_roots();
+        round_trip("live", entry, roots);
+    }
+
+    /// The same integration over a SMALL REAL fixture pool (two modules, one importing the other),
+    /// in the ordinary unit run: cold compile through `reconcile_with_typed_cache` -> durable
+    /// miss -> real own tail committed; then a FRESH index -> durable hit -> `typecheck_module_restore`
+    /// -> restored own tail equals the computed one -> the stored entry excludes parent envs.
+    /// Removing the lookup/restore integration from `reconcile_with_typed_cache` turns this red
+    /// (no hit), which no store-boundary claim does.
+    #[test]
+    fn the_reconcile_integration_misses_commits_then_hits_and_restores_a_fixture_pool() {
+        std::env::set_current_dir(workspace_root()).expect("enter workspace root");
+        let dir = format!("target/gunbc_fx_rt_{}", std::process::id());
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(format!("{dir}/fx")).unwrap();
+        std::fs::write(
+            format!("{dir}/fx/base.dag"),
+            "module fx.base\n\ndata base_value: Int = 7\n\nfn base_fn(x: Int) -> Int { x + base_value }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            format!("{dir}/fx/top.dag"),
+            "module fx.top\n\nimport fx.base { base_fn }\n\nfn top_fn() -> Int { base_fn(x: 1) }\n",
+        )
+        .unwrap();
+        round_trip(
+            "fixture",
+            format!("{dir}/fx/top.dag"),
+            vec![dir.clone(), "dag".to_string(), "src/v2".to_string()],
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn round_trip(tag: &str, entry: String, roots: Vec<String>) {
         let scratch =
-            std::path::PathBuf::from(format!("/tmp/gunbc_tcstore_{}", std::process::id()));
+            std::path::PathBuf::from(format!("/tmp/gunbc_tcstore_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(&scratch).unwrap();
         set_witness_root(Some(scratch.to_string_lossy().into_owned()));
         outcome_reset();
-        let (entry, roots) = entry_and_roots();
 
         let cold_index = build_multi_entry_index(&roots);
         resolve_entry_with_index(&cold_index, &entry).expect("cold resolve");
