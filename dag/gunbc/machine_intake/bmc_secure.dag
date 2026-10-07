@@ -2320,7 +2320,7 @@ fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) 
 // write as not completed rather than writing a different credential.
 fn bmc_account_action_plan_with_subject(plan: BmcAccountActionPlan, subject: MachineIntakeSubject) -> BmcAccountActionPlan
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
   ]
 {
   BmcAccountActionPlan {
@@ -2339,7 +2339,7 @@ fn bmc_account_action_plan_with_subject(plan: BmcAccountActionPlan, subject: Mac
 
 fn completed_bmc_account_application(plan: BmcAccountActionPlan, applied_at_millis: EpochMs) -> BmcAccountApplication
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
   ]
 {
   BmcAccountApplication {
