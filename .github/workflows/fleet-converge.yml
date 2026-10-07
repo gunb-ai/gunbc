@@ -382,6 +382,7 @@ jobs:
           'printf' '%s' 'claim_executor
           gunbc
           build_diagnostics
+          claim_executor_checker_inputs
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$STAGE"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the stored pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -402,6 +403,7 @@ jobs:
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
           ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor_checker_inputs' "$ROOT"'/target/release/')
           'rm' '-rf' "$STAGE"'/unpacked'
           'echo' 'release-bins: stored pack verified and promoted'
           'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
@@ -544,8 +546,10 @@ jobs:
           'mkdir' '-p' "$STAGE"
           '[' '-s' "$ROOT"'/gunbc-floor-cmd.log' ']' || ('echo' '::error title=release-bins BuildDiagnosticsMissing::the product requires the build log gunbc-floor-cmd.log as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller'; exit 1)
           'cp' "$ROOT"'/gunbc-floor-cmd.log' "$ROOT"'/target/release/build_diagnostics'
-          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics') > "$STAGE"'/release-bins.manifest'
-          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics'
+          './target/release/claim_executor' '--write-checker-inputs' "$ROOT"'/target/release/claim_executor_checker_inputs'
+          '[' '-s' "$ROOT"'/target/release/claim_executor_checker_inputs' ']' || ('echo' '::error title=release-bins SidecarMissing::the product requires the sidecar claim_executor_checker_inputs as a pack member and the producing job left none; a pack without it is incomplete, not smaller'; exit 1)
+          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics' 'claim_executor_checker_inputs') > "$STAGE"'/release-bins.manifest'
+          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics' 'claim_executor_checker_inputs'
           'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
           'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
@@ -627,6 +631,7 @@ jobs:
           'printf' '%s' 'claim_executor
           gunbc
           build_diagnostics
+          claim_executor_checker_inputs
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -647,6 +652,7 @@ jobs:
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor_checker_inputs' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc'
 
