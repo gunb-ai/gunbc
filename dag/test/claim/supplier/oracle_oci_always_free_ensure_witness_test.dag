@@ -1,11 +1,12 @@
 module test.claim.supplier.oracle_oci_always_free_ensure_witness
 
+import std.measure { gigabyte_count }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list }
 import extdeps.network.ipv4 { ipv4_same_network, render_ipv4_prefix }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import gunbc.oracle_oci.tenancy_usage {
   OciUsagePart, UsagePart, UsagePartRefused, oci_instance_usage, oci_volume_usage, oci_usage_part_add,
 }
@@ -202,7 +203,7 @@ test fn the_subnet_sits_inside_the_vcn() -> Bool {
 
 fn usage_text(u: OciUsagePart) -> String {
   match u {
-    UsagePart { a1_ocpus, a1_memory_gb, micros, block_gb } => join([to_string(a1_ocpus), to_string(a1_memory_gb), to_string(micros), to_string(block_gb)], "/")
+    UsagePart { a1_ocpus, a1_memory, micros, block } => join([to_string(a1_ocpus), to_string(gigabyte_count(g: a1_memory)), to_string(micros), to_string(gigabyte_count(g: block))], "/")
     UsagePartRefused { line } => "refused"
   }
 }

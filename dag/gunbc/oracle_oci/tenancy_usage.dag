@@ -3,9 +3,9 @@ module gunbc.oracle_oci.tenancy_usage
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.resources { Network }
-import std.measure { gigabyte }
+import std.measure { Gigabyte, gigabyte, measure_add }
 import std.decimal { ExactDecimal }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
 import extdeps.languages.json.number {
@@ -92,21 +92,21 @@ fn oci_shape_config_whole(row: JsonValue, key: String) -> OciWhole {
 // ── ONE COMPARTMENT'S CONTRIBUTION (PURE OVER ADMITTED ROWS) ──────────────────────────────────
 
 type OciUsagePart
-  = UsagePart { a1_ocpus: Int, a1_memory_gb: Int, micros: Int, block_gb: Int }
+  = UsagePart { a1_ocpus: Int, a1_memory: Gigabyte, micros: Int, block: Gigabyte }
   | UsagePartRefused { line: String }
 
 fn oci_usage_part_add(a: OciUsagePart, b: OciUsagePart) -> OciUsagePart {
   match a {
     UsagePartRefused { line } => a
-    UsagePart { a1_ocpus: o1, a1_memory_gb: m1, micros: c1, block_gb: g1 } => match b {
+    UsagePart { a1_ocpus: o1, a1_memory: m1, micros: c1, block: g1 } => match b {
       UsagePartRefused { line } => b
-      UsagePart { a1_ocpus: o2, a1_memory_gb: m2, micros: c2, block_gb: g2 } =>
-        UsagePart { a1_ocpus: o1 + o2, a1_memory_gb: m1 + m2, micros: c1 + c2, block_gb: g1 + g2 }
+      UsagePart { a1_ocpus: o2, a1_memory: m2, micros: c2, block: g2 } =>
+        UsagePart { a1_ocpus: o1 + o2, a1_memory: measure_add(a: m1, b: m2), micros: c1 + c2, block: measure_add(a: g1, b: g2) }
     }
   }
 }
 
-data oci_usage_zero: OciUsagePart = UsagePart { a1_ocpus: 0, a1_memory_gb: 0, micros: 0, block_gb: 0 }
+data oci_usage_zero: OciUsagePart = UsagePart { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 0, block: gigabyte(count: 0) }
 
 // One instance row, admitted on id, lifecycleState and shape. A terminated instance holds nothing. A
 // live A1 must carry whole shapeConfig numbers; any other shape counts nothing toward these pools.
@@ -117,13 +117,13 @@ fn oci_instance_usage(row: JsonValue) -> OciUsagePart {
   if state == "TERMINATED" {
     oci_usage_zero
   } else if shape == (oci_shape_wire_name(shape: VmStandardE21Micro) as String) {
-    UsagePart { a1_ocpus: 0, a1_memory_gb: 0, micros: 1, block_gb: 0 }
+    UsagePart { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 1, block: gigabyte(count: 0) }
   } else if shape == (oci_shape_wire_name(shape: VmStandardA1Flex) as String) {
     match oci_shape_config_whole(row: row, key: "ocpus") {
       OciWholeRefused { cause } => UsagePartRefused { line: join(["instance ", id, " ", cause], "") }
       OciWholeValue { value: ocpus } => match oci_shape_config_whole(row: row, key: "memoryInGBs") {
         OciWholeRefused { cause } => UsagePartRefused { line: join(["instance ", id, " ", cause], "") }
-        OciWholeValue { value: memory } => UsagePart { a1_ocpus: ocpus, a1_memory_gb: memory, micros: 0, block_gb: 0 }
+        OciWholeValue { value: memory } => UsagePart { a1_ocpus: ocpus, a1_memory: gigabyte(count: memory), micros: 0, block: gigabyte(count: 0) }
       }
     }
   } else {
@@ -139,7 +139,7 @@ fn oci_volume_usage(row: JsonValue) -> OciUsagePart {
   } else {
     match oci_whole_member(obj: row, key: "sizeInGBs") {
       OciWholeRefused { cause } => UsagePartRefused { line: join(["volume ", oci_admitted_text(row: row, key: "id"), " ", cause], "") }
-      OciWholeValue { value: gb } => UsagePart { a1_ocpus: 0, a1_memory_gb: 0, micros: 0, block_gb: gb }
+      OciWholeValue { value: gb } => UsagePart { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 0, block: gigabyte(count: gb) }
     }
   }
 }
@@ -173,9 +173,9 @@ fn oci_tenancy_compartments() -> OciListRead uses net: Network {
 fn oci_usage_of_part(part: OciUsagePart, compartments: Int) -> OciTenancyUsageRead {
   match part {
     UsagePartRefused { line } => TenancyUsageRefused { line: concat("tenancy usage not observed: ", line) }
-    UsagePart { a1_ocpus, a1_memory_gb, micros, block_gb } =>
+    UsagePart { a1_ocpus, a1_memory, micros, block } =>
       TenancyUsageObserved {
-        usage: OciOtherUsage { a1_ocpus: a1_ocpus, a1_memory: gigabyte(count: a1_memory_gb), e2_micro_instances: micros, block: gigabyte(count: block_gb) },
+        usage: OciOtherUsage { a1_ocpus: a1_ocpus, a1_memory: a1_memory, e2_micro_instances: micros, block: block },
         compartments: compartments,
       }
   }
