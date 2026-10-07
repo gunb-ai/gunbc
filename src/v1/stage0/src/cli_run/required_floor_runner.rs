@@ -269,6 +269,207 @@ pub(crate) fn floor_route_gap_expectation_mismatch(
     }
 }
 
+/// THE ROUTE the run site takes to the admission decision. The relation it names is modeled on
+/// `v2.workflow.floor_route_gap` — the authority that owns the register — and there is no Rust
+/// copy of the membership test: this constant is the single route, and the pairing witness
+/// drives the same name through `run_in_context_with_args` so a rename here breaks the witness
+/// instead of silently forking the decision.
+pub(crate) const ROUTE_GAP_ADMISSION_PARTITION_ENTRY: &str =
+    "v2.workflow.floor_route_gap.floor_route_gap_admission_partition";
+
+/// THE MARSHAL the run site and the pairing witness share: a suppressed row reaches the modeled
+/// relation as a `FloorRouteGapSuppressedRow` record carrying its identity and its ground — the
+/// runner's suppression enum decoded into the relation's declared coproduct
+/// (`v2.workflow.floor_route_gap`'s `FloorRouteGapSuppressionGround`), arm-for-arm — and
+/// nothing else. One marshal, so the shape cannot fork between the real roster and the fixture.
+pub(crate) fn route_gap_suppressed_rows_value(
+    ctx: &v1_interpreter::InterpContext,
+    rows: &[(String, SuppressionGround)],
+) -> v1_interpreter::Value {
+    // The declared arms are spelled arm-for-arm after the runner's suppression enum, so this
+    // decode is the spelling's only authority: a rename on either side breaks this match or the
+    // fixture, never forks silently. Inlined — the marshal is one counted seed item with no
+    // nested hand declaration of its own.
+    v1_interpreter::list_value(
+        rows.iter()
+            .map(|(identity, ground)| v1_interpreter::Value::Record {
+                type_name: ctx.sym("FloorRouteGapSuppressedRow"),
+                fields: Rc::new(vec![
+                    (ctx.sym("identity"), v1_interpreter::str_value(identity)),
+                    (
+                        ctx.sym("ground"),
+                        v1_interpreter::Value::Variant {
+                            type_name: ctx.sym("FloorRouteGapSuppressionGround"),
+                            variant_name: ctx.sym(match *ground {
+                                SuppressionGround::OutsideRequiredGate => "OutsideRequiredGate",
+                                SuppressionGround::WithheldCostDebt => "WithheldCostDebt",
+                                SuppressionGround::DeclinedNoCiWetLane => "DeclinedNoCiWetLane",
+                            }),
+                            fields: Rc::new(vec![]),
+                        },
+                    ),
+                ]),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// THE SECOND MARSHAL the run site and the pairing witness share: the discovery walk's
+/// declared-identity index, marshaled WHOLE as a keyed map (identity -> disposition label) —
+/// the shape the modeled relation judges membership with. The runner does no membership test:
+/// `contains_key` here would BE the refuse-if-undeclared decision made outside
+/// `v2.workflow.floor_route_gap`'s `floor_route_gap_admission_partition`, so the judgment
+/// travels to the .dag authority and this marshal only moves the data. Keyed, because the
+/// alternative — the same universe flattened into a list the relation re-scans per row — is
+/// the corpus-sized join the .dag contract retires.
+pub(crate) fn route_gap_declared_map_value(
+    declared: &HashMap<String, RequiredFloorDisposition>,
+) -> v1_interpreter::Value {
+    let mut entries = im::HashMap::new();
+    for (identity, disposition) in declared {
+        let key = v1_interpreter::CanonKey::new(v1_interpreter::str_value(identity))
+            .expect("identity is a valid string map key");
+        entries = entries.update(
+            key,
+            v1_interpreter::str_value(required_floor_disposition_label(disposition)),
+        );
+    }
+    v1_interpreter::map_value(entries)
+}
+
+/// THE PRODUCTION DECODE + ENFORCE for the modeled admission partition's answer, shared by the
+/// run site and the pairing test: every row is decoded by its declared arm (a refused row with
+/// no identity, an unknown ground arm, or an unknown arm refuses the whole decode — never
+/// widens), a refused row raises REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared, and
+/// every measured row is recorded per identity with its ground on the roster's channel as
+/// MEASUREMENT (closes nothing). The fixture test drives this function over the misnamed
+/// fixture and requires the actual error, so the production branch — not only the relation —
+/// is exercised by a discriminating control.
+pub(crate) fn route_gap_admission_decode_and_enforce(
+    ctx: &v1_interpreter::InterpContext,
+    decided_rows: Vec<&v1_interpreter::Value>,
+    roster_len: usize,
+) -> Result<Vec<(String, String)>, String> {
+    let mut route_gap_refused: Vec<String> = Vec::new();
+    let mut route_gap_measured: Vec<(String, String)> = Vec::new();
+    for row in decided_rows {
+        let v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = row
+        else {
+            return Err(format!(
+                "route_gap_admission_partition: malformed admission row, observed {}",
+                floor_value_shape(Some(row))
+            ));
+        };
+        let field_str = |name: &str| -> Option<String> {
+            let value = ctx.field(fields, name)?;
+            match value {
+                v1_interpreter::Value::Str(s) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        let ground_arm = |name: &str| -> Option<String> {
+            let value = ctx.field(fields, name)?;
+            match value {
+                v1_interpreter::Value::Variant { variant_name, .. } => {
+                    Some(ctx.resolve(*variant_name).as_str().to_string())
+                }
+                _ => None,
+            }
+        };
+        match ctx.resolve(*variant_name).as_str() {
+            "FloorRouteGapAdmissionRefusedRow" => match field_str("identity") {
+                Some(identity) => route_gap_refused.push(identity),
+                None => {
+                    return Err(
+                        "route_gap_admission_partition: a refused row carries no identity"
+                            .to_string(),
+                    )
+                }
+            },
+            "FloorRouteGapAdmissionMeasuredRow" => {
+                match (field_str("identity"), ground_arm("ground")) {
+                    (Some(identity), Some(arm)) => {
+                        // The relation returns the declared arm; decode it back to the runner's
+                        // suppression enum by the same arm-for-arm spelling the marshal used, and
+                        // refuse an arm the enum does not declare — a fabricated ground can never
+                        // pass as a label.
+                        let ground = match arm.as_str() {
+                            "OutsideRequiredGate" => SuppressionGround::OutsideRequiredGate,
+                            "WithheldCostDebt" => SuppressionGround::WithheldCostDebt,
+                            "DeclinedNoCiWetLane" => SuppressionGround::DeclinedNoCiWetLane,
+                            other => {
+                                return Err(format!(
+                                    "route_gap_admission_partition: a measured row carries unknown suppression ground arm {other}"
+                                ))
+                            }
+                        };
+                        route_gap_measured.push((
+                            identity,
+                            crate::v1_compiler_expected_red_roster_join::suppression_ground_label(
+                                ground,
+                            ),
+                        ));
+                    }
+                    _ => {
+                        return Err(
+                            "route_gap_admission_partition: a measured row carries no identity or ground"
+                                .to_string(),
+                        )
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "route_gap_admission_partition: unknown admission arm {other}"
+                ))
+            }
+        }
+    }
+    if !route_gap_refused.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared — the route-gap roster \
+             enrolls identity(ies) the tree does not declare, refused by the modeled admission \
+             partition ({ROUTE_GAP_ADMISSION_PARTITION_ENTRY}). Suppression removes them before \
+             the reverse join, so no other guard can ever see them and a row that cannot be \
+             observed can never ask to be removed. Delete the enrollment or restore the \
+             identity: [{}]",
+            route_gap_refused.join(", ")
+        ));
+    }
+    // MEASUREMENT, NOT CLOSURE: every suppressed enrollment is named at identity grain with the
+    // ground the modeled partition returned for it, on the roster's own channel. For identities
+    // whose module the 2026-08-29 gate cut withdrew, this line records a declared dormancy —
+    // the gate decision owns it, and this record closes nothing for them.
+    let mut measured_by_ground: Vec<(String, Vec<String>)> = Vec::new();
+    for (identity, ground) in &route_gap_measured {
+        match measured_by_ground.iter_mut().find(|(g, _)| g == ground) {
+            Some((_, named)) => named.push(identity.clone()),
+            None => measured_by_ground.push((ground.clone(), vec![identity.clone()])),
+        }
+    }
+    measured_by_ground.sort();
+    for (ground, named) in &measured_by_ground {
+        eprintln!(
+            "[floor-route-gap] {} enrolled identity(ies) suppressed, kept as record and NOT \
+             held as agreement (dormant, not deleted; MEASUREMENT — the {ground} arm is owned by \
+             the gate cut of 2026-08-29 and the cost-debt roster, not by this check): {}",
+            named.len(),
+            named.join(", ")
+        );
+    }
+    eprintln!(
+        "[floor-route-gap] roster carries {} enrolled identity(ies) after admission; {} \
+         suppressed with ground and named above",
+        roster_len,
+        route_gap_measured.len()
+    );
+    Ok(route_gap_measured)
+}
+
 /// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
 /// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
 /// external or blocking interaction picks wall instead — but the choice is made here, by
@@ -714,6 +915,89 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
     }
 }
 
+/// THE FLOOR RUN'S BASE TREE, resolved at most once per run and lent to every base-tree reader.
+/// `gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`:
+/// the interface planner applied the merge-base arm while the unimported-bare-provider roster gate
+/// and the cost-debt edit budget each read the base TIP, so on a branch behind main a row main
+/// retired after the branch point read as this change's edit. The repair is not a merge-base call
+/// at each site -- that leaves N relation choices to drift -- but one window, resolved by
+/// `FreezeBaselineComparison::resolve_window`, that every reader receives. Lazy because a local
+/// run without a diff baseline never needs a base side, and a refusal is held so every reader
+/// reports the same cause rather than re-asking the resolver.
+pub(crate) struct FloorBaseTree {
+    /// `None` reads the run's own comparison (`floor_diff_comparison_readout`) at the process
+    /// workspace; `Some` is a supplied comparison over a supplied repository, the same resolver.
+    supplied: Option<(FreezeBaselineComparison, PathBuf)>,
+    window: std::cell::OnceCell<
+        Result<
+            (
+                FreezeBaselineComparison,
+                comparison_window::ResolvedComparisonWindow,
+            ),
+            String,
+        >,
+    >,
+}
+
+impl FloorBaseTree {
+    pub(crate) fn unresolved() -> Self {
+        Self {
+            supplied: None,
+            window: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// A supplied comparison over a supplied repository, resolved by the same `resolve_window`.
+    pub(crate) fn for_comparison(comparison: FreezeBaselineComparison, root: PathBuf) -> Self {
+        Self {
+            supplied: Some((comparison, root)),
+            window: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn window(
+        &self,
+    ) -> Result<
+        &(
+            FreezeBaselineComparison,
+            comparison_window::ResolvedComparisonWindow,
+        ),
+        String,
+    > {
+        self.window
+            .get_or_init(|| {
+                let (comparison, root) = match &self.supplied {
+                    Some((comparison, root)) => (comparison.clone(), root.clone()),
+                    None => (floor_diff_comparison_readout()?, process_workspace_root()),
+                };
+                let window = comparison.resolve_window(&root)?;
+                Ok((comparison, window))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// The commit whose tree is the base side of this run's comparison.
+    pub(crate) fn commit(&self) -> Result<&comparison_window::BaseTreeCommit, String> {
+        Ok(self.window()?.1.base_tree())
+    }
+
+    /// The resolved head commit of this run's comparison.
+    pub(crate) fn head(&self) -> Result<&str, String> {
+        Ok(self.window()?.1.head())
+    }
+
+    /// The base REF and the base-tree commit, for a located line. Never a tree route.
+    pub(crate) fn located(&self) -> Result<String, String> {
+        let (comparison, window) = self.window()?;
+        Ok(format!(
+            "base_ref={} base_tree={}",
+            comparison.base_ref(),
+            window.base_tree()
+        ))
+    }
+}
+
 pub(crate) fn floor_diff_baseline_readout() -> Result<(String, String), String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
@@ -809,7 +1093,7 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
 /// resolves a removed call against. Returns an exact identity map of the model's edit labels and budgets.
 /// Tokenization is shared only within this observed file pair, never across revisions.
 pub(crate) fn cost_debt_changed_witness_ceilings(
-    base: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
     rel_path: &str,
     functions: &[String],
     head_source: &str,
@@ -822,7 +1106,7 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
         .map_err(|e| format!("floor_cost_debt_edit resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
-        (Some("base".to_string()), str_value(base)),
+        (Some("base".to_string()), str_value(base_tree.as_str())),
         (Some("path".to_string()), str_value(rel_path)),
         (
             Some("functions".to_string()),
@@ -895,16 +1179,19 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
 /// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
 /// `floor_run_base_file_read`): `Ok(None)` when the base does not carry the path, `Err` when the
 /// listing or show refused -- a refusal is never read as an absent or empty file.
-pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String> {
+pub(crate) fn floor_base_file_read(
+    base_tree: &FloorBaseTree,
+    path: &str,
+) -> Result<Option<String>, String> {
     use v1_interpreter::Value;
-    let comparison = floor_diff_comparison_readout()?;
+    let base = base_tree.commit()?.as_str();
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
-        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("base".to_string()), str_value(base)),
         (Some("path".to_string()), str_value(path)),
     ];
     let result =
@@ -943,13 +1230,14 @@ pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String>
 /// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
 /// census is an observation failure and never becomes an empty map.
 pub(crate) fn floor_base_test_decl_census(
+    base_tree: &FloorBaseTree,
     paths: &[String],
 ) -> Result<std::collections::HashMap<String, HashSet<String>>, String> {
     use v1_interpreter::Value;
     if paths.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-    let comparison = floor_diff_comparison_readout()?;
+    let base = base_tree.commit()?.as_str();
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
@@ -957,7 +1245,7 @@ pub(crate) fn floor_base_test_decl_census(
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
     let args = [
-        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("base".to_string()), str_value(base)),
         (Some("paths".to_string()), list_value_from_vec(path_values)),
     ];
     let result = v1_interpreter::run_in_context_with_args(
@@ -1555,6 +1843,7 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// the `changed_witness_identities` wrapper above it (already callerless on `main`) are deleted
 /// here rather than left for that later consolidation.
 fn changed_and_enrolled_witness_identities_with_index(
+    base_tree: &FloorBaseTree,
     index: &MultiEntryIndex,
     source_roots: &[String],
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
@@ -1570,6 +1859,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
     // describe different changes.
     unimported_bare_provider_gate(
+        base_tree,
         index,
         source_roots,
         &changed_paths,
@@ -1588,7 +1878,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
     floor_seam("diff-base-decl-census");
-    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    let base_test_decl_names = floor_base_test_decl_census(base_tree, &dag_path_list)?;
     floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
@@ -1621,7 +1911,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         &changed_paths,
         &added_paths,
         cost_debt_roster_head_closure,
-        cost_debt_admitted_identities,
+        || cost_debt_admitted_identities(base_tree),
         || cost_debt_admitted_by_fold(&[], None),
     )?;
     // THE THIRD PROJECTION IS THE COMPILE SUBJECT, not another witness roster. A helper-fn
@@ -1658,7 +1948,8 @@ fn changed_and_enrolled_witness_identities_with_index(
     floor_seam("interface-consumer-planning");
     let touched_declarations =
         declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
-    let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
+    let interface_consumers =
+        interface_consumer_planning(base_tree, planning_index, &touched_declarations)?;
     // THE FIFTH PROJECTION IS THE DIFF'S PATHS THEMSELVES, for the checker-input rule
     // (`v2.workflow.floor_subject_seed` `checker_subject_rule`): a changed non-.dag path is
     // structural-empty for the .dag frontier above and still an input to every Strict verdict
@@ -1778,6 +2069,7 @@ pub(crate) fn declaration_seeds_from_touched_declarations(
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
 /// blind; a local run without a diff baseline never reaches here.
 fn interface_consumer_planning(
+    base_tree: &FloorBaseTree,
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
     touched_declarations: &std::collections::BTreeSet<(String, String)>,
 ) -> Result<InterfaceConsumerPlanning, String> {
@@ -1796,15 +2088,8 @@ fn interface_consumer_planning(
     // direct comparison at the base ref itself -- the same relation the affected-set diff was
     // taken under, so the interface delta and the line-range attribution describe one change.
     let workspace = process_workspace_root();
-    let (base_commit, head_commit) = match floor_diff_comparison_readout()? {
-        FreezeBaselineComparison::Direct { base, head, .. } => (base, head),
-        FreezeBaselineComparison::MergeBase { base, head, .. } => {
-            let merge_base = git_stdout(&workspace, &["merge-base", &base, &head])?;
-            (merge_base, head)
-        }
-    };
-    let base_commit = git_stdout(&workspace, &["rev-parse", &base_commit])?;
-    let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
+    let base_commit = base_tree.commit()?.as_str().to_string();
+    let head_commit = base_tree.head()?.to_string();
     match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
             Ok(InterfaceConsumerPlanning::NoSubject { head })
@@ -2660,18 +2945,32 @@ const FLOOR_COST_DEBT_VERDICT: &str = "src/v2/workflow/floor_cost_debt_verdict.d
 /// are read at the base commit (`cost_debt_base_tree_extract`), so a provider changed at head
 /// cannot change the base population (review on gunbc#13332). A roster this change modifies must
 /// exist and evaluate at the base; anything else refuses rather than reading as carried.
-fn cost_debt_admitted_identities() -> Result<Vec<String>, String> {
-    use crate::cli_run::namespace_baseline::git_stdout;
-    let workspace = process_workspace_root();
-    let base_commit =
-        cost_debt_comparison_base_commit(floor_diff_comparison_readout()?, |base, head| {
-            git_stdout(&workspace, &["merge-base", base, head])
-        })?;
-    let tree = cost_debt_scratch_dir("base")?;
-    let read = cost_debt_base_tree_extract(&workspace, &base_commit, &tree)
-        .and_then(|()| cost_debt_roster_in_tree(&tree));
-    std::fs::remove_dir_all(&tree).ok();
-    cost_debt_admitted_by_fold(&read?, None)
+fn cost_debt_admitted_identities(base_tree: &FloorBaseTree) -> Result<Vec<String>, String> {
+    cost_debt_admitted_at_base_tree(
+        base_tree,
+        |base_commit| {
+            let workspace = process_workspace_root();
+            let tree = cost_debt_scratch_dir("base")?;
+            let read = cost_debt_base_tree_extract(&workspace, base_commit, &tree)
+                .and_then(|()| cost_debt_roster_in_tree(&tree));
+            std::fs::remove_dir_all(&tree).ok();
+            read
+        },
+        |base_rows| cost_debt_admitted_by_fold(base_rows, None),
+    )
+}
+
+/// THE BASE SIDE OF ADMISSION: the base roster is read at the run's base-tree commit and nowhere
+/// else, then folded against head. The read and the fold are parameters so the stale-base RED
+/// drives THIS selection with supplied values inside the unit budget (gunbc#13452); production
+/// supplies the base-tree extraction and the `.dag` fold above.
+fn cost_debt_admitted_at_base_tree(
+    base_tree: &FloorBaseTree,
+    read_base_rows: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<Vec<String>, String>,
+    fold: impl FnOnce(&[String]) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, String> {
+    let base_rows = read_base_rows(base_tree.commit()?)?;
+    fold(&base_rows)
 }
 
 /// A fresh scratch directory under the ignored build tree, one per read.
@@ -2691,9 +2990,10 @@ fn cost_debt_scratch_dir(label: &str) -> Result<PathBuf, String> {
 /// beside. A refused archive or extraction is a typed refusal, never an empty tree.
 pub(crate) fn cost_debt_base_tree_extract(
     workspace: &Path,
-    commit: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
     into: &Path,
 ) -> Result<(), String> {
+    let commit = base_tree.as_str();
     let refuse = |why: String| {
         format!(
             "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable base={commit} -- the base \
@@ -2775,21 +3075,6 @@ pub(crate) fn cost_debt_roster_in_tree(tree: &Path) -> Result<Vec<String>, Strin
             ))),
         })
         .collect()
-}
-
-/// THE COMMIT THE BASE ROSTER IS READ AT: the floor's own comparison window, exactly as
-/// `interface_consumer_planning` reads it. A merge-base comparison reads the merge base, NEVER the
-/// base ref's tip: on a branch behind main, a row main retired after the branch point is absent at
-/// the tip and present at the merge base and at head, and reading the tip would admit it and
-/// charge this change an unbudgeted run for a row it never added (gunbc#13344).
-pub(crate) fn cost_debt_comparison_base_commit(
-    comparison: FreezeBaselineComparison,
-    merge_base: impl FnOnce(&str, &str) -> Result<String, String>,
-) -> Result<String, String> {
-    match comparison {
-        FreezeBaselineComparison::Direct { base, .. } => Ok(base),
-        FreezeBaselineComparison::MergeBase { base, head, .. } => merge_base(&base, &head),
-    }
 }
 
 /// The head roster's rows `base_roster` does not carry, by the `.dag` fold. `head_roster` is the
@@ -3279,6 +3564,7 @@ fn unimported_bare_provider_standing_refusals(
 /// that is decided from the diff's own added paths, never from a failed base read. Every refusal is
 /// reported before the line stops.
 pub(crate) fn unimported_bare_provider_gate(
+    base_tree: &FloorBaseTree,
     index: &MultiEntryIndex,
     source_roots: &[String],
     changed_paths: &[String],
@@ -3309,19 +3595,12 @@ pub(crate) fn unimported_bare_provider_gate(
                 head.rows.len()
             );
         } else {
-            let base = floor_diff_comparison_readout()?.base().to_string();
-            let base_source = unimported_bare_provider_roster_source_at_base(source_roots, &base)?;
-            let base_reading = unimported_bare_provider_base_reading(&base_source)?;
-            let base_coherence = head.refusals(
-                "unimported_bare_provider_roster_coherence",
-                &[(Some("rows".to_string()), base_reading.rows_value.clone())],
-            )?;
-            for r in base_coherence
-                .into_iter()
-                .chain(head.judge_edit(&base_reading, &head)?)
-            {
+            let located = base_tree.located()?;
+            for r in unimported_bare_provider_edit_refusals(base_tree, &head, &head, |base| {
+                unimported_bare_provider_roster_source_at_base(source_roots, base)
+            })? {
                 refusals.push(format!(
-                    "{ROUTE} cause=UnimportedBareProvider {r} base={base}"
+                    "{ROUTE} cause=UnimportedBareProvider {r} {located}"
                 ));
             }
         }
@@ -3391,10 +3670,31 @@ pub fn unimported_bare_provider_entry_refusals(
 
 /// The roster's bytes at the diff base, read through the `.dag` (`unimported_bare_provider_roster_at_base`),
 /// whose unreadable arm refuses here rather than reading as an empty roster.
+/// THE ROSTER EDIT JUDGMENT AT THE RUN'S BASE TREE: the base side is read at `base_tree.commit()`
+/// and nowhere else, then evaluated for coherence and judged against the head. The reader is the
+/// one seam: the gate supplies the `.dag` read (`unimported_bare_provider_roster_source_at_base`),
+/// and it can only be handed a `BaseTreeCommit`, so a tip ref does not type-check here.
+fn unimported_bare_provider_edit_refusals(
+    base_tree: &FloorBaseTree,
+    judge: &UnimportedBareProviderRosterReading,
+    head: &UnimportedBareProviderRosterReading,
+    read_base: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    let base_source = read_base(base_tree.commit()?)?;
+    let base_reading = unimported_bare_provider_base_reading(&base_source)?;
+    let mut refusals = judge.refusals(
+        "unimported_bare_provider_roster_coherence",
+        &[(Some("rows".to_string()), base_reading.rows_value.clone())],
+    )?;
+    refusals.extend(judge.judge_edit(&base_reading, head)?);
+    Ok(refusals)
+}
+
 fn unimported_bare_provider_roster_source_at_base(
     source_roots: &[String],
-    base: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
 ) -> Result<String, String> {
+    let base = base_tree.as_str();
     let (graph, indices) = resolve_entry_graph_shared(
         source_roots,
         &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
@@ -7959,6 +8259,8 @@ pub fn run_required_floor(
     // that ancestor. The entry index one line above was already shared for exactly this reason --
     // the corpus read simply never was.
     let floor_corpus = crate::cli_run::read_source_corpus_once(source_roots);
+    // ONE BASE TREE FOR THE RUN (`FloorBaseTree`): every base-side read below takes this commit.
+    let floor_base_tree = FloorBaseTree::unresolved();
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
@@ -7971,6 +8273,7 @@ pub fn run_required_floor(
         diff_paths,
         cost_debt_admitted,
     ) = match changed_and_enrolled_witness_identities_with_index(
+        &floor_base_tree,
         &gate_entry_index,
         source_roots,
         planning_index.as_ref(),
@@ -8281,9 +8584,9 @@ pub fn run_required_floor(
                 .iter()
                 .any(|m| m == "gunbc.non_fold_residue") =>
         {
-            crate::cli_run::non_fold_residue_changed_row_subjects().map_err(|e| {
-                format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}")
-            })?
+            crate::cli_run::non_fold_residue_changed_row_subjects(&floor_base_tree).map_err(
+                |e| format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}"),
+            )?
         }
         _ => Vec::new(),
     };
@@ -9573,7 +9876,10 @@ pub fn run_required_floor(
                 "[floor-required-gate] {name}: {outside_gate} enrolled identity(ies) suppressed \
                  because their module is outside the required gate and was never loaded; their \
                  enrollment is dormant, not deleted, and becomes observable again when the gate \
-                 roster admits the module or in the whole-corpus receipts run"
+                 roster admits the module. There is no other observation point: no whole-corpus \
+                 receipts run exists or is scheduled, and the rung-drop authority rules a \
+                 receipt-only run outside the required path out as a retirement path — so the \
+                 consuming rosters record these identities per identity, never as a bare count"
             );
         }
         removed
@@ -9775,7 +10081,7 @@ pub fn run_required_floor(
                 } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
-                    let base = floor_diff_comparison_readout()?.base().to_string();
+                    let base = floor_base_tree.commit()?;
                     let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
                     if file_cost_debt_ceilings.is_none() {
                         let head_source = std::fs::read_to_string(&file.path).map_err(|e| {
@@ -9803,7 +10109,7 @@ pub fn run_required_floor(
                             functions.len()
                         );
                         file_cost_debt_ceilings = Some(cost_debt_changed_witness_ceilings(
-                            &base, &rel_path, &functions, &head_source,
+                            base, &rel_path, &functions, &head_source,
                             &discovered_test_fn_identities,
                         ).map_err(|e| format!(
                             "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved identity={identity} — {e}"
@@ -10397,12 +10703,54 @@ pub fn run_required_floor(
         out
     };
     let mut route_gap_roster = route_gap_roster;
-    let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
-    let _ = suppress_declined_no_ci_wet_lane(&mut route_gap_roster, "floor_route_gap");
-    eprintln!(
-        "[floor-route-gap] roster carries {} enrolled identity(ies)",
-        route_gap_roster.len()
-    );
+    // THE ADMISSION PARTITION IS THE MODELED RELATION, and the relation is the single
+    // implementation. `suppress_withheld` returns exactly which identities it removed and why;
+    // this was the one call site that dropped the list (`let _ =`), so the reverse join below
+    // decided only over the identities a gate-bounded run can observe while every other
+    // enrollment sat in no ledger the run publishes. The runner now marshals the run's real
+    // values -- the suppressed identities with the ground that removed each, decoded into the
+    // relation's declared coproduct, and the discovery walk's declared-identity index -- into
+    // `v2.workflow.floor_route_gap`
+    // `.floor_route_gap_admission_partition` through the hermetic frame the manifest was folded
+    // in. There is no Rust copy of the membership test to rot apart from the roster it joins;
+    // the arms and their meaning live on the authority's contract, and the pairing witness
+    // (`test.claim.route_gap_partition_witness`, floor-side) drives the same surface over the
+    // shared fixture.
+    let mut route_gap_suppressed = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    route_gap_suppressed.extend(suppress_declined_no_ci_wet_lane(
+        &mut route_gap_roster,
+        "floor_route_gap",
+    ));
+    route_gap_suppressed.sort();
+    //
+    // THE WALL: a refused row names an enrollment the tree does not declare. The disposition
+    // index covers EVERY declared witness identity over the discovery roots (gunbc#9684), so
+    // absence there is absence from the tree — and suppression removed the row BEFORE the
+    // reverse join, so the stale arm can never fire for it. The cheapest way to fake a green
+    // run, enrolling an identity that does not exist, costs a refusal, never a count.
+    let suppressed_rows_value = route_gap_suppressed_rows_value(&hermetic, &route_gap_suppressed);
+    // THE DECLARED INDEX, MARshaled WHOLE AS A KEYED MAP: the relation does the membership
+    // judgment (map_contains_key per row) — this site only moves the data, no contains_key
+    // here, or the refuse-if-undeclared decision would live in Rust beside the .dag authority.
+    let declared_value = route_gap_declared_map_value(&cost_debt_disposition_index);
+    let route_gap_decided = v1_interpreter::run_in_context_with_args(
+        &hermetic,
+        ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+        &[
+            (Some("suppressed".to_string()), suppressed_rows_value),
+            (Some("declared".to_string()), declared_value),
+        ],
+        false,
+    )
+    .map_err(|e| format!("route_gap_admission_partition: {e}"))?;
+    let decided_rows = floor_decode_list(&hermetic, Some(&route_gap_decided))
+        .map_err(|e| format!("route_gap_admission_partition: {e}"))?;
+    // THE DECODE + ENFORCE, SHARED WITH THE FIXTURE TEST: the same function the pairing test
+    // drives over the misnamed fixture executes here on the run's real values — so the
+    // production branch (refused rows -> RouteGapEnrollmentUndeclared) is exercised, not just
+    // the relation. Deleting this call must fail that test, not pass it.
+    let route_gap_measured =
+        route_gap_admission_decode_and_enforce(&hermetic, decided_rows, route_gap_roster.len())?;
 
     // New enrollments carry the operation and the closed remedy-ground observed at the
     // interpreter boundary. Their identities are projected into `floor_route_gap_roster` by
@@ -13425,6 +13773,7 @@ pub fn run_required_floor(
     eprintln!(
         "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
          memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         excluded={} excluded_rows=`{}` \
          cpu_ms={} wall_ms={}",
         union.fixture_compiles,
         union.memo_hits,
@@ -13432,6 +13781,8 @@ pub fn run_required_floor(
         union_observed.digest,
         union_observed.files,
         union_observed.emit_diagnostics,
+        union_observed.excluded.len(),
+        union_observed.excluded.join("; "),
         v1_interpreter::thread_cpu_nanos().saturating_sub(union_cpu_started) / 1_000_000,
         union_started.elapsed().as_millis(),
     );
@@ -13509,143 +13860,6 @@ pub(crate) fn required_floor_disposition_matched_prefix(
 mod pure_producer_share_tests {
     use super::*;
     use std::rc::Rc;
-
-    /// The base-comparison half of the unimported-bare-provider gate, executed through the path the
-    /// floor takes: each roster is evaluated ALONE from its source, its rows cross into the real
-    /// verdict frame as values, and the `.dag` edit judgment decides. An unchanged roster admits;
-    /// a gained row refuses by name; a rewritten retirement cause refuses, except a retirement
-    /// moving to FileDeleted. Two reads at distinct
-    /// scratch paths also pin the memoization defect this path once had.
-    #[test]
-    fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
-        crate::cli_run::on_live_pool_thread(|| {
-            let root = process_workspace_root();
-            let roots: Vec<String> = ["dag", "src/v2"]
-                .iter()
-                .map(|r| root.join(r).to_string_lossy().to_string())
-                .collect();
-            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-            let roster = |rows: &str| {
-                std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
-                .expect("roster source")
-                .split("data unimported_bare_provider_dispositions:")
-                .next()
-                .expect("roster head")
-                .to_string()
-                + "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n"
-                + rows
-                + "]\n"
-            };
-            let row = |file: &str, name: &str, standing: &str| {
-                format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
-            };
-            let a_active = row("dag/a.dag", "f", "ActiveDebt");
-            let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
-            let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
-            let b_active = row("dag/b.dag", "g", "ActiveDebt");
-            let read =
-                |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
-            let base = read(roster(&a_active));
-            assert_eq!(
-                judge
-                    .judge_edit(&base, &read(roster(&a_active)))
-                    .expect("verdict"),
-                Vec::<String>::new()
-            );
-            assert_eq!(
-                judge
-                    .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
-                    .expect("verdict"),
-                vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
-            );
-            // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
-            // under either cause is a typed disposition and admits; dropping the row instead refuses.
-            for retired in [&a_fixed, &a_deleted] {
-                assert_eq!(
-                    judge
-                        .judge_edit(&base, &read(roster(retired)))
-                        .expect("verdict"),
-                    Vec::<String>::new()
-                );
-            }
-            assert_eq!(
-                judge
-                    .judge_edit(
-                        &read(roster(&format!("{a_active}{b_active}"))),
-                        &read(roster(&a_active))
-                    )
-                    .expect("verdict"),
-                vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
-            );
-            // A retirement whose file was later deleted may become FileDeleted (gunbc#12787, the
-            // one admitted transition in `unimported_bare_provider_roster_edit`); any other
-            // rewritten cause, including the reverse, refuses.
-            assert_eq!(
-                judge
-                    .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
-                    .expect("verdict"),
-                Vec::<String>::new()
-            );
-            assert_eq!(
-                judge
-                    .judge_edit(&read(roster(&a_deleted)), &read(roster(&a_fixed)))
-                    .expect("verdict"),
-                vec![
-                "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
-                    .to_string()
-            ]
-            );
-        });
-    }
-
-    /// THE REAL BASE READ, END TO END: the roster at `HEAD` is read through the `.dag`
-    /// `unimported_bare_provider_roster_at_base` (a real `git show`), decoded, evaluated alone and
-    /// judged against a head that retires its first active row -- which admits -- and against a head
-    /// that gains a row -- which refuses by name. This is the route gunbc#12205 broke for every
-    /// roster-editing change; the fixture-coproduct control beside it cannot fail for that reason.
-    #[test]
-    fn a_retirement_against_the_real_base_read_admits_and_a_growth_refuses() {
-        crate::cli_run::on_live_pool_thread(|| {
-            let root = process_workspace_root();
-            let roots: Vec<String> = ["dag", "src/v2"]
-                .iter()
-                .map(|r| root.join(r).to_string_lossy().to_string())
-                .collect();
-            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
-            let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
-            let base = read(&base_source);
-            let active = "standing: ActiveDebt }";
-            assert!(
-                base_source.contains(active),
-                "the base roster carries active debt"
-            );
-            let retired =
-                base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
-            assert_eq!(
-                judge.judge_edit(&base, &read(&retired)).expect("verdict"),
-                Vec::<String>::new()
-            );
-            let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
-            assert!(
-                base_source.contains(marker),
-                "the roster's data row opens as expected"
-            );
-            let grown = base_source.replacen(
-            marker,
-            &format!("{marker}  UnimportedBareProviderDisposition {{ file: \"dag/zz_new.dag\", name: \"g\", standing: ActiveDebt }},\n"),
-            1,
-        );
-            let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
-            assert!(
-                refused
-                    .iter()
-                    .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
-                "{refused:?}"
-            );
-        });
-    }
 
     /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
     /// Record, so every roster-editing change refused). Values come from a fixture module that
@@ -14520,39 +14734,22 @@ mod changed_witness_projection_tests {
         xs.iter().map(|x| x.to_string()).collect()
     }
 
-    /// THE PLAN/TERMINAL COMPOSITION THE FLOOR RUNS: `changed` is the diff's changed set after
-    /// admissions joined it, the roster is the head roster, and the terminal rows are what
-    /// planning let execute. `m.wet` is a roster-only addition of a declared BinWitnessWet identity:
-    /// planning declines it (`DeclinedNoCiWetLane`), so it has no terminal row and must refuse as
-    /// unreached. `m.old` is rostered and untouched, and `m.heavy` is a new row that passed.
-    #[test]
-    fn cost_debt_row_admitted_but_planning_declined_is_refused_as_unreached() {
-        let refused = cost_debt_verdict_refusals(
-            &ids(&["m.wet", "m.heavy", "m.ordinary"]),
-            &ids(&["m.wet", "m.heavy", "m.old"]),
-            &[
-                terminal("m.heavy", ClaimOutcome::Pass),
-                terminal("m.ordinary", ClaimOutcome::Fail),
-            ],
-        )
-        .expect("wall");
-        assert_eq!(
-            refused.len(),
-            1,
-            "{:?}",
-            refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
-        );
-        assert_eq!(refused[0].identity, "m.wet");
-        assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
-    }
-
     /// A real source tree at HEAD (the production extraction), with the roster replaced by a
     /// fixture whose result comes from an IMPORTED provider and that also spells `t.new` in an
     /// unselected chunk.
     fn cost_debt_fixture_tree(provider_rows: &str, roster_has_entry: bool) -> PathBuf {
         let workspace = process_workspace_root();
         let tree = cost_debt_scratch_dir("fixture").expect("scratch");
-        cost_debt_base_tree_extract(&workspace, "HEAD", &tree).expect("extract HEAD");
+        let head_tree = FloorBaseTree::for_comparison(
+            FreezeBaselineComparison::Direct {
+                base: "HEAD".to_string(),
+                head: "HEAD".to_string(),
+                kind: "OperatorOverrideBaseline".to_string(),
+            },
+            workspace.clone(),
+        );
+        cost_debt_base_tree_extract(&workspace, head_tree.commit().expect("HEAD"), &tree)
+            .expect("extract HEAD");
         let provider = format!(
             "module v2.workflow.cost_debt_fixture_provider\n\nimport std.types {{ List }}\n\nfn selected_rows() -> List<String> {{\n  {provider_rows}\n}}\n"
         );
@@ -14571,86 +14768,6 @@ mod changed_witness_projection_tests {
         );
         std::fs::write(tree.join(FLOOR_COST_DEBT_ROSTER), roster).expect("write roster");
         tree
-    }
-
-    /// RED (base membership is the BASE TREE's result): the base and head trees differ only in the
-    /// imported provider. The base tree evaluates to `t.old` alone -- the unselected chunk's
-    /// `t.new` is not membership, and the head provider's `t.new` cannot leak into it -- so the head
-    /// admits `t.new`. POSITIVE: an unchanged provider admits nothing. REFUSAL: a base tree whose
-    /// roster does not evaluate refuses, typed.
-    #[test]
-    fn cost_debt_base_roster_is_evaluated_over_the_base_tree() {
-        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true);
-        let head_tree = cost_debt_fixture_tree("[\"t.old\", \"t.new\"]", true);
-        let base = cost_debt_roster_in_tree(&base_tree).expect("base evaluates");
-        let head = cost_debt_roster_in_tree(&head_tree).expect("head evaluates");
-        assert_eq!(base, vec!["t.old".to_string()]);
-        assert_eq!(head, vec!["t.old".to_string(), "t.new".to_string()]);
-        assert_eq!(
-            cost_debt_admitted_by_fold(&base, Some(&head)).expect("fold"),
-            vec!["t.new".to_string()]
-        );
-        assert!(cost_debt_admitted_by_fold(&base, Some(&base))
-            .expect("fold")
-            .is_empty());
-        std::fs::remove_dir_all(&head_tree).ok();
-        std::fs::remove_dir_all(&base_tree).ok();
-    }
-
-    /// REFUSAL: a base tree whose roster does not evaluate, or that has no roster at all, refuses
-    /// typed rather than reading as carrying anything.
-    #[test]
-    fn cost_debt_base_roster_that_does_not_evaluate_refuses() {
-        let broken = cost_debt_fixture_tree("[\"t.old\"]", false);
-        let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
-        assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
-        std::fs::remove_file(broken.join(FLOOR_COST_DEBT_ROSTER)).ok();
-        let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
-        assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
-        std::fs::remove_dir_all(&broken).ok();
-    }
-
-    /// RED (gunbc#13344): on a merge-base comparison the base is the MERGE BASE, not the base
-    /// ref's tip, and a direct comparison reads its base as given. `t.retired` -- absent at the
-    /// tip, present at the merge base and at head -- is admitted only by the tip reading.
-    #[test]
-    fn cost_debt_row_retired_at_the_tip_but_carried_at_the_merge_base_is_not_admitted() {
-        let comparison = FreezeBaselineComparison::MergeBase {
-            base: "tip".to_string(),
-            head: "head".to_string(),
-            kind: "pull_request".to_string(),
-        };
-        let commit = cost_debt_comparison_base_commit(comparison, |base, head| {
-            assert_eq!((base, head), ("tip", "head"));
-            Ok("mb".to_string())
-        })
-        .expect("merge base");
-        assert_eq!(commit, "mb");
-        let direct = FreezeBaselineComparison::Direct {
-            base: "tip".to_string(),
-            head: "head".to_string(),
-            kind: "push".to_string(),
-        };
-        assert_eq!(
-            cost_debt_comparison_base_commit(direct, |_, _| panic!("no merge base on Direct"))
-                .unwrap(),
-            "tip"
-        );
-        let at = |commit: &str| -> Vec<String> {
-            match commit {
-                "tip" => vec!["t.old".to_string()],
-                "mb" => vec!["t.old".to_string(), "t.retired".to_string()],
-                other => panic!("no roster at {other}"),
-            }
-        };
-        let head = vec!["t.old".to_string(), "t.retired".to_string()];
-        assert!(cost_debt_admitted_by_fold(&at(&commit), Some(&head))
-            .expect("fold")
-            .is_empty());
-        assert_eq!(
-            cost_debt_admitted_by_fold(&at("tip"), Some(&head)).expect("fold"),
-            vec!["t.retired".to_string()]
-        );
     }
 
     /// An outcome with every blocking population empty: the state `run_required_floor` starts from.
@@ -14736,84 +14853,6 @@ mod changed_witness_projection_tests {
         )
         .expect("admission step");
         assert!(untouched.is_empty());
-    }
-
-    /// THE INTEGRATION CONTROL, through the production admission step of the diff projection
-    /// (`changed_with_cost_debt_admissions`, the function `changed_and_enrolled_witness_identities_with_index`
-    /// calls) and the wall as `run_required_floor` calls it. The diff modified the roster and
-    /// touched no witness; the admission reader evaluates a real base tree and folds against the
-    /// head roster. `t.new` is a declared BinWitnessWet row planning declines, so it has no
-    /// terminal row and must refuse as unreached; the carried `t.old` and the new passing `t.pass`
-    /// do not. Removing the merge from the production step leaves the changed set without `t.new`
-    /// and this control fails.
-    #[test]
-    fn cost_debt_roster_only_admission_declined_by_planning_refuses_as_unreached() {
-        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true);
-        let head = vec![
-            "t.old".to_string(),
-            "t.new".to_string(),
-            "t.pass".to_string(),
-        ];
-        let (changed, admitted) = changed_with_cost_debt_admissions(
-            Vec::new(),
-            &[FLOOR_COST_DEBT_ROSTER.to_string()],
-            &HashSet::new(),
-            || panic!("the roster's own path is in the diff; the closure is not consulted"),
-            || {
-                let base = cost_debt_roster_in_tree(&base_tree)?;
-                cost_debt_admitted_by_fold(&base, Some(&head))
-            },
-            || panic!("the roster is modified, not added"),
-        )
-        .expect("admission step");
-        std::fs::remove_dir_all(&base_tree).ok();
-        assert_eq!(admitted, vec!["t.new".to_string(), "t.pass".to_string()]);
-        let roster: HashSet<String> = head.iter().cloned().collect();
-        let terminal = [terminal("t.pass", ClaimOutcome::Pass)];
-        let mut outcome = cost_debt_clean_outcome();
-        assert!(
-            required_floor_outcome_is_clean(&outcome),
-            "the fixture outcome starts clean"
-        );
-        record_cost_debt_verdict(&mut outcome, Some(&changed), &roster, &terminal).expect("wall");
-        assert!(
-            !required_floor_outcome_is_clean(&outcome),
-            "the floor's own cleanliness predicate must read the refusal"
-        );
-        let refused = outcome.cost_debt_verdict_refused.clone();
-        assert_eq!(
-            refused
-                .iter()
-                .map(|b| (b.identity.as_str(), b.cause.as_str()))
-                .collect::<Vec<_>>(),
-            vec![("t.new", "CostDebtRowVerdictUnreached")]
-        );
-    }
-
-    /// RED: a planted cost row over a semantically failing claim is refused, under the cause
-    /// `v2.workflow.floor_cost_debt_verdict` names.
-    #[test]
-    fn cost_debt_row_over_a_failing_claim_is_refused() {
-        let refused = cost_debt_verdict_refusals(
-            &ids(&["m.fails"]),
-            &ids(&["m.fails"]),
-            &[terminal("m.fails", ClaimOutcome::Fail)],
-        )
-        .expect("wall");
-        assert_eq!(refused.len(), 1);
-        assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
-    }
-
-    /// RED: an expected-red enrolment does not launder it -- the withhold suppresses that
-    /// enrolment, so a held red under a cost row is still a red nobody reads.
-    #[test]
-    fn cost_debt_row_over_an_enrolled_expected_red_is_refused() {
-        let mut row = terminal("m.known", ClaimOutcome::Fail);
-        row.expected_red = true;
-        let refused = cost_debt_verdict_refusals(&ids(&["m.known"]), &ids(&["m.known"]), &[row])
-            .expect("wall");
-        assert_eq!(refused.len(), 1);
-        assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
     }
 
     /// Positive control: a planned changed identity with a terminal Pass is the ONE green
@@ -15158,56 +15197,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         assert!(rel.contains("target/"), "fixture under target/: {rel}");
     }
 
-    // ── THE gunbc#12441 SHAPE, EXECUTED END TO END ───────────────────────────────────────────
-    //
-    // A checker edit that newly refuses a module outside the edited closure. `armset.victim` is
-    // in no seed the diff produces, so the narrow subject prepares green without it, which is how
-    // v2.test.claim.type_param_binder_frame reached main. The checker-input rule, evaluated from
-    // `v2.workflow.floor_subject_seed`, seeds every admitted module, and the same preparation then
-    // refuses on the victim. The positive control is the same fixture under a non-checker diff.
-    #[test]
-    fn a_checker_edit_prepares_the_module_its_check_refuses_outside_the_edited_closure() {
-        use crate::cli_run::checker_dependency::{
-            checker_module_seeds, checker_subject_application_when_applied,
-        };
-        const EDITED: &str = "module armset.edited\n\nfn ok() -> Int {\n  1\n}\n";
-        const VICTIM: &str = "module armset.victim\n\nfn wrong() -> String {\n  1\n}\n";
-        let fx = interface_fixture(
-            "checker_edge",
-            "head",
-            &[("edited.dag", EDITED), ("victim.dag", VICTIM)],
-        );
-        let roots = [fx.to_string_lossy().into_owned()];
-        let index = build_multi_entry_index(&roots);
-        let corpus = crate::cli_run::read_source_corpus_once(&roots);
-        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
-        let record = Ok(vec![infer.clone()]);
-        let authority_roots = default_source_roots();
-        let subject_under = |changed: &[String]| {
-            let application =
-                checker_subject_application_when_applied(&authority_roots, &record, changed)
-                    .expect("application");
-            let seeds: Vec<String> = std::iter::once("armset.edited".to_string())
-                .chain(checker_module_seeds(&application, &corpus))
-                .collect();
-            crate::cli_run::prepare_repository_from_corpus(
-                &corpus,
-                &[],
-                Some((&index, &[], &seeds)),
-            )
-        };
-        let narrow = subject_under(&["edited.dag".to_string()]);
-        let wide = subject_under(std::slice::from_ref(&infer));
-        let _ = std::fs::remove_dir_all(&fx);
-        let (_, views) = narrow.expect("a non-checker diff prepares the edited closure green");
-        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
-        assert!(!modules.contains(&"armset.victim"), "{modules:?}");
-        let refusal = wide
-            .err()
-            .expect("a checker edit prepares every admitted module, and the victim refuses");
-        assert!(refusal.contains("victim"), "{refusal}");
-    }
-
     // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────
     //
     // A fixture coproduct in module X gains an arm; an UNTOUCHED exhaustive match over it in
@@ -15299,44 +15288,6 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "the indexed selector diverged from the scan it replaced"
         );
         (selection, head_fx)
-    }
-
-    /// THE COST RECEIPT, on the real corpus rather than a fixture: the base index is reconstructed
-    /// over `GUNBC_SELECTION_BASE..HEAD` exactly as the floor does, both selectors run on it, their
-    /// selections must be equal, and both times are printed. Run by hand on a wide interface change
-    /// (`cargo test ... -- --ignored --nocapture`); it is not a merge gate.
-    #[test]
-    #[ignore]
-    fn indexed_selection_equals_the_scan_on_a_real_diff_window() {
-        use crate::cli_run::namespace_baseline::{
-            git_stdout, interface_changed_consumers, interface_changed_consumers_by_scan,
-            reconstruct_base_index, BaselineReconstruction,
-        };
-        let workspace = process_workspace_root();
-        let base = std::env::var("GUNBC_SELECTION_BASE").expect("GUNBC_SELECTION_BASE");
-        let base = git_stdout(&workspace, &["rev-parse", &base]).expect("base rev");
-        let head = git_stdout(&workspace, &["rev-parse", "HEAD"]).expect("head rev");
-        let head_index =
-            crate::cli_run::run_dag_parse_sweep(&workspace, &crate::cli_run::DAG_PARSE_SWEEP_ROOTS)
-                .expect("head sweep")
-                .index;
-        let BaselineReconstruction::Reconstructed { base_index, .. } =
-            reconstruct_base_index(&workspace, &base, &head, &head_index).expect("reconstruct")
-        else {
-            panic!("base side not reconstructed");
-        };
-        let t = std::time::Instant::now();
-        let indexed = interface_changed_consumers(&base_index, &head_index);
-        let indexed_ms = t.elapsed().as_millis();
-        let t = std::time::Instant::now();
-        let scanned = interface_changed_consumers_by_scan(&base_index, &head_index);
-        let scanned_ms = t.elapsed().as_millis();
-        eprintln!(
-            "selection receipt: changes={} consumers={} indexed_ms={indexed_ms} scanned_ms={scanned_ms}",
-            indexed.changes.len(),
-            indexed.consumers.len()
-        );
-        assert_eq!(indexed, scanned);
     }
 
     fn consumers_of(
@@ -16267,72 +16218,6 @@ fn nested() -> Int {\n  id(x: u())\n}\n";
             vec!["flatu.n", "flatu.r", "flatu.v"],
             "{:?}",
             selection.consumers
-        );
-    }
-
-    /// THE WINDOW INSTRUMENT: the floor's dependents selector over an arbitrary historical
-    /// window, printing the same counts as the floor's `[floor-phase]
-    /// phase=interface-changed-consumers` line. The floor itself only ever measures its own diff,
-    /// so a before/after figure for a PAST change needs this entry. The head tree is read from a
-    /// checkout (`GUNBC_SELECTOR_HEAD_TREE`) and swept over the parse phase's own roster
-    /// (`DAG_PARSE_SWEEP_ROOTS`); the base side is reconstructed from git exactly as the floor
-    /// reconstructs it.
-    ///
-    ///   GUNBC_SELECTOR_BASE=<sha> GUNBC_SELECTOR_HEAD=<sha> GUNBC_SELECTOR_HEAD_TREE=<checkout> \
-    ///     cargo test --release -p v1-compiler --lib -- --ignored interface_consumer_window_census
-    #[test]
-    #[ignore = "instrument: needs a head checkout and a commit window from the environment"]
-    fn interface_consumer_window_census() {
-        use crate::cli_run::namespace_baseline::{
-            reconstruct_base_index, BaselineReconstruction, InterfaceConsumerBinding,
-        };
-        let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
-        let (base, head) = (var("GUNBC_SELECTOR_BASE"), var("GUNBC_SELECTOR_HEAD"));
-        let tree = PathBuf::from(var("GUNBC_SELECTOR_HEAD_TREE"));
-        let head_index = match crate::cli_run::run_dag_parse_sweep(
-            &tree,
-            &crate::cli_run::DAG_PARSE_SWEEP_ROOTS,
-        ) {
-            Ok(sweep) => sweep.index,
-            Err(errors) => panic!("head tree must parse; sweep refused: {errors:?}"),
-        };
-        let reconstructed = reconstruct_base_index(&tree, &base, &head, &head_index)
-            .expect("base side reconstructs");
-        let BaselineReconstruction::Reconstructed { base_index, .. } = reconstructed else {
-            panic!("window has no reconstructable base side");
-        };
-        let selection = crate::cli_run::namespace_baseline::interface_changed_consumers(
-            &base_index,
-            &head_index,
-        );
-        for change in &selection.changes {
-            let of_change: Vec<_> = selection
-                .consumers
-                .iter()
-                .filter(|c| {
-                    c.changed_module_path == change.module_path
-                        && c.changed_declaration == change.declaration
-                })
-                .collect();
-            let flat = of_change
-                .iter()
-                .filter(|c| c.binding == InterfaceConsumerBinding::BoundThroughFlatBareChannel)
-                .count();
-            println!(
-                "[selector-window] declaration={}.{} ground={:?} consumers={} flat_channel={}",
-                change.module_path,
-                change.declaration,
-                change.ground,
-                of_change.len(),
-                flat
-            );
-        }
-        println!(
-            "[selector-window] base={base} head={head} changed_declarations={} consumers={} \
-             consumer_modules={}",
-            selection.changes.len(),
-            selection.consumers.len(),
-            consumers_of(&selection).len()
         );
     }
 
@@ -17932,6 +17817,391 @@ mod expected_red_roster_join_suppression_tests {
 }
 
 #[cfg(test)]
+mod route_gap_admission_partition_tests {
+    use super::*;
+
+    /// THE FIXTURE'S SUPPRESSED ROWS, decoded to (identity, declared-arm) pairs — the shape the
+    /// shared marshal re-encodes into the relation's coproduct.
+    fn suppressed_row_pairs(
+        ctx: &v1_interpreter::InterpContext,
+        value: &Value,
+    ) -> Vec<(String, String)> {
+        let Value::List(items) = value else {
+            panic!("the fixture suppressed value is not a List");
+        };
+        items
+            .iter()
+            .map(|item| {
+                let Value::Record { fields, .. } = item else {
+                    panic!("a fixture suppressed row is not a Record");
+                };
+                let Some(Value::Str(identity)) = ctx.field(fields, "identity") else {
+                    panic!("a fixture suppressed row has no String identity");
+                };
+                let Some(Value::Variant { variant_name, .. }) = ctx.field(fields, "ground") else {
+                    panic!("a fixture suppressed row has no declared ground arm");
+                };
+                (identity.to_string(), ctx.resolve(*variant_name).to_string())
+            })
+            .collect()
+    }
+
+    /// THE MARSHAL'S INPUT, decoded back to the runner's suppression enum by the arm-for-arm
+    /// spelling the marshal owns. A fixture arm the enum does not declare panics here instead of
+    /// passing as a label.
+    fn ground_arm_enum(arm: &str) -> SuppressionGround {
+        match arm {
+            "OutsideRequiredGate" => SuppressionGround::OutsideRequiredGate,
+            "WithheldCostDebt" => SuppressionGround::WithheldCostDebt,
+            "DeclinedNoCiWetLane" => SuppressionGround::DeclinedNoCiWetLane,
+            other => panic!(
+                "the fixture names a suppression arm the runner's enum does not declare: {other}"
+            ),
+        }
+    }
+
+    /// THE MODELED PARTITION'S RESULT, decoded to (identity, declared-arm, refused) triples —
+    /// one arm per suppressed row, at identity grain.
+    fn admission_rows(
+        ctx: &v1_interpreter::InterpContext,
+        value: &Value,
+    ) -> Vec<(String, String, bool)> {
+        let Value::List(rows) = value else {
+            panic!("the modeled partition did not return a List");
+        };
+        rows.iter()
+            .map(|row| {
+                let Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } = row
+                else {
+                    panic!(
+                        "an admission row is not a Variant, observed {}",
+                        floor_value_shape(Some(row))
+                    );
+                };
+                let str_field = |name: &str| -> String {
+                    let Some(Value::Str(s)) = ctx.field(fields, name) else {
+                        panic!("an admission row has no String {name}");
+                    };
+                    s.to_string()
+                };
+                let arm_field = |name: &str| -> String {
+                    let Some(Value::Variant { variant_name, .. }) = ctx.field(fields, name) else {
+                        panic!("an admission row has no declared {name} arm");
+                    };
+                    ctx.resolve(*variant_name).to_string()
+                };
+                match ctx.resolve(*variant_name).as_str() {
+                    "FloorRouteGapAdmissionMeasuredRow" => {
+                        (str_field("identity"), arm_field("ground"), false)
+                    }
+                    "FloorRouteGapAdmissionRefusedRow" => {
+                        (str_field("identity"), String::new(), true)
+                    }
+                    other => panic!("unknown admission arm {other}"),
+                }
+            })
+            .collect()
+    }
+
+    /// THE PAIRING WITNESS, THROUGH THE REAL CALL PATH. The run site marshals the run's real
+    /// values into `v2.workflow.floor_route_gap.floor_route_gap_admission_partition` via
+    /// `run_in_context_with_args`; this witness drives the SAME entry, by the SAME constant,
+    /// over the SHARED fixture (src/v2/test/fixture/route_gap_admission_partition.dag), so a
+    /// rename of the entry or a fork of the marshal shape breaks here instead of forking the
+    /// decision. It asserts both arms at identity grain: a declared suppressed row comes back
+    /// MEASURED with its ground kept, and an enrollment the tree does not declare -- renamed,
+    /// deleted, or fabricated -- comes back REFUSED, the wall's discriminating arm. The
+    /// floor-side route witness (`test.claim.route_gap_partition_witness`) asserts the same
+    /// fixture rows on the floor, so the answer and the route are pinned on both sides.
+    #[test]
+    fn the_partition_route_decides_the_shared_fixture_at_identity_grain() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = crate::cli_run::make_eval_context(
+                &graph,
+                indices,
+                v1_interpreter::ExecutionMode::Hermetic,
+            );
+            let read = |name: &str| {
+                v1_interpreter::with_active_context(&ctx, || {
+                    v1_interpreter::run_in_context(
+                        &ctx,
+                        &format!("v2.test.fixture.route_gap_admission_partition.{name}"),
+                        false,
+                    )
+                })
+                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
+            };
+            let suppressed =
+                suppressed_row_pairs(&ctx, &read("route_gap_partition_fixture_suppressed"));
+            // THE DECLARED SET AS THE FIXTURE SUPPLIES IT: the modeled keyed map the relation
+            // judges membership with — the same shape the run site marshals its disposition
+            // index into. No list is flattened here, and the misnamed fixture identity is
+            // deliberately absent from it.
+            let declared = read("partition_fixture_declared");
+            assert_eq!(
+                suppressed.len(),
+                4,
+                "the fixture carries both arms and all three grounds"
+            );
+            let marshal_input = suppressed
+                .iter()
+                .map(|(identity, arm)| (identity.clone(), ground_arm_enum(arm)))
+                .collect::<Vec<_>>();
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(&ctx, marshal_input.as_slice()),
+                ),
+                (Some("declared".to_string()), declared),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled admission partition evaluates over the fixture");
+            let rows = admission_rows(&ctx, &decided);
+            assert_eq!(
+                rows.len(),
+                4,
+                "every suppressed row lands in exactly one arm"
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(i, g, refused)| !refused
+                        && i == "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds"
+                        && g == "OutsideRequiredGate")
+                    .count(),
+                1,
+                "the declared suppressed row is MEASURED with its ground kept"
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(i, g, refused)| !refused
+                        && i == "test.claim.parse_test.parse_witness_floor_holds"
+                        && g == "WithheldCostDebt")
+                    .count(),
+                1,
+                "the cost-debt withheld declared row is MEASURED with its ground kept"
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(i, _, refused)| *refused
+                        && i == "test.claim.renamed_away_witness_test.old_witness_name")
+                    .count(),
+                1,
+                "the enrollment the tree does not declare is REFUSED -- the wall's discriminating arm"
+            );
+        });
+    }
+
+    /// THE MARSHAL SHAPE the run site owes, pinned beside the fixture: a suppressed row carries
+    /// its identity and its ground as the declared coproduct arm, and nothing else.
+    #[test]
+    fn the_marshal_shape_names_identity_and_ground_only() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let value = route_gap_suppressed_rows_value(
+                &ctx,
+                &[(
+                    "test.claim.any_witness_test.any_holds".to_string(),
+                    SuppressionGround::OutsideRequiredGate,
+                )],
+            );
+            let v1_interpreter::Value::List(items) = &value else {
+                panic!("the marshal produces a List");
+            };
+            assert_eq!(items.len(), 1);
+            let v1_interpreter::Value::Record { type_name, fields } = &items[0] else {
+                panic!("the marshal produces a suppressed-row Record");
+            };
+            assert_eq!(
+                ctx.resolve(*type_name).as_str(),
+                "FloorRouteGapSuppressedRow"
+            );
+            assert_eq!(fields.len(), 2, "identity and ground, nothing else");
+        });
+    }
+
+    /// THE SECOND MARSHAL'S SHAPE AND ROUTE: the disposition index marshals as a keyed Map, and
+    /// judged THROUGH THE RELATION it measures a row the index declares and refuses one it does
+    /// not — the membership judgment exercised on the same call path the run site takes, not a
+    /// Rust-side contains_key.
+    #[test]
+    fn the_declared_index_marshal_judges_membership_through_the_relation() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let mut declared: HashMap<String, RequiredFloorDisposition> = HashMap::new();
+            declared.insert(
+                "test.claim.any_witness_test.any_holds".to_string(),
+                RequiredFloorDisposition::Planned,
+            );
+            let declared_value = route_gap_declared_map_value(&declared);
+            assert!(
+                matches!(declared_value, v1_interpreter::Value::Map(_)),
+                "the declared index marshals as a keyed Map, not a list"
+            );
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(
+                        &ctx,
+                        &[
+                            (
+                                "test.claim.any_witness_test.any_holds".to_string(),
+                                SuppressionGround::OutsideRequiredGate,
+                            ),
+                            (
+                                "test.claim.absent_witness_test.gone_holds".to_string(),
+                                SuppressionGround::OutsideRequiredGate,
+                            ),
+                        ],
+                    ),
+                ),
+                (Some("declared".to_string()), declared_value),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled partition evaluates over the marshaled index");
+            let rows = admission_rows(&ctx, &decided);
+            assert_eq!(rows.len(), 2, "both suppressed rows land somewhere");
+            let declared_row = rows
+                .iter()
+                .find(|(i, g, refused)| !refused && i == "test.claim.any_witness_test.any_holds")
+                .expect("the declared identity is measured");
+            assert_eq!(
+                declared_row.1, "OutsideRequiredGate",
+                "a measured row keeps its ground"
+            );
+            assert!(
+                rows.iter()
+                    .any(|(i, _g, refused)| *refused
+                        && i == "test.claim.absent_witness_test.gone_holds"),
+                "an identity the index does not hold is refused, not counted"
+            );
+        });
+    }
+
+    /// THE PRODUCTION BRANCH, DISCRIMINATED: the same decode+enforce function the run site
+    /// calls — driven over the partition's answer to the misnamed fixture — must return the
+    /// actual REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared, so deleting the
+    /// enforcement in `run_required_floor` cannot leave this control green (the shared function
+    /// is the enforcement; the call site and this test both own it).
+    #[test]
+    fn the_misnamed_fixture_refuses_through_the_production_decode_and_enforce() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index =
+                crate::cli_run::process_shared_index(&["dag".to_string(), "src/v2".to_string()]);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let read = |name: &str| {
+                v1_interpreter::with_active_context(&ctx, || {
+                    v1_interpreter::run_in_context(
+                        &ctx,
+                        &format!("v2.test.fixture.route_gap_admission_partition.{name}"),
+                        false,
+                    )
+                })
+                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
+            };
+            let suppressed =
+                suppressed_row_pairs(&ctx, &read("route_gap_partition_fixture_suppressed"));
+            let marshal_input = suppressed
+                .iter()
+                .map(|(identity, arm)| (identity.clone(), ground_arm_enum(arm)))
+                .collect::<Vec<_>>();
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(&ctx, marshal_input.as_slice()),
+                ),
+                (
+                    Some("declared".to_string()),
+                    read("partition_fixture_declared"),
+                ),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled partition evaluates over the fixture");
+            let decided_rows =
+                floor_decode_list(&ctx, Some(&decided)).expect("the relation returns a row list");
+            let err = route_gap_admission_decode_and_enforce(&ctx, decided_rows, 4).expect_err(
+                "the misnamed fixture must refuse through the production decode+enforce",
+            );
+            assert!(
+                err.contains("cause=RouteGapEnrollmentUndeclared"),
+                "the production branch raises the typed refusal, observed: {err}"
+            );
+            assert!(
+                err.contains("test.claim.renamed_away_witness_test.old_witness_name"),
+                "the refusal names the undeclared identity, observed: {err}"
+            );
+        });
+    }
+}
+
+#[cfg(test)]
 mod pure_producer_share_refused_carrier_overlap_tests {
     use super::*;
     use crate::cli_run::shared_fill;
@@ -18855,61 +19125,175 @@ mod changed_selections_outside_discovery_mirror_tests {
             })
             .collect()
     }
+}
 
+/// THE BASE-TREE SELECTION, over a real history and nothing else (`gunbc.recurring_failure_mode`
+/// `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`). Git only, no `.dag`
+/// evaluation, so it fits the v1 unit lane's per-test budget (gunbc#13452); the judgments the
+/// commit feeds are the `.dag`'s and are claimed there.
+#[cfg(test)]
+mod floor_base_tree_tests {
+    use super::*;
+
+    /// The branch departs at P, then main moves on to C. Under the merge-base relation every
+    /// base-tree reader is handed P (RED before `FloorBaseTree`: the readers read C). Under two-dot
+    /// it is C, so a rewritten push stays an exact comparison. An unrelated history refuses typed
+    /// under merge-base rather than degrading to the tip.
     #[test]
-    fn host_and_dag_deciders_agree_on_the_shared_fixture() {
-        crate::cli_run::on_live_pool_thread(|| {
-            let root = process_workspace_root();
-            let roots: Vec<String> = ["dag", "src/v2"]
-                .iter()
-                .map(|r| root.join(r).to_string_lossy().to_string())
-                .collect();
-            let entry = root
-                .join("src/v2/test/fixture/changed_selection_outside_discovery.dag")
-                .to_string_lossy()
-                .to_string();
-            let index = crate::cli_run::process_shared_index(&roots);
-            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
-                .expect("the shared fixture resolves");
-            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-            let read = |name: &str| {
-                v1_interpreter::with_active_context(&ctx, || {
-                    v1_interpreter::run_in_context(&ctx, &format!("{FIXTURE}.{name}"), false)
-                })
-                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
-            };
-            let changed = string_list(&read("changed_selection_fixture_changed"), "changed");
-            let declared = string_list(&read("changed_selection_fixture_declared"), "declared");
-            let as_list = |xs: &[String]| {
-                Value::List(Rc::new(
-                    xs.iter()
-                        .map(v1_interpreter::str_value)
-                        .collect::<Vec<Value>>()
-                        .into(),
-                ))
-            };
-            let decided = v1_interpreter::with_active_context(&ctx, || {
-                v1_interpreter::run_in_context_with_args(
-                    &ctx,
-                    "v2.workflow.required_floor.changed_selections_outside_discovery",
-                    &[
-                        (Some("changed".to_string()), as_list(&changed)),
-                        (Some("declared".to_string()), as_list(&declared)),
-                    ],
-                    false,
-                )
-            })
-            .expect("the .dag decider evaluates over the fixture");
-            let dag = dag_rows(&ctx, &decided);
-            let host = host_rows(&changed, &declared);
+    fn floor_base_tree_is_the_departure_point_under_merge_base_and_the_base_under_two_dot() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-floor-base-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
             assert!(
-                !dag.is_empty(),
-                "the fixture produced no undeclarable selection"
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
             );
-            assert_eq!(
-                host, dag,
-                "host and .dag deciders disagree on the shared fixture"
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commit = |msg: &str| {
+            git(&["commit", "--quiet", "--allow-empty", "-m", msg]);
+            git(&["rev-parse", "HEAD"])
+        };
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+        let departure = commit("P");
+        git(&["checkout", "--quiet", "-b", "subject"]);
+        let head = commit("H");
+        git(&["checkout", "--quiet", "main"]);
+        let tip = commit("C: main moves after the branch point");
+        git(&["checkout", "--quiet", "--orphan", "unrelated"]);
+        let orphan = commit("U");
+        let tree = |merge_base: bool, head: &str| {
+            let (base, head, kind) = (
+                "main".to_string(),
+                head.to_string(),
+                "MergeTargetBaseline".to_string(),
             );
-        });
+            FloorBaseTree::for_comparison(
+                if merge_base {
+                    FreezeBaselineComparison::MergeBase { base, head, kind }
+                } else {
+                    FreezeBaselineComparison::Direct { base, head, kind }
+                },
+                dir.clone(),
+            )
+        };
+        let merge_base = tree(true, &head);
+        assert_eq!(merge_base.commit().expect("window").as_str(), departure);
+        assert_eq!(merge_base.head().expect("head"), head);
+        assert!(merge_base
+            .located()
+            .expect("located")
+            .contains("base_ref=main"));
+        let direct = tree(false, &head);
+        assert_eq!(direct.commit().expect("window").as_str(), tip);
+        let err = tree(true, &orphan)
+            .commit()
+            .expect_err("no common ancestor");
+        assert!(
+            err.contains("cause=FreezeBaselineUnrelatedHistory"),
+            "{err}"
+        );
+        assert!(
+            tree(false, &orphan).commit().is_ok(),
+            "two-dot needs no ancestor"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RED (gunbc#13344, input (c)): a cost-debt row main retired after the branch point is NOT
+    /// admitted as this change's. Drives `cost_debt_admitted_at_base_tree` through `FloorBaseTree`
+    /// over a real history, with the roster read by `git show` and the fold supplied as the set
+    /// difference the `.dag` fold computes (`cost_debt_admitted_identities`), so no corpus is
+    /// evaluated. POSITIVE CONTROL: a row the branch really adds is admitted.
+    #[test]
+    fn cost_debt_row_retired_at_the_tip_but_carried_at_the_merge_base_is_not_admitted() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-cost-debt-base-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commit = |rows: &str, msg: &str| {
+            std::fs::write(dir.join("roster.txt"), rows).expect("write");
+            git(&["add", "-A"]);
+            git(&["commit", "--quiet", "--allow-empty", "-m", msg]);
+            git(&["rev-parse", "HEAD"])
+        };
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+        commit("t.old t.retired", "P");
+        git(&["checkout", "--quiet", "-b", "subject"]);
+        let carried = commit("t.old t.retired", "H: carries the roster unchanged");
+        let added = commit("t.old t.retired t.new", "H2: adds t.new");
+        git(&["checkout", "--quiet", "main"]);
+        commit("t.old", "C: main retires t.retired");
+        let rows_at = |rev: &str| -> Vec<String> {
+            git(&["show", &format!("{rev}:roster.txt")])
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
+        let admitted = |head: &str| {
+            let base_tree = FloorBaseTree::for_comparison(
+                FreezeBaselineComparison::MergeBase {
+                    base: "main".to_string(),
+                    head: head.to_string(),
+                    kind: "MergeTargetBaseline".to_string(),
+                },
+                dir.clone(),
+            );
+            let head_rows = rows_at(head);
+            cost_debt_admitted_at_base_tree(
+                &base_tree,
+                |base| Ok(rows_at(base.as_str())),
+                |base_rows| {
+                    Ok(head_rows
+                        .iter()
+                        .filter(|r| !base_rows.contains(r))
+                        .cloned()
+                        .collect())
+                },
+            )
+            .expect("admission")
+        };
+        assert_eq!(
+            admitted(&carried),
+            Vec::<String>::new(),
+            "t.retired was retired on main after the branch point; it is not this change's"
+        );
+        assert_eq!(admitted(&added), vec!["t.new".to_string()]);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

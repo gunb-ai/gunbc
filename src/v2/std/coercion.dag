@@ -35,7 +35,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
 import v2.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }

@@ -1,7 +1,7 @@
 module gunbc.fabric.fabric_object_r2
 
 import std.types { String, NonEmptyStr, Bool, FilePath }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGenerationPublicationRefused }
 import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_addressed,

@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count, token_count_value , second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.spark.execution_cell {
   ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,
@@ -112,7 +112,7 @@ fn fx_refused(r: ExecutionCellRefusal<SystemdExecutionMember>) -> ExecutionCellP
 }
 
 fn fx_applied(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
-  SparkPairHostApplied { host: plan.host, detail: "ok", standing: serving_standing(attempts: []) }
+  SparkPairHostApplied { host: plan.host, wire: "management-lan", stdout: "ok", standing: serving_standing(attempts: []) }
 }
 
 fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {

@@ -15,7 +15,7 @@ import gunbc.fleet_bootstrap_principal_session {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh.session { ssh_client_error_exit_status }
-import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began }
+import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
 }
@@ -587,7 +587,8 @@ type SparkTransferState
 fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
   match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ActiveState", "--value"]) {
     RemoteUnreachable { cause: c, reach: _ } => TransferStateUnreadable { cause: c }
-    RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
+    RemoteRan { exit_code: _, stdout: raw_state, stderr: _ } => {
+      let state = remote_stdout_as_one_word(stdout: raw_state)
       if state == "active" || state == "activating" || state == "deactivating" {
         TransferRunning
       } else if state == "" || state == "inactive" {
@@ -596,9 +597,10 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
         match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
           RemoteUnreachable { cause: c, reach: _ } => TransferStateUnreadable { cause: c }
           RemoteRan { exit_code: _, stdout: code, stderr: _ } =>
-            if trim(s: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: trim(s: code) } }
+            if remote_stdout_as_one_word(stdout: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: remote_stdout_as_one_word(stdout: code) } }
         }
       }
+    }
   }
 }
 

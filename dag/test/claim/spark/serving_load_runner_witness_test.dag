@@ -1,7 +1,7 @@
 module test.claim.spark.serving_load_runner_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.fleet_intent_network { srv9_host_lan_endpoint }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_rank_observe { container_incarnation_id, ObservedRankIncarnation }

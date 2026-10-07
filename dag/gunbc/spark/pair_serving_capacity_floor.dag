@@ -1,7 +1,7 @@
 module gunbc.spark.pair_serving_capacity_floor
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, launch_wire }

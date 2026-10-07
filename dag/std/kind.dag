@@ -6,7 +6,7 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.types { Map, List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
-import v2.std.optional { Optional, optional_absent, optional_present }
+import std.optional { Optional, optional_absent, optional_present }
 
 // THE KIND OF A TYPE-LEVEL NODE, AT ONE LEVEL (Type_0 only, no universe tower). A node that DENOTES
 // a type -- the Int inhabitant, a fn Arrow between inhabitants -- has a type too, and that type is
