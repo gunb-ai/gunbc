@@ -13475,14 +13475,16 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
 }
 
 fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  if is_string_typed_expr(e: receiver, source_indices: scope.type_env.source_indices) && (ho_spec.method_name == "filter" || ho_spec.method_name == "any") {
+  if is_host_text_carrier_type(n: resolved_type(n: receiver), source_indices: scope.type_env.source_indices) && (ho_spec.method_name == "filter" || ho_spec.method_name == "any") {
     emit_rust_host_text_callback(method_name: ho_spec.method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else {
     emit_rust_higher_order_method_over_list(ho_spec: ho_spec, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 }
 
-// HOST TEXT INHABITS THE FREE MONOID OVER Char (ruling B): filter/any over a String iterate its Unicode SCALARS
+// HOST TEXT INHABITS THE FREE MONOID OVER Char (ruling B): filter/any over HOST text -- decided by the resolved
+// declaration's provenance (is_host_text_carrier_type), never the spelling, since v2.std.text's structural String
+// realizes as a vector and keeps the list path -- iterate its Unicode SCALARS
 // (`.chars()`, never bytes), binding each as the Char it is (the kernel integer code point), and filter keeps the
 // String carrier. A predicate that is not a lambda is passed the same Char.
 fn emit_rust_host_text_callback(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
