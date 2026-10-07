@@ -196,7 +196,7 @@ pub(super) struct Manifest {
 pub(super) enum Lookup {
     Hit {
         executable: PathBuf,
-        manifest: Manifest,
+        manifest: Box<Manifest>,
     },
     Miss,
     /// The entry existed and failed verification; it has been removed and the caller rebuilds.
@@ -255,7 +255,7 @@ pub(super) fn lookup(root: &Path, key: &ProductKey) -> Lookup {
     match verdict {
         Ok((executable, manifest)) => Lookup::Hit {
             executable,
-            manifest,
+            manifest: Box::new(manifest),
         },
         Err(cause) => {
             let _ = std::fs::remove_dir_all(&dir);
