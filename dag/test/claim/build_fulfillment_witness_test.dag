@@ -510,8 +510,8 @@ test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
           authority: fixture_market_authority,
         },
       }
-      let rows = [owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62), unread, board_row_not_offered()]
-      fold(resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows).lines, init: false, f: fn(acc, r) {
+      let rows = [owned_row(part: m12830_ref, lot: cpu_lot(quantity: 62), quantity: 62), unread, board_row_not_offered()]
+      fold(resolve_build(recipe: single_socket_recipe(fixture_roles: fixture_roles), rows: rows).lines, init: false, f: fn(acc, r) {
         match r {
           LineResolved { line: _, fulfillment: f } =>
             match f {
