@@ -14,7 +14,7 @@ import v2.std.witness { Holds, Violates }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_binding_denotation, dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, list_append }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -663,13 +663,15 @@ test fn vfp_the_nullary_arm_types_as_its_body_holds() -> Bool {
   vfp_fixture_reading().nullary_arm_fact == ^Int
 }
 
-// THE PAYLOAD-BINDER RED, DECLARED RED: without the payload reader the arm binder's fact lookup is
-// Absent -- NO_ENTRY, warm-ferret-741's N7 locate of #2891785 (facts.lookup Absent under the
-// #2891781 GroundingNotDerived parent) -- so this row asserts the defect value and HOLDS while the
-// reader is absent. It goes red exactly when the payload reader lands (the binder reads ^Int):
-// this is the discriminating witness for the RFM row's retirement.
-test fn vfp_the_arm_binder_grounding_refuses_without_the_payload_reader_red_control() -> Bool {
-  vfp_fixture_reading().rt_arm_fact == ^vfp_no_facts
+// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
+// 4b(4)): before the payload reader landed, the arm binder's fact lookup was Absent -- NO_ENTRY,
+// warm-ferret-741's N7 locate of #2891785 (facts.lookup Absent under the #2891781
+// GroundingNotDerived parent) -- and the declared-red row asserting that defect value went red the
+// moment the reader landed. Flipped, it does not retire: the binder on the CALL-RESULT scrutinee
+// (the shape that dies on the native route) must read its payload field's type -- the regression
+// guard the param-scrutinee positive control does not cover.
+test fn vfp_the_call_result_arm_binder_types_from_its_payload_field_holds() -> Bool {
+  vfp_arrow_reading().arrow_arm_fact == ^Int
 }
 
 // THE ARROW FIXTURE'S RESOLVE-SIDE CONTROL (its second consumer claim): resolve must bind the
@@ -781,5 +783,21 @@ fn vfp_decode_binder_type_twobinder() -> CliWireResponse {
           }
       }
     }
+  }
+}
+
+fn vfp_decode_int_identity() -> CliWireResponse {
+  let same = symbol_eq(a: ^Int, b: ^dag_binding_type_int)
+  match dag_binding_denotation(sym: ^dag_binding_type_int) {
+    Absent => CliWirePrintable { bytes: "denotation=absent same=" + vfp_bool_text(b: same), exit: ExitSuccess }
+    Present { value: t } =>
+      CliWirePrintable { bytes: "denotation=" + vfp_decl_shape_text(d: t) + " same=" + vfp_bool_text(b: same), exit: ExitSuccess }
+  }
+}
+
+fn vfp_bool_text(b: Bool) -> String {
+  match b {
+    True => "true"
+    False => "false"
   }
 }
