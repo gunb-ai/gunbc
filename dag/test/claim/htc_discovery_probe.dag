@@ -15,5 +15,5 @@ fn blocking_rows(source: String) -> String {
 }
 
 fn probe() -> String {
-  concat("CHAR: ", concat(blocking_rows(source: "module test.claim.htc_char_probe\nimport std.types { Char }\nfn is_a(c: Char) -> Bool { true }\nfn probe(s: String) -> Bool { any(xs: s, predicate: fn(c) { is_a(c: c) }) }\n"), concat("  ||  BARE: ", blocking_rows(source: "module test.claim.htc_bare_probe\nfn probe(s: String) -> Bool { true }\n")))
+  concat("CHAR: ", concat(blocking_rows(source: "module test.claim.htc_char_probe\nimport std.types \{ Char \}\nfn is_a(c: Char) -> Bool \{ true \}\nfn probe(s: String) -> Bool \{ any(xs: s, predicate: fn(c) \{ is_a(c: c) \}) \}\n"), concat("  ||  BARE: ", blocking_rows(source: "module test.claim.htc_bare_probe\nfn probe(s: String) -> Bool \{ true \}\n")))
 }
