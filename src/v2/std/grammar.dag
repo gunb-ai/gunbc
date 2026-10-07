@@ -15,7 +15,6 @@ import v2.std.collection {
 }
 import std.optional {
   Absent,
-  Optional,
   Present,
   optional_absent,
   optional_present
@@ -74,7 +73,7 @@ type FormalNonterminal {
 }
 
 type FormalGrammarSymbol
-  = FormalTerminalOccurrence { terminal: FormalTerminal, binding: Optional<Symbol> }
+  = FormalTerminalOccurrence { terminal: FormalTerminal, binding: std.optional.Optional<Symbol> }
   | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
   | FormalNestedNonterminalOccurrence { nonterminal: FormalNonterminal, unit: Symbol }
 
@@ -286,7 +285,7 @@ fn grammar_expr_expect(element: GrammarExpr, reason: ParseRefusalReason) -> Gram
 }
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
-  Optional { element: element }
+  v2.std.grammar.Optional { element: element }
 }
 
 fn grammar_expr_terminal(token_class: Symbol) -> GrammarExpr {
@@ -356,7 +355,7 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
         fold_grammar_expr(expr: left, algebra: algebra),
         fold_grammar_expr(expr: right, algebra: algebra)
       )
-    Optional { element: element } =>
+    v2.std.grammar.Optional { element: element } =>
       algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
     Repeat { element: element } =>
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
@@ -540,7 +539,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 }
 }
 
-fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<Symbol>) -> Node {
+fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Node {
   match binding {
     Present { value: binding } =>
       Node {
@@ -1149,7 +1148,7 @@ fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
   }
 }
 
-fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
+fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Edge {
   match binding {
     Present { value: binding } =>
       Edge {
@@ -1634,7 +1633,7 @@ fn formal_symbol_list_insert(xs: List<Symbol>, item: Symbol) -> List<Symbol> {
 // does slot i want" by rescanning the rhs from the start for every i made resolving one node of N
 // slots O(N^2) -- the term under every long grammar row (an N-item orchestration sequence
 // measured superlinear through it).
-fn formal_production_slot_nonterminals(production: FormalProduction) -> List<Optional<Symbol>> {
+fn formal_production_slot_nonterminals(production: FormalProduction) -> List<std.optional.Optional<Symbol>> {
   fold_list(
     xs: production.rhs,
     empty: Empty,
@@ -1655,7 +1654,7 @@ fn formal_production_slot_nonterminals(production: FormalProduction) -> List<Opt
 }
 
 // The lhs set the current slot is asked for: each candidate's next slot entry, in candidate order.
-fn formal_slot_cursor_heads_asked(cursors: List<List<Optional<Symbol>>>) -> List<Symbol> {
+fn formal_slot_cursor_heads_asked(cursors: List<List<std.optional.Optional<Symbol>>>) -> List<Symbol> {
   fold_list(
     xs: cursors,
     empty: Empty,
@@ -1669,7 +1668,7 @@ fn formal_slot_cursor_heads_asked(cursors: List<List<Optional<Symbol>>>) -> List
   )
 }
 
-fn formal_slot_cursors_advanced(cursors: List<List<Optional<Symbol>>>) -> List<List<Optional<Symbol>>> {
+fn formal_slot_cursors_advanced(cursors: List<List<std.optional.Optional<Symbol>>>) -> List<List<std.optional.Optional<Symbol>>> {
   fold_list(
     xs: cursors,
     empty: Empty,
@@ -1678,7 +1677,7 @@ fn formal_slot_cursors_advanced(cursors: List<List<Optional<Symbol>>>) -> List<L
 }
 
 type SlotResolutionScan {
-  cursors: List<List<Optional<Symbol>>>
+  cursors: List<List<std.optional.Optional<Symbol>>>
   slots: List<EmittedProductionResolution>
 }
 
@@ -3524,7 +3523,7 @@ fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> 
     Nonterminal { production: p } => grammar_emit_production_capture(index: index, expected: p, node: node)
     Sequence { left: l, right: r } => grammar_emit_sequence(index: index, left: l, right: r, node: node)
     Choice { left: l, right: r } => grammar_emit_choice(index: index, left: l, right: r, node: node)
-    Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
+    v2.std.grammar.Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
     Repeat { element: e } => grammar_emit_repeat(index: index, element: e, node: node)
     Expect { element: e, reason: _ } => grammar_emit_expr(index: index, expr: e, node: node)
     RefuseOnMatch { element: _, reason: _ } => grammar_emit_mismatch(reason: ^grammar_emit_refuse_on_match_derives_no_tree, at: node)
