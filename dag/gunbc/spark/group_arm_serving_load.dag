@@ -5,14 +5,14 @@ import std.nat { Nat }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_atom }
-import std.measure { token_count_value }
+import std.measure { token_count_value, byte_size_count, microsecond_count }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
 import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.host_identity { HostIdentity }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest, vllm_bench_serve_request, RandomDatasetSpec, SendAllImmediately, OpenaiChat }
-import extdeps.linux.psi { PsiReading, parse_psi }
+import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable, parse_psi }
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_memory_stat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete, CgroupMemoryStat, cgroup_memory_stat_value }
 import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_identity_from_stdout, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
@@ -110,6 +110,36 @@ fn read_rank_container_pressure(ctx: SparkMaterializeContext, container: NonEmpt
 }
 
 type GroupRankPressure { ranks: List<RankContainerPressureRead> }
+
+// ── THE PER-RANK READING, AS THE RECEIPT PRINTS IT (valiant-crab-775, after load run 37550120792) ────
+//
+// The stop rules judged these readings and the receipt showed only their verdict, so a step that HELD
+// carried no per-rank memory at all. Each rank prints what was read: its container's cgroup memory.stat
+// (anon, file, file_mapped in bytes; workingset_refault_file and pgmajfault as counts), memory.events
+// oom_kill, and the host's PSI memory totals in microseconds -- or the cause it was not read.
+fn rank_pressure_wire(r: RankContainerPressureRead) -> String {
+  match r {
+    RankContainerPressureUnread { host: h, cause: c } => join(["    ", h as String, ": UNREAD (", c, ")\n"], "")
+    RankContainerPressureObserved { pressure: p } => join([
+      "    ", p.host as String,
+      ": anon=", to_string(byte_size_count(b: p.memory.anon)),
+      " file=", to_string(byte_size_count(b: p.memory.file)),
+      " file_mapped=", to_string(byte_size_count(b: p.memory.file_mapped)),
+      " refault_file=", to_string(p.memory.workingset_refault_file),
+      " pgmajfault=", to_string(p.memory.pgmajfault),
+      " oom_kill=", to_string(p.oom_kill),
+      " psi=", match p.psi {
+        PsiRead { some_total: s, full_total: f } => join(["some_us:", to_string(microsecond_count(m: s)), " full_us:", match f { Present { value: x } => to_string(microsecond_count(m: x))  Absent => "absent" }], "")
+        PsiUnparseable { body: _, cause: c } => join(["unparseable(", c as String, ")"], "")
+      },
+      "\n",
+    ], "")
+  }
+}
+
+fn group_rank_pressure_wire(phase: String, concurrency: Nat, p: GroupRankPressure) -> String {
+  join([join(["  x", to_string(concurrency), " ", phase, ":\n"], ""), join(map(p.ranks, r => rank_pressure_wire(r: r)), "")], "")
+}
 
 fn read_group_rank_pressure(ctx: SparkMaterializeContext, roster: List<HostIdentity>, container: NonEmptyStr) -> GroupRankPressure {
   GroupRankPressure { ranks: map(roster, h => read_rank_container_pressure(ctx: rank_context(ctx: ctx, host: h), container: container)) }

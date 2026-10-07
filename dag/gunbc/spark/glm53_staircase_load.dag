@@ -20,7 +20,7 @@ import gunbc.spark.serving_load_runner { ServingLoadSubject, serving_load_record
 import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
 import gunbc.spark.glm_serving_load { glm_native_sweep_dataset, glm_native_bench_seed }
 import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlanned, GroupArmLaunchRefused, group_arm_launch_plan }
-import gunbc.spark.group_arm_serving_load { read_group_rank_pressure, load_step_result, load_step_verdict_wire, floor_and_ceiling_concurrencies, load_requests, load_trace_digest, calibration_receipt }
+import gunbc.spark.group_arm_serving_load { read_group_rank_pressure, group_rank_pressure_wire, load_step_result, load_step_verdict_wire, floor_and_ceiling_concurrencies, load_requests, load_trace_digest, calibration_receipt }
 import gunbc.spark.glm53_arm_staircase { Glm53StaircaseStep, glm53_step_inputs, glm53_step_wire, glm53_step_ceiling, glm53_step_title }
 import gunbc.spark.group_b_serving_capacity { group_b_experiment_subject_seats }
 
@@ -172,6 +172,11 @@ fn glm53_step_load_session(s: Glm53StaircaseStep, run_id: NonEmptyStr, ctx: Spar
               let extra = join([
                 "step: ", glm53_step_wire(s: s) as String, " run_id: ", run_id as String, "\n",
                 join(map(results, r => load_step_verdict_wire(concurrency: r.concurrency, v: r.verdict)), ""),
+                "per-rank pressure (container cgroup memory.stat, memory.events oom_kill, host PSI memory):\n",
+                join(map(rs, r => join([
+                  group_rank_pressure_wire(phase: "before", concurrency: match r.request.max_concurrency { Present { value: c } => c  Absent => 0 }, p: r.host_before),
+                  group_rank_pressure_wire(phase: "after", concurrency: match r.request.max_concurrency { Present { value: c } => c  Absent => 0 }, p: r.host_after),
+                ], "")), ""),
                 calibration_wire(r: receipt),
                 "window: ", glm53_staircase_load_window_frontier, "\n",
                 glm53_autotune_standing_wire(env: inputs.deployment_env),
