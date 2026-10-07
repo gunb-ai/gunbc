@@ -10,7 +10,7 @@ import gunbc.actions_run_binding {
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.auth.access_token_source {
   select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
-  WorkloadIdentityToken,
+  WorkloadIdentityToken, GcloudPrintToken, OperatorSuppliedToken,
 }
 import gunbc.machine_intake_arrival_admission { arrival_admit_executor }
 import gunbc.machine_intake_arrival_subject {
@@ -50,8 +50,10 @@ fn arrival_converge_after_admit() -> ProcessExit {
               exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(wire, "' after admit")))
           }
       }
-    AccessTokenSourceSelected { source: _ } =>
-      exit_failure(reason: "arrival_converge: this job federates; select_access_token_source must be WorkloadIdentityToken, not an operator credential")
+    AccessTokenSourceSelected { source: GcloudPrintToken } =>
+      exit_failure(reason: "arrival_converge: this job federates; select_access_token_source must be WorkloadIdentityToken, not GcloudPrintToken")
+    AccessTokenSourceSelected { source: OperatorSuppliedToken { token: _ } } =>
+      exit_failure(reason: "arrival_converge: this job federates; select_access_token_source must be WorkloadIdentityToken, not an operator-supplied token")
   }
 }
 
