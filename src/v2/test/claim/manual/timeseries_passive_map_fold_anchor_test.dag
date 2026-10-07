@@ -2,9 +2,7 @@ module v2.test.manual.timeseries_passive_map_fold_anchor
 
 import std.types { List }
 import std.algebra { Cons, Empty }
-import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Conj, Node, TypeNode }
 import std.nat { Zero }
 import v2.std.timeseries_signal {
   CapacitorFold,
@@ -40,15 +38,6 @@ import v2.std.timeseries_signal {
   resistor_map_voltage,
   voltage,
   voltage_count,
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -208,18 +197,4 @@ test fn timeseries_anchor_inductor_fold_holds() -> Bool {
         && current_count(stepped.current.microamperes) == 2000
     Rejected { diagnostics: _ } => false
   }
-}
-
-data timeseries_passive_map_fold_claim_payload: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [],
-  occurrence_id: OccurrenceSynthetic
-}
-
-data claim_timeseries_passive_map_fold_compiles: TestClaim = CompilesClaim {
-  label: "manual/timeseries_passive_map_fold_anchor: S1 map/fold passives compile",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: timeseries_passive_map_fold_claim_payload,
-  expected_value: timeseries_passive_map_fold_claim_payload,
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }
