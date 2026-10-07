@@ -12087,6 +12087,33 @@ pub fn fold_step_callable(acc_type: Rc<Node>, element_type: Rc<Node>) -> Rc<Node
     })
 }
 
+pub fn collection_fold_acc_expected(
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    call_args: Rc<Vec<Rc<Node>>>,
+    value_params: Rc<Vec<Rc<Node>>>,
+    roles: Rc<CollectionFoldRoles>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match typed_arg_type_for_formal(
+        results.clone(),
+        call_args.clone(),
+        value_params.clone(),
+        roles.collection_formal_index.clone(),
+        source_indices.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(xs_ty) => {
+            if formal_type_is_unary_container(xs_ty.clone(), source_indices.clone())
+                && !unify_binding_is_uninformative(xs_ty.clone())
+            {
+                Some(xs_ty)
+            } else {
+                std::option::Option::None
+            }
+        }
+    }
+}
+
 pub fn collection_fold_lambda_expected(
     results: Rc<Vec<Rc<ArgInferResult>>>,
     call_args: Rc<Vec<Rc<Node>>>,
@@ -12102,22 +12129,26 @@ pub fn collection_fold_lambda_expected(
         source_indices.clone(),
     ) {
         std::option::Option::None => std::option::Option::None,
-        Some(xs_ty) => match typed_arg_type_for_formal(
-            results.clone(),
-            call_args.clone(),
-            value_params.clone(),
-            roles.acc_formal_index.clone(),
-            source_indices.clone(),
-        ) {
-            std::option::Option::None => std::option::Option::None,
-            Some(acc_ty) => Some(fold_step_callable(
-                acc_ty,
-                crate::v1_compiler_infer_types::for_each_element_type_node(
-                    xs_ty,
+        Some(xs_ty) => {
+            let elem = crate::v1_compiler_infer_types::for_each_element_type_node(
+                xs_ty,
+                source_indices.clone(),
+            );
+            if unify_binding_is_uninformative(elem.clone()) {
+                std::option::Option::None
+            } else {
+                match typed_arg_type_for_formal(
+                    results.clone(),
+                    call_args.clone(),
+                    value_params.clone(),
+                    roles.acc_formal_index.clone(),
                     source_indices.clone(),
-                ),
-            )),
-        },
+                ) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(acc_ty) => Some(fold_step_callable(acc_ty, elem)),
+                }
+            }
+        }
     }
 }
 
@@ -12291,10 +12322,36 @@ pub fn infer_call_arguments_generic_pass(
                     }
                 }
             };
+            let fold_acc_expected = match fold_roles.clone() {
+                std::option::Option::None => std::option::Option::None,
+                Some(roles) => match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal_index: fi,
+                        ..
+                    } => {
+                        if fi == roles.acc_formal_index.clone() {
+                            collection_fold_acc_expected(
+                                st.results.clone(),
+                                call_args.clone(),
+                                value_params.clone(),
+                                roles.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            )
+                        } else {
+                            std::option::Option::None
+                        }
+                    }
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        std::option::Option::None
+                    }
+                },
+            };
             let expected = if !has_formal.clone() {
                 std::option::Option::None
             } else if (fold_step_expected.clone() != std::option::Option::None) {
                 fold_step_expected.clone()
+            } else if (fold_acc_expected.clone() != std::option::Option::None) {
+                fold_acc_expected.clone()
             } else if (direct_call_formal_has_unbound_type_variable(formal_raw.clone())
                 && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
                 && !(formal_is_code_point_sequence.clone() && argument_is_literal.clone())

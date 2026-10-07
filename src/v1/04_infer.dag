@@ -7949,14 +7949,29 @@ fn fold_step_callable(acc_type: Node, element_type: Node) -> Node {
   }
 }
 
+fn collection_fold_acc_expected(results: List<ArgInferResult>, call_args: List<Node>, value_params: List<Node>, roles: CollectionFoldRoles, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.collection_formal_index, source_indices: source_indices) {
+    Absent => none
+    Present { value: xs_ty } =>
+      if formal_type_is_unary_container(n: xs_ty, source_indices: source_indices) && !unify_binding_is_uninformative(n: xs_ty) {
+        Present { value: xs_ty }
+      } else { none }
+  }
+}
+
 fn collection_fold_lambda_expected(results: List<ArgInferResult>, call_args: List<Node>, value_params: List<Node>, roles: CollectionFoldRoles, source_indices: Map<String, NewlineIndex>) -> Node? {
   match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.collection_formal_index, source_indices: source_indices) {
     Absent => none
     Present { value: xs_ty } =>
-      match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.acc_formal_index, source_indices: source_indices) {
-        Absent => none
-        Present { value: acc_ty } =>
-          Present { value: fold_step_callable(acc_type: acc_ty, element_type: for_each_element_type_node(n: xs_ty, source_indices: source_indices)) }
+      let elem = for_each_element_type_node(n: xs_ty, source_indices: source_indices)
+      if unify_binding_is_uninformative(n: elem) {
+        none
+      } else {
+        match typed_arg_type_for_formal(results: results, call_args: call_args, value_params: value_params, formal_index: roles.acc_formal_index, source_indices: source_indices) {
+          Absent => none
+          Present { value: acc_ty } =>
+            Present { value: fold_step_callable(acc_type: acc_ty, element_type: elem) }
+        }
       }
   }
 }
@@ -8018,10 +8033,23 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
           }
         }
     }
+    let fold_acc_expected = match fold_roles {
+      Absent => none
+      Present { value: roles } =>
+        match formal_selection {
+          CallArgumentFormalSelected { formal_index: fi, formal: _ } =>
+            if fi == roles.acc_formal_index {
+              collection_fold_acc_expected(results: st.results, call_args: call_args, value_params: value_params, roles: roles, source_indices: scope.type_env.source_indices)
+            } else { none }
+          CallArgumentFormalUnavailable => none
+        }
+    }
     let expected = if !has_formal {
       none
     } else if fold_step_expected != none {
       fold_step_expected
+    } else if fold_acc_expected != none {
+      fold_acc_expected
     } else if (direct_call_formal_has_unbound_type_variable(n: formal_raw)
         && !is_lambda_expr(e: arg_value(n: a))
         && !(formal_is_code_point_sequence && argument_is_literal)
