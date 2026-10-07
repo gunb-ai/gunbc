@@ -55,41 +55,11 @@ type SparkCellRoleAssignment {
   role: SparkCellRole
 }
 
-// THE ASSIGNMENT IS AN OPERATOR DECISION, RECORDED WITH ITS BASIS.
-//
-// srv5 serves and srv6 trains. The two units are physically identical, so nothing measured decides
-// which is which -- the same situation as the router-slot allocation in gunbc.spark.dgx_procurement,
-// and recorded the same way for the same reason: an arbitrary choice written down as attributable is
-// honest, while the same choice presented as derived reads as a fact somebody established.
-//
-// The basis is that srv5 already carries the live serving occurrence. Assigning serving to the host
-// that already serves makes the serving half of this project a model upgrade on a converged host,
-// and confines the retirement -- the part with no existing vocabulary -- to one machine.
-data spark_cell_role_assignment_basis: NonEmptyStr = "OPERATOR DECISION (SPARK-PAIR-0, 2026-09-02): srv5 and srv6 both serve. This SUPERSEDES the 2026-08-29 decision that assigned srv6 to training; the operator withdrew it as premature -- 'i wouldn't dedicate a whole node for any task - just have it converge and serve whatever task we converge it to' -- and moved training to its own lane. The units are identical, so neither assignment was ever a measurement. Consequence in gunbc.spark.serving_converge_plan: srv6 now receives full serving desired members rather than the baseline-only members a training cell receives." as NonEmptyStr
-
-// SPARK-BATCH-3 (operator, 2026-09-05): the goal for every unit is the desired serving state, IN
-// PAIRS, serving DeepSeek V4 Flash. None of the five newer units is assigned a cell role yet, and
-// that is a refusal, not an omission; the serving desired state is still per-host Ollama, which is
-// not the pair deployment the operator wants. Roles land when pair-serving is promoted to desired
-// and pairing is observed from the fabric, so that assigning a role converges a host toward the
-// right thing.
-//
-// ONE OF THE TWO REASONS THIS NOTE GAVE IS DISCHARGED, and it is corrected here rather than left to
-// be read as current (DESIGN section 4c: an annotation that restates a derived fact is the copy that
-// rots). The withdrawn clause said srv7/srv8 hold an undischarged llama.cpp RPC peer reservation
-// whose disjointness wall keeps them off the serving roster until a release receipt exists. Two
-// things in it are false as of 2026-09-05. Only ONE host ever minted such a reservation -- the
-// weights peer, srv8; a reservation is minted from an observed deployment's peer and srv7 was the
-// front door. And release receipts for BOTH hosts were authored that day, so
-// gunbc.spark.llama_cpp_rpc_observed `llama_cpp_rpc_undischarged_peer_reservation_hosts()` is empty
-// and the wall in test.claim.spark.spark_llama_cpp_rpc_witness holds vacuously, which that witness
-// asserts directly rather than leaving to be inferred.
-//
-// WHAT ACTUALLY SPEAKS FOR srv7 AND srv8 TODAY is that they are hosts of the one serving group this
-// repository claims -- cage 1 of gunbc.spark.fabric_switch_observed is srv5, srv6, srv7, srv8, and
-// gunbc.spark.pair_serving_desired claims FabricGroupA. That fact is DERIVED where it is consumed
-// (gunbc.spark.host_commitment), so this note names it rather than restating it, and a reader after
-// the next roster change gets the derivation's answer instead of this paragraph's.
+// THE ASSIGNMENT IS AN OPERATOR DECISION, RECORDED WITH ITS BASIS, AND TODAY THERE IS NONE. The only rows
+// were srv5 (serving) and srv6 (training), and both units were decommissioned and sold with Group A on
+// 2026-10-07; their history is in git and in spark_cell_role_assignment_basis. A new assignment is a new
+// operator decision with its own basis. Which hosts are committed to serving is derived where it is
+// consumed (gunbc.spark.host_commitment), not restated here.
 data spark_cell_role_assignments: List<SparkCellRoleAssignment> = [
 ]
 
