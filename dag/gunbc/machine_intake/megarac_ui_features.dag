@@ -4,7 +4,7 @@ import extdeps.tools.sha256sum
 import extdeps.tools.gzip
 import std.algebra { trim }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }

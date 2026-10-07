@@ -8,7 +8,7 @@ import std.measure {
 }
 import std.content_hash { ContentHash, content_hash_validate_lower_hex_syntax }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,

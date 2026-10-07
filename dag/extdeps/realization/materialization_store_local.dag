@@ -1,5 +1,6 @@
 module extdeps.realization.materialization_store_local
 
+import extdeps.shell
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -10,12 +11,18 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   FilesystemCreateKindUnrecognized,
   filesystem_exact_read, filesystem_create_new, filesystem_failure_kind_name,
+  FilesystemLinkCreateNew, FilesystemLinked, FilesystemLinkTargetOccupied, FilesystemLinkCrossDevice,
+  FilesystemLinkRefused, FilesystemLinkKindUnrecognized, filesystem_link_create_new,
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
   FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
   FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused,
   FilesystemDeleteKindUnrecognized, filesystem_delete, FilesystemListingObservation,
 }
 import std.decimal { decimal_digits_only }
+import std.fabric_blob {
+  FabricBlobReading, FabricBlobReadingOutcome, FabricBlobRead, FabricBlobReadRefused,
+  read_staged_fabric_blob, fabric_blob_reading_digest, fabric_blob_reading_size, fabric_blob_fault_text,
+}
 import std.checked_arithmetic { int_inclusive_max }
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import v2.std.algebra { skip }
@@ -47,7 +54,7 @@ import std.cache_interface {
   ManualPurge,
   Org,
 }
-import v2.std.optional { Absent }
+import std.optional { Absent }
 import std.access { Permit, Deny }
 import std.effect_grant { Verb, Read, Write, NamespacePosition }
 import std.filesystem_path_grant { absolute_path_position }
@@ -58,7 +65,7 @@ import std.artifact_store {
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
 import std.cache_identity { ArtifactKindId }
-import std.measure { ByteSize, byte_size, measure_count }
+import std.measure { ByteSize, byte_size, measure_count, measure_add }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.durable_compare_and_set {
   cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -117,6 +124,8 @@ import std.materialization_object {
   StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitRefusal, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
+  StoreCommitResultIdentityUnverifiable, StoreLookupObjectMalformed, StoreLookupHit, StoreLookupMiss,
+  ArtifactBlobPart, store_lookup_blob_parts,
   StoreCommitCleanupOutstanding,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
   store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare, store_commit_settle,
@@ -482,7 +491,7 @@ fn local_store_open_swept(pre: LocalStorePreOpen, durability: MaterializationSto
 fn local_store_read(path: String) -> FilesystemExactRead
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_bound"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_lookup"),
   ]
 {
   let r = Filesystem.Read(path: path)
@@ -493,6 +502,7 @@ fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_initialize"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
   let w = Filesystem.WriteCreateNew(path: path, content: content)
@@ -670,6 +680,30 @@ fn local_store_is_object_name(name: String) -> Bool {
   }
 }
 
+// A record's byte part is <record>.part.<output id>: the record must itself be a canonical object
+// name and the id a declared output identifier ([a-z0-9_]+, the std.judgment_contract spelling), so a
+// part name can never carry a separator, a traversal or a second ".part.". A STORE FILE is a record
+// or one of its parts; nothing else in the root is ever a deletion candidate.
+fn local_store_is_output_id_text(id: String) -> Bool {
+  id != "" && (id |> chars |> all(c => (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95))
+}
+
+fn local_store_is_part_name(name: String) -> Bool {
+  let pieces: List<String> = name.split(delimiter: ".part.")
+  count(pieces) == 2
+    && local_store_is_object_name(name: match first(pieces) { Present { value: v } => v Absent => "" })
+    && local_store_is_output_id_text(id: match first(skip(pieces, 1)) { Present { value: v } => v Absent => "" })
+}
+
+fn local_store_is_copy_name(name: String) -> Bool {
+  let n = string_length(s: name)
+  n > 5 && ends_with(s: name, suffix: ".copy") && local_store_is_part_name(name: substring(s: name, start: 0, end: n - 5))
+}
+
+fn local_store_is_store_file_name(name: String) -> Bool {
+  local_store_is_object_name(name: name) || local_store_is_part_name(name: name) || local_store_is_copy_name(name: name)
+}
+
 fn local_store_index_row_line(r: LocalStoreIndexRow) -> String {
   join([r.name, measure_count(m: r.bytes) as String, r.ordinal as String], " ")
 }
@@ -708,7 +742,7 @@ fn local_store_index_line_decode(line: String) -> LocalStoreIndexLine {
       match local_store_digits_int(s: p2) {
         Absent => LocalStoreUndecodableLine
         Present { value: b } =>
-          if local_store_is_object_name(name: p1) { LocalStoreDoomedLine { row: LocalStoreDoomedRow { name: p1, bytes: byte_size(count: b) } } } else { LocalStoreUndecodableLine }
+          if local_store_is_object_name(name: p1) || local_store_is_copy_name(name: p1) { LocalStoreDoomedLine { row: LocalStoreDoomedRow { name: p1, bytes: byte_size(count: b) } } } else { LocalStoreUndecodableLine }
       }
     } else {
       match local_store_digits_int(s: p1) {
@@ -907,6 +941,7 @@ fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalSto
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "only_canonical_object_names_are_indexed_or_swept_by_real_execution"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "index_row_count"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
   ]
 {
   match local_store_index_window() {
@@ -934,6 +969,7 @@ fn local_store_write_index(held: LocalStoreFamilyHeld, expected: CasExpectation,
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
   ]
 {
   match local_store_hold_check(held: held) {
@@ -1157,6 +1193,7 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_held"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_held"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_under"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
   let observed = observe_file_hold_windowed(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), window: held.window)
@@ -1257,6 +1294,8 @@ fn local_store_delete_attempts(authority: LocalStoreWriteAuthority, names: List<
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_current"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_delete_records"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_publish_part"),
   ]
 {
   let root_path = local_store_authority_root(authority: authority)
@@ -1361,8 +1400,11 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
             match local_store_read_index(root_path: root_path, family: family) {
               LocalStoreIndexUnavailable { refusal: r } => LocalStoreReservationIndexRefused { refusal: r }
               LocalStoreIndexAt { index: index, expected: expected } => {
-                let cleanup = local_store_delete_attempts(authority: LocalStoreFamilyAuthority { held: held }, names: index.doomed |> map(d => d.name))
-                let cleanup_split = local_store_delete_split(attempts: cleanup)
+                let doomed_copies = index.doomed |> filter(d => local_store_is_copy_name(name: d.name)) |> map(d => d.name)
+                let doomed_records = index.doomed |> filter(d => !local_store_is_copy_name(name: d.name)) |> map(d => d.name)
+                let copy_split = local_store_delete_split(attempts: local_store_delete_attempts(authority: LocalStoreFamilyAuthority { held: held }, names: doomed_copies))
+                let record_cleanup = local_store_record_delete_split(attempts: local_store_delete_records(authority: LocalStoreFamilyAuthority { held: held }, records: doomed_records))
+                let cleanup_split = LocalStoreRecordDeleteSplit { gone: concat(record_cleanup.gone, copy_split.gone), refused: record_cleanup.refused }
                 let gone = local_store_name_set(names: cleanup_split.gone)
                 let still_doomed = index.doomed |> filter(d => !set_contains(gone, d.name))
                 let undeleted = measure_count(m: local_store_doomed_bytes(doomed: still_doomed))
@@ -1402,6 +1444,103 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
               }
             }
         }
+    }
+  }
+}
+
+// A record's byte parts are files named <record>.part.<output id> beside it, and they leave WITH it:
+// the record first (so no reader can serve a record whose parts are going), then every part the root
+// lists under its name. A refused delete is reported like any other and swept on the next open.
+fn local_store_part_name(record: String, id: ArtifactOutputId) -> String {
+  concat(concat(record, ".part."), id as String)
+}
+
+// The record a part file belongs to: the name before its ".part." separator, or the name itself for
+// a record, so sweep membership is ONE set lookup per listed name.
+fn local_store_record_of(name: String) -> String {
+  match first(name.split(delimiter: ".part.")) {
+    Present { value: r } => r
+    Absent => name
+  }
+}
+
+fn local_store_is_part_of(name: String, record: String) -> Bool {
+  starts_with(s: name, prefix: concat(record, ".part."))
+}
+
+// A RECORD IS GONE only when the record file and every part file the root lists under it are gone,
+// each confirmed by the host. The record goes first, so no reader serves a record whose parts are
+// going; one listing serves every record in the call. A listing the host refuses confirms nothing, so
+// every record in the call stays doomed and charged rather than being assumed partless. Each record's
+// answer is TYPED: which file the host refused and how, or that the root could not be listed.
+type LocalStoreRecordDelete
+  = LocalStoreRecordGone
+  | LocalStoreRecordFileRefused { attempt: LocalStoreDeleteAttempt }
+  | LocalStoreRecordPartsRefused { parts: List<LocalStoreDeleteAttempt> }
+  | LocalStoreRecordPartsUnlisted { listing: FilesystemListingObservation }
+
+type LocalStoreRecordDeleteAttempt {
+  name: String
+  outcome: LocalStoreRecordDelete
+}
+
+type LocalStoreRecordDeleteSplit {
+  gone: List<String>
+  refused: List<LocalStoreRecordDeleteAttempt>
+}
+
+fn local_store_record_delete_split(attempts: List<LocalStoreRecordDeleteAttempt>) -> LocalStoreRecordDeleteSplit {
+  fold(attempts, init: LocalStoreRecordDeleteSplit { gone: [], refused: [] }, f: (acc, t) => match t.outcome {
+    LocalStoreRecordGone => LocalStoreRecordDeleteSplit { gone: acc.gone |> list_push(t.name), refused: acc.refused }
+    LocalStoreRecordFileRefused { attempt: _ } => LocalStoreRecordDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+    LocalStoreRecordPartsRefused { parts: _ } => LocalStoreRecordDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+    LocalStoreRecordPartsUnlisted { listing: _ } => LocalStoreRecordDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+  })
+}
+
+// One refused part filed under its record: one map lookup per refused part, never a scan.
+fn local_store_group_refused_part(by_record: Map<String, List<LocalStoreDeleteAttempt>>, attempt: LocalStoreDeleteAttempt) -> Map<String, List<LocalStoreDeleteAttempt>> {
+  let r = local_store_record_of(name: attempt.name)
+  let filed: List<LocalStoreDeleteAttempt> = match map_lookup(by_record, r) {
+    Present { value: xs } => xs
+    Absent => []
+  }
+  map_insert(by_record, r, filed |> list_push(attempt))
+}
+
+fn local_store_delete_records(authority: LocalStoreWriteAuthority, records: List<String>) -> List<LocalStoreRecordDeleteAttempt>
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+  ]
+{
+  let root_path = local_store_authority_root(authority: authority)
+  if count(records) == 0 { [] } else {
+    let record_split = local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: records))
+    let record_refused: Map<String, LocalStoreDeleteAttempt> = fold(record_split.refused, init: empty_map(), f: (m, t) => map_insert(m, t.name, t))
+    let listing = Filesystem.List(path: root_path)
+    let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
+    match observed {
+      FilesystemDirectoryListed(listed) => {
+        let wanted = local_store_name_set(names: records)
+        let part_split = local_store_delete_split(attempts: local_store_delete_attempts(
+          authority: authority,
+          names: filesystem_listing_entry_names(listing: listed) |> filter(n => (local_store_is_part_name(name: n) || local_store_is_copy_name(name: n)) && set_contains(wanted, local_store_record_of(name: n)))
+        ))
+        let parts_refused: Map<String, List<LocalStoreDeleteAttempt>> = fold(part_split.refused, init: empty_map(), f: (m, t) => local_store_group_refused_part(by_record: m, attempt: t))
+        records |> map(r => LocalStoreRecordDeleteAttempt {
+          name: r,
+          outcome: match map_lookup(record_refused, r) {
+            Present { value: t } => LocalStoreRecordFileRefused { attempt: t }
+            Absent => match map_lookup(parts_refused, r) {
+              Present { value: ps } => LocalStoreRecordPartsRefused { parts: ps }
+              Absent => LocalStoreRecordGone
+            }
+          }
+        })
+      }
+      FilesystemDirectoryListingRefused { directory: _, error: _ } => records |> map(r => LocalStoreRecordDeleteAttempt { name: r, outcome: LocalStoreRecordPartsUnlisted { listing: observed } })
+      FilesystemDirectorySubjectRefused { directory: _, cause: _ } => records |> map(r => LocalStoreRecordDeleteAttempt { name: r, outcome: LocalStoreRecordPartsUnlisted { listing: observed } })
     }
   }
 }
@@ -1531,7 +1670,7 @@ fn local_store_sweep_current(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
         LocalStoreIndexedNamesRead { names: indexed } => {
           let indexed_set = local_store_name_set(names: indexed)
           let orphans = filesystem_listing_entry_names(listing: listed)
-            |> filter(n => local_store_is_object_name(name: n) && !set_contains(indexed_set, n))
+            |> filter(n => local_store_is_copy_name(name: n) || (local_store_is_store_file_name(name: n) && !set_contains(indexed_set, local_store_record_of(name: n))))
           let split = local_store_delete_split(attempts: local_store_delete_attempts(authority: LocalStoreSweepAuthority { all: all }, names: orphans))
           LocalStoreSwept { removed: split.gone, delete_refused: split.refused, releases: [] }
         }
@@ -1620,15 +1759,9 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
 // ---------------------------------------------------------------------------------------------
 // Lookup and commit over an opened store.
 
-fn local_store_lookup(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
-  local_store_lookup_bound(binding: capability.binding, req: req)
-}
-
-fn local_store_lookup_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
+fn local_store_record_lookup(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
   admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts_bound"),
   ]
 {
   let root = binding.root
@@ -1660,6 +1793,95 @@ fn local_store_lookup_bound(binding: LocalStoreBinding, req: ArtifactRequest) ->
   }
 }
 
+// A HIT IS SERVED ONLY WITH ITS BYTE PARTS VERIFIED. Each part the record names is read afresh from
+// the store root through std.fabric_blob read_staged_fabric_blob -- the one sealed SHA-256 + size
+// reading -- and must agree with the record's (sha256, size). A part that is missing, unreadable or
+// different REFUSES the lookup as malformed: it is never a miss, so nothing recomputes past a store
+// that holds a record whose bytes have gone. The verified readings travel with the hit, and their
+// paths are what a consumer executes: only bytes this read verified.
+type LocalStorePartsLookup {
+  lookup: StoreLookup
+  parts: List<FabricBlobReading>
+}
+
+type LocalStorePartCheck
+  = LocalStorePartVerified { reading: FabricBlobReading }
+  | LocalStorePartRefused { cause: String }
+
+fn local_store_check_part(root_path: String, record: String, part: ArtifactBlobPart) -> LocalStorePartCheck
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts_bound"),
+  ]
+{
+  let path = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
+  match read_staged_fabric_blob(path: path as NonEmptyStr) {
+    FabricBlobReadRefused { fault: f } => LocalStorePartRefused { cause: concat(concat("byte part ", part.id as String), concat(" could not be read: ", fabric_blob_fault_text(fault: f))) }
+    FabricBlobRead { reading: r } =>
+      if (fabric_blob_reading_digest(reading: r).hex as String) == (part.digest.hex as String)
+        && measure_count(m: fabric_blob_reading_size(reading: r)) == measure_count(m: part.size) {
+        LocalStorePartVerified { reading: r }
+      } else {
+        LocalStorePartRefused { cause: concat(concat("byte part ", part.id as String), " does not hold the bytes its record names") }
+      }
+  }
+}
+
+fn local_store_lookup_parts(capability: LocalStoreCapability, req: ArtifactRequest) -> LocalStorePartsLookup {
+  local_store_lookup_parts_bound(binding: capability.binding, req: req)
+}
+
+fn local_store_lookup_parts_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> LocalStorePartsLookup
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_bound"),
+  ]
+{
+  let root = binding.root
+  let store = binding.store
+  let root_path = materialization_store_root_path(root: root)
+  let lookup = local_store_record_lookup(binding: binding, req: req)
+  let blobs = store_lookup_blob_parts(l: lookup)
+  if count(blobs) == 0 { LocalStorePartsLookup { lookup: lookup, parts: [] } } else {
+    match evaluation_store_address(req: req) {
+      FamilyRefused { family: _, scope: _ } => LocalStorePartsLookup { lookup: lookup, parts: [] }
+      Admitted { address: addr } => {
+        let record = store_object_name(address: addr)
+        let checks = blobs |> map(b => local_store_check_part(root_path: root_path, record: record, part: b))
+        let refusal = checks |> fold(init: none, f: (acc, c) => match acc {
+          Present { value: _ } => acc
+          Absent => match c { LocalStorePartRefused { cause: why } => Present { value: why } LocalStorePartVerified { reading: _ } => none }
+        })
+        match refusal {
+          Present { value: why } =>
+            LocalStorePartsLookup { lookup: StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupObjectMalformed { cause: why } }, parts: [] }
+          Absent =>
+            LocalStorePartsLookup {
+              lookup: lookup,
+              parts: checks |> flat_map(c => match c { LocalStorePartVerified { reading: r } => [r] LocalStorePartRefused { cause: _ } => [] })
+            }
+        }
+      }
+    }
+  }
+}
+
+// The record lookup with its byte parts verified: a record whose parts do not hold their bytes is
+// refused here too, so every caller -- including a commit's read-back -- judges the whole artifact.
+fn local_store_lookup(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
+  local_store_lookup_bound(binding: capability.binding, req: req)
+}
+
+fn local_store_lookup_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
+  ]
+{
+  local_store_lookup_parts_bound(binding: binding, req: req).lookup
+}
+
 // THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
 // evicted, the eviction deletes the host did not confirm WITH their typed outcomes (those names stay
 // doomed and CHARGED until a later reservation confirms them gone), the doomed names this commit's
@@ -1670,7 +1892,7 @@ fn local_store_lookup_bound(binding: LocalStoreBinding, req: ArtifactRequest) ->
 type LocalStoreCommit {
   commit: StoreCommit
   evicted: List<String>
-  eviction_delete_refused: List<LocalStoreDeleteAttempt>
+  eviction_delete_refused: List<LocalStoreRecordDeleteAttempt>
   retired: List<String>
   index_reclamation: CasWindowReclamation
   index_refusal: LocalStoreIndexRefusal?
@@ -1718,7 +1940,9 @@ fn local_store_commit_held(
   name: String,
   object: String,
   offered: ContentHash,
-  offered_result: ResultContentIdentity
+  offered_result: ResultContentIdentity,
+  parts: List<LocalStoreStagedPart>,
+  blobs: List<ArtifactBlobPart>
 ) -> LocalStoreCommit
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_under"),
@@ -1727,14 +1951,48 @@ fn local_store_commit_held(
   let store = held.binding.store
   let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
+  let bytes = measure_add(a: local_store_object_bytes(object: object), b: local_store_parts_bytes(parts: blobs))
   let presence = local_store_object_presence(lookup: local_store_lookup_bound(binding: held.binding, req: req))
   match presence {
     LocalStoreObjectUnavailable { lookup: _ } =>
       local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: "the object's presence could not be established, so its row is neither converged on nor replaced" } })
-    LocalStoreObjectVerified => local_store_commit_reserved(held: held, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result,
-      reservation: local_store_reserve(held: held, name: name, bytes: local_store_object_bytes(object: object), presence: presence, attempt: 1))
-    LocalStoreObjectAbsent => local_store_commit_reserved(held: held, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result,
-      reservation: local_store_reserve(held: held, name: name, bytes: local_store_object_bytes(object: object), presence: presence, attempt: 1))
+    LocalStoreObjectVerified => local_store_commit_verified(held: held, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result)
+    LocalStoreObjectAbsent => local_store_commit_reserved(held: held, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs, bytes: bytes,
+      reservation: local_store_reserve(held: held, name: name, bytes: bytes, presence: presence, attempt: 1))
+  }
+}
+
+// A VERIFIED HIT MATERIALIZES NOTHING. The exact record and every part are already present and verified,
+// so no reservation is made, no part is copied and no inode is created: the record's create-only
+// publish answers occupied, and the settle reads the stored artifact back and decides -- the same
+// result converges, a different one is the result-content conflict. Both are decided before any byte
+// is copied, so a divergent retry leaves the index, the root and every part exactly as they were.
+fn local_store_commit_verified(
+  held: LocalStoreFamilyHeld,
+  req: ArtifactRequest,
+  key: ContentHash,
+  name: String,
+  object: String,
+  offered: ContentHash,
+  offered_result: ResultContentIdentity
+) -> LocalStoreCommit
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
+  ]
+{
+  let root = held.binding.root
+  let root_path = materialization_store_root_path(root: root)
+  match local_store_hold_check(held: held) {
+    LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: key, refusal: LocalStoreHoldStale { observed: o })
+    LocalStoreHoldCurrent =>
+      local_store_commit_refused(commit: store_commit_settle(
+        store: held.binding.store,
+        prepared_key: key,
+        offered_digest: offered,
+        offered_result: offered_result,
+        publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
+        read_back: local_store_lookup_bound(binding: held.binding, req: req)
+      ))
   }
 }
 
@@ -1746,6 +2004,9 @@ fn local_store_commit_reserved(
   object: String,
   offered: ContentHash,
   offered_result: ResultContentIdentity,
+  parts: List<LocalStoreStagedPart>,
+  blobs: List<ArtifactBlobPart>,
+  bytes: ByteSize,
   reservation: LocalStoreReservation
 ) -> LocalStoreCommit
   admit_callers: [
@@ -1765,24 +2026,31 @@ fn local_store_commit_reserved(
       let evicted = adm.evicted
       let retired = adm.retired
       let rc = adm.reclamation
-      let split = local_store_delete_split(attempts: local_store_delete_attempts(authority: LocalStoreFamilyAuthority { held: held }, names: evicted |> map(e => e.name)))
+      let split = local_store_record_delete_split(attempts: local_store_delete_records(authority: LocalStoreFamilyAuthority { held: held }, records: evicted |> map(e => e.name)))
       let unconfirmed_set = local_store_name_set(names: split.refused |> map(t => t.name))
       if count(split.refused) > 0 {
         LocalStoreCommit {
-          commit: StoreCommitRefused { key: key, refusal: StoreCommitCleanupOutstanding { artifact_bytes: local_store_object_bytes(object: object), budget: budget, undeleted: local_store_doomed_bytes(doomed: evicted |> filter(e => set_contains(unconfirmed_set, e.name))) } },
+          commit: StoreCommitRefused { key: key, refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: budget, undeleted: local_store_doomed_bytes(doomed: evicted |> filter(e => set_contains(unconfirmed_set, e.name))) } },
           evicted: evicted |> map(e => e.name), eviction_delete_refused: split.refused, retired: retired, index_reclamation: rc,
           index_refusal: none, hold_refusal: none, hold_release: none
         }
       } else {
+        let part_refusal = zip_parts(parts: parts, blobs: blobs) |> fold(init: none, f: (acc, pb) => match acc {
+          Present { value: _ } => acc
+          Absent => local_store_publish_part(held: held, record: name, part: pb.part, staged: pb.blob)
+        })
         LocalStoreCommit {
-          commit: store_commit_settle(
+          commit: match part_refusal {
+            Present { value: why } => StoreCommitRefused { key: key, refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: why } } }
+            Absent => store_commit_settle(
             store: store,
             prepared_key: key,
             offered_digest: offered,
             offered_result: offered_result,
             publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
             read_back: local_store_lookup_bound(binding: held.binding, req: req)
-          ),
+            )
+          },
           evicted: evicted |> map(e => e.name), eviction_delete_refused: [], retired: retired, index_reclamation: rc,
           index_refusal: none, hold_refusal: none, hold_release: none
         }
@@ -1791,8 +2059,175 @@ fn local_store_commit_reserved(
   }
 }
 
-fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>) -> LocalStoreCommit {
-  match local_store_with_family(capability: capability, of: req, run: h => local_store_commit_under(held: h, req: req, payloads: payloads)) {
+// A BYTE PART TO COMMIT: an output id and a file the producer staged ON THE STORE ROOT'S FILESYSTEM.
+// It is linked into the root create-only (a link across filesystems is not a copy, so a staged file
+// elsewhere refuses), and the reading the record carries is minted from the LINKED path.
+type LocalStoreStagedPart {
+  id: ArtifactOutputId
+  staged: NonEmptyStr
+}
+
+type LocalStoreStagedReading
+  = LocalStoreStagedRead { part: ArtifactBlobPart }
+  | LocalStoreStagedUnreadable { cause: String }
+
+fn local_store_blob_part_of(id: ArtifactOutputId, r: FabricBlobReading) -> ArtifactBlobPart {
+  ArtifactBlobPart { id: id, digest: fabric_blob_reading_digest(reading: r), size: fabric_blob_reading_size(reading: r) }
+}
+
+fn local_store_read_part(id: ArtifactOutputId, path: NonEmptyStr) -> LocalStoreStagedReading
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_copy_and_link"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_under"),
+  ]
+{
+  match read_staged_fabric_blob(path: path) {
+    FabricBlobRead { reading: r } => LocalStoreStagedRead { part: local_store_blob_part_of(id: id, r: r) }
+    FabricBlobReadRefused { fault: f } => LocalStoreStagedUnreadable { cause: concat(concat("byte part ", id as String), concat(" could not be read: ", fabric_blob_fault_text(fault: f))) }
+  }
+}
+
+fn local_store_first_unreadable(readings: List<LocalStoreStagedReading>) -> String? {
+  readings |> fold(init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => match r { LocalStoreStagedUnreadable { cause: c } => Present { value: c } LocalStoreStagedRead { part: _ } => none }
+  })
+}
+
+fn local_store_read_parts(readings: List<LocalStoreStagedReading>) -> List<ArtifactBlobPart> {
+  readings |> flat_map(r => match r { LocalStoreStagedRead { part: p } => [p] LocalStoreStagedUnreadable { cause: _ } => [] })
+}
+
+// A PART IS PUBLISHED AS THE STORE'S OWN INODE, never as the producer's. A hard link of the staged file
+// would leave the producer's path -- and any descriptor it still holds -- writing into the committed
+// inode, growing or changing bytes the index charged at their staged size. So, inside the family hold:
+// the staged bytes are COPIED into a temporary file the store creates in its own root (<part>.copy; no
+// producer ever had its path or a descriptor to it), the copy is verified against the staged reading,
+// and that inode is published under the part's name with Filesystem.LinkCreateNew -- atomic and
+// create-only, so a name that already exists answers occupied and is verified rather than replaced.
+// The temporary name is then removed; the link put the same inode under the final name, so the copy
+// costs no bytes beyond the part's own. A leftover temporary (a crash between steps) is a store file
+// the open-time sweep removes.
+fn local_store_copy_name(record: String, id: ArtifactOutputId) -> String {
+  concat(local_store_part_name(record: record, id: id), ".copy")
+}
+
+fn local_store_publish_part(held: LocalStoreFamilyHeld, record: String, part: LocalStoreStagedPart, staged: ArtifactBlobPart) -> String?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+  ]
+{
+  let root_path = materialization_store_root_path(root: held.binding.root)
+  let copy_name = local_store_copy_name(record: record, id: part.id)
+  let authority = LocalStoreFamilyAuthority { held: held }
+  if count(local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: [copy_name])).refused) > 0 {
+    Present { value: concat(concat("byte part ", part.id as String), ": a leftover copy could not be removed") }
+  } else {
+    let outcome = local_store_copy_and_link(held: held, record: record, part: part, staged: staged)
+    let removed = count(local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: [copy_name])).refused) == 0
+    if removed { outcome } else {
+      match local_store_doom_copy(held: held, name: copy_name, bytes: staged.size, attempt: 1) {
+        Present { value: why } => Present { value: concat(concat("byte part ", part.id as String), concat(": the store's temporary copy could not be removed or charged: ", why)) }
+        Absent => Present { value: concat(concat("byte part ", part.id as String), ": the store's temporary copy could not be removed; it is charged as cleanup debt") }
+      }
+    }
+  }
+}
+
+// THE TEMPORARY COPY NEVER OUTLIVES ITS ATTEMPT UNCHARGED. Every path out of copy-and-link -- a copy
+// that failed, did not verify or could not be read, a link the host refused, a name held by different
+// bytes, or success -- returns to local_store_publish_part, which removes the copy; if the host
+// refuses that delete, the copy is entered in the family's doomed list at its staged size, so it is
+// charged against the budget and later writes refuse until a reservation confirms it gone.
+fn local_store_doom_copy(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize, attempt: Int) -> String?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_publish_part"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
+  ]
+{
+  if attempt > local_store_reservation_attempt_bound { Present { value: "the occupancy index kept moving past the attempt bound" } } else {
+    match local_store_read_index(root_path: materialization_store_root_path(root: held.binding.root), family: held.family) {
+      LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+      LocalStoreIndexAt { index: index, expected: expected } =>
+        if index.doomed |> any(d => d.name == name) { none } else {
+          match local_store_write_index(held: held, expected: expected, index: LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: index.doomed |> list_push(LocalStoreDoomedRow { name: name, bytes: bytes }) }) {
+            LocalStoreIndexWritten { reclamation: _ } => none
+            LocalStoreIndexLostRace => local_store_doom_copy(held: held, name: name, bytes: bytes, attempt: attempt + 1)
+            LocalStoreIndexWriteRefused { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+          }
+        }
+    }
+  }
+}
+
+fn local_store_copy_and_link(held: LocalStoreFamilyHeld, record: String, part: LocalStoreStagedPart, staged: ArtifactBlobPart) -> String?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_publish_part"),
+  ]
+{
+  let root_path = materialization_store_root_path(root: held.binding.root)
+  let copy_path = store_path(root_path: root_path, name: local_store_copy_name(record: record, id: part.id))
+  let target = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
+  let label = concat("byte part ", part.id as String)
+  if !shell.Copy.File(source: part.staged as String, destination: copy_path).success {
+    Present { value: concat(label, ": the staged bytes could not be copied into the store") }
+  } else {
+    match local_store_read_part(id: part.id, path: copy_path as NonEmptyStr) {
+      LocalStoreStagedUnreadable { cause: c } => Present { value: c }
+      LocalStoreStagedRead { part: copied } =>
+        if !local_store_blob_parts_agree(a: [staged], b: [copied]) {
+          Present { value: concat(label, ": the store's copy does not hold the staged bytes") }
+        } else {
+          let l = Filesystem.LinkCreateNew(source: copy_path, path: target)
+          match filesystem_link_create_new(source: copy_path, path: target, success: l.success, error: l.error, error_kind: l.error_kind) {
+            FilesystemLinked { path: _ } => none
+            FilesystemLinkTargetOccupied { path: _ } =>
+              match local_store_read_part(id: part.id, path: target as NonEmptyStr) {
+                LocalStoreStagedUnreadable { cause: c } => Present { value: c }
+                LocalStoreStagedRead { part: existing } =>
+                  if local_store_blob_parts_agree(a: [staged], b: [existing]) { none } else { Present { value: concat(label, ": a different part already holds this name") } }
+              }
+            FilesystemLinkCrossDevice { source: src, path: _ } => Present { value: concat(concat(label, ": the store's own copy is on another filesystem than its root: "), src) }
+            FilesystemLinkRefused { path: _, kind: _, error: e } => Present { value: concat(concat(label, " could not be published: "), e) }
+            FilesystemLinkKindUnrecognized { path: _, observed: o, error: _ } => Present { value: concat(concat(label, " publish failed with an unrecognized kind: "), o) }
+          }
+        }
+    }
+  }
+}
+
+// Each staged part beside its staged reading, joined by output id through ONE map built over the
+// readings -- one lookup per part, never a scan of every reading per part.
+type LocalStorePartAndBlob {
+  part: LocalStoreStagedPart
+  blob: ArtifactBlobPart
+}
+
+fn zip_parts(parts: List<LocalStoreStagedPart>, blobs: List<ArtifactBlobPart>) -> List<LocalStorePartAndBlob> {
+  let by_id: Map<String, ArtifactBlobPart> = fold(blobs, init: empty_map(), f: (m, b) => map_insert(m, b.id as String, b))
+  parts |> flat_map(p => match map_lookup(by_id, p.id as String) {
+    Present { value: b } => [LocalStorePartAndBlob { part: p, blob: b }]
+    Absent => []
+  })
+}
+
+fn local_store_blob_parts_agree(a: List<ArtifactBlobPart>, b: List<ArtifactBlobPart>) -> Bool {
+  count(a) == count(b) && a |> all(x => b |> any(y => y.id == x.id && (y.digest.hex as String) == (x.digest.hex as String) && measure_count(m: y.size) == measure_count(m: x.size)))
+}
+
+fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> ByteSize {
+  fold(parts, init: byte_size(count: 0), f: (acc, p) => measure_add(a: acc, b: p.size))
+}
+
+// THE COMMIT ORDER, and why: (1) read every staged part (its SHA-256 and size shape the record and
+// its budget); (2) prepare the record over those parts; then, INSIDE THE FAMILY HOLD: (3) establish
+// whether the exact record and every part are present and verified -- unavailable refuses before any
+// index write; (4) RESERVE record + parts at their current size, evicting whole records; (5) only once
+// every eviction delete is confirmed, publish each part as the store's own verified copy
+// (local_store_publish_part); (6) publish the record create-only and read the whole artifact back,
+// parts included. Any part refusal refuses the commit before the record appears.
+fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>, parts: List<LocalStoreStagedPart>) -> LocalStoreCommit {
+  match local_store_with_family(capability: capability, of: req, run: h => local_store_commit_under(held: h, req: req, payloads: payloads, parts: parts)) {
     LocalStoreBracketRefused { refusal: r } => local_store_commit_hold_refused(key: request_key(req: req), refusal: r)
     LocalStoreBracketRan { value: written, hold_release: rel } => local_store_commit_released(c: written, settled_release: rel)
   }
@@ -1800,11 +2235,13 @@ fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, pa
 
 // A COMMIT UNDER A GIVEN HOLD. The hold carries the store root and the family; nothing here takes either
 // separately, so authority for one root or family cannot write another. The hold is re-observed first,
-// so a value smuggled out of a finished bracket is refused as stale rather than used.
+// so a value smuggled out of a finished bracket is refused as stale rather than used. The staged parts
+// are read once, and their readings shape the record and its budget.
 fn local_store_commit_under(
   held: LocalStoreFamilyHeld,
   req: ArtifactRequest,
-  payloads: List<ArtifactPayload>
+  payloads: List<ArtifactPayload>,
+  parts: List<LocalStoreStagedPart>
 ) -> LocalStoreCommit {
   let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
@@ -1813,16 +2250,25 @@ fn local_store_commit_under(
   } else {
     match local_store_hold_check(held: held) {
       LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldStale { observed: o })
-      LocalStoreHoldCurrent =>
-        match store_commit_prepare(req: req, payloads: payloads) {
-          StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
-          StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
-            match materialization_store_admissible(root: root, verb: Write) {
-              Deny { refusal: _ } =>
-                local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } })
-              Permit => local_store_commit_held(held: held, req: req, key: k, name: name, object: object, offered: offered, offered_result: offered_result)
+      LocalStoreHoldCurrent => {
+        let staged = parts |> map(p => local_store_read_part(id: p.id, path: p.staged))
+        match local_store_first_unreadable(readings: staged) {
+          Present { value: why } =>
+            local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitResultIdentityUnverifiable { cause: why } })
+          Absent => {
+            let blobs = local_store_read_parts(readings: staged)
+            match store_commit_prepare(req: req, payloads: payloads, blobs: blobs) {
+              StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
+              StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
+                match materialization_store_admissible(root: root, verb: Write) {
+                  Deny { refusal: _ } =>
+                    local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } })
+                  Permit => local_store_commit_held(held: held, req: req, key: k, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs)
+                }
             }
+          }
         }
+      }
     }
   }
 }

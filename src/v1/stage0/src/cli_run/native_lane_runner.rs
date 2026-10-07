@@ -2542,6 +2542,7 @@ pub struct NativeServeProgramRun {
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
+    pub served_exit_status: Option<i32>,
     pub stderr: String,
 }
 
@@ -2549,8 +2550,10 @@ pub struct NativeServeProgramRun {
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
     vec![
+        "--request-deadline-ms".to_string(),
+        request_deadline_ms.to_string(),
         "--host".to_string(),
         "127.0.0.1".to_string(),
         "--port".to_string(),
@@ -2564,10 +2567,14 @@ fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
 fn native_serve_refused_launch(
     binary: &Path,
     refused_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(refused_revision))
+        .args(native_serve_launch_args(
+            refused_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2623,6 +2630,7 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
+    request_deadline_ms: &str,
     requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
@@ -2632,11 +2640,11 @@ pub fn run_native_serve_program(
         prepared.binary_path.display()
     );
     let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
     // The PEER is a second instance of the same entry: the local server the entry's bound REST
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
-    let mut peer = native_serve_start(&prepared.binary_path, entry, release_revision)?;
+    let mut peer = native_serve_start(&prepared.binary_path, entry, release_revision, request_deadline_ms)?;
     let peer_port = match peer
         .address
         .as_deref()
@@ -2660,7 +2668,7 @@ pub fn run_native_serve_program(
             return Err(cause);
         }
     };
-    let mut subject = match native_serve_start(&prepared.binary_path, entry, release_revision) {
+    let mut subject = match native_serve_start(&prepared.binary_path, entry, release_revision, request_deadline_ms) {
         Ok(subject) => subject,
         Err(cause) => {
             peer.stop();
@@ -2674,7 +2682,11 @@ pub fn run_native_serve_program(
             .collect(),
         None => Vec::new(),
     };
-    let stderr = subject.stop();
+    // The last case drives the subject past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status. The peer serves no budget
+    // case and is stopped.
+    let (served_exit_status, stderr) = subject.await_exit();
     let peer_stderr = peer.stop();
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
@@ -2687,6 +2699,7 @@ pub fn run_native_serve_program(
         responses,
         refused_status,
         refused_stderr,
+        served_exit_status,
         stderr: format!("{stderr}{peer_stderr}"),
     })
 }
@@ -2701,6 +2714,31 @@ struct NativeServeInstance {
 }
 
 impl NativeServeInstance {
+    /// Wait up to the run deadline for the instance to exit by itself, killing it only past that;
+    /// the status is None when it had to be killed.
+    fn await_exit(&mut self) -> (Option<i32>, String) {
+        let started = std::time::Instant::now();
+        let status = loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => break status.code(),
+                Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break None;
+                }
+            }
+        };
+        let stderr = self
+            .reader
+            .take()
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default();
+        (status, stderr)
+    }
+
     fn stop(&mut self) -> String {
         let _ = self.child.kill();
         let _ = self.child.wait();
@@ -2715,10 +2753,11 @@ fn native_serve_start(
     binary: &Path,
     entry: &str,
     release_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<NativeServeInstance, String> {
     use std::io::{BufRead, Read};
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(release_revision))
+        .args(native_serve_launch_args(release_revision, request_deadline_ms))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()

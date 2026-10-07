@@ -1,7 +1,7 @@
 module test.claim.serving.turn_admission_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.selection { AvailableIndefinitely, NoTransitionRequired, NoFeasibleAlternativeUse }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }

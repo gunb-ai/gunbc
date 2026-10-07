@@ -14,13 +14,25 @@ import std.algebra { trim }
 // Each route exists for one fact the door owes: /hello reads the identity header the door framed
 // (sent in mixed case, so case-insensitive field names are exercised), /redirect sets a typed
 // header the door writes, /split-header sets one whose value would split the header block (the door
-// must answer 500, not write it), /split-content-type does the same through the content type, /echo reads exactly the body
+// must answer 500, not write it), /split-content-type does the same through the content type, /panic ends its worker in a panic
+// (integer division by a zero computed at run time) so the door must answer the handler-failed 500
+// and must not count a stuck worker, /spin never returns in time
+// (the per-request deadline answers it and the ceiling bounds how many may be stuck), /echo reads exactly the body
 // length the door framed, and every other path is the handler's own typed refusal. Nothing here is
 // a production route; the approval broker is this arm's second consumer.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
 
 fn fixture_text(status: Int, body: String) -> ServeWireResponse {
   ServeWireResponse { status: status, content_type_label: native_serve_text_plain, body: body, headers: [] }
+}
+
+// A HANDLER THAT DOES NOT RETURN IN ANY TIME A REQUEST CAN WAIT: 10^15 steps of a modular hash,
+// which the emitter lowers to a loop. Execution is bounded, so it would return eventually; at about
+// a nanosecond a step that is weeks, which is the over-budget compiled request the per-request
+// deadline exists for. The accumulator carries a modulus because a bare countdown is folded to its
+// closed form by the Rust optimizer and returns at once (measured), which would test nothing.
+fn fixture_spin(n: Int, acc: Int) -> Int {
+  if n == 0 { acc } else { fixture_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
 }
 
 fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
@@ -32,6 +44,10 @@ fn native_serve_handle(method: String, path: String, body: String, tailscale_ide
     ServeWireResponse { status: 303, content_type_label: native_serve_text_plain, body: "", headers: [ServeWireHeader { name: WireHeaderLocation, value: "/hello\r\nX-Injected: 1" }] }
   } else if path == "/split-content-type" && method == "GET" {
     ServeWireResponse { status: 200, content_type_label: "text/plain\r\nX-Injected: 1", body: "x", headers: [] }
+  } else if path == "/panic" && method == "GET" {
+    fixture_text(status: 200, body: concat("quotient ", concat(to_string(value: 1 / (string_length(s: path) - string_length(s: path))), "\n")))
+  } else if path == "/spin" && method == "GET" {
+    fixture_text(status: 200, body: concat("spun ", concat(to_string(value: fixture_spin(n: 1000000000000000, acc: 7)), "\n")))
   } else if path == "/echo" && method == "POST" {
     fixture_text(status: 200, body: body)
   } else if path == "/effects/clock" && method == "GET" {

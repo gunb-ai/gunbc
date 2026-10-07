@@ -11627,11 +11627,29 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_
 // a module-scope `data ...: Map<String, String> = empty_map()` in a module with no generic scope at
 // all. Two sites asking one question is the second representation DESIGN section 2 forbids, so the
 // question is asked once, here, and both sites read the answer.
+// AN ERASED TYPE ARGUMENT DECLINES TO THE TARGET'S INFERENCE, EXACTLY AS AN UNBOUND FORMAL DOES. The
+// arm above already defers `::<_, _>()` when the emitter cannot name the formals in this fn's scope.
+// A key or value whose inferred node is a compiler error is the same state seen one stage earlier:
+// v1.compiler.infer does not bind a generic record's parameter at an unannotated record literal
+// (std.list duplicated_by_key's `DuplicatedScan { firsts: empty_map(), .. }` inside a fold), so the
+// field type arrives erased and rendered as `compile_error!("UNRESOLVED_CompilerError")`. Rendering
+// that refusal is what rust_witness_carrier_from_type_node's note forbids -- an erased first source
+// must decline so the next authority is consulted -- and here the next authority is rustc, which
+// infers T from the field's later `map_insert` or refuses loudly; nothing is widened. The upstream
+// boundary stays open and is named, not absorbed: generic record instantiation at infer
+// (declared_type_conformance_note's "generic record instantiation" lane).
+fn type_node_carries_erased_type_argument(n: Node) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    (t.inferred != none && is_compiler_error(inferred: t.inferred.value)) || type_node_carries_erased_type_argument(n: t))
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
-  } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names) {
+  } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
+    || type_node_carries_erased_type_argument(n: map_type) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
@@ -18570,45 +18588,49 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // the rest. This main counts bytes against the contract's head limit, applies its read timeout,
 // strips line terminators, and writes what gunbc.native_serve native_serve_outgoing hands it
 // (status, content type, the header lines that fold rendered and admitted, and the body) with its
-// byte length. The
-// status line carries an empty reason phrase (RFC 9112 section 4 permits it), so no status table
-// is restated here. Serial by design, as the seed's loop is. No per-request budget is armed:
-// that is the declared drop gunbc.rung_drop.native_serve_request_budget_unrealized.
-// An entry with effects is an async function returning Result (emit_func_def); one without is a
-// pure function returning the response. The admitted bindings decide which, so the call shape and
-// the handles come from the same verdict.
+// byte length. The status line carries an empty reason phrase (RFC 9112 section 4 permits it), so no
+// status table is restated here. Accepting and framing stay serial, as the seed's loop is.
+//
+// THE PER-REQUEST BUDGET. A compiled handler has no evaluator to interrupt, so each handler call runs
+// on its own worker thread and the loop waits for it only until the contract's request_deadline; a
+// miss is answered with native_serve_deadline_refused and the loop serves on. A missed worker cannot
+// be killed in-process, so it is counted as stuck until it returns, and before each handler call the
+// loop asks native_serve_admission with that count: at the declared ceiling it writes the typed 503
+// and exits with the code that fold names, for the supervisor to restart. A TIMEOUT IS ALWAYS THE
+// DEADLINE REFUSAL: the worker's state decides only whether it is counted stuck, never what the
+// client is told, so a worker finishing just after the deadline cannot turn the 500 back into its
+// answer. A worker that ends WITHOUT an answer (a panic: its sender is dropped) is a different arm,
+// answered with native_serve_handler_failed and never counted; its cleanup runs from a guard that
+// also runs during unwinding, so an abandoned worker uncounts itself exactly once however it ends. Every value -- deadline,
+// ceiling, both bodies, the exit code -- is gunbc.native_serve's; the worker sends back only owned
+// plain parts because the handler's values are reference-counted and stay on its thread.
+//
+// THE EFFECT HANDLES. An entry with effects is an async function returning Result (emit_func_def);
+// one without is a pure function returning the response. The admitted bindings decide which, so the
+// call shape and the handles come from the same verdict. With effects, each worker builds its own
+// current-thread executor and its own handles from those bindings: a current-thread runtime cannot be
+// driven from two threads, and an abandoned worker must hold nothing the loop still needs. A handler's
+// Err, and an executor that cannot be built, are both answered with native_serve_effect_failed.
 fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
-  let exchange_effect_params = if effectful {
-    concat(", runtime: &tokio::runtime::Runtime", bindings |> map(b => concat(", ", b.var, ": &", b.type_path)) |> join(separator: ""))
-  } else { "" }
-  let exchange_effect_args = if effectful {
-    concat(", &runtime", bindings |> map(b => concat(", ", b.argument)) |> join(separator: ""))
-  } else { "" }
-  let handler_effect_args = bindings |> map(b => concat(", ", b.var)) |> join(separator: "")
-  let handler_call = if effectful {
+  let handler_effect_args = bindings |> map(b => concat(", ", b.argument)) |> join(separator: "")
+  let worker_call = if effectful {
     concat(
-      "        NativeServeRoute::NativeServeToHandler => match runtime.block_on(native_serve_handle(", "\n",
-      "            head.method.clone(), head.target.clone(), body, head.tailscale_identity.clone(), contract.release_revision.clone()", handler_effect_args, ",", "\n",
-      "        )) \{", "\n",
-      "            Ok(response) => Exchange::Answer(response),", "\n",
-      "            Err(cause) => Exchange::Answer(native_serve_effect_failed(cause.to_string())),", "\n",
-      "        \},", "\n")
+      "                            let response = match tokio::runtime::Builder::new_current_thread().enable_all().build() \{", "\n",
+      "                                Err(cause) => native_serve_effect_failed(format!(\"native effect executor: \{\}\", cause)),", "\n",
+      "                                Ok(runtime) => \{", "\n",
+      binding_lines,
+      "                                    match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", handler_effect_args, ")) \{", "\n",
+      "                                        Ok(response) => response,", "\n",
+      "                                        Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
+      "                                    \}", "\n",
+      "                                \}", "\n",
+      "                            \};", "\n")
   } else {
-    concat(
-      "        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(", "\n",
-      "            head.method.clone(),", "\n",
-      "            head.target.clone(),", "\n",
-      "            body,", "\n",
-      "            head.tailscale_identity.clone(),", "\n",
-      "            contract.release_revision.clone(),", "\n",
-      "        )),", "\n")
+    "                            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);\n"
   }
-  let runtime_line = if effectful {
-    "    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() \{ Ok(runtime) => runtime, Err(cause) => \{ eprintln!(\"REFUSED: native effect executor: \{\}\", cause); std::process::exit(2); \} \};\n"
-  } else { "" }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -18623,12 +18645,31 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement, native_serve_effect_failed, native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
-      "    native_serve_outgoing, native_serve_route, native_serve_start, NativeServeContract, NativeServeFrame,", "\n",
-      "    NativeServeOutgoing, NativeServeRoute, NativeServeStart,", "\n",
+      "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
+      "    native_serve_start, NativeServeAdmission, NativeServeContract, NativeServeFrame, NativeServeOutgoing,", "\n",
+      "    NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
       "\n",
-      "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) \{", "\n",
+      "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
+      "// handler's values are reference-counted and stay on the worker's thread.", "\n",
+      "struct WireParts \{", "\n",
+      "    status: i64,", "\n",
+      "    content_type_label: String,", "\n",
+      "    header_lines: Vec<String>,", "\n",
+      "    body: String,", "\n",
+      "\}", "\n",
+      "\n",
+      "fn wire_parts(response: &NativeServeOutgoing) -> WireParts \{", "\n",
+      "    WireParts \{", "\n",
+      "        status: response.status,", "\n",
+      "        content_type_label: response.content_type_label.clone(),", "\n",
+      "        header_lines: response.header_lines.iter().cloned().collect(),", "\n",
+      "        body: response.body.clone(),", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) \{", "\n",
       "    let mut head = format!(", "\n",
       "        \"HTTP/1.1 \{\} \\r\\nContent-Type: \{\}\\r\\nContent-Length: \{\}\\r\\nConnection: close\\r\\n\",", "\n",
       "        response.status, response.content_type_label, response.body.len()", "\n",
@@ -18638,6 +18679,47 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) \{", "\n",
       "        eprintln!(\"native-serve: write error: \{\}\", cause);", "\n",
       "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) \{", "\n",
+      "    write_parts(stream, &wire_parts(response));", "\n",
+      "\}", "\n",
+      "\n",
+      "// A worker's state, shared with the loop: whether the loop stopped waiting for it. The loop counts a", "\n",
+      "// worker as stuck only when it abandons it, and the worker uncounts itself when it finally returns,", "\n",
+      "// under one lock, so the count is exact whichever side gets there first.", "\n",
+      "const WORKER_WAITING: u8 = 0;", "\n",
+      "const WORKER_ABANDONED: u8 = 1;", "\n",
+      "const WORKER_DONE: u8 = 2;", "\n",
+      "\n",
+      "fn lock_state<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> \{", "\n",
+      "    m.lock().unwrap_or_else(|e| e.into_inner())", "\n",
+      "\}", "\n",
+      "\n",
+      "// The worker's cleanup, run when its guard drops: on return AND during a panic's unwind. A worker the", "\n",
+      "// loop abandoned uncounts itself here, exactly once; every worker ends DONE.", "\n",
+      "struct WorkerGuard \{", "\n",
+      "    state: std::sync::Arc<std::sync::Mutex<u8>>,", "\n",
+      "    stuck: std::sync::Arc<std::sync::Mutex<usize>>,", "\n",
+      "\}", "\n",
+      "\n",
+      "impl Drop for WorkerGuard \{", "\n",
+      "    fn drop(&mut self) \{", "\n",
+      "        let mut s = lock_state(&self.state);", "\n",
+      "        if *s == WORKER_ABANDONED \{", "\n",
+      "            let mut n = lock_state(&self.stuck);", "\n",
+      "            *n = n.saturating_sub(1);", "\n",
+      "        \}", "\n",
+      "        *s = WORKER_DONE;", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "struct HandlerCall \{", "\n",
+      "    method: String,", "\n",
+      "    path: String,", "\n",
+      "    body: String,", "\n",
+      "    tailscale_identity: String,", "\n",
+      "    release_revision: String,", "\n",
       "\}", "\n",
       "\n",
       "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> \{", "\n",
@@ -18657,9 +18739,10 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "enum Exchange \{", "\n",
       "    Idle,", "\n",
       "    Answer(Rc<ServeWireResponse>),", "\n",
+      "    Handle(HandlerCall),", "\n",
       "\}", "\n",
       "\n",
-      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64", exchange_effect_params, ") -> Exchange \{", "\n",
+      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
       "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;", "\n",
       "    let mut reader = std::io::BufReader::new(stream.take(limit));", "\n",
       "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;", "\n",
@@ -18693,7 +18776,13 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let (head, body) = head;", "\n",
       "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) \{", "\n",
       "        NativeServeRoute::NativeServeAnswered \{ response \} => Exchange::Answer(response.clone()),", "\n",
-      handler_call,
+      "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall \{", "\n",
+      "            method: head.method.clone(),", "\n",
+      "            path: head.target.clone(),", "\n",
+      "            body,", "\n",
+      "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
+      "            release_revision: contract.release_revision.clone(),", "\n",
+      "        \}),", "\n",
       "    \}", "\n",
       "\}", "\n",
       "\n",
@@ -18717,9 +18806,9 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let bound_host = bound.ip().to_string();", "\n",
       "    let bound_port = bound.port() as i64;", "\n",
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
-      runtime_line,
-      binding_lines,
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
       "    for accepted in listener.incoming() \{", "\n",
       "        let mut stream = match accepted \{", "\n",
       "            Ok(stream) => stream,", "\n",
@@ -18729,9 +18818,44 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            eprintln!(\"native-serve: set_read_timeout: \{\}\", cause);", "\n",
       "            continue;", "\n",
       "        \}", "\n",
-      "        match exchange(&stream, &contract, &bound_host, bound_port", exchange_effect_args, ") \{", "\n",
+      "        match exchange(&stream, &contract, &bound_host, bound_port) \{", "\n",
       "            Exchange::Idle => \{\}", "\n",
       "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),", "\n",
+      "            Exchange::Handle(call) => \{", "\n",
+      "                let stuck_now = *lock_state(&stuck) as i64;", "\n",
+      "                match &*native_serve_admission(contract.clone(), stuck_now) \{", "\n",
+      "                    NativeServeAdmission::NativeServeRefuseStuck \{ response, exit_code \} => \{", "\n",
+      "                        write_response(&mut stream, &native_serve_outgoing(response.clone()));", "\n",
+      "                        std::process::exit(*exit_code as i32);", "\n",
+      "                    \}", "\n",
+      "                    NativeServeAdmission::NativeServeAdmitWorker => \{", "\n",
+      "                        let (sender, receiver) = std::sync::mpsc::channel::<WireParts>();", "\n",
+      "                        let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));", "\n",
+      "                        let guard = WorkerGuard \{ state: state.clone(), stuck: stuck.clone() \};", "\n",
+      "                        std::thread::spawn(move || \{", "\n",
+      "                            let _guard = guard;", "\n",
+      worker_call,
+      "                            let _ = sender.send(wire_parts(&native_serve_outgoing(response)));", "\n",
+      "                        \});", "\n",
+      "                        match receiver.recv_timeout(deadline) \{", "\n",
+      "                            Ok(parts) => write_parts(&mut stream, &parts),", "\n",
+      "                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => \{", "\n",
+      "                                write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));", "\n",
+      "                            \}", "\n",
+      "                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => \{", "\n",
+      "                                \{", "\n",
+      "                                    let mut s = lock_state(&state);", "\n",
+      "                                    if *s != WORKER_DONE \{", "\n",
+      "                                        *s = WORKER_ABANDONED;", "\n",
+      "                                        *lock_state(&stuck) += 1;", "\n",
+      "                                    \}", "\n",
+      "                                \}", "\n",
+      "                                write_response(&mut stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));", "\n",
+      "                            \}", "\n",
+      "                        \}", "\n",
+      "                    \}", "\n",
+      "                \}", "\n",
+      "            \}", "\n",
       "        \}", "\n",
       "    \}", "\n",
       "\}", "\n"

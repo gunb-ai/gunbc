@@ -10,7 +10,7 @@ import gunbc.ownership { Owned }
 import gunbc.runner_slot_allocation { fabric_execution_slot_identities, identity_is_fabric_execution_member }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.systemd { parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fabric_cell_observation_admission {

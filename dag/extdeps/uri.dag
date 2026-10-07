@@ -1,4 +1,5 @@
 module extdeps.uri
+import std.optional { Absent, Optional, Present }
 
 import std.algebra { trim }
 

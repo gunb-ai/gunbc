@@ -22,6 +22,16 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // THE TRIGGER NAMES THE CAPABILITY (ruling relayed by gentle-dove-36, 2026-10-03): a worker thread
 // or a pool is not the trigger; the restored wall is. And the approval broker's move off `gunbc
 // serve` is GATED on this row's retirement, because the interpreted broker has the mitigation today.
+// THE CAPABILITY IS BUILT AND NOT YET OBSERVED (gunbc#13278, 2026-10-05). gunbc.native_serve now
+// carries the deadline, the stuck-worker ceiling and both typed refusals, the rendered main enforces
+// them, and the native-serve probe carries the cases this trigger names. Measured over real TCP on a
+// scratch build of the fixture: a /spin handler that does not return is refused 500 at the deadline,
+// a later /hello on the same process answers 200, and past the ceiling the process refuses 503 and
+// exits. The row STAYS STANDING because the trigger is the INSTRUMENT observing it, and today
+// `gunbc test //gunbc/instruments:native-serve` stops before the probe runs: the emitted fixture
+// library refuses at rustc on three emitter and source defects owned by gunbc#13219, gunbc#13276 and
+// gunbc#13237. When those have landed and the instrument holds, this row retires with that run as
+// its receipt; a scratch build with hand patches is evidence, not the instrument.
 data native_serve_request_budget_unrealized: RungDrop = RungDrop {
   identity: "native_serve_request_budget_unrealized" as NonEmptyStr,
 
