@@ -3979,17 +3979,49 @@ fn current_exe_digest() -> Result<String, String> {
     Ok(bytes_digest(&bytes))
 }
 
-/// HEAD plus the digest of the uncommitted tracked diff.
+/// HEAD, the digest of the uncommitted tracked diff, and path+content digests of untracked,
+/// non-ignored files (a new module or source the build consumes).
 fn source_identity(workspace: &Path, head: &str) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(["diff", "HEAD", "--binary"])
-        .current_dir(workspace)
-        .output()
-        .map_err(|e| format!("git diff HEAD: {e}"))?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    let run = |args: &[&str]| -> Result<Vec<u8>, String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(workspace)
+            .output()
+            .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+        Ok(output.stdout)
+    };
+    let diff = run(&["diff", "HEAD", "--binary"])?;
+    let listing = run(&["ls-files", "--others", "--exclude-standard", "-z"])?;
+    let mut untracked = std::vec::Vec::new();
+    for rel in listing.split(|b| *b == 0).filter(|p| !p.is_empty()) {
+        let rel = String::from_utf8_lossy(rel).into_owned();
+        let content = fs::read(workspace.join(&rel)).map_err(|e| format!("read {rel}: {e}"))?;
+        untracked.push((rel, content));
     }
-    Ok(format!("{head}+{}", bytes_digest(&output.stdout)))
+    Ok(compose_source_identity(head, &diff, &mut untracked))
+}
+
+fn compose_source_identity(
+    head: &str,
+    tracked_diff: &[u8],
+    untracked: &mut [(String, Vec<u8>)],
+) -> String {
+    untracked.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut payload = String::new();
+    for (path, content) in untracked.iter() {
+        payload.push_str(path);
+        payload.push('=');
+        payload.push_str(&bytes_digest(content));
+        payload.push('\n');
+    }
+    format!(
+        "{head}+{}+{}",
+        bytes_digest(tracked_diff),
+        bytes_digest(payload.as_bytes())
+    )
 }
 
 fn git_tree_dirty(workspace: &Path) -> Result<bool, String> {
@@ -6179,6 +6211,33 @@ mod regen_round_cost_tests {
             "{rendered}"
         );
         assert_eq!(rendered.matches("seed_build_compiled_crates=").count(), 1);
+    }
+
+    #[test]
+    fn source_identity_sees_untracked_files() {
+        let mut none: Vec<(String, Vec<u8>)> = vec![];
+        let base = compose_source_identity("H", b"d", &mut none);
+        let mut added = vec![("new.dag".to_string(), b"x".to_vec())];
+        let with_new = compose_source_identity("H", b"d", &mut added);
+        let mut edited = vec![("new.dag".to_string(), b"y".to_vec())];
+        let edited_id = compose_source_identity("H", b"d", &mut edited);
+        assert_ne!(
+            base, with_new,
+            "an added untracked file changes the identity"
+        );
+        assert_ne!(
+            with_new, edited_id,
+            "an edited untracked file changes the identity"
+        );
+        let c = cost(1, 1, None);
+        let carry = match decide_seed_handoff(None, "a", "b", &with_new, &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!(),
+        };
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c),
+            Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
+        ));
     }
 
     #[test]
