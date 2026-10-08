@@ -958,6 +958,48 @@ fn collect_chain_lookup_index_seen(
     }
 }
 
+pub fn scratch_parent_chain_overlay(
+    parents: Rc<Vec<Rc<TypeEnv>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    parents
+        .iter()
+        .cloned()
+        .fold(
+            ChainIndexMemo {
+                acc: v1_rt::rc_empty_map(),
+                memo: v1_rt::rc_empty_map(),
+            },
+            |st, parent| {
+                let nxt = collect_chain_lookup_index_seen(parent, st.memo);
+                ChainIndexMemo {
+                    acc: last_wins_merge_bindings(st.acc, nxt.acc),
+                    memo: nxt.memo,
+                }
+            },
+        )
+        .acc
+}
+
+pub fn type_env_drop_scratch_overlay(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: v1_rt::rc_empty_map(),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: env.symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed,
+    })
+}
+
 fn lookup_binding_on_chain_seen(
     env: Rc<TypeEnv>,
     name: String,

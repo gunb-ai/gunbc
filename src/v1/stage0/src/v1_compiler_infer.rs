@@ -142,6 +142,7 @@ pub use crate::v1_compiler_infer_env::{
     host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, ledger_peer_import_binding_forks,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
+    scratch_parent_chain_overlay, type_env_drop_scratch_overlay,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
     merge_type_env_cache, merge_type_env_cache_skip_equal, node_with_children, node_with_inferred,
     put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
@@ -27614,11 +27615,12 @@ pub fn build_type_env(
             scope_parents.clone(),
             source_indices.clone(),
         );
+        let scratch_overlay = scratch_parent_chain_overlay(scope_parents.clone());
         let unresolved_env = Rc::new(TypeEnv {
             module_path: module_name_str.clone(),
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+            ancestry_str_bindings: scratch_overlay.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set.clone(),
             recursive_type_set: cross_type_set.clone(),
@@ -27643,7 +27645,7 @@ pub fn build_type_env(
             module_path: module_name_str.clone(),
             bindings: resolved_env_out.bindings.clone(),
             str_bindings: resolved_env_out.str_bindings.clone(),
-            ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+            ancestry_str_bindings: scratch_overlay.clone(),
             parents: scope_parents.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
@@ -28103,7 +28105,7 @@ pub fn build_type_env_unresolved(
             module_path: module_name_str.clone(),
             bindings: local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+            ancestry_str_bindings: scratch_parent_chain_overlay(scope_parents.clone()),
             parents: scope_parents.clone(),
             recursive_types: cycle_set.clone(),
             recursive_type_set: cross_type_set.clone(),
@@ -30865,6 +30867,7 @@ pub fn typecheck_module(
             symbol_index.clone(),
         );
         let env = env_result.env.clone();
+        let retained_env = type_env_drop_scratch_overlay(env.clone());
         let env_cache = env_result.cache.clone();
         let env_diags = env_result.diagnostics.clone();
         let env_errors = Rc::new({
@@ -30883,7 +30886,7 @@ pub fn typecheck_module(
                     progress: ModuleTypecheckProgress::AbandonedBeforeItems,
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
-                    type_env: env.clone(),
+                    type_env: retained_env.clone(),
                     type_env_cache: env_cache.clone(),
                     interface: build_module_interface(
                         crate::v1_std_core::authored_name_at(
@@ -30891,7 +30894,7 @@ pub fn typecheck_module(
                             resolved.module.clone(),
                         ),
                         resolved.module.clone(),
-                        env.clone(),
+                        retained_env.clone(),
                         env_cache.clone(),
                         source_indices.clone(),
                     ),
@@ -31071,12 +31074,12 @@ pub fn typecheck_module(
                 progress: ModuleTypecheckProgress::ItemsChecked,
                 module: typed_module.clone(),
                 items: grounded.items.clone(),
-                type_env: env.clone(),
+                type_env: retained_env.clone(),
                 type_env_cache: module_type_env_cache.clone(),
                 interface: build_module_interface(
                     resolved_module_name.clone(),
                     typed_module.clone(),
-                    env.clone(),
+                    retained_env.clone(),
                     module_type_env_cache.clone(),
                     source_indices.clone(),
                 ),

@@ -139,7 +139,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, scratch_parent_chain_overlay, type_env_drop_scratch_overlay, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -15549,14 +15549,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: empty_map(), parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let scratch_overlay = scratch_parent_chain_overlay(parents: scope_parents)
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: scratch_overlay, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
   let final_env = TypeEnv { module_path: module_name_str,
     bindings: resolved_env_out.bindings,
     str_bindings: resolved_env_out.str_bindings,
-    ancestry_str_bindings: empty_map(),
+    ancestry_str_bindings: scratch_overlay,
     parents: scope_parents,
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
@@ -15660,7 +15661,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: empty_map(), parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: scratch_parent_chain_overlay(parents: scope_parents), parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: local_str_bindings,
@@ -17013,6 +17014,7 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
+  let retained_env = type_env_drop_scratch_overlay(env: env)
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
 
@@ -17024,12 +17026,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         progress: AbandonedBeforeItems,
         module: resolved.module,
         items: [],
-        type_env: env,
+        type_env: retained_env,
         type_env_cache: env_cache,
         interface: build_module_interface(
           module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
           module: resolved.module,
-          env: env,
+          env: retained_env,
           cache: env_cache,
           source_indices: source_indices
         ),
@@ -17119,12 +17121,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       progress: ItemsChecked,
       module: typed_module,
       items: grounded.items,
-      type_env: env,
+      type_env: retained_env,
       type_env_cache: module_type_env_cache,
       interface: build_module_interface(
         module_path: resolved_module_name,
         module: typed_module,
-        env: env,
+        env: retained_env,
         cache: module_type_env_cache,
         source_indices: source_indices
       ),

@@ -598,15 +598,42 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 }
 
 // v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing).
-// Production TypeEnvs carry an empty ancestry overlay; a miss walks the parent Rc chain
-// with the SAME last-wins order the flatten used (later parent full chain overlays
-// earlier, including transitives). Sibling walks share seen and per-module hits so a
-// diamond is visited once per name (not once per path). The pin cut is not retaining
-// the overlay. A non-empty ancestry_str_bindings is still a COMPLETE overlay.
+// Production TypeEnvs retained on TypedModule carry an empty ancestry overlay; a miss
+// walks the parent Rc chain with the SAME last-wins order the flatten used.
+// Typecheck of one module fills a scratch overlay (scratch_parent_chain_overlay) so
+// lookups are O(1) for that module, then type_env_drop_scratch_overlay strips it
+// before the env is stored. The pin is retaining the overlay on every typed module.
 // The class stays UNFIXED until prepared-subject-warm high is 0
 // (required_floor_strict_prep_sits_on_memory_high).
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map(), hits: empty_map()).binding
+}
+
+fn scratch_parent_chain_overlay(parents: List<TypeEnv>) -> Map<String, TypeBinding> {
+  fold(parents, init: ChainIndexMemo { acc: empty_map(), memo: empty_map() }, f: (st, parent) =>
+    let nxt = collect_chain_lookup_index_seen(env: parent, memo: st.memo)
+    ChainIndexMemo { acc: last_wins_merge_bindings(base: st.acc, overlay: nxt.acc), memo: nxt.memo }
+  ).acc
+}
+
+fn type_env_drop_scratch_overlay(env: TypeEnv) -> TypeEnv {
+  TypeEnv {
+    module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: empty_map(),
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names,
+    authored_import_names: env.authored_import_names,
+    symbol_index: env.symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed
+  }
 }
 
 fn last_wins_merge_bindings(base: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
