@@ -53,13 +53,10 @@ fn megarac_image_row(image_name: String, image_index: Int) -> String {
 // test.claim.machine_intake.megarac_session_release_witness_test, `{"error":"invalid session"}` with 401.
 data megarac_invalid_session_body: String = "{\"error\":\"invalid session\"}"
 
-// POST /api/session. NO SESSION REPLY IS RETAINED VERBATIM. The production decoder reads only CSRFToken.
-data megarac_session_body_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "a retained POST /api/session reply from the Mt. Collins MegaRAC, cited by digest" as NonEmptyStr
-}
-
-fn megarac_session_body(racsession_id: Int, csrf_token: String) -> String {
-  join(["{ \"ok\": 0, \"privilege\": 4, \"extendedpriv\": 259, \"racsession_id\": ", to_string(racsession_id), ", \"CSRFToken\": \"", csrf_token, "\" }"], "")
+// POST /api/session: a CONTROLLED FIXTURE, not a reply from the controller. It carries only the one
+// field the production decoder reads (CSRFToken); the decoder's contract is the sole ground for its shape.
+fn megarac_session_body(csrf_token: String) -> String {
+  join(["{ \"CSRFToken\": \"", csrf_token, "\" }"], "")
 }
 
 // The replies to start-media, stop-media and DELETE /api/session on success are not decoded by the

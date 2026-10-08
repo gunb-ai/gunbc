@@ -233,7 +233,7 @@ fn megarac_bindings<S>(get: fn(S) -> MegaRacMediaWorld, put: fn(S, MegaRacMediaW
   [
     OperationBinding { at: megarac_operation(operation: "OpenSession"), handler: fn(state, call) {
       let opened = megarac_open_session(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"))
-      curl_answer(state: put(state, opened.world), exit_code: 0, stdout: megarac_session_body(racsession_id: opened.racsession_id, csrf_token: opened.csrf_token), stderr: "")
+      curl_answer(state: put(state, opened.world), exit_code: 0, stdout: megarac_session_body(csrf_token: opened.csrf_token), stderr: "")
     } },
     OperationBinding { at: megarac_operation(operation: "ProbeSessionOnMediaRoute"), handler: fn(state, call) {
       if megarac_session_valid(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token")) {
