@@ -12,11 +12,14 @@ import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
   Atom,
+  Arrow,
+  ComputationNode,
   Conj,
   Edge,
   Authored,
   Node,
   TypeNode,
+  Value,
 }
 import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
@@ -152,6 +155,74 @@ data mixed_module_and_unit_field_root: Node = Node {
 test fn a_mixed_conj_still_refuses_a_bare_int_unit_field() -> Bool {
   match unit_modeling_gate(node: mixed_module_and_unit_field_root) {
     Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED (review 77837): skipping every Conj/Arrow/ComputationNode member would swallow a
+// real record field. Only module-surface and fn-decl identities skip.
+data conj_shaped_member_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^payload },
+      target: Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn a_conj_shaped_record_field_is_still_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: conj_shaped_member_root) {
+    Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data arrow_shaped_member_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^payload },
+      target: Node {
+        kind: TypeNode { connective: Arrow },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn an_arrow_shaped_record_field_is_still_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: arrow_shaped_member_root) {
+    Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data computation_shaped_member_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^payload },
+      target: Node {
+        kind: ComputationNode { behavior: Value },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn a_computation_shaped_record_field_is_still_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: computation_shaped_member_root) {
+    Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
     Accepted { value: _, diagnostics: _ } => false
   }
 }
