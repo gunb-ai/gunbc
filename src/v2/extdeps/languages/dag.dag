@@ -7645,14 +7645,16 @@ fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
     (name == ^grammar_production_captured_node_projection)
 }
 
-// Per-edge skip only: the TARGET of this Authored member is a namespace declaration
-// (module surface or function), not a record field. Siblings of that edge are still judged.
+// Per-edge skip only: the TARGET is a namespace declaration (module surface, fn, Arrow,
+// or a Conj body — unstamped fn shells). Binder siblings (Present type_node) are still
+// judged; skipping a Conj target does not opt the parent out.
 fn dag_node_is_namespace_member_target(node: Node) -> Bool {
   if dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node) {
     true
   } else {
     match node.kind {
       TypeNode { connective: Arrow } => true
+      TypeNode { connective: Conj } => true
       TypeNode { connective: _ } => false
       ComputationNode { behavior: _ } => true
     }

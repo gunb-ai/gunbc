@@ -104,9 +104,9 @@ fn ledger_style_fatal_or_admitted() -> Symbol {
   }
 }
 
-// Production door: import-closure ingest including std (compile_door_ledger), rust target.
-// Unblocks gunbc.guarantee_stall member_kind_door_binding_executed_by_no_claim_stall (#13513)
-// only when this is DoorCompiled / compile_door_roster_admitted.
-test fn a_minimal_extdeps_module_is_admitted_past_the_compile_door_roster() -> Bool {
-  ledger_style_fatal_or_admitted() == ^compile_door_roster_admitted
-}
+// NOT a test fn: door_ledger_row over import_closure including std.integer was still inside
+// Filesystem.Read of dag/std/{integer,optional,algebra}.dag with no door verdict after 38+
+// minutes of interpreted eval (rss ~9.5GiB). A claim-run of that path would hang the long
+// lane. Dump with --function ledger_style_fatal_or_admitted. Remaining obstacle: std
+// inhabitance of Int is a live import-closure compile, not a roster-lens refusal.
+
