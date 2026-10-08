@@ -1,0 +1,236 @@
+module test.claim.roadmap.roadmap_belt_recapture_wet_witness_test
+
+// THE RECAPTURE PRODUCER, EXECUTED AGAINST A REAL GIT WORKTREE AND A REAL PROJECT ENVELOPE.
+// Recapture's mint seeds an empty project envelope (first guarded save from absence) then persists
+// the candidate against that write's generation. A planted capture of the worker commit is
+// required for the mint to proceed; a clean checkout of a different commit refuses.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host_layout { srv1_host_layout }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  dashboard_instance_dispatch_attempt_state_root,
+}
+import gunbc.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap_belt_actuate {
+  belt_scm_recapture, Recaptured, RecaptureRefused, RecapturePoisoned,
+  belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_attempt_submission_dir_for_instance,
+  recapture_capture_absent_detail,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound,
+  submission_capture_text, submission_capture_basename,
+}
+import gunbc.scm.repository_load { load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused }
+import std.optional { Present, Absent }
+import gunbc.scm.repository_envelope { commit_at_reference, admit_capture, CaptureAdmitted, CaptureRoleRefused, AdmittedCapture }
+import gunbc.scm.intake { WorkCapture, NoWork, WorkUnrecordedByFormat, capture_work_eq, CaptureWork }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import std.minted_identity { MintedId }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data recapture_node: String = "recapture-wet-n"
+data recapture_attempt: String = "k1"
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_recapture_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["recapture-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["recapture-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18101,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn run_git(dir: String, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn git_out(dir: String, args: List<String>) -> String {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn plant_worktree(instance: HostDashboardInstance) -> String {
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: recapture_node as RoadmapNodeId,
+    attempt_key: recapture_attempt,
+  )
+  let state = dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: recapture_node as RoadmapNodeId,
+    attempt_key: recapture_attempt,
+  )
+  let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
+  let _st = shell.Mkdir.Parents(path: state as FilePath)
+  let primed = run_git(dir: worktree, args: ["init", "-q"])
+    && run_git(dir: worktree, args: ["config", "user.name", "witness"])
+    && run_git(dir: worktree, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([worktree, "/src.dag"], ""), content: "base").success
+    && run_git(dir: worktree, args: ["add", "-A"])
+    && run_git(dir: worktree, args: ["commit", "-q", "-m", "base"])
+  if !primed {
+    ""
+  } else {
+    let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+    let origin_ok = Filesystem.Write(
+      path: join([state, "/", dispatch_spawn_origin_basename], ""),
+      content: join(["{\"base_sha\":\"", base_sha, "\"}"], ""),
+    ).success
+    let worker = Filesystem.Write(path: join([worktree, "/src.dag"], ""), content: "worker").success
+      && run_git(dir: worktree, args: ["add", "-A"])
+      && run_git(dir: worktree, args: ["commit", "-q", "-m", "worker"])
+    if origin_ok && worker {
+      let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+      let submissions = belt_attempt_submission_dir_for_instance(
+        instance: instance,
+        node_id: recapture_node as RoadmapNodeId,
+        attempt_key: recapture_attempt,
+      )
+      let _sub = shell.Mkdir.Parents(path: submissions as FilePath)
+      let capture = SubmissionCapture {
+        head_sha: worker_sha,
+        scm_repository: "/planted.json",
+        scm_commit_ordinal: 1,
+        scm_root_locator: SubmissionCaptureRootBound { locator: "planted" },
+        digest: "planted",
+        submission: WorkerSubmission { readiness: SubmissionReady, explanation: "planted", limitations: "none" },
+      }
+      let wrote = Filesystem.Write(
+        path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], ""),
+        content: submission_capture_text(capture: capture),
+      ).success
+      if wrote && worker_sha != "" { worktree } else { "" }
+    } else { "" }
+  }
+}
+
+fn recapture_holds(instance: HostDashboardInstance, worktree: String) -> Bool {
+  let head_before = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail: _ } => false
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal, repository_path } => {
+      let head_after = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+      let no_git_commit = head_before == head_after && head_before != ""
+      match load_repository_indexed(path: repository_path) {
+        RepositoryLoadRefused { cause: _ } => false
+        RepositoryLoaded { path: _, envelope, generation: _ } =>
+          match commit_at_reference(
+            commits: envelope.commits,
+            reference: RepositoryCommitRef { identity: MintedId { ordinal: commit_ordinal } },
+          ) {
+            Absent => false
+            Present { value: c } =>
+              match admit_capture(commit: c) {
+                CaptureRoleRefused { commit: _, cause: _ } => false
+                CaptureAdmitted(AdmittedCapture { commit: _, work }) =>
+                  no_git_commit
+                    && capture_work_eq(
+                      left: work,
+                      right: CaptureWork { unit: recapture_node as NonEmptyStr, attempt: recapture_attempt as NonEmptyStr },
+                    )
+                    && match c.work {
+                      WorkCapture { work: _ } => true
+                      NoWork => false
+                      WorkUnrecordedByFormat => false
+                    }
+              }
+          }
+      }
+    }
+  }
+}
+
+test fn the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution() -> Bool {
+  let instance = fresh_instance(tag: "mint")
+  let worktree = plant_worktree(instance: instance)
+  let held = worktree != "" && recapture_holds(instance: instance, worktree: worktree)
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  held && cleaned.success
+}
+
+test fn a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution() -> Bool {
+  let instance = fresh_instance(tag: "not-head")
+  let worktree = plant_worktree(instance: instance)
+  let recorded = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let checked_out_base = worktree != "" && recorded != "" && run_git(dir: worktree, args: ["checkout", "-q", "HEAD~1"])
+  let observed = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let refused = checked_out_base && observed != "" && observed != recorded && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } => detail == recapture_capture_absent_detail
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  refused && cleaned.success
+}
+
+test fn a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution() -> Bool {
+  let instance = fresh_instance(tag: "misaddress")
+  let worktree = plant_worktree(instance: instance)
+  let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD~1"])
+  let submissions = belt_attempt_submission_dir_for_instance(
+    instance: instance,
+    node_id: recapture_node as RoadmapNodeId,
+    attempt_key: recapture_attempt,
+  )
+  let misplaced = worktree != "" && worker_sha != "" && base_sha != "" && worker_sha != base_sha
+    && shell.Remove.FileForce(path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], "") as FilePath).success
+    && Filesystem.Write(
+      path: join([submissions, "/", submission_capture_basename(head_sha: base_sha)], ""),
+      content: submission_capture_text(capture: SubmissionCapture {
+        head_sha: worker_sha,
+        scm_repository: "/planted.json",
+        scm_commit_ordinal: 1,
+        scm_root_locator: SubmissionCaptureRootBound { locator: "planted" },
+        digest: "planted",
+        submission: WorkerSubmission { readiness: SubmissionReady, explanation: "planted", limitations: "none" },
+      }),
+    ).success
+  let refused = misplaced && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } => detail == recapture_capture_absent_detail
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  refused && cleaned.success
+}

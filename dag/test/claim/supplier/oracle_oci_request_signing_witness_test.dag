@@ -1,0 +1,108 @@
+module test.claim.supplier.oracle_oci_request_signing_witness
+
+import std.types { Bool, Int, String }
+import extdeps.cloud.oracle_oci_request_signing {
+  OciRequest, OciGetRequest, OciPostJson,
+  OciSigningPlan, OciSigningReady, OciSigningRefused,
+  OciApiKeyId,
+  oci_signing_plan, oci_http_date, oci_authorization_header,
+}
+
+// Oracle's own test values on the signing-requests page (read 2026-10-05) are the oracle here.
+// The GET signing string below is the page's, character for character. The page's POST example
+// elides its body, so the body digest is checked against SHA-256 values computed independently.
+// The empty-body digest is the well-known SHA-256 of zero bytes, and the {"a":1} digest was
+// computed with Python's hashlib.
+
+data oracle_vector_path: String = "/20160918/instances?availabilityDomain=Pjwf%3A%20PHX-AD-1&compartmentId=ocid1.compartment.oc1..aaaaaaaam3we6vgnherjq5q2idnccdflvjsnog7mlr6rtdb25gilchfeyjxa&displayName=TeamXInstances&volumeId=ocid1.volume.oc1.phx.abyhqljrgvttnlx73nmrwfaux7kcvzfs3s66izvxf2h4lgvyndsdsnoiwr5q"
+
+fn plan_of(req: OciRequest) -> OciSigningPlan {
+  oci_signing_plan(req: req)
+}
+
+fn signing_string_of(p: OciSigningPlan) -> String {
+  match p {
+    OciSigningReady { signing_string, headers_list, content_sha256, content_length } => signing_string
+    OciSigningRefused { cause } => ""
+  }
+}
+
+// Oracle's example date is "Thu, 05 Jan 2014 21:31:40 GMT", and its weekday is wrong: 5 January 2014
+// was a Sunday. The page's signing strings use the page's text verbatim, and the date header is
+// opaque to the signing string. So the GET vector below keeps "Thu", while the date this module
+// derives from the clock carries the true weekday.
+test fn the_http_date_derives_the_true_weekday_of_oracles_example_instant() -> Bool {
+  oci_http_date(epoch_seconds: 1388957500) == "Sun, 05 Jan 2014 21:31:40 GMT"
+}
+
+// A leap-day date in a different weekday and month, so the calendar arithmetic is not a single-point fit.
+test fn the_http_date_handles_a_leap_day() -> Bool {
+  oci_http_date(epoch_seconds: 1709210096) == "Thu, 29 Feb 2024 12:34:56 GMT"
+}
+
+test fn the_get_signing_string_is_oracles_vector() -> Bool {
+  let req = OciRequest {
+    shape: OciGetRequest,
+    host: "iaas.us-phoenix-1.oraclecloud.com",
+    path_and_query: oracle_vector_path,
+    date: "Thu, 05 Jan 2014 21:31:40 GMT",
+  }
+  signing_string_of(p: plan_of(req: req)) == join([
+    "date: Thu, 05 Jan 2014 21:31:40 GMT",
+    join(["(request-target): get ", oracle_vector_path], ""),
+    "host: iaas.us-phoenix-1.oraclecloud.com",
+  ], "\n")
+}
+
+fn post_plan(body: String) -> OciSigningPlan {
+  plan_of(req: OciRequest {
+    shape: OciPostJson { text: body },
+    host: "iaas.us-phoenix-1.oraclecloud.com",
+    path_and_query: "/20160918/volumeAttachments",
+    date: "Thu, 05 Jan 2014 21:31:40 GMT",
+  })
+}
+
+test fn a_post_signs_length_type_and_body_digest_in_oracles_order() -> Bool {
+  match post_plan(body: "{\"a\":1}") {
+    OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
+      content_sha256 == "AVq9f1zFei3ZS3WQ8ErYCEJzkF7jPsXOvq5iJ2qX+GI="
+        && content_length == 7
+        && headers_list == "date (request-target) host content-length content-type x-content-sha256"
+        && signing_string == join([
+          "date: Thu, 05 Jan 2014 21:31:40 GMT",
+          "(request-target): post /20160918/volumeAttachments",
+          "host: iaas.us-phoenix-1.oraclecloud.com",
+          "content-length: 7",
+          "content-type: application/json",
+          "x-content-sha256: AVq9f1zFei3ZS3WQ8ErYCEJzkF7jPsXOvq5iJ2qX+GI=",
+        ], "\n")
+    OciSigningRefused { cause } => false
+  }
+}
+
+test fn an_empty_body_digests_to_the_sha256_of_zero_bytes() -> Bool {
+  match post_plan(body: "") {
+    OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
+      content_sha256 == "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=" && content_length == 0
+    OciSigningRefused { cause } => false
+  }
+}
+
+// A body's content-length is its UTF-8 byte count, not its character count: "é" is one character and
+// two bytes, so {"n":"é"} is 9 characters and 10 bytes.
+test fn a_non_ascii_body_signs_its_utf8_byte_length() -> Bool {
+  match post_plan(body: "{\"n\":\"\u{e9}\"}") {
+    OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
+      content_length == 10 && string_contains(s: signing_string, pattern: "content-length: 10")
+    OciSigningRefused { cause } => false
+  }
+}
+
+test fn the_authorization_header_has_oracles_shape() -> Bool {
+  oci_authorization_header(
+    key: OciApiKeyId { tenancy: "ocid1.tenancy.oc1..t", user: "ocid1.user.oc1..u", fingerprint: "aa:bb" },
+    headers_list: "date (request-target) host",
+    signature_base64: "SIG=",
+  ) == "Signature version=\"1\",headers=\"date (request-target) host\",keyId=\"ocid1.tenancy.oc1..t/ocid1.user.oc1..u/aa:bb\",algorithm=\"rsa-sha256\",signature=\"SIG=\""
+}

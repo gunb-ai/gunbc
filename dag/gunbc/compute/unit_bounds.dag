@@ -1,9 +1,11 @@
 module gunbc.compute.unit_bounds
 
-import std.types { String, List }
+import std.types { String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
-import extdeps.systemd.systemd_run { systemd_run_property }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
 // gunbc.compute.work_provider_local as compute_unit_properties, and it moved here rather than being
@@ -22,8 +24,7 @@ import extdeps.systemd.systemd_run { systemd_run_property }
 // declaration -- a drop-in or a future default could change it, and a provider would keep treating
 // a completed wait as an empty cgroup (side-chat review at 773825cf). Binding it makes the policy a
 // fact of the invocation, and an agent session releases its seat on the same reading.
-data compute_kill_mode_property: String = "KillMode"
-data compute_kill_mode_value: String = "control-group"
+data compute_kill_mode_property: SystemdUnitProperty = KillModeProperty
 
 // WHAT A GRANT DOES NOT CARRY, NAMED RATHER THAN INVENTED. product.capacity.pool grants MEMORY: the
 // lease is an encumbrance over a Memory pool and nothing else, so a CPU quota or a task ceiling is
@@ -44,19 +45,27 @@ fn unit_cpu_quota_percent(m: Millicore) -> Nat {
   millicore_count(m: m) / 10
 }
 
-fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<String> {
+fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
   concat(
     [
-      systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted)))),
-      systemd_run_property(name: compute_kill_mode_property, value: compute_kill_mode_value),
-      systemd_run_property(name: "WorkingDirectory", value: working_directory),
+      SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
+      SystemdRunProperty { property: compute_kill_mode_property, value: compute_kill_mode_value() },
+      SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     ],
     match process_bounds {
       Absent => []
       Present { value: b } => [
-        systemd_run_property(name: "CPUQuota", value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "")),
-        systemd_run_property(name: "TasksMax", value: to_string(value: b.tasks_max)),
+        SystemdRunProperty { property: CPUQuota, value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "") as NonEmptyStr },
+        SystemdRunProperty { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
       ]
     },
   )
+}
+
+// THE kill mode the release decision relies on is the closed systemd fact KillModeControlGroup;
+// its wire spelling is owned by systemd_kill_mode_wire. This layer projects, it does not store a
+// second copy of the spelling (review 76958: the stored "control-group" was a parallel wire for a
+// closed upstream fact).
+fn compute_kill_mode_value() -> NonEmptyStr {
+  systemd_kill_mode_wire(mode: KillModeControlGroup) as NonEmptyStr
 }
