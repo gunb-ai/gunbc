@@ -49,6 +49,12 @@ data gigabyte_mp72_hb0_marketplace_listing_authority: ExternalAuthority = Extern
   }
 }
 
+// The MP72-HB0 is a CANDIDATE reference board with no fleet instance: no PhysicalAsset cites it, no
+// host's FRU binds to it (gunbc.board_authority_binding carries no row for it), and it is consumed
+// only as the contrast row of the board-profile witness and the forged-probe control. It exists so
+// the private machine-tile carrier can compare a dual-socket profile against a vendor-grounded row
+// rather than against prose. Dissolution trigger: if no asset cites it once the procurement gate
+// closes either way, delete this authority, its catalog row and those two controls.
 data gigabyte_mp72_hb0_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   subject: DeclarationRef {
     module_path: "extdeps.boards.gigabyte",
