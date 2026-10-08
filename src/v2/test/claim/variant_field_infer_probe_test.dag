@@ -642,66 +642,6 @@ test fn vfp_the_call_result_scrutinee_fact_stays_underived_on_the_assembled_rout
   vfp_arrow_reading().call_result_fact == ^vfp_underived
 }
 
-
-// DECLARED RED: same refused walk as the two-arm mismatch row -- the projection's fact reads the
-// terminal reason until the mismatch is settled.
-test fn vfp_the_projection_fact_reads_the_located_refusal_red() -> Bool {
-  vfp_fixture_reading().projection_fact == ^infer_match_arm_type_mismatch
-}
-
-// DECLARED RED: the nullary arm rides the same refused walk. When the mismatch settles, this row
-// flips to `== ^Int` beside the arrow binder row.
-test fn vfp_the_nullary_arm_fact_reads_the_located_refusal_red() -> Bool {
-  vfp_fixture_reading().nullary_arm_fact == ^infer_match_arm_type_mismatch
-}
-
-// THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
-// 4b(4)): before the payload reader landed, the arm binder's fact lookup was Absent -- NO_ENTRY,
-// warm-ferret-741's N7 locate of #2891785 (facts.lookup Absent under the #2891781
-// GroundingNotDerived parent) -- and the declared-red row asserting that defect value went red the
-// moment the reader landed. Flipped, it does not retire: the binder on the CALL-RESULT scrutinee
-// (the shape that dies on the native route) must read its payload field's type -- the regression
-// guard the param-scrutinee positive control does not cover.
-test fn vfp_the_call_result_arm_binder_types_from_its_payload_field_holds() -> Bool {
-  vfp_arrow_reading().arrow_arm_fact == ^Int
-}
-
-// THE ARROW FIXTURE'S RESOLVE-SIDE CONTROL (its second consumer claim): resolve must bind the
-// module's sole variant tag so the construct read names Ok, separating resolve binding from
-// whatever the infer facts say about the call-result scrutinee.
-test fn vfp_the_arrow_fixture_resolves_and_names_its_variant_holds() -> Bool {
-  vfp_arrow_reading().construct_read == ^Ok
-}
-// THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
-// want of coverage, resolve has already bound the construction's tag to its variant's declaring
-// path -- the control separates the resolve binding (green on both sides of the fix) from the
-// infer facts (red on main, green here), and gives the partial reading its second consumer under
-// the warm-producer sharing conjunct.
-test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
-  vfp_partial_reading().construct_read == ^Boxed
-}
-
-// THE BISECT FIXTURES THE LEDGER CITES (temporary; they go out when their rows' follow-ups
-// land): the nullary single-arm sum the single_arm_sum_parses_as_an_alias row's 2026-10-06
-// receipt cites, and the recursive record the grounding-cascade row cites.
-data vfp_nullary_sum_src: String = "module p\n\ntype A = MkA\n\nfn f() -> A { MkA }"
-
-data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a\n}"
-
-// TEMPORARY DECODE INSTRUMENT -- the one reading for the combined fixture: prints every field
-// through `gunbc run --function` so the actual values are readable, not guessed. DELETED WITH THE
-// RFM RETIREMENT RECEIPT.
-fn vfp_decode_fixture_reading(r: VfpFixtureReading) -> CliWireResponse {
-  CliWirePrintable { bytes: "read=" + symbol_lexeme(sym: r.construct_read) + " carr=" + symbol_lexeme(sym: r.construct_read_carrier) + " rt_constr=" + symbol_lexeme(sym: r.rt_construction_fact) + " rt_match=" + symbol_lexeme(sym: r.rt_match_fact) + " rt_arm=" + symbol_lexeme(sym: r.rt_arm_fact) + " null_arm=" + symbol_lexeme(sym: r.nullary_arm_fact) + " proj=" + symbol_lexeme(sym: r.projection_fact) + " reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
-}
-
-fn vfp_decode_fixture() -> CliWireResponse { vfp_decode_fixture_reading(r: vfp_fixture_reading()) }
-
-fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
-  CliWirePrintable { bytes: "arr_read=" + symbol_lexeme(sym: r.construct_read) + " scrut=" + symbol_lexeme(sym: r.call_result_fact) + " arr=" + symbol_lexeme(sym: r.arrow_arm_fact) + " arr_reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
-}
-
-
 // DECLARED RED: same refused walk as the two-arm mismatch row -- the projection's fact reads the
 // terminal reason until the mismatch is settled.
 test fn vfp_the_projection_fact_reads_the_located_refusal_red() -> Bool {
