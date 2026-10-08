@@ -12,7 +12,8 @@ import v2.std.provenance { SpanIndex, span_index_textual_locus_optional }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -30,11 +31,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The fixture's own text (braces escaped here so this module's literals stay plain):
 //   fn f(a: Int) -> String { "x{a}y" }
-data sth_int_hole: String = "module p\n\nfn f(a: Int) -> String {\n  \"x\{a\}y\"\n}\n"
+//   data k: String = "k"
+//   data s: String = "a{k}b"
+// The data initializer rides in the same module: normalize folds a data initializer's children BEFORE the
+// template reader runs, and a template that was not read raw lost its holes (the hole's expression
+// wrapper was lowered away), leaving concat("a","b") with no reference to k.
+data sth_int_hole: String = "module p\n\ndata k: String = \"k\"\n\ndata s: String = \"a\{k\}b\"\n\nfn f(a: Int) -> String {\n  \"x\{a\}y\"\n}\n"
+data sth_unbound_hole: String = "module p\n\ndata s: String = \"a\{nope\}b\"\n"
 
 // RED, LOCATED AT THE HOLE: an Int hole is not converted; it refuses at the concat argument, as an
 // authored concat("x", a) with a: Int does, and the refusal's node resolves through the parse's span
-// index to the hole `a` -- byte 40 of sth_int_hole, inside the template -- not to a generated node
+// index to the hole `a` -- byte 88 of sth_int_hole, inside the template -- not to a generated node
 // with no authored position (body_lowering_fold body_lower_string_template_part_source).
 // One assembly, read once: assemble_program_from_ingest_located returns the span index it recorded
 // beside the program, so the locus is resolved against the same parse that infer refused -- no second
@@ -47,6 +54,39 @@ fn sth_assembly() -> IngestAssembly {
   )
 }
 
+// THE ROUTE, NOT ONLY THE ANSWER: `data s` is lowered by the real normalize, and its hole `k` must SURVIVE as
+// a reference to p.k -- one for the data row; the Int hole's `a` is a parameter reference, so it is not
+// counted. A template folded children-first would reduce this to zero.
+fn sth_k_references(tree: Node) -> Int {
+  fold(node_subtree_nodes(root: tree), init: 0, f: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: p } => if qualified_name_to_dotted_string(qn: p) == "p.k" { acc + 1 } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+// An unbound hole is a located refusal, not a dropped one: assembly itself rejects.
+test fn an_unbound_hole_in_a_data_initializer_refuses() -> Bool {
+  match assemble_program_from_ingest_located(
+    ingest: Cons { head: bla_source(src: sth_unbound_hole, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu), tail: fmi_list_peers() },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ).program {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// The same assembly as the Int-hole claim (a pure producer, shared across claims), read for what normalize
+// kept: the data initializer's hole reference.
+test fn a_data_initializer_template_keeps_its_hole() -> Bool {
+  match sth_assembly().program {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } => sth_k_references(tree: tree) >= 1
+  }
+}
+
 test fn an_int_hole_refuses_at_the_hole() -> Bool {
   let assembly = sth_assembly()
   match assembly.program {
@@ -56,7 +96,7 @@ test fn an_int_hole_refuses_at_the_hole() -> Bool {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: d } =>
           (diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit)
-            && sth_locus_starts_within(index: assembly.spans, at: diagnostics_fatal(d: d).at, start: 40, end: 41)
+            && sth_locus_starts_within(index: assembly.spans, at: diagnostics_fatal(d: d).at, start: 88, end: 89)
       }
   }
 }

@@ -4,7 +4,9 @@ import std.types { List }
 import v2.compiler.body_lowering_fold { body_lower_string_template }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
+  dag_emit_terminals_text,
   dag_language_model,
+  dag_lex,
   dag_string_literal_node_from_lexeme,
   dag_string_literal_value_optional,
   dag_string_template_part_node_from_lexeme,
@@ -20,8 +22,8 @@ import v2.std.collection { list_at_optional }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
-import v2.std.grammar { grammar_named_edge, node_atom_identity_optional }
+import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
+import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge, node_atom_identity_optional }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
@@ -225,12 +227,25 @@ fn st_child(n: Node, index: Int) -> Optional<Node> {
   }
 }
 
+// The operator is the roster row referenced by its DECLARING path (std.algebra collection_concat_shape), a
+// spine of atoms std . algebra . collection_concat_shape -- never the bare atom `concat`, which resolve
+// binds to a module's own declaration before the roster.
+fn st_count_atoms(op: Node, identity: Symbol) -> Int {
+  fold(node_subtree_nodes(root: op), init: 0, f: fn(acc, n) {
+    if node_atom_identity_optional(node: n) == optional_present(value: identity) { acc + 1 } else { acc }
+  })
+}
+
+fn st_names_roster_concat_row(op: Node) -> Bool {
+  (st_count_atoms(op: op, identity: ^collection_concat_shape) == 1) && (st_count_atoms(op: op, identity: ^concat) == 0)
+}
+
 fn st_is_concat_of(n: Node, cause: Int) -> Bool {
   match n.kind {
     ComputationNode { behavior: Transform } =>
       (length(xs: n.children) == 3)
         && (match st_child(n: n, index: 0) {
-              Present { value: op } => node_atom_identity_optional(node: op) == optional_present(value: ^concat)
+              Present { value: op } => st_names_roster_concat_row(op: op)
               Absent => false
             })
         && (n.occurrence_id == OccurrencePending { caused_by: OccurrenceId { value: cause } })
@@ -258,5 +273,62 @@ test fn a_template_lowers_to_a_located_concat_chain() -> Bool {
               Present { value: inner } => st_is_concat_of(n: inner, cause: 2) && st_text_is(n: st_child(n: inner, index: 1), value: "x")
               Absent => false
             })
+  }
+}
+
+// ---- the reader refuses what it cannot read whole ---------------------------------------------------
+//
+// A template's parts alternate text, hole, text. A sequence that does not -- here "x" then "y" with the
+// hole's expression wrapper gone, which is what a fold of the children before this read leaves -- is
+// Absent, never the surviving fragments, so body lowering refuses it located instead of building
+// concat("x","y") with the hole and its dependency dropped. The normalize route that used to feed it
+// such a shell is the real-path claim's subject (v2.test.claim.compiler.string_template_hole_type).
+fn st_holeless_shell() -> Node {
+  st_production(
+    emitted: ^dag_string_template,
+    captured: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)) },
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)) }
+      ]
+    ),
+    occurrence: st_minted(n: 0)
+  )
+}
+
+test fn a_template_whose_hole_was_lowered_away_is_unreadable_and_refuses() -> Bool {
+  (match string_template_parts_optional(node: st_holeless_shell()) {
+    Present { value: _ } => false
+    Absent => true
+  })
+    && (match body_lower_string_template(shell: st_holeless_shell()) {
+          Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_string_template_unread
+          Accepted { value: _, diagnostics: _ } => false
+        })
+}
+
+// ---- emission keeps a hole a hole ---------------------------------------------------------------------
+//
+// A template head or middle token ends AT the hole opener, and a hole opens only when that brace is followed
+// directly by an identifier start, `(`, `!` or `-`. The emitter used to write one space between every pair
+// of tokens, giving `"a{ x }b"`, which re-lexes as ONE plain literal: the holes became text. So the text is
+// asserted exactly, and then lexed again: head, ident, MIDDLE, ident, tail.   "a{x}b{y}c"
+fn st_terminals() -> List<GrammarEmitTerminal> {
+  [
+    GrammarEmitClassTerminal { token_class: ^dag_token_string_template_head, captured: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"a\{", occurrence: OccurrenceSynthetic) },
+    GrammarEmitLexemeTerminal { token_class: ^dag_token_ident, lexeme: ^x },
+    GrammarEmitClassTerminal { token_class: ^dag_token_string_template_middle, captured: st_part(token_class: ^dag_token_string_template_middle, lexeme: "\}b\{", occurrence: OccurrenceSynthetic) },
+    GrammarEmitLexemeTerminal { token_class: ^dag_token_ident, lexeme: ^y },
+    GrammarEmitClassTerminal { token_class: ^dag_token_string_template_tail, captured: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}c\"", occurrence: OccurrenceSynthetic) }
+  ]
+}
+
+test fn emitted_template_tokens_stay_adjacent_so_the_holes_survive_a_re_lex() -> Bool {
+  match dag_emit_terminals_text(lex: dag_lex(), terminals: st_terminals()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } =>
+      (text == "\"a\{x\}b\{y\}c\"")
+        && (st_classes(source: text) == [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail])
   }
 }

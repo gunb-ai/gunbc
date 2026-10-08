@@ -5676,13 +5676,40 @@ fn string_template_parts_optional(node: Node) -> Optional<List<StringTemplatePar
     Present { value: emitted } =>
       if emitted == ^dag_string_template {
         match parse_production_captured_child_optional(node: node) {
-          Present { value: captured } => optional_present(value: dag_string_template_parts_walk(acc: [], n: captured))
+          Present { value: captured } => dag_string_template_parts_well_formed_optional(parts: dag_string_template_parts_walk(acc: [], n: captured))
           Absent => optional_absent()
         }
       } else {
         optional_absent()
       }
     Absent => optional_absent()
+  }
+}
+
+// A template's parts ALTERNATE: text, hole, text, ..., text. A sequence that does not -- two texts
+// adjacent because a hole's expression wrapper was lowered away before this read, a hole beside a hole,
+// a template ending on a hole -- is not a template this reader can speak for, and is Absent rather than
+// the surviving fragments: a consumer that took the fragments would drop the hole and its dependency.
+type DagTemplateShape {
+  ok: Bool
+  expect_text: Bool
+}
+
+fn dag_string_template_shape_step(shape: DagTemplateShape, part: StringTemplatePart) -> DagTemplateShape {
+  match part {
+    StringTemplateText { value: _, at: _ } => DagTemplateShape { ok: shape.ok && shape.expect_text, expect_text: false }
+    StringTemplateHole { expr: _ } => DagTemplateShape { ok: shape.ok && !shape.expect_text, expect_text: true }
+  }
+}
+
+fn dag_string_template_parts_well_formed_optional(parts: List<StringTemplatePart>) -> Optional<List<StringTemplatePart>> {
+  let shape = fold(parts, init: DagTemplateShape { ok: true, expect_text: true }, f: fn(acc, part) {
+    dag_string_template_shape_step(shape: acc, part: part)
+  })
+  if shape.ok && !shape.expect_text {
+    optional_present(value: parts)
+  } else {
+    optional_absent()
   }
 }
 
@@ -8244,32 +8271,57 @@ fn dag_emit_token_spelling(lex: LexRules, terminal: GrammarEmitTerminal) -> Outc
   }
 }
 
-// THE TEXT BUILT SO FAR, and whether the next token is to follow a line break the grammar requires.
+// THE TEXT BUILT SO FAR, whether the next token is to follow a line break the grammar requires, and
+// whether it is to be written ADJACENT to the previous one. Adjacency is a fact of the lexer, not
+// layout: a template head or middle token ends at the hole opener, and a hole opens only when that
+// brace is followed directly by an identifier start, `(`, `!` or `-` (dag_string_hole_opener_pattern),
+// so a space written after it would re-read the template as a plain literal and lose its holes.
 type DagEmitText {
   text: String
   break_pending: Bool
+  glue_next: Bool
+}
+
+fn dag_emit_token_glues_next(terminal: GrammarEmitTerminal) -> Bool {
+  match terminal {
+    GrammarEmitClassTerminal { token_class: c, captured: _ } =>
+      (c == ^dag_token_string_template_head) || (c == ^dag_token_string_template_middle)
+    GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } => false
+    GrammarEmitLineBreak => false
+  }
+}
+
+fn dag_emit_separator(acc: DagEmitText) -> String {
+  if acc.text == "" { "" } else if acc.glue_next { "" } else if acc.break_pending { "\n" } else { " " }
 }
 
 // Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
-// read back. A line break is written only where the grammar requires one (GrammarEmitLineBreak).
-// Layout is otherwise a projection over this text, not a fact of the emit.
+// read back -- except after a template head or middle token (DagEmitText). A line break is written only
+// where the grammar requires one (GrammarEmitLineBreak). Layout is otherwise a projection over this
+// text, not a fact of the emit.
 fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -> Outcome<DagEmitText> {
   match t {
-    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true })
+    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true, glue_next: acc.glue_next })
     GrammarEmitClassTerminal { token_class: _, captured: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
-          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
-          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+          outcome_accepted(value: DagEmitText {
+            text: concat(acc.text, concat(dag_emit_separator(acc: acc), spelled)),
+            break_pending: false,
+            glue_next: dag_emit_token_glues_next(terminal: t)
+          })
         }
       )
     GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
-          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
-          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+          outcome_accepted(value: DagEmitText {
+            text: concat(acc.text, concat(dag_emit_separator(acc: acc), spelled)),
+            break_pending: false,
+            glue_next: false
+          })
         }
       )
   }
@@ -8280,7 +8332,7 @@ fn dag_emit_terminals_text(lex: LexRules, terminals: List<GrammarEmitTerminal>) 
   bind_outcome(
     o: fold(
       terminals,
-      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false }),
+      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false, glue_next: false }),
       f: fn(acc, t) { bind_outcome(o: acc, f: fn(state) { dag_emit_text_step(lex: lex, acc: state, t: t) }) }
     ),
     f: fn(state) { outcome_accepted(value: state.text) }

@@ -788,11 +788,18 @@ fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_fn_literal)
 }
 
+// A STRING TEMPLATE IS READ RAW TOO: its holes are recognised by their dag_surface_expr wrapper
+// (v2.extdeps.languages.dag string_template_parts_optional), and folding the children first lowers that
+// wrapper away, so the reader saw only the text parts and the chain dropped every hole -- and with it the
+// hole's dependency and any refusal of an unbound or ill-typed hole.
+//
 // A service or resource declaration lowers from its UNFOLDED parse subtree (body_lower_service_decl,
 // body_lower_resource_decl): its members are interface or set-aside facts, never bodies, so folding
 // them first would retain each one.
 fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
   if (emitted == ^dag_surface_service_decl) || (emitted == ^dag_surface_resource_decl) {
+    true
+  } else if emitted == ^dag_string_template {
     true
   } else if emitted == ^dag_surface_fn_body {
     under_fn_decl
@@ -6631,7 +6638,11 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
 // by the one reader (v2.extdeps.languages.dag string_template_parts_optional), fold left into
 // `concat(concat(t0, h1), t1) ...`: each text part becomes the string literal it spells (located at
 // that part), each hole its own lowered expression, and the operator is the bare `concat` a source
-// call would name, so the chain types exactly as an authored chain does -- through the free-monoid
+// call would resolve to -- the collection roster's row, referenced by its DECLARING path
+// (std.algebra collection_concat_shape) and never by the bare spelling `concat`, which resolve binds
+// to a local, an import or an indexed declaration BEFORE the roster, so a module's own `concat` would
+// capture every template and a permissive one would bypass the String-only hole rule -- so the chain
+// types exactly as an authored chain does -- through the free-monoid
 // bound on the roster's concat row. That is why a hole whose value is not text REFUSES at its
 // argument instead of being converted: there is no implicit to_string (DESIGN section 4, the
 // coercion law), and the refusal is located at that hole (body_lower_string_template_part_source).
@@ -6686,7 +6697,7 @@ fn body_lower_string_template_concat(left: Node, operand: Node, cause: Node) -> 
   node_with_occurrence_id(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^concat } }, children: [], occurrence_id: occurrence) },
+      Edge { label: Positional, target: body_lower_algebra_constructor_reference(name: ^collection_concat_shape, source: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^concat } }, children: [], occurrence_id: occurrence)) },
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: operand }
     ],
