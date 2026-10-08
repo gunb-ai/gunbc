@@ -285,14 +285,14 @@ use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
-    EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOptionalityMismatch,
-    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
-    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
-    UnresolvedType, VariantCollision,
+    EqualityAgainstPresentOnListRead, EqualityMemberUnjudgeable, EqualityOnFunctionMember,
+    EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
+    MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
+    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
+    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
+    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -5141,6 +5141,54 @@ pub fn equality_operand_is_optional(
     }
 }
 
+pub fn equality_operand_list_read_name(n: Rc<Node>) -> String {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => equality_list_read_leaf(n.name.clone()),
+        ExprData::ExprCall { .. } => equality_list_read_leaf(n.name.clone()),
+        _ => "".to_string(),
+    }
+}
+
+pub fn equality_list_read_leaf(name: String) -> String {
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+        if ((((((leaf.clone() == "first".to_string()) || (leaf.clone() == "last".to_string()))
+            || (leaf.clone() == "get".to_string()))
+            || (leaf.clone() == "index".to_string()))
+            || (leaf.clone() == "min".to_string()))
+            || (leaf.clone() == "max".to_string()))
+        {
+            leaf.clone()
+        } else {
+            "".to_string()
+        }
+    }
+}
+
+pub fn equality_operand_is_present_literal(n: Rc<Node>) -> bool {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            (crate::v1_std_core::qualified_last_segment(n.name.clone()) == "Present".to_string())
+        }
+        _ => false,
+    }
+}
+
+pub fn equality_present_on_list_read(left: Rc<Node>, right: Rc<Node>) -> String {
+    if equality_operand_is_present_literal(right.clone()) {
+        equality_operand_list_read_name(left.clone())
+    } else {
+        if equality_operand_is_present_literal(left.clone()) {
+            equality_operand_list_read_name(right.clone())
+        } else {
+            "".to_string()
+        }
+    }
+}
+
 pub fn equality_admission_refusal_diag(
     r: Rc<EqualityAdmissionRefusal>,
     span: Rc<SourceSpan>,
@@ -5216,42 +5264,47 @@ pub fn equality_admission_diags(
                 {
                     Rc::new(vec![])
                 } else {
-                    if (equality_operand_is_optional(left_typed.clone(), source_indices.clone())
-                        != equality_operand_is_optional(
+                    if (equality_present_on_list_read(left_typed.clone(), right_typed.clone())
+                        != "".to_string())
+                    {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::EqualityAgainstPresentOnListRead {
+                                list_read: equality_present_on_list_read(
+                                    left_typed.clone(),
+                                    right_typed.clone(),
+                                ),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )])
+                    } else {
+                        if (equality_operand_is_optional(
+                            left_typed.clone(),
+                            source_indices.clone(),
+                        ) != equality_operand_is_optional(
                             right_typed.clone(),
                             source_indices.clone(),
-                        ))
-                    {
-                        {
-                            let side = if equality_operand_is_optional(
-                                left_typed.clone(),
-                                source_indices.clone(),
-                            ) {
-                                "left".to_string()
-                            } else {
-                                "right".to_string()
-                            };
-                            Rc::new(vec![crate::v1_std_core::make_error_node(
-                                Rc::new(CompilerDiagnostic::EqualityOptionalityMismatch {
-                                    optional_side: side.clone(),
-                                    span: span.clone(),
-                                }),
-                                scope.module_name.clone(),
-                            )])
-                        }
-                    } else {
-                        match equality_operand_admission(
-                            lt.clone(),
-                            scope.clone(),
-                            v1_rt::rc_empty_map::<String, bool>(),
-                            0,
-                        ) {
-                            Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                equality_admission_refusal_diag(r.clone(), span.clone()),
-                                scope.module_name.clone(),
-                            )]),
-                            std::option::Option::None => match equality_operand_admission(
-                                rt.clone(),
+                        )) {
+                            {
+                                let side = if equality_operand_is_optional(
+                                    left_typed.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    "left".to_string()
+                                } else {
+                                    "right".to_string()
+                                };
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::EqualityOptionalityMismatch {
+                                        optional_side: side.clone(),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
+                        } else {
+                            match equality_operand_admission(
+                                lt.clone(),
                                 scope.clone(),
                                 v1_rt::rc_empty_map::<String, bool>(),
                                 0,
@@ -5260,8 +5313,19 @@ pub fn equality_admission_diags(
                                     equality_admission_refusal_diag(r.clone(), span.clone()),
                                     scope.module_name.clone(),
                                 )]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            },
+                                std::option::Option::None => match equality_operand_admission(
+                                    rt.clone(),
+                                    scope.clone(),
+                                    v1_rt::rc_empty_map::<String, bool>(),
+                                    0,
+                                ) {
+                                    Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        equality_admission_refusal_diag(r.clone(), span.clone()),
+                                        scope.module_name.clone(),
+                                    )]),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                            }
                         }
                     }
                 }
