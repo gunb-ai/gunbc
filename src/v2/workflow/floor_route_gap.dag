@@ -1191,7 +1191,6 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
   }
   }
   }
-  }
 }
 
 // MegaRAC committed-artifact sha256sum: first host effect is shell.Mktemp.Dir (checksum
