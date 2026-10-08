@@ -26715,6 +26715,56 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
     }
 }
 
+pub fn rust_emit_length_on_host_string(
+    func: String,
+    args: Rc<Vec<Rc<Node>>>,
+    call_semantics: Option<Rc<CallSemantics>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    if (func.clone() != "length".to_string()) {
+        std::option::Option::None
+    } else {
+        {
+            let length_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
+                args.clone(),
+                func.clone(),
+                call_semantics.clone(),
+                scope.clone(),
+            );
+            match length_args.clone().first().cloned() {
+                std::option::Option::None => std::option::Option::None,
+                Some(xs_arg) => {
+                    if is_string_typed_expr(
+                        crate::v1_std_core::arg_value(xs_arg.clone()),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(v1_rt::concat(
+                            v1_rt::concat(
+                                "v1_rt::string_length(&".to_string(),
+                                emit_typed_expr_base(
+                                    crate::v1_std_core::arg_value(xs_arg.clone()),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                            ),
+                            ")".to_string(),
+                        ))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -26993,6 +27043,19 @@ pub fn emit_typed_call(
                 };
                 return disc_result;
             }
+        }
+        match rust_emit_length_on_host_string(
+            func.clone(),
+            args.clone(),
+            call_semantics.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        ) {
+            Some(lowered) => return lowered.clone(),
+            std::option::Option::None => {}
         }
         let ordered_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
             args.clone(),

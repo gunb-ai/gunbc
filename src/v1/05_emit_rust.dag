@@ -12629,6 +12629,30 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // emit_func_def names the declaration it renders on the body scope (caller_decl_name) so that read
 // has a subject.
 
+// THE SAME LENGTH DECISION THE METHOD PATH ALREADY ASKS. AlgebraMethodSemantics remaps `.length`
+// on a host-string receiver to `string_length`. The function form `v2.std.algebra` `length` over
+// `FreeMonoid<Char>` is that operation spelled as a call: `String` inhabits the monoid, so
+// `length(xs: s)` is legal source. Emitting it as the generic FreeMonoid body (`Rc<Vec<T>>`) is
+// E0308 against the host `String` at `request_field` and at every `length` of a `String` in
+// `std.scoped_authorization`. Both spellings ask whether the operand is host text, and both lower
+// to `v1_rt::string_length`.
+fn rust_emit_length_on_host_string(func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  if func != "length" { none } else {
+    let length_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
+    match length_args |> first {
+      Absent => none
+      Present { value: xs_arg } =>
+        if is_string_typed_expr(e: arg_value(n: xs_arg), source_indices: scope.type_env.source_indices) {
+          Present { value: concat(
+            "v1_rt::string_length(&",
+            emit_typed_expr_base(texpr: arg_value(n: xs_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
+            ")"
+          ) }
+        } else { none }
+    }
+  }
+}
+
 fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -12708,6 +12732,10 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
       Absent => "compile_error!(\"discriminant call missing value argument\")"
     }
     return disc_result
+  }
+  match rust_emit_length_on_host_string(func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+    Present { value: lowered } => return lowered
+    Absent => {}
   }
   let ordered_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
   let application_plan = call_semantics_supplied_application_plan(cs: call_semantics)
