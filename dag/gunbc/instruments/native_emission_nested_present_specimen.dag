@@ -20,7 +20,8 @@ type SpecimenNestedCard {
 fn specimen_nested_is_lit(card: SpecimenNestedCard) -> Bool {
   match card {
     SpecimenNestedCard { shade: Present { value: SpecimenNestedLit { name: _ } } } => true
-    _ => false
+    SpecimenNestedCard { shade: Present { value: SpecimenNestedDark } } => false
+    SpecimenNestedCard { shade: Absent } => false
   }
 }
 
@@ -31,7 +32,7 @@ fn specimen_nested_is_lit_split(card: SpecimenNestedCard) -> Bool {
         SpecimenNestedLit { name: _ } => true
         SpecimenNestedDark => false
       }
-      _ => false
+      Absent => false
     }
   }
 }
