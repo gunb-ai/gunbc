@@ -569,6 +569,93 @@ pub(crate) fn run_claim_evaluation(
     .map_err(|payload| panic_payload_text(&payload))
 }
 
+/// Why the discovery authority's per-file fold produced no roster. Two causes, two repairs: the
+/// authority could not be EVALUATED (a frame or interpreter defect, located at the source when one
+/// was being folded), or it evaluated and REFUSED the corpus (a placement or sidecar violation,
+/// carried as the producer's own reason).
+pub(crate) enum FloorDiscoveryFoldRefusal {
+    Unevaluable {
+        source: Option<String>,
+        function: &'static str,
+        error: String,
+    },
+    Refused {
+        reason: String,
+    },
+}
+
+impl FloorDiscoveryFoldRefusal {
+    pub(crate) fn rendered(&self) -> String {
+        match self {
+            FloorDiscoveryFoldRefusal::Unevaluable {
+                source: Some(source),
+                function,
+                error,
+            } => format!(
+                "cause=FloorDiscoveryAuthorityUnevaluable source={source} — {function}: {error}"
+            ),
+            FloorDiscoveryFoldRefusal::Unevaluable {
+                source: None,
+                function,
+                error,
+            } => format!("cause=FloorDiscoveryAuthorityUnevaluable — {function}: {error}"),
+            FloorDiscoveryFoldRefusal::Refused { reason } => {
+                format!("cause=FloorDiscoveryRefused — {reason}")
+            }
+        }
+    }
+}
+
+/// THE FLOOR'S DISCOVERY, AS ONE FOLD OVER WHATEVER SOURCES THE CALLER HOLDS.
+///
+/// `v2.workflow.floor_discovery_source_authority` `discover_floor_rows_for_source` per source, then
+/// `floor_discovery_finalize_source_outcomes` over the outcomes -- the one authority for which
+/// `test` declarations a source enrolls. The required floor folds it over its full inventory;
+/// `gunbc test`'s claim route folds it over the modules its operand names. Same authority, same
+/// calls, narrower subject: the subject narrows, the decision does not move (review 44641's rule).
+/// `frame` must have that module in scope by its qualified name.
+pub(crate) fn floor_discovery_rows_over_sources<'a>(
+    frame: &v1_interpreter::InterpContext,
+    sources: impl IntoIterator<Item = &'a v1_compiler_compile::SourceFile>,
+) -> Result<Vec<DiscoveryRow>, FloorDiscoveryFoldRefusal> {
+    let mut outcomes: Vec<v1_interpreter::Value> = Vec::new();
+    for source in sources {
+        let repo_path = source.path.replace('\\', "/");
+        let args = [
+            (Some("repo_path".to_string()), str_value(repo_path.clone())),
+            (
+                Some("content".to_string()),
+                str_value(source.content.clone()),
+            ),
+        ];
+        let outcome = v1_interpreter::run_in_context_with_args(
+            frame,
+            "v2.workflow.floor_discovery_source_authority.discover_floor_rows_for_source",
+            &args,
+            false,
+        )
+        .map_err(|e| FloorDiscoveryFoldRefusal::Unevaluable {
+            source: Some(repo_path),
+            function: "discover_floor_rows_for_source",
+            error: e.to_string(),
+        })?;
+        outcomes.push(outcome);
+    }
+    let finalized = v1_interpreter::run_in_context_with_args(
+        frame,
+        "v2.workflow.floor_discovery_source_authority.floor_discovery_finalize_source_outcomes",
+        &[(Some("outcomes".to_string()), list_value_from_vec(outcomes))],
+        false,
+    )
+    .map_err(|e| FloorDiscoveryFoldRefusal::Unevaluable {
+        source: None,
+        function: "floor_discovery_finalize_source_outcomes",
+        error: e.to_string(),
+    })?;
+    parse_floor_discovery_producer_result(frame, &finalized)
+        .map_err(|reason| FloorDiscoveryFoldRefusal::Refused { reason })
+}
+
 /// Read the grounded opaque-host-call surface, or refuse.
 ///
 /// RETURNS THE OPERATIONS, NEVER AN EMPTY VEC ON FAILURE. `opaque_host_call_surface()` answers a
@@ -9465,53 +9552,11 @@ pub fn run_required_floor(
     let discovery_started = std::time::Instant::now();
     let producer_frame = floor_authority_frame(&prepared, FLOOR_DISCOVERY_AUTHORITY_MODULE)?;
     let discovery_source_count = full_inventory.len();
-    let mut discovery_outcomes: Vec<v1_interpreter::Value> =
-        Vec::with_capacity(full_inventory.len());
-    for src in &full_inventory {
-        let args = [
-            (
-                Some("repo_path".to_string()),
-                str_value(src.source.path.replace('\\', "/")),
-            ),
-            (
-                Some("content".to_string()),
-                str_value(src.source.content.clone()),
-            ),
-        ];
-        let outcome = v1_interpreter::run_in_context_with_args(
-            &producer_frame,
-            "v2.workflow.floor_discovery_source_authority.discover_floor_rows_for_source",
-            &args,
-            false,
-        )
-        .map_err(|e| {
-            format!(
-                "REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryAuthorityUnevaluable source={} — \
-                 discover_floor_rows_for_source: {e}",
-                src.source.path.replace('\\', "/")
-            )
-        })?;
-        discovery_outcomes.push(outcome);
-    }
-    let finalized = v1_interpreter::run_in_context_with_args(
+    let discovery_rows = floor_discovery_rows_over_sources(
         &producer_frame,
-        "v2.workflow.floor_discovery_source_authority.floor_discovery_finalize_source_outcomes",
-        &[(
-            Some("outcomes".to_string()),
-            list_value_from_vec(discovery_outcomes),
-        )],
-        false,
+        full_inventory.iter().map(|src| src.source.as_ref()),
     )
-    .map_err(|e| {
-        format!(
-            "REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryAuthorityUnevaluable — \
-             floor_discovery_finalize_source_outcomes: {e}"
-        )
-    })?;
-    let discovery_rows = parse_floor_discovery_producer_result(&producer_frame, &finalized)
-        .map_err(|reason| {
-            format!("REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryRefused — {reason}")
-        })?;
+    .map_err(|refusal| format!("REQUIRED-FLOOR REFUSAL {}", refusal.rendered()))?;
     // Rows are (entry, function); the disposition loop below needs the entry's AUTHORED module
     // name, which preparation read off the `module` line and holds beside the same path.
     let module_for_path: std::collections::HashMap<String, &str> = full_inventory
