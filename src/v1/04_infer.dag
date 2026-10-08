@@ -138,7 +138,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, ancestry_chain_mismatch_name, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -14289,7 +14289,7 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
     bindings: filtered.bindings,
     str_bindings: filtered.str_bindings,
     ancestry_str_bindings: filtered.ancestry_str_bindings,
-    parents: [],
+    parents: filtered.parents,
     recursive_types: filtered.recursive_types,
     recursive_type_set: filtered.recursive_type_set,
     inductive_fields: filtered.inductive_fields,
@@ -14329,7 +14329,7 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
     bindings: env.bindings,
     str_bindings: env.str_bindings,
     ancestry_str_bindings: env.ancestry_str_bindings,
-    parents: [],
+    parents: env.parents,
     recursive_types: env.recursive_types,
     recursive_type_set: env.recursive_type_set,
     inductive_fields: env.inductive_fields,
@@ -15567,6 +15567,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       fold(imp.specific_names, init: with_bare, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
     }
   )
+  let source_visible_names = fold(map_keys(ancestry_str_bindings), init: source_visible_names, f: (acc, n) => map_insert(acc, n, true))
   let authored_import_names = fold(module.resolved_imports, init: empty_map(), f: (acc, imp) =>
     if imp.is_all {
       acc
@@ -15575,14 +15576,20 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let overlay_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let chain_mismatch = ancestry_chain_mismatch_name(flat: overlay_env)
+  let overlay_mismatch_diags = match chain_mismatch {
+    Present { value: name } => [make_error_node(diagnostic: InternalError { message: concat("ancestry chain/overlay mismatch for '", name, "' in '", module_name_str, "'"), span: kernel_span(name: name) }, module_name: module_name_str)]
+    Absent => []
+  }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: empty_map(), parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
   let final_env = TypeEnv { module_path: module_name_str,
     bindings: resolved_env_out.bindings,
     str_bindings: resolved_env_out.str_bindings,
-    ancestry_str_bindings: resolved_env_out.ancestry_str_bindings,
+    ancestry_str_bindings: empty_map(),
     parents: scope_parents,
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
@@ -15594,7 +15601,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     unit_variant_index: resolved_env_out.unit_variant_index,
     unit_variant_index_observed: resolved_env_out.unit_variant_index_observed,
   }
-  let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
+  let cache_str_bindings = map_merge(ancestry_str_bindings, final_env.str_bindings)
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: cache_str_bindings,
@@ -15604,7 +15611,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   BuildTypeEnvResult {
     env: final_env,
     cache: type_env_cache,
-    diagnostics: concat(concat(import_diags, namespace_alias_diags), resolved_diags),
+    diagnostics: concat(concat(concat(import_diags, namespace_alias_diags), resolved_diags), overlay_mismatch_diags),
     binding_forks: binding_forks
   }
 }
@@ -15688,14 +15695,20 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let overlay_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let chain_mismatch = ancestry_chain_mismatch_name(flat: overlay_env)
+  let overlay_mismatch_diags = match chain_mismatch {
+    Present { value: name } => [make_error_node(diagnostic: InternalError { message: concat("ancestry chain/overlay mismatch for '", name, "' in '", module_name_str, "'"), span: kernel_span(name: name) }, module_name: module_name_str)]
+    Absent => []
+  }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: empty_map(), parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: visible_str_bindings,
     cycle_set_str: cycle_set_str,
     variant_locals: empty_map()
   }
-  BuildTypeEnvResult { env: unresolved_env, cache: type_env_cache, diagnostics: [], binding_forks: [] }
+  BuildTypeEnvResult { env: unresolved_env, cache: type_env_cache, diagnostics: overlay_mismatch_diags, binding_forks: [] }
 }
 
 // DIRECT SERVICE REQUIREMENTS ARE RECOMPUTED FROM TYPED BODIES, AFTER THE DECISION THAT DECIDES

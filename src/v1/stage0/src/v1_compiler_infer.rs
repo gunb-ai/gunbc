@@ -24903,7 +24903,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             bindings: filtered.bindings.clone(),
             str_bindings: filtered.str_bindings.clone(),
             ancestry_str_bindings: filtered.ancestry_str_bindings.clone(),
-            parents: Rc::new(vec![]),
+            parents: filtered.parents.clone(),
             recursive_types: filtered.recursive_types.clone(),
             recursive_type_set: filtered.recursive_type_set.clone(),
             inductive_fields: filtered.inductive_fields.clone(),
@@ -24930,7 +24930,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             bindings: env.bindings.clone(),
             str_bindings: env.str_bindings.clone(),
             ancestry_str_bindings: env.ancestry_str_bindings.clone(),
-            parents: Rc::new(vec![]),
+            parents: env.parents.clone(),
             recursive_types: env.recursive_types.clone(),
             recursive_type_set: env.recursive_type_set.clone(),
             inductive_fields: env.inductive_fields.clone(),
@@ -27685,6 +27685,15 @@ pub fn build_type_env(
                 }
             },
         );
+        let source_visible_names = Rc::new(v1_rt::map_keys(&*ancestry_str_bindings))
+            .iter()
+            .cloned()
+            .fold(
+                source_visible_names.clone(),
+                |acc: Rc<HashMap<String, bool>>, n: String| {
+                    v1_rt::rc_map_insert(acc, n.clone(), true)
+                },
+            );
         let authored_import_names = module.resolved_imports.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
@@ -27705,7 +27714,7 @@ pub fn build_type_env(
             scope_parents.clone(),
             source_indices.clone(),
         );
-        let unresolved_env = Rc::new(TypeEnv {
+        let overlay_env = Rc::new(TypeEnv {
             module_path: module_name_str.clone(),
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
@@ -27722,6 +27731,18 @@ pub fn build_type_env(
             unit_variant_index: module_variant_index.clone(),
             unit_variant_index_observed: true,
         });
+        if let Some(name) =
+            crate::v1_compiler_infer_env::ancestry_chain_mismatch_name(overlay_env.clone())
+        {
+            panic!(
+                "ancestry chain/overlay mismatch for '{}' in '{}'",
+                name, module_name_str
+            );
+        }
+        let unresolved_env = Rc::new(TypeEnv {
+            ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+            ..(*overlay_env).clone()
+        });
         let resolved = resolve_env_bindings(
             unresolved_env.clone(),
             module_name_str.clone(),
@@ -27734,7 +27755,7 @@ pub fn build_type_env(
             module_path: module_name_str.clone(),
             bindings: resolved_env_out.bindings.clone(),
             str_bindings: resolved_env_out.str_bindings.clone(),
-            ancestry_str_bindings: resolved_env_out.ancestry_str_bindings.clone(),
+            ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
             parents: scope_parents.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
@@ -27748,7 +27769,7 @@ pub fn build_type_env(
             unit_variant_index_observed: resolved_env_out.unit_variant_index_observed.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
-            final_env.ancestry_str_bindings.clone(),
+            ancestry_str_bindings.clone(),
             final_env.str_bindings.clone(),
         );
         let type_env_cache = Rc::new(TypeEnvCache {
@@ -28196,7 +28217,7 @@ pub fn build_type_env_unresolved(
             scope_parents.clone(),
             source_indices.clone(),
         );
-        let unresolved_env = Rc::new(TypeEnv {
+        let overlay_env = Rc::new(TypeEnv {
             module_path: module_name_str.clone(),
             bindings: local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
@@ -28212,6 +28233,18 @@ pub fn build_type_env_unresolved(
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
             unit_variant_index: module_variant_index.clone(),
             unit_variant_index_observed: true,
+        });
+        if let Some(name) =
+            crate::v1_compiler_infer_env::ancestry_chain_mismatch_name(overlay_env.clone())
+        {
+            panic!(
+                "ancestry chain/overlay mismatch for '{}' in '{}'",
+                name, module_name_str
+            );
+        }
+        let unresolved_env = Rc::new(TypeEnv {
+            ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+            ..(*overlay_env).clone()
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),

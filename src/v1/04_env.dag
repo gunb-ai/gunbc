@@ -640,20 +640,63 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
-// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing): parent-chain
-// lookup lets the prepared graph drop the flattened ancestry overlay after Strict-prep (the
-// floor's dominant resident term at prepared-subject-warm). Serves the v2 self-host floor.
+// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing): a non-empty
+// ancestry_str_bindings is a COMPLETE materialized overlay (miss does not walk). An empty
+// overlay is the parent chain: last parent wins, matching import-union later-wins then kernel
+// (scope_parents = imports ++ [kernel]). Serves the v2 self-host floor by not retaining a
+// per-module flatten of shared ancestry.
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
-    Absent => match map_get(env.ancestry_str_bindings, name) {
-      Present { value: binding } => Present { value: binding }
-      Absent =>
-        fold(env.parents, init: none, f: (acc, parent) => match acc {
+    Absent =>
+      if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
+        fold(env.parents, init: none, f: (acc, parent) =>
+          match lookup_binding_on_chain(env: parent, name: name) {
+            Present { value: binding } => Present { value: binding }
+            Absent => acc
+          }
+        )
+      } else {
+        match map_get(env.ancestry_str_bindings, name) {
           Present { value: binding } => Present { value: binding }
-          Absent => lookup_binding_on_chain(env: parent, name: name)
-        })
+          Absent => none
+        }
+      }
+  }
+}
+
+fn ancestry_chain_mismatch_name(flat: TypeEnv) -> String? {
+  if (flat.ancestry_str_bindings |> map_keys |> count) == 0 {
+    none
+  } else {
+    let chain = TypeEnv {
+      module_path: flat.module_path,
+      bindings: flat.bindings,
+      str_bindings: flat.str_bindings,
+      ancestry_str_bindings: empty_map(),
+      parents: flat.parents,
+      recursive_types: flat.recursive_types,
+      recursive_type_set: flat.recursive_type_set,
+      inductive_fields: flat.inductive_fields,
+      source_indices: flat.source_indices,
+      intern_table: flat.intern_table,
+      source_visible_names: flat.source_visible_names,
+      authored_import_names: flat.authored_import_names,
+      symbol_index: flat.symbol_index,
+      unit_variant_index: flat.unit_variant_index,
+      unit_variant_index_observed: flat.unit_variant_index_observed
     }
+    fold(map_keys(flat.ancestry_str_bindings), init: none, f: (acc, name) =>
+      match acc {
+        Present { value: n } => Present { value: n }
+        Absent =>
+          if lookup_binding_on_chain(env: flat, name: name) == lookup_binding_on_chain(env: chain, name: name) {
+            none
+          } else {
+            Present { value: name }
+          }
+      }
+    )
   }
 }
 

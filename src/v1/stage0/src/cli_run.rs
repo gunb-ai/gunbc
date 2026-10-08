@@ -38264,12 +38264,10 @@ pub fn prepare_repository_from_corpus(
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
 ///
-/// `TypeEnv.ancestry_str_bindings` is the same lifetime defect at the floor's dominant
-/// cardinality (merge_group prepared-subject-warm: 10_521_069 retained entries, 3055 spines
-/// ≈ one flattened overlay per typed module). Typecheck already closed the subject; evaluation
-/// looks up remaining names through `str_bindings` then `parents` (`lookup_binding_on_chain`).
-/// Emptying the flattened overlay here is DESIGN §2: discovery and the claim fold do not need
-/// a second copy of every ancestor binding on every module.
+/// `TypeEnv.ancestry_str_bindings` is no longer retained on the prepared graph: build_type_env
+/// keeps the overlay only long enough to check `ancestry_chain_mismatch_name` against a parent
+/// walk, then stores an empty overlay. Empty overlay + parents is the chain state; a non-empty
+/// overlay is a complete flatten and does not walk. Kernel is empty overlay + no parents.
 fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
 ) -> Rc<v1_compiler_compile::ResolvedGraph> {

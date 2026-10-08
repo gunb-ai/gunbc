@@ -1054,21 +1054,41 @@ fn lookup_binding_on_chain_seen(
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         std::option::Option::None => {
-            match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
-                Some(binding) => Some(binding.clone()),
-                std::option::Option::None => {
-                    for parent in env.parents.iter() {
-                        if let Some(binding) =
-                            lookup_binding_on_chain_seen(parent.clone(), name.clone(), seen)
-                        {
-                            return Some(binding);
-                        }
+            if env.ancestry_str_bindings.is_empty() {
+                for parent in env.parents.iter().rev() {
+                    if let Some(binding) =
+                        lookup_binding_on_chain_seen(parent.clone(), name.clone(), seen)
+                    {
+                        return Some(binding);
                     }
-                    std::option::Option::None
+                }
+                std::option::Option::None
+            } else {
+                match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
+                    Some(binding) => Some(binding.clone()),
+                    std::option::Option::None => std::option::Option::None,
                 }
             }
         }
     }
+}
+
+pub fn ancestry_chain_mismatch_name(flat: Rc<TypeEnv>) -> Option<String> {
+    if flat.ancestry_str_bindings.is_empty() {
+        return std::option::Option::None;
+    }
+    let chain = Rc::new(TypeEnv {
+        ancestry_str_bindings: v1_rt::rc_empty_map(),
+        ..(*flat).clone()
+    });
+    for name in v1_rt::map_keys(&*flat.ancestry_str_bindings) {
+        if lookup_binding_on_chain(flat.clone(), name.clone())
+            != lookup_binding_on_chain(chain.clone(), name.clone())
+        {
+            return Some(name);
+        }
+    }
+    std::option::Option::None
 }
 
 pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
