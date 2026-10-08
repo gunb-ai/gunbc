@@ -125,6 +125,8 @@ test fn the_mode_is_rostered_and_pinned_to_the_brokers_placed_host() -> Bool {
   })
     && (match moved {
       EnrolmentCodeIssuePlaced { host, base_url } => (host as String) == "srv2" && string_contains(s: base_url as String, pattern: "srv2.")
+        && (match enrolment_code_issue_refuses_off_broker_host(host: "srv2", broker_host: host) { ExitSuccess => true  _ => false })
+        && (match enrolment_code_issue_refuses_off_broker_host(host: "srv1", broker_host: host) { ExitSuccess => false  _ => true })
       EnrolmentCodeIssueUnplaced { detail: _ } => false
     })
     && (match unheld { EnrolmentCodeIssueUnplaced { detail: _ } => true  _ => false })
