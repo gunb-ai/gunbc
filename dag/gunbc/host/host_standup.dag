@@ -1,5 +1,19 @@
 module gunbc.host_standup
 
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.effects { IdempotencyEvidence }
+import std.upsert_decision { ObservationVerdict }
+import std.measure { millisecond }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.host_effect { host_effect_identity_evidence, host_effect_converge_loop_evidence }
+import gunbc.bmc_onboarding { BmcCredentialProbeResult, FactoryDefault, CredentialsRotated, bmc_credential_probe_to_phase }
+import gunbc.os_install_mechanism { OsInstallMechanismRefused, OsInstallMechanismSelected, srv3_install_mechanism_solution }
+import gunbc.host_standup_assimilation_deduction { deduce_os_install_actuated_satisfied, srv3_pre_install_actuation_verdict }
+import gunbc.host_converge { ConvergePolicy, fleet_converge_policy }
+
 type HostStandupPrefixPhase
   = BmcCredentialConverge
   | OsInstallMechanismResolved
@@ -641,7 +655,7 @@ fn assimilation_complete_first_failure(
 ) -> AssimilationCompleteVerdict? {
   fold_list(
     xs: required,
-    empty: Absent,
+    empty: none,
     cons: fn(acc, wanted_input) {
       match acc {
         Present { value: _ } => acc

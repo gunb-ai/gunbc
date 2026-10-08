@@ -556,7 +556,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/harness/harness_seat.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_assimilation_program.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_assimilation_program.dag", name: "filter", standing: Retired { cause: BindsWithoutDeclaration } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_assimilation_program.dag", name: "fold_list", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_assimilation_program.dag", name: "fold_list", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_identity_access.dag", name: "ComputeHost", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_identity_access.dag", name: "SshShell", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/host/host_identity_access.dag", name: "grounded_principal_privileged_commands", standing: Retired { cause: ImportsFixed } },
