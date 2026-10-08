@@ -118,6 +118,8 @@ data text_plain_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: 
 data application_json_utf8: MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [charset_utf8] }
 data text_javascript_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
 data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
+data text_css_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "css", parameters: [charset_utf8] }
+data font_woff2: MediaType = MediaType { top_level: TopLevelFont, subtype: "woff2", parameters: [] }
 
 // The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set http_method_label below reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
 type HttpMethodParse
@@ -356,6 +358,7 @@ type ServeResponseHeader
   = ServeResponseHeaderLocation { location: NonEmptyStr }
   | ServeResponseHeaderSetCookie { cookie: SetCookie }
   | ServeResponseHeaderNoStore
+  | ServeResponseHeaderCacheImmutable { max_age_seconds: Int }
 
 // RFC 6265 section 4.1 Set-Cookie, as its named parts rather than a pre-spelled line: the
 // cookie-pair and the attributes a deployment sets (Path, Secure, HttpOnly, Max-Age, and
@@ -431,6 +434,8 @@ fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
     ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: WireHeaderLocation, value: l as String }
     ServeResponseHeaderSetCookie { cookie: c } => ServeWireHeader { name: WireHeaderSetCookie, value: set_cookie_value(cookie: c) }
     ServeResponseHeaderNoStore => ServeWireHeader { name: WireHeaderCacheControl, value: "no-store" }
+    ServeResponseHeaderCacheImmutable { max_age_seconds: n } =>
+      ServeWireHeader { name: WireHeaderCacheControl, value: join(["public, max-age=", to_string(value: n), ", immutable"], "") }
   }
 }
 
