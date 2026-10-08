@@ -3605,41 +3605,48 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
     rows
 }
 
-/// Fixture-closure extension index: same `source_files` as the process-shared slot, own
-/// caches, reused across fixture compiles in this thread. Distinct from the index the claim
-/// fold reads. A fresh scratch per compile made every `compile_dag_diagnostic_census` cold-extend
-/// (~20s fill on the 90-minute floor). RFM `fixture_compile_retained_on_the_process_shared_index`.
-thread_local! {
-    static FIXTURE_EXTENSION_INDEX: RefCell<Option<Rc<MultiEntryIndex>>> = const { RefCell::new(None) };
-}
-
-fn scratch_index_for_fixture_closure_extension() -> Result<Rc<MultiEntryIndex>, String> {
-    if let Some(existing) = FIXTURE_EXTENSION_INDEX.with(|slot| slot.borrow().clone()) {
-        return Ok(existing);
-    }
+/// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
+/// slot; own caches, dropped with the loader. Seeded with a *copy* of the shared slot's already
+/// computed edge/parse rows so a census does not cold-walk the gate closure, then writes stay on
+/// the scratch (MegaRAC rows never land on the fold's index and do not outlive the compile).
+/// RFM `fixture_compile_retained_on_the_process_shared_index`.
+fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
-    let idx = match entry_resolve::try_process_shared_index(&layers) {
-        Ok(shared) => Rc::new(entry_resolve::new_multi_entry_index_scratch_over(
-            shared.source_files.clone(),
-            &shared.source_roots,
-        )),
+    match entry_resolve::try_process_shared_index(&layers) {
+        Ok(shared) => {
+            let scratch = entry_resolve::new_multi_entry_index_scratch_over(
+                shared.source_files.clone(),
+                &shared.source_roots,
+            );
+            seed_fixture_scratch_from_shared(&scratch, &shared);
+            Ok(scratch)
+        }
         Err(_) => {
             let roots = entry_resolve::canonical_shared_index_roots(&layers);
-            Rc::new(entry_resolve::new_multi_entry_index_shell(
+            Ok(entry_resolve::new_multi_entry_index_shell(
                 try_build_module_index(&roots)?,
                 &roots,
             ))
         }
-    };
-    FIXTURE_EXTENSION_INDEX.with(|slot| {
-        *slot.borrow_mut() = Some(idx.clone());
-    });
-    Ok(idx)
+    }
 }
 
-#[cfg(test)]
-pub(crate) fn fixture_extension_index_for_test() -> Option<Rc<MultiEntryIndex>> {
-    FIXTURE_EXTENSION_INDEX.with(|slot| slot.borrow().clone())
+fn seed_fixture_scratch_from_shared(scratch: &MultiEntryIndex, shared: &MultiEntryIndex) {
+    if let Some(edges) = shared.both_closure_edges.borrow().as_ref() {
+        *scratch.both_closure_edges.borrow_mut() = Some(Rc::new((**edges).clone()));
+    }
+    scratch
+        .parsed_references
+        .borrow_mut()
+        .clone_from(&*shared.parsed_references.borrow());
+    scratch
+        .bare_reference_admission
+        .borrow_mut()
+        .clone_from(&*shared.bare_reference_admission.borrow());
+    scratch
+        .parse_cache
+        .borrow_mut()
+        .clone_from(&*shared.parse_cache.borrow());
 }
 
 /// Authored-import seeds of an in-memory fixture: the corpus modules its `import` lines name,
@@ -3733,8 +3740,8 @@ pub(crate) fn extend_fixture_imports_on_process_shared_index(
 /// authored with an explicit import manifest a witness may be probing (an unlisted use, a
 /// refused import), so its own spelling stays exactly what it declares; every module it reaches
 /// is closed as the corpus closes it. An extension failure is returned, never widened past.
-/// The fixpoint mutates a fixture-only index reused across compiles in this thread, never
-/// the process-shared slot the claim fold reads.
+/// The fixpoint mutates a scratch index (dropped with the loader), never the process-shared
+/// slot the claim fold reads.
 pub(crate) fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
