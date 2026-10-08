@@ -13,7 +13,6 @@ import gunbc.roadmap_authority {
 }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content_for_projection }
 import gunbc.roadmap_page {
-  roadmap_page_for_projection,
   roadmap_daily_workspace_page_for_projection_observed,
 }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
@@ -26,10 +25,8 @@ import gunbc.roadmap_site_surface_types {
   roadmap_site_surface_subject,
 }
 import gunbc.roadmap_site_surface_render {
-  roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
   roadmap_site_daily_url_path,
-  roadmap_site_full_url_path,
   site_artifact_digest,
   served_page_body,
   healthz_body_from_surface_artifacts,
@@ -73,14 +70,12 @@ fn subject_identity_for_projection(proj: RoadmapAuthorityProjection) -> Fnv1a64S
 }
 
 fn bundle_identity_from_artifacts(
-  roadmap: RoadmapSiteSurfaceArtifact,
   dispatch: RoadmapSiteSurfaceArtifact,
   daily: RoadmapSiteSurfaceArtifact,
-  full: RoadmapSiteSurfaceArtifact,
   dispatch_js: RoadmapSiteSurfaceArtifact,
 ) -> Fnv1a64Structural {
   fold(
-    [roadmap.digest, dispatch.digest, daily.digest, full.digest, dispatch_js.digest],
+    [dispatch.digest, daily.digest, dispatch_js.digest],
     init: content_hash_atom(value: "roadmap-site-surface-bundle/v1" as NonEmptyStr),
     f: (acc, digest) => content_hash_combine_structural(left: acc, right: digest),
   )
@@ -89,7 +84,6 @@ fn bundle_identity_from_artifacts(
 fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProjection) -> RoadmapSiteSurfaceBundle {
   let subject_identity = subject_identity_for_projection(proj: proj)
   let producer_identity = roadmap_site_surface_producer_identity()
-  let roadmap_body = expected_roadmap_md_for_projection(proj: proj)
   let dispatch_body = roadmap_dispatch_file_content_for_projection(proj: proj)
   let daily_body = served_page_body(
     page: roadmap_daily_workspace_page_for_projection_observed(
@@ -101,13 +95,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
       profiles: [],
     )
   )
-  let full_body = served_page_body(page: roadmap_page_for_projection(proj: proj))
   let js_body = dispatch_client_js_source()
-  let roadmap = RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_site_roadmap_url_path,
-    body: roadmap_body,
-    digest: site_artifact_digest(body: roadmap_body),
-  }
   let dispatch = RoadmapSiteSurfaceArtifact {
     url_path: roadmap_site_dispatch_url_path,
     body: dispatch_body,
@@ -118,11 +106,6 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
     body: daily_body,
     digest: site_artifact_digest(body: daily_body),
   }
-  let full = RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_site_full_url_path,
-    body: full_body,
-    digest: site_artifact_digest(body: full_body),
-  }
   let dispatch_js = RoadmapSiteSurfaceArtifact {
     url_path: roadmap_dispatch_asset_path as NonEmptyStr,
     body: js_body,
@@ -132,22 +115,16 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
     subject_identity: subject_identity,
     producer_identity: producer_identity,
     bundle_identity: bundle_identity_from_artifacts(
-      roadmap: roadmap,
       dispatch: dispatch,
       daily: daily,
-      full: full,
       dispatch_js: dispatch_js,
     ),
-    roadmap_md: roadmap,
     dispatch_json: dispatch,
     daily_html: daily,
-    full_html: full,
     dispatch_js: dispatch_js,
     healthz_body: healthz_body_from_surface_artifacts(
-      roadmap: roadmap,
       dispatch: dispatch,
       daily: daily,
-      full: full,
       dispatch_js: dispatch_js,
     ),
   }

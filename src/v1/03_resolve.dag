@@ -220,8 +220,8 @@ type ImportResolveResult {
 // not the mint's own declaration is the construction: one spelling, one referent, or a typed
 // refusal at the import. The mint owner (`kernel_mint_declaration_rows`) may still be imported.
 // Names with no mint row are not this wall -- they are the dual-representation population
-// (`carrier_by_spelling` for String). Mint Optional imports stay accepted; refusing every
-// kernel-named import would refuse the floor.
+// (`carrier_by_spelling` for String). Census before the cut: zero production modules import a
+// non-mint type named Optional; 359 import Optional from std.optional and stay accepted.
 fn module_type_declaration_names(module: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
   let type_names = module_items(n: module)
     |> filter(item => item.module_item_kind == ModuleItemTypeDeclaration)

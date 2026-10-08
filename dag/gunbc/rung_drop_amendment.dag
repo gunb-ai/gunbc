@@ -1,7 +1,7 @@
 module gunbc.rung_drop_amendment
 
 import std.types { String, NonEmptyStr, List, Bool }
-import gunbc.rung_drop { RungDropStanding, Standing, Retired }
+import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded }
 
 // A LATER RULING AMENDING A STANDING RUNG DROP -- THE ONE THING gunbc.rung_drop COULD NOT CARRY.
 // A DESIGN section 4b(3) declaration is written once, at the moment the guarantee falls: previous
@@ -33,7 +33,13 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired }
 // row is still `Standing`, so `standing_sentence` would close it with "the restoration trigger above
 // stands whole", which would be FALSE. That is the one thing this carrier can say wrongly.
 //
-// It is left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDES A TRIGGER TODAY,
+// UPDATE 2026-10-06: the first real supersession arrived (gunbc.rung_drop
+// rust_unit_tests_over_their_cap), and it ENDED a drop rather than replacing its trigger, so it is
+// the RungDropStanding arm Superseded { ruling, decision_record, loss_holder } and the closing
+// sentence branches on it; test.claim.rung_drop_superseded_standing_witness_test is its red. A
+// ruling that REPLACES a standing row's trigger is still unmodelled, for the reason below.
+//
+// It was left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDED A TRIGGER THEN,
 // and an arm with no instance is a constructor that constructs nothing -- the decoration DESIGN
 // section 4b names at the top rung, permanently green and worse than absent because it would be
 // cited as coverage. What arrives with the first real superseding ruling is an authored arm carrying
@@ -85,6 +91,7 @@ fn standing_sentence(standing: RungDropStanding) -> String {
   match standing {
     Standing => "The restoration trigger above stands whole."
     Retired { trigger_fired: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
+    Superseded { ruling: _, decision_record: _, loss_holder: h } => concat(concat("The trigger above did NOT fire; a superseding ruling ended this drop, and its loss is held by ", (h as String)), ".")
   }
 }
 

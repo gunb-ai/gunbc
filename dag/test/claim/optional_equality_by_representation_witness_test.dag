@@ -1,0 +1,26 @@
+module test.claim.optional_equality_by_representation
+
+import v2.std.live_tree { LiveTreeDisposition }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type ObrKind = ObrFirst | ObrSecond
+
+data obr_kinds: List<ObrKind> = [ObrFirst, ObrSecond]
+
+// EXPECTED RED (v2.workflow.floor_expected_red, chunk optional_equality_by_representation): the
+// method-form specimen of gunbc.recurring_failure_mode optional_equality_answers_by_representation
+// over a data list of variant rows. The interpreter's `first` yields the raw element, the literal is
+// held as Present, and `==` answers false. When `first` realizes the modeled optional the roster row
+// is deleted and this claim stays as the regression control (DESIGN 4b(4)).
+test fn a_present_first_equals_its_present_literal() -> Bool {
+  obr_kinds.first() == Present { value: ObrFirst }
+}
+
+// POSITIVE CONTROL: the same read on the same list, eliminated by a match, answers by value.
+test fn a_match_on_the_present_first_reads_its_value() -> Bool {
+  match obr_kinds.first() {
+    Present { value: ObrFirst } => true
+    _ => false
+  }
+}

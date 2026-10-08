@@ -269,6 +269,207 @@ pub(crate) fn floor_route_gap_expectation_mismatch(
     }
 }
 
+/// THE ROUTE the run site takes to the admission decision. The relation it names is modeled on
+/// `v2.workflow.floor_route_gap` — the authority that owns the register — and there is no Rust
+/// copy of the membership test: this constant is the single route, and the pairing witness
+/// drives the same name through `run_in_context_with_args` so a rename here breaks the witness
+/// instead of silently forking the decision.
+pub(crate) const ROUTE_GAP_ADMISSION_PARTITION_ENTRY: &str =
+    "v2.workflow.floor_route_gap.floor_route_gap_admission_partition";
+
+/// THE MARSHAL the run site and the pairing witness share: a suppressed row reaches the modeled
+/// relation as a `FloorRouteGapSuppressedRow` record carrying its identity and its ground — the
+/// runner's suppression enum decoded into the relation's declared coproduct
+/// (`v2.workflow.floor_route_gap`'s `FloorRouteGapSuppressionGround`), arm-for-arm — and
+/// nothing else. One marshal, so the shape cannot fork between the real roster and the fixture.
+pub(crate) fn route_gap_suppressed_rows_value(
+    ctx: &v1_interpreter::InterpContext,
+    rows: &[(String, SuppressionGround)],
+) -> v1_interpreter::Value {
+    // The declared arms are spelled arm-for-arm after the runner's suppression enum, so this
+    // decode is the spelling's only authority: a rename on either side breaks this match or the
+    // fixture, never forks silently. Inlined — the marshal is one counted seed item with no
+    // nested hand declaration of its own.
+    v1_interpreter::list_value(
+        rows.iter()
+            .map(|(identity, ground)| v1_interpreter::Value::Record {
+                type_name: ctx.sym("FloorRouteGapSuppressedRow"),
+                fields: Rc::new(vec![
+                    (ctx.sym("identity"), v1_interpreter::str_value(identity)),
+                    (
+                        ctx.sym("ground"),
+                        v1_interpreter::Value::Variant {
+                            type_name: ctx.sym("FloorRouteGapSuppressionGround"),
+                            variant_name: ctx.sym(match *ground {
+                                SuppressionGround::OutsideRequiredGate => "OutsideRequiredGate",
+                                SuppressionGround::WithheldCostDebt => "WithheldCostDebt",
+                                SuppressionGround::DeclinedNoCiWetLane => "DeclinedNoCiWetLane",
+                            }),
+                            fields: Rc::new(vec![]),
+                        },
+                    ),
+                ]),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// THE SECOND MARSHAL the run site and the pairing witness share: the discovery walk's
+/// declared-identity index, marshaled WHOLE as a keyed map (identity -> disposition label) —
+/// the shape the modeled relation judges membership with. The runner does no membership test:
+/// `contains_key` here would BE the refuse-if-undeclared decision made outside
+/// `v2.workflow.floor_route_gap`'s `floor_route_gap_admission_partition`, so the judgment
+/// travels to the .dag authority and this marshal only moves the data. Keyed, because the
+/// alternative — the same universe flattened into a list the relation re-scans per row — is
+/// the corpus-sized join the .dag contract retires.
+pub(crate) fn route_gap_declared_map_value(
+    declared: &HashMap<String, RequiredFloorDisposition>,
+) -> v1_interpreter::Value {
+    let mut entries = im::HashMap::new();
+    for (identity, disposition) in declared {
+        let key = v1_interpreter::CanonKey::new(v1_interpreter::str_value(identity))
+            .expect("identity is a valid string map key");
+        entries = entries.update(
+            key,
+            v1_interpreter::str_value(required_floor_disposition_label(disposition)),
+        );
+    }
+    v1_interpreter::map_value(entries)
+}
+
+/// THE PRODUCTION DECODE + ENFORCE for the modeled admission partition's answer, shared by the
+/// run site and the pairing test: every row is decoded by its declared arm (a refused row with
+/// no identity, an unknown ground arm, or an unknown arm refuses the whole decode — never
+/// widens), a refused row raises REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared, and
+/// every measured row is recorded per identity with its ground on the roster's channel as
+/// MEASUREMENT (closes nothing). The fixture test drives this function over the misnamed
+/// fixture and requires the actual error, so the production branch — not only the relation —
+/// is exercised by a discriminating control.
+pub(crate) fn route_gap_admission_decode_and_enforce(
+    ctx: &v1_interpreter::InterpContext,
+    decided_rows: Vec<&v1_interpreter::Value>,
+    roster_len: usize,
+) -> Result<Vec<(String, String)>, String> {
+    let mut route_gap_refused: Vec<String> = Vec::new();
+    let mut route_gap_measured: Vec<(String, String)> = Vec::new();
+    for row in decided_rows {
+        let v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = row
+        else {
+            return Err(format!(
+                "route_gap_admission_partition: malformed admission row, observed {}",
+                floor_value_shape(Some(row))
+            ));
+        };
+        let field_str = |name: &str| -> Option<String> {
+            let value = ctx.field(fields, name)?;
+            match value {
+                v1_interpreter::Value::Str(s) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        let ground_arm = |name: &str| -> Option<String> {
+            let value = ctx.field(fields, name)?;
+            match value {
+                v1_interpreter::Value::Variant { variant_name, .. } => {
+                    Some(ctx.resolve(*variant_name).as_str().to_string())
+                }
+                _ => None,
+            }
+        };
+        match ctx.resolve(*variant_name).as_str() {
+            "FloorRouteGapAdmissionRefusedRow" => match field_str("identity") {
+                Some(identity) => route_gap_refused.push(identity),
+                None => {
+                    return Err(
+                        "route_gap_admission_partition: a refused row carries no identity"
+                            .to_string(),
+                    )
+                }
+            },
+            "FloorRouteGapAdmissionMeasuredRow" => {
+                match (field_str("identity"), ground_arm("ground")) {
+                    (Some(identity), Some(arm)) => {
+                        // The relation returns the declared arm; decode it back to the runner's
+                        // suppression enum by the same arm-for-arm spelling the marshal used, and
+                        // refuse an arm the enum does not declare — a fabricated ground can never
+                        // pass as a label.
+                        let ground = match arm.as_str() {
+                            "OutsideRequiredGate" => SuppressionGround::OutsideRequiredGate,
+                            "WithheldCostDebt" => SuppressionGround::WithheldCostDebt,
+                            "DeclinedNoCiWetLane" => SuppressionGround::DeclinedNoCiWetLane,
+                            other => {
+                                return Err(format!(
+                                    "route_gap_admission_partition: a measured row carries unknown suppression ground arm {other}"
+                                ))
+                            }
+                        };
+                        route_gap_measured.push((
+                            identity,
+                            crate::v1_compiler_expected_red_roster_join::suppression_ground_label(
+                                ground,
+                            ),
+                        ));
+                    }
+                    _ => {
+                        return Err(
+                            "route_gap_admission_partition: a measured row carries no identity or ground"
+                                .to_string(),
+                        )
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "route_gap_admission_partition: unknown admission arm {other}"
+                ))
+            }
+        }
+    }
+    if !route_gap_refused.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared — the route-gap roster \
+             enrolls identity(ies) the tree does not declare, refused by the modeled admission \
+             partition ({ROUTE_GAP_ADMISSION_PARTITION_ENTRY}). Suppression removes them before \
+             the reverse join, so no other guard can ever see them and a row that cannot be \
+             observed can never ask to be removed. Delete the enrollment or restore the \
+             identity: [{}]",
+            route_gap_refused.join(", ")
+        ));
+    }
+    // MEASUREMENT, NOT CLOSURE: every suppressed enrollment is named at identity grain with the
+    // ground the modeled partition returned for it, on the roster's own channel. For identities
+    // whose module the 2026-08-29 gate cut withdrew, this line records a declared dormancy —
+    // the gate decision owns it, and this record closes nothing for them.
+    let mut measured_by_ground: Vec<(String, Vec<String>)> = Vec::new();
+    for (identity, ground) in &route_gap_measured {
+        match measured_by_ground.iter_mut().find(|(g, _)| g == ground) {
+            Some((_, named)) => named.push(identity.clone()),
+            None => measured_by_ground.push((ground.clone(), vec![identity.clone()])),
+        }
+    }
+    measured_by_ground.sort();
+    for (ground, named) in &measured_by_ground {
+        eprintln!(
+            "[floor-route-gap] {} enrolled identity(ies) suppressed, kept as record and NOT \
+             held as agreement (dormant, not deleted; MEASUREMENT — the {ground} arm is owned by \
+             the gate cut of 2026-08-29 and the cost-debt roster, not by this check): {}",
+            named.len(),
+            named.join(", ")
+        );
+    }
+    eprintln!(
+        "[floor-route-gap] roster carries {} enrolled identity(ies) after admission; {} \
+         suppressed with ground and named above",
+        roster_len,
+        route_gap_measured.len()
+    );
+    Ok(route_gap_measured)
+}
+
 /// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
 /// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
 /// external or blocking interaction picks wall instead — but the choice is made here, by
@@ -6841,7 +7042,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
     in_flight_wall_cap_ms: u64,
 ) -> Result<(), String> {
     use super::claim_call_site_demand::{
-        CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
+        CallSiteDemandObserver, CallSiteDemandRow, ConsumerRead, CLOSED_ARGUMENT_NORMALIZER,
     };
     use v1_interpreter::Value;
     const MODULE: &str = "v2.workflow.floor_pure_producer_share";
@@ -6912,6 +7113,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
                 claims,
                 planned_claims,
                 sites,
+                reads,
             } => Value::Variant {
                 type_name: sym("CallSiteDemandObservation"),
                 variant_name: sym("ClosedCallSiteDemand"),
@@ -6937,6 +7139,44 @@ pub(crate) fn derive_and_install_cross_claim_share(
                     (
                         sym("sites"),
                         list_value_from_vec(sites.iter().map(str_value).collect()),
+                    ),
+                    (
+                        sym("reads"),
+                        list_value_from_vec(
+                            reads
+                                .iter()
+                                .map(|(claim, read)| {
+                                    let read = match read {
+                                        ConsumerRead::WholeValue => {
+                                            unit("ConsumerRead", "WholeValue")
+                                        }
+                                        ConsumerRead::ProjectedField(field) => Value::Variant {
+                                            type_name: sym("ConsumerRead"),
+                                            variant_name: sym("ProjectedField"),
+                                            fields: std::rc::Rc::new(vec![(
+                                                sym("field"),
+                                                str_value(field),
+                                            )]),
+                                        },
+                                        ConsumerRead::Unread(cause) => Value::Variant {
+                                            type_name: sym("ConsumerRead"),
+                                            variant_name: sym("ConsumerReadUnobserved"),
+                                            fields: std::rc::Rc::new(vec![(
+                                                sym("cause"),
+                                                unit("ConsumerReadCause", cause.variant()),
+                                            )]),
+                                        },
+                                    };
+                                    Value::Record {
+                                        type_name: sym("ClaimConsumerRead"),
+                                        fields: std::rc::Rc::new(vec![
+                                            (sym("claim"), str_value(claim)),
+                                            (sym("read"), read),
+                                        ]),
+                                    }
+                                })
+                                .collect(),
+                        ),
                     ),
                 ]),
             },
@@ -7104,15 +7344,39 @@ pub(crate) fn derive_and_install_cross_claim_share(
         };
         *decline_counts.entry(variant_of(r, "decline")?).or_default() += 1;
         // EVERY decline is printed, single-claim ones included, so each producer's disposition is
-        // readable by identity from the run's own log.
-        {
-            eprintln!(
-                "[cross-claim-share-declined] producer={} decline={} argument_preimage={}",
-                text_of(r, "producer")?,
-                variant_of(r, "decline")?,
-                text_of(r, "argument_preimage")?
-            );
-        }
+        // readable by identity from the run's own log. A bundle names the slices only one claim
+        // reads, and an unreadable consumer names its cause.
+        let detail = match ctx.field(r, "decline") {
+            Some(Value::Variant {
+                variant_name,
+                fields: d,
+                ..
+            }) => match ctx.resolve(*variant_name).as_str() {
+                "BundleOfDisjointProjections" => {
+                    let slices = ctx
+                        .field(d, "sole_projections")
+                        .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+                        .ok_or_else(|| malformed("a bundle decline has no `sole_projections`"))?;
+                    let mut names = Vec::new();
+                    for s in &slices {
+                        let Value::Str(s) = s else {
+                            return Err(malformed("a sole projection is not a String"));
+                        };
+                        names.push(s.to_string());
+                    }
+                    format!(" sole_projections=[{}]", names.join(","))
+                }
+                "ConsumerReadUnknown" => format!(" cause={}", variant_of(d, "cause")?),
+                _ => String::new(),
+            },
+            _ => return Err(malformed("a declined row has no `decline` variant")),
+        };
+        eprintln!(
+            "[cross-claim-share-declined] producer={} decline={}{detail} argument_preimage={}",
+            text_of(r, "producer")?,
+            variant_of(r, "decline")?,
+            text_of(r, "argument_preimage")?
+        );
     }
     let mut unadmissible_rendered = Vec::new();
     for row in &unadmissible {
@@ -9675,7 +9939,10 @@ pub fn run_required_floor(
                 "[floor-required-gate] {name}: {outside_gate} enrolled identity(ies) suppressed \
                  because their module is outside the required gate and was never loaded; their \
                  enrollment is dormant, not deleted, and becomes observable again when the gate \
-                 roster admits the module or in the whole-corpus receipts run"
+                 roster admits the module. There is no other observation point: no whole-corpus \
+                 receipts run exists or is scheduled, and the rung-drop authority rules a \
+                 receipt-only run outside the required path out as a retirement path — so the \
+                 consuming rosters record these identities per identity, never as a bare count"
             );
         }
         removed
@@ -10499,12 +10766,54 @@ pub fn run_required_floor(
         out
     };
     let mut route_gap_roster = route_gap_roster;
-    let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
-    let _ = suppress_declined_no_ci_wet_lane(&mut route_gap_roster, "floor_route_gap");
-    eprintln!(
-        "[floor-route-gap] roster carries {} enrolled identity(ies)",
-        route_gap_roster.len()
-    );
+    // THE ADMISSION PARTITION IS THE MODELED RELATION, and the relation is the single
+    // implementation. `suppress_withheld` returns exactly which identities it removed and why;
+    // this was the one call site that dropped the list (`let _ =`), so the reverse join below
+    // decided only over the identities a gate-bounded run can observe while every other
+    // enrollment sat in no ledger the run publishes. The runner now marshals the run's real
+    // values -- the suppressed identities with the ground that removed each, decoded into the
+    // relation's declared coproduct, and the discovery walk's declared-identity index -- into
+    // `v2.workflow.floor_route_gap`
+    // `.floor_route_gap_admission_partition` through the hermetic frame the manifest was folded
+    // in. There is no Rust copy of the membership test to rot apart from the roster it joins;
+    // the arms and their meaning live on the authority's contract, and the pairing witness
+    // (`test.claim.route_gap_partition_witness`, floor-side) drives the same surface over the
+    // shared fixture.
+    let mut route_gap_suppressed = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    route_gap_suppressed.extend(suppress_declined_no_ci_wet_lane(
+        &mut route_gap_roster,
+        "floor_route_gap",
+    ));
+    route_gap_suppressed.sort();
+    //
+    // THE WALL: a refused row names an enrollment the tree does not declare. The disposition
+    // index covers EVERY declared witness identity over the discovery roots (gunbc#9684), so
+    // absence there is absence from the tree — and suppression removed the row BEFORE the
+    // reverse join, so the stale arm can never fire for it. The cheapest way to fake a green
+    // run, enrolling an identity that does not exist, costs a refusal, never a count.
+    let suppressed_rows_value = route_gap_suppressed_rows_value(&hermetic, &route_gap_suppressed);
+    // THE DECLARED INDEX, MARshaled WHOLE AS A KEYED MAP: the relation does the membership
+    // judgment (map_contains_key per row) — this site only moves the data, no contains_key
+    // here, or the refuse-if-undeclared decision would live in Rust beside the .dag authority.
+    let declared_value = route_gap_declared_map_value(&cost_debt_disposition_index);
+    let route_gap_decided = v1_interpreter::run_in_context_with_args(
+        &hermetic,
+        ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+        &[
+            (Some("suppressed".to_string()), suppressed_rows_value),
+            (Some("declared".to_string()), declared_value),
+        ],
+        false,
+    )
+    .map_err(|e| format!("route_gap_admission_partition: {e}"))?;
+    let decided_rows = floor_decode_list(&hermetic, Some(&route_gap_decided))
+        .map_err(|e| format!("route_gap_admission_partition: {e}"))?;
+    // THE DECODE + ENFORCE, SHARED WITH THE FIXTURE TEST: the same function the pairing test
+    // drives over the misnamed fixture executes here on the run's real values — so the
+    // production branch (refused rows -> RouteGapEnrollmentUndeclared) is exercised, not just
+    // the relation. Deleting this call must fail that test, not pass it.
+    let route_gap_measured =
+        route_gap_admission_decode_and_enforce(&hermetic, decided_rows, route_gap_roster.len())?;
 
     // New enrollments carry the operation and the closed remedy-ground observed at the
     // interpreter boundary. Their identities are projected into `floor_route_gap_roster` by
@@ -13527,6 +13836,7 @@ pub fn run_required_floor(
     eprintln!(
         "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
          memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         excluded={} excluded_rows=`{}` \
          cpu_ms={} wall_ms={}",
         union.fixture_compiles,
         union.memo_hits,
@@ -13534,6 +13844,8 @@ pub fn run_required_floor(
         union_observed.digest,
         union_observed.files,
         union_observed.emit_diagnostics,
+        union_observed.excluded.len(),
+        union_observed.excluded.join("; "),
         v1_interpreter::thread_cpu_nanos().saturating_sub(union_cpu_started) / 1_000_000,
         union_started.elapsed().as_millis(),
     );
@@ -17564,6 +17876,391 @@ mod expected_red_roster_join_suppression_tests {
         );
         assert_eq!(expected_red_roster_join_not_evaluated(report.clone()), 1);
         assert_eq!(expected_red_roster_join_suppressed(report), 1);
+    }
+}
+
+#[cfg(test)]
+mod route_gap_admission_partition_tests {
+    use super::*;
+
+    /// THE FIXTURE'S SUPPRESSED ROWS, decoded to (identity, declared-arm) pairs — the shape the
+    /// shared marshal re-encodes into the relation's coproduct.
+    fn suppressed_row_pairs(
+        ctx: &v1_interpreter::InterpContext,
+        value: &Value,
+    ) -> Vec<(String, String)> {
+        let Value::List(items) = value else {
+            panic!("the fixture suppressed value is not a List");
+        };
+        items
+            .iter()
+            .map(|item| {
+                let Value::Record { fields, .. } = item else {
+                    panic!("a fixture suppressed row is not a Record");
+                };
+                let Some(Value::Str(identity)) = ctx.field(fields, "identity") else {
+                    panic!("a fixture suppressed row has no String identity");
+                };
+                let Some(Value::Variant { variant_name, .. }) = ctx.field(fields, "ground") else {
+                    panic!("a fixture suppressed row has no declared ground arm");
+                };
+                (identity.to_string(), ctx.resolve(*variant_name).to_string())
+            })
+            .collect()
+    }
+
+    /// THE MARSHAL'S INPUT, decoded back to the runner's suppression enum by the arm-for-arm
+    /// spelling the marshal owns. A fixture arm the enum does not declare panics here instead of
+    /// passing as a label.
+    fn ground_arm_enum(arm: &str) -> SuppressionGround {
+        match arm {
+            "OutsideRequiredGate" => SuppressionGround::OutsideRequiredGate,
+            "WithheldCostDebt" => SuppressionGround::WithheldCostDebt,
+            "DeclinedNoCiWetLane" => SuppressionGround::DeclinedNoCiWetLane,
+            other => panic!(
+                "the fixture names a suppression arm the runner's enum does not declare: {other}"
+            ),
+        }
+    }
+
+    /// THE MODELED PARTITION'S RESULT, decoded to (identity, declared-arm, refused) triples —
+    /// one arm per suppressed row, at identity grain.
+    fn admission_rows(
+        ctx: &v1_interpreter::InterpContext,
+        value: &Value,
+    ) -> Vec<(String, String, bool)> {
+        let Value::List(rows) = value else {
+            panic!("the modeled partition did not return a List");
+        };
+        rows.iter()
+            .map(|row| {
+                let Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } = row
+                else {
+                    panic!(
+                        "an admission row is not a Variant, observed {}",
+                        floor_value_shape(Some(row))
+                    );
+                };
+                let str_field = |name: &str| -> String {
+                    let Some(Value::Str(s)) = ctx.field(fields, name) else {
+                        panic!("an admission row has no String {name}");
+                    };
+                    s.to_string()
+                };
+                let arm_field = |name: &str| -> String {
+                    let Some(Value::Variant { variant_name, .. }) = ctx.field(fields, name) else {
+                        panic!("an admission row has no declared {name} arm");
+                    };
+                    ctx.resolve(*variant_name).to_string()
+                };
+                match ctx.resolve(*variant_name).as_str() {
+                    "FloorRouteGapAdmissionMeasuredRow" => {
+                        (str_field("identity"), arm_field("ground"), false)
+                    }
+                    "FloorRouteGapAdmissionRefusedRow" => {
+                        (str_field("identity"), String::new(), true)
+                    }
+                    other => panic!("unknown admission arm {other}"),
+                }
+            })
+            .collect()
+    }
+
+    /// THE PAIRING WITNESS, THROUGH THE REAL CALL PATH. The run site marshals the run's real
+    /// values into `v2.workflow.floor_route_gap.floor_route_gap_admission_partition` via
+    /// `run_in_context_with_args`; this witness drives the SAME entry, by the SAME constant,
+    /// over the SHARED fixture (src/v2/test/fixture/route_gap_admission_partition.dag), so a
+    /// rename of the entry or a fork of the marshal shape breaks here instead of forking the
+    /// decision. It asserts both arms at identity grain: a declared suppressed row comes back
+    /// MEASURED with its ground kept, and an enrollment the tree does not declare -- renamed,
+    /// deleted, or fabricated -- comes back REFUSED, the wall's discriminating arm. The
+    /// floor-side route witness (`test.claim.route_gap_partition_witness`) asserts the same
+    /// fixture rows on the floor, so the answer and the route are pinned on both sides.
+    #[test]
+    fn the_partition_route_decides_the_shared_fixture_at_identity_grain() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = crate::cli_run::make_eval_context(
+                &graph,
+                indices,
+                v1_interpreter::ExecutionMode::Hermetic,
+            );
+            let read = |name: &str| {
+                v1_interpreter::with_active_context(&ctx, || {
+                    v1_interpreter::run_in_context(
+                        &ctx,
+                        &format!("v2.test.fixture.route_gap_admission_partition.{name}"),
+                        false,
+                    )
+                })
+                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
+            };
+            let suppressed =
+                suppressed_row_pairs(&ctx, &read("route_gap_partition_fixture_suppressed"));
+            // THE DECLARED SET AS THE FIXTURE SUPPLIES IT: the modeled keyed map the relation
+            // judges membership with — the same shape the run site marshals its disposition
+            // index into. No list is flattened here, and the misnamed fixture identity is
+            // deliberately absent from it.
+            let declared = read("partition_fixture_declared");
+            assert_eq!(
+                suppressed.len(),
+                4,
+                "the fixture carries both arms and all three grounds"
+            );
+            let marshal_input = suppressed
+                .iter()
+                .map(|(identity, arm)| (identity.clone(), ground_arm_enum(arm)))
+                .collect::<Vec<_>>();
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(&ctx, marshal_input.as_slice()),
+                ),
+                (Some("declared".to_string()), declared),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled admission partition evaluates over the fixture");
+            let rows = admission_rows(&ctx, &decided);
+            assert_eq!(
+                rows.len(),
+                4,
+                "every suppressed row lands in exactly one arm"
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(i, g, refused)| !refused
+                        && i == "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds"
+                        && g == "OutsideRequiredGate")
+                    .count(),
+                1,
+                "the declared suppressed row is MEASURED with its ground kept"
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(i, g, refused)| !refused
+                        && i == "test.claim.parse_test.parse_witness_floor_holds"
+                        && g == "WithheldCostDebt")
+                    .count(),
+                1,
+                "the cost-debt withheld declared row is MEASURED with its ground kept"
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(i, _, refused)| *refused
+                        && i == "test.claim.renamed_away_witness_test.old_witness_name")
+                    .count(),
+                1,
+                "the enrollment the tree does not declare is REFUSED -- the wall's discriminating arm"
+            );
+        });
+    }
+
+    /// THE MARSHAL SHAPE the run site owes, pinned beside the fixture: a suppressed row carries
+    /// its identity and its ground as the declared coproduct arm, and nothing else.
+    #[test]
+    fn the_marshal_shape_names_identity_and_ground_only() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let value = route_gap_suppressed_rows_value(
+                &ctx,
+                &[(
+                    "test.claim.any_witness_test.any_holds".to_string(),
+                    SuppressionGround::OutsideRequiredGate,
+                )],
+            );
+            let v1_interpreter::Value::List(items) = &value else {
+                panic!("the marshal produces a List");
+            };
+            assert_eq!(items.len(), 1);
+            let v1_interpreter::Value::Record { type_name, fields } = &items[0] else {
+                panic!("the marshal produces a suppressed-row Record");
+            };
+            assert_eq!(
+                ctx.resolve(*type_name).as_str(),
+                "FloorRouteGapSuppressedRow"
+            );
+            assert_eq!(fields.len(), 2, "identity and ground, nothing else");
+        });
+    }
+
+    /// THE SECOND MARSHAL'S SHAPE AND ROUTE: the disposition index marshals as a keyed Map, and
+    /// judged THROUGH THE RELATION it measures a row the index declares and refuses one it does
+    /// not — the membership judgment exercised on the same call path the run site takes, not a
+    /// Rust-side contains_key.
+    #[test]
+    fn the_declared_index_marshal_judges_membership_through_the_relation() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let mut declared: HashMap<String, RequiredFloorDisposition> = HashMap::new();
+            declared.insert(
+                "test.claim.any_witness_test.any_holds".to_string(),
+                RequiredFloorDisposition::Planned,
+            );
+            let declared_value = route_gap_declared_map_value(&declared);
+            assert!(
+                matches!(declared_value, v1_interpreter::Value::Map(_)),
+                "the declared index marshals as a keyed Map, not a list"
+            );
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(
+                        &ctx,
+                        &[
+                            (
+                                "test.claim.any_witness_test.any_holds".to_string(),
+                                SuppressionGround::OutsideRequiredGate,
+                            ),
+                            (
+                                "test.claim.absent_witness_test.gone_holds".to_string(),
+                                SuppressionGround::OutsideRequiredGate,
+                            ),
+                        ],
+                    ),
+                ),
+                (Some("declared".to_string()), declared_value),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled partition evaluates over the marshaled index");
+            let rows = admission_rows(&ctx, &decided);
+            assert_eq!(rows.len(), 2, "both suppressed rows land somewhere");
+            let declared_row = rows
+                .iter()
+                .find(|(i, g, refused)| !refused && i == "test.claim.any_witness_test.any_holds")
+                .expect("the declared identity is measured");
+            assert_eq!(
+                declared_row.1, "OutsideRequiredGate",
+                "a measured row keeps its ground"
+            );
+            assert!(
+                rows.iter()
+                    .any(|(i, _g, refused)| *refused
+                        && i == "test.claim.absent_witness_test.gone_holds"),
+                "an identity the index does not hold is refused, not counted"
+            );
+        });
+    }
+
+    /// THE PRODUCTION BRANCH, DISCRIMINATED: the same decode+enforce function the run site
+    /// calls — driven over the partition's answer to the misnamed fixture — must return the
+    /// actual REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared, so deleting the
+    /// enforcement in `run_required_floor` cannot leave this control green (the shared function
+    /// is the enforcement; the call site and this test both own it).
+    #[test]
+    fn the_misnamed_fixture_refuses_through_the_production_decode_and_enforce() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let entry = root
+                .join("src/v2/test/fixture/route_gap_admission_partition.dag")
+                .to_string_lossy()
+                .to_string();
+            let index =
+                crate::cli_run::process_shared_index(&["dag".to_string(), "src/v2".to_string()]);
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+            let read = |name: &str| {
+                v1_interpreter::with_active_context(&ctx, || {
+                    v1_interpreter::run_in_context(
+                        &ctx,
+                        &format!("v2.test.fixture.route_gap_admission_partition.{name}"),
+                        false,
+                    )
+                })
+                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
+            };
+            let suppressed =
+                suppressed_row_pairs(&ctx, &read("route_gap_partition_fixture_suppressed"));
+            let marshal_input = suppressed
+                .iter()
+                .map(|(identity, arm)| (identity.clone(), ground_arm_enum(arm)))
+                .collect::<Vec<_>>();
+            let args = [
+                (
+                    Some("suppressed".to_string()),
+                    route_gap_suppressed_rows_value(&ctx, marshal_input.as_slice()),
+                ),
+                (
+                    Some("declared".to_string()),
+                    read("partition_fixture_declared"),
+                ),
+            ];
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    ROUTE_GAP_ADMISSION_PARTITION_ENTRY,
+                    &args,
+                    false,
+                )
+            })
+            .expect("the modeled partition evaluates over the fixture");
+            let decided_rows =
+                floor_decode_list(&ctx, Some(&decided)).expect("the relation returns a row list");
+            let err = route_gap_admission_decode_and_enforce(&ctx, decided_rows, 4).expect_err(
+                "the misnamed fixture must refuse through the production decode+enforce",
+            );
+            assert!(
+                err.contains("cause=RouteGapEnrollmentUndeclared"),
+                "the production branch raises the typed refusal, observed: {err}"
+            );
+            assert!(
+                err.contains("test.claim.renamed_away_witness_test.old_witness_name"),
+                "the refusal names the undeclared identity, observed: {err}"
+            );
+        });
     }
 }
 

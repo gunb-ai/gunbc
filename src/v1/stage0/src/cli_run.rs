@@ -86,6 +86,7 @@ use serde::Serialize;
 mod active_workset;
 mod census_heads;
 mod checker_dependency;
+pub use checker_dependency::write_checker_inputs_record;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -118,6 +119,7 @@ mod entry_resolve;
 pub mod pre_entry_phase;
 mod required_lane_resolution_census;
 pub(crate) use active_workset::*;
+pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
     entry_closure_module_identities, required_floor_nominal_subject_module_identities,
@@ -323,7 +325,7 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-fn collect_dag_files_result(
+pub(crate) fn collect_dag_files_result(
     dir: &std::path::Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
@@ -4111,7 +4113,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
+        std::collections::HashMap<String, Result<EmitCheckRead, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -5036,81 +5038,193 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// restored deliberately: docs/probes was bankrupted 2026-08-24 (d3bebd0072f, every
 /// transcription deleted), and re-landing a probe document there would re-open that corpus.
 ///
-/// FAIL-CLOSED BY CONSTRUCTION (DESIGN §5): every arm that cannot produce the exact closure
-/// REFUSES with a typed, located message naming the module and the file — never a whole-tree
-/// fallback, which would restore today's cost, zero the deficit's frequency by construction,
-/// and make the widening unrankable. Contrast `resolve_virtual_source_with_imports`, whose BFS
-/// silently SKIPS an unresolvable import; a silent skip here would answer from a graph missing
-/// the very module the answer depends on.
-/// PRECONDITION, UNCHECKED AND UNTIL NOW UNSTATED: THE ENTRY'S CLOSURE MUST BE IMPORT-COMPLETE.
+/// Compile-subject closure of a policy entry: compile and evaluate that module, so membership
+/// is everything the entry depends on — the one closure authority, not an import-line BFS.
 ///
-/// This walks `extract_import_paths` — EXPLICIT IMPORT EDGES ONLY. The corpus also resolves BARE
-/// references through the tree census (namespace Rule-1), which
-/// `extend_sources_to_both_closure_fixpoint` does and this deliberately does not. An entry whose
-/// closure reaches a name it does not import typechecks to `function '<name>' not found in scope`
-/// here; that failure is a property of the ENTRY, not of this function.
-///
-/// MEASURED: `dag/gunbc/output_policy.dag` was routed through here and broke on
-/// `dag/std/observation.dag` reaching `fold_list` with no import. The one surviving caller,
-/// `compile_clean_unlisted_import_use_blocks_from_policy`, is sound BY LUCK — its closure happens
-/// to be import-complete, which this corpus does not guarantee; one bare reference authored into
-/// it and it breaks too. It breaks LOUDLY there, which makes the luck survivable: that caller
-/// returns `Result<bool, String>` and propagates with `?` — same fragility, opposite failure mode
-/// from the silent arm this helper's other caller used to have.
+/// FAIL-CLOSED: an unreadable entry or a refused closure is `Err` naming the policy module.
+/// Contrast the previous body, which walked `extract_import_paths` only. That was sound only
+/// while `gunbc.compile_clean_diagnostic_policy` happened to be import-complete. Measured:
+/// `dag/gunbc/output_policy.dag` through the same walker broke on `dag/std/observation.dag`
+/// reaching `fold_list` with no import.
 fn policy_entry_closure_sources(
     roots: &[String],
     entry_rel: &str,
     policy_module: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let ws = process_workspace_root();
-    let module_index = build_module_path_index(roots);
-    let read = |rel: &str| -> Result<String, String> {
-        let abs = ws.join(rel);
-        std::fs::read_to_string(&abs).map_err(|e| {
-            format!(
-                "{policy_module} closure: cannot read `{}` ({e})",
-                abs.display()
-            )
-        })
+    let abs = if Path::new(entry_rel).is_absolute() {
+        PathBuf::from(entry_rel)
+    } else {
+        ws.join(entry_rel)
     };
+    let entry_content = std::fs::read_to_string(&abs).map_err(|e| {
+        format!(
+            "{policy_module} closure: cannot read `{}` ({e})",
+            abs.display()
+        )
+    })?;
+    let seed_path = workspace_relative_repo_path(&abs.to_string_lossy());
+    let seed = Rc::new(v1_compiler_compile::SourceFile {
+        path: seed_path,
+        content: entry_content,
+    });
+    let index = try_index_for_run_or_owned_pool(roots)
+        .map_err(|e| format!("{policy_module} closure: cannot index source roots: {e}"))?;
+    extend_sources_to_both_closure_fixpoint(vec![seed], index.as_ref())
+        .map_err(|e| format!("{policy_module} closure: {e}"))
+}
 
-    let entry_content = read(entry_rel)?;
-    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-    let mut queue: Vec<String> = vec![entry_content.clone()];
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(rel_path) = module_index.get(&module_path) else {
-                return Err(format!(
-                    "{policy_module} closure: import `{module_path}` \
-                     (reached from `{entry_rel}`) names no module in the source roots"
-                ));
-            };
-            // `entry_rel` may be absolute (an entry argument typically is) while the module
-            // index stores workspace-relative keys, so compare canonically — a string compare
-            // would miss and admit the entry twice under two spellings.
-            if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
-                continue;
-            }
-            let file_content = read(rel_path)?;
-            seen.insert(
-                rel_path.clone(),
-                Rc::new(v1_compiler_compile::SourceFile {
-                    path: rel_path.clone(),
-                    content: file_content.clone(),
-                }),
-            );
-            queue.push(file_content);
-        }
+#[cfg(test)]
+mod policy_entry_closure_sources_controls {
+    use super::*;
+    use std::collections::HashSet;
+
+    const ENTRY: &str = "entry.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module policy.closure.entry\n\
+fn use_provider() -> policy.closure.provider.ProviderToken {\n\
+  policy.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module policy.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module policy.closure.broken\n\
+fn broken() -> policy.closure.provider.ProviderToken {\n\
+  no_such_function_anywhere()\n\
+}\n";
+
+    fn fixture_tree() -> &'static Path {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = process_workspace_root()
+                .join("target")
+                .join(format!("policy_entry_closure_{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+            std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+            std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+            dir
+        })
+        .as_path()
     }
 
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        seen.into_iter().map(|(_, v)| v).collect();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.push(Rc::new(v1_compiler_compile::SourceFile {
-        path: entry_rel.to_string(),
-        content: entry_content,
-    }));
-    Ok(sources)
+    fn provider_path(dir: &Path) -> String {
+        workspace_relative_repo_path(&dir.join(PROVIDER).to_string_lossy())
+    }
+
+    fn entry_rel(dir: &Path, file: &str) -> String {
+        workspace_relative_repo_path(&dir.join(file).to_string_lossy())
+    }
+
+    fn roots(dir: &Path) -> Vec<String> {
+        vec![dir.to_string_lossy().into_owned()]
+    }
+
+    /// Import-line BFS the production helper used to run. THE MUTANT.
+    fn import_only_policy_entry_closure_sources(
+        roots: &[String],
+        entry_rel: &str,
+    ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+        let ws = process_workspace_root();
+        let module_index = build_module_path_index(roots);
+        let read = |rel: &str| -> Result<String, String> {
+            let abs = ws.join(rel);
+            std::fs::read_to_string(&abs).map_err(|e| format!("mutant read {}: {e}", abs.display()))
+        };
+        let entry_content = read(entry_rel)?;
+        let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+        let mut queue: Vec<String> = vec![entry_content.clone()];
+        while let Some(content) = queue.pop() {
+            for module_path in extract_import_paths(&content) {
+                let Some(rel_path) = module_index.get(&module_path) else {
+                    return Err(format!(
+                        "mutant closure: import `{module_path}` \
+                         (reached from `{entry_rel}`) names no module in the source roots"
+                    ));
+                };
+                if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
+                    continue;
+                }
+                let file_content = read(rel_path)?;
+                seen.insert(
+                    rel_path.clone(),
+                    Rc::new(v1_compiler_compile::SourceFile {
+                        path: rel_path.clone(),
+                        content: file_content.clone(),
+                    }),
+                );
+                queue.push(file_content);
+            }
+        }
+        let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+            seen.into_iter().map(|(_, v)| v).collect();
+        sources.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: entry_rel.to_string(),
+            content: entry_content,
+        }));
+        Ok(sources)
+    }
+
+    fn paths(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> HashSet<String> {
+        sources
+            .iter()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect()
+    }
+
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let closed =
+            policy_entry_closure_sources(&roots(&dir), &entry_rel(&dir, ENTRY), "policy.closure")
+                .expect("closure");
+        let provider = provider_path(&dir);
+        assert!(
+            paths(&closed).contains(&provider),
+            "provider {provider} missing from {:?}",
+            paths(&closed)
+        );
+    }
+
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let mutant =
+            import_only_policy_entry_closure_sources(&roots(&dir), &entry_rel(&dir, ENTRY))
+                .expect("mutant");
+        let provider = provider_path(&dir);
+        assert!(
+            !paths(&mutant).contains(&provider),
+            "the import-only mutant must omit {provider}; got {:?}",
+            paths(&mutant)
+        );
+    }
+
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let closed =
+            policy_entry_closure_sources(&roots(&dir), &entry_rel(&dir, BROKEN), "policy.closure")
+                .expect("closure");
+        let provider = provider_path(&dir);
+        assert!(
+            paths(&closed).contains(&provider),
+            "the broken entry must still close the reference-only provider"
+        );
+        let refusal = resolved_graph_from_sources(closed)
+            .expect_err("a call to a function nothing declares must refuse");
+        assert!(
+            refusal.contains("no_such_function_anywhere")
+                || refusal.contains("not found")
+                || refusal.contains("blocking_diagnostics"),
+            "refusal must name the real error, got: {refusal}"
+        );
+    }
 }
 
 fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
@@ -6337,10 +6451,9 @@ impl ModuleGraphFactsLive {
     /// reference edge (`selection_adjacency` minus `adjacency`) — i.e. the direct-import term
     /// a stripped (no `import` line) module is otherwise missing from its typed-module content
     /// key (DESIGN §3: consumes the same `selection_adjacency` authority affected-set selection
-    /// already reads; no second reference-edge producer). An import-bearing file's declared
-    /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
-    /// (`adjacency` and `selection_adjacency` agree on such a file — see
-    /// `reference_resolution_facts` pass 2).
+    /// already reads; no second reference-edge producer). For an import-bearing file it
+    /// returns the modules it reaches by qualified reference (bare names there are lexically bound) WITHOUT importing them;
+    /// its declared imports are already covered by `resolved.resolved_imports`.
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
     /// `selection_adjacency` already carries; module names are derived only for diagnostics.
@@ -30025,7 +30138,7 @@ const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 const LAYER_COMPILER: &str = "LayerPrefixCompiler";
 const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
 
-// SCAFFOLD (§7 HAND-RUST — authority: `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`).
+// SCAFFOLD (§7 HAND-RUST — authority: `v2.std.layer.layer_prefix_from_dotted_qualified_name`).
 // Host `layer_import_facts` must stamp `LayerImportFact.layer` on every emitted row; the builtin
 // seam cannot call the `.dag` classifier without an interpreter round-trip per file. This mirror
 // is byte-synced to that authority and carries an explicit dissolution trigger — not a second
@@ -30036,7 +30149,7 @@ const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
 pub(crate) const CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER: &str =
     "cli_run_layer_prefix_from_dotted_module_scaffold";
 
-/// Rust mirror of `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`.
+/// Rust mirror of `v2.std.layer.layer_prefix_from_dotted_qualified_name`.
 /// See `CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER`.
 fn layer_prefix_from_dotted_module(module: &str) -> &'static str {
     let parts: Vec<&str> = module.split('.').filter(|p| !p.is_empty()).collect();
@@ -30462,8 +30575,8 @@ pub fn dependency_resolution_facts(
 ///
 /// WHAT IT DOES NOT DEMAND is the corpus. The declared-module index is the process-cached
 /// `build_module_path_index` the population read also consults; the reference half's pool name
-/// index is built only when the importer carries no `import` line, which is the one case whose
-/// edges depend on other files' names. An importer the population would not walk -- outside every
+/// index is built for every readable importer, since a reference edge depends on other files'
+/// names whether or not the importer carries `import` lines. An importer the population would not walk -- outside every
 /// pool root, or matched by an exclusion -- answers the empty list, as the population carries no
 /// row for it; so does an unreadable one, whose import half the population walk also skips.
 pub fn dependency_resolution_facts_at(
@@ -30496,8 +30609,7 @@ pub fn dependency_resolution_facts_at(
         entry_resolve::FileReferenceEdges::Edges(edges) => {
             reference_edges_as_import_facts(&edges, /* strict */ true)
         }
-        entry_resolve::FileReferenceEdges::ImportBearing
-        | entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
+        entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
     };
     union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
@@ -37634,6 +37746,135 @@ mod output_policy_decode_tests {
 }
 
 #[cfg(test)]
+mod import_bearing_reference_edges {
+    //! An `import` line does not own a module's edge set: the producer unions reference edges for
+    //! every importer. Supplied fixture (pool names handed in), no corpus resolve.
+
+    use super::*;
+
+    fn names() -> entry_resolve::ReferencePoolNames {
+        entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: [
+                "v2.std.artifact",
+                "v2.std.refinement",
+                "v2.std.node",
+                "v2.std.layer",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        }
+    }
+
+    const IMPORTING: &str =
+        "module v2.std.artifact\nimport v2.std.node\nfn g() -> Int { v2.std.refinement.k }\n";
+    const IMPORTLESS: &str = "module v2.std.artifact\nfn g() -> Int { v2.std.refinement.k }\n";
+
+    fn edge_targets(src: &str, imports_only_mutant: bool) -> Vec<String> {
+        if imports_only_mutant && !extract_import_paths(src).is_empty() {
+            return Vec::new();
+        }
+        let n = names();
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file("v2/std/artifact.dag", Some(src), &n)
+        else {
+            panic!("a parsed file has edges");
+        };
+        let import_edges = entry_resolve::import_facts_for_file("v2/std/artifact.dag", src, |m| {
+            n.module_names.contains(m)
+        });
+        union_dedup_import_facts_reference_first(
+            entry_resolve::reference_edges_as_import_facts(&edges, true),
+            import_edges,
+        )
+        .into_iter()
+        .map(|f| f.import_module)
+        .collect()
+    }
+
+    /// RED: the qualified reference to a module the file does not import is an edge.
+    #[test]
+    fn an_import_bearing_file_carries_its_unimported_reference_edge() {
+        let t = edge_targets(IMPORTING, false);
+        assert!(t.contains(&"v2.std.refinement".to_string()), "{t:?}");
+        assert!(t.contains(&"v2.std.node".to_string()), "{t:?}");
+    }
+
+    /// The imports-only mutant is the pre-fix producer; the RED must reject it.
+    #[test]
+    fn the_imports_only_mutant_fails_the_red() {
+        let t = edge_targets(IMPORTING, true);
+        assert!(!t.contains(&"v2.std.refinement".to_string()));
+    }
+
+    /// Control: an import-less file's reference edges are the same under both producers.
+    #[test]
+    fn an_importless_file_is_unchanged() {
+        assert_eq!(
+            edge_targets(IMPORTLESS, false),
+            edge_targets(IMPORTLESS, true)
+        );
+        assert_eq!(
+            edge_targets(IMPORTLESS, false),
+            vec!["v2.std.refinement".to_string()]
+        );
+    }
+
+    fn homonym_names() -> entry_resolve::ReferencePoolNames {
+        let mut decl_index = HashMap::new();
+        decl_index.insert(
+            "Present".to_string(),
+            ["std.optional", "test.fixture.planted"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        entry_resolve::ReferencePoolNames {
+            decl_index,
+            module_names: ["std.optional", "test.fixture.planted"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
+    }
+
+    fn homonym_edges(src: &str) -> Vec<String> {
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file(
+                "test/claim/a.dag",
+                Some(src),
+                &homonym_names(),
+            )
+        else {
+            panic!("a parsed file has edges");
+        };
+        edges.into_iter().map(|e| e.target_module).collect()
+    }
+
+    /// RED (reader defect): `Present` is bound by the file's own `import std.optional { Present }`.
+    /// A fixture module declaring the same spelling and nearer in the containment tree must not
+    /// become a phantom dependency of the importer; in a file that imports, a bare name is
+    /// lexically bound, never resolved by proximity.
+    #[test]
+    fn a_bare_name_in_an_import_bearing_file_is_not_resolved_to_a_pool_homonym() {
+        let src =
+            "module test.claim.a\nimport std.optional { Present }\nfn g() -> Int { Present }\n";
+        let t = homonym_edges(src);
+        assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+    }
+
+    /// Control: the same bare name in an IMPORT-LESS file still resolves by proximity (unchanged),
+    /// and a qualified reference in an import-bearing file is still an edge (the other test).
+    #[test]
+    fn the_same_bare_name_without_the_import_still_resolves() {
+        let src = "module test.claim.a\nfn g() -> Int { Present }\n";
+        let t = homonym_edges(src);
+        assert!(t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+    }
+}
+
+#[cfg(test)]
 mod union_dedup_import_facts_law {
     //! The dedup that carries the edge population's identity and order law, tested on synthetic
     //! rows so the law is decided by a controlled fixture rather than by whatever the live corpus
@@ -41886,6 +42127,8 @@ pub use required_regen_host::RegenRoundCostOutcome;
 pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
     required_regen_host::run_regen_affected_set(source_roots)
 }
+
+pub use required_regen_host::run_regen_one_mirror_emit_probe;
 
 /// One priced regen round — see `required_regen_host::run_regen_round_cost`.
 pub fn run_regen_round_cost(
