@@ -6,10 +6,14 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.site.status { status_badge, status_tone }
 import gunbc.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap_presentation { issue_status_sort_rank }
+import gunbc.roadmap_issue_status {
+  DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
+  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
+}
 import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
 import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph_interactive }
-import gunbc.roadmap_presentation { dependency_cycle_touches }
+
 import gunbc.principal_mention { principal_mention_read, principal_mention_markdown }
 import extdeps.uri { uri_wire }
 import gunbc.site.controls { site_client_path }
@@ -28,7 +32,7 @@ import gunbc.roadmap_allocation_location { allocation_page_path }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
-  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
+  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label, event_principal_is_fabric,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   attempt_result_outcome_word, attempt_result_outcome_text, roadmap_claim_return_to, RoadmapEventId,
@@ -52,10 +56,10 @@ import gunbc.roadmap_style { roadmap_styles, roadmap_css, round_fill_delay_var, 
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
-  roadmap_parent_ids, roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
+  roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
   SectionElement, Prose, Group, SectionGroup, Closes, MemberOf, AdmittedRoot,
 }
-import gunbc.roadmap_status { line_ticket, TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
+import gunbc.roadmap_status { line_ticket, AuthoredLine }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
@@ -71,12 +75,17 @@ import gunbc.roadmap_authority {
   declared_roadmap_edges,
   closing_contract_family_claim, ticket_headline_of,
 }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title, ReadinessGraph }
-import gunbc.roadmap.roadmap_alignment {
-  AlignmentResolution, AlignmentReady, AlignmentUnresolved,
-  AlignmentLevel, RootPrinciplesLevel, ProjectIntentLevel, TaskContractLevel,
-  alignment_levels, alignment_resolve, alignment_base_cadence_state, alignment_refusal_reason,
+
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, ReadinessGraph }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  IssueHierarchyView, issue_hierarchy_view, hierarchy_nodes,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable,
+  NodeChain, NodeChainRooted, NodeChainRefused,
+  NodeRelation, RelationRow, RelationRowChildren, RowChildrenNotCarried, RowChildrenExpandable,
+  relation_summary, relation_count_text, relation_kind_label, relation_empty_text, relation_undeclared_text,
+  node_status_is_closed, node_chain_refusal_text,
 }
+import gunbc.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path, issue_work_tab_anchor, issue_work_event_anchor }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, disclosure_mark_class, disclosure_mark_glyph, workflow_controls_class, dashboard_instance_class, dashboard_instance_label_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_located_reason_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, node_attempt_stale_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class }
 import gunbc.site.controls { sound_toggle_class, theme_toggle_class, theme_toggle_label_prefix, theme_toggle_auto_value }
@@ -87,7 +96,7 @@ import gunbc.roadmap_launch_admission {
   launch_identity_instance_text, launch_identity_revision_hex,
 }
 import gunbc.roadmap_presentation {
-  WorkRowView, work_row_view, work_row_view_in, row_graph, row_headline, LaunchRowContext,
+  WorkRowView, work_row_view_in, row_graph, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
@@ -111,15 +120,24 @@ import gunbc.roadmap_presentation {
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
-  WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
-  WorkBandEntry, BandRow, BandFamily, BandProject,
+  WorkFamilyDecl, WorkFamilyMemberFact,
   ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
   IssueTableRow,
   worker_alive_from_process,
-  IssueLinkView, IssueLinkPanel, issue_work_history_rounds,
+  issue_work_history_rounds,
+  issue_display_status, work_lifecycle_is_closed, omitted_node_display_status,
+  UnmetPrerequisitesAssessed, UnmetPrerequisitesNotAssessed, row_unmet_prerequisites,
   issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
+import gunbc.site.element.build_meter { failure_event_words }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
+import gunbc.site.element.status_chip { status_chip_accepted_label, status_chip_withheld_label }
+import gunbc.site.element.field_list {
+  FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
+  FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
+}
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
   issue_results_sort_key_wire, issue_results_sort_numeric,
@@ -221,10 +239,6 @@ fn dashboard_instance_banner() -> Fragment {
 // and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated
 // claim for someone. The client program repaints both from storage on load, exactly as before.
 
-
-
-
-
 // A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT
 // wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A
 // ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes
@@ -244,7 +258,6 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 // which rows a person navigates to -- a fact this page owns. If the pair ever disagrees the tell is
 // a 404 from a header link, which is why the link text and the route literal are the only two
 // spellings and both live one grep apart.
-
 
 // The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
 // work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to
@@ -527,7 +540,7 @@ fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, vi
       attr(name: "data-site-choice", value: "rich"),
       attr(name: "method", value: "post" ),
       attr(name: "enctype", value: "application/x-www-form-urlencoded" ),
-      attr(name: "action", value: join(["/issue/", node_id, "/assign"], "") ),
+      attr(name: "action", value: issue_assign_path(node_id: node_id) ),
     ], [
       el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-assign") }) ], []),
       el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
@@ -606,13 +619,6 @@ fn issue_assign_suggestion_nodes(p: EventPrincipal, profiles: List<PrincipalProf
       [ el_class("span", "issue-assign-name", [ txt(display.name) ]),
         el_class("span", "issue-assign-email", [ txt(display.detail) ]) ],
       [ el_class("span", "issue-assign-kind", [ txt(if event_principal_is_fabric(p: p) { "Group · starts a workflow run" } else { "Person" }) ]) ])))
-}
-
-fn event_principal_is_fabric(p: EventPrincipal) -> Bool {
-  match p {
-    EventPrincipalAuthenticated { ref } => principal_ref_eq(a: ref, b: fabric_workflow_principal)
-    LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => false
-  }
 }
 
 fn suggestion_kind_wire(p: EventPrincipal) -> String {
@@ -1028,7 +1034,7 @@ fn taskbar_attention_attr(view: WorkRowView) -> List<Attribute> {
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => []
     CompletedWork { outcome: _, evidence: _, obligations: _ } => []
     NoActiveWork => []
-    ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
+    ActivityUnobservable { reason: _ } => []
   }
 }
 
@@ -1385,14 +1391,6 @@ fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext
 // ProgramProgressView consumer: its ready-obligation count is the causal link between the program
 // claim and the queue below it.
 
-fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
-  Element {
-    tag: "li",
-    attributes: node_li_attributes(view: view),
-    children: render_task_row(view: view, observation: observation),
-  }
-}
-
 // MEMBER ROWS ARE SUMMARY-ONLY (owner defect fix 2026-09-23: fifteen stacked 'inspect'
 // disclosures in/after one row on the old dashboard lanes). Inside a project disclosure or a
 // family group, every member task rendered a FULL taskbar row including its own taskbar-inspect
@@ -1410,35 +1408,6 @@ fn member_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragm
     children: [ taskbar_nodes(view: view, bar: bar, project: none) ],
   }
 }
-
-fn workspace_rows_ul(rows: List<WorkRowView>, observation: ObservationImpactView) -> Fragment {
-  el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
-}
-
-fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -> Fragment {
-  el_class("li", "family-group", [
-    el_class("div", "family-head", [
-      el_class("span", "family-claim", [ txt(family.claim) ]),
-      el_class("span", "family-count", [ txt(concat(to_string(count(family.rows)), " nodes")) ]),
-    ]),
-    el_class("ul", "family-rows", map(family.rows, v => member_row_li(view: v, observation: observation))),
-  ])
-}
-
-// THE PROJECT ROW (operator request 2026-09-20). The row's own face is the SAME row shape every
-// task renders — the decided head (chips, headline, dispatch actuator), its activity region, its
-// disclosure — followed by the two project-only regions: the derived progress summary ("k of n
-// tasks closed" plus a CSS-only bar whose segments are flex-weighted by the counts, the round
-// strip's proportional-by-construction idiom, so no percentage arithmetic ever rounds) and the
-// task disclosure. The disclosure is the page's existing details/summary idiom; its open attribute
-// is the seam's DECIDED auto_open, never authored per project. A COLLAPSED chain (operator ruling
-// 2026-09-21, see gunbc.roadmap_presentation) carries its swallowed intermediate projects as the
-// chain line inside this disclosure, so collapse never drops a node. Rendered depth is capped at
-// project_render_depth_cap levels: a project AT the cap renders its tasks behind a collapsed
-// "+N deeper" disclosure (N = the tasks hidden at the next level) rather than an open one — the
-// rows beyond still render inside it, so the cap bounds the default view without ever dropping a
-// node. Nested task rows are emitted by the same workspace_row_li as every flat row; the row
-// renderer is not forked.
 
 fn project_render_depth_cap() -> Int { 3 }
 
@@ -1534,22 +1503,6 @@ fn project_tree_li(view: ProjectTreeView, observation: ObservationImpactView) ->
   }
 }
 
-fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fragment {
-  match entry {
-    BandRow { row } => workspace_row_li(view: row, observation: observation)
-    BandFamily { family } => family_group_li(family: family, observation: observation)
-    BandProject { project } => project_tree_li(view: project, observation: observation)
-  }
-}
-
-fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> Fragment {
-  el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
-}
-
-// THE BAND SHELLS ARE RETIRED WITH THE VIEWS (owner ruling 2026-09-25): the frontier-bucket band
-// renderers had no caller left once the served page dropped the forest; the entry renderer
-// (workspace_entries_ul and its chain) stays for the /sandbox exhibit.
-
 fn issue_owner_value(view: WorkRowView) -> String {
   fold(view.supporting_facts, init: "", f: (acc, f) =>
     if f.label == "owner" { f.value } else { acc })
@@ -1564,14 +1517,23 @@ fn issue_component_value(view: WorkRowView) -> String {
   if component == "" { issue_owner_value(view: view) } else { component }
 }
 
-// THE PARENT FIELD renders DECOMPOSITION separately from dependency (owner ruling 2026-09-24):
-// the panel's parent is the tree derivation's display link; top-level reads honestly as such.
-// The named modeling gap — decomposition rides the primary-parent rule over dependency edges
-// until decomposition edges land — is stated on the panel type, not papered over here.
-fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
-  match panel.parent {
-    Present { value: p } => issue_link_value(links: [ p ])
-    Absent => [ txt("top-level") ]
+// The rail always shows the component field; a row that declares neither a component nor an
+// owner lane shows it as absent, with that reason.
+fn issue_rail_component_value(view: WorkRowView) -> FieldValue {
+  let component = issue_component_value(view: view)
+  if component == "" { FieldAbsent { reason: "No component or owner lane is declared for this issue" } } else { FieldText { text: component, full: none } }
+}
+
+// THE PARENT FIELD is the membership relation's Parent rows -- never a dependency edge. A node that
+// is a member of nothing reads top-level; a parent the universe does not declare is named as such.
+fn issue_parent_value(parent: NodeRelation) -> FieldValue {
+  if count(parent.rows) == 0 && count(parent.undeclared) == 0 {
+    FieldText { text: "top-level", full: none }
+  } else {
+    FieldLinks {
+      links: map(parent.rows, row => FieldLink { text: row.node.title, href: row.node.route, full: none }),
+      unlinked: if count(parent.undeclared) == 0 { [] } else { [join([relation_undeclared_text(kind: parent.kind), ": ", join(parent.undeclared, ", ")], "")] },
+    }
   }
 }
 
@@ -1669,16 +1631,11 @@ fn workspace_assignee_label(holder: EventPrincipal, profiles: List<PrincipalProf
 
 fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> List<Fragment> {
   match col.kind {
-    IssueColumnPriority => [el_attrs("span", [
-      attr(name: "class", value: "issue-priority"),
-      attr(name: "data-priority", value: to_string(roadmap_priority_rank(priority: priority.priority))),
-      attr(name: "title", value: issue_priority_explanation(value: priority)),
-      attr(name: "aria-label", value: issue_priority_explanation(value: priority))
-    ], [txt(roadmap_priority_label(priority: priority.priority))])]
+    IssueColumnPriority => [priority_mark(input: PriorityMark { priority: priority.priority, explanation: Present { value: issue_priority_explanation(value: priority) } })]
     IssueColumnTitle =>
       [ el_attrs("a", [
           attr(name: "class", value: "issue-title-link" ),
-          attr(name: "href", value: join(["/issue/", view.node_id], "") ),
+          attr(name: "href", value: issue_page_path(node_id: view.node_id) ),
         ], inline_md_nodes(text: view.headline)) ]
     IssueColumnAssignee =>
       [ el_attrs("button", [
@@ -1807,22 +1764,20 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
 // newest first) and lists every attempt — execution history lives here exclusively, never stacked
 // in the workspace rows (owner defect fix 2026-09-23). The page ships the same external client
 // asset the workspace ships; its tab chips are inert on surfaces that carry none.
-fn issue_field_row(label: String, value: List<Fragment>) -> Fragment {
-  el_class("div", "issue-field", concat(
-    [ el_class("span", "issue-field-label", [ txt(label) ]) ],
-    [ el_class("span", "issue-field-value", value) ]))
+// The rail's fields are rows of the FieldList element (gunbc.site.element.field_list); a field
+// with no fact to show is no row, and a field whose fact is known to be missing is an absent
+// value with the reason.
+fn issue_rail_text_rows(label: String, value: String) -> List<FieldRow> {
+  if value == "" { [] } else { [FieldRow { label: label, value: FieldText { text: value, full: none } }] }
 }
 
-fn issue_field_text_row(label: String, value: String) -> Fragment {
-  issue_field_row(label: label, value: if value == "" { [] } else { [ txt(value) ] })
-}
-
-fn issue_link_value(links: List<IssueLinkView>) -> List<Fragment> {
-  map(links, l =>
-    el_attrs("a", [
-      attr(name: "class", value: "issue-link" ),
-      attr(name: "href", value: join(["/issue/", l.node_id], "") ),
-    ], [ txt(l.headline) ]))
+// A related id that names no declared node is stated, never dropped and never dressed as a row.
+fn issue_relation_undeclared_nodes(relation: NodeRelation) -> List<Fragment> {
+  if count(relation.undeclared) == 0 {
+    []
+  } else {
+    [ el_class("span", "issue-panel-empty", [ txt(join([relation_undeclared_text(kind: relation.kind), ": ", join(relation.undeclared, ", ")], "")) ]) ]
+  }
 }
 
 // The Work tab's history rows ride the landed taskbar grammar: one bar per clocked round, the
@@ -1852,14 +1807,30 @@ fn issue_work_history_row_node(seg: RoundSegment) -> Fragment {
 // the attempt's short key and its decided outcome sentence — the latest attempt's summary is the
 // table row's whole claim about execution; the tab is where a node's N attempts are enumerated.
 fn issue_attempt_history_row_node(progress: WorkflowAttemptProgress) -> Fragment {
-  el_attrs("div", [
-    attr(name: "class", value: "taskbar work-attempt-row" ),
-    attr(name: "data-attempt", value: attempt_key_short_form(key: progress.attempt_key) ),
-  ], [
-    el_class("div", "taskbar-face", concat(
-      [ el_class("span", "work-history-step", [ txt(attempt_key_short_form(key: progress.attempt_key)) ]) ],
-      [ el_class("span", "taskbar-title", [ txt(activity_summary_line(a: activity_view_from_progress(progress: progress))) ]) ]))
-  ])
+  el_class("div", "work-attempt", concat([
+    el_attrs("div", [
+      attr(name: "class", value: "taskbar work-attempt-row" ),
+      attr(name: "data-attempt", value: attempt_key_short_form(key: progress.attempt_key) ),
+    ], [
+      el_class("div", "taskbar-face", concat(
+        [ el_class("span", "work-history-step", [ txt(attempt_key_short_form(key: progress.attempt_key)) ]) ],
+        [ el_class("span", "taskbar-title", [ txt(activity_summary_line(a: activity_view_from_progress(progress: progress))) ]) ]))
+    ]),
+  ], issue_attempt_failure_nodes(events: attempt_failure_events(progress: progress))))
+}
+
+// AN ATTEMPT'S FAILURE EVENTS, each its own row anchored by its workflow obligation identity
+// (gunbc.roadmap_issue_location issue_work_event_anchor), so the compact work summary's link opens
+// the Work tab at the event it names. The rows are the producer's list
+// (gunbc.roadmap.roadmap_build_meter attempt_failure_events), worded by the element's one wording.
+fn issue_attempt_failure_nodes(events: List<FailureEvent>) -> List<Fragment> {
+  if count(events) == 0 { [] } else {
+    [ el_class("ol", "work-attempt-failures", map(events, e =>
+        el_attrs("li", [
+          attr(name: "class", value: "work-attempt-failure"),
+          attr(name: "id", value: issue_work_event_anchor(workflow_id: e.key.workflow_id, obligation_id: e.key.obligation_id)),
+        ], [ txt(if e.detail == "" { failure_event_words(kind: e.kind, stage: e.stage) } else { join([failure_event_words(kind: e.kind, stage: e.stage), ": ", e.detail], "") }) ]))) ]
+  }
 }
 
 // THE EVENT HISTORY (owner ruling 2026-09-24: the Work tab carries the issue's execution
@@ -1913,8 +1884,6 @@ fn issue_event_text(env: RoadmapEventEnvelope) -> String {
 fn issue_events_newest_first(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
   roadmap_issue_history_newest_first(envs: envs)
 }
-
-
 
 // CODE-ISH CONTENT GETS MONO BLOCKS, never prose paragraphs (owner mandate 2026-09-25): a field
 // value that spans lines or names code (a fn signature, a module path) renders in a pre block on
@@ -2010,7 +1979,7 @@ fn issue_comment_head_node(node_id: String, comments: List<IssueComment>, c: Iss
     concat(
       [ el_attrs("a", [
           attr(name: "class", value: "issue-comment-ref" ),
-          attr(name: "href", value: join(["/issue/", node_id, "#", issue_comment_anchor(ordinal: c.ordinal)], "") ),
+          attr(name: "href", value: issue_anchor_path(node_id: node_id, anchor: issue_comment_anchor(ordinal: c.ordinal)) ),
         ], [ txt(join(["#comment-", to_string(value: c.ordinal)], "")) ]) ],
       concat(
         [ el_class("span", "issue-comment-at", [ txt(comment_time_text(c: c)) ]) ],
@@ -2192,7 +2161,7 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String, profi
     attr(name: "class", value: "issue-comment-form" ),
     attr(name: "method", value: "post" ),
     attr(name: "enctype", value: "application/x-www-form-urlencoded" ),
-    attr(name: "action", value: join(["/issue/", node_id, "/comment"], "") ),
+    attr(name: "action", value: issue_comment_path(node_id: node_id) ),
   ], [
     el_attrs("input", [ attr(name: "name", value: "key" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-comment") } ) ], []),
     el_attrs("input", [ attr(name: "name", value: "csrf" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: command_context.csrf ) ], []),
@@ -2285,79 +2254,25 @@ fn issue_head_chip_nodes(view: WorkRowView) -> List<Fragment> {
   status_chip_nodes(view: view)
 }
 
-// THE PROJECT PATH BREADCRUMB: one navigation answer per issue, rendered directly above the page
-// body. The ONLY derivation named is alignment_resolve -- the same resolution the dispatch gate
-// consumes -- never a second path answer folded out of the raw memberships. The ready arm renders
-// the chain's levels ROOT-TO-LEAF: each project level links to its /project/<node_id> suite, the
-// task level is the current page and renders as plain text (no self-link), and the
-// root-principles pointer is skipped (it is a pointer to gunbc.design_document, not a page). The
-// unresolved arm renders the typed refusal itself -- a partial path is never dressed as a complete
-// one.
-type IssueBreadcrumbCrumb
-  = IssueBreadcrumbProject { node_id: String, purpose: String, boundary: String }
-  | IssueBreadcrumbTask { node_id: String, purpose: String, boundary: String }
-
-type IssueBreadcrumb
-  = IssueBreadcrumbPath { crumbs: List<IssueBreadcrumbCrumb> }
-  | IssueBreadcrumbRefused { reason: String }
-
-// THE CRUMBS from the chain's levels: the root-principles level contributes no crumb (a pointer,
-// not a page); every other level contributes one crumb carrying its purpose and boundary.
-fn issue_breadcrumb_crumbs(levels: List<AlignmentLevel>) -> List<IssueBreadcrumbCrumb> {
-  fold(levels, init: [] as List<IssueBreadcrumbCrumb>, f: fn(acc, level) {
-    match level {
-      RootPrinciplesLevel => acc
-      ProjectIntentLevel { link } => concat(acc, [IssueBreadcrumbProject { node_id: link.node_id, purpose: link.purpose, boundary: link.boundary }])
-      TaskContractLevel { link } => concat(acc, [IssueBreadcrumbTask { node_id: link.node_id, purpose: link.purpose, boundary: link.boundary }])
-    }
-  })
+// THE CHAIN BREADCRUMB: one navigation answer per issue, rendered directly above the page body. It
+// renders the NodeChain the hierarchy view derived from the one parent walk
+// (gunbc.roadmap.roadmap_hierarchy_view node_chain) and derives nothing itself. Every ancestor is a
+// node like any other and links to its canonical route; the current node is the page and renders
+// as plain text. A refused walk renders the walk's own refusal -- a partial path is never dressed
+// as a complete one.
+fn issue_breadcrumb_ancestor_node(node: NodePresentation) -> Fragment {
+  el_attrs("a", [
+    attr(name: "href", value: node.route),
+    attr(name: "title", value: node.slug),
+  ], [ txt(node.title) ])
 }
 
-fn issue_breadcrumb_of(resolution: AlignmentResolution) -> IssueBreadcrumb {
-  match resolution {
-    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
-      IssueBreadcrumbPath { crumbs: issue_breadcrumb_crumbs(levels: alignment_levels(chain: chain)) }
-    AlignmentUnresolved { cause } =>
-      IssueBreadcrumbRefused { reason: alignment_refusal_reason(cause: cause) }
-  }
-}
-
-fn issue_breadcrumb_crumb_node(crumb: IssueBreadcrumbCrumb) -> Fragment {
-  match crumb {
-    IssueBreadcrumbProject { node_id, purpose, boundary } =>
-      el_attrs("a", [
-        attr(name: "href", value: join(["/project/", node_id], "")),
-        attr(name: "title", value: boundary),
-      ], [ txt(purpose) ])
-    IssueBreadcrumbTask { node_id: _, purpose, boundary } =>
-      el_attrs("span", [
-        attr(name: "class", value: "issue-breadcrumb-here"),
-        attr(name: "aria-current", value: "page"),
-        attr(name: "title", value: boundary),
-      ], [ txt(purpose) ])
-  }
-}
-
-// THE CRUMB LIST'S SEPARATOR LAW: " › " BETWEEN crumbs only -- never leading, never trailing --
-// so the single-crumb path and the refusal arm emit exactly their own text and nothing else.
-fn issue_breadcrumb_nodes(breadcrumb: IssueBreadcrumb) -> List<Fragment> {
-  match breadcrumb {
-    IssueBreadcrumbPath { crumbs } => {
-      let spaced = fold(crumbs, init: { out: [] as List<Fragment>, first: true }, f: fn(acc, crumb) {
-        {
-          out: if acc.first {
-            concat(acc.out, [issue_breadcrumb_crumb_node(crumb: crumb)])
-          } else {
-            concat(acc.out, [txt(" › "), issue_breadcrumb_crumb_node(crumb: crumb)])
-          },
-          first: false,
-        }
-      })
-      spaced.out
-    }
-    IssueBreadcrumbRefused { reason } =>
-      [ el_class("span", "issue-breadcrumb-refused", [ txt(join(["project path unavailable: ", reason], "")) ]) ]
-  }
+fn issue_breadcrumb_self_node(node: NodePresentation) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: "issue-breadcrumb-here"),
+    attr(name: "aria-current", value: "page"),
+    attr(name: "title", value: node.slug),
+  ], [ txt(node.title) ])
 }
 
 fn issue_breadcrumb_short_label(label: String) -> String {
@@ -2366,55 +2281,47 @@ fn issue_breadcrumb_short_label(label: String) -> String {
   }
 }
 
-fn issue_breadcrumb_compact_labels(crumbs: List<IssueBreadcrumbCrumb>) -> List<String> {
-  let ancestors = fold(crumbs, init: [] as List<String>, f: (acc, c) => match c {
-    IssueBreadcrumbProject { node_id: _, purpose, boundary: _ } => concat(acc, [purpose])
-    IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => acc
-  })
-  let ends = fold(ancestors, init: { first: "", last: "", n: 0 }, f: (acc, label) => {
-    first: if acc.n == 0 { label } else { acc.first }, last: label, n: acc.n + 1
+// ELISION IS THIS RENDERING'S DECISION, not the chain's: the collapsed summary names the first and
+// last ancestor and counts the levels between them; the tree beneath it lists every level.
+fn issue_breadcrumb_compact_labels(ancestors: List<NodePresentation>) -> List<String> {
+  let ends = fold(ancestors, init: { first: "", last: "", n: 0 }, f: (acc, node) => {
+    first: if acc.n == 0 { node.title } else { acc.first }, last: node.title, n: acc.n + 1
   })
   if ends.n == 0 { [] } else if ends.n == 1 { [ends.first] } else if ends.n == 2 { [ends.first, "›", ends.last] }
   else { [ends.first, join(["› … ", to_string(ends.n - 2), " ›"], ""), ends.last] }
 }
 
-fn issue_breadcrumb_tree(crumbs: List<IssueBreadcrumbCrumb>) -> List<Fragment> {
-  let reversed = fold(crumbs, init: [] as List<IssueBreadcrumbCrumb>, f: (acc, crumb) => concat([crumb], acc))
-  fold(reversed, init: [] as List<Fragment>, f: (children, crumb) =>
-    [el("li", concat([issue_breadcrumb_crumb_node(crumb: crumb)], if count(children) == 0 { [] } else { [el("ol", children)] }))])
+fn issue_breadcrumb_tree(ancestors: List<NodePresentation>, self_node: NodePresentation) -> List<Fragment> {
+  let root_first = concat(map(ancestors, node => issue_breadcrumb_ancestor_node(node: node)), [issue_breadcrumb_self_node(node: self_node)])
+  let leaf_first = fold(root_first, init: [] as List<Fragment>, f: (levels, level) => concat([level], levels))
+  fold(leaf_first, init: [] as List<Fragment>, f: (children, level) =>
+    [el("li", concat([level], if count(children) == 0 { [] } else { [el("ol", children)] }))])
 }
 
-fn issue_alignment_breadcrumb_node(resolution: AlignmentResolution) -> Fragment {
-  let breadcrumb = issue_breadcrumb_of(resolution: resolution)
-  el_attrs("nav", [attr(name: "class", value: "issue-breadcrumb"), attr(name: "aria-label", value: "Issue hierarchy")], match breadcrumb {
-    IssueBreadcrumbRefused { reason: _ } => issue_breadcrumb_nodes(breadcrumb: breadcrumb)
-    IssueBreadcrumbPath { crumbs } => {
-      let labels = issue_breadcrumb_compact_labels(crumbs: crumbs)
-      if count(labels) == 0 { [] } else if count(crumbs) == 1 && all(labels, label => string_length(s: label) <= 44) {
-        [el_class("ol", "issue-path-tree", issue_breadcrumb_tree(crumbs: crumbs))]
-      } else {
+fn issue_chain_breadcrumb_node(chain: NodeChain) -> Fragment {
+  el_attrs("nav", [attr(name: "class", value: "issue-breadcrumb"), attr(name: "aria-label", value: "Issue hierarchy")], match chain {
+    NodeChainRefused { refusal } =>
+      [ el_class("span", "issue-breadcrumb-refused", [ txt(node_chain_refusal_text(refusal: refusal)) ]) ]
+    NodeChainRooted { ancestors, self_node } => {
+      let labels = issue_breadcrumb_compact_labels(ancestors: ancestors)
+      if count(labels) == 0 { [] } else {
         [el_class("details", "issue-path-disclosure", [
           el_attrs("summary", [attr(name: "aria-label", value: "Expand issue hierarchy")], map(labels, label =>
             el_attrs("span", [attr(name: "class", value: "issue-path-label"), attr(name: "title", value: label)], [txt(issue_breadcrumb_short_label(label: label))]))),
-          el_class("ol", "issue-path-tree", issue_breadcrumb_tree(crumbs: crumbs)),
+          el_class("ol", "issue-path-tree", issue_breadcrumb_tree(ancestors: ancestors, self_node: self_node)),
         ])]
       }
     }
   })
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
-  issue_detail_page_with_alignment(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context,
-    alignment: alignment_resolve(node_id: view.node_id, turns_elapsed: 1, state: alignment_base_cadence_state()))
-}
-
-// The page consumes the resolved project path; the authority-bound entry above supplies it.
-fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, alignment: AlignmentResolution) -> Fragment {
+// The page consumes the hierarchy view its entry derived; it reads no node list and no edge itself.
+fn issue_detail_page(view: WorkRowView, hierarchy: IssueHierarchyView, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
   ], [
-    issue_alignment_breadcrumb_node(resolution: alignment),
+    issue_chain_breadcrumb_node(chain: hierarchy.chain),
     el_class("div", "issue-detail-head", concat(
       [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
       concat(
@@ -2429,11 +2336,11 @@ fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, ob
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
-        el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, panel: panel)),
-        el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
+        el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, hierarchy: hierarchy)),
+        el_attrs("section", [attr(name: "class", value: "panel-work"), attr(name: "id", value: issue_work_tab_anchor)], issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
         el_class("section", "panel-history", issue_history_tab_nodes(events: events, profiles: view.profiles)),
       ]),
-      issue_metadata_rail_node(view: view, panel: panel, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+      issue_metadata_rail_node(view: view, hierarchy: hierarchy, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
     ]),
   ])
 }
@@ -2449,30 +2356,71 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
     ])))]
 }
 
-// Nesting and blocking are independently projected; no reverse blocker stands in for a child.
-// One-hop dependency neighborhood. Solid lanes are prerequisite edges; project
-// membership is a separate dashed lane. Completed prerequisites remain visible.
-fn issue_graph_link(link: IssueLinkView) -> Fragment {
-  issue_membership_link(link: link, parent: false)
+// THE DEPENDENCIES TAB reads two views and never mixes them: the graph draws the dependency view
+// (Blocked by above the issue, Blocking below it), and the membership section lists the membership
+// view (Parent, then the issue's Sub-issues). A node in both carries the same presentation in each.
+fn issue_node_status_text(status: NodeStatus) -> String {
+  match status {
+    NodeStatusDerived { status: derived, closed: _ } => issue_display_status_label(status: derived)
+    NodeStatusAccepted => status_chip_accepted_label
+    NodeStatusWithheld => status_chip_withheld_label
+    NodeStatusUnavailable { reason: _ } => "Status unavailable"
+  }
 }
-fn issue_membership_link(link: IssueLinkView, parent: Bool) -> Fragment {
-  el_attrs("a", [attr(name: "class", value: "issue-graph-node"), attr(name: "href", value: concat("/issue/", link.node_id)),
-    attr(name: "data-complete", value: if link.status == "done" || link.status == "superseded" { "1" } else { "0" }),
-    attr(name: "aria-label", value: concat(if parent { "Parent project: " } else { "Child issue: " }, link.headline)),
-    attr(name: "title", value: concat(if parent { "Parent project · " } else { "Child issue · " }, concat(link.node_id, concat(" · ", link.status))))], [
+fn issue_node_status_reason(status: NodeStatus) -> String {
+  match status {
+    NodeStatusDerived { status: derived, closed: _ } => issue_display_status_label(status: derived)
+    NodeStatusAccepted => status_chip_accepted_label
+    NodeStatusWithheld => status_chip_withheld_label
+    NodeStatusUnavailable { reason } => join(["Status unavailable: ", reason], "")
+  }
+}
+fn issue_relation_row_children_attrs(children: RelationRowChildren) -> List<Attribute> {
+  match children {
+    RowChildrenNotCarried => []
+    RowChildrenExpandable { count: n } => [attr(name: "data-sub-issues", value: to_string(value: n))]
+  }
+}
+fn issue_membership_link(row: RelationRow, relation: NodeRelation, parent: Bool) -> Fragment {
+  el_attrs("a", concat([attr(name: "class", value: "issue-graph-node"), attr(name: "href", value: row.node.route),
+    attr(name: "data-complete", value: if node_status_is_closed(status: row.node.status) { "1" } else { "0" }),
+    attr(name: "data-priority", value: to_string(roadmap_priority_rank(priority: row.node.priority.priority))),
+    attr(name: "aria-label", value: join([relation_kind_label(kind: relation.kind), ": ", row.node.title], "")),
+    attr(name: "title", value: join([relation_kind_label(kind: relation.kind), " · ", row.node.slug, " · ", roadmap_priority_label(priority: row.node.priority.priority), " · ", issue_node_status_reason(status: row.node.status)], ""))], issue_relation_row_children_attrs(children: row.children)), [
     el_attrs("svg", [attr(name: "class", value: "issue-membership-icon"), attr(name: "viewBox", value: "0 0 16 16"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "1.5"), attr(name: "stroke-linecap", value: "round"), attr(name: "stroke-linejoin", value: "round"), attr(name: "aria-hidden", value: "true")], [el_attrs("path", [attr(name: "d", value: if parent { "M12 13H8a3 3 0 0 1-3-3V3M2 6l3-3 3 3" } else { "M3 2v6a3 3 0 0 0 3 3h7M10 8l3 3-3 3" })], [])]),
-    el_class("span", "issue-membership-name", [txt(link.headline)]), el_class("small", "issue-graph-state", [txt(link.status)]),
+    el_class("span", "issue-membership-name", [txt(row.node.title)]), el_class("small", "issue-graph-state", [txt(issue_node_status_text(status: row.node.status))]),
   ])
 }
-fn issue_graph_column(label: String, links: List<IssueLinkView>) -> Fragment {
-  el_class("div", "issue-graph-column", [el("h3", [txt(label)]),
-    el_class("div", "issue-graph-branch", if count(links) == 0 { [el_class("p", "issue-panel-empty", [txt("None declared")])] } else { map(links, issue_graph_link) }),
-  ])
+// THE GRAPH COMPONENT'S STATE KEYS are its own interface (gunbc.site.dependency_graph
+// dependency_graph_state reads "done", "superseded" and "unknown"); every other status passes as
+// the one derived word. The component is scheduled for removal with the relation tables.
+fn issue_dependency_graph_status(status: NodeStatus) -> String {
+  match status {
+    NodeStatusUnavailable { reason: _ } => "unknown"
+    NodeStatusAccepted => "done"
+    NodeStatusWithheld => "superseded"
+    NodeStatusDerived { status: derived, closed: _ } => match derived {
+      DisplayDone => "done"
+      DisplaySuperseded => "superseded"
+      DisplayUnknown => "unknown"
+      DisplayReady => issue_display_status_label(status: derived)
+      DisplayActive => issue_display_status_label(status: derived)
+      DisplayReview => issue_display_status_label(status: derived)
+      DisplayAssigned => issue_display_status_label(status: derived)
+      DisplayReturned => issue_display_status_label(status: derived)
+      DisplayBlocked => issue_display_status_label(status: derived)
+    }
+  }
 }
-fn issue_dependency_graph_item(link: IssueLinkView) -> DependencyGraphItem {
-  DependencyGraphItem { id: link.node_id, label: link.headline, status: link.status }
+fn issue_dependency_graph_item(row: RelationRow) -> DependencyGraphItem {
+  DependencyGraphItem { id: row.node.slug, label: row.node.title, status: issue_dependency_graph_status(status: row.node.status) }
 }
-fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> List<Fragment> {
+fn issue_dependencies_tab_nodes(view: WorkRowView, hierarchy: IssueHierarchyView) -> List<Fragment> {
+  let parent = hierarchy.membership.parent
+  let sub_issues = hierarchy.membership.sub_issues
+  let blocked_by = hierarchy.dependency.blocked_by
+  let blocking = hierarchy.dependency.blocking
+  let sub_issue_count = relation_count_text(relation: sub_issues)
   [el_class("section", "issue-dependency-graph", [
     el("h2", [txt("Dependencies")]),
     el_class("p", "issue-graph-legend", [txt("Read top to bottom. Arrows lead from a prerequisite to the issue that needs it. Click a grouped node to expand its issues; select an issue to follow its dependencies.")]),
@@ -2482,22 +2430,23 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> Lis
       el_attrs("span", [attr(name: "data-state", value: "done")], [txt("Done")]),
       el_attrs("span", [attr(name: "data-state", value: "unknown")], [txt("Unknown")]),
     ]),
-    dependency_graph_interactive(current: DependencyGraphItem { id: view.node_id, label: view.headline, status: issue_status_label(view: view) }, prerequisites: map(panel.prerequisites, issue_dependency_graph_item), dependents: map(panel.blocking, issue_dependency_graph_item)),
-    el_class("p", "issue-dag-empty", if count(panel.prerequisites) == 0 && count(panel.blocking) == 0 { [txt("No dependencies declared.")] } else { [] }),
+    dependency_graph_interactive(current: DependencyGraphItem { id: view.node_id, label: view.headline, status: issue_status_label(view: view) }, prerequisites: map(blocked_by.rows, issue_dependency_graph_item), dependents: map(blocking.rows, issue_dependency_graph_item)),
+    el_class("p", "issue-dag-empty", if count(blocked_by.rows) == 0 && count(blocking.rows) == 0 { [txt("No dependencies declared.")] } else { [] }),
+    el_class("p", "issue-graph-warning", concat(issue_relation_undeclared_nodes(relation: blocked_by), issue_relation_undeclared_nodes(relation: blocking))),
     el_class("div", "issue-graph-membership", [el("h3", [txt("Project membership")]),
-      el_class("div", "issue-membership-tree", concat(match panel.parent { Absent => [] Present { value: parent } => [issue_membership_link(link: parent, parent: true)] }, [
-        el_attrs("div", [attr(name: "class", value: "issue-membership-subtree"), attr(name: "data-has-parent", value: match panel.parent { Absent => "0" Present { value: _ } => "1" })], [
+      el_class("div", "issue-membership-tree", concat(map(parent.rows, row => issue_membership_link(row: row, relation: parent, parent: true)), concat(issue_relation_undeclared_nodes(relation: parent), [
+        el_attrs("div", [attr(name: "class", value: "issue-membership-subtree"), attr(name: "data-has-parent", value: if count(parent.rows) == 0 { "0" } else { "1" })], [
           el_class("details", "issue-membership-children", concat([
-            el_attrs("summary", [attr(name: "class", value: "issue-membership-current"), attr(name: "aria-current", value: "true"), attr(name: "aria-label", value: join([view.headline, " · ", to_string(value: count(panel.children)), " child issues"], ""))], [
+            el_attrs("summary", [attr(name: "class", value: "issue-membership-current"), attr(name: "aria-current", value: "true"), attr(name: "aria-label", value: join([view.headline, " · ", relation_kind_label(kind: sub_issues.kind), " ", sub_issue_count], ""))], [
               el_class("span", "issue-membership-selected-mark", []),
               el_class("strong", "issue-membership-selected", [txt(view.headline)]),
-              el_attrs("span", [attr(name: "class", value: "issue-membership-count"), attr(name: "aria-hidden", value: "true")], [txt(to_string(value: count(panel.children)))]),
+              el_attrs("span", [attr(name: "class", value: "issue-membership-count"), attr(name: "aria-hidden", value: "true")], [txt(sub_issue_count)]),
             ]),
-          ], if count(panel.children) == 0 { [el_class("p", "issue-panel-empty", [txt("No child issues")])] } else { [el_class("div", "issue-membership-list", map(panel.children, issue_graph_link))] })),
+          ], concat(if count(sub_issues.rows) == 0 { [el_class("p", "issue-panel-empty", [txt(relation_empty_text(kind: sub_issues.kind))])] } else { [el_class("div", "issue-membership-list", map(sub_issues.rows, row => issue_membership_link(row: row, relation: sub_issues, parent: false)))] }, issue_relation_undeclared_nodes(relation: sub_issues)))),
         ]),
-      ])),
+      ]))),
     ]),
-    el_class("p", "issue-graph-warning", if panel.cycle { [txt("Dependency cycle touches this issue. Review the linked prerequisites before dispatching.")] } else { [] }),
+    el_class("p", "issue-graph-warning", if hierarchy.dependency.cycle { [txt("Dependency cycle touches this issue. Review the linked prerequisites before dispatching.")] } else { [] }),
   ])]
 }
 
@@ -2510,26 +2459,32 @@ fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<Pr
   }
 }
 
-// THE RIGHT METADATA RAIL (owner mandate): status, assignee (the editable control), reporter,
-// component, parent, blocked-by/blocking, delivery, return-to, modified, observation — the
-// issue's identity and state at a glance, beside the narrative. Rows with no fact OMIT (the
-// mandate's empty-row law), except status and assignee which always render.
-fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+// THE RIGHT METADATA RAIL (owner mandate): status, assignee (the editable control), the work in
+// progress, reporter, component, parent, prerequisites/blocking, delivery, return-to, modified,
+// observation -- the issue's identity and state at a glance, beside the narrative, as one
+// FieldList. Rows with no fact OMIT (the mandate's empty-row law), except status and assignee
+// which always render; a fact known to be missing is an absent value carrying its reason.
+fn issue_metadata_rail_node(view: WorkRowView, hierarchy: IssueHierarchyView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+  el_class("aside", "issue-rail", [field_list(input: FieldList { rows: issue_rail_rows(view: view, hierarchy: hierarchy, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context) })])
+}
+
+fn issue_rail_rows(view: WorkRowView, hierarchy: IssueHierarchyView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<FieldRow> {
   let assignment = roadmap_issue_assignment(envs: events)
   let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
-  el_class("aside", "issue-rail", [
-    issue_field_row(label: "status", value: [issue_status_node(view: view, events: events)]),
-    issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
-    issue_field_text_row(label: "reporter", value: issue_reporter_value(events: events)),
-    issue_field_text_row(label: "component", value: issue_component_value(view: view)),
-    issue_field_row(label: "parent", value: issue_parent_value(panel: panel)),
-    issue_rail_optional_nodes_row(label: "blocked by", value: issue_link_count_nodes(links: panel.blocked_by)),
-    issue_rail_optional_nodes_row(label: "blocking", value: issue_link_count_nodes(links: panel.blocking)),
-    issue_rail_optional_row(label: "delivery", value: issue_delivery_value(attempts: attempts)),
-    issue_rail_return_to_row(view: view, assignment: assignment),
-    issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
-    issue_rail_optional_row(label: "observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
-  ])
+  flat_map([
+    [FieldRow { label: "Status", value: FieldStatusControl { status: issue_display_status(view: view), detail: issue_status_detail_nodes(view: view, events: events) } }],
+    [issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)],
+    issue_rail_build_meter_rows(view: view, attempts: attempts, assignment: assignment),
+    [FieldRow { label: "Reporter", value: issue_reporter_value(events: events) }],
+    [FieldRow { label: "Component", value: issue_rail_component_value(view: view) }],
+    [FieldRow { label: "Parent", value: issue_parent_value(parent: hierarchy.membership.parent) }],
+    issue_prerequisites_rail_rows(view: view, blocked_by: hierarchy.dependency.blocked_by),
+    issue_rail_count_rows(label: "Blocking", n: relation_summary(relation: hierarchy.dependency.blocking).total),
+    issue_rail_text_rows(label: "Delivery", value: issue_delivery_value(attempts: attempts)),
+    issue_rail_return_to_rows(view: view, assignment: assignment),
+    issue_rail_text_rows(label: "Modified", value: issue_modified_value(events: events)),
+    issue_rail_text_rows(label: "Observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
+  ], rows => rows)
 }
 
 // Status detail keeps the latest ledger standing alongside the observed planning facts.
@@ -2540,59 +2495,76 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
   roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
 }
 
+// A principal as the field list shows a person: the avatar circle, the address (the display's
+// detail) on one line, and the full identity for the tooltip.
+fn issue_rail_person(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> FieldPerson {
+  let display = event_principal_display_with_profile(p: holder, profiles: profiles)
+  let workflow = event_principal_is_fabric(p: holder)
+  FieldPerson { face: issue_avatar_chip_node(display: display, workflow: workflow), identity: display.detail, full: Present { value: issue_avatar_title(display: display, workflow: workflow) } }
+}
+
 // The current identity becomes the editor in place; closing restores the projected holder.
-fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
-  let face = match assignment.holder {
-    Absent => unassigned_avatar()
-    Present { value: holder } => issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder))
+fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> FieldRow {
+  let person = match assignment.holder {
+    Absent => FieldPerson { face: unassigned_avatar(), identity: "Unassigned", full: none }
+    Present { value: holder } => issue_rail_person(holder: holder, profiles: view.profiles)
   }
-  let label = match assignment.holder { Absent => "Unassigned" Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).detail }
-  issue_field_row(label: "assignee", value: [el_class("details", "issue-assignee-disclosure", concat([
-    el_attrs("summary", [attr(name: "aria-label", value: concat("Change assignee: ", label))], [face, el_class("span", "issue-assignee-identity", [txt(label)])]),
-  ], issue_detail_action_bar_nodes(view: view, current_assignee: if label == "Unassigned" { "" } else { label }, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))])
+  let current = match assignment.holder { Absent => "" Present { value: _ } => person.identity }
+  FieldRow { label: "Assignee", value: FieldIdentityControl {
+    person: person,
+    action: "Change assignee",
+    editor: issue_detail_action_bar_nodes(view: view, current_assignee: current, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+  } }
+}
+
+// THE COMPACT WORK SUMMARY, DIRECTLY UNDER THE ASSIGNEE. Whether the issue has one is the
+// producer's decision (gunbc.roadmap.roadmap_build_meter compact_work_summary: Fabric holds it and
+// it has an attempt); the rail only places it, as the field list's Work row, a link into the Work
+// tab carrying the tab chip so the page's tab control opens that tab in place. No summary, no
+// row.
+fn issue_rail_build_meter_rows(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection) -> List<FieldRow> {
+  match compact_work_summary(holder: assignment.holder, attempts: attempts, stale: view.attempt_stale) {
+    Absent => []
+    Present { value: summary } => [
+      FieldRow { label: "Work", value: FieldWork { summary: summary, link_attributes: [attr(name: "data-tab-chip", value: issue_work_tab_anchor)] } },
+    ]
+  }
 }
 
 // THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's
-// target) — rendered when any assignment recorded one.
-fn issue_rail_return_to_row(view: WorkRowView, assignment: IssueAssignmentProjection) -> Fragment {
+// target) — a row only when an assignment recorded one.
+fn issue_rail_return_to_rows(view: WorkRowView, assignment: IssueAssignmentProjection) -> List<FieldRow> {
   match assignment.return_to {
-    Present { value: return_to } =>
-      issue_field_row(label: "return to", value: issue_assignee_chip_node(holder: return_to, profiles: view.profiles))
-    Absent =>
-      el_class("div", "issue-field", [])
+    Present { value: return_to } => [FieldRow { label: "Return To", value: FieldIdentity { person: issue_rail_person(holder: return_to, profiles: view.profiles) } }]
+    Absent => []
   }
 }
 
-fn issue_rail_optional_row(label: String, value: String) -> Fragment {
-  if value == "" {
-    el_class("div", "issue-field", [])
-  } else {
-    issue_field_text_row(label: label, value: value)
-  }
-}
-
-fn issue_rail_optional_nodes_row(label: String, value: List<Fragment>) -> Fragment {
-  if count(value) == 0 {
-    el_class("div", "issue-field", [])
-  } else {
-    issue_field_row(label: label, value: value)
-  }
-}
-
-// THE RAIL CARRIES A RELATION'S SIZE, NOT ITS POPULATION. The rail is a 34ch column: every blocker's
-// headline comma-joined into it wrapped ten titles down the page. The rail names how many, and the
-// count opens the Dependencies tab (the same data-tab-chip the tab strip uses), where each target
-// is its own link. No relation, no row.
-fn issue_link_count_nodes(links: List<IssueLinkView>) -> List<Fragment> {
-  let n = count(links)
+// THE RAIL CARRIES A SIZE, NOT A POPULATION. Every blocker's headline comma-joined into the rail
+// wrapped ten titles down the page. The rail names how many, and the count opens the
+// Dependencies tab (the same data-tab-chip the tab strip uses), where each target is its own
+// link. Nothing to count, no row.
+fn issue_rail_count_rows(label: String, n: Int) -> List<FieldRow> {
   if n == 0 {
     []
   } else {
-    [ el_attrs("button", [
-        attr(name: "class", value: "issue-rail-link" ),
-        attr(name: "type", value: "button" ),
-        attr(name: "data-tab-chip", value: "dependencies" ),
-      ], [ txt(join([to_string(value: n), if n == 1 { " issue" } else { " issues" }], "")) ]) ]
+    [FieldRow { label: label, value: FieldAction {
+      text: join([to_string(value: n), if n == 1 { " issue" } else { " issues" }], ""),
+      attributes: [attr(name: "data-tab-chip", value: "dependencies")],
+    } }]
+  }
+}
+
+// WHAT IS PREVENTING THIS ISSUE FROM PROCEEDING, as far as its prerequisites go. The count is the
+// row's own unmet prerequisites (gunbc.roadmap_presentation row_unmet_prerequisites, the
+// readiness predicate's blockers), never the size of the Blocked by relation: that relation lists
+// every declared prerequisite, satisfied or not, on the Dependencies tab. Where the row's
+// position was decided without assessing readiness the rail says only how many prerequisites are
+// declared, under a label that claims nothing about them.
+fn issue_prerequisites_rail_rows(view: WorkRowView, blocked_by: NodeRelation) -> List<FieldRow> {
+  match row_unmet_prerequisites(view: view) {
+    UnmetPrerequisitesAssessed { ids } => issue_rail_count_rows(label: "Unmet Prerequisites", n: count(ids))
+    UnmetPrerequisitesNotAssessed => issue_rail_count_rows(label: "Prerequisites", n: relation_summary(relation: blocked_by).total)
   }
 }
 
@@ -2600,8 +2572,8 @@ fn issue_link_count_nodes(links: List<IssueLinkView>) -> List<Fragment> {
 // issue on this surface is an authored roadmap row, opened by nobody the ledger can name. The row
 // says so rather than promoting the owner lane (a component, e.g. @shell) to a person. When an
 // IssueCreated kind lands, its author is this value.
-fn issue_reporter_value(events: List<RoadmapEventEnvelope>) -> String {
-  "not recorded (authored roadmap row)"
+fn issue_reporter_value(events: List<RoadmapEventEnvelope>) -> FieldValue {
+  FieldAbsent { reason: "Not recorded: an authored roadmap row has no creation event" }
 }
 
 // DELIVERY: the latest attempt's short key names the delivery vehicle until issue→PR links land
@@ -2621,15 +2593,15 @@ fn issue_modified_value(events: List<RoadmapEventEnvelope>) -> String {
   }
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, hierarchy: IssueHierarchyView, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
   site_document(title: join(["gunbc — issue ", view.node_id], ""), heading: "issue", styles: roadmap_styles(), content: [
-issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+issue_detail_page(view: view, hierarchy: hierarchy, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
 dispatch_client_script()
 ])
 }
 
 // THE DETAIL ROUTE'S RENDER ENTRY (owner ruling 2026-09-24: the detail page is a real served
-// route): one issue's decided row view, link panel, and Work-tab history rendered from the SAME
+// route): one issue's decided row view, hierarchy view, and Work-tab history rendered from the SAME
 // authorities the daily page reads — the plan for the ticket and links, the standings observation
 // for the holder, the node's event log for the durable execution history. Attempts ride the same
 // list the static render takes; the live attempt feed is the belt-side observation-storage
@@ -2679,22 +2651,14 @@ fn issue_detail_page_for(
       let edges = doc_all_edges(doc: doc)
       let ctx = page_launch_context(doc: doc, merged: authored_merged_prs(), launch: launch)
       let observation = observation_impact_view(workflow_refused: attempts_refused)
+      let obs = RowObservations { graph: row_graph(nodes: nodes, edges: edges), merged: authored_merged_prs(), attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
       match (filter(nodes, n => (n.node as String) == node_id)).first() {
         Absent =>
           issue_detail_not_found_page(node_id: node_id, viewer: viewer)
         Present { value: rn } =>
           issue_detail_page_launch(
-            view: work_row_view(
-              rn: rn, nodes: nodes, edges: edges, merged: authored_merged_prs(),
-              activity: daily_row_activity(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
-              rounds: daily_row_rounds(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
-              worker_alive: daily_row_worker_alive(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
-              standing: standing_for_node(standings: standings, node_id: node_id),
-              assignment: assignment_for_node(standings: standings, node_id: node_id),
-              launch: ctx,
-              attempt_stale: any(stale_nodes, s => s == node_id),
-              profiles: profiles),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, member_titles: declared_roadmap_nodes(), merged: authored_merged_prs()),
+            view: observed_row_view(rn: rn, obs: obs),
+            hierarchy: issue_detail_hierarchy_for(rn: rn, plan: nodes, declared: declared_roadmap_nodes(), edges: edges, obs: obs, accepted: accepted, withheld: withheld),
             observation: observation,
             attempts: attempts,
             events: events,
@@ -2714,134 +2678,12 @@ el_class("main", "issue-detail", [
 ])
 }
 
-// THE PROJECT SUITE PAGE (GET /project/<node_id>): ONE project's direct membership listing --
-// the members declared under it in gunbc.roadmap_nesting, in authored order as the base order,
-// then Kahn-layered by the declared dependency edges restricted to the member set: a member whose
-// in-set prerequisites include another member sorts AFTER that member, and members with no
-// in-set prerequisites keep their authored order at the front. The heading is the project row's
-// own ticket headline; an absent row or a non-ticket row renders the not-found document, the same
-// grain as the issue detail route.
-type ProjectSuiteRow { node_id: String, title: String, cycle: Bool }
-
-// THE HEADING'S TICKET PROJECTION: exactly one declared row, and that row a ticket -- anything
-// else is a not-found, because a suite whose heading cannot be read against the row's own brief
-// would be a listing no check can read against.
-fn project_suite_headline(nodes: List<RoadmapNode>, node_id: String) -> String? {
-  match (filter(nodes, n => (n.node as String) == node_id)).first() {
-    Absent => none
-    Present { value: rn } =>
-      match rn.line {
-        TicketLine { done: _, ticket } => Present { value: ticket.headline }
-        DerivableLine { prs: _, title: _, description: _ } => none
-        AuthoredLine { done: _, content: _ } => none
-        PlainLine { content: _ } => none
-        SupersededLine { by: _, content: _ } => none
-      }
-  }
-}
-
-// THE DIRECT MEMBERS, in authored order: the memberships whose project field names this suite --
-// nothing from another project, nothing nested one level deeper.
-fn project_suite_member_ids(memberships: List<RoadmapMembership>, project: String) -> List<String> {
-  map(filter(memberships, m => m.project == project), m => m.member)
-}
-
-// A MEMBER'S IN-SET PREREQUISITES: the parent ends of its declared dependency edges (the
-// roadmap_parent_ids read) restricted to members of this suite -- an edge whose parent stands
-// outside the member set constrains nothing here.
-fn project_suite_in_set_prereqs(edges: List<RoadmapEdge>, member: String, members: List<String>) -> List<String> {
-  filter(roadmap_parent_ids(edges: edges, node: member as NonEmptyStr as RoadmapNodeId), p => any(members, m => m == (p as String)))
-}
-
-// ONE KAHN LAYER: every not-yet-emitted member whose in-set prerequisites are all already emitted,
-// in authored order. A STABLE sort by construction: filter preserves the authored order the
-// membership relation supplies.
-fn project_suite_next_layer(members: List<String>, edges: List<RoadmapEdge>, emitted: List<String>) -> List<String> {
-  filter(members, m => !any(emitted, e => e == m)
-    && all(project_suite_in_set_prereqs(edges: edges, member: m, members: members), p => any(emitted, e => e == p)))
-}
-
-// A CYCLE STOPS PROGRESS: when no not-yet-emitted member can advance (a dependency cycle inside
-// the member set), the remainder emits in authored order -- the listing degrades to declaration
-// order rather than refusing the page over a fixture cycle. The fuel bound is count(members):
-// every advancing layer emits at least one member, so a cycle is the only way to exhaust it.
-fn project_suite_order_step(members: List<String>, edges: List<RoadmapEdge>, emitted: List<String>, fuel: Int) -> List<String> {
-  if fuel <= 0 {
-    concat(emitted, filter(members, m => !any(emitted, e => e == m)))
-  } else {
-    let layer = project_suite_next_layer(members: members, edges: edges, emitted: emitted)
-    if count(layer) == 0 {
-      concat(emitted, filter(members, m => !any(emitted, e => e == m)))
-    } else {
-      project_suite_order_step(members: members, edges: edges, emitted: concat(emitted, layer), fuel: fuel - 1)
-    }
-  }
-}
-
-fn project_suite_ordered_members(members: List<String>, edges: List<RoadmapEdge>) -> List<String> {
-  project_suite_order_step(members: members, edges: edges, emitted: [], fuel: count(members))
-}
-
-// THE ROW'S TITLE: the node row's own title when one exists, the raw id when none does -- an
-// undeclared member still lists, honestly labeled.
-fn project_suite_member_title(nodes: List<RoadmapNode>, member: String) -> String {
-  match (filter(nodes, n => (n.node as String) == member)).first() {
-    Absent => member
-    Present { value: rn } => node_title(item: rn.line)
-  }
-}
-
-// THE LISTING, one row per direct member, topologically ordered.
-fn project_suite_rows(memberships: List<RoadmapMembership>, edges: List<RoadmapEdge>, nodes: List<RoadmapNode>, project: String) -> List<ProjectSuiteRow> {
-  let ordered = project_suite_ordered_members(members: project_suite_member_ids(memberships: memberships, project: project), edges: edges)
-  map(ordered, m => ProjectSuiteRow { node_id: m, title: project_suite_member_title(nodes: nodes, member: m), cycle: dependency_cycle_touches(node_id: m, edges: edges) })
-}
-
-fn project_suite_row_node(row: ProjectSuiteRow) -> Fragment {
-  el_class("li", "project-suite-member", [
-    el_attrs("a", [
-      attr(name: "href", value: join(["/issue/", row.node_id], "")),
-      attr(name: "title", value: row.node_id),
-    ], [ txt(row.title) ]),
-    el_class("span", "issue-graph-warning", if row.cycle { [txt(" · dependency cycle")] } else { [] }),
-  ])
-}
-
-fn project_suite_page_launch(headline: String, node_id: String, rows: List<ProjectSuiteRow>, viewer: String) -> Fragment {
-  site_document(title: join(["gunbc — project ", node_id], ""), heading: "project", styles: roadmap_styles(), content: [
-el_class("main", "project-suite", [
-          el_class("div", "issue-detail-head", [
-            el_class("span", "issue-id", [ txt(node_id) ]),
-            el_class("h1", "issue-detail-title", [ txt(headline) ]),
-          ]),
-          el_class("p", "issue-graph-warning", if any(rows, r => r.cycle) { [txt("A dependency cycle prevents a complete ordering. Unresolved members follow in declared order.")] } else { [] }),
-          if count(rows) == 0 {
-            el_class("p", "project-suite-empty", [ txt("no direct members declared") ])
-          } else {
-            el_class("ul", "project-suite-members", map(rows, r => project_suite_row_node(row: r)))
-          },
-        ])
-])
-}
-
-// THE NOT-FOUND DOCUMENT, the issue route's grain: an absent row or a non-ticket row is a missing
-// project, said in one sentence.
-fn project_suite_not_found_page(node_id: String, viewer: String) -> Fragment {
-  site_document(title: "gunbc — project not found", heading: "project", styles: roadmap_styles(), content: [
-el_class("main", "project-suite", [
-          el_class("p", "issue-not-found", [ txt(join(["no project named ", node_id, " is declared as a ticket in the roadmap authority"], "")) ]),
-        ])
-])
-}
-
 // THE WORKSPACE RENDERS THE TABLE ALONE (owner ruling 2026-09-25: the tree/bands views and their
 // forest container retire from the served page — see the surface note above issue_owner_value).
 // The band derivation still runs one level down: DailyWorkspaceView's active/ready/not-ready/done/
 // superseded entries are what the flat table flattens (workspace_flat_table), so the table's row
 // ORDER is the band order and every row carries its data-band for the filter chips — the band
-// vocabulary outlives the band SURFACE. The forest renderer below (workspace_entries_ul and its
-// chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
-// calls it.
+// vocabulary outlives the band SURFACE.
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", [
@@ -2935,6 +2777,75 @@ fn live_work_family_members_of(nodes: List<RoadmapNode>, index: Map<String, Road
   })
 }
 
+// THE OBSERVED ROW: one node's decided row view over the page's observations -- attempts, standings,
+// launch standing, staleness. The workspace table's rows, the issue page's own row and the status of
+// every node an issue page names as related all come from this one producer, so a node cannot show
+// one status in the table and another on a page that relates to it.
+type RowObservations {
+  graph: ReadinessGraph
+  merged: List<Int>
+  attempts: List<WorkflowAttemptProgress>
+  attempts_refused: String?
+  standings: RoadmapStandings
+  launch: LaunchRowContext
+  stale_nodes: List<String>
+  profiles: List<PrincipalProfile>
+}
+
+fn observed_row_view(rn: RoadmapNode, obs: RowObservations) -> WorkRowView {
+  work_row_view_in(
+    rn: rn, graph: obs.graph, merged: obs.merged,
+    activity: daily_row_activity(node_id: rn.node as String, attempts: obs.attempts, attempts_refused: obs.attempts_refused),
+    rounds: daily_row_rounds(node_id: rn.node as String, attempts: obs.attempts, attempts_refused: obs.attempts_refused),
+    worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: obs.attempts, attempts_refused: obs.attempts_refused),
+    standing: standing_for_node(standings: obs.standings, node_id: rn.node as String),
+    assignment: assignment_for_node(standings: obs.standings, node_id: rn.node as String),
+    launch: obs.launch,
+    attempt_stale: any(obs.stale_nodes, s => s == rn.node as String),
+    profiles: obs.profiles)
+}
+
+// A RELATED NODE'S STATUS is its own row's status when the plan carries a row for it. The row is
+// looked up among the PLAN rows (the graph's own index), because readiness -- and so the status --
+// is defined over that graph. A declared node the plan omits has no row, but its lifecycle is still
+// established (gunbc.roadmap_presentation omitted_node_lifecycle): an accepted or superseded one is
+// shown with the same status a closed plan row gets and counts as closed. Only an omitted node
+// whose lifecycle is not closed is unavailable -- nothing decides what an open node outside the
+// plan should be shown as -- and the reason says why the plan omits it.
+fn observed_node_status(rn: RoadmapNode, obs: RowObservations, accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId>) -> NodeStatus {
+  match lineage_lookup(index: obs.graph.lineage, id: rn.node as String) {
+    Present { value: planned } => {
+      let view = observed_row_view(rn: planned, obs: obs)
+      NodeStatusDerived { status: issue_display_status(view: view), closed: work_lifecycle_is_closed(l: view.lifecycle) }
+    }
+    Absent => {
+      let own = omitted_node_display_status(rn: rn, merged: obs.merged, accepted: false)
+      let superseded = match own { Present { value: s } => s == DisplaySuperseded  Absent => false }
+      if superseded {
+        NodeStatusDerived { status: DisplaySuperseded, closed: true }
+      } else if any(accepted, id => id == rn.node) {
+        NodeStatusAccepted
+      } else {
+        match own {
+          Present { value: status } => NodeStatusDerived { status: status, closed: true }
+          Absent => if any(withheld, id => id == rn.node) { NodeStatusWithheld } else { NodeStatusUnavailable { reason: "no authority establishes a status: the plan carries no row for this node, and neither the acceptance authority nor the plan's withheld set names it" } }
+        }
+      }
+    }
+  }
+}
+
+// THE ISSUE PAGE'S HIERARCHY, as the served entry derives it: the universe is the plan rows joined
+// with the declared rows the plan omits, the edges are the plan's, and every related node's status
+// is observed_node_status over the same observations the page's own row was decided from.
+fn issue_detail_hierarchy_for(rn: RoadmapNode, plan: List<RoadmapNode>, declared: List<RoadmapNode>, edges: List<RoadmapEdge>, obs: RowObservations, accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId>) -> IssueHierarchyView {
+  issue_hierarchy_view(
+    node: rn.node,
+    nodes: hierarchy_nodes(plan: plan, declared: declared),
+    edges: edges,
+    status_of: fn(related) { observed_node_status(rn: related, obs: obs, accepted: accepted, withheld: withheld) })
+}
+
 fn page_launch_context(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> LaunchRowContext {
   LaunchRowContext { standing: launch, graph: launch_graph_of_document(doc: doc), merged: merged }
 }
@@ -2956,16 +2867,8 @@ fn daily_workspace_view_of_for_accepted(
   let observation = observation_impact_view(workflow_refused: attempts_refused)
   let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
   let graph = row_graph(nodes: nodes, edges: edges)
-  let rows = map(nodes, rn => work_row_view_in(
-    rn: rn, graph: graph, merged: merged,
-    activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
-    rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
-    worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
-    standing: standing_for_node(standings: standings, node_id: rn.node as String),
-    assignment: assignment_for_node(standings: standings, node_id: rn.node as String),
-    launch: ctx,
-    attempt_stale: any(stale_nodes, s => s == rn.node as String),
-    profiles: profiles))
+  let obs = RowObservations { graph: graph, merged: merged, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
+  let rows = map(nodes, rn => observed_row_view(rn: rn, obs: obs))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   let shown_index = membership_index(memberships: memberships)
@@ -3310,18 +3213,17 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection,
 
 }
 
-fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>) -> String { issue_status_label(view: view) }
-fn issue_status_node(view: WorkRowView, events: List<RoadmapEventEnvelope> = []) -> Fragment {
+// What the status control opens onto: the four facts the status was decided from.
+fn issue_status_detail_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope> = []) -> List<Fragment> {
   let facts = issue_status_details(view: view)
-  el_class("details", "issue-status-detail", [
-    el("summary", [status_badge(label: issue_status_label(view: view))]),
+  [
     el_class("dl", "issue-status-facts", [
       el("dt", [txt("Planning")]), el("dd", concat([txt(facts.planning)], if count(events) == 0 { [] } else { [el("p", [txt(issue_standing_text(s: roadmap_node_standing(envs: events), profiles: view.profiles))])] })),
       el("dt", [txt("Current obligation")]), el("dd", [txt(if facts.obligation == "" { "No unsettled obligation" } else { facts.obligation })]),
       el("dt", [txt("Attempt")]), el("dd", [txt(facts.outcome)]),
       el("dt", [txt("Delivery evidence")]), el("dd", if count(facts.evidence) == 0 { [txt("No delivery evidence observed")] } else { map(facts.evidence, e => el("p", [txt(join([e.label, ": ", e.value], ""))])) }),
     ]),
-  ])
+  ]
 }
 
 // Profile disclosure is local UI. No click on this card issues a command.

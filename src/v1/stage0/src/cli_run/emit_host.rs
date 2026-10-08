@@ -1918,22 +1918,37 @@ pub fn compile_dag_rust_emit_check_memo_counts() -> (u64, u64) {
     )
 }
 
+/// WHAT ONE FIXTURE COMPILE ESTABLISHES, independent of what a caller asserts about it.
+/// The memo key is (source, read path, prepared inventory): the inputs the compile and render
+/// depend on. `includes`/`excludes` are assertions evaluated AFTER compilation over the emitted
+/// text, so they are not inputs of the compile and key nothing; each call evaluates its own
+/// against the shared read (`emit_check_verdict`).
+#[derive(Clone)]
+pub(crate) enum EmitCheckRead {
+    /// At least one compile-clean hard diagnostic: every assertion set reads `false`.
+    HardDiagnostics,
+    /// The emitted text at the read path.
+    Content(Rc<str>),
+}
+
+fn emit_check_verdict(read: &EmitCheckRead, includes: &[String], excludes: &[String]) -> bool {
+    match read {
+        EmitCheckRead::HardDiagnostics => false,
+        EmitCheckRead::Content(content) => {
+            includes.iter().all(|n| content.contains(n.as_str()))
+                && excludes.iter().all(|n| !content.contains(n.as_str()))
+        }
+    }
+}
+
 pub(crate) fn compile_dag_rust_emit_check_memo_key(
     source: &str,
     file_path: &str,
-    includes: &[String],
-    excludes: &[String],
     inventory_digest: &str,
 ) -> String {
     use crate::v1_rt::{atom_identity_hash, hash_combine};
     let mut h = atom_identity_hash(source.to_string());
     h = hash_combine(h, atom_identity_hash(file_path.to_string()));
-    for s in includes {
-        h = hash_combine(h, atom_identity_hash(s.clone()));
-    }
-    for s in excludes {
-        h = hash_combine(h, atom_identity_hash(s.clone()));
-    }
     h = hash_combine(h, atom_identity_hash(inventory_digest.to_string()));
     h
 }
@@ -2021,20 +2036,15 @@ pub fn compile_dag_rust_emit_check(
     // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
     // Outside the guard there is no snapshot, so a hit would lie about disk.
     let Some(inventory_digest) = floor_prepared_inventory_digest() else {
-        return compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+        return compile_dag_rust_emit_check_uncached(source, file_path)
+            .map(|read| emit_check_verdict(&read, includes, excludes));
     };
-    let memo_key = compile_dag_rust_emit_check_memo_key(
-        source,
-        file_path,
-        includes,
-        excludes,
-        &inventory_digest,
-    );
+    let memo_key = compile_dag_rust_emit_check_memo_key(source, file_path, &inventory_digest);
     if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         record_fixture_closure_memo_hit(&memo_key);
-        return hit;
+        return hit.map(|read| emit_check_verdict(&read, includes, excludes));
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
@@ -2043,22 +2053,20 @@ pub fn compile_dag_rust_emit_check(
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
     begin_fixture_closure_fill();
-    let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    let verdict = compile_dag_rust_emit_check_uncached(source, file_path);
     finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
     record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict.clone()));
-    verdict
+    verdict.map(|read| emit_check_verdict(&read, includes, excludes))
 }
 
 pub(crate) fn compile_dag_rust_emit_check_uncached(
     source: &str,
     file_path: &str,
-    includes: &[String],
-    excludes: &[String],
-) -> Result<bool, FixtureRenderRefusal> {
+) -> Result<EmitCheckRead, FixtureRenderRefusal> {
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
         .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
@@ -2070,11 +2078,10 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
     if hard_diagnostics != 0 {
-        return Ok(false);
+        return Ok(EmitCheckRead::HardDiagnostics);
     }
     match result.files.iter().find(|f| f.path == file_path) {
-        Some(f) => Ok(includes.iter().all(|n| f.content.contains(n.as_str()))
-            && excludes.iter().all(|n| !f.content.contains(n.as_str()))),
+        Some(f) => Ok(EmitCheckRead::Content(Rc::from(f.content.as_str()))),
         // A CLEAN COMPILE THAT DID NOT PRODUCE THE READ PATH IS NOT A RED VERDICT ABOUT ITS TEXT.
         // The path named no module of the compiled closure and no crate-level file the emitter
         // writes, so there was nothing to read; answering `false` would let a misspelled path pass
@@ -4568,6 +4575,48 @@ mod fixture_closure_union_tests {
             "qualified={} bare={}",
             gap.operation_qualified,
             gap.operation_bare
+        );
+    }
+}
+
+#[cfg(test)]
+mod emit_check_read_tests {
+    use super::*;
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// One shared read answers every assertion set independently: the memo key no longer
+    /// carries `includes`/`excludes`, so this is what keeps a hit from lying about them.
+    #[test]
+    fn one_read_discriminates_each_assertion_set() {
+        let read = EmitCheckRead::Content(Rc::from("pub fn alpha() {}"));
+        assert!(emit_check_verdict(&read, &strings(&["alpha"]), &[]));
+        assert!(!emit_check_verdict(&read, &strings(&["beta"]), &[]));
+        assert!(!emit_check_verdict(&read, &[], &strings(&["alpha"])));
+        assert!(emit_check_verdict(&read, &[], &strings(&["beta"])));
+        assert!(!emit_check_verdict(
+            &EmitCheckRead::HardDiagnostics,
+            &[],
+            &[]
+        ));
+    }
+
+    #[test]
+    fn memo_key_is_over_source_and_render_only() {
+        let a = compile_dag_rust_emit_check_memo_key("s", "src/a.rs", "inv");
+        assert_eq!(
+            a,
+            compile_dag_rust_emit_check_memo_key("s", "src/a.rs", "inv")
+        );
+        assert_ne!(
+            a,
+            compile_dag_rust_emit_check_memo_key("s", "src/b.rs", "inv")
+        );
+        assert_ne!(
+            a,
+            compile_dag_rust_emit_check_memo_key("t", "src/a.rs", "inv")
         );
     }
 }

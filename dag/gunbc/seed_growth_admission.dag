@@ -27,6 +27,7 @@ import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read
 import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
+import gunbc.fixture_closure_union_emit_seed_growth { fixture_closure_union_emit_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
 import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
 import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_growth_justification }
@@ -64,6 +65,7 @@ import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
 import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
+import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
@@ -313,10 +315,12 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_serve_program_seed_growth_justification,
     dependency_demand_census_seed_growth_justification,
     generic_identity_census_seed_growth_justification,
+    interpolation_hole_census_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,
     fixture_render_selection_seed_growth_justification,
+    fixture_closure_union_emit_seed_growth_justification,
     fabric_door_socket_seed_growth_justification,
     serve_cookie_header_seed_growth_justification,
     serve_declared_binding_seed_growth_justification,

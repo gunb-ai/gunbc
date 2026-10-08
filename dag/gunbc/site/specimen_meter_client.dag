@@ -1,0 +1,81 @@
+module gunbc.site.specimen_meter_client
+
+import std.types { Int, List, String }
+import extdeps.languages.typescript.program {
+  TsStmt, TsExpr, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_arrow, ts_block, ts_const, ts_return,
+  ts_expr_stmt, ts_if, ts_binop, ts_new, ts_object, ts_field, ts_index,
+}
+import gunbc.site.build_meter_client { build_meter_fresh_event }
+import gunbc.site.element.build_meter { build_meter_subject_attribute }
+
+// THE SPECIMEN'S CHANGES OF SCENE. A control carrying the hand attribute hands the meter its target
+// names the server's rendering kept in the template its value names, by the event the page's
+// workflow observation uses (gunbc.site.build_meter_client build_meter_fresh_event), so the
+// specimen shows what a live attempt changing scene shows and nothing the meter would not. A
+// control carrying the flap attribute hands its two renderings in turn, faster than the meter's
+// dwell: the facts change each time and the drawing never does.
+data specimen_hand_attribute: String = "data-specimen-hand"
+data specimen_flap_attribute: String = "data-specimen-flap"
+data specimen_target_attribute: String = "data-specimen-target"
+data specimen_flap_ms: Int = 1500
+data specimen_flap_count: Int = 6
+
+fn specimen_control_attribute(name: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: "control"), property: "getAttribute"), args: [ts_lit_str(value: name)])
+}
+
+fn specimen_meter_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "siteSpecimenHand", value: ts_arrow(params: ["control"], body: ts_block(stmts: [
+      ts_const(name: "meter", value: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"), args: [
+        ts_binop(
+          left: ts_binop(left: ts_lit_str(value: join(["[", build_meter_subject_attribute, "=\""], "")), op: "+", right: specimen_control_attribute(name: specimen_target_attribute)),
+          op: "+",
+          right: ts_lit_str(value: "\"]")),
+      ])),
+      ts_const(name: "hand", value: ts_arrow(params: ["id"], body: ts_block(stmts: [
+        ts_const(name: "still", value: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "getElementById"), args: [ts_ident(name: "id")])),
+        ts_if(cond: ts_binop(left: ts_ident(name: "meter"), op: "&&", right: ts_ident(name: "still")), then_stmt: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "dispatchEvent"), args: [
+            ts_new(callee: ts_ident(name: "CustomEvent"), args: [
+              ts_lit_str(value: build_meter_fresh_event),
+              ts_object(fields: [ts_field(key: "detail", value: ts_call(
+                callee: ts_member(object: ts_member(object: ts_member(object: ts_ident(name: "still"), property: "content"), property: "firstElementChild"), property: "cloneNode"),
+                args: [ts_ident(name: "true")]))]),
+            ]),
+          ])),
+        ]), else_stmt: none),
+      ]))),
+      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "control"), property: "addEventListener"), args: [
+        ts_lit_str(value: "click"),
+        ts_arrow(params: [], body: ts_block(stmts: [
+          ts_const(name: "one", value: specimen_control_attribute(name: specimen_hand_attribute)),
+          ts_if(cond: ts_ident(name: "one"), then_stmt: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "hand"), args: [ts_ident(name: "one")])),
+            ts_return(expr: none),
+          ]), else_stmt: none),
+          ts_const(name: "two", value: ts_call(
+            callee: ts_member(object: ts_binop(left: specimen_control_attribute(name: specimen_flap_attribute), op: "||", right: ts_lit_str(value: "")), property: "split"),
+            args: [ts_lit_str(value: " ")])),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_object(fields: [ts_field(key: "length", value: ts_lit_num(text: to_string(specimen_flap_count)))])]), property: "forEach"),
+            args: [ts_arrow(params: ["_", "k"], body: ts_block(stmts: [
+              ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "setTimeout"), args: [
+                ts_arrow(params: [], body: ts_block(stmts: [
+                  ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "hand"), args: [ts_index(object: ts_ident(name: "two"), index: ts_binop(left: ts_ident(name: "k"), op: "%", right: ts_lit_num(text: "2")))])),
+                ])),
+                ts_binop(left: ts_ident(name: "k"), op: "*", right: ts_lit_num(text: to_string(specimen_flap_ms))),
+              ])),
+            ]))])),
+        ])),
+      ])),
+    ]))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [
+        ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [
+          ts_lit_str(value: join(["[", specimen_hand_attribute, "], [", specimen_flap_attribute, "]"], "")),
+        ]),
+      ]), property: "forEach"),
+      args: [ts_ident(name: "siteSpecimenHand")])),
+  ]
+}

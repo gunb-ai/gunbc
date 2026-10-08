@@ -1,6 +1,6 @@
 module gunbc.design.scale
 
-import std.types { Int, String, Bool }
+import std.types { Int, String, Bool, List }
 import gunbc.design.material { CssDecl, decl, css_block }
 import extdeps.languages.css.values {
   CssLength, css_ch, css_px, css_length_wire,
@@ -8,6 +8,7 @@ import extdeps.languages.css.values {
   CssGenericFamily, GenericSansSerif, GenericMonospace, GenericSystemUi,
   css_font_stack_wire,
 }
+import extdeps.fonts.google_fonts { roboto_source }
 
 // Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing,
 // type, font stack, plus the dimension tokens (radius, border width, measure, fixed element
@@ -110,11 +111,16 @@ data type_scale: List<ScaleToken> = [
   text_10, text_11, text_12, text_13, text_14, text_15, text_18, text_24,
 ]
 
-data font_sans: ScaleToken = font_token(name: "font-sans", families: [
-  NamedFamily { name: "Roboto" },
+// The body stack. Its first family is the self-hosted Roboto face (ruling R2; gunbc.site.web_fonts
+// serves it), named by the same upstream source row the served @font-face rule names
+// (extdeps.fonts.google_fonts roboto_source), so this token cannot ask for a family the stylesheet
+// does not declare. The fallbacks are the product's measured stack.
+data font_sans_families: List<CssFontFamily> = [
+  NamedFamily { name: roboto_source.family },
   NamedFamily { name: "Arial" },
   GenericFamily { kind: GenericSansSerif },
-])
+]
+data font_sans: ScaleToken = font_token(name: "font-sans", families: font_sans_families)
 data font_mono: ScaleToken = font_token(name: "font-mono", families: [
   NamedFamily { name: "JetBrains Mono" },
   GenericFamily { kind: GenericMonospace },
