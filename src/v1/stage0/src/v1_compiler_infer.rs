@@ -25166,7 +25166,20 @@ pub fn concat_unify_operands(
                 })
             } else {
                 if (left_list.clone() && right_list.clone()) {
-                    if list_concat_elements_agree(
+                    if type_node_is_uninformed_accumulator(left.clone(), source_indices.clone()) {
+                        Rc::new(ConcatUnify {
+                            result: right.clone(),
+                            refuse: std::option::Option::None,
+                        })
+                    } else if type_node_is_uninformed_accumulator(
+                        right.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Rc::new(ConcatUnify {
+                            result: left.clone(),
+                            refuse: std::option::Option::None,
+                        })
+                    } else if list_concat_elements_agree(
                         left.clone(),
                         right.clone(),
                         source_indices.clone(),

@@ -14413,7 +14413,11 @@ fn concat_unify_operands(left: Node, right: Node, fallback: Node, source_indices
   } else if right_unsolved && left_list {
     ConcatUnify { result: left, refuse: none }
   } else if left_list && right_list {
-    if list_concat_elements_agree(left: left, right: right, source_indices: source_indices) {
+    if type_node_is_uninformed_accumulator(n: left, source_indices: source_indices) {
+      ConcatUnify { result: right, refuse: none }
+    } else if type_node_is_uninformed_accumulator(n: right, source_indices: source_indices) {
+      ConcatUnify { result: left, refuse: none }
+    } else if list_concat_elements_agree(left: left, right: right, source_indices: source_indices) {
       ConcatUnify { result: left, refuse: none }
     } else if list_element_is_kernel_string(n: left, source_indices: source_indices)
         && list_element_is_kernel_string(n: right, source_indices: source_indices) {

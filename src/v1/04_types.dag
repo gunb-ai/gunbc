@@ -72,7 +72,13 @@ fn resolved_type(n: Node) -> Node {
 // `function 'r' not found in scope`. An Arrow child denotes itself.
 // gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
+  match ch.inferred {
+    Present { value: TypeVariable { id: _ } } => ch
+    Present { value: Resolved { node: _ } } =>
+      if ch.connective != Arrow { resolved_type(n: ch) } else { ch }
+    _ =>
+      if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
+  }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
