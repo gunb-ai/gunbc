@@ -960,6 +960,8 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_fabric_storage_real_execution.a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appended_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.an_overdue_host_effect_claim_fences_until_released_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
@@ -981,6 +983,7 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
   }
   }
   }
+    }
   }
   }
   }

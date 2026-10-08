@@ -499,3 +499,23 @@ test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_abo
     })
   })
 }
+
+// THE CURRENT-STATE WET ROUTE OF admit_unplaced_host_over, which the image-build entries and the V4.1
+// runtime-image probe reach through admit_unplaced_host_live: over a real temp store, a retained Group B
+// host (srv9, placed by the GLM serving arm) is refused for that real serving-arm commitment, and the
+// refusal appends nothing -- the placement partition reads back with no host-effect record. RED: an
+// admission that ignored the arm commitment would claim the host and append a host effect.
+test fn a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appended_by_real_execution() -> Bool {
+  alr_with_temp_dir(scenario: fn(dir) {
+    let store = alr_witness_layout(dir: dir)
+    alr_witness_root_ready(dir: dir)
+      && (match admit_unplaced_host_over(raw: "srv9", purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1000) {
+        SparkHostRefused { cause: c } => string_contains(s: c as String, pattern: "a serving arm is placed on it")
+        SparkHostAdmitted { host: _, claim: _ } => false
+      })
+      && (match placement_read(store: store) {
+        PlacementReadAt { head: _, effects: effs, preparations: _ } => length(effs) == 0
+        PlacementUnread { step: _, reason: _ } => false
+      })
+  })
+}
