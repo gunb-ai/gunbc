@@ -170,7 +170,11 @@ test fn concat_concrete_type_named_a_refuses() -> Bool {
 
 // EVAL CONTROL for gunbc.recurring_failure_mode empty_list_evaluates_to_unit.
 // fold(init: [] as List<T>, concat(acc, [x])) must inhabit T at runtime, not Unit.
-// Deleting the interpreter NoExprData/Unit-as-empty arms must make this field read refuse.
+// The empty init must stay ExprListLit so eval_expr_inner takes that arm ([]).
+// Dropping ExprListLit routes the collection through NoExprData, which TypeErrors
+// ("type node used as a value (empty list must remain ExprListLit)") and this
+// field read never sees EmptyListEvalFile. Non-collection NoExprData is still Unit;
+// there is no Unit-as-empty arm left to delete (review 77868 / 77899).
 type EmptyListEvalFile { path: String }
 
 data empty_list_eval_seed: List<EmptyListEvalFile> = [EmptyListEvalFile { path: "a" }]
