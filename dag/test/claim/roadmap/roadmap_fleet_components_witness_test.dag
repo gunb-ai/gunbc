@@ -12,7 +12,7 @@ test fn w_fleet_component_tree_hosts_and_arms() -> Bool {
       Absent => false
     })
     && count(filter(fleet_components(), c => count(c.path) == 3)) == 4
-    && count(filter(fleet_components(), c => c.path.first() == Present { value: "srv5" })) == 0
+    && count(filter(fleet_components(), c => c.path.first() == "srv5")) == 0
 }
 
 test fn w_browse_components_derives_the_tree() -> Bool {
