@@ -830,23 +830,15 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: R
 }
 
 fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
-<<<<<<< HEAD
   release_bins_promote_all_to(dir: dir, product: product, destination: rooted(file: "target/release"))
 }
 
 fn release_bins_promote_all_to(dir: Node, product: ReleaseBinsProduct, destination: Node) -> List<Node> {
-  [
+  concat([
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), destination]),
     in_dir(dir: destination, command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
     in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [words(ws: [destination, lit(t: "/")])]))),
-  ]
-=======
-  concat([
-    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
-    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
-  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
->>>>>>> origin/main
+  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), words(ws: [destination, lit(t: "/")])]))))
 }
 
 fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
