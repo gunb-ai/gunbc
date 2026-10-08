@@ -1,6 +1,7 @@
 module v2.test.claim.resolve.fold_handler_binder_resolve
 
 import v2.compiler.compile {
+  NativeCensusModule,
   NativeCensusModuleFileRefused,
   NativeCensusModuleOutcome,
   NativeCensusModuleResolveRefused,
@@ -12,7 +13,6 @@ import v2.compiler.compile {
   native_test_context_from_ingest
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
@@ -39,6 +39,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body. `lambda` is the already-binding control: the same two-parameter fn literal as a call
 // argument, not a fold step. `undeclared` keeps an unbound name in a fold handler as the sole
 // refusal at its atom, so the repair did not start accepting names the handler does not bind.
+//
+// The census walk over those three modules is unrolled, not a fold_list: a fold in THIS file would
+// make the claim module itself the class's subject (the vfb_specimen residual). The subject is the
+// ingest strings.
 
 data fhb_fold_source: String = "module v2.test.fhb_fold\n\ntype Item { path: Bool }\n\nfn fhb_probe(xs: Item) -> Bool {\n  fold(xs, false, fn(acc, candidate) { acc || candidate.path })\n}\n"
 
@@ -95,24 +99,50 @@ fn fhb_verdict_of(outcome: NativeCensusModuleOutcome) -> FhbVerdict {
   }
 }
 
+fn fhb_verdict_of_entry(context: NativeTestContext, entry: NativeCensusModule, module_name: String, acc: FhbVerdict) -> FhbVerdict {
+  if entry.module == module_name {
+    fhb_verdict_of(
+      outcome: native_census_module_resolution(
+        context: context,
+        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+        entry: entry
+      ).outcome
+    )
+  } else {
+    acc
+  }
+}
+
 fn fhb_verdict_in(context: NativeTestContext, module_name: String) -> FhbVerdict {
-  fold_list(
-    xs: native_census_modules(ingest: fhb_ingest),
-    empty: FhbAbsent,
-    cons: fn(acc, entry) {
-      if entry.module == module_name {
-        fhb_verdict_of(
-          outcome: native_census_module_resolution(
-            context: context,
-            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
-            entry: entry
-          ).outcome
-        )
-      } else {
-        acc
+  match native_census_modules(ingest: fhb_ingest) {
+    Empty => FhbAbsent
+    Cons { head: a, tail: rest } =>
+      match rest {
+        Empty => fhb_verdict_of_entry(context: context, entry: a, module_name: module_name, acc: FhbAbsent)
+        Cons { head: b, tail: rest2 } =>
+          match rest2 {
+            Empty =>
+              fhb_verdict_of_entry(
+                context: context,
+                entry: b,
+                module_name: module_name,
+                acc: fhb_verdict_of_entry(context: context, entry: a, module_name: module_name, acc: FhbAbsent)
+              )
+            Cons { head: c, tail: _ } =>
+              fhb_verdict_of_entry(
+                context: context,
+                entry: c,
+                module_name: module_name,
+                acc: fhb_verdict_of_entry(
+                  context: context,
+                  entry: b,
+                  module_name: module_name,
+                  acc: fhb_verdict_of_entry(context: context, entry: a, module_name: module_name, acc: FhbAbsent)
+                )
+              )
+          }
       }
-    }
-  )
+  }
 }
 
 fn fhb_outcomes() -> FhbOutcomes {
