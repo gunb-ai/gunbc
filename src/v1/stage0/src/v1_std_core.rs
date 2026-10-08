@@ -576,6 +576,20 @@ pub enum CompilerDiagnostic {
         importing_module: String,
         span: Rc<SourceSpan>,
     },
+    ImportCollidesWithKernelName {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        kernel_declaration_module: String,
+        span: Rc<SourceSpan>,
+    },
+    KernelMintDeclarationAmbiguousAtImport {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        row_count: i64,
+        span: Rc<SourceSpan>,
+    },
     UnresolvedType {
         name: String,
         span: Rc<SourceSpan>,
@@ -875,10 +889,6 @@ pub enum CompilerDiagnostic {
         optional_side: String,
         span: Rc<SourceSpan>,
     },
-    EqualityAgainstPresentOnListRead {
-        list_read: String,
-        span: Rc<SourceSpan>,
-    },
     TypeArgumentArityMismatch {
         type_name: String,
         supplied: i64,
@@ -1012,6 +1022,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ImportCollidesWithKernelName { span: s, .. } => s.clone(),
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
             s.clone()
@@ -1076,7 +1088,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::EqualityOnFunctionMember { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { span: s, .. } => s.clone(),
-        CompilerDiagnostic::EqualityAgainstPresentOnListRead { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentKindMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeParameterInValuePosition { span: s, .. } => s.clone(),
@@ -1097,6 +1108,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
+    CompilerDiagnostic::ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') collides with the kernel name whose mint is the declaration in '".to_string()), k.clone()), "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.".to_string()),
+    CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') cannot be judged against the kernel mint: ".to_string()), (c.clone()).to_string()), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
@@ -1156,8 +1169,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::EqualityOnFunctionMember { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': member '".to_string()), m.clone()), "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='".to_string()),
     CompilerDiagnostic::EqualityMemberUnjudgeable { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality admission for '".to_string(), t.clone()), "' cannot be judged: ".to_string()), m.clone()), " — '==' is refused rather than admitted on an unjudged member".to_string()),
-    CompilerDiagnostic::EqualityOptionalityMismatch { optional_side: side, .. } => v1_rt::concat(v1_rt::concat("'==' compares an optional value with a required one (the ".to_string(), side.clone()), " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- compare against Present { value: .. } or match on the optional".to_string()),
-    CompilerDiagnostic::EqualityAgainstPresentOnListRead { list_read: r, .. } => v1_rt::concat(v1_rt::concat("'==' against Present { .. } on the result of '".to_string(), r.clone()), "' has no single meaning on every route (the interpreter returns the bare element, the emitted program a real optional, so the comparison is false or a runtime error where the emitted program answers true) -- match on the optional instead: match <read> { Present { value: v } => v == .., Absent => false }".to_string()),
+    CompilerDiagnostic::EqualityOptionalityMismatch { optional_side: side, .. } => v1_rt::concat(v1_rt::concat("'==' compares an optional value with a required one (the ".to_string(), side.clone()), " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional".to_string()),
     CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
     CompilerDiagnostic::TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument does not inhabit the declared kind applying '".to_string(), t.clone()), "': parameter '".to_string()), p.clone()), "' is declared '".to_string()), k.clone()), "', and '".to_string()), sup.clone()), "' is not one of its inhabitants".to_string()),
     CompilerDiagnostic::TypeParameterInValuePosition { name: n, .. } => v1_rt::concat(v1_rt::concat("'".to_string(), n.clone()), "' is a type parameter, not a value: a name bound as a type may not stand in an expression position".to_string()),
@@ -1216,6 +1228,14 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ImportCollidesWithKernelName { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1465,10 +1485,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::EqualityOptionalityMismatch { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::EqualityAgainstPresentOnListRead { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
