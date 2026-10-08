@@ -59,6 +59,7 @@ import v2.compiler.source_authority {
   SourceRootIngest,
   source_ref_for_storage_path
 }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
@@ -272,12 +273,26 @@ fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool
   any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
 }
 
+fn declared_module_source_root(path: String) -> SourceRootRef {
+  if starts_with(s: path, prefix: "src/v2") {
+    V2Tree
+  } else {
+    DagTree
+  }
+}
+
 fn source_refs_from_declared(declared: List<ModuleDeclarationFact>) -> List<SourceRef> {
   fold_list(
     xs: declared,
     empty: no_source_refs,
     cons: fn(acc, fact) {
-      list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: fact.path))
+      list_snoc_item(
+        xs: acc,
+        item: source_ref_for_storage_path(
+          path: fact.path,
+          source_root: declared_module_source_root(path: fact.path)
+        )
+      )
     }
   )
 }

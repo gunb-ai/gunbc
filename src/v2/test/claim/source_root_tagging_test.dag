@@ -1,14 +1,21 @@
 module v2.test.claim.source_root_tagging
 
+import gunbc.source_root_read { SourceRootFile }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
+  SourceRootArgumentAdmitted,
+  SourceRootArgumentUnrecognized,
   SourceRootIngest,
-  source_root_for_storage_path,
+  SourceRootIngestFromFilesBuilt,
+  SourceRootIngestFromFilesUnrecognizedRoot,
+  admit_source_root_argument,
+  source_root_ingest_from_files,
   source_root_set_from_ingest
 }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree, V2Tree, source_root_set_contains }
+import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
@@ -39,31 +46,75 @@ data sr_tag_dag_read: DagSourceReadWitness = DagSourceReadWitness {
 data sr_tag_mixed_ingest: SourceRootIngest = [sr_tag_v2_read, sr_tag_dag_read]
 data sr_tag_v2_only_ingest: SourceRootIngest = [sr_tag_v2_read]
 
-test fn a_repo_relative_src_path_is_v2_tree() -> Bool {
-  match source_root_for_storage_path(path: "src/v2/std/algebra.dag") {
-    V2Tree => true
-    DagTree => false
+test fn a_dag_source_root_argument_is_dag_tree() -> Bool {
+  match admit_source_root_argument(argument: "dag") {
+    SourceRootArgumentAdmitted { tree: DagTree } => true
+    SourceRootArgumentAdmitted { tree: V2Tree } => false
+    SourceRootArgumentUnrecognized { argument: _ } => false
   }
 }
 
-test fn a_repo_relative_dag_path_is_dag_tree() -> Bool {
-  match source_root_for_storage_path(path: "dag/std/algebra.dag") {
-    DagTree => true
-    V2Tree => false
+test fn a_v2_source_root_argument_is_v2_tree() -> Bool {
+  match admit_source_root_argument(argument: "src/v2") {
+    SourceRootArgumentAdmitted { tree: V2Tree } => true
+    SourceRootArgumentAdmitted { tree: DagTree } => false
+    SourceRootArgumentUnrecognized { argument: _ } => false
   }
 }
 
-test fn a_copied_src_path_under_another_root_is_still_v2_tree() -> Bool {
-  match source_root_for_storage_path(path: "/tmp/copied-closure/src/v2/std/algebra.dag") {
-    V2Tree => true
-    DagTree => false
+test fn a_copied_single_root_argument_is_unrecognized() -> Bool {
+  match admit_source_root_argument(argument: "/tmp/copied-closure") {
+    SourceRootArgumentUnrecognized { argument: argument } => argument == "/tmp/copied-closure"
+    SourceRootArgumentAdmitted { tree: _ } => false
   }
 }
 
-test fn a_copied_dag_path_under_another_root_is_still_dag_tree() -> Bool {
-  match source_root_for_storage_path(path: "/tmp/copied-closure/dag/std/algebra.dag") {
-    DagTree => true
-    V2Tree => false
+fn sr_file(path: String, origin: String) -> SourceRootFile {
+  SourceRootFile { path: path, content: "module fixture.sr_tag\n", origin: origin }
+}
+
+test fn a_dag_file_whose_path_contains_src_is_still_dag_tree() -> Bool {
+  match source_root_ingest_from_files(
+    files: [sr_file(path: "dag/pkg/src/leaf.dag", origin: "dag")]
+  ) {
+    SourceRootIngestFromFilesUnrecognizedRoot { argument: _, path: _ } => false
+    SourceRootIngestFromFilesBuilt { ingest: ingest } =>
+      match ingest {
+        Empty => false
+        Cons { head: read, tail: rest } =>
+          match rest {
+            Empty => match read.source_root {
+              DagTree => true
+              V2Tree => false
+            }
+            Cons { head: _, tail: _ } => false
+          }
+      }
+  }
+}
+
+test fn ingest_from_an_unrecognized_origin_refuses() -> Bool {
+  match source_root_ingest_from_files(
+    files: [sr_file(path: "/tmp/copied-closure/src/v2/std/algebra.dag", origin: "/tmp/copied-closure")]
+  ) {
+    SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: path } =>
+      (argument == "/tmp/copied-closure")
+        && (path == "/tmp/copied-closure/src/v2/std/algebra.dag")
+    SourceRootIngestFromFilesBuilt { ingest: _ } => false
+  }
+}
+
+test fn two_root_origins_tag_each_tree() -> Bool {
+  match source_root_ingest_from_files(
+    files: [
+      sr_file(path: "dag/std/algebra.dag", origin: "dag"),
+      sr_file(path: "src/v2/std/algebra.dag", origin: "src/v2")
+    ]
+  ) {
+    SourceRootIngestFromFilesUnrecognizedRoot { argument: _, path: _ } => false
+    SourceRootIngestFromFilesBuilt { ingest: ingest } =>
+      source_root_set_contains(roots: source_root_set_from_ingest(ingest: ingest), r: DagTree)
+        && source_root_set_contains(roots: source_root_set_from_ingest(ingest: ingest), r: V2Tree)
   }
 }
 

@@ -25,7 +25,7 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head, list_reverse, skip }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
@@ -483,25 +483,41 @@ fn source_ref_path(ref: SourceRef) -> String {
   ref.path
 }
 
-// Tree identity is a PATH COMPONENT, not a prefix of the walk spelling. A source root that
-// already is `src/v2` stores `src/v2/std/algebra.dag` and the old prefix test classified it.
-// The same file under a copied closure (`/tmp/copy/src/v2/std/algebra.dag`) does not start
-// with `src/`, so both dag and v2 files became DagTree and the native door resolved a real
-// token as `resolve_unbound_name_is_declared_elsewhere` instead of keeping the two trees
-// distinct. `/src/` as a directory boundary recovers that layout; a relative `src/` prefix
-// still recovers the in-repo walk.
-fn source_root_for_storage_path(path: String) -> SourceRootRef {
-  if starts_with(s: path, prefix: "src/") || string_contains(s: path, pattern: "/src/") {
-    V2Tree
+// Tree identity is the --source-root argument that discovered the file, never a substring of
+// the file's storage path. SourceRootRef has two inhabitants (the dag tree and the src/v2
+// tree); an argument names one of those directories or is unrecognized. A parent of both, a
+// copied single-root dump, or any other spelling refuses rather than defaulting to DagTree.
+type SourceRootArgumentAdmission
+  = SourceRootArgumentAdmitted { tree: SourceRootRef }
+  | SourceRootArgumentUnrecognized { argument: String }
+
+fn source_root_argument_trim(argument: String) -> String {
+  if argument.ends_with(suffix: "/") && (length(xs: argument) > 1) {
+    source_root_argument_trim(
+      argument: list_reverse(xs: skip(xs: list_reverse(xs: argument), n: 1))
+    )
+  } else if starts_with(s: argument, prefix: "./") {
+    source_root_argument_trim(argument: skip(xs: argument, n: 2))
   } else {
-    DagTree
+    argument
   }
 }
 
-fn source_ref_for_storage_path(path: String) -> SourceRef {
+fn admit_source_root_argument(argument: String) -> SourceRootArgumentAdmission {
+  let a = source_root_argument_trim(argument: argument)
+  if (a == "src/v2") || a.ends_with(suffix: "/src/v2") {
+    SourceRootArgumentAdmitted { tree: V2Tree }
+  } else if (a == "dag") || a.ends_with(suffix: "/dag") {
+    SourceRootArgumentAdmitted { tree: DagTree }
+  } else {
+    SourceRootArgumentUnrecognized { argument: argument }
+  }
+}
+
+fn source_ref_for_storage_path(path: String, source_root: SourceRootRef) -> SourceRef {
   SourceRef {
     path: path,
-    source_root: source_root_for_storage_path(path: path),
+    source_root: source_root,
     content_hash: content_hash_of_value(value: "selection-unpinned" as NonEmptyStr)
   }
 }
@@ -1562,13 +1578,37 @@ fn source_authority_round_trip(
   )
 }
 
-// The native filesystem fold supplies observed bytes; provenance is constructed at the same
-// authority as every other source witness. Neither rendered main owns this conversion.
-fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngest {
-  files |> map(file => DagSourceReadWitness {
-    source: Medium { carried: file.content, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
-    compilation_unit: file.path,
-    source_root: source_root_for_storage_path(path: file.path)
-  })
+// The native filesystem fold supplies observed bytes and the discovering --source-root
+// argument on each file. Tree identity is admitted from that argument. An unrecognized
+// argument refuses; the file path is never classified.
+type SourceRootIngestFromFiles
+  = SourceRootIngestFromFilesBuilt { ingest: SourceRootIngest }
+  | SourceRootIngestFromFilesUnrecognizedRoot { argument: String, path: String }
+
+fn source_root_ingest_from_files_go(
+  pending: List<SourceRootFile>,
+  acc: SourceRootIngest
+) -> SourceRootIngestFromFiles {
+  match list_head(xs: pending) {
+    HeadAbsent => SourceRootIngestFromFilesBuilt { ingest: acc }
+    HeadFound { value: file } =>
+      match admit_source_root_argument(argument: file.origin) {
+        SourceRootArgumentAdmitted { tree: tree } =>
+          source_root_ingest_from_files_go(
+            pending: skip(xs: pending, n: 1),
+            acc: list_snoc_item(xs: acc, item: DagSourceReadWitness {
+              source: Medium { carried: file.content, fidelity: Lossless },
+              artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
+              compilation_unit: file.path,
+              source_root: tree
+            })
+          )
+        SourceRootArgumentUnrecognized { argument: argument } =>
+          SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: file.path }
+      }
+  }
+}
+
+fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngestFromFiles {
+  source_root_ingest_from_files_go(pending: files, acc: Empty)
 }

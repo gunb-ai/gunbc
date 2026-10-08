@@ -10,25 +10,26 @@ data two_source_files_claiming_one_module_path_misdiagnosed: RecurringFailureMod
   receipts: [
     "**two source files claiming one module path are not refused as that collision, and the native door reports a later unbound name instead** (INVALID STATE: either two files declare the same module path, or one walked root's layout maps two files onto one tree identity, and ingest continues. HARM: the operator sequences on `resolve_unbound_name_is_declared_elsewhere` at a real token in an innocent module -- DESIGN section 5 silent wrongness wearing a located diagnostic.",
 
-    "TRIGGER INCIDENT, lively-bear-908: dag/std/algebra.dag (`module std.algebra`) and src/v2/std/algebra.dag (`module v2.std.algebra`) were loaded under ONE copied source root. Those are DISTINCT declared module paths. What collided was PATH-DERIVED SOURCE-ROOT IDENTITY: v2.compiler.source_authority source_root_for_storage_path classified a file as V2Tree only when the walk spelling started with `src/`. A copied tree `/tmp/copy/src/v2/std/algebra.dag` does not, so both files became DagTree. Resolve then named a token in std.change as declared elsewhere rather than naming the layout.",
+    "TRIGGER INCIDENT, lively-bear-908: dag/std/algebra.dag (`module std.algebra`) and src/v2/std/algebra.dag (`module v2.std.algebra`) were loaded under ONE copied source root. Those are DISTINCT declared module paths. What collided was PATH-DERIVED SOURCE-ROOT IDENTITY: v2.compiler.source_authority classified a file as V2Tree from the file's storage spelling. A copied tree `/tmp/copy/src/v2/std/algebra.dag` did not start with `src/`, so both files became DagTree. Widening that classifier to 'contains /src/' moved the same silent misclassification onto a dag path such as `dag/pkg/src/leaf.dag`. Resolve then named a token in std.change as declared elsewhere rather than naming the layout.",
 
     "THE SAME DECLARED PATH IS A SECOND ARM OF THE SAME CLASS. The census already refused a second file declaring one QualifiedName (`closure_census_duplicate_module`), but located only that second file's module node. The first file was unnamed. v1's wall at v1_compiler.cli_run module_path_collision_panic_message names BOTH paths. A refusal that names one of two files is still a misdiagnosis of the collision.",
 
-    "DISTINGUISHING FACT: this is not `two_modules_answer_to_one_logical_qualified_name` (a logical-name strip after ingest). It is ingest identity: declared module path, or the tree tag derived from the file's path, answering for two files as one.",
+    "DISTINGUISHING FACT: this is not `two_modules_answer_to_one_logical_qualified_name` (a logical-name strip after ingest). It is ingest identity: declared module path, or a tree tag guessed from the file's path, answering for two files as one.",
 
-    "RECOGNITION RULE: a native emit or census over a small tree reports `resolve_unbound_name_is_declared_elsewhere` (or any resolve unbound) while two walked files share a declared module path OR a copied `src/` path is tagged DagTree. The reviewer tell: the diagnostic's file is not one of the two that share the identity.",
+    "RECOGNITION RULE: a native emit or census over a small tree reports `resolve_unbound_name_is_declared_elsewhere` (or any resolve unbound) while two walked files share a declared module path OR a copied layout is tagged by file spelling rather than by the discovering --source-root. The reviewer tell: the diagnostic's file is not one of the two that share the identity.",
 
     "RUNG FOUND AT: OUTSIDE THE LADDER -- silent wrongness. The later diagnostic is typed and located, and it is the wrong subject.",
 
-    "CEILING: 3, structurally guaranteed. Ingest can refuse a second file that declares an already-ingested module path, with loci on both files, and can tag V2Tree by a `src/` directory component rather than a string prefix. It cannot make two files unwritable.",
+    "CEILING: 3, structurally guaranteed. Ingest can refuse a second file that declares an already-ingested module path, with loci on both files, and can stamp SourceRootRef from the walk origin that discovered the file, refusing when that origin is not a dag or src/v2 tree. It cannot make two files unwritable.",
 
-    "NEXT-RUNG TRIGGER: the native CLI, over a two-file tree whose declared module paths collide, refuses `closure_census_duplicate_module` naming both files; and a path containing `/src/` as a directory component is V2Tree. Sufficient that a copied closure cannot present as an unbound name in a third module. Not satisfied by the census fold refusing on supplied ingest while the filesystem door still prefix-matches.",
+    "NEXT-RUNG TRIGGER: the native CLI, over a two-file tree whose declared module paths collide, refuses `closure_census_duplicate_module` naming both files; a copied single-root argument refuses as unrecognized rather than guessing DagTree; a file under --source-root dag whose path contains /src/ is still DagTree. Sufficient that a copied closure cannot present as an unbound name in a third module. Not satisfied by classifying the file path.",
 
     "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster.",
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "source_root_for_storage_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "admit_source_root_argument", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.source_root_read", decl_name: "source_root_read", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.self_host.closure_emission", decl_name: "closure_census_duplicate_module_outcome", field: WholeDeclaration },
   ],
 }

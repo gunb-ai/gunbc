@@ -574,7 +574,7 @@ fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDiges
   source_ref_list_digest_build(refs: fold_list(
     xs: ingest,
     empty: Empty,
-    cons: fn(acc, read) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: read.artifact.file_path)) }
+    cons: fn(acc, read) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: read.artifact.file_path, source_root: read.source_root)) }
   ))
 }
 
