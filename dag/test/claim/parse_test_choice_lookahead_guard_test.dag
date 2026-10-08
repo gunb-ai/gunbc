@@ -1,4 +1,4 @@
-module v2.test.parse.choice_lookahead_guard_test
+module test.claim.parse_test_choice_lookahead_guard
 
 import std.algebra { Cons, Empty }
 import v2.std.grammar {
@@ -155,8 +155,11 @@ test fn guard_missing_one_word_keeps_that_row() -> Bool {
 
 // THE ROUTE ON REAL INPUT, for a row the lookahead proof removed with no guard: `stmt`'s `return` head
 // against let_sugar's bare `name = e`, whose name admits the keyword. `=` begins no expression, so
-// `return 1` and `return = 1` start alike only for one token. Each must take its own alternative:
-// the return statement carries no let_expr, the bare assignment is one.
+// `return 1` and `return = 1` start alike only for one token. The return statement takes its own
+// alternative and carries no let_expr. The bare assignment is REFUSED: since gunbc#13168 a keyword is
+// not a value name, so `return` can never bind (gunbc.recurring_failure_mode
+// seed_admits_a_keyword_as_a_pattern_binder; that row's declared rung is that this position refuses
+// unnamed, so this claim asserts the refusal and not its reason).
 fn clg_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -195,9 +198,9 @@ test fn return_statement_takes_the_return_route() -> Bool {
   }
 }
 
-test fn keyword_named_bare_assignment_takes_the_let_route() -> Bool {
+test fn keyword_named_bare_assignment_is_refused() -> Bool {
   match clg_parsed_has_let(text: "module probe.clg_assign\nfn f() -> Int {\n  return = 1\n  1\n}\n", file: ^clg_assign) {
-    Present { value: has_let } => has_let
-    Absent => false
+    Present { value: _ } => false
+    Absent => true
   }
 }

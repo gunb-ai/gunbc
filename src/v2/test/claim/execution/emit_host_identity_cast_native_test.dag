@@ -13,17 +13,17 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
-  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused, identity_cast_route_verdict,
+  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
+  identity_cast_route_admitted_holds, identity_cast_route_verdict,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMITTED IDENTITY CAST, BUILT AND RUN. v2.test.claim.coercion.identity_cast_emission_route
-// establishes that `fn f(x: Int) -> Int { x as Int }` is admitted and reaches Rust on the source
-// route; this module establishes what the emitted function DOES. The text under test is the entry
-// member that route emits -- never a hand-written `f` -- and the host row
-// (v2.extdeps.languages.rust_test rust_identity_cast_target_model) only reads the value from argv,
-// calls it and frames the return value.
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. identity_cast_route_verdict is the real door; this
+// module reads the same verdict the required-gate inhabitance already asserted, then builds and
+// runs it. The last merge-time execution of the door is
+// v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds,
+// not this module.
 //
 // STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
 // (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every
@@ -50,10 +50,15 @@ fn identity_cast_native_inputs() -> Inputs {
 // second time: the text built here is the text the admission row asserted on. Absent when the route
 // did not emit exactly the entry.
 fn identity_cast_native_emitted() -> Optional<String> {
-  match identity_cast_route_verdict() {
-    IdentityCastEntryEmitted { text: t, members: n } => if n == 1 { optional_present(value: t) } else { optional_absent() }
-    IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
-    IdentityCastClosureRefused { reason: _ } => optional_absent()
+  let v = identity_cast_route_verdict()
+  if identity_cast_route_admitted_holds(v: v) {
+    match v {
+      IdentityCastEntryEmitted { text: t, members: _ } => optional_present(value: t)
+      IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
+      IdentityCastClosureRefused { reason: _ } => optional_absent()
+    }
+  } else {
+    optional_absent()
   }
 }
 

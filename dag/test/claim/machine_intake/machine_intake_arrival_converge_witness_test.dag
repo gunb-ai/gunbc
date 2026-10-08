@@ -131,7 +131,7 @@ fn route_is_redfish_write_candidate_on_manager_read(route: BmcRotationRouteStand
   match route.grounding {
     RouteQualificationCandidate { request: r, evidence: e } =>
       (match r { RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true  IpmiSetUserPassword { user: _ } => false  IpmiSetUserPrivilegeLimit { access: _ } => false })
-        && (match e { ObservedSurfaceRead { surface: _, receipt: rc } => (rc.label as String) == "artifacts/bmc/mtjade1-redfish-manager-self-192.168.1.246-2026-10-04T043605Z.json"  PublicStandardOperation { authority: _ } => false })
+        && (match e { ObservedSurfaceRead { surface: _, receipt: rc } => (rc.label as String) == "artifacts/bmc/mtjade1-redfish-manager-self-192.168.1.246-2026-10-06T184626Z.json"  PublicStandardOperation { authority: _ } => false })
     RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => false
     RouteGroundedByCitedSource { request: _, citation: _ } => false
     RouteUngrounded => false
@@ -147,7 +147,7 @@ fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, Arriva
             (a.access.endpoint.host as String) == "192.168.1.246"
               && (a.access.firmware.raw_version as String) == "2.11.104000"
               && (match a.access.family { AmiMegaRac => true  OpenBmc => false })
-              && (match a.access.controller_clock { ControllerClockRendered { rendering: t } => (t as String) == "2000-02-28T20:29:01-05:00"  ControllerClockUnread { cause: _ } => false })
+              && (match a.access.controller_clock { ControllerClockRendered { rendering: t } => (t as String) == "2000-03-02T10:39:54-05:00"  ControllerClockUnread { cause: _ } => false })
               && (a.route.endpoint.host as String) == "192.168.1.246"
               && route_is_redfish_write_candidate_on_manager_read(route: a.route)
           IdentityBindReceipt { receipt: _ } => false
@@ -223,7 +223,7 @@ fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalSte
 }
 
 // THE REAL PATH. mtjade1 passes both read-only phases from its committed captures: AccessDiscover from
-// the 2026-10-04 Manager read at 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock
+// the 2026-10-06 J1 Manager GET at 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock
 // kept as a reading, a CANDIDATE Redfish account-write route), and IdentityBindProvisional binding the
 // unit key from the FRU and SMBIOS board serials, which agree, and minting the MachineIntakeSubject
 // over the FRU's provisional assembly and the read's live firmware manifest, with this run as its one

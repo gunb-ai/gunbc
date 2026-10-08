@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.extdeps.languages.dag dag_grammar_additive_expr_helper). Each side of the rule, through the
 // live prepared grammar on a lexed stream (which carries its layout): the next-line forms refuse at
 // the `-`, for a plain operand and for a block, and the same-line form parses. The
-// mutation that reds the refusals is v2.test.parse.newline_dual_role_operator_mutation.
+// mutation that reds the refusals is test.claim.parse_test_newline_dual_role_operator_mutation.
 
 fn n_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
