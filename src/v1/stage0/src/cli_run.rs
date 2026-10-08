@@ -3612,7 +3612,7 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
     match entry_resolve::try_process_shared_index(&layers) {
-        Ok(shared) => Ok(entry_resolve::new_multi_entry_index_shell(
+        Ok(shared) => Ok(entry_resolve::new_multi_entry_index_scratch_over(
             shared.source_files.clone(),
             &shared.source_roots,
         )),

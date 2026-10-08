@@ -3986,7 +3986,7 @@ mod fixture_closure_union_tests {
         let layers = crate::cli_run::witness_layer_roots();
         let shared = super::entry_resolve::try_process_shared_index(&layers)
             .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
-        let scratch = super::entry_resolve::new_multi_entry_index_shell(
+        let scratch = super::entry_resolve::new_multi_entry_index_scratch_over(
             shared.source_files.clone(),
             &shared.source_roots,
         );
@@ -4010,6 +4010,30 @@ mod fixture_closure_union_tests {
             "planning the witness must not both-close MegaRAC production named only inside \
              forged_probe_source; pulled {megarac:?} (closure_len={})",
             closed.len()
+        );
+    }
+
+    /// Scratch over an already-indexed name set must not register as a second
+    /// `MultiEntryIndex` of that set (`MultiEntryIndexBuiltTwiceForOneNameSet`).
+    #[test]
+    fn fixture_scratch_shell_is_not_a_second_index_of_the_name_set() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
+        let before = crate::cli_run::multi_entry_index_builds().len();
+        let _ = super::entry_resolve::new_multi_entry_index_scratch_over(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        let _ = super::entry_resolve::new_multi_entry_index_scratch_over(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        assert_eq!(
+            crate::cli_run::multi_entry_index_builds().len(),
+            before,
+            "a scratch shell is empty caches over an indexed name set, not another index"
         );
     }
 

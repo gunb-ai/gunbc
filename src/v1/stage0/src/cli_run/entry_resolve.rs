@@ -1480,12 +1480,29 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
+/// Empty caches over an already-indexed `source_files` map. Not a second index of that
+/// name set: `new_multi_entry_index_shell` records one construction per set, and a scratch
+/// that also recorded would refuse the floor (`MultiEntryIndexBuiltTwiceForOneNameSet`).
+pub(crate) fn new_multi_entry_index_scratch_over(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
 #[track_caller]
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
 ) -> MultiEntryIndex {
     record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
+fn multi_entry_index_shell_body(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
