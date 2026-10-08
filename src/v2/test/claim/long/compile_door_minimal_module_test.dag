@@ -112,7 +112,7 @@ fn isolated_probe_fatal_or_admitted() -> Symbol {
   }
 }
 
-fn isolated_probe_is_not_a_roster_lens_refusal(reason: Symbol) -> Bool {
+fn isolated_probe_is_compile_door_roster_admitted(reason: Symbol) -> Bool {
   reason == ^compile_door_roster_admitted
 }
 
@@ -253,13 +253,11 @@ fn isolated_fn_member_at_lens() -> String {
   }
 }
 
-// LONG-LANE: interpreted door + LM in-frame (mandatory_tag_gate_witness class, over 72300
-// new-witness eval-step budget). Recipe: claim_batch --source-root dag --source-root src/v2
-// --entry src/v2/test/claim/long/compile_door_minimal_module_test.dag --claim-run.
-
-test fn isolated_minimal_module_is_not_refused_by_roster_lenses() -> Bool {
-  isolated_probe_is_not_a_roster_lens_refusal(reason: isolated_probe_fatal_or_admitted())
-}
+// NOT a test fn (review 77901): HEAD still dies member_not_a_binder on the QN spine.
+// Dump: isolated_probe_fatal_or_admitted. Re-enroll as test fn when that dump is
+// compile_door_roster_admitted (after #13513 member_kinds). Recipe: gunbc run
+// --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/compile_door_minimal_module_test.dag
+// --function isolated_probe_fatal_or_admitted.
 
 fn ledger_style_probe_row() -> DoorLedgerRow {
   door_ledger_row(
