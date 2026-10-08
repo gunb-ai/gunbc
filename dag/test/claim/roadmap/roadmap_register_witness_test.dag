@@ -111,6 +111,7 @@ test fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
     ResponseRule { subject, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => selector_subject_wire(s: subject) == ".dispatch-btn"
     StaticRule { selector: _, decls: _ } => false
     AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+    MediaRule { condition: _, selector: _, decls: _ } => false
   })
   let css = serialize_rules(rules: rules)
   string_contains(s: reduced_motion_block(rules: rules), pattern: "@media (prefers-reduced-motion: reduce)")

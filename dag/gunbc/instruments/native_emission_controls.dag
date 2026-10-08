@@ -1,7 +1,8 @@
 module gunbc.instruments.native_emission_controls
 
-import std.types { Bool, Int, List, Set, String }
+import std.types { Bool, Int, List, NonEmptyStr, Set, String }
 import v2.std.algebra { filter }
+import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
@@ -246,6 +247,46 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: an effectful function's return type is rendered against the module's type environment
+// (v1.compiler.emit_rust emit_func_inferred through render_rust_fn_sig_type), the same authority a
+// pure function's return uses. It rendered with an empty emit info, so a type argument was judged
+// against an unobserved unit-variant index and became a compile_error! -- gunbc.durable_cas_file_store
+// `-> CasOutcome<NonEmptyStr>`. control_effectful_generic_return is effectful (it reads the
+// filesystem), so this closure does not compile while that rule is broken; the cases then call it
+// for real on a path no host provisions, and decide the same generic carrier answers its arms.
+type ControlReadBox<T>
+  = ControlReadFull { v: T }
+  | ControlReadEmpty
+
+fn control_effectful_generic_return(path: String) -> ControlReadBox<NonEmptyStr> {
+  let read = Filesystem.Read(path: path)
+  if read.success { ControlReadFull { v: read.content as NonEmptyStr } } else { ControlReadEmpty }
+}
+
+fn control_read_box_value(b: ControlReadBox<NonEmptyStr>) -> String {
+  match b {
+    ControlReadFull { v: v } => v
+    ControlReadEmpty => ""
+  }
+}
+
+fn effectful_generic_return_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "generic_return_full_arm_answers_its_value",
+      held: control_read_box_value(b: ControlReadFull { v: "x" as NonEmptyStr }) == "x"
+    },
+    NativeEmissionCase {
+      identity: "generic_return_red_empty_arm_answers_empty",
+      held: control_read_box_value(b: ControlReadEmpty) == ""
+    },
+    NativeEmissionCase {
+      identity: "generic_return_effectful_call_answers_empty_on_absent_path",
+      held: control_read_box_value(b: control_effectful_generic_return(path: "/gunbc-native-emission-controls-absent/none")) == ""
+    }
+  ]
+}
+
 // RULE: a list index is realized as the optional its type says it is. v1.compiler.infer_access
 // check_index_access_node types `xs[i]` as `T?`, an out-of-range index having no element, and the
 // Rust list_index template (v1.compiler.languages) used to print the bare `xs[i as usize].clone()`,
@@ -293,6 +334,26 @@ fn control_absent_path_read_is_refused() -> Bool {
 fn claim_driver_filesystem_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "claim_driver_filesystem_absent_path_read_is_refused", held: control_absent_path_read_is_refused() }
+  ]
+}
+
+// RULE: an empty-map turbofish whose type argument arrives erased defers to the target's inference
+// (v1.compiler.emit_rust rust_empty_map_init_expr, type_node_carries_erased_type_argument), as an
+// unbound formal already does. std.list duplicated_by_key builds `DuplicatedScan { firsts:
+// empty_map(), .. }` whose field is `Map<String, T>`; infer leaves that T erased, it rendered as a
+// compile_error!, and std.list did not compile. The cases call the real kernel:
+// each repeated key's FIRST element once, in the order the keys were found to repeat, and nothing
+// for a list without repeats.
+fn generic_empty_map_turbofish_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
+      held: duplicated_by_key(xs: ["a", "b", "a", "c", "b", "a"], key: x => x) == ["a", "b"]
+    },
+    NativeEmissionCase {
+      identity: "generic_empty_map_red_no_repeat_reports_nothing",
+      held: duplicated_by_key(xs: ["a", "b", "c"], key: x => x) == []
+    }
   ]
 }
 
@@ -437,11 +498,16 @@ data native_emission_expected_identities: List<String> = [
   "list_index_red_in_range_is_not_absent",
   "list_index_past_the_end_is_absent",
   "list_index_negative_is_absent",
-  "list_index_into_empty_is_absent"
+  "list_index_into_empty_is_absent",
+  "generic_return_full_arm_answers_its_value",
+  "generic_return_red_empty_arm_answers_empty",
+  "generic_return_effectful_call_answers_empty_on_absent_path",
+  "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
+  "generic_empty_map_red_no_repeat_reports_nothing"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases())
+  concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

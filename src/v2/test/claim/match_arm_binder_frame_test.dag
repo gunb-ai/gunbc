@@ -24,7 +24,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

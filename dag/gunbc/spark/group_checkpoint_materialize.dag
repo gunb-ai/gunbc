@@ -1,8 +1,9 @@
 module gunbc.spark.group_checkpoint_materialize
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
@@ -17,6 +18,7 @@ import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.serving_arm { ServingCheckpoint, serving_checkpoint_row, serving_checkpoint_wire }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, SnapshotPlacement, SnapshotSeed, LocalDirectoryPlacement, HubCachePlacement, model_snapshot_completion_check_argv, model_snapshot_subject_for, spark_hub_cache_root }
+import extdeps.huggingface.hub { hub_dereferenced_bytes_argv }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, containerized_hub_cli_for, ContainerizedHubCliBuilt, ContainerizedHubCliRefused, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable, spark_snapshot_verify_observation, spark_transfer_cancel, spark_transfer_unit_for, read_instrument, InstrumentVerified, InstrumentRejectedTheSubject, InstrumentDidNotRun, InstrumentContradictedItself, executor_wrap, SparkTransferCancel, TransferCancelled, TransferCancelledNothingRunning, TransferCancelRefused }
 import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
@@ -98,7 +100,8 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
             } else {
               match spark_remote_run(ctx: ctx, argv: ["docker", "run", "--rm", "--pull", "never", "--entrypoint", "sh", image.tag as String, "-c", "command -v hf"]) {
                 RemoteUnreachable { cause: c, reach: _ } => HeldImageExecutorRefused { cause: join(["the CLI read leg did not run: ", c], "") }
-                RemoteRan { exit_code: c2, stdout: path, stderr: e2 } =>
+                RemoteRan { exit_code: c2, stdout: raw_path, stderr: e2 } => {
+                  let path = remote_stdout_as_one_word(stdout: raw_path)
                   if c2 != 0 || !starts_with(s: path, prefix: "/") || string_contains(s: path, pattern: "\n") {
                     HeldImageExecutorRefused { cause: join(["the image ", want, " answered no Hub CLI path (exit ", to_string(c2), ", stdout `", path, "`, stderr `", e2, "`)"], "") }
                   } else {
@@ -110,6 +113,7 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
                       }
                     }
                   }
+                }
               }
             }
         }
@@ -309,7 +313,7 @@ fn checkpoint_landed_on_host(ctx: SparkMaterializeContext, m: CheckpointMaterial
       match snapshot_hub_paths(snapshot: snapshot) {
         Absent => none
         Present { value: paths } =>
-          match spark_remote_run(ctx: ctx, argv: ["du", "-sbL", paths.repo_dir as String]) {
+          match spark_remote_run(ctx: ctx, argv: hub_dereferenced_bytes_argv(path: paths.repo_dir)) {
             RemoteUnreachable { cause: c, reach: _ } => Present { value: join(["the host's checkpoint size could not be read: ", c], "") }
             RemoteRan { exit_code: code, stdout: out, stderr: err } =>
               if code != 0 { Present { value: join(["du exited ", to_string(code), ": ", err], "") } } else {
@@ -342,7 +346,7 @@ fn transfer_restarts_line(ctx: SparkMaterializeContext, snapshot: ModelSnapshotD
         RemoteUnreachable { cause: c, reach: _ } => join(["transfer unit restarts: UNREAD (", c, ")\n"], "")
         RemoteRan { exit_code: code, stdout: out, stderr: err } =>
           if code != 0 { join(["transfer unit restarts: UNREAD (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
-          else { join(["transfer unit restarts: ", trim(s: out), " (each a failure retried by Restart=on-failure)\n"], "") }
+          else { join(["transfer unit restarts: ", remote_stdout_as_one_word(stdout: out), " (each a failure retried by Restart=on-failure)\n"], "") }
       }
   }
 }

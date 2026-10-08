@@ -2,7 +2,7 @@ module test.claim.durable_exclusive_hold_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { content_hash_of_value }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,

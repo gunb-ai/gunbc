@@ -22,6 +22,6 @@ data none_literal_is_a_second_spelling_of_absent: RecurringFailureMode = Recurri
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.std.optional", decl_name: "Optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.optional", decl_name: "Optional", field: WholeDeclaration },
   ],
 }

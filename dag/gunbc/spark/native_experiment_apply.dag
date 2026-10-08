@@ -5,7 +5,7 @@ import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count_value }
 import v2.std.algebra { zip_map }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { serialize_content_hash }
@@ -621,9 +621,9 @@ fn arm_experiment_actuation_admission(
   plan: ArmMemoryExperimentPlan?,
 ) -> ArmExperimentActuationAdmission {
   match verdict {
-    ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } =>
+    ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } =>
       ArmExperimentActuationRefused { cause: "the actuation requires a FitUnestablished verdict with named open obligations; this subject is PROVED, so there is nothing a wet experiment measures that the proof does not already establish" as NonEmptyStr }
-    ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } =>
+    ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: c } =>
       ArmExperimentActuationRefused { cause: join(["the actuation requires a FitUnestablished verdict with named open obligations; this subject is REFUSED (", c as String, "), and a shape that cannot fit has nothing a measurement can rescue"], "") as NonEmptyStr }
     ArmMemoryFitUnestablished { obligations: os } =>
       match length(os) == 0 {

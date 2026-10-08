@@ -9,7 +9,7 @@ import std.measure {
 import product.placement_supply { PhysicalAssetIdentity }
 import product.rack_mount { RackInstance, ChassisMount, rack_mounts }
 import extdeps.power.types { PduCatalogRow }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // SPATIAL-6A: WHAT THE RACK DRAWS, AND WHETHER THE FEED CAN CARRY IT.
 //

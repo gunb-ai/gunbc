@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSignOutcome, JwsSigned, JwsSignRefused }
 import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
 import gunbc.host_cli_dependency { first_absent_host_cli_dependency, jws_signer_host_cli_requirements }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // THE HANDLER DISPATCH FOR extdeps.auth.jws's signer interface, kept peripheral because selecting a
 // realization is itself realization (DESIGN §3). A key held as a HOST FILE is signed by openssl,

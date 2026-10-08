@@ -65,6 +65,22 @@ fn worktree_changes_since_args(base_sha: String) -> List<String> {
 
 data worktree_untracked_args: List<String> = ["ls-files", "--others", "--exclude-standard", "-z"]
 
+// THE BASE ADVANCE'S TWO QUESTIONS OF THE BRIDGE. An advance re-binds a line from one recorded
+// revision to the next over exactly the external change between them, so it first asks whether each
+// revision is a commit the bridge can observe -- `git cat-file -e <sha>^0` peels to a commit and
+// exits non-zero for an object it does not hold or one that is not a commit (the `^0` spelling rather
+// than `^{commit}`: a .dag string literal reads `{...}` as interpolation) -- and then asks for the change itself as a
+// TREE diff, which no worktree state can perturb. Renames are decomposed by git rather than by the
+// parse (`--no-renames`): the manifest is a path map, and a rename at that grain IS a delete plus a
+// bind, so asking git to detect one only to undo it would be a heuristic standing between the two.
+fn revision_observable_args(sha: String) -> List<String> {
+  ["cat-file", "-e", join([sha, "^0"], "")]
+}
+
+fn revision_changes_between_args(from: String, to: String) -> List<String> {
+  ["diff", "--name-status", "-z", "--no-renames", from, to]
+}
+
 // A change row: modify/add binds a path to the worktree's bytes; delete removes it. Renames
 // decompose into a deletion of the old path and a bind of the new one, which is what the rename
 // semantically is at manifest grain.

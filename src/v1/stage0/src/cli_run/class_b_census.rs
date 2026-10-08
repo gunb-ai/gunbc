@@ -145,9 +145,10 @@ pub(crate) fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String])
 }
 
 /// Every workspace-relative path whose content can change `run_class_b_import_closure_gate`'s
-/// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
-/// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
-/// fixtures, sorted.
+/// verdict: witness-layer both-closure of the gate transport modules (rows 3–4 wide pool),
+/// declared-import-pool both-closure of the subject entry (rows 1–2 minimal pool), perturbation
+/// fixtures, sorted. The walk is `import_closure_dag_files` — the one closure authority, not
+/// import lines alone.
 ///
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///

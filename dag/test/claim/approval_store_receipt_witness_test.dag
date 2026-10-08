@@ -2,7 +2,7 @@ module test.claim.approval_store_receipt_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Secret }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, mac_sign }
@@ -20,7 +20,8 @@ import gunbc.auth.approval_store_receipt {
   StoreReceiptIssuance, StoreReceiptIssued, StoreReceiptRefused,
   ReceiptEscalationNotFiled, ReceiptStillPending, ReceiptDenied, ReceiptAttemptMismatch, ReceiptRevisionMismatch, ReceiptKeyUnavailable, ReceiptFilingUnreadable,
   issue_store_receipt_over, store_receipt_claims,
-  store_receipt_answer_over, store_receipt_request_message,
+  authenticate_store_receipt_asker, StoreReceiptAskerAuthenticated, StoreReceiptAskerRefused, store_receipt_authenticated_answer,
+  store_receipt_request_message,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -123,18 +124,16 @@ test fn the_mint_refuses_each_standing_that_is_not_a_matching_approval() -> Bool
     && (match issue_store_receipt_over(slot: sr_approved(revision: sr_revision), filing: sr_filing(), attempt: sr_attempt(s: "tx-d0"), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }) { StoreReceiptRefused { refusal: ReceiptKeyUnavailable { cause: _ } } => true  _ => false })
 }
 
-// THE ROUTE'S ANSWER: an asker holding the submission key receives the receipt wire; an asker
-// without it is refused 403 BEFORE the escalation is read (the slot reader below would mint for
-// anyone), and a malformed body is 400.
+// THE ROUTE'S ANSWER: an asker holding the submission key is authenticated for the attempt it
+// presents and the mint over its readings answers the receipt wire; an asker without it is refused
+// 403 by the authentication alone, which takes no escalation reading (the readings below would mint
+// for anyone), and a malformed body is 400.
 fn sr_answer(body: String) -> Int {
-  store_receipt_answer_over(
-    escalation_id: "esc-d0-1" as NonEmptyStr,
-    body: body,
-    submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() },
-    slot: fn() { sr_approved(revision: sr_revision) },
-    filing: fn() { sr_filing() },
-    receipt_keyring: fn() { ApprovalKeyLoaded { key: sr_receipt_key() } },
-  ).status
+  match authenticate_store_receipt_asker(escalation_id: "esc-d0-1" as NonEmptyStr, body: body, submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() }) {
+    StoreReceiptAskerRefused { answer: refused } => refused.status
+    StoreReceiptAskerAuthenticated { attempt: attempt } =>
+      store_receipt_authenticated_answer(attempt: attempt, slot: sr_approved(revision: sr_revision), filing: sr_filing(), keyring: ApprovalKeyLoaded { key: sr_receipt_key() }).status
+  }
 }
 
 fn sr_tag(key: MacKey, attempt: String) -> String {

@@ -3,16 +3,16 @@ module test.claim.instruments.instrument_dispatch_workflow_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { length }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import gunbc.instrument_dispatch_workflow {
   instrument_dispatch_steps, instrument_dispatch_seed_step_name,
   InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused,
   expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered,
   InstrumentDispatchMemoryDemand, instrument_dispatch_memory_demands, instrument_dispatch_memory_demands_fit,
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
-  instrument_dispatch_whole_tree_memory_demand,
+  instrument_dispatch_whole_tree_memory_demand, instrument_dispatch_stage0_regen_memory_demand,
 }
-import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label }
+import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label }
 import extdeps.bazel.label { render_label }
 import std.measure { byte_size, byte_size_count }
 
@@ -141,4 +141,13 @@ test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool
     && contains(t, to_string(byte_size_count(b: instrument_dispatch_whole_tree_memory_demand)))
     && contains(t, "InstrumentMemoryBudgetUnmet")
     && (before_checkout == "guard-first")
+}
+
+// The stage0 regen round's price is dispatchable, and its row carries its own declared demand rather
+// than borrowing the whole-tree census's: a gate sized for the largest subject refuses every smaller one.
+test fn the_dispatch_choice_offers_the_regen_round_cost_with_its_own_memory_demand_holds() -> Bool {
+  let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
+  contains(generated_text(), "//gunbc/instruments:regen-round-cost")
+    && any(declared, l => l == render_label(l: regen_round_cost_label()))
+    && contains(generated_text(), to_string(byte_size_count(b: instrument_dispatch_stage0_regen_memory_demand)))
 }

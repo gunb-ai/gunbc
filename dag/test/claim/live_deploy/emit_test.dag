@@ -181,7 +181,6 @@ import gunbc.generated_artifact {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap_static_site {
   roadmap_site_health_path,
-  roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
   roadmap_site_text_static_routes,
   served_static_route_literal_path,

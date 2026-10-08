@@ -24,6 +24,7 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
+  InterlockPending, UnconditionalStanding, InterlockedBy,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
   OperatorOwnSession, PastedOperatorToken,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -245,7 +246,7 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
   effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof") },
 }
 
 data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
@@ -408,31 +409,41 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    hold: group_a_dev_standing_grant.ruling.interlock,
+    hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
     refusal: site(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_decide_release"),
     premise: "the release runs only under D0's durable claim of the consent slot and its pending state, and refuses (D0HostNotQuiescent) unless a fresh reading taken at filing time finds every host quiescent; an unanswering host refuses as unobserved" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: mtcollins1_operator_ruling.interlock,
+    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: mtcollins1_operator_ruling.interlock,
+    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
 ]
 
-// A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK: for every census row whose effect carries
-// one, the ruling's interlock must be the hold of an interlock rostered against that same site.
+// A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK. InterlockPending never discharges and is
+// always a defect. UnconditionalStanding discharges without a rostered hold. InterlockedBy discharges
+// only when that hold is rostered against the same site.
 fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
   any(privileged_effect_interlocks, i => declaration_ref_eq(a: i.site, b: site_ref) && declaration_ref_eq(a: i.hold, b: interlock))
+}
+
+fn ruling_discharge_interlock_defect(site_ref: DeclarationRef, ruling: StandingDestructiveAuthorization) -> DeclarationRef? {
+  match ruling.interlock {
+    InterlockPending { obligation: _ } => Present { value: site_ref }
+    UnconditionalStanding { reason: _ } => none
+    InterlockedBy { hold: i } =>
+      if ruling_interlock_is_rostered(site_ref: site_ref, interlock: i) { none } else { Present { value: site_ref } }
+  }
 }
 
 fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
@@ -440,7 +451,10 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
     match row.effect.witness_discharge {
       NoWitnessDischarge => []
       StandingRulingUnderInterlock { ruling: r } =>
-        if ruling_interlock_is_rostered(site_ref: row.site, interlock: r.interlock) { [] } else { [row.site] }
+        match ruling_discharge_interlock_defect(site_ref: row.site, ruling: r) {
+          Absent => []
+          Present { value: s } => [s]
+        }
     })
 }
 
@@ -636,7 +650,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
-    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, or the approval ntfy publisher token -- and place it on one fleet host at its row's owner, group and mode" as NonEmptyStr),
+    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, the approval ntfy publisher token, the fabric state writer key, or the Claude Code subscription OAuth token the roadmap belt's explicit Claude dispatch reads -- and place it on one fleet host at its row's owner, group and mode" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },

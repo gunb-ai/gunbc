@@ -21,7 +21,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.node { Hash, Node, combine_hash, symbol_identity_digest }
-import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data fixture_synthetic_emission_note: String = "Parallel fixture-scoped emission authority (wise-ram-22 disposition PR1 containment): SyntheticEmittedArtifact / FixtureBehaviorReceipt carry FixtureEmissionQualification only — no constructor into ProducerEmissionReceipt or production EmissionQualification."
