@@ -193,11 +193,11 @@ fn write_intent_of_witness(env: ChainEnvelope<PairAuthorityEvent>, previous: Pai
 }
 
 fn alw_ref(previous: PairServingGroupAuthority, next: PairServingGroupAuthority, operation: String) -> PlacementPreparationRef {
-  PlacementPreparationRef { id: (join(["p-", operation, "-", authority_wire(a: previous), ">", authority_wire(a: next)], "") as NonEmptyStr) as EventId, group: FabricGroupB {}, previous_hosts: committed_population(a: previous), next_hosts: committed_population(a: next), operation: operation as NonEmptyStr }
+  PlacementPreparationRef { id: (join(["p-", operation, "-", authority_wire(a: previous), ">", authority_wire(a: next)], "") as NonEmptyStr) as EventId, group: RecordedLiveGroup { group: FabricGroupB {} }, previous_hosts: committed_population(a: previous), next_hosts: committed_population(a: next), operation: operation as NonEmptyStr }
 }
 
 fn alw_establish_ref(a: PairServingGroupAuthority) -> PlacementPreparationRef {
-  PlacementPreparationRef { id: "p0" as EventId, group: FabricGroupB {}, previous_hosts: [] as List<HostIdentity>, next_hosts: committed_population(a: a), operation: "establish group-b" as NonEmptyStr }
+  PlacementPreparationRef { id: "p0" as EventId, group: RecordedLiveGroup { group: FabricGroupB {} }, previous_hosts: [] as List<HostIdentity>, next_hosts: committed_population(a: a), operation: "establish group-b" as NonEmptyStr }
 }
 
 fn alw_establish(a: PairServingGroupAuthority) -> ChainEvent<PairAuthorityEvent> {

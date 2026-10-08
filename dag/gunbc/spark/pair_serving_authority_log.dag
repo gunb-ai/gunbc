@@ -1800,7 +1800,7 @@ fn placement_prepare_at(store: FabricStorageBinding, read: PlacementRead, group:
       match preparation_refusal(effects: effs, preps: preps, group: group, previous_hosts: previous_hosts, next_hosts: next_hosts, at: at) {
         Present { value: why } => PlacementPreparationRefused { step: "host-effects", reason: why }
         Absent =>
-          match placement_append(store: store, head: head, payload: PlacementPrepared { operation: operation, group: group, previous_hosts: previous_hosts, next_hosts: next_hosts }, actor: actor, at: at) {
+          match placement_append(store: store, head: head, payload: PlacementPrepared { operation: operation, group: recorded_group(g: group), previous_hosts: previous_hosts, next_hosts: next_hosts }, actor: actor, at: at) {
             EventAppended { id: h } => PlacementPreparedAt { id: h }
             EventAppendStale { expected: _, observed: _ } => PlacementPreparationStale
             EventAppendRefused { cause: c } => PlacementPreparationRefused { step: "store", reason: event_log_refusal_wire(cause: c) }
