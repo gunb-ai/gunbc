@@ -4375,7 +4375,6 @@ mod fixture_closure_union_tests {
             gap.operation_bare
         );
     }
-
 }
 
 #[cfg(test)]
