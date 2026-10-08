@@ -3527,22 +3527,29 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
 // declared and the produced type, so every declared position -- argument, return, record field, let annotation,
 // binder default -- and both the plain and the generic routes see one type per alias family (review 75435;
 // calm-boar-904, option 1). v2.std.inhabitance holds no index, so the reading is supplied by the producer,
-// exactly as produced_declared_carrier is.
+// exactly as produced_declared_carrier is. KERNEL RECOGNITION IS PART OF EVERY STEP
+// (infer_kernel_value_type_optional): checked before each alias unfolding and inside every Instantiation argument,
+// so `type Alias = v2.std.integer.Int` stops at the kernel atom exactly as a direct reference does, and the generic
+// formal match and the declared-type obligation read ONE normalized type, not two.
 fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
-  match infer_type_alias_unfolded(t: t, declarations: declarations) {
-    Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+  match infer_kernel_value_type_optional(t: t) {
+    Present { value: k } => k
     Absent =>
-      match t.kind {
-        TypeNode { connective: Instantiation } =>
-          Node {
-            kind: t.kind,
-            children: fold(t.children, init: Empty, f: fn(acc, e) {
-              list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
-            }),
-            occurrence_id: t.occurrence_id
+      match infer_type_alias_unfolded(t: t, declarations: declarations) {
+        Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+        Absent =>
+          match t.kind {
+            TypeNode { connective: Instantiation } =>
+              Node {
+                kind: t.kind,
+                children: fold(t.children, init: Empty, f: fn(acc, e) {
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
+                }),
+                occurrence_id: t.occurrence_id
+              }
+            TypeNode { connective: _ } => t
+            ComputationNode { behavior: _ } => t
           }
-        TypeNode { connective: _ } => t
-        ComputationNode { behavior: _ } => t
       }
   }
 }
@@ -3595,34 +3602,6 @@ fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
   }
 }
 
-// KERNEL RECOGNITION IS PART OF EVERY NORMALIZATION STEP, not only the first. Recognizing the kernel
-// type at the input and then delegating to infer_type_alias_normalized would unfold
-// `type Alias = v2.std.integer.Int` straight past the corpus Int into GroupCompletion<Nat>, while a
-// direct v2.std.integer.Int becomes the kernel atom -- one type presented two ways, a false refusal.
-// So each alias step re-enters this function, and so does every Instantiation argument.
-fn infer_inhabitance_type_normalized(t: Node, declarations: SymbolIndex) -> Node {
-  match infer_kernel_value_type_optional(t: t) {
-    Present { value: k } => k
-    Absent =>
-      match infer_type_alias_unfolded(t: t, declarations: declarations) {
-        Present { value: unfolded } => infer_inhabitance_type_normalized(t: unfolded, declarations: declarations)
-        Absent =>
-          match t.kind {
-            TypeNode { connective: Instantiation } =>
-              Node {
-                kind: t.kind,
-                children: fold(t.children, init: Empty, f: fn(acc, e) {
-                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_inhabitance_type_normalized(t: e.target, declarations: declarations) })
-                }),
-                occurrence_id: t.occurrence_id
-              }
-            TypeNode { connective: _ } => t
-            ComputationNode { behavior: _ } => t
-          }
-      }
-  }
-}
-
 // THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
 // fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
 // reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
@@ -3640,10 +3619,10 @@ fn infer_declared_type_obligation(
   DeclaredTypeObligation {
     position: position,
     parameter_identity: parameter_identity,
-    declared: infer_inhabitance_type_normalized(t: declared, declarations: declarations),
-    produced: infer_inhabitance_type_normalized(t: produced, declarations: declarations),
+    declared: infer_type_alias_normalized(t: declared, declarations: declarations),
+    produced: infer_type_alias_normalized(t: produced, declarations: declarations),
     produced_declared_carrier: match refinement_declared_carrier(index: declarations, source_type: produced) {
-      Present { value: c } => Present { value: infer_inhabitance_type_normalized(t: c, declarations: declarations) }
+      Present { value: c } => Present { value: infer_type_alias_normalized(t: c, declarations: declarations) }
       Absent => Absent
     },
     application: application,

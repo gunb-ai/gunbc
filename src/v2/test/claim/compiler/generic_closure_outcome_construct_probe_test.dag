@@ -35,7 +35,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_t
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: infer_declared_type_obligation's kernel-value join (infer_kernel_value_type_optional, applied at
-// every step of infer_inhabitance_type_normalized). A position declared with the kernel Int (dag_binding_type_int)
+// every step of infer_type_alias_normalized). A position declared with the kernel Int (dag_binding_type_int)
 // and one declared with the corpus v2.std.integer.Int (type Int = GroupCompletion<Nat>) are one value type. The
 // join keys the kernel declaration roster (full path) and dag_binding_denotation, never a last-segment Int.
 //
@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data gbo_integer_stub_source: String = "module v2.std.integer\n\ntype Nat = Zero | One\n\ntype Int = Nat\n"
 
-data gbo_alias_source: String = "module v2.test.gbo_alias\n\nimport v2.std.integer { Int }\n\ntype Alias = v2.std.integer.Int\n\nfn same(x: Alias) -> v2.std.integer.Int {\n  x\n}\n"
+data gbo_alias_source: String = "module v2.test.gbo_alias\n\nimport v2.std.integer { Int }\n\ntype Alias = v2.std.integer.Int\n\nfn one() -> Alias {\n  1\n}\n"
 
 data gbo_ingest: SourceRootIngest = [
   rcf_read(source: gbo_integer_stub_source, id: ^gbo_integer_stub_read, unit: ^gbo_integer_stub_cu, path: "src/v2/test/fixture/gbo/integer.dag"),
@@ -118,15 +118,11 @@ test fn gbo_a_bool_name_is_not_the_kernel_int_holds() -> Bool {
   !gbo_is_kernel_int(t: gbo_atom(id: ^Bool))
 }
 
-// THE ROUTE IS THE ALIAS CLAIM BELOW: it runs ingest -> resolve -> infer and is ACCEPTED AND DECIDED only
-// through the join (it fails with the input-only normalizer; BuildBuddy 36e48268). A generic-VARIANT
-// construct (Acc { value: 1, n: 0 } at Out<Int>) is NOT accepted-and-decided on this base -- measured at
-// 41afbbbb -- because generic-variant construct typing is #13210's and its successor's, not this join's;
-// it is deliberately not claimed here.
-// THE ROUTE, AND AN ALIAS OF THE CORPUS Int IS THAT Int. `type Alias = v2.std.integer.Int` at a declared
-// v2.std.integer.Int: kernel recognition re-enters after the alias step, so both sides present the
-// kernel atom. Recognizing only at the input would unfold Alias past v2.std.integer.Int into its
-// right-hand side and refuse a correct program.
-test fn gbo_an_alias_of_the_corpus_int_inhabits_it_holds() -> Bool {
-  rcf_member_accepted_and_decided(resolved: gbo_resolved_alias(), member: ^same)
+// THE ROUTE: a kernel Int literal returned at a declared `Alias` of the corpus Int (`fn one() -> Alias { 1 }`),
+// on the real ingest -> resolve -> infer path, ACCEPTED AND DECIDED. The literal is the kernel atom; the declared
+// side reaches the kernel atom only through the join, and only if recognition re-enters after the alias step. So it
+// goes red both when the join is deleted (Alias unfolds to its right-hand side) and when recognition happens only at
+// the input -- the integration and the regression in one claim.
+test fn gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: gbo_resolved_alias(), member: ^one)
 }
