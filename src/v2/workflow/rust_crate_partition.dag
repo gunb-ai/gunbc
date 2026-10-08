@@ -347,7 +347,8 @@ fn stage0_std_core_modules() -> List<String> {
       "std_operator_realization",
       "std_import",
       "v1_std_core",
-      "gunbc_rust_emitted_edge"
+      "gunbc_rust_emitted_edge",
+      "gunbc_rust_emitted_crate"
     ])
 }
 
@@ -457,6 +458,7 @@ fn stage0_v1_artifact_modules() -> List<String> {
 
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   [
+    "gunbc_rust_emitted_crate",
     "gunbc_rust_emitted_edge",
     "v1_compiler_artifact",
     "v1_compiler_infer_env",
@@ -622,6 +624,8 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "v1_std_core"),
     stage0_module_dag_edge(from: "gunbc_rust_emitted_edge", to: "std_types"),
     stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_edge"),
+    stage0_module_dag_edge(from: "gunbc_rust_emitted_crate", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_crate"),
   ]
 }
 

@@ -20,6 +20,10 @@
 
 pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};
 
+pub mod gunbc_rust_emitted_crate {
+    pub use v1_stage0_std_core::gunbc_rust_emitted_crate::*;
+}
+
 pub mod gunbc_rust_emitted_edge {
     pub use v1_stage0_std_core::gunbc_rust_emitted_edge::*;
 }

@@ -962,13 +962,14 @@ mod compiler_tests {
                     "the refusal must leave a nonzero exit status; got: {:?}",
                     main_rs.content
                 );
-                let cargo_toml = result.files.iter()
-                    .find(|f| f.path == "Cargo.toml")
-                    .expect("emission must produce Cargo.toml");
                 assert!(
-                    !cargo_toml.content.contains("clap"),
-                    "a crate whose emitted sources reference clap nowhere must not declare it; got: {:?}",
-                    cargo_toml.content
+                    !result.files.iter().any(|f| f.path == "Cargo.toml"),
+                    "the emission owns no manifest -- the crate partition realizes its layout"
+                );
+                assert!(
+                    result.rust_crates.iter().all(|c| !c.demand.renders_clap_cli),
+                    "a crate whose emitted sources reference clap nowhere must not demand it; got: {:?}",
+                    result.rust_crates
                 );
             })
             .expect("failed to spawn thread")
@@ -980,25 +981,25 @@ mod compiler_tests {
 
     #[test]
     fn the_clap_dependency_follows_the_emitted_cli_demand_in_both_directions() {
-        let with_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(
-            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+        let with_cli = crate::v1_compiler_stage0_crates::emitted_crate_dependencies(
+            crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand {
                 renders_clap_cli: true,
                 renders_async_services: false,
             },
         );
-        let without_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(
-            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+        let without_cli = crate::v1_compiler_stage0_crates::emitted_crate_dependencies(
+            crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand {
                 renders_clap_cli: false,
                 renders_async_services: false,
             },
         );
         assert!(
-            with_cli.iter().any(|line| line.starts_with("clap = ")),
+            with_cli.iter().any(|dep| dep.name == "clap"),
             "a crate that renders a clap CLI must declare clap; got: {:?}",
             with_cli
         );
         assert!(
-            !without_cli.iter().any(|line| line.starts_with("clap = ")),
+            !without_cli.iter().any(|dep| dep.name == "clap"),
             "a crate that renders no clap CLI must not declare clap; got: {:?}",
             without_cli
         );

@@ -15,6 +15,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
+import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
@@ -3585,19 +3586,19 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let shared_types = emit_info.shared_types
   let anonymous_record_diags = ctx.anonymous_record_diags
   if anonymous_record_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: anonymous_record_diags, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: anonymous_record_diags, emitted_edges: [], rust_crates: [] }
   }
   let effectful_recursion_diags = ctx.effectful_recursion_diags
   if effectful_recursion_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: effectful_recursion_diags, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: effectful_recursion_diags, emitted_edges: [], rust_crates: [] }
   }
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: filename_collisions, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: filename_collisions, emitted_edges: [], rust_crates: [] }
   }
   let symbol_collisions = emitted_symbol_collision_diagnostics(typed: typed)
   if symbol_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: symbol_collisions, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: symbol_collisions, emitted_edges: [], rust_crates: [] }
   }
   let test_projections = ctx.test_projections
   let module_emissions = typed.modules
@@ -3630,12 +3631,13 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let has_services = has_service_items(typed: typed)
   let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
-  let cargo = emit_cargo_toml(
+  let rust_crate = EmittedRustCrate {
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
       renders_clap_cli: has_pipeline,
       renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed)
-    })
+    }
+  }
   let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, registry: ctx.registry)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
@@ -3667,15 +3669,15 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   )
   let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
   let emitted_paths = concat(
-    [cargo.path, lib_file.path, main_file.path],
+    [lib_file.path, main_file.path],
     all_mod_paths,
     compiler_tests_file |> map(f => f.path),
     test_file_paths
   )
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
-  let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
+  let emitted_files = concat([lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges) }
+  EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges), rust_crates: [rust_crate] }
 }
 
 // A MODULE'S EMITTED PATH, read by the renderer and by every population-denominated aggregate that
@@ -17722,62 +17724,6 @@ fn emit_cargo_dep(name: String, version: String, features: List<String>) -> Stri
 fn emit_cargo_dep_no_default_features(name: String, version: String, features: List<String>) -> String {
   let feat_strs = features |> map(f => concat("\"", f, "\""))
   concat(name, " = { version = \"", version, "\", default-features = false, features = [", feat_strs |> join(separator: ", "), "] }\n")
-}
-
-// WHAT THE EMITTED CRATE DEPENDS ON IS DERIVED FROM WHAT WAS EMITTED, NOT DECLARED BESIDE IT.
-//
-// A fixed dependency list is a SECOND AUTHORITY for the crate's dependencies, free to disagree
-// with the sources the same run just wrote. It did disagree: `clap` was declared unconditionally
-// while the one thing that renders `use clap` -- the generated pipeline dispatch -- is selected by
-// the emission itself, so every crate emitted without it declared a dependency no emitted line
-// referenced. (A derived CLI over "workflow" functions was the second clap renderer; it is deleted.) DESIGN
-// section 5 prefers construction over validation, and the construction here is to make the demand
-// a FIELD THE EMISSION FILLS rather than a literal a reader must check against the output.
-//
-// THE RESIDUE IS NAMED RATHER THAN CLAIMED CLOSED. `ureq` sits in the base list on the same
-// footing `clap` used to: it is referenced only when a corpus reaches the HTTP extdep, and nothing
-// in this function's inputs says whether it did. It is not conditioned here because inventing a
-// predicate from the emitted TEXT would be a scan standing where a structural fact belongs.
-// NEXT-RUNG TRIGGER: an emission-level demand fact per external crate -- the renderer that emits a
-// `ureq` call recording that it did -- at which point this carrier gains one field per dependency
-// and the base list holds only what every emitted crate genuinely links.
-type EmittedCrateDependencyDemand {
-  renders_clap_cli: Bool
-  renders_async_services: Bool
-}
-
-fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> List<String> {
-  let base_deps = [
-    emit_cargo_dep(name: "im", version: "15.1", features: ["serde"]),
-    emit_cargo_dep(name: "unicode-ident", version: "1", features: []),
-    emit_cargo_dep(name: "unicode-properties", version: "0.1", features: ["emoji"]),
-    emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
-    emit_cargo_dep(name: "serde_json", version: "1", features: []),
-    emit_cargo_dep(name: "libc", version: "0.2", features: []),
-    emit_cargo_dep(name: "stacker", version: "0.1", features: []),
-    emit_cargo_dep(name: "lazy_static", version: "1", features: []),
-    emit_cargo_dep(name: "ureq", version: "2", features: ["json"])
-  ]
-  let cli_deps = if demand.renders_clap_cli {
-    [emit_cargo_dep(name: "clap", version: "4", features: ["derive"])]
-  } else { [] }
-  let async_deps = if demand.renders_async_services {
-    [
-      emit_cargo_dep(name: "tokio", version: "1", features: ["full"]),
-      emit_cargo_dep_no_default_features(name: "reqwest", version: "0.12", features: ["json", "rustls-tls", "http2", "charset"]),
-      emit_cargo_dep(name: "async-trait", version: "0.1", features: [])
-    ]
-  } else { [] }
-  concat(base_deps, concat(cli_deps, async_deps))
-}
-
-// The emitted crate always carries v1_rt.rs, so its manifest declares the runtime's features.
-fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> TextFile {
-  let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
-  let workspace = "\n[workspace]\n"
-  let all_deps = emitted_crate_dependency_lines(demand: demand)
-  let features = emit_cargo_features_section(features: rust_runtime_cargo_features())
-  TextFile { path: "Cargo.toml", content: concat(header, workspace, features, "\n[dependencies]\n", all_deps |> join(separator: "")) }
 }
 
 fn emit_cargo_feature(feature: CargoFeature) -> String {

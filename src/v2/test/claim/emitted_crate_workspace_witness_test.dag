@@ -14,6 +14,10 @@ import v2.workflow.emitted_crate_workspace {
   EmittedWorkspaceRedRefused,
   emitted_workspace_plan_over,
   emitted_workspace_plan_from_emission,
+  emitted_workspace_build_from_emission,
+  EmittedWorkspaceBuildOutcome,
+  EmittedWorkspaceBuildPlanned,
+  EmittedWorkspaceBuildRefused,
   EmittedWorkspaceEdgeMergeRefused,
   emitted_workspace_red_over,
   emitted_workspace_runtime_package
@@ -207,5 +211,39 @@ test fn an_emitter_edge_against_the_declared_imports_refuses_as_a_reverse_edge()
   ) {
     EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: EmitterReverseEdge { from: _, to: _, provenance: _ } } } => true
     _ => false
+  }
+}
+
+// ── THE BUILDABLE WORKSPACE: LAYOUT PLUS THE TOP PACKAGE THE EMITTED MAIN PATHS THROUGH ───────
+
+fn chain_build(bin_name: String) -> EmittedWorkspaceBuildOutcome {
+  emitted_workspace_build_from_emission(
+    emitted_basenames: chain_emitted_basenames(),
+    edge_froms: emission_edge_froms(),
+    edge_tos: emission_edge_tos(),
+    edge_provenances: emission_edge_provenances(),
+    target_crate_count: 3,
+    crate_name: "fx_app",
+    bin_name: bin_name
+  )
+}
+
+test fn the_top_package_re_exports_every_module_of_the_layout() -> Bool {
+  match chain_build(bin_name: "fx_app") {
+    EmittedWorkspaceBuildPlanned { build: build } =>
+      (build.rows |> count) == 5
+        && build.top_package == "fx_app"
+        && build.rows |> any(r => r.package_name == "fx_app" && r.crate_dir == "."
+          && ["fx_a", "fx_b", "fx_c", "v1_rt"] |> all(m => r.modules |> any(x => x == m)))
+        && build.bin_source_path == "src/main.rs"
+    EmittedWorkspaceBuildRefused { cause: _ } => false
+  }
+}
+
+// A binary named apart from its package lives where Cargo discovers a named binary.
+test fn a_binary_named_apart_from_its_package_takes_cargos_bin_path() -> Bool {
+  match chain_build(bin_name: "probe_fx") {
+    EmittedWorkspaceBuildPlanned { build: build } => build.bin_source_path == "src/bin/probe_fx.rs"
+    EmittedWorkspaceBuildRefused { cause: _ } => false
   }
 }

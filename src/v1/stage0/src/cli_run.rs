@@ -100,6 +100,7 @@ pub mod rostered_row_join;
 pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
+pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
     run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,

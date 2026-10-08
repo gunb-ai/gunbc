@@ -51,6 +51,7 @@ pub use crate::gunbc_reference_derived_candidate::{
     ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
+pub use crate::gunbc_rust_emitted_crate::{EmittedCrateDependencyDemand, EmittedRustCrate};
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{ReexportFacade, RuntimePrelude};
 pub use crate::gunbc_rust_emitted_edge::{
     declared_import_edge, emitted_edge_target_module, rust_module_emit_filename,
@@ -6909,6 +6910,7 @@ pub fn emit_rust_selected(
                 files: Rc::new(vec![]),
                 diagnostics: anonymous_record_diags.clone(),
                 emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
             });
         }
         let effectful_recursion_diags = ctx.effectful_recursion_diags.clone();
@@ -6917,6 +6919,7 @@ pub fn emit_rust_selected(
                 files: Rc::new(vec![]),
                 diagnostics: effectful_recursion_diags.clone(),
                 emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
             });
         }
         let filename_collisions =
@@ -6928,6 +6931,7 @@ pub fn emit_rust_selected(
                 files: Rc::new(vec![]),
                 diagnostics: filename_collisions.clone(),
                 emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
             });
         }
         let symbol_collisions =
@@ -6939,6 +6943,7 @@ pub fn emit_rust_selected(
                 files: Rc::new(vec![]),
                 diagnostics: symbol_collisions.clone(),
                 emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
             });
         }
         let test_projections = ctx.test_projections.clone();
@@ -7151,14 +7156,14 @@ pub fn emit_rust_selected(
         } else {
             "v1_compiled".to_string()
         };
-        let cargo = emit_cargo_toml(
-            crate_name.clone(),
-            EmittedCrateDependencyDemand {
+        let rust_crate = Rc::new(EmittedRustCrate {
+            crate_name: crate_name.clone(),
+            demand: EmittedCrateDependencyDemand {
                 renders_clap_cli: has_pipeline.clone(),
                 renders_async_services: (has_services.clone()
                     || closure_renders_async_trait_resource(typed.clone())),
             },
-        );
+        });
         let main_file = emit_main_rs(
             typed.modules.clone(),
             has_services.clone(),
@@ -7256,11 +7261,7 @@ pub fn emit_rust_selected(
         let emitted_paths = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![
-                        cargo.path.clone(),
-                        lib_file.path.clone(),
-                        main_file.path.clone(),
-                    ]),
+                    Rc::new(vec![lib_file.path.clone(), main_file.path.clone()]),
                     all_mod_paths.clone(),
                 ),
                 Rc::new({
@@ -7277,7 +7278,7 @@ pub fn emit_rust_selected(
         let emitted_files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
+                    Rc::new(vec![lib_file.clone(), main_file.clone()]),
                     all_mod_files.clone(),
                 ),
                 compiler_tests_file.clone(),
@@ -7298,6 +7299,7 @@ pub fn emit_rust_selected(
                 }
                 __result
             }),
+            rust_crates: Rc::new(vec![rust_crate.clone()]),
         })
     }
 }
@@ -40931,114 +40933,6 @@ pub fn emit_cargo_dep_no_default_features(
             ),
             "] }\n".to_string(),
         )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EmittedCrateDependencyDemand {
-    pub renders_clap_cli: bool,
-    pub renders_async_services: bool,
-}
-
-pub fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> Rc<Vec<String>> {
-    {
-        let base_deps = Rc::new(vec![
-            emit_cargo_dep(
-                "im".to_string(),
-                "15.1".to_string(),
-                Rc::new(vec!["serde".to_string()]),
-            ),
-            emit_cargo_dep(
-                "unicode-ident".to_string(),
-                "1".to_string(),
-                Rc::new(vec![]),
-            ),
-            emit_cargo_dep(
-                "unicode-properties".to_string(),
-                "0.1".to_string(),
-                Rc::new(vec!["emoji".to_string()]),
-            ),
-            emit_cargo_dep(
-                "serde".to_string(),
-                "1".to_string(),
-                Rc::new(vec!["derive".to_string(), "rc".to_string()]),
-            ),
-            emit_cargo_dep("serde_json".to_string(), "1".to_string(), Rc::new(vec![])),
-            emit_cargo_dep("libc".to_string(), "0.2".to_string(), Rc::new(vec![])),
-            emit_cargo_dep("stacker".to_string(), "0.1".to_string(), Rc::new(vec![])),
-            emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
-            emit_cargo_dep(
-                "ureq".to_string(),
-                "2".to_string(),
-                Rc::new(vec!["json".to_string()]),
-            ),
-        ]);
-        let cli_deps = if demand.renders_clap_cli.clone() {
-            Rc::new(vec![emit_cargo_dep(
-                "clap".to_string(),
-                "4".to_string(),
-                Rc::new(vec!["derive".to_string()]),
-            )])
-        } else {
-            Rc::new(vec![])
-        };
-        let async_deps = if demand.renders_async_services.clone() {
-            Rc::new(vec![
-                emit_cargo_dep(
-                    "tokio".to_string(),
-                    "1".to_string(),
-                    Rc::new(vec!["full".to_string()]),
-                ),
-                emit_cargo_dep_no_default_features(
-                    "reqwest".to_string(),
-                    "0.12".to_string(),
-                    Rc::new(vec![
-                        "json".to_string(),
-                        "rustls-tls".to_string(),
-                        "http2".to_string(),
-                        "charset".to_string(),
-                    ]),
-                ),
-                emit_cargo_dep(
-                    "async-trait".to_string(),
-                    "0.1".to_string(),
-                    Rc::new(vec![]),
-                ),
-            ])
-        } else {
-            Rc::new(vec![])
-        };
-        v1_rt::concat(
-            base_deps.clone(),
-            v1_rt::concat(cli_deps.clone(), async_deps.clone()),
-        )
-    }
-}
-
-pub fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> Rc<TextFile> {
-    {
-        let header = v1_rt::concat(
-            crate::extdeps_cargo_version::render_cargo_package_header_prefix(crate_name.clone()),
-            "\nedition = \"2021\"\n".to_string(),
-        );
-        let workspace = "\n[workspace]\n".to_string();
-        let all_deps = emitted_crate_dependency_lines(demand.clone());
-        let features = emit_cargo_features_section(
-            crate::v1_compiler_runtime_rust::rust_runtime_cargo_features(),
-        );
-        Rc::new(TextFile {
-            path: "Cargo.toml".to_string(),
-            content: v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(header.clone(), workspace.clone()),
-                        features.clone(),
-                    ),
-                    "\n[dependencies]\n".to_string(),
-                ),
-                all_deps.clone().join(&"".to_string()),
-            ),
-        })
     }
 }
 

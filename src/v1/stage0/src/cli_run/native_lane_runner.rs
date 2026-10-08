@@ -285,9 +285,9 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 /// The emitted closure's identity: one digest over the crate's emitted sources, path and
 /// content in sorted order, so the receipt names WHAT was compiled, not merely that something
 /// was.
-fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
+fn emitted_closure_identity(module_dir: &Path) -> Result<String, String> {
     use sha2::Digest;
-    let src_dir = crate_dir.join("src");
+    let src_dir = module_dir.to_path_buf();
     let mut files: Vec<PathBuf> = std::fs::read_dir(&src_dir)
         .map_err(|e| format!("could not list {}: {e}", src_dir.display()))?
         .filter_map(|entry| entry.ok().map(|e| e.path()))
@@ -378,10 +378,11 @@ fn prepare_emitted_compiler_for_entry(
             ))
         }
     }
-    let (crate_dir, written) =
-        super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
-            .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
-    let closure_identity = emitted_closure_identity(&crate_dir)?;
+    let emitted = super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
+    let crate_dir = emitted.root.clone();
+    let written = emitted.written;
+    let closure_identity = emitted_closure_identity(&emitted.module_dir)?;
     // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
     // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
     // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
@@ -538,7 +539,7 @@ fn prepare_emitted_compiler_for_entry(
     } else {
         eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
         let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-            &crate_dir,
+            &emitted,
             &probe_root.target_dir(),
             &entry_module,
         );

@@ -7,8 +7,9 @@ import v2.std.text { String }
 
 // A HARNESS MANIFEST IS THE EMITTED MANIFEST PLUS WHAT THE HARNESS ITSELF ADDS, AND NOTHING ELSE.
 //
-// The emitter writes Cargo.toml into the crate directory from the dependency demand of what it
-// emitted (v1.compiler.emit_rust emit_cargo_toml over EmittedCrateDependencyDemand). Every harness
+// The emission's Cargo workspace carries, at its root, the top package's Cargo.toml, rendered from
+// the dependency demand of what it emitted (v1.compiler.stage0_crates emitted_crate_dependencies,
+// written by cli_run::emitted_crate_workspace_host write_emitted_workspace). Every harness
 // that then builds that crate used to OVERWRITE the file with its own literal [dependencies]
 // roster, so one question -- what does this emitted crate link -- had one answer per harness, and
 // a dependency the emitted runtime gained reached a harness only when someone remembered to copy

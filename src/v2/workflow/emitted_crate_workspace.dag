@@ -11,6 +11,7 @@ import v2.std.compilers.compilation_unit {
   ModuleId,
   list_unique_sorted_ids
 }
+import extdeps.cargo { Bin, cargo_target_source_path }
 import gunbc.rust_emitted_edge {
   EmittedEdge,
   EmittedEdgeProvenance,
@@ -26,7 +27,8 @@ import gunbc.rust_emitted_edge {
 import gunbc.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   GeneratedFoundationCrate,
-  GeneratedLayeredCoreCrate
+  GeneratedLayeredCoreCrate,
+  GeneratedFacadeCrate
 }
 import v2.workflow.emitted_closure_crate_partition {
   ModuleDagDerivationRefusal,
@@ -481,6 +483,76 @@ fn emitted_workspace_plan_from_emission(
   }
 }
 
+// THE BUILDABLE WORKSPACE OF AN EMISSION: its layout plus the TOP PACKAGE the emitted main paths
+// through. The emitter names that package (gunbc.rust_emitted_crate EmittedRustCrate crate_name)
+// and its main.rs reaches the library as `<crate_name>::<module>::`, so the top package is a
+// facade (v1.compiler.stage0_crates render_partition_facade_lib_outcome) over every module of the layout -- `pub mod m { pub use <owner>::m::*; }` --
+// and the binary is a target of that package, at the workspace root. The registry dependencies are not the plan's: they
+// are the emission's demand (v1.compiler.stage0_crates emitted_crate_dependencies), which the
+// renderer reads straight from the emission. The binary's name is the caller's (one target
+// directory serves several entries, so each names its own), and its source path is Cargo's
+// convention for that name (extdeps.cargo cargo_target_source_path), never a path chosen here.
+type EmittedWorkspaceBuild {
+  layout: EmittedWorkspacePlan
+  rows: List<GeneratedPartitionCrateRow>
+  top_package: String
+  bin_name: String
+  bin_source_path: String
+}
+
+type EmittedWorkspaceBuildOutcome
+  = EmittedWorkspaceBuildPlanned { build: EmittedWorkspaceBuild }
+  | EmittedWorkspaceBuildRefused { cause: EmittedWorkspaceRefusal }
+
+// THE TOP PACKAGE IS THE WORKSPACE ROOT. A reader of an emitted workspace -- a harness appending its
+// own targets, a build reading the binary -- finds the package the emitted main paths through
+// where a single crate used to be: Cargo.toml, src/lib.rs and src/main.rs at the root, with the
+// partition crates beneath it under src/v1/.
+data emitted_workspace_root_crate_dir: String = "."
+
+fn emitted_workspace_top_row(crate_name: String, layout_rows: List<GeneratedPartitionCrateRow>) -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: crate_name,
+    crate_dir: emitted_workspace_root_crate_dir,
+    kind: GeneratedFacadeCrate,
+    modules: layout_rows |> flat_map(r => r.modules),
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+}
+
+fn emitted_workspace_build_from_emission(
+  emitted_basenames: List<String>,
+  edge_froms: List<String>,
+  edge_tos: List<String>,
+  edge_provenances: List<String>,
+  target_crate_count: Int,
+  crate_name: String,
+  bin_name: String
+) -> EmittedWorkspaceBuildOutcome {
+  match emitted_workspace_plan_from_emission(
+    emitted_basenames: emitted_basenames,
+    edge_froms: edge_froms,
+    edge_tos: edge_tos,
+    edge_provenances: edge_provenances,
+    target_crate_count: target_crate_count
+  ) {
+    EmittedWorkspaceRefused { cause: c } => EmittedWorkspaceBuildRefused { cause: c }
+    EmittedWorkspacePlanned { plan: layout } => {
+      let top = emitted_workspace_top_row(crate_name: crate_name, layout_rows: layout.rows)
+      EmittedWorkspaceBuildPlanned {
+        build: EmittedWorkspaceBuild {
+          layout: layout,
+          rows: concat(layout.rows, [top]),
+          top_package: crate_name,
+          bin_name: bin_name,
+          bin_source_path: cargo_target_source_path(target: Bin { name: bin_name }, package_name: crate_name).segments |> join(separator: "/")
+        }
+      }
+    }
+  }
+}
+
 fn emitted_workspace_plan_over_basename_dag(
   basename_dag: ModuleDag,
   edges: List<EmittedEdge>,
@@ -517,7 +589,28 @@ fn emitted_workspace_plan_over_basename_dag(
   }
 }
 
-// THE PRODUCTION ENTRY: the live closure derivation, the emission's own basenames and edges, and
+// THE BUILD ENTRY every emitted-Rust route calls: an emission's workspace at the declared core
+// target. A closure smaller than the target packs into fewer crates; one module is one crate.
+fn emitted_workspace_build(
+  emitted_basenames: List<String>,
+  edge_froms: List<String>,
+  edge_tos: List<String>,
+  edge_provenances: List<String>,
+  crate_name: String,
+  bin_name: String
+) -> EmittedWorkspaceBuildOutcome {
+  emitted_workspace_build_from_emission(
+    emitted_basenames: emitted_basenames,
+    edge_froms: edge_froms,
+    edge_tos: edge_tos,
+    edge_provenances: edge_provenances,
+    target_crate_count: rust_crate_partition_declared_core_target,
+    crate_name: crate_name,
+    bin_name: bin_name
+  )
+}
+
+// THE INSTRUMENT ENTRY: the live closure derivation, the emission's own basenames and edges, and
 // the declared core target the closure's policy partition already uses.
 fn emitted_workspace_plan(
   emitted_basenames: List<String>,

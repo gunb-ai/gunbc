@@ -28,9 +28,11 @@ pub use crate::gunbc_rust_crate_package_ident::{
 pub use crate::gunbc_rust_crate_package_ident::{
     PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
 };
+pub use crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand;
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
-    GeneratedEmitCoreCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
+    GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
+    GeneratedLayeredCoreCrate,
 };
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
@@ -41,8 +43,8 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::v1_compiler_emit_rust::{
-    emit_cargo_dep, emit_cargo_features_section, emit_non_empty_wrappers,
-    generated_rust_lint_relaxations,
+    emit_cargo_dep, emit_cargo_dep_no_default_features, emit_cargo_features_section,
+    emit_non_empty_wrappers, generated_rust_lint_relaxations,
 };
 pub use crate::v1_compiler_runtime_rust::rust_runtime_cargo_features;
 use crate::v1_rt;
@@ -61,6 +63,7 @@ pub enum Stage0CrateKind {
     FoundationCrate,
     LayeredCoreCrate,
     EmitCoreCrate,
+    FacadeCrate,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -146,6 +149,14 @@ pub fn stage0_emit_core_header_doc() -> String {
 
 pub fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
     v1_rt::replace(crate_dir.clone(), "src/v1/".to_string(), "../".to_string())
+}
+
+pub fn partition_crate_dep_path(from_crate_dir: String, to_crate_dir: String) -> String {
+    if (from_crate_dir.clone() == ".".to_string()) {
+        to_crate_dir.clone()
+    } else {
+        stage0_crate_dir_to_sibling_dep_path(to_crate_dir.clone())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -418,12 +429,108 @@ pub fn stage0_crate_boundary_emit_refusal_message(
 }
 }
 
+pub fn emitted_crate_registry_dep(
+    name: String,
+    version: String,
+    features: Rc<Vec<String>>,
+) -> Rc<CargoDependency> {
+    Rc::new(CargoDependency {
+        name: name.clone(),
+        source: Rc::new(CargoDepSource::RegistryDep {
+            version: version.clone(),
+            default_features: true,
+            features: features.clone(),
+        }),
+    })
+}
+
+pub fn emitted_crate_dependencies(
+    demand: EmittedCrateDependencyDemand,
+) -> Rc<Vec<Rc<CargoDependency>>> {
+    {
+        let base_deps = Rc::new(vec![
+            emitted_crate_registry_dep(
+                "im".to_string(),
+                "15.1".to_string(),
+                Rc::new(vec!["serde".to_string()]),
+            ),
+            emitted_crate_registry_dep(
+                "unicode-ident".to_string(),
+                "1".to_string(),
+                Rc::new(vec![]),
+            ),
+            emitted_crate_registry_dep(
+                "unicode-properties".to_string(),
+                "0.1".to_string(),
+                Rc::new(vec!["emoji".to_string()]),
+            ),
+            emitted_crate_registry_dep(
+                "serde".to_string(),
+                "1".to_string(),
+                Rc::new(vec!["derive".to_string(), "rc".to_string()]),
+            ),
+            emitted_crate_registry_dep("serde_json".to_string(), "1".to_string(), Rc::new(vec![])),
+            emitted_crate_registry_dep("libc".to_string(), "0.2".to_string(), Rc::new(vec![])),
+            emitted_crate_registry_dep("stacker".to_string(), "0.1".to_string(), Rc::new(vec![])),
+            emitted_crate_registry_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
+            emitted_crate_registry_dep(
+                "ureq".to_string(),
+                "2".to_string(),
+                Rc::new(vec!["json".to_string()]),
+            ),
+        ]);
+        let cli_deps = if demand.renders_clap_cli.clone() {
+            Rc::new(vec![emitted_crate_registry_dep(
+                "clap".to_string(),
+                "4".to_string(),
+                Rc::new(vec!["derive".to_string()]),
+            )])
+        } else {
+            Rc::new(vec![])
+        };
+        let async_deps = if demand.renders_async_services.clone() {
+            Rc::new(vec![
+                emitted_crate_registry_dep(
+                    "tokio".to_string(),
+                    "1".to_string(),
+                    Rc::new(vec!["full".to_string()]),
+                ),
+                Rc::new(CargoDependency {
+                    name: "reqwest".to_string(),
+                    source: Rc::new(CargoDepSource::RegistryDep {
+                        version: "0.12".to_string(),
+                        default_features: false,
+                        features: Rc::new(vec![
+                            "json".to_string(),
+                            "rustls-tls".to_string(),
+                            "http2".to_string(),
+                            "charset".to_string(),
+                        ]),
+                    }),
+                }),
+                emitted_crate_registry_dep(
+                    "async-trait".to_string(),
+                    "0.1".to_string(),
+                    Rc::new(vec![]),
+                ),
+            ])
+        } else {
+            Rc::new(vec![])
+        };
+        v1_rt::concat(
+            base_deps.clone(),
+            v1_rt::concat(cli_deps.clone(), async_deps.clone()),
+        )
+    }
+}
+
 pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
     Rc::new(vec![
         Rc::new(CargoDependency {
             name: "stacker".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
+                default_features: true,
                 features: Rc::new(vec![]),
             }),
         }),
@@ -431,6 +538,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             name: "im".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
+                default_features: true,
                 features: Rc::new(vec!["serde".to_string()]),
             }),
         }),
@@ -438,6 +546,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             name: "libc".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "0.2".to_string(),
+                default_features: true,
                 features: Rc::new(vec![]),
             }),
         }),
@@ -445,6 +554,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             name: "serde".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
+                default_features: true,
                 features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
             }),
         }),
@@ -452,6 +562,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             name: "serde_json".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
+                default_features: true,
                 features: Rc::new(vec![]),
             }),
         }),
@@ -459,6 +570,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             name: "unicode-ident".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
+                default_features: true,
                 features: Rc::new(vec![]),
             }),
         }),
@@ -466,6 +578,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             name: "unicode-properties".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
+                default_features: true,
                 features: Rc::new(vec!["emoji".to_string()]),
             }),
         }),
@@ -473,6 +586,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
 }
 
 pub fn stage0_reexport_path_dependencies_outcome(
+    from_crate_dir: String,
     reexport_packages: Rc<Vec<String>>,
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ReexportPathDepsOutcome> {
@@ -499,7 +613,10 @@ pub fn stage0_reexport_path_dependencies_outcome(
                             Rc::new(vec![Rc::new(CargoDependency {
                                 name: pkg.clone(),
                                 source: Rc::new(CargoDepSource::LocalPathDep {
-                                    path: stage0_crate_dir_to_sibling_dep_path(crate_dir.clone()),
+                                    path: partition_crate_dep_path(
+                                        from_crate_dir.clone(),
+                                        crate_dir.clone(),
+                                    ),
                                 }),
                             })]),
                         ),
@@ -523,6 +640,7 @@ pub fn stage0_partition_row_kind(row: Rc<GeneratedPartitionCrateRow>) -> Stage0C
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => Stage0CrateKind::FoundationCrate,
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Stage0CrateKind::LayeredCoreCrate,
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => Stage0CrateKind::EmitCoreCrate,
+        GeneratedPartitionCrateKind::GeneratedFacadeCrate => Stage0CrateKind::FacadeCrate,
     }
 }
 
@@ -531,14 +649,17 @@ pub fn stage0_partition_row_header_doc(row: Rc<GeneratedPartitionCrateRow>) -> S
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => stage0_foundation_header_doc(),
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => stage0_layered_core_header_doc(),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => stage0_emit_core_header_doc(),
+        GeneratedPartitionCrateKind::GeneratedFacadeCrate => partition_facade_header_doc(),
     }
 }
 
 pub fn stage0_partition_row_dependencies_outcome(
     row: Rc<GeneratedPartitionCrateRow>,
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0PartitionRowDepsOutcome> {
     match (*stage0_reexport_path_dependencies_outcome(
+        row.crate_dir.clone(),
         crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over(
             row.clone(),
             rows.clone(),
@@ -550,7 +671,7 @@ pub fn stage0_partition_row_dependencies_outcome(
         Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
             deps: path_deps, ..
         } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-            deps: v1_rt::concat(stage0_foundation_runtime_dependencies(), path_deps.clone()),
+            deps: v1_rt::concat(registry_dependencies.clone(), path_deps.clone()),
         }),
         Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused { cause: cause, .. } => {
             Rc::new(
@@ -571,6 +692,7 @@ pub fn stage0_features_for_crate_kind(
         }
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => Rc::new(vec![]),
+        GeneratedPartitionCrateKind::GeneratedFacadeCrate => Rc::new(vec![]),
     }
 }
 
@@ -584,8 +706,15 @@ pub fn stage0_partition_row_to_spec_outcome(
     row: Rc<GeneratedPartitionCrateRow>,
     package_idents: Rc<Vec<Rc<PackageIdentBinding>>>,
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0PartitionRowSpecOutcome> {
-    match (*stage0_partition_row_dependencies_outcome(row.clone(), rows.clone())).clone() {
+    match (*stage0_partition_row_dependencies_outcome(
+        row.clone(),
+        rows.clone(),
+        registry_dependencies.clone(),
+    ))
+    .clone()
+    {
         Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused { cause: cause, .. } => {
             Rc::new(
                 Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
@@ -616,12 +745,25 @@ pub fn stage0_partition_row_to_spec_outcome(
 pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     match (*dep.source.clone()).clone() {
         CargoDepSource::RegistryDep {
-            version, features, ..
-        } => crate::v1_compiler_emit_rust::emit_cargo_dep(
-            dep.name.clone(),
-            version.clone(),
-            features.clone(),
-        ),
+            version,
+            default_features,
+            features,
+            ..
+        } => {
+            if default_features.clone() {
+                crate::v1_compiler_emit_rust::emit_cargo_dep(
+                    dep.name.clone(),
+                    version.clone(),
+                    features.clone(),
+                )
+            } else {
+                crate::v1_compiler_emit_rust::emit_cargo_dep_no_default_features(
+                    dep.name.clone(),
+                    version.clone(),
+                    features.clone(),
+                )
+            }
+        }
         CargoDepSource::LocalPathDep { path: path, .. } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(dep.name.clone(), " = { path = \"".to_string()),
@@ -940,6 +1082,54 @@ pub fn render_stage0_emit_core_lib_outcome(
 }
 }
 
+pub fn partition_facade_header_doc() -> String {
+    Rc::new(vec!["//! Generated by the emitted crate workspace (v2.workflow.emitted_crate_workspace) -- do not edit.".to_string(), "//!".to_string(), "//! Facade crate: re-exports every module of the partition from the crate that owns it.".to_string()]).join(&"\n".to_string())
+}
+
+pub fn render_partition_facade_lib_outcome(
+    spec: Rc<Stage0CrateSpec>,
+) -> Rc<Stage0CrateLibEmitOutcome> {
+    match (*stage0_emit_shell_module_reexports_outcome(
+        spec.modules.clone(),
+        spec.package_idents.clone(),
+        spec.partition_rows.clone(),
+    ))
+    .clone()
+    {
+        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+            cause: cause, ..
+        } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
+            cause: cause.clone(),
+        }),
+        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsIdentUnbound {
+            package_name: package_name,
+            ..
+        } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitIdentUnbound {
+            package_name: package_name.clone(),
+        }),
+        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => {
+            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+                file: Rc::new(TextFile {
+                    path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
+                    content: v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
+                                    stage0_crate_allow_block(),
+                                ),
+                                "\n\n".to_string(),
+                            ),
+                            lines.clone().join(&"\n\n".to_string()),
+                        ),
+                        "\n".to_string(),
+                    ),
+                }),
+            })
+        }
+    }
+}
+
 pub fn stage0_partition_lookups_valid() -> bool {
     match (*stage0_crate_boundary_emit_outcome()).clone() {
         Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: _, .. } => true,
@@ -959,15 +1149,20 @@ pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0Crat
         }
         Stage0CrateKind::LayeredCoreCrate => render_stage0_layered_core_lib_outcome(spec.clone()),
         Stage0CrateKind::EmitCoreCrate => render_stage0_emit_core_lib_outcome(spec.clone()),
+        Stage0CrateKind::FacadeCrate => render_partition_facade_lib_outcome(spec.clone()),
     }
 }
 
 pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
-    partition_crate_plan_outcome_over(generated_partition_crate_rows())
+    partition_crate_plan_outcome_over(
+        generated_partition_crate_rows(),
+        stage0_foundation_runtime_dependencies(),
+    )
 }
 
 pub fn partition_crate_plan_outcome_over(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CratePlanOutcome> {
     match (*crate::gunbc_rust_crate_package_ident::rust_crate_package_idents(Rc::new({
         let mut __result = Vec::new();
@@ -985,13 +1180,18 @@ pub fn partition_crate_plan_outcome_over(
         }
         PackageIdentSetOutcome::PackageIdentSetOk {
             bindings: bindings, ..
-        } => stage0_crate_plan_from_admitted_rows(bindings.clone(), rows.clone()),
+        } => stage0_crate_plan_from_admitted_rows(
+            bindings.clone(),
+            rows.clone(),
+            registry_dependencies.clone(),
+        ),
     }
 }
 
 pub fn stage0_crate_plan_from_admitted_rows(
     package_idents: Rc<Vec<Rc<PackageIdentBinding>>>,
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CratePlanOutcome> {
     rows.clone().iter().cloned().fold(
         Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
@@ -1016,6 +1216,7 @@ pub fn stage0_crate_plan_from_admitted_rows(
                     row.clone(),
                     package_idents.clone(),
                     rows.clone(),
+                    registry_dependencies.clone(),
                 ))
                 .clone()
                 {
@@ -1064,13 +1265,17 @@ pub fn emit_stage0_crate_boundary_files_outcome(
 }
 
 pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    partition_crate_boundary_emit_outcome_over(generated_partition_crate_rows())
+    partition_crate_boundary_emit_outcome_over(
+        generated_partition_crate_rows(),
+        stage0_foundation_runtime_dependencies(),
+    )
 }
 
 pub fn partition_crate_boundary_emit_outcome_over(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    match (*partition_crate_plan_outcome_over(rows.clone())).clone() {
+    match (*partition_crate_plan_outcome_over(rows.clone(), registry_dependencies.clone())).clone() {
     Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
     cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
 }),
@@ -1098,3 +1303,5 @@ pub struct FoundationCrate;
 pub struct LayeredCoreCrate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EmitCoreCrate;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FacadeCrate;

@@ -12,7 +12,7 @@ pub use crate::extdeps_cargo_version::{
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_types::{FilePathParts, List, NonEmptyStr};
+pub use crate::std_types::{Bool, FilePathParts, List, NonEmptyStr};
 use crate::std_workspace_artifact::FootprintProvenance::CitedUpstream;
 use crate::std_workspace_artifact::IgnoreReason::{LocalCacheState, RegenerableFromSource};
 pub use crate::std_workspace_artifact::{
@@ -91,6 +91,7 @@ pub struct CargoPackage {
 pub enum CargoDepSource {
     RegistryDep {
         version: CargoVersionRequirement,
+        default_features: bool,
         features: Rc<Vec<String>>,
     },
     LocalPathDep {
