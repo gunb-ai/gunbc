@@ -3021,9 +3021,61 @@ fn match_arm_types_are_proven_disjoint(unified_arm_type: Node, arm_type: Node, s
   }
 }
 
+// A match arm that is a bare concrete T beside an arm that is T? (or `none`) is the implicit T -> T?
+// lift the declared-return wall refuses, reached through the join instead: the join keeps ONE arm's
+// type, so which arm was listed first decided whether the declared-return seam ever saw the bare T.
+// `if` already refuses the same mix through node_type_compatible; a match is judged the same way.
+// Optionality is decided by declared_type_carries_optional, the one authority, so the leaf-name
+// identity debt it names (2K) is carried there and not re-spelled here. It is a source type error,
+// carried as DeclaredTypeNotInhabited at the offending arm.
+fn match_arm_type_is_bare_concrete(t: Node, scope: InferScope) -> Bool {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: t)
+  let generic = (t.params |> count) > 0
+    || (t.inferred != none && is_compiler_error(inferred: t.inferred.value))
+    || match t.inferred {
+      Present { value: TypeVariable { id: _ } } => true
+      _ => false
+    }
+  name != "" && !generic && !declared_type_carries_optional(declared: t, scope: scope)
+}
+
+fn match_arm_mixes_bare_and_optional(unified_arm_type: Node, arm_type: Node, scope: InferScope) -> Bool {
+  (declared_type_carries_optional(declared: unified_arm_type, scope: scope) && match_arm_type_is_bare_concrete(t: arm_type, scope: scope))
+    || (match_arm_type_is_bare_concrete(t: unified_arm_type, scope: scope) && declared_type_carries_optional(declared: arm_type, scope: scope))
+}
+
+// CLAIMED SCOPE OF THE WALL (not a rung drop): the wall does not judge an arm whose whole body is the
+// payload binding of a `Present { value: x }` pattern. Infer types that payload as bare T from a
+// scrutinee carried as single-level CardOptional (join_optional_cardinality / with_required_cardinality
+// collapse nesting), so over List<T?> `first()` yields T? and the payload reads as T though emission
+// carries Option<Option<T>>; judging it would refuse a correct arm. Row:
+// nested_optional_collapsed_by_infer_carried_by_emission; trigger: a nested-optional carrier in 00_core.
+fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferScope) -> Bool {
+  match arm_pattern(n: arm.typed_arm) {
+    VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
+      let body_name = expr_var_name_at(texpr: arm_body(n: arm.typed_arm), source_indices: scope.type_env.source_indices)
+      variant_name == "Present" && body_name != "" && (bindings |> any(fb => match field_binding_pattern(n: fb) {
+        Bind { declaration: declaration } => declaration.name == body_name
+        _ => false
+      }))
+    _ => false
+  }
+}
+
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
+  } else if !match_arm_body_is_present_payload_binding(arm: arm, scope: scope)
+    && match_arm_mixes_bare_and_optional(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
+    [make_error_node(
+      diagnostic: DeclaredTypeNotInhabited {
+        position: "match arm",
+        expected: node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
+        got: node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices),
+        span: arm_body(n: arm.typed_arm).span
+      },
+      module_name: scope.module_name
+    )]
   } else if match_arm_types_are_proven_disjoint(
     unified_arm_type: unified_arm_type,
     arm_type: arm.body_type,
@@ -4024,7 +4076,10 @@ fn foreign_concrete_coproduct_where_parent_required(
 //
 // CARDINALITY VERDICT ONLY (optional_at_required_obligation_diags): PositionRecordLiteralField,
 // PositionDeclaredReturn, PositionLetAnnotation, PositionDataInitializer. Each builds the same
-// DeclaredTypeObligation and is refused when an optional stands where a required value is declared;
+// DeclaredTypeObligation and is refused when an optional stands where a required value is declared
+// (and, at PositionDeclaredReturn and PositionDataInitializer ONLY, when a bare required value stands
+// where an optional is declared: position_forbids_bare_lift, the other direction; let and record-field
+// stay one-way);
 // the relation's other arms are NOT consulted there, because those seams already carry their own
 // older chains (declared_type_conformance_diags, the record-literal field chain) whose agreement
 // with this relation has not been measured on the corpus. So at these four the honest claim is one
@@ -4427,6 +4482,58 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
 //
+// ONE ANSWER TO "IS THIS DECLARED TYPE OPTIONAL", read by both cardinality directions. Optionality
+// lives in two representations (declared_type_conformance_note class 1): CardOptional on the node or
+// its alias-peeled form, or the nominal Optional coproduct a `-> T?` return arrives as. The leaf-name
+// arm is the pre-existing authority this function always used, not a new one; it is part of the
+// bare-name identity debt routed to 2K's identity-keying lane.
+fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+  declared.return_cardinality == CardOptional
+    || declared_peeled.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared)) == "Optional"
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
+}
+
+// THE MIRROR, AT THE DECLARED RETURN (gunbc.recurring_failure_mode bare_value_admitted_where_optional_is_declared,
+// class C5). A fn declared `-> T?` whose body produces a bare T was accepted: no declared coercion
+// lifts T into T? (DESIGN 4, 2026-09-26), and the Rust emission refused it as E0308 `expected
+// Option<T>, found T` (gunbc.running_release_identity running_release_member_string). It is judged
+// at the declared return and, by gentle-dove-36 ruling A on gunbc#13202, at a DATA INITIALIZER: a
+// `data r: T? = <bare T>` row was emitted bare against Option<..> on the typed-expression path and
+// refused only downstream by rustc (E0308), which DESIGN 5 does not count as a typed refusal. A bare
+// T bound to a T? PARAMETER or record field is a different position whose population was not
+// measured by this change and is not claimed. The none / Absent presence spellings produce an optional and never reach this arm.
+fn position_forbids_bare_lift(position: DeclaredTypePosition) -> Bool {
+  match position {
+    PositionDeclaredReturn => true
+    PositionDataInitializer => true
+    _ => false
+  }
+}
+
+fn required_produced_at_optional_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_carries_optional = produced.return_cardinality == CardOptional
+    || qualified_last_segment(name: produced_name) == "Optional"
+  let produced_is_generic = (produced.params |> count) > 0
+    || (produced.inferred != none && is_compiler_error(inferred: produced.inferred.value))
+    || match produced.inferred {
+      Present { value: TypeVariable { id: _ } } => true
+      _ => false
+    }
+  declared_type_carries_optional(declared: declared, scope: scope)
+    && !produced_carries_optional
+    && !produced_is_generic
+    && produced_name != ""
+    && declared_name != ""
+    && !type_node_is_callable(n: declared)
+    && !type_node_is_callable(n: produced)
+}
+
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4437,13 +4544,8 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     Present { value: TypeVariable { id: _ } } => true
     _ => false
   }
-  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
-  let declared_carries_optional = declared.return_cardinality == CardOptional
-    || declared_peeled.return_cardinality == CardOptional
-    || qualified_last_segment(name: declared_name) == "Optional"
-    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
   produced_carries_optional
-    && !declared_carries_optional
+    && !declared_type_carries_optional(declared: declared, scope: scope)
     && !declared_is_generic
     && declared_name != ""
     && !type_node_is_callable(n: declared)
@@ -4466,7 +4568,8 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
 // DIRECTED fact about a declared position, which is what the obligation carries.
 //
 fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
-  if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope) {
+  if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope)
+    || (position_forbids_bare_lift(position: obligation.position) && required_produced_at_optional_declared(declared: obligation.declared, produced: obligation.produced, scope: scope)) {
     [make_error_node(
       diagnostic: DeclaredTypeNotInhabited {
         position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
