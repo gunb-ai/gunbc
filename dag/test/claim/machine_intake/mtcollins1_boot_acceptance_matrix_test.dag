@@ -738,7 +738,7 @@ test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Boo
   match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
-        && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
+        && string_contains(s: outcome_reason(a: value), pattern: "(3 looks,")
         && reached_no_power_action(route: route)
     _ => false
   }
