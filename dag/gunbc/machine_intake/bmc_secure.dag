@@ -1337,6 +1337,14 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
     && a.credential_epoch == b.credential_epoch
 }
 
+// THE OBSERVATION IS THE PAYLOAD, NOT A START TIME. `==` is the language's structural relation on
+// this closed record: every field of BmcAccountStateObservation participates, so a new field cannot
+// fall out of the join by omitting a line. read_floor is compared as the ObserverClockInstant value,
+// not as millis-from-epoch.
+fn bmc_account_state_observation_same(a: BmcAccountStateObservation, b: BmcAccountStateObservation) -> Bool {
+  a == b
+}
+
 // WHAT THE PHASE REQUIRES OF THE CONTROLLER: this managed generation accepted, the published
 // credential closed, under this qualification policy.
 // published_break_glass is the exact generation the published account is retired TO (or, under a
@@ -2266,6 +2274,7 @@ fn dry_read_bmc_account_state(
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)

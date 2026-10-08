@@ -427,6 +427,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_falls_through_to_capability"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_request"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
   ]
 {
@@ -1244,6 +1245,32 @@ test fn w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused() -> Bo
   let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
   let bmc_key = bmc_secure_apply_key()
   let requested = mtjade1_bmc_goal_with_break_glass_epoch(epoch: 5, version: "5")
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
+    Absent => false
+    Present { value: apply } =>
+      match bmc_secure_bound(
+        key: bmc_key,
+        identity_key: identity,
+        identity_subject: mtjade1_intake_subject(),
+        prior_key: prior,
+        inputs: BmcSecureInputs {
+          goal: requested,
+          reading: apply.application.plan.diverged,
+          grant: Present { value: mtjade1_live_standing_grant },
+          apply: Present { value: apply },
+          capability: none,
+        },
+      ) {
+        StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
+        _ => false
+      }
+  }
+}
+
+test fn w_bmc_secure_apply_of_another_channel_state_is_refused() -> Bool {
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc_key = bmc_secure_apply_key()
   let reading = dry_read_bmc_account_state(
     world: mtjade1_account_world(
       users: [BmcIpmiUser { id: 3, password: "managed-generation-1!" }, BmcIpmiUser { id: 2, password: "admin" }],
@@ -1252,15 +1279,15 @@ test fn w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused() -> Bo
     subject: mtjade1_intake_subject(),
     endpoint: mtjade1_bmc_endpoint(),
     firmware: mtjade1_bmc_firmware(),
-    managed: requested.managed,
+    managed: mtjade1_bmc_goal().managed,
     managed_user: mtjade1_managed_ipmi_user,
     managed_password: "managed-generation-1!",
     census: mtjade1_bmc_census(published_lan_privilege_closed: false),
     published_user: mtjade1_published_ipmi_user,
     published_password: "admin",
     published_account: PublishedAccountRetired,
-    break_glass: requested.published_break_glass,
-    break_glass_password: "break-glass-generation-5!",
+    break_glass: mtjade1_bmc_goal().published_break_glass,
+    break_glass_password: "break-glass-generation-4!",
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
   )
@@ -1273,7 +1300,7 @@ test fn w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused() -> Bo
         identity_subject: mtjade1_intake_subject(),
         prior_key: prior,
         inputs: BmcSecureInputs {
-          goal: requested,
+          goal: mtjade1_bmc_goal(),
           reading: reading,
           grant: Present { value: mtjade1_live_standing_grant },
           apply: Present { value: apply },
