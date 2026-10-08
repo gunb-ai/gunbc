@@ -122,8 +122,8 @@ fn t_foreign_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
     hosts: hosts,
     readback: ModelsRouteRead {
       readback: vllm_models_route_readback(
-        served_model_id: "glm-5.3-flash:native" as NonEmptyStr,
-        configured_model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+        served_model_id: "foreign-model" as NonEmptyStr,
+        configured_model_path: "/weights/models--fixture--foreign-model/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
         max_model_len: token_count(count: 1048576)),
     },
     endpoint: t_launch(),
