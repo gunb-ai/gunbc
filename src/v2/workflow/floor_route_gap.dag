@@ -2063,12 +2063,20 @@ fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
 // The test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test identity (the BaseAdvance
 // follow-up to gunbc#13111) joins it with the same first effect and the same triple enrollment: the
 // base advance over a throwaway repository's two real commits.
+// The test.claim.roadmap.roadmap_belt_recapture_wet_witness_test identity joins them: recapture of a
+// committed attempt tree. First effect is shell.Mktemp.DirWithTemplate (no mock_response).
 fn floor_route_gap_expectation_chunk_40() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test.the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test.the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } }
   }
 }
 
@@ -2090,15 +2098,17 @@ fn floor_route_gap_expectation_chunk_41() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The test.claim.scm_repository_save_real_execution_witness identity: the guarded save's one real
-// write over the committed v7 fixture. First effect without a hermetic arm is Filesystem.Write (no
-// mock_response). Triple enrollment as for chunk_30: this expectation, a WetScheduledClaim row in
-// local_repo_wet_schedule, and the gunbc.ci_layer_roots LocalRepoWetLane row for
-// scm_repository_save_real_execution_witness_test.dag.
+// The test.claim.scm_repository_save_real_execution_witness identities: the guarded save's real
+// write over the committed v7 fixture (first effect Filesystem.Write), and a first save from
+// absence on a throwaway path (first effect shell.Mktemp.DirWithTemplate). Triple enrollment as
+// for chunk_30: these expectations, WetScheduledClaim rows in local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots LocalRepoWetLane row for scm_repository_save_real_execution_witness_test.dag.
 fn floor_route_gap_expectation_chunk_31() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.scm_repository_save_real_execution_witness.scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes", operation: "Write", ground: NoMockResponse {} },
-    tail: Empty {}
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.scm_repository_save_real_execution_witness.scm_sv_a_first_save_from_absence_returns_the_readback_generation_and_admits_the_next_persist", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} }
   }
 }
 

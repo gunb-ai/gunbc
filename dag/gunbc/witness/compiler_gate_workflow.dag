@@ -122,6 +122,7 @@ import gunbc.witness_floor_workflow {
   required_floor_cross_claim_demand_path,
   required_ci_measurement_bound_steps,
   required_floor_claim_cost_upload_bound_step,
+  required_floor_disposition_upload_bound_step,
   required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
@@ -883,7 +884,7 @@ fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
 // the cost of what it executed.
 fn compiler_gate_floor_measurement_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(
-    xs: concat(required_ci_measurement_bound_steps(), [required_floor_claim_cost_upload_bound_step()]),
+    xs: concat(required_ci_measurement_bound_steps(), [required_floor_claim_cost_upload_bound_step(), required_floor_disposition_upload_bound_step()]),
     f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
   )
 }
