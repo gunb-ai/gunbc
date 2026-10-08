@@ -283,10 +283,14 @@ fn discovering_pool_root(path: String, pool_roots: List<String>) -> Optional<Str
       match acc {
         Present { value: found } => Present { value: found }
         Absent =>
-          if (path == root) || starts_with(s: path, prefix: concat(root, "/")) {
+          if path == root {
             Present { value: root }
           } else {
-            Absent
+            if starts_with(s: path, prefix: concat(root, "/")) {
+              Present { value: root }
+            } else {
+              Absent
+            }
           }
       }
     }
