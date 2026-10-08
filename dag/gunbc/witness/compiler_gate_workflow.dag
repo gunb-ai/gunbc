@@ -71,7 +71,7 @@ module gunbc.compiler_gate_workflow
 // then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
 
 import std.measure { Minute, minute, minute_count }
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
@@ -153,9 +153,8 @@ import gunbc.native_product_federation {
   native_product_read_service_account, native_product_write_service_account, native_product_write_provider_resource,
 }
 import gunbc.auth.github_gcp_federation { github_wif_provider_resource }
-import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare, release_bin_rel_path, gunbc_bin_name }
-import extdeps.exec.program { uncataloged_program }
-import extdeps.exec.command { argv_command, shell_command_render }
+import gunbc.gunbc_cli_command { gunbc_run_command }
+import extdeps.exec.command { shell_command_render }
 import gunbc.fleet_release_bins_key {
   release_bins_outcome_script_for, release_bins_consumer_key_check_script_for,
   release_bins_key_expression, release_bins_key_step_id, release_bins_outcome_step_id,
@@ -1208,15 +1207,9 @@ fn compiler_gate_native_write_auth_step() -> Step {
 // admitted entry of the job-private store (only a merge_group run with a completed red publishes one)
 // create-only, and runs only on the queue, after the instruments, with the write federation's token.
 fn compiler_gate_native_save_command() -> String {
-  shell_command_render(command: argv_command(
-    program: uncataloged_program(invocation: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr),
-    arguments: invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
-      source_roots: ["dag", "src/v2"],
-      entry: "dag/gunbc/native_product_shared_transfer.dag",
-      functions: ["native_product_save_wet"],
-      claim_run: false,
-      arguments: [],
-    )),
+  shell_command_render(command: gunbc_run_command(
+    entry: "dag/gunbc/native_product_shared_transfer.dag",
+    functions: ["native_product_save_wet"],
   ))
 }
 
