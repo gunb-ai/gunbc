@@ -25066,16 +25066,6 @@ pub fn list_element_type_node(n: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
-pub fn list_element_ctor_name(el: Rc<Node>) -> String {
-    if (el.name.clone() != "".to_string()) {
-        el.name.clone()
-    } else {
-        crate::v1_compiler_infer_types::child_type_node(el.clone())
-            .name
-            .clone()
-    }
-}
-
 pub fn list_concat_elements_agree(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -25102,10 +25092,15 @@ pub fn list_concat_elements_agree(
                             Some(lraw) => match right.children.clone().first().cloned() {
                                 std::option::Option::None => false,
                                 Some(rraw) => {
-                                    ((is_where_refinement_type(lraw.clone())
-                                        == is_where_refinement_type(rraw.clone()))
-                                        && (list_element_ctor_name(lraw.clone())
-                                            == list_element_ctor_name(rraw.clone())))
+                                    (is_where_refinement_type(
+                                        crate::v1_compiler_infer_types::child_type_node(
+                                            lraw.clone(),
+                                        ),
+                                    ) == is_where_refinement_type(
+                                        crate::v1_compiler_infer_types::child_type_node(
+                                            rraw.clone(),
+                                        ),
+                                    ))
                                 }
                             },
                         }

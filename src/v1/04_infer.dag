@@ -14346,10 +14346,6 @@ fn list_element_type_node(n: Node) -> Node? {
   }
 }
 
-fn list_element_ctor_name(el: Node) -> String {
-  if el.name != "" { el.name } else { child_type_node(ch: el).name }
-}
-
 fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match list_element_type_node(n: left) {
     Absent => false
@@ -14371,8 +14367,8 @@ fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<Strin
                 match right.children |> first {
                   Absent => false
                   Present { value: rraw } =>
-                    is_where_refinement_type(ty: lraw) == is_where_refinement_type(ty: rraw)
-                      && list_element_ctor_name(el: lraw) == list_element_ctor_name(el: rraw)
+                    is_where_refinement_type(ty: child_type_node(ch: lraw))
+                      == is_where_refinement_type(ty: child_type_node(ch: rraw))
                 }
             }
           }
