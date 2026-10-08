@@ -54,6 +54,7 @@ import gunbc.typecheck_module_store {
 import gunbc.process_hold_identity { self_process_identity, SelfIdentified, SelfUnidentified, process_hold_text }
 import gunbc.build_cache_instance { ProcessIdentity }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire_windowed, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
@@ -699,6 +700,45 @@ test fn a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution()
           let rs = bundle_req(module: "s")
           let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
           commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_stale(r: c.hold_refusal)
+            && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
+            && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
+        }
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+data pin_ext2_immutable_script: String = "import fcntl, os, struct, sys\nGET = 0x80086601\nSET = 0x40086602\nIMM = 0x10\npath = sys.argv[1]\non = sys.argv[2] == \"1\"\nfd = os.open(path, os.O_RDONLY)\ncur = struct.unpack(\"I\", fcntl.ioctl(fd, GET, struct.pack(\"I\", 0)))[0]\nfcntl.ioctl(fd, SET, struct.pack(\"I\", (cur | IMM) if on else (cur & ~IMM)))\nos.close(fd)\n"
+
+fn pin_generation_unlink(path: String, on: Bool) -> Bool {
+  shell.Exec.RunArgv(program: "python3", arguments: ["-c", pin_ext2_immutable_script, path, if on { "1" } else { "0" }]).exit_code == 0
+}
+
+// PARTIAL RECLAIM MUST NOT RE-AUTHORIZE A LEAKED HOLD. Independent deletes could remove G+1 while
+// G survived, so named verify would treat leaked G as head. Pin G against unlink, run another
+// acquire/release (the reclaim that used to punch that hole), then reuse G: check must refuse
+// stale and write nothing.
+test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let rs = bundle_req(module: "s")
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } =>
+      match local_store_with_family(capability: store, of: rs, run: h => h) {
+        LocalStoreBracketRefused { refusal: _ } => false
+        LocalStoreBracketRan { value: leaked, hold_release: _ } => {
+          let pinned = cas_file_slot_path(root: root_path as NonEmptyStr, key: local_store_hold_key(family: leaked.family), generation: leaked.generation)
+          let immutable = pin_generation_unlink(path: pinned, on: true)
+          let advanced = match local_store_with_family(capability: store, of: rs, run: _ => true) {
+            LocalStoreBracketRefused { refusal: _ } => false
+            LocalStoreBracketRan { value: ok, hold_release: _ } => ok
+          }
+          let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
+          let _unlock = pin_generation_unlink(path: pinned, on: false)
+          immutable && advanced
+            && commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_stale(r: c.hold_refusal)
             && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
             && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
         }
