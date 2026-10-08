@@ -650,6 +650,9 @@ data dgx_spark_procurement_ledgers: List<InventoryLotEvidence> = [
   InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
 ]
 
+// THE EIGHT DGX SPARK ASSETS PROCURED AND RECEIVED, not the units held today: four were sold on 2026-10-07,
+// recorded as typed dispositions at gunbc.spark.dgx_procurement dgx_spark_disposed_units. Which four serials
+// they were is not observed (these labels do not claim host-slot order), so no sale is booked against a lot.
 data dgx_spark_asset_identities: List<PhysicalAssetIdentity> = [
   dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04,
   dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08,

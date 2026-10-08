@@ -194,22 +194,62 @@ data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [
   srv12_router_binding,
 ]
 
-// Arrival is DERIVED from the observed router rows, never stored beside them: a stored "arrived"
-// flag is a second representation of what the reservation roster already says, and it is the copy
-// that goes stale -- which is exactly how this module came to claim the units had not arrived while
-// they were sitting on the LAN. Each row is a Static, Active reservation the operator read off the
-// CR1000A, which is presence evidence; the count against unit_count is the standing.
+// ── WHAT BECAME OF A PROCURED UNIT: RETAINED, OR DISPOSED BY AN ATTRIBUTABLE DECISION ───────────────────
+//
+// Eight units were procured and all eight arrived. Four are RETAINED: they carry a router binding above,
+// and that binding roster is the only source of the fleet's reserved identities, so a disposed unit
+// cannot enter a fleet roster, a convergence target, a reservation or an admission. The other four --
+// the units of fabric cage 1 -- were SOLD on the operator's decision of 2026-10-07 (relayed by
+// valiant-crab-775), and are kept here as typed rows rather than erased, so the procurement still says
+// what was bought and what became of it. Each row names the unit by the router label it carried and the
+// fleet slot it held; the slot's identity row itself was deleted with every consumer.
+//
+// WHICH PROCUREMENT LOT A SOLD UNIT CAME FROM IS NOT OBSERVED: the inventory's asset labels do not claim
+// host-slot order (gunbc.fleet_physical_inventory), so no serial is joined to these router labels, and
+// recording the sale as an inventory QuantitySold would invent that attribution. The open obligation: join
+// each sold router label to its physical serial and lot, then record the sale against that lot.
+type DgxSparkUnitDisposition
+  = DgxSparkUnitSold { decision: OperatorAllocation }
+
+type DgxSparkDisposedUnit {
+  router_label: NonEmptyStr
+  former_slot: NonEmptyStr
+  disposition: DgxSparkUnitDisposition
+}
+
+data dgx_spark_group_a_sale_2026_10_07: OperatorAllocation = OperatorAllocation {
+  decided_by: "operator (relayed by valiant-crab-775, dashboard messages msg_978d81c1 and msg_5d88338f)",
+  decided_on: "2026-10-07",
+  basis: "Group A (fabric cage 1: srv5-srv8) is turned down and the units are sold and wiped; remove them from fleet config and convergence.",
+}
+
+data dgx_spark_disposed_units: List<DgxSparkDisposedUnit> = [
+  DgxSparkDisposedUnit { router_label: "spark-a3ee" as NonEmptyStr, former_slot: "srv5" as NonEmptyStr, disposition: DgxSparkUnitSold { decision: dgx_spark_group_a_sale_2026_10_07 } },
+  DgxSparkDisposedUnit { router_label: "spark-3bd5" as NonEmptyStr, former_slot: "srv6" as NonEmptyStr, disposition: DgxSparkUnitSold { decision: dgx_spark_group_a_sale_2026_10_07 } },
+  DgxSparkDisposedUnit { router_label: "spark-c2b1" as NonEmptyStr, former_slot: "srv7" as NonEmptyStr, disposition: DgxSparkUnitSold { decision: dgx_spark_group_a_sale_2026_10_07 } },
+  DgxSparkDisposedUnit { router_label: "spark-ac79" as NonEmptyStr, former_slot: "srv8" as NonEmptyStr, disposition: DgxSparkUnitSold { decision: dgx_spark_group_a_sale_2026_10_07 } },
+]
+
+// Arrival is DERIVED, never stored beside its evidence: a stored "arrived" flag is a second
+// representation that goes stale -- which is exactly how this module once claimed the units had not
+// arrived while they were sitting on the LAN. A retained unit's evidence is its Static, Active
+// reservation read off the CR1000A; a disposed unit arrived and was later sold, and its row is that
+// evidence. Every procured unit is one or the other, so the count against unit_count is the standing.
 type DgxSparkArrivalStanding
   = AllOrderedUnitsObservedOnLan { observed_count: Int }
   | OrderedUnitsOutstanding { ordered_count: Int, observed_count: Int }
 
+fn dgx_spark_accounted_unit_count() -> Int {
+  count(observed_dgx_spark_router_reservations) + count(dgx_spark_disposed_units)
+}
+
 fn dgx_spark_arrival_standing() -> DgxSparkArrivalStanding {
-  if count(observed_dgx_spark_router_reservations) == dgx_spark_procurement_intent.unit_count {
-    AllOrderedUnitsObservedOnLan { observed_count: count(observed_dgx_spark_router_reservations) }
+  if dgx_spark_accounted_unit_count() == dgx_spark_procurement_intent.unit_count {
+    AllOrderedUnitsObservedOnLan { observed_count: dgx_spark_accounted_unit_count() }
   } else {
     OrderedUnitsOutstanding {
       ordered_count: dgx_spark_procurement_intent.unit_count,
-      observed_count: count(observed_dgx_spark_router_reservations),
+      observed_count: dgx_spark_accounted_unit_count(),
     }
   }
 }
@@ -219,12 +259,9 @@ fn dgx_spark_reserved_identities() -> List<HostIdentity> {
   map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
 }
 
-// FOUR UNITS ARE HELD NOW: eight were procured, and the four of fabric cage 1 (srv5-srv8: spark-a3ee,
-// spark-3bd5, spark-c2b1, spark-ac79) were decommissioned and sold on 2026-10-07 (operator). The count is the
-// units this procurement still holds, so arrival compares it with the four reservations that remain.
 data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcurementIntent {
   vendor_catalog: nvidia_dgx_spark_4tb_catalog,
-  unit_count: 4,
+  unit_count: 8,
   reserved_identities: dgx_spark_reserved_identities(),
   ordered_note: "8x NVIDIA DGX Spark across four batches (2 + 2 + 3 + 1), all live on the operator LAN as of 2026-09-05; the eighth (spark-2196) appeared the day the fabric switch was cabled. FIRST BATCH: 2x ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation keyed to its WIRELESS interface (spark-a3ee 192.168.1.226 F0:68:E3:B3:1A:40 and spark-3bd5 192.168.1.225 F0:68:E3:31:AB:E6; both MACs read from the hosts as permanent hardware addresses, both ethernet ports unplugged and dark since 2026-08-27). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by not inferred from router labels -- and note the labels are ethernet-MAC-derived, so they no longer share a tail with the MAC the row binds.",
 }
