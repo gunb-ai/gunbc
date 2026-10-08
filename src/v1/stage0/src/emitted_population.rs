@@ -155,6 +155,7 @@
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
 // src/v1_tests_claim_generic_identity_census.rs
+// src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs

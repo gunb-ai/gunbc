@@ -1,6 +1,7 @@
 module gunbc.filesystem_model
 
 import std.types { Bool, List, String }
+import std.algebra { list_snoc_item }
 import std.measure { second, ByteSize, byte_size }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import v2.std.operation_argv { OperationRef, BoundOperationInvocation }
@@ -128,7 +129,7 @@ fn fs_write(fs: ModeledFilesystem, path: String, content: String, create_new: Bo
 fn fs_with_file(fs: ModeledFilesystem, path: String, content: String) -> ModeledFilesystem {
   ModeledFilesystem {
     directories: fs.directories,
-    files: list_append(filter(fs.files, f => f.path != path), ModeledFile { path: path, content: content }),
+    files: list_snoc_item(xs: filter(fs.files, f => f.path != path), item: ModeledFile { path: path, content: content }),
     refused_reads: fs.refused_reads,
   }
 }
