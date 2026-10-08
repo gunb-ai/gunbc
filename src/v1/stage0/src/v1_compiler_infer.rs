@@ -16477,7 +16477,8 @@ pub fn expand_alias_chain_for_field_access(
                             seen.clone(),
                         );
                         Rc::new(NodeResolveResult {
-                            resolved: crate::v1_std_core::with_optional_cardinality(
+                            resolved: crate::v1_std_core::preserve_outer_optional_cardinality(
+                                structural.clone(),
                                 expanded_inner.resolved.clone(),
                             ),
                             diagnostics: v1_rt::concat(
@@ -16883,7 +16884,10 @@ pub fn record_lit_expected_through_generic_alias(
                                 );
                                 let peeled_with_cardinality = if (crate::v1_std_core::cardinality_is_optional(exp.return_cardinality.clone()))
                                 {
-                                    crate::v1_std_core::with_optional_cardinality(peeled.clone())
+                                    crate::v1_std_core::preserve_outer_optional_cardinality(
+                                        exp.clone(),
+                                        peeled.clone(),
+                                    )
                                 } else {
                                     peeled.clone()
                                 };

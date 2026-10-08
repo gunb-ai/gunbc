@@ -10439,7 +10439,7 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
     if is_optional {
       let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, seen: seen)
       NodeResolveResult {
-        resolved: with_optional_cardinality(n: expanded_inner.resolved),
+        resolved: preserve_outer_optional_cardinality(outer: structural, inner: expanded_inner.resolved),
         diagnostics: concat(own_diags, expanded_inner.diagnostics)
       }
     } else {
@@ -10639,7 +10639,7 @@ fn record_lit_expected_through_generic_alias(expected: Node?, scope: InferScope,
             let is_parameterized_alias = (decl.params |> count) > 0 && decl.inferred != none && (decl.children |> count) == 0 && decl.connective == NoConnective
             if is_parameterized_alias {
               let peeled = alias_chain_target_after_args(target: decl, carrier: exp, env: scope.type_env)
-              let peeled_with_cardinality = if (cardinality_is_optional(c: exp.return_cardinality)) { with_optional_cardinality(n: peeled) } else { peeled }
+              let peeled_with_cardinality = if (cardinality_is_optional(c: exp.return_cardinality)) { preserve_outer_optional_cardinality(outer: exp, inner: peeled) } else { peeled }
               record_lit_expected_through_generic_alias(expected: Present { value: peeled_with_cardinality }, scope: scope, fuel: fuel - 1)
             } else {
               match transparent_alias_application_at_head(exp: exp, decl: decl, scope: scope) {

@@ -1388,7 +1388,8 @@ Rc::new(NodeResolveResult {
                                     let inner_resolved = inner_result.resolved.clone();
                                     let inner_diags = inner_result.diagnostics.clone();
                                     Rc::new(NodeResolveResult {
-                                        resolved: crate::v1_std_core::with_optional_cardinality(
+                                        resolved: crate::v1_std_core::preserve_outer_optional_cardinality(
+                                            n.clone(),
                                             inner_resolved.clone(),
                                         ),
                                         diagnostics: inner_diags.clone(),
@@ -2149,7 +2150,10 @@ Rc::new(NodeResolveResult {
                                                     let is_optional =
                                                         crate::v1_std_core::cardinality_is_optional((n.return_cardinality.clone()));
                                                     let final_resolved = if is_optional.clone() {
-                                                        crate::v1_std_core::with_optional_cardinality(structurally_resolved.clone())
+                                                        crate::v1_std_core::preserve_outer_optional_cardinality(
+                                                            n.clone(),
+                                                            structurally_resolved.clone(),
+                                                        )
                                                     } else {
                                                         structurally_resolved.clone()
                                                     };
