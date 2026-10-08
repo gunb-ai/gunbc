@@ -377,11 +377,11 @@ test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> 
     && !converge_cli_is_fleet_compute_host(host: "srv5")
 }
 
-// A SELECTOR RESOLVES TO THE STABLE IDENTITY BEFORE ANYTHING ROUTES. The drawn name "vibe" and the
+// A SELECTOR RESOLVES TO THE STABLE IDENTITY BEFORE ANYTHING ROUTES. The drawn name "damien" and the
 // opaque identity both resolve to host-183527, the legacy srv1 still resolves to itself, and an
 // unallocated selector is returned unchanged so the applicability refuses it by name.
 test fn converge_cli_selector_resolves_through_the_naming_authority() -> Bool {
-  converge_cli_resolve_self(host: "vibe") == "host-183527"
+  converge_cli_resolve_self(host: "damien") == "host-183527"
     && converge_cli_resolve_self(host: "host-183527") == "host-183527"
     && converge_cli_resolve_self(host: "srv1") == "srv1"
     && converge_cli_resolve_self(host: "nobody-here") == "nobody-here"

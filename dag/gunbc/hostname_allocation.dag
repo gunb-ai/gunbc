@@ -23,7 +23,7 @@ import gunbc.fleet_host_identity {
   operator_host_183527,
   operator_host_3dde7f,
 }
-import gunbc.host_names_gen_z { gen_z_first_parts, gen_z_last_parts }
+import gunbc.host_names_gen_z { host_name_first_parts, gen_z_last_parts }
 
 // A HUMAN NAME HAS THREE SHAPES AND NO OTHER: a middle part exists only beside a last part, so
 // that invalid state has no constructor rather than a validator. Each part is one DNS label, and the
@@ -191,14 +191,14 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_183527,
     name: DrawnHumanName {
-      name: FirstOnly { first: "vibe" as DnsLabel },
+      name: FirstOnly { first: "damien" as DnsLabel },
       draw: HumanNameDraw { entropy: 707054856316 },
     },
   },
   HostnameAllocation {
     fleet_slot: operator_host_3dde7f,
     name: DrawnHumanName {
-      name: FirstOnly { first: "cringe" as DnsLabel },
+      name: FirstOnly { first: "gus" as DnsLabel },
       draw: HumanNameDraw { entropy: 821771404468 },
     },
   },
@@ -242,7 +242,7 @@ fn first_untaken_human_name(
 }
 
 fn draw_human_name(draw: HumanNameDraw, existing: List<HostnameAllocation>) -> HumanNameDrawOutcome {
-  let given = gen_z_first_parts
+  let given = host_name_first_parts
   let surnames = gen_z_last_parts
   let n = draw.entropy
   let taken = flat_map(existing, a => allocation_selector_forms(allocation: a))

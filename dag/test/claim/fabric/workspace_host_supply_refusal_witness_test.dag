@@ -12,15 +12,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // production enrollment rows, so removing the guests' backing or the provider fact makes this red: the
 // refusal names the cited offer whose nested-virtualization fact forbids the path.
 test fn provider_guests_refuse_microvm_supply_on_the_cited_offer() -> Bool {
-  let vibe = match workspace_host_supply_refusal(host: operator_host_183527) {
+  let damien = match workspace_host_supply_refusal(host: operator_host_183527) {
     Present { value: r } => string_contains(s: r as String, pattern: "extdeps.cloud.hetzner.cax41_catalog")
     Absent => false
   }
-  let cringe = match workspace_host_supply_refusal(host: operator_host_3dde7f) {
+  let gus = match workspace_host_supply_refusal(host: operator_host_3dde7f) {
     Present { value: r } => string_contains(s: r as String, pattern: "nested virtualization")
     Absent => false
   }
-  vibe && cringe
+  damien && gus
 }
 
 // The control: an owned host is not refused here; its supply is decided by observation as before.
@@ -35,7 +35,7 @@ test fn owned_host_is_not_refused_by_provider_fact() -> Bool {
 // answers to its drawn name, NOT to its identity's spelling or the provider's display name.
 test fn local_host_join_reads_the_allocated_hostname() -> Bool {
   workspace_local_host_is(host: operator_host_srv1, kernel_hostname: "srv1")
-    && workspace_local_host_is(host: operator_host_183527, kernel_hostname: "vibe")
+    && workspace_local_host_is(host: operator_host_183527, kernel_hostname: "damien")
     && !workspace_local_host_is(host: operator_host_183527, kernel_hostname: "host-183527")
     && !workspace_local_host_is(host: operator_host_183527, kernel_hostname: "ubuntu-32gb-nbg1-1")
     && !workspace_local_host_is(host: operator_host_srv1, kernel_hostname: "")

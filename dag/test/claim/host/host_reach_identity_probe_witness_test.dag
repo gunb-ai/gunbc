@@ -253,12 +253,12 @@ test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
 }
 
 // IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.
-// host-183527 was allocated "vibe"; the guest boots answering to the provider's display name. That
-// observation is Drifted -- the thing hostname convergence corrects -- and "vibe" is Converged,
+// host-183527 was allocated "damien"; the guest boots answering to the provider's display name. That
+// observation is Drifted -- the thing hostname convergence corrects -- and "damien" is Converged,
 // while the identity's own spelling is NOT what the host is expected to answer to.
 test fn identity_verdict_reads_the_allocated_name_not_the_identity_spelling() -> Bool {
   let as_provider_named = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "ubuntu-32gb-nbg1-1", observed_principal: "gunbc-fleet" })
-  let as_allocated = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "vibe", observed_principal: "gunbc-fleet" })
+  let as_allocated = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "damien", observed_principal: "gunbc-fleet" })
   let as_identity = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "host-183527", observed_principal: "gunbc-fleet" })
   as_provider_named == std.upsert_decision.Drifted && as_allocated == Converged && as_identity == std.upsert_decision.Drifted
 }
