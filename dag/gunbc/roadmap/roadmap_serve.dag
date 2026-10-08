@@ -15,6 +15,7 @@ import gunbc.roadmap_style { roadmap_styles }
 import gunbc.site.document { SiteStyles }
 
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
+import gunbc.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
 
 import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
@@ -536,10 +537,16 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
 // backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
 // 5: an unreachable arm refuses, never fabricates).
 
+// THE EXECUTOR IS AN OPTIONAL ?executor=LABEL ON THE DISPATCH ROUTE (gunbc.roadmap_dispatch_actuator
+// DispatchExecutorRequest): absent, it is the default executor; a vendor label routes the attempt to
+// that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
+// An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
+// run the attempt somewhere the operator did not ask.
 fn serve_dispatch_handler_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
+  executor_word: String,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
@@ -549,9 +556,18 @@ fn serve_dispatch_handler_response_over(
       body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    belt_dispatch_response(
-      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous),
-    )
+    match decode_dispatch_executor_request(word: executor_word) {
+      DispatchExecutorRequestUnknown { word, known } =>
+        serve_text_response(
+          status: 400,
+          content_type: text_plain_utf8,
+          body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
+        )
+      DispatchExecutorRequestDecoded { request: executor } =>
+        belt_dispatch_response(
+          r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+        )
+    }
   }
 }
 
@@ -563,6 +579,7 @@ fn serve_dispatch_handler_response_for_instance(
     instance: instance,
     plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     params: params,
+    executor_word: "",
   )
 }
 
@@ -1058,6 +1075,7 @@ fn serve_assignment_launch_follow_through_over(
         plan: plan,
         node_id: node_id,
         request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
+        executor: ExecutorDefault,
       ),
     )
   } else {
@@ -1378,7 +1396,7 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"))
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     SandboxPageHandler => serve_page_response(page: sandbox_page())
     InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())

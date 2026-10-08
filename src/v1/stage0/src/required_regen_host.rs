@@ -1558,6 +1558,13 @@ fn write_emitted_tree(
         fs::remove_dir_all(dest_src).map_err(|e| format!("remove {}: {e}", dest_src.display()))?;
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
+    let batch: Vec<&str> = emitted
+        .iter()
+        .filter(|(path, _)| path.ends_with(".rs"))
+        .filter(|(path, _)| restrict.is_none_or(|s| s.contains(emit_path_basename(path))))
+        .map(|(_, content)| content.as_str())
+        .collect();
+    normalize_population(formatter, &normalize_batch_dir(dest_src), &batch)?;
     for (path, content) in emitted {
         if let Some(selected) = restrict {
             if !selected.contains(emit_path_basename(path)) {
@@ -1656,12 +1663,18 @@ fn tree_digest_for_basenames(
             "refusal: cannot compute {label} digest over empty population"
         ));
     }
+    let contents = basenames
+        .iter()
+        .map(|name| {
+            let path = src_dir.join(name);
+            fs::read_to_string(&path).map_err(|e| format!("read {label} {}: {e}", path.display()))
+        })
+        .collect::<Result<Vec<String>, String>>()?;
+    let batch: Vec<&str> = contents.iter().map(String::as_str).collect();
+    normalize_population(formatter, &normalize_batch_dir(src_dir), &batch)?;
     let mut payload = String::new();
-    for name in basenames {
-        let path = src_dir.join(name);
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("read {label} {}: {e}", path.display()))?;
-        let norm = normalize_generated_source(formatter, &content)
+    for (name, content) in basenames.iter().zip(&contents) {
+        let norm = normalize_generated_source(formatter, content)
             .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
@@ -1726,19 +1739,121 @@ fn normalize_generated_source(
         return Ok(hit.clone());
     }
     if let Some(hit) = normalize_cache_read(formatter, content) {
-        formatter
-            .memo
-            .borrow_mut()
-            .insert(content.to_string(), hit.clone());
+        memo_normalized(formatter, content, &hit);
         return Ok(hit);
     }
     let normalized = normalize_generated_source_uncached(formatter, content)?;
-    formatter
-        .memo
-        .borrow_mut()
-        .insert(content.to_string(), normalized.clone());
+    memo_normalized(formatter, content, &normalized);
     normalize_cache_write(formatter, content, &normalized)?;
     Ok(normalized)
+}
+
+/// Record one normalization AND its fixed point.
+///
+/// `normalized` is returned only once rustfmt maps it to itself (the uncached seek stops on
+/// `next == current`; the batched seek on an unchanged file), so `normalized -> normalized` is an
+/// observed fact, not an assumption. Recording it is what lets the COMMITTED side of a round --
+/// whose bytes are exactly a previous round's normalized output -- cost no spawn: before this,
+/// every committed mirror paid its own two-spawn seek to rediscover a fixed point the emitted
+/// side had just established (measured: 654 spawns for 163 mirrors, `regen-round-cost`, run
+/// 37293307189).
+fn memo_normalized(formatter: &ResolvedFormatter, raw: &str, normalized: &str) {
+    let mut memo = formatter.memo.borrow_mut();
+    memo.insert(raw.to_string(), normalized.to_string());
+    memo.insert(normalized.to_string(), normalized.to_string());
+}
+
+/// NORMALIZE A POPULATION WITH ONE rustfmt SPAWN PER PASS, not two per member.
+///
+/// Every member not already memoized or on the disk cache is written to its own file under one
+/// work directory, and each pass formats all still-moving files in a single invocation. A member
+/// is settled when a pass leaves its bytes unchanged -- the same fixed-point definition
+/// `normalize_generated_source_uncached` uses for one input, so the answer per member is the same
+/// and only the spawn count changes. It fills the memo and the disk cache; the per-member callers
+/// that follow then answer from the memo. A member still moving after
+/// `NORMALIZE_FIXED_POINT_MAX_PASSES` refuses the whole population, as the single seek refuses.
+fn normalize_population(
+    formatter: &ResolvedFormatter,
+    work_dir: &Path,
+    contents: &[&str],
+) -> Result<(), String> {
+    let mut pending: Vec<String> = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for content in contents {
+        if !seen.insert(content) || formatter.memo.borrow().contains_key(*content) {
+            continue;
+        }
+        if let Some(hit) = normalize_cache_read(formatter, content) {
+            memo_normalized(formatter, content, &hit);
+            continue;
+        }
+        pending.push(content.to_string());
+    }
+    if pending.is_empty() {
+        return Ok(());
+    }
+    if work_dir.exists() {
+        fs::remove_dir_all(work_dir).map_err(|e| format!("remove {}: {e}", work_dir.display()))?;
+    }
+    fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
+    let paths: Vec<PathBuf> = (0..pending.len())
+        .map(|i| work_dir.join(format!("m{i}.rs")))
+        .collect();
+    let mut current: Vec<String> = pending.clone();
+    for (path, content) in paths.iter().zip(&current) {
+        fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    // `moving[i]`: member i has not yet been observed unchanged by a pass AFTER its first. The
+    // first pass maps raw -> pass 1 and settles nothing, exactly as the single seek's first
+    // attempt does.
+    let mut moving: Vec<usize> = (0..pending.len()).collect();
+    let mut first = true;
+    for _ in 0..NORMALIZE_FIXED_POINT_MAX_PASSES {
+        if moving.is_empty() {
+            break;
+        }
+        RUSTFMT_SPAWNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // `skip_children=true`: given a FILE, rustfmt follows its `mod` declarations to sibling
+        // files, which stdin mode never does, so a mirror declaring a module refused the batch
+        // with `failed to resolve mod` (seen on a remote round). Each member is formatted alone,
+        // exactly as the single stdin seek formats it.
+        let output = formatter
+            .command()
+            .arg("--edition")
+            .arg("2021")
+            .arg("--config")
+            .arg("skip_children=true")
+            .args(moving.iter().map(|i| paths[*i].as_os_str()))
+            .output()
+            .map_err(|e| formatter.spawn_refusal(e))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+        let mut still = Vec::new();
+        for i in moving {
+            let next = fs::read_to_string(&paths[i])
+                .map_err(|e| format!("read normalized {}: {e}", paths[i].display()))?;
+            if first || next != current[i] {
+                still.push(i);
+            }
+            current[i] = next;
+        }
+        moving = still;
+        first = false;
+    }
+    if !moving.is_empty() {
+        return Err(format!(
+            "rustfmt did not reach a fixed point in {NORMALIZE_FIXED_POINT_MAX_PASSES} passes \
+             for {} batched member(s)",
+            moving.len()
+        ));
+    }
+    for (raw, normalized) in pending.iter().zip(&current) {
+        memo_normalized(formatter, raw, normalized);
+        normalize_cache_write(formatter, raw, normalized)?;
+    }
+    let _ = fs::remove_dir_all(work_dir);
+    Ok(())
 }
 
 /// The cache file layout: `<raw byte length>\n<raw bytes><normalized bytes>`. The raw bytes
@@ -1862,6 +1977,22 @@ pub fn rustfmt_spawn_count() -> u64 {
 }
 
 const NORMALIZE_CACHE_DIR_REL: &str = "target/stage0-regen-rustfmt-cache";
+
+/// Where a batched normalization writes its members: beside the workspace's `target/`, never
+/// inside the tree being normalized, so a batch over the committed mirrors cannot touch them.
+fn normalize_batch_dir(anchor: &Path) -> PathBuf {
+    let workspace = anchor
+        .ancestors()
+        .find(|a| a.join("Cargo.toml").is_file() && a.join("target").is_dir())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(workspace_root);
+    // Per process: a batch clears its directory before writing, so two rounds in one workspace
+    // sharing a path would delete each other's members mid-format (review 77080).
+    workspace.join(format!(
+        "target/stage0-regen-rustfmt-batch-{}",
+        std::process::id()
+    ))
+}
 
 impl ResolvedFormatter {
     /// Resolve `rustfmt` against a supplied PATH string. Separate from the environment read so
@@ -2260,6 +2391,48 @@ mod tests {
             "and must name the exact program, not the bare name: {message}"
         );
         assert_message_is_not_reflowed(&message);
+    }
+
+    /// THE BATCH IS A SPAWN-COUNT CHANGE, NOT A FORMATTING CHANGE: every member's normalized bytes
+    /// equal what the single-input seek produces for it, on fresh formatters with no memo or disk
+    /// cache between them. RED: a batch that settled a member after ONE pass (skipping the confirm
+    /// pass), or that formatted members in a different configuration than stdin, would diverge on
+    /// the non-canonical inputs here. The fixed-point memo is asserted too: the normalized bytes
+    /// answer from the memo as themselves, which is the committed side's zero-spawn path.
+    #[test]
+    fn batched_normalization_is_byte_identical_to_the_single_seek() {
+        let inputs = [
+            "fn  a( x:i32 )->i32{ x+1 }\n",
+            "pub struct S{a:u8,b:String}\nimpl S{fn f(&self)->u8{self.a}}\n",
+            "fn b() { let v = if true { vec![1,2,3].iter().map(|x| x * 2).collect::<Vec<_>>() } else { Vec::new() }; drop(v); }\n",
+            "fn  a( x:i32 )->i32{ x+1 }\n",
+            // A member declaring a module whose file does not exist beside it: stdin formats it,
+            // and a batch that followed the declaration refused the whole population.
+            "mod  no_such_sibling;\nfn c(){}\n",
+        ];
+        let single = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
+        let expected: Vec<String> = inputs
+            .iter()
+            .map(|i| normalize_generated_source_uncached(&single, i).expect("single seek"))
+            .collect();
+
+        let batched = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
+        let dir = temp_dir("required-regen-rustfmt-batch");
+        normalize_population(&batched, &dir, &inputs).expect("batched seek");
+        for (input, want) in inputs.iter().zip(&expected) {
+            let got = batched.memo.borrow().get(*input).cloned();
+            assert_eq!(
+                got.as_deref(),
+                Some(want.as_str()),
+                "batch must equal the single seek"
+            );
+            assert_eq!(
+                batched.memo.borrow().get(want.as_str()).map(String::as_str),
+                Some(want.as_str()),
+                "a normalized output must be memoized as its own fixed point"
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// Plants every declared hand-maintained row on disk, then removes exactly one, so the
@@ -2757,6 +2930,43 @@ mod tests {
 // seed's emit was measured, and the honest answer is to stop rather than report a candidate the
 // built seed never produced.
 // ---------------------------------------------------------------------------------------------
+
+/// THE ONE-MIRROR DISCRIMINATOR beside the round (`//gunbc/instruments:regen-round-cost`).
+///
+/// The question it answers is where `compile.emit` spends its time: rendering each module, or
+/// re-deriving closure-wide facts per render. It runs the SAME producer the round runs
+/// (`run_required_regen_scoped`, never a second emit path) over the same corpus with a selection
+/// of exactly ONE mirror, and returns that run's drained trace ledger. If emit cost is per-module
+/// it collapses to roughly the whole emit over the population count; if closure-wide work
+/// dominates it stays near the whole emit. Either reading is an answer, so the probe reports the
+/// rows and decides nothing. It writes only under `target/` (its own candidate dir and receipt),
+/// never into `src/v1/stage0/src`.
+pub fn run_regen_one_mirror_emit_probe(
+    basename: &str,
+) -> Result<Vec<v1_rt::TraceLedgerRow>, String> {
+    let scope = RegenEmissionScope::Affected {
+        members: vec![basename.to_string()],
+    };
+    v1_rt::trace_ledger_arm();
+    let outcome = run_required_regen_scoped(
+        "target/stage0-regen-one-mirror-probe",
+        "target/stage0-regen-one-mirror-probe-receipt.json",
+        &scope,
+    );
+    let rows = v1_rt::trace_ledger_drain().unwrap_or_default();
+    let outcome = outcome?;
+    if !outcome.failures.is_empty() {
+        return Err(format!(
+            "refusal: the one-mirror probe's regen reported failures, so its ledger is not a \
+             measurement of a clean emit: {}",
+            outcome.failures.join("; ")
+        ));
+    }
+    if rows.is_empty() {
+        return Err("refusal: the one-mirror probe's trace ledger is empty".to_string());
+    }
+    Ok(rows.into_iter().collect())
+}
 
 pub struct RegenRoundCostOutcome {
     /// The rendered receipt, already printed by the caller's contract to stderr.
@@ -3492,7 +3702,17 @@ fn journal_stage0_paths_for_subject(
 fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservation, String> {
     v1_rt::trace_mark(format!("{label}.begin"));
     let output = Command::new("cargo")
-        .args(["build", "--release", "--bin", "claim_executor"])
+        // `--color never`: the compiled-crate count below parses cargo's `Compiling` lines, and an
+        // inherited CARGO_TERM_COLOR=always (every workflow sets it) prefixes them with escape
+        // codes, so the count read 0 while the build burned 655 s of CPU (run 37293307189).
+        .args([
+            "build",
+            "--release",
+            "--color",
+            "never",
+            "--bin",
+            "claim_executor",
+        ])
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("spawn cargo build ({label}): {e}"))?;

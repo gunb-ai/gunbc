@@ -1,7 +1,7 @@
 module v2.test.claim.binder_node
 
 import std.types { List }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.lens.unit_modeling { field_unit_violation }
 import v2.std.type_binder { type_binder_node_conforms }
 import v2.std.arrow_signature { declared_signature }

@@ -11,7 +11,7 @@ import v2.std.collection {
   empty_map,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
@@ -488,7 +488,7 @@ fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
 fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
   match pk {
     Absent => ""
-    v2.std.optional.Present { value: cols } =>
+    std.optional.Present { value: cols } =>
       concat(
         ", PRIMARY KEY (",
         concat(

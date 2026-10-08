@@ -20,7 +20,7 @@ import v2.workflow.floor_naming_hygiene {
   floor_wire_contract_sidecar_suffix
 }
 import std.types { String, Bool, List }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

@@ -78,7 +78,7 @@ service shell.Find {
     transport shell {
       argv: [
         "sh", "-c",
-        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
+        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\t%s\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
         "sh", "{root}",
       ]
     }

@@ -1,0 +1,92 @@
+module test.claim.runner.browser_ready_label_real_path_witness
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import extdeps.shell
+import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner_browser_toolchain {
+  BrowserReadyLabelsOutcome, BrowserReadyLabelsGranted, BrowserReadyLabelsRevoked, BrowserReadyLabelsFailed,
+  BrowserReadyLabelsTarget, ReadyLabelsUnprivileged,
+  browser_ready_labels_converge_wet, browser_ready_labels_outcome_holds,
+}
+import gunbc.host_effect_realize {
+  run_argv_over_host_effect_transport, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused,
+}
+import gunbc.host_effect { HostEffectTransport, LocalShell }
+import extdeps.tools.gnu_coreutils { cat_command }
+
+// THE READINESS-LABEL CONVERGE EXECUTES FOR REAL HERE. This file is enrolled in three channels,
+// as for chunk_30's precedent: the two WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule, the gunbc.ci_layer_roots LocalRepoWetLane row for
+// browser_ready_label_real_path_witness_test.dag, and the floor_route_gap chunk expectation. What
+// the receipts execute is the PRODUCTION converge (gunbc.runner_browser_toolchain
+// browser_ready_labels_converge_wet) over LocalShell with the UNPRIVILEGED posture parameterization
+// against a mktemp scratch root: the same plan functions, the same write-then-proceed and
+// remove-then-proceed folds, the bytes read back from the scratch drop-in. The reload leg is the
+// typed posture skip -- daemon-reload requires root and is skipped, not fabricated. The production
+// fleet route itself stays the declared STALL (gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall):
+// no CI lane, and no bootstrap, executes the converge over FleetSsh until the shared host-effect
+// transport admits that arm.
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_ready_label.XXXXXX").path
+}
+
+fn scratch_target(scratch: String) -> BrowserReadyLabelsTarget {
+  BrowserReadyLabelsTarget {
+    dropin: (concat(scratch, "/85-browser-ready-labels.conf")) as NonEmptyStr,
+    posture: ReadyLabelsUnprivileged,
+  }
+}
+
+fn read_dropin_bytes(dropin: NonEmptyStr) -> RunArgvTransportOutcome {
+  run_argv_over_host_effect_transport(command: cat_command(path: dropin as String), transport: LocalShell)
+}
+
+fn observed_stdout_of(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportObserved { observed: o } => o.stdout
+    RunArgvTransportRefused { reason: _ } => ""
+  }
+}
+
+fn observed_exit_zero(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
+    RunArgvTransportObserved { observed: o } => o.exit_code == 0
+    RunArgvTransportRefused { reason: _ } => false
+  }
+}
+
+fn scratch_removed(scratch: String) -> Bool {
+  shell.Remove.RecursiveForce(path: scratch as NonEmptyStr).success
+}
+
+// Discriminating: a write that never reached the file (empty read-back), or a converge that did
+// not return Granted (a refusal, a failed leg), reds. The second converge run re-renders the same
+// label and overwrites the same bytes -- granting twice is a no-op, not a doubled append.
+test fn grant_executes_the_dropin_write_for_real_on_a_scratch_root() -> Bool {
+  let scratch = fresh_root()
+  let target = scratch_target(scratch: scratch)
+  let first = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let second = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let bytes = read_dropin_bytes(dropin: target.dropin)
+  let removed = scratch_removed(scratch: scratch)
+  removed
+    && browser_ready_labels_outcome_holds(o: first, ready: true)
+    && browser_ready_labels_outcome_holds(o: second, ready: true)
+    && observed_exit_zero(outcome: bytes)
+    && string_contains(s: observed_stdout_of(outcome: bytes), pattern: "gunbc-browser-ready")
+}
+
+// Discriminating: a grant whose bytes survive the revoke, a removal that never ran (the read-back
+// still succeeds), or a converge that returned Failed instead of Revoked, reds.
+test fn revoke_executes_the_dropin_removal_for_real_on_a_scratch_root() -> Bool {
+  let scratch = fresh_root()
+  let target = scratch_target(scratch: scratch)
+  let granted = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let revoked = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: false, transport: LocalShell, target: target)
+  let bytes = read_dropin_bytes(dropin: target.dropin)
+  let removed = scratch_removed(scratch: scratch)
+  removed
+    && browser_ready_labels_outcome_holds(o: granted, ready: true)
+    && browser_ready_labels_outcome_holds(o: revoked, ready: false)
+    && if observed_exit_zero(outcome: bytes) { false } else { true }
+}
