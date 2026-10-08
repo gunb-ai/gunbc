@@ -1124,6 +1124,12 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    // Hermetic DirWithTemplate gap, same as siblings. Not ExpectedToHold on local_repo_wet_terminal:
+    // ioctl-IMMUTABLE needs CAP_LINUX_IMMUTABLE the CI wet lane does not grant. Restoration: a wet
+    // lane that grants that capability, or an unlink-refusal that needs none. Floor wall for the
+    // invariant: reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution.
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
