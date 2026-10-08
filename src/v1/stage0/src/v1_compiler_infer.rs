@@ -285,14 +285,14 @@ use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
-    EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOptionalityMismatch,
-    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
-    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
-    UnresolvedType, VariantCollision,
+    EqualityAgainstPresentOnListRead, EqualityMemberUnjudgeable, EqualityOnFunctionMember,
+    EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
+    MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
+    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
+    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
+    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -330,29 +330,29 @@ pub use crate::v1_std_core::{
     build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
     container_expected_arity, decl_ref_coords_label, declaration_provenance_of, default_ident_span,
     diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
-    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
-    expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
-    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
-    find_child_named, find_property_string, float_type, fn_admit_callers, foreach_body,
-    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
-    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
-    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
-    is_compiler_error, is_error_diagnostic, is_interpreter_blocking_diagnostic,
-    is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
-    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
-    node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
-    record_lit_named_field_value_optional, record_lit_type_name_at,
-    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
-    unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
-    with_required_cardinality,
+    expr_call_func_at, expr_child_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
+    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
+    field_node_type_expr, find_child_named, find_property_string, float_type, fn_admit_callers,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
+    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
+    is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, is_property_contraction, is_tree_size_reducing,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_text_part_node, make_transport_node, map_children,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, module_node, no_span, node_name_span, none_type, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
+    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
+    type_variable_binder_name, unaryop_operand, unit_type, variant_node_fields,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -5233,6 +5233,100 @@ pub fn equality_operand_is_optional(
     }
 }
 
+pub fn equality_operand_list_read_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => {
+            if equality_receiver_is_list(
+                crate::v1_std_core::method_receiver(n.clone()),
+                source_indices.clone(),
+            ) {
+                equality_list_read_leaf(n.name.clone())
+            } else {
+                "".to_string()
+            }
+        }
+        ExprData::ExprCall { .. } => {
+            if equality_receiver_is_list(
+                crate::v1_std_core::arg_value(crate::v1_std_core::expr_child_at(
+                    n.clone(),
+                    0,
+                    "call argument".to_string(),
+                )),
+                source_indices.clone(),
+            ) {
+                equality_list_read_leaf(n.name.clone())
+            } else {
+                "".to_string()
+            }
+        }
+        _ => "".to_string(),
+    }
+}
+
+pub fn equality_receiver_is_list(
+    receiver: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match receiver.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            (crate::v1_compiler_infer_types::node_is_element_collection(
+                rt.clone(),
+                source_indices.clone(),
+            ) && (crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
+            ) == "List".to_string()))
+        }
+        _ => false,
+    }
+}
+
+pub fn equality_list_read_leaf(name: String) -> String {
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+        if ((((((leaf.clone() == "first".to_string()) || (leaf.clone() == "last".to_string()))
+            || (leaf.clone() == "get".to_string()))
+            || (leaf.clone() == "index".to_string()))
+            || (leaf.clone() == "min".to_string()))
+            || (leaf.clone() == "max".to_string()))
+        {
+            leaf.clone()
+        } else {
+            "".to_string()
+        }
+    }
+}
+
+pub fn equality_operand_is_present_literal(n: Rc<Node>) -> bool {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            (crate::v1_std_core::qualified_last_segment(n.name.clone()) == "Present".to_string())
+        }
+        _ => false,
+    }
+}
+
+pub fn equality_present_on_list_read(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if equality_operand_is_present_literal(right.clone()) {
+        equality_operand_list_read_name(left.clone(), source_indices.clone())
+    } else {
+        if equality_operand_is_present_literal(left.clone()) {
+            equality_operand_list_read_name(right.clone(), source_indices.clone())
+        } else {
+            "".to_string()
+        }
+    }
+}
+
 pub fn equality_admission_refusal_diag(
     r: Rc<EqualityAdmissionRefusal>,
     span: Rc<SourceSpan>,
@@ -5308,42 +5402,51 @@ pub fn equality_admission_diags(
                 {
                     Rc::new(vec![])
                 } else {
-                    if (equality_operand_is_optional(left_typed.clone(), source_indices.clone())
-                        != equality_operand_is_optional(
+                    if (equality_present_on_list_read(
+                        left_typed.clone(),
+                        right_typed.clone(),
+                        source_indices.clone(),
+                    ) != "".to_string())
+                    {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::EqualityAgainstPresentOnListRead {
+                                list_read: equality_present_on_list_read(
+                                    left_typed.clone(),
+                                    right_typed.clone(),
+                                    source_indices.clone(),
+                                ),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )])
+                    } else {
+                        if (equality_operand_is_optional(
+                            left_typed.clone(),
+                            source_indices.clone(),
+                        ) != equality_operand_is_optional(
                             right_typed.clone(),
                             source_indices.clone(),
-                        ))
-                    {
-                        {
-                            let side = if equality_operand_is_optional(
-                                left_typed.clone(),
-                                source_indices.clone(),
-                            ) {
-                                "left".to_string()
-                            } else {
-                                "right".to_string()
-                            };
-                            Rc::new(vec![crate::v1_std_core::make_error_node(
-                                Rc::new(CompilerDiagnostic::EqualityOptionalityMismatch {
-                                    optional_side: side.clone(),
-                                    span: span.clone(),
-                                }),
-                                scope.module_name.clone(),
-                            )])
-                        }
-                    } else {
-                        match equality_operand_admission(
-                            lt.clone(),
-                            scope.clone(),
-                            v1_rt::rc_empty_map::<String, bool>(),
-                            0,
-                        ) {
-                            Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                equality_admission_refusal_diag(r.clone(), span.clone()),
-                                scope.module_name.clone(),
-                            )]),
-                            std::option::Option::None => match equality_operand_admission(
-                                rt.clone(),
+                        )) {
+                            {
+                                let side = if equality_operand_is_optional(
+                                    left_typed.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    "left".to_string()
+                                } else {
+                                    "right".to_string()
+                                };
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::EqualityOptionalityMismatch {
+                                        optional_side: side.clone(),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
+                        } else {
+                            match equality_operand_admission(
+                                lt.clone(),
                                 scope.clone(),
                                 v1_rt::rc_empty_map::<String, bool>(),
                                 0,
@@ -5352,8 +5455,19 @@ pub fn equality_admission_diags(
                                     equality_admission_refusal_diag(r.clone(), span.clone()),
                                     scope.module_name.clone(),
                                 )]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            },
+                                std::option::Option::None => match equality_operand_admission(
+                                    rt.clone(),
+                                    scope.clone(),
+                                    v1_rt::rc_empty_map::<String, bool>(),
+                                    0,
+                                ) {
+                                    Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        equality_admission_refusal_diag(r.clone(), span.clone()),
+                                        scope.module_name.clone(),
+                                    )]),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                            }
                         }
                     }
                 }
