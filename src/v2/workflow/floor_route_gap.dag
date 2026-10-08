@@ -1072,6 +1072,13 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
 // v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // witness_exclusion_frontier row classifying the file LocalRepoWetLane. Each was executed wet and
 // held before these rows were written.
+//
+// a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution is the
+// same hermetic DirWithTemplate gap as its siblings. It is not ExpectedToHold on
+// local_repo_wet_terminal: ioctl-IMMUTABLE needs CAP_LINUX_IMMUTABLE the CI wet lane does not
+// grant. Restoration: a wet lane that grants that capability, or an unlink-refusal that needs
+// none. Floor wall for the invariant:
+// reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution.
 fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.commit_then_read_back_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1124,10 +1131,6 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    // Hermetic DirWithTemplate gap, same as siblings. Not ExpectedToHold on local_repo_wet_terminal:
-    // ioctl-IMMUTABLE needs CAP_LINUX_IMMUTABLE the CI wet lane does not grant. Restoration: a wet
-    // lane that grants that capability, or an unlink-refusal that needs none. Floor wall for the
-    // invariant: reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution.
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
