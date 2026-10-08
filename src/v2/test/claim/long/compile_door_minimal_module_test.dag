@@ -97,16 +97,15 @@ fn ledger_style_probe_row() -> DoorLedgerRow {
   )
 }
 
+// NOT a test fn: door_ledger_row over import_closure including std.integer was still inside
+// Filesystem.Read of dag/std/{integer,optional,algebra}.dag with no door verdict after 38+
+// minutes of interpreted eval (rss ~9.5GiB). A claim-run of that path would hang the long
+// lane. Dump with --function ledger_style_fatal_or_admitted. Remaining obstacle: std
+// inhabitance of Int is a live import-closure compile, not a roster-lens refusal.
 fn ledger_style_fatal_or_admitted() -> Symbol {
   match ledger_style_probe_row().outcome {
     DoorCompiled => ^compile_door_roster_admitted
     DoorRefused { reason: r } => r
   }
 }
-
-// NOT a test fn: door_ledger_row over import_closure including std.integer was still inside
-// Filesystem.Read of dag/std/{integer,optional,algebra}.dag with no door verdict after 38+
-// minutes of interpreted eval (rss ~9.5GiB). A claim-run of that path would hang the long
-// lane. Dump with --function ledger_style_fatal_or_admitted. Remaining obstacle: std
-// inhabitance of Int is a live import-closure compile, not a roster-lens refusal.
 
