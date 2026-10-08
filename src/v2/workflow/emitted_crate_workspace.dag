@@ -106,13 +106,28 @@ type EmittedWorkspaceRedDrop {
   to_module: String
 }
 
+// The layout is the production fact; the RED is the instrument's discriminator over it. A closure
+// with one module-bearing crate has no cross-crate edge to drop, so `red` is Absent there and the
+// layout is still a valid workspace. Only `emitted_workspace_red_over` refuses that absence.
 type EmittedWorkspacePlan {
   rows: List<GeneratedPartitionCrateRow>
-  red_rows: List<GeneratedPartitionCrateRow>
-  red: EmittedWorkspaceRedDrop
+  red: Optional<EmittedWorkspaceRedDrop>
   module_count: Int
   crate_count: Int
   facade_is_whole_closure: Bool
+}
+
+type EmittedWorkspaceRedOutcome
+  = EmittedWorkspaceRedPlanned { red: EmittedWorkspaceRedDrop, red_rows: List<GeneratedPartitionCrateRow> }
+  | EmittedWorkspaceRedRefused { cause: EmittedWorkspaceRefusal }
+
+// The instrument's RED: the layout with one irredundant crate dependency dropped. Refuses when the
+// layout has no cross-crate edge rustc must stop resolving.
+fn emitted_workspace_red_over(plan: EmittedWorkspacePlan) -> EmittedWorkspaceRedOutcome {
+  match plan.red {
+    Absent => EmittedWorkspaceRedRefused { cause: EmittedWorkspaceNoDiscriminatingEdge }
+    Present { value: red } => EmittedWorkspaceRedPlanned { red: red, red_rows: emitted_workspace_red_rows(rows: plan.rows, red: red) }
+  }
 }
 
 type EmittedWorkspaceOutcome
@@ -425,19 +440,14 @@ fn emitted_workspace_plan_over(
                       match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure_dag.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges) {
                         DerivedRowsRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
                         DerivedRowsOk { rows: rows } =>
-                          match emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges) {
-                            Absent => EmittedWorkspaceRefused { cause: EmittedWorkspaceNoDiscriminatingEdge }
-                            Present { value: red } =>
-                              EmittedWorkspacePlanned {
-                                plan: EmittedWorkspacePlan {
-                                  rows: rows,
-                                  red_rows: emitted_workspace_red_rows(rows: rows, red: red),
-                                  red: red,
-                                  module_count: closure_dag.modules |> count,
-                                  crate_count: rows |> count,
-                                  facade_is_whole_closure: emitted_workspace_facade_is_whole_closure(rows: rows)
-                                }
-                              }
+                          EmittedWorkspacePlanned {
+                            plan: EmittedWorkspacePlan {
+                              rows: rows,
+                              red: emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges),
+                              module_count: closure_dag.modules |> count,
+                              crate_count: rows |> count,
+                              facade_is_whole_closure: emitted_workspace_facade_is_whole_closure(rows: rows)
+                            }
                           }
                       }
                     }

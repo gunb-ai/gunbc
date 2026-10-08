@@ -9,7 +9,10 @@ import v2.workflow.emitted_crate_workspace {
   EmittedWorkspaceRefused,
   EmittedWorkspaceClosuresDisagree,
   EmittedWorkspaceNoDiscriminatingEdge,
+  EmittedWorkspaceRedPlanned,
+  EmittedWorkspaceRedRefused,
   emitted_workspace_plan_over,
+  emitted_workspace_red_over,
   emitted_workspace_runtime_package
 }
 
@@ -78,17 +81,22 @@ test fn the_red_drops_an_edge_the_emitter_wrote_as_a_use_line() -> Bool {
     target_crate_count: 3
   ) {
     EmittedWorkspacePlanned { plan: plan } =>
-      plan.red.package != plan.red.dropped_package
-        && ((plan.red.from_module == "fx_a" && plan.red.to_module == "fx_b") || (plan.red.from_module == "fx_b" && plan.red.to_module == "fx_c"))
-        && plan.red_rows |> any(r => r.package_name == plan.red.package && !(r.reexport_packages |> any(p => p == plan.red.dropped_package)))
-        && plan.rows |> any(r => r.package_name == plan.red.package && (r.reexport_packages |> any(p => p == plan.red.dropped_package)))
+      match emitted_workspace_red_over(plan: plan) {
+        EmittedWorkspaceRedPlanned { red: red, red_rows: red_rows } =>
+          red.package != red.dropped_package
+            && ((red.from_module == "fx_a" && red.to_module == "fx_b") || (red.from_module == "fx_b" && red.to_module == "fx_c"))
+            && red_rows |> any(r => r.package_name == red.package && !(r.reexport_packages |> any(p => p == red.dropped_package)))
+            && plan.rows |> any(r => r.package_name == red.package && (r.reexport_packages |> any(p => p == red.dropped_package)))
+        EmittedWorkspaceRedRefused { cause: _ } => false
+      }
     EmittedWorkspaceRefused { cause: _ } => false
   }
 }
 
-// One crate: nothing crosses a crate boundary, so no RED is authorable, and the plan refuses
-// rather than reporting a build it cannot discriminate.
-test fn a_single_crate_plan_refuses_for_want_of_a_discriminating_edge() -> Bool {
+// One crate: the layout is a valid workspace (one module crate plus the runtime crate), so the
+// partitioner subsumes the single-package case. Nothing crosses a crate boundary, so the
+// instrument's RED is not authorable and only `emitted_workspace_red_over` refuses.
+test fn a_single_crate_plan_is_a_layout_with_the_runtime_crate() -> Bool {
   match emitted_workspace_plan_over(
     module_dag: chain_dag(),
     emitted_basenames: chain_emitted_basenames(),
@@ -97,8 +105,29 @@ test fn a_single_crate_plan_refuses_for_want_of_a_discriminating_edge() -> Bool 
     edge_provenances: chain_edge_provenances(),
     target_crate_count: 1
   ) {
-    EmittedWorkspaceRefused { cause: EmittedWorkspaceNoDiscriminatingEdge } => true
-    _ => false
+    EmittedWorkspacePlanned { plan: plan } =>
+      plan.crate_count == 2
+        && plan.rows |> any(r => r.package_name == emitted_workspace_runtime_package)
+        && plan.rows |> any(r => (r.modules |> count) == 3)
+    EmittedWorkspaceRefused { cause: _ } => false
+  }
+}
+
+test fn a_single_crate_plan_has_no_red_for_want_of_a_discriminating_edge() -> Bool {
+  match emitted_workspace_plan_over(
+    module_dag: chain_dag(),
+    emitted_basenames: chain_emitted_basenames(),
+    edge_froms: chain_edge_froms(),
+    edge_tos: chain_edge_tos(),
+    edge_provenances: chain_edge_provenances(),
+    target_crate_count: 1
+  ) {
+    EmittedWorkspacePlanned { plan: plan } =>
+      match emitted_workspace_red_over(plan: plan) {
+        EmittedWorkspaceRedRefused { cause: EmittedWorkspaceNoDiscriminatingEdge } => true
+        _ => false
+      }
+    EmittedWorkspaceRefused { cause: _ } => false
   }
 }
 

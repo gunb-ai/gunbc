@@ -235,12 +235,38 @@ fn evaluate_plan(
     let Value::Record { fields: plan, .. } = field(&ctx, fields, "plan")? else {
         return Err(refusal("PlanShapeUnexpected", "plan is not a record"));
     };
-    let Value::Record { fields: red, .. } = field(&ctx, plan, "red")? else {
+    // The RED is the instrument's discriminator over the layout, read through its own `.dag` fold:
+    // a layout with no cross-crate edge refuses here, not in the plan.
+    let plan_value = field(&ctx, fields, "plan")?.clone();
+    let red_outcome = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "emitted_workspace_red_over",
+            &[(Some("plan".to_string()), plan_value)],
+            false,
+        )
+    })
+    .map_err(|e| refusal("RedNotEvaluated", e))?;
+    let Value::Variant {
+        variant_name: red_variant,
+        fields: red_fields,
+        ..
+    } = &red_outcome
+    else {
+        return Err(refusal(
+            "PlanShapeUnexpected",
+            "the red outcome is not a variant",
+        ));
+    };
+    if !ctx.sym_eq(*red_variant, "EmittedWorkspaceRedPlanned") {
+        return Err(refusal("RedRefused", format!("{red_outcome:?}")));
+    }
+    let Value::Record { fields: red, .. } = field(&ctx, red_fields, "red")? else {
         return Err(refusal("PlanShapeUnexpected", "red is not a record"));
     };
     Ok(PlanRows {
         rows: rows_from_value(&ctx, field(&ctx, plan, "rows")?, "rows")?,
-        red_rows: rows_from_value(&ctx, field(&ctx, plan, "red_rows")?, "red_rows")?,
+        red_rows: rows_from_value(&ctx, field(&ctx, red_fields, "red_rows")?, "red_rows")?,
         red_package: as_str(field(&ctx, red, "package")?, "red.package")?,
         red_dropped_package: as_str(field(&ctx, red, "dropped_package")?, "red.dropped_package")?,
         red_from_module: as_str(field(&ctx, red, "from_module")?, "red.from_module")?,
