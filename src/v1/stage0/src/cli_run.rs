@@ -38264,10 +38264,10 @@ pub fn prepare_repository_from_corpus(
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
 ///
-/// `TypeEnv.ancestry_str_bindings` is no longer retained on the prepared graph: build_type_env
-/// keeps the overlay only long enough to check `ancestry_chain_mismatch_name` against a parent
-/// walk, then stores an empty overlay. Empty overlay + parents is the chain state; a non-empty
-/// overlay is a complete flatten and does not walk. Kernel is empty overlay + no parents.
+/// `TypeEnv.ancestry_str_bindings` and `TypeEnvCache.str_bindings` are not flattened in
+/// production: locals live on the env, imports on the parent Rc chain. Equivalence vs a
+/// last-wins flatten is a test (`ancestry_chain_matches_last_wins_flatten_on_real_std_modules`
+/// plus the first-wins mutant).
 fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
 ) -> Rc<v1_compiler_compile::ResolvedGraph> {

@@ -3998,7 +3998,7 @@ mod fixture_closure_union_tests {
             content,
         });
         let closed =
-            crate::cli_run::extend_sources_to_both_closure_fixpoint(vec![source], &scratch)
+            crate::cli_run::extend_sources_to_both_closure_fixpoint(vec![source.clone()], &scratch)
                 .unwrap_or_else(|e| panic!("witness-module closure must close: {e}"));
         let megarac: Vec<String> = closed
             .iter()
@@ -4391,6 +4391,186 @@ mod fixture_closure_union_tests {
             gap.operation_qualified,
             gap.operation_bare
         );
+    }
+
+    fn flatten_parent_chain(
+        env: &Rc<crate::v1_compiler_infer_env::TypeEnv>,
+        last_wins: bool,
+    ) -> std::collections::HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>> {
+        fn rec(
+            env: &Rc<crate::v1_compiler_infer_env::TypeEnv>,
+            last_wins: bool,
+            seen: &mut std::collections::HashSet<usize>,
+        ) -> std::collections::HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>
+        {
+            let ptr = Rc::as_ptr(env) as usize;
+            if !seen.insert(ptr) {
+                return std::collections::HashMap::new();
+            }
+            let mut acc = std::collections::HashMap::new();
+            for parent in env.parents.iter() {
+                let sub = rec(parent, last_wins, seen);
+                for (k, v) in sub {
+                    if last_wins || !acc.contains_key(&k) {
+                        acc.insert(k, v);
+                    }
+                }
+                for (k, v) in parent.str_bindings.iter() {
+                    if last_wins || !acc.contains_key(k) {
+                        acc.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            acc
+        }
+        rec(env, last_wins, &mut std::collections::HashSet::new())
+    }
+
+    fn assert_chain_matches_last_wins_flatten(graph: &v1_compiler_compile::ResolvedGraph) {
+        for m in graph.modules.iter() {
+            assert!(
+                m.type_env.ancestry_str_bindings.is_empty(),
+                "{} retained an ancestry overlay in production",
+                m.type_env.module_path
+            );
+            assert_eq!(
+                m.type_env_cache.str_bindings.len(),
+                m.type_env.str_bindings.len(),
+                "{} cache.str_bindings must be locals, not a merged overlay",
+                m.type_env.module_path
+            );
+            let flat = flatten_parent_chain(&m.type_env, true);
+            for (name, binding) in flat.iter() {
+                let got = crate::v1_compiler_infer_env::lookup_binding_on_chain(
+                    m.type_env.clone(),
+                    name.clone(),
+                );
+                assert_eq!(
+                    got.as_ref().map(|b| b.name.as_str()),
+                    Some(binding.name.as_str()),
+                    "chain vs last-wins flatten diverged on {} in {}",
+                    name,
+                    m.type_env.module_path
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ancestry_chain_matches_last_wins_flatten_on_real_std_modules() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let pairs: Vec<(String, String)> = {
+            let root = process_workspace_root();
+            let mut out = Vec::new();
+            for rel in [
+                "dag/std/types.dag",
+                "dag/std/unit.dag",
+                "dag/std/integer.dag",
+                "dag/std/bool.dag",
+            ] {
+                let path = root.join(rel);
+                if path.exists() {
+                    out.push((
+                        rel.to_string(),
+                        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{rel}: {e}")),
+                    ));
+                }
+            }
+            out
+        };
+        assert!(
+            pairs.len() >= 1,
+            "need at least one real std module under dag/std"
+        );
+        let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = pairs
+            .into_iter()
+            .map(|(path, content)| Rc::new(v1_compiler_compile::SourceFile { path, content }))
+            .collect();
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let scratch = super::entry_resolve::new_multi_entry_index_scratch_over(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        let closed = crate::cli_run::extend_sources_to_both_closure_fixpoint(sources, &scratch)
+            .unwrap_or_else(|e| panic!("std closure must close: {e}"));
+        let im_sources: im::Vector<Rc<v1_compiler_compile::SourceFile>> =
+            closed.into_iter().collect();
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(im_sources));
+        let graph = resolved.graph.clone().expect("resolved graph");
+        assert!(
+            graph.modules.len() >= 2,
+            "closure must include imported real modules, got {}",
+            graph.modules.len()
+        );
+        assert_chain_matches_last_wins_flatten(&graph);
+    }
+
+    #[test]
+    fn ancestry_chain_first_wins_mutant_goes_red() {
+        let left = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_left.dag".to_string(),
+            content: "module chain.left\ntype Foo = { a: Int }\n".to_string(),
+        });
+        let right = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_right.dag".to_string(),
+            content: "module chain.right\ntype Foo = { b: Int }\n".to_string(),
+        });
+        let user = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_user.dag".to_string(),
+            content: "module chain.user\nimport chain.left { Foo }\nimport chain.right { Foo }\nfn use_foo(x: Foo) -> Int { x.b }\n".to_string(),
+        });
+        let resolved =
+            v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![left, right, user]));
+        assert!(
+            resolved.diagnostics.is_empty(),
+            "last-wins diamond must typecheck: {:?}",
+            resolved.diagnostics
+        );
+        let graph = resolved.graph.clone().expect("resolved graph");
+        assert_chain_matches_last_wins_flatten(&graph);
+        let user_mod = graph
+            .modules
+            .iter()
+            .find(|m| m.type_env.module_path == "chain.user")
+            .expect("user module");
+        let first_wins = flatten_parent_chain(&user_mod.type_env, false);
+        let last_wins = flatten_parent_chain(&user_mod.type_env, true);
+        let foo_first = first_wins.get("Foo").expect("Foo in first-wins");
+        let foo_last = last_wins.get("Foo").expect("Foo in last-wins");
+        let first_field = foo_first
+            .resolved
+            .children
+            .iter()
+            .next()
+            .map(|c| c.name.as_str())
+            .expect("left/right Foo field");
+        let last_field = foo_last
+            .resolved
+            .children
+            .iter()
+            .next()
+            .map(|c| c.name.as_str())
+            .expect("left/right Foo field");
+        assert_ne!(
+            first_field, last_field,
+            "mutant must disagree on Foo's winner"
+        );
+        let looked = crate::v1_compiler_infer_env::lookup_binding_on_chain(
+            user_mod.type_env.clone(),
+            "Foo".to_string(),
+        )
+        .expect("chain lookup Foo");
+        let looked_field = looked
+            .resolved
+            .children
+            .iter()
+            .next()
+            .map(|c| c.name.as_str())
+            .expect("looked Foo field");
+        assert_eq!(looked_field, last_field);
+        assert_ne!(looked_field, first_field);
     }
 }
 

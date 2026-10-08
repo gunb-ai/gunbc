@@ -971,41 +971,30 @@ pub fn union_variant_locals_skip_equal(
 pub fn merge_type_env_cache_guarded(
     base: Rc<TypeEnvCache>,
     overlay: Rc<TypeEnvCache>,
-    import_path: String,
+    _import_path: String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedTypeEnvCacheMerge> {
-    {
-        let str_union = guarded_union_str_bindings(
-            base.str_bindings.clone(),
-            overlay.str_bindings.clone(),
-            import_path.clone(),
-            conflicts.clone(),
-        );
-        Rc::new(GuardedTypeEnvCacheMerge {
-            cache: Rc::new(TypeEnvCache {
-                deps_map: union_deps_map_skip_equal(
-                    base.deps_map.clone(),
-                    overlay.deps_map.clone(),
-                ),
-                str_bindings: str_union.bindings.clone(),
-                cycle_set_str: union_bool_set_skip_equal(
-                    base.cycle_set_str.clone(),
-                    overlay.cycle_set_str.clone(),
-                ),
-                variant_locals: union_variant_locals_skip_equal(
-                    base.variant_locals.clone(),
-                    overlay.variant_locals.clone(),
-                ),
-            }),
-            conflicts: str_union.conflicts.clone(),
-        })
-    }
+    Rc::new(GuardedTypeEnvCacheMerge {
+        cache: Rc::new(TypeEnvCache {
+            deps_map: union_deps_map_skip_equal(base.deps_map.clone(), overlay.deps_map.clone()),
+            str_bindings: v1_rt::rc_empty_map(),
+            cycle_set_str: union_bool_set_skip_equal(
+                base.cycle_set_str.clone(),
+                overlay.cycle_set_str.clone(),
+            ),
+            variant_locals: union_variant_locals_skip_equal(
+                base.variant_locals.clone(),
+                overlay.variant_locals.clone(),
+            ),
+        }),
+        conflicts: conflicts.clone(),
+    })
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
+        str_bindings: v1_rt::rc_empty_map(),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
             overlay.cycle_set_str.clone(),
@@ -1014,6 +1003,31 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
             base.variant_locals.clone(),
             overlay.variant_locals.clone(),
         ),
+    })
+}
+
+pub fn collect_chain_bare_names(
+    env: Rc<TypeEnv>,
+    acc: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    collect_chain_bare_names_seen(env, acc, &mut std::collections::HashSet::new())
+}
+
+fn collect_chain_bare_names_seen(
+    env: Rc<TypeEnv>,
+    acc: Rc<HashMap<String, bool>>,
+    seen: &mut std::collections::HashSet<usize>,
+) -> Rc<HashMap<String, bool>> {
+    let ptr = Rc::as_ptr(&env) as usize;
+    if !seen.insert(ptr) {
+        return acc;
+    }
+    let with_local = Rc::new(v1_rt::map_keys(&*env.str_bindings))
+        .iter()
+        .cloned()
+        .fold(acc, |a, n| v1_rt::rc_map_insert(a, n.clone(), true));
+    env.parents.iter().cloned().fold(with_local, |a, p| {
+        collect_chain_bare_names_seen(p, a, seen)
     })
 }
 
