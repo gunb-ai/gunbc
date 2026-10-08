@@ -3565,11 +3565,6 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
   }
 }
 
-// THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
-// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
-// reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
-// all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
-// refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
 // THE KERNEL VALUE TYPE AND THE CORPUS DECLARATION ARE ONE TYPE. `v2.std.integer.Int`
 // (`type Int = GroupCompletion<Nat>`) and the kernel atom `dag_binding_type_int`
 // (integer_int_type_node) answer the same value-type question. Alias-normalizing first unfolds
@@ -3628,6 +3623,11 @@ fn infer_inhabitance_type_normalized(t: Node, declarations: SymbolIndex) -> Node
   }
 }
 
+// THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
+// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
+// reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
+// all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
+// refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
 fn infer_declared_type_obligation(
   position: DeclaredTypePosition,
   parameter_identity: Symbol,
