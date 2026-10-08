@@ -16128,10 +16128,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.type_env.clone(),
             );
             let add_unify = if ((op.clone() == BinOp::Add)
-                && (node_is_list_concat_operand(
+                && (crate::v1_compiler_infer_types::node_is_element_collection(
                     left_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) || node_is_list_concat_operand(
+                ) || crate::v1_compiler_infer_types::node_is_element_collection(
                     right_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 ))) {
@@ -25060,6 +25060,17 @@ pub fn list_concat_element_is_anon_product(
             || type_node_label(n.clone(), source_indices.clone()) == "<anon>".to_string())
 }
 
+pub fn list_concat_list_or_free_monoid(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let leaf = crate::v1_std_core::qualified_last_segment(type_node_label(
+        n.clone(),
+        source_indices.clone(),
+    ));
+    leaf.clone() == "List".to_string() || leaf.clone() == "FreeMonoid".to_string()
+}
+
 pub fn list_concat_elements_agree(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -25075,46 +25086,58 @@ pub fn list_concat_elements_agree(
             Some(le) => match list_element_type_node(right.clone()) {
                 std::option::Option::None => false,
                 Some(re) => {
-                    let ln = type_node_label(le.clone(), source_indices.clone());
-                    let rn = type_node_label(re.clone(), source_indices.clone());
-                    let peeled_eq = (((ln.clone() == rn.clone())
-                        && ((le.children.clone().len() as i64)
-                            == (re.children.clone().len() as i64)))
-                        && (le.connective.clone() == re.connective.clone()));
-                    let named_vs_anon = ((le.connective.clone() == re.connective.clone())
-                        && ((le.children.clone().len() as i64)
-                            == (re.children.clone().len() as i64)))
-                        && (list_concat_element_is_anon_product(
-                            le.clone(),
-                            source_indices.clone(),
-                        ) || list_concat_element_is_anon_product(
-                            re.clone(),
-                            source_indices.clone(),
-                        ));
-                    if named_vs_anon.clone() {
+                    if crate::v1_compiler_infer_types::node_type_shape(
+                        le.clone(),
+                        source_indices.clone(),
+                    ) == crate::v1_compiler_infer_types::node_type_shape(
+                        re.clone(),
+                        source_indices.clone(),
+                    ) && list_concat_list_or_free_monoid(left.clone(), source_indices.clone())
+                        && list_concat_list_or_free_monoid(right.clone(), source_indices.clone())
+                    {
                         true
-                    } else if !peeled_eq.clone() {
-                        false
                     } else {
-                        if (ln.clone() != "String".to_string()) {
+                        let ln = type_node_label(le.clone(), source_indices.clone());
+                        let rn = type_node_label(re.clone(), source_indices.clone());
+                        let peeled_eq = (((ln.clone() == rn.clone())
+                            && ((le.children.clone().len() as i64)
+                                == (re.children.clone().len() as i64)))
+                            && (le.connective.clone() == re.connective.clone()));
+                        let named_vs_anon = ((le.connective.clone() == re.connective.clone())
+                            && ((le.children.clone().len() as i64)
+                                == (re.children.clone().len() as i64)))
+                            && (list_concat_element_is_anon_product(
+                                le.clone(),
+                                source_indices.clone(),
+                            ) || list_concat_element_is_anon_product(
+                                re.clone(),
+                                source_indices.clone(),
+                            ));
+                        if named_vs_anon.clone() {
                             true
+                        } else if !peeled_eq.clone() {
+                            false
                         } else {
-                            match left.children.clone().first().cloned() {
-                                std::option::Option::None => false,
-                                Some(lraw) => match right.children.clone().first().cloned() {
+                            if (ln.clone() != "String".to_string()) {
+                                true
+                            } else {
+                                match left.children.clone().first().cloned() {
                                     std::option::Option::None => false,
-                                    Some(rraw) => {
-                                        (is_where_refinement_type(
-                                            crate::v1_compiler_infer_types::child_type_node(
-                                                lraw.clone(),
-                                            ),
-                                        ) == is_where_refinement_type(
-                                            crate::v1_compiler_infer_types::child_type_node(
-                                                rraw.clone(),
-                                            ),
-                                        ))
-                                    }
-                                },
+                                    Some(lraw) => match right.children.clone().first().cloned() {
+                                        std::option::Option::None => false,
+                                        Some(rraw) => {
+                                            (is_where_refinement_type(
+                                                crate::v1_compiler_infer_types::child_type_node(
+                                                    lraw.clone(),
+                                                ),
+                                            ) == is_where_refinement_type(
+                                                crate::v1_compiler_infer_types::child_type_node(
+                                                    rraw.clone(),
+                                                ),
+                                            ))
+                                        }
+                                    },
+                                }
                             }
                         }
                     }

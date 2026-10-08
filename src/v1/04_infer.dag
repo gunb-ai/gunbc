@@ -9985,8 +9985,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_rt = resolved_type(n: right_typed)
       let binop_info = infer_binop_type_node(op: op, left_type: left_rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
       let add_unify = if (op == Add)
-          && (node_is_list_concat_operand(n: left_rt, source_indices: scope.type_env.source_indices)
-              || node_is_list_concat_operand(n: right_rt, source_indices: scope.type_env.source_indices)) {
+          && (node_is_element_collection(n: left_rt, source_indices: scope.type_env.source_indices)
+              || node_is_element_collection(n: right_rt, source_indices: scope.type_env.source_indices)) {
         concat_unify_operands(left: left_rt, right: right_rt, fallback: binop_info.result_type, source_indices: scope.type_env.source_indices, open_generic_names: scope.enclosing_declared_type_param_names)
       } else {
         ConcatUnify { result: binop_info.result_type, refuse: none }
@@ -14342,6 +14342,11 @@ fn list_concat_element_is_anon_product(n: Node, source_indices: Map<String, Newl
     || type_node_label(n: n, source_indices: source_indices) == "<anon>")
 }
 
+fn list_concat_list_or_free_monoid(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let leaf = qualified_last_segment(name: type_node_label(n: n, source_indices: source_indices))
+  leaf == "List" || leaf == "FreeMonoid"
+}
+
 fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if node_type_shape(n: left, source_indices: source_indices) == node_type_shape(n: right, source_indices: source_indices) {
     true
@@ -14352,6 +14357,11 @@ fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<Strin
       match list_element_type_node(n: right) {
         Absent => false
         Present { value: re } =>
+          if node_type_shape(n: le, source_indices: source_indices) == node_type_shape(n: re, source_indices: source_indices)
+            && list_concat_list_or_free_monoid(n: left, source_indices: source_indices)
+            && list_concat_list_or_free_monoid(n: right, source_indices: source_indices) {
+            true
+          } else {
           let ln = type_node_label(n: le, source_indices: source_indices)
           let rn = type_node_label(n: re, source_indices: source_indices)
           let peeled_eq = ln == rn && (le.children |> count) == (re.children |> count) && le.connective == re.connective
@@ -14376,6 +14386,7 @@ fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<Strin
                       == is_where_refinement_type(ty: child_type_node(ch: rraw))
                 }
             }
+          }
           }
       }
   }
