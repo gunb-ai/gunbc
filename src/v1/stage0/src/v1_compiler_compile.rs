@@ -4154,9 +4154,6 @@ pub fn compile_to_resolved_with_options(
                     ),
                 );
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
-                let typed = crate::v1_compiler_infer_env::drop_scratch_overlays_from_resolved_graph(
-                    typed.clone(),
-                );
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(

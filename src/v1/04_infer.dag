@@ -127,8 +127,7 @@ import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
-  merge_type_env_cache_skip_equal, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
-  ledger_peer_import_binding_forks,
+  merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates, bare_name_miss_diagnostic,
@@ -139,7 +138,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, scratch_parent_chain_overlay, type_env_retain_complete_chain_index, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -10563,7 +10562,7 @@ fn variant_tag_reference_argument_results(func_name: String, callee_is_body_bind
   }
 }
 
-data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; ancestry_str_bindings is empty and imports are walked on parents), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the lookup_binding_on_chain (locals then last-wins parent walk) with no fork to guess. The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
+data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
 
 fn map_literal_expected_keyed_node(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
   match type_name {
@@ -14096,32 +14095,27 @@ fn type_env_cache_from_bindings(
   }
 }
 
+type ParentCacheRow {
+  import_path: String
+  cache: TypeEnvCache
+}
+
 fn union_parent_type_env_caches(
   resolved_imports: List<ResolvedImport>,
   parent_index: Map<String, TypedModule>
 ) -> GuardedTypeEnvCacheMerge {
   let parent_caches = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => [parent.interface.cache]
+      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.interface.cache }]
       Absent => []
     }
   )
-  let parent_envs = flat_map(resolved_imports, imp =>
-    match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => [parent.interface.env]
-      Absent => []
-    }
-  )
-  let conflicts = ledger_peer_import_binding_forks(envs: parent_envs, conflicts: [])
   match parent_caches |> first {
-    Absent => GuardedTypeEnvCacheMerge { cache: empty_type_env_cache(), conflicts: conflicts }
+    Absent => GuardedTypeEnvCacheMerge { cache: empty_type_env_cache(), conflicts: [] }
     Present { value: head } =>
-      GuardedTypeEnvCacheMerge {
-        cache: fold(parent_caches |> skip(1), init: head, f: (acc, overlay) =>
-          merge_type_env_cache_skip_equal(base: acc, overlay: overlay)
-        ),
-        conflicts: conflicts
-      }
+      fold(parent_caches |> skip(1), init: GuardedTypeEnvCacheMerge { cache: head.cache, conflicts: [] }, f: (acc, row) =>
+        merge_type_env_cache_guarded(base: acc.cache, overlay: row.cache, import_path: row.import_path, conflicts: acc.conflicts)
+      )
   }
 }
 
@@ -14276,12 +14270,17 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   } else { parent_env }
 }
 
-// Interface-grain scope parent: a dependent's typecheck reads a direct import's exported
-// surface (str_bindings as that module's locals). After typecheck_module, ancestry_str_bindings
-// is the complete chain index for that prefix (locals last-wins onto the parent prefix),
-// one map per typed module, Rc-shared into every importer's overlay via last_wins of an
-// empty base. Production graphs drop the overlay after reconcile. Discriminating
-// receipt: transitive_interface_binding_test.
+// Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a
+// dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the
+// flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the
+// parent's own ancestry, so one level suffices) - and never the parent's parent-chain env OBJECTS.
+// parents: [] cuts the whole-ancestry retention (the measured ~16.3MiB/module residency class)
+// while every chain consumer stays satisfied: phantom-variant and paramless-generic retries read
+// direct parents' str_bindings (carried), inductive_fields_for reads the merged fields (carried),
+// and the kernel stays the dependent's own last scope parent. Discriminating receipt:
+// transitive_interface_binding_test (green arm = a C-declared record projected through B's exported
+// signature still typechecks in A; red control = a bogus field on the same transitive record still
+// errors).
 
 fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   let filtered = type_env_for_import(module_path: module_path, parent_env: parent_env)
@@ -14290,7 +14289,7 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
     bindings: filtered.bindings,
     str_bindings: filtered.str_bindings,
     ancestry_str_bindings: filtered.ancestry_str_bindings,
-    parents: filtered.parents,
+    parents: [],
     recursive_types: filtered.recursive_types,
     recursive_type_set: filtered.recursive_type_set,
     inductive_fields: filtered.inductive_fields,
@@ -14305,11 +14304,11 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
 
 // S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct
 // import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization)
-// — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export
-// surface: locals in str_bindings, empty ancestry overlay, parents walked on a miss;
-// interface.cache unions deps/variant_locals and does not flatten str_bindings.
-// Consumption still runs interface_env_for_import for importer-specific std.types
-// filtering. Discriminating receipt: transitive_interface_binding_test.
+// — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with
+// parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged
+// inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals
+// stripped — interpretation-local). Consumption still runs interface_env_for_import for
+// importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test.
 
 // Interim v0 export signature fingerprint (export_entry_from_item): name-grain, NOT yet structural
 // type shape. Type/data/service exports fingerprint name + authored_name_at(binding.resolved) under
@@ -14330,7 +14329,7 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
     bindings: env.bindings,
     str_bindings: env.str_bindings,
     ancestry_str_bindings: env.ancestry_str_bindings,
-    parents: env.parents,
+    parents: [],
     recursive_types: env.recursive_types,
     recursive_type_set: env.recursive_type_set,
     inductive_fields: env.inductive_fields,
@@ -14346,7 +14345,7 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
 fn interface_cache_from_module(cache: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
     deps_map: cache.deps_map,
-    str_bindings: empty_map(),
+    str_bindings: cache.str_bindings,
     cycle_set_str: cache.cycle_set_str,
     variant_locals: empty_map()
   }
@@ -15312,6 +15311,8 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
   }
 }
 
+data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
+
 fn overlay_skips_kernel_name(name: String) -> Bool {
   is_kernel_type(name: name)
     || is_container_type(name: name)
@@ -15319,6 +15320,31 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
     || name == "Optional"
     || name == "Present"
     || name == "Absent"
+}
+
+fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>) -> Map<String, TypeBinding> {
+  fold(resolved_imports, init: ancestry_str_bindings, f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Present { value: typed_parent } =>
+        let export_surface = interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)
+        let selected = if imp.is_all {
+          export_surface.str_bindings |> map_keys |> filter(name => is_type_variable_name(name: name) == false)
+        } else {
+          imp.specific_names
+        }
+        fold(selected, init: acc, f: (bacc, name) =>
+          if overlay_skips_kernel_name(name: name) {
+            bacc
+          } else {
+            match map_get(export_surface.str_bindings, name) {
+              Present { value: binding } => map_insert(bacc, name, binding)
+              Absent => bacc
+            }
+          }
+        )
+      Absent => acc
+    }
+  )
 }
 
 type AncestryPrecedence {
@@ -15339,21 +15365,19 @@ fn kernel_bool_type_node() -> Node {
   Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
-// THE CACHE UNION IS PRODUCED ONCE, HERE. Both type-env builders consume it: import-union
-// (fork ledger unchanged) then kernel cache merge. ancestry_str_bindings stays empty;
-// lookup_binding_on_chain walks parents. Kernel
-// cache merge is unconditional (not skipped for a single import).
+// THE PRECEDENCE IS PRODUCED ONCE, HERE, AND NOWHERE DOWNSTREAM. Both type-env builders consume
+// this producer, so resolved and unresolved construction share one precedence chain: import
+// union (fork ledger unchanged) -> kernel overlay UNCONDITIONALLY -> direct-selected overlay
+// with kernel names skipped -> locals kept above by the str_bindings-first lookup. The former
+// shape special-cased a single import by skipping the kernel overlay entirely, so with exactly
+// one import the environment was that import's flattened cache alone -- kernel identity won or
+// lost by ancestry occupancy, resolution by accident rather than by the declared precedence.
 fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, kernel_cache: TypeEnvCache) -> AncestryPrecedence {
   let import_union = union_parent_type_env_caches(resolved_imports: resolved_imports, parent_index: parent_index)
   let with_kernel = merge_type_env_cache(base: import_union.cache, overlay: kernel_cache)
   AncestryPrecedence {
-    cache: TypeEnvCache {
-      deps_map: with_kernel.deps_map,
-      str_bindings: empty_map(),
-      cycle_set_str: with_kernel.cycle_set_str,
-      variant_locals: with_kernel.variant_locals
-    },
-    ancestry_str_bindings: empty_map(),
+    cache: with_kernel,
+    ancestry_str_bindings: overlay_direct_import_exports(ancestry_str_bindings: with_kernel.str_bindings, resolved_imports: resolved_imports, parent_index: parent_index),
     conflicts: import_union.conflicts
   }
 }
@@ -15526,14 +15550,16 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
+  let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
   let svn_local = fold(map_keys(local_str_bindings), init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
   let svn_kernel = fold(map_keys(kernel_type_set), init: svn_local, f: (acc, n) => map_insert(acc, n, true))
   let source_visible_names = fold(module.resolved_imports, init: svn_kernel, f: (acc, imp) =>
     if imp.is_all {
       match map_get(parent_index, imp.module_path) {
         Present { value: parent_mod } =>
-          let a1 = collect_chain_bare_names(env: parent_mod.interface.env, acc: acc)
-          fold(map_keys(parent_mod.interface.env.str_bindings), init: a1, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
+          let a1 = fold(map_keys(parent_mod.interface.env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
+          let a2 = fold(map_keys(parent_mod.interface.env.str_bindings), init: a1, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
+          fold(map_keys(parent_mod.interface.env.ancestry_str_bindings), init: a2, f: (x, n) => map_insert(x, n, true))
         Absent => acc
       }
     } else {
@@ -15541,7 +15567,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       fold(imp.specific_names, init: with_bare, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
     }
   )
-  let source_visible_names = fold(scope_parents, init: source_visible_names, f: (acc, p) => collect_chain_bare_names(env: p, acc: acc))
   let authored_import_names = fold(module.resolved_imports, init: empty_map(), f: (acc, imp) =>
     if imp.is_all {
       acc
@@ -15550,15 +15575,14 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let scratch_overlay = scratch_parent_chain_overlay(parents: scope_parents)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: scratch_overlay, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
   let final_env = TypeEnv { module_path: module_name_str,
     bindings: resolved_env_out.bindings,
     str_bindings: resolved_env_out.str_bindings,
-    ancestry_str_bindings: scratch_overlay,
+    ancestry_str_bindings: resolved_env_out.ancestry_str_bindings,
     parents: scope_parents,
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
@@ -15570,7 +15594,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     unit_variant_index: resolved_env_out.unit_variant_index,
     unit_variant_index_observed: resolved_env_out.unit_variant_index_observed,
   }
-  let cache_str_bindings = final_env.str_bindings
+  let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: cache_str_bindings,
@@ -15661,11 +15685,13 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
+  let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
+  let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: scratch_parent_chain_overlay(parents: scope_parents), parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
-    str_bindings: local_str_bindings,
+    str_bindings: visible_str_bindings,
     cycle_set_str: cycle_set_str,
     variant_locals: empty_map()
   }
@@ -17020,19 +17046,18 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
-  let stored_env = type_env_retain_complete_chain_index(env: env)
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
         progress: AbandonedBeforeItems,
         module: resolved.module,
         items: [],
-        type_env: stored_env,
+        type_env: env,
         type_env_cache: env_cache,
         interface: build_module_interface(
           module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
           module: resolved.module,
-          env: stored_env,
+          env: env,
           cache: env_cache,
           source_indices: source_indices
         ),
@@ -17122,12 +17147,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       progress: ItemsChecked,
       module: typed_module,
       items: grounded.items,
-      type_env: stored_env,
+      type_env: env,
       type_env_cache: module_type_env_cache,
       interface: build_module_interface(
         module_path: resolved_module_name,
         module: typed_module,
-        env: stored_env,
+        env: env,
         cache: module_type_env_cache,
         source_indices: source_indices
       ),

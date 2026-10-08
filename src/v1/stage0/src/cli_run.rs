@@ -14422,27 +14422,10 @@ fn index_insert_typed(
     typed_key: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
-    let stripped =
-        crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(result.typed.type_env.clone());
-    let stored = Rc::new(v1_compiler_infer::TypecheckModuleResult {
-        typed: Rc::new(crate::v1_compiler_infer_items::TypedModule {
-            type_env: stripped.clone(),
-            interface: Rc::new(crate::v1_compiler_infer_items::ModuleInterface {
-                summary: result.typed.interface.summary.clone(),
-                env: crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(
-                    result.typed.interface.env.clone(),
-                ),
-                cache: result.typed.interface.cache.clone(),
-            }),
-            ..(*result.typed).clone()
-        }),
-        diagnostics: result.diagnostics.clone(),
-        binding_forks: result.binding_forks.clone(),
-    });
     index
         .typed_module_cache
         .borrow_mut()
-        .insert(typed_key, stored);
+        .insert(typed_key, result.clone());
     enforce_typed_cache_entry_cap(index);
     Ok(result)
 }
@@ -38286,10 +38269,7 @@ pub fn prepare_repository_from_corpus(
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
 ///
-/// `TypeEnv.ancestry_str_bindings` and `TypeEnvCache.str_bindings` are not flattened in
-/// production: locals live on the env, imports on the parent Rc chain. Equivalence vs a
-/// last-wins flatten is a test (`ancestry_chain_matches_last_wins_flatten_on_real_std_modules`
-/// plus the first-wins mutant).
+/// Every other field is the same `Rc`, so no evaluated value changes.
 fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
 ) -> Rc<v1_compiler_compile::ResolvedGraph> {
@@ -38298,18 +38278,8 @@ fn prepared_graph_without_typecheck_caches(
         .modules
         .iter()
         .map(|m| {
-            let stripped =
-                crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(m.type_env.clone());
             Rc::new(crate::v1_compiler_infer_items::TypedModule {
                 type_env_cache: empty.clone(),
-                type_env: stripped,
-                interface: Rc::new(crate::v1_compiler_infer_items::ModuleInterface {
-                    summary: m.interface.summary.clone(),
-                    env: crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(
-                        m.interface.env.clone(),
-                    ),
-                    cache: empty.clone(),
-                }),
                 ..(**m).clone()
             })
         })

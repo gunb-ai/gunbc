@@ -341,10 +341,6 @@ type TypeEnvCache {
   variant_locals: Map<String, TypeBinding>
 }
 
-// TypeEnvCache.str_bindings is the module's own locals on a per-module cache (build_type_env).
-// Union and interface caches leave it empty: lookup walks TypeEnv.parents, not a flattened
-// cache overlay.
-
 // B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is
 // fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3
 // reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator
@@ -420,7 +416,83 @@ fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
   }
 }
 
-data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across deps_map, cycle_set_str and variant_locals). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
+data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
+
+fn guarded_union_str_bindings_into_acc(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(overlay |> map_keys, init: GuardedStrBindingsUnion { bindings: acc, conflicts: conflicts }, f: (state, name) =>
+    match map_get(overlay, name) {
+      Absent => state
+      Present { value: incoming } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, incoming),
+            conflicts: state.conflicts
+          }
+          Present { value: existing } =>
+            if binding_same_authority(a: existing, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: map_insert(state.bindings, name, incoming),
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
+              }
+            }
+        }
+    }
+  )
+}
+
+fn guarded_union_str_bindings_into_overlay(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(acc |> map_keys, init: GuardedStrBindingsUnion { bindings: overlay, conflicts: conflicts }, f: (state, name) =>
+    match map_get(acc, name) {
+      Absent => state
+      Present { value: accumulated } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, accumulated),
+            conflicts: state.conflicts
+          }
+          Present { value: incoming } =>
+            if binding_same_authority(a: accumulated, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: state.bindings,
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: accumulated.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: accumulated.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
+              }
+            }
+        }
+    }
+  )
+}
+
+fn guarded_union_str_bindings(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  if (acc |> count) >= (overlay |> count) {
+    guarded_union_str_bindings_into_acc(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
+  } else {
+    guarded_union_str_bindings_into_overlay(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
+  }
+}
+
+type GuardedStrBindingsUnion {
+  bindings: Map<String, TypeBinding>
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
 
 fn union_deps_map_into_acc(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
   fold(overlay |> map_keys, init: acc, f: (m, name) =>
@@ -524,59 +596,30 @@ fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<S
   }
 }
 
-fn merge_type_env_cache_skip_equal(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
-  TypeEnvCache {
-    deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
-    str_bindings: empty_map(),
-    cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
-    variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
+fn merge_type_env_cache_guarded(
+  base: TypeEnvCache,
+  overlay: TypeEnvCache,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedTypeEnvCacheMerge {
+  let str_union = guarded_union_str_bindings(acc: base.str_bindings, overlay: overlay.str_bindings, import_path: import_path, conflicts: conflicts)
+  GuardedTypeEnvCacheMerge {
+    cache: TypeEnvCache {
+      deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
+      str_bindings: str_union.bindings,
+      cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
+      variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
+    },
+    conflicts: str_union.conflicts
   }
 }
 
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
     deps_map: map_merge(base.deps_map, overlay.deps_map),
-    str_bindings: empty_map(),
+    str_bindings: map_merge(base.str_bindings, overlay.str_bindings),
     cycle_set_str: map_merge(base.cycle_set_str, overlay.cycle_set_str),
     variant_locals: map_merge(base.variant_locals, overlay.variant_locals)
-  }
-}
-
-type ChainNameWalk {
-  acc: Map<String, Bool>
-  seen: Map<String, Bool>
-}
-
-type ChainBindingWalk {
-  binding: TypeBinding?
-  seen: Map<String, Bool>
-  hits: Map<String, TypeBinding>
-}
-
-type PeerImportForkLedger {
-  first: Map<String, TypeBinding>
-  conflicts: List<TypeEnvCacheMergeConflict>
-  memo: Map<String, Map<String, TypeBinding>>
-}
-
-type ChainIndexMemo {
-  acc: Map<String, TypeBinding>
-  memo: Map<String, Map<String, TypeBinding>>
-}
-
-fn collect_chain_bare_names(env: TypeEnv, acc: Map<String, Bool>) -> Map<String, Bool> {
-  collect_chain_bare_names_seen(env: env, acc: acc, seen: empty_map()).acc
-}
-
-fn collect_chain_bare_names_seen(env: TypeEnv, acc: Map<String, Bool>, seen: Map<String, Bool>) -> ChainNameWalk {
-  match map_get(seen, env.module_path) {
-    Present { value: _ } => ChainNameWalk { acc: acc, seen: seen }
-    Absent =>
-      let seen = map_insert(seen, env.module_path, true)
-      let with_local = fold(map_keys(env.str_bindings), init: acc, f: (a, n) => map_insert(a, n, true))
-      fold(env.parents, init: ChainNameWalk { acc: with_local, seen: seen }, f: (st, p) =>
-        collect_chain_bare_names_seen(env: p, acc: st.acc, seen: st.seen)
-      )
   }
 }
 
@@ -597,175 +640,11 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
-// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing).
-// Typecheck fills a scratch overlay so lookups and later importers in the same
-// reconcile are O(1). prepared_graph_without_typecheck_caches (and the process
-// typed-module cache insert) drop it so prepared.graph does not pin the flatten.
-// A miss on a retained empty overlay still walks. The class stays UNFIXED until
-// prepared-subject-warm high is 0 (required_floor_strict_prep_sits_on_memory_high).
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
-  lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map(), hits: empty_map(), walk_locals_only: false).binding
-}
-
-fn scratch_parent_chain_overlay(parents: List<TypeEnv>) -> Map<String, TypeBinding> {
-  fold(parents, init: ChainIndexMemo { acc: empty_map(), memo: empty_map() }, f: (st, parent) =>
-    let nxt = collect_chain_lookup_index_seen(env: parent, memo: st.memo)
-    ChainIndexMemo { acc: last_wins_merge_bindings(base: st.acc, overlay: nxt.acc), memo: nxt.memo }
-  ).acc
-}
-
-fn type_env_drop_scratch_overlay(env: TypeEnv) -> TypeEnv {
-  TypeEnv {
-    module_path: env.module_path,
-    bindings: env.bindings,
-    str_bindings: env.str_bindings,
-    ancestry_str_bindings: empty_map(),
-    parents: env.parents,
-    recursive_types: env.recursive_types,
-    recursive_type_set: env.recursive_type_set,
-    inductive_fields: env.inductive_fields,
-    source_indices: env.source_indices,
-    intern_table: env.intern_table,
-    source_visible_names: env.source_visible_names,
-    authored_import_names: env.authored_import_names,
-    symbol_index: env.symbol_index,
-    unit_variant_index: env.unit_variant_index,
-    unit_variant_index_observed: env.unit_variant_index_observed
+  match map_get(env.str_bindings, name) {
+    Present { value: binding } => Present { value: binding }
+    Absent => map_get(env.ancestry_str_bindings, name)
   }
-}
-
-fn type_env_retain_complete_chain_index(env: TypeEnv) -> TypeEnv {
-  TypeEnv {
-    module_path: env.module_path,
-    bindings: env.bindings,
-    str_bindings: env.str_bindings,
-    ancestry_str_bindings: last_wins_merge_bindings(base: env.ancestry_str_bindings, overlay: env.str_bindings),
-    parents: env.parents,
-    recursive_types: env.recursive_types,
-    recursive_type_set: env.recursive_type_set,
-    inductive_fields: env.inductive_fields,
-    source_indices: env.source_indices,
-    intern_table: env.intern_table,
-    source_visible_names: env.source_visible_names,
-    authored_import_names: env.authored_import_names,
-    symbol_index: env.symbol_index,
-    unit_variant_index: env.unit_variant_index,
-    unit_variant_index_observed: env.unit_variant_index_observed
-  }
-}
-
-fn last_wins_merge_bindings(base: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
-  if (base |> map_keys |> count) == 0 {
-    overlay
-  } else if (overlay |> map_keys |> count) == 0 {
-    base
-  } else {
-    map_merge(base, overlay)
-  }
-}
-
-fn collect_chain_lookup_index_seen(env: TypeEnv, memo: Map<String, Map<String, TypeBinding>>) -> ChainIndexMemo {
-  match map_get(memo, env.module_path) {
-    Present { value: acc } => ChainIndexMemo { acc: acc, memo: memo }
-    Absent =>
-      if (env.ancestry_str_bindings |> map_keys |> count) > 0 {
-        ChainIndexMemo { acc: env.ancestry_str_bindings, memo: map_insert(memo, env.module_path, env.ancestry_str_bindings) }
-      } else {
-        let parent_st = fold(env.parents, init: ChainIndexMemo { acc: empty_map(), memo: memo }, f: (st, parent) =>
-          let nxt = collect_chain_lookup_index_seen(env: parent, memo: st.memo)
-          ChainIndexMemo { acc: last_wins_merge_bindings(base: st.acc, overlay: nxt.acc), memo: nxt.memo }
-        )
-        let with_local = last_wins_merge_bindings(base: parent_st.acc, overlay: env.str_bindings)
-        ChainIndexMemo { acc: with_local, memo: map_insert(parent_st.memo, env.module_path, with_local) }
-      }
-  }
-}
-
-fn lookup_binding_on_chain_seen(
-  env: TypeEnv,
-  name: String,
-  seen: Map<String, Bool>,
-  hits: Map<String, TypeBinding>,
-  walk_locals_only: Bool
-) -> ChainBindingWalk {
-  match map_get(seen, env.module_path) {
-    Present { value: _ } =>
-      ChainBindingWalk { binding: map_get(hits, env.module_path), seen: seen, hits: hits }
-    Absent =>
-      let seen = map_insert(seen, env.module_path, true)
-      match map_get(env.str_bindings, name) {
-        Present { value: binding } =>
-          ChainBindingWalk {
-            binding: Present { value: binding },
-            seen: seen,
-            hits: map_insert(hits, env.module_path, binding)
-          }
-        Absent =>
-          if walk_locals_only || (env.ancestry_str_bindings |> map_keys |> count) == 0 {
-            let walked = fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen, hits: hits }, f: (st, parent) =>
-              let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: st.seen, hits: st.hits, walk_locals_only: true)
-              match nxt.binding {
-                Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: nxt.seen, hits: nxt.hits }
-                Absent => ChainBindingWalk { binding: st.binding, seen: nxt.seen, hits: nxt.hits }
-              }
-            )
-            match walked.binding {
-              Present { value: binding } =>
-                ChainBindingWalk {
-                  binding: Present { value: binding },
-                  seen: walked.seen,
-                  hits: map_insert(walked.hits, env.module_path, binding)
-                }
-              Absent => walked
-            }
-          } else {
-            match map_get(env.ancestry_str_bindings, name) {
-              Present { value: binding } =>
-                ChainBindingWalk {
-                  binding: Present { value: binding },
-                  seen: seen,
-                  hits: map_insert(hits, env.module_path, binding)
-                }
-              Absent => ChainBindingWalk { binding: none, seen: seen, hits: hits }
-            }
-          }
-      }
-  }
-}
-
-// Peer-import binding forks, ledgered from the parent chain (not a retained str_bindings flatten).
-// One pass per import env (memoized by module_path across the union): the walk records the lookup
-// binding as it visits. Overlay-wins: later import replaces first; same-authority names are skipped.
-fn ledger_peer_import_binding_forks(envs: List<TypeEnv>, conflicts: List<TypeEnvCacheMergeConflict>) -> List<TypeEnvCacheMergeConflict> {
-  fold(envs, init: PeerImportForkLedger { first: empty_map(), conflicts: conflicts, memo: empty_map() }, f: (st, env) =>
-    let idx = collect_chain_lookup_index_seen(env: env, memo: st.memo)
-    fold(idx.acc |> map_keys, init: PeerImportForkLedger { first: st.first, conflicts: st.conflicts, memo: idx.memo }, f: (st2, name) =>
-      match map_get(idx.acc, name) {
-        Absent => st2
-        Present { value: incoming } =>
-          match map_get(st2.first, name) {
-            Absent => PeerImportForkLedger { first: map_insert(st2.first, name, incoming), conflicts: st2.conflicts, memo: st2.memo }
-            Present { value: existing } =>
-              if binding_same_authority(a: existing, b: incoming) {
-                st2
-              } else {
-                PeerImportForkLedger {
-                  first: map_insert(st2.first, name, incoming),
-                  conflicts: concat(st2.conflicts, [TypeEnvCacheMergeConflict {
-                    name: name,
-                    import_path: env.module_path,
-                    existing_site: existing.resolved.span.file,
-                    incoming_site: incoming.resolved.span.file,
-                    span: incoming.resolved.span,
-                    same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file)
-                  }]),
-                  memo: st2.memo
-                }
-              }
-          }
-      }
-    )
-  ).conflicts
 }
 
 fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
@@ -1120,7 +999,7 @@ fn record_global_bare_ambiguous_silent_pick(
 }
 
 // A KERNEL SPELLING NEVER BINDS A CORPUS DECLARATION THROUGH THE GLOBAL BARE FALLBACK -- kernel
-// precedence (v1.compiler.infer overlay_skips_kernel_name) applied to the last tier. The
+// precedence (v1.compiler.infer direct_import_export_precedence_note) applied to the last tier. The
 // outcome for String used to hold by accident: std.string_type and v2.std.text both declared it,
 // the entry was ambiguous, and nearest-ancestor containment answered nothing for any module outside
 // those two. Deleting std.string_type's duplicate (gunbc.rung_drop text_boundary_identity_wall) left
@@ -1457,7 +1336,7 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
 // lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never
 // concat-with-empty), and every list is duplicate-free by induction (local collection is
 // duplicate-free; merges never append a present fact). Genuinely new fields still append in the
-// pre-cut encounter order. Same treatment class as union_deps_map_skip_equal's skip-if-equal (#6487
+// pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487
 // cut 2); receipts on the throughline doc.
 
 fn recursion_shape_key(shape: RecursionShape) -> String {

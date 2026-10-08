@@ -57,43 +57,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::cell::Cell;
 use std::rc::Rc;
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ReconcileNameProfile {
-    pub lookup_calls: u64,
-    pub overlay_probes: u64,
-    pub walk_entries: u64,
-    pub parent_steps: u64,
-    pub fork_ledger_names: u64,
-}
-
-thread_local! {
-    static LOOKUP_CALLS: Cell<u64> = Cell::new(0);
-    static OVERLAY_PROBES: Cell<u64> = Cell::new(0);
-    static WALK_ENTRIES: Cell<u64> = Cell::new(0);
-    static PARENT_STEPS: Cell<u64> = Cell::new(0);
-    static FORK_LEDGER_NAMES: Cell<u64> = Cell::new(0);
-}
-
-pub fn reset_reconcile_name_profile() {
-    LOOKUP_CALLS.with(|c| c.set(0));
-    OVERLAY_PROBES.with(|c| c.set(0));
-    WALK_ENTRIES.with(|c| c.set(0));
-    PARENT_STEPS.with(|c| c.set(0));
-    FORK_LEDGER_NAMES.with(|c| c.set(0));
-}
-
-pub fn snapshot_reconcile_name_profile() -> ReconcileNameProfile {
-    ReconcileNameProfile {
-        lookup_calls: LOOKUP_CALLS.with(|c| c.get()),
-        overlay_probes: OVERLAY_PROBES.with(|c| c.get()),
-        walk_entries: WALK_ENTRIES.with(|c| c.get()),
-        parent_steps: PARENT_STEPS.with(|c| c.get()),
-        fork_ledger_names: FORK_LEDGER_NAMES.with(|c| c.get()),
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
@@ -672,10 +636,173 @@ pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
 pub fn union_base_choice_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across deps_map, cycle_set_str and variant_locals). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing.".to_string()
+            "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn guarded_union_str_bindings_into_acc(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        Rc::new(GuardedStrBindingsUnion {
+            bindings: acc.clone(),
+            conflicts: conflicts.clone(),
+        }),
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            std::option::Option::None => state.clone(),
+            Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+                std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
+                    bindings: v1_rt::rc_map_insert(
+                        state.bindings.clone(),
+                        name.clone(),
+                        incoming.clone(),
+                    ),
+                    conflicts: state.conflicts.clone(),
+                }),
+                Some(existing) => {
+                    if binding_same_authority(existing.clone(), incoming.clone()) {
+                        state.clone()
+                    } else {
+                        Rc::new(GuardedStrBindingsUnion {
+                            bindings: v1_rt::rc_map_insert(
+                                state.bindings.clone(),
+                                name.clone(),
+                                incoming.clone(),
+                            ),
+                            conflicts: v1_rt::concat(
+                                state.conflicts.clone(),
+                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
+                                    name: name.clone(),
+                                    import_path: import_path.clone(),
+                                    existing_site: existing
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    incoming_site: incoming
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    span: incoming.resolved.clone().span.clone(),
+                                    same_tree: (source_tree_of(
+                                        existing.resolved.clone().span.clone().file.clone(),
+                                    ) == source_tree_of(
+                                        incoming.resolved.clone().span.clone().file.clone(),
+                                    )),
+                                })]),
+                            ),
+                        })
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn guarded_union_str_bindings_into_overlay(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        Rc::new(GuardedStrBindingsUnion {
+            bindings: overlay.clone(),
+            conflicts: conflicts.clone(),
+        }),
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
+        {
+            std::option::Option::None => state.clone(),
+            Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+                std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
+                    bindings: v1_rt::rc_map_insert(
+                        state.bindings.clone(),
+                        name.clone(),
+                        accumulated.clone(),
+                    ),
+                    conflicts: state.conflicts.clone(),
+                }),
+                Some(incoming) => {
+                    if binding_same_authority(accumulated.clone(), incoming.clone()) {
+                        state.clone()
+                    } else {
+                        Rc::new(GuardedStrBindingsUnion {
+                            bindings: state.bindings.clone(),
+                            conflicts: v1_rt::concat(
+                                state.conflicts.clone(),
+                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
+                                    name: name.clone(),
+                                    import_path: import_path.clone(),
+                                    existing_site: accumulated
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    incoming_site: incoming
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    span: incoming.resolved.clone().span.clone(),
+                                    same_tree: (source_tree_of(
+                                        accumulated.resolved.clone().span.clone().file.clone(),
+                                    ) == source_tree_of(
+                                        incoming.resolved.clone().span.clone().file.clone(),
+                                    )),
+                                })]),
+                            ),
+                        })
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn guarded_union_str_bindings(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
+        guarded_union_str_bindings_into_acc(
+            acc.clone(),
+            overlay.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        )
+    } else {
+        guarded_union_str_bindings_into_overlay(
+            acc.clone(),
+            overlay.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuardedStrBindingsUnion {
+    pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
 pub fn union_deps_map_into_acc(
@@ -841,28 +968,44 @@ pub fn union_variant_locals_skip_equal(
     }
 }
 
-pub fn merge_type_env_cache_skip_equal(
+pub fn merge_type_env_cache_guarded(
     base: Rc<TypeEnvCache>,
     overlay: Rc<TypeEnvCache>,
-) -> Rc<TypeEnvCache> {
-    Rc::new(TypeEnvCache {
-        deps_map: union_deps_map_skip_equal(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_empty_map(),
-        cycle_set_str: union_bool_set_skip_equal(
-            base.cycle_set_str.clone(),
-            overlay.cycle_set_str.clone(),
-        ),
-        variant_locals: union_variant_locals_skip_equal(
-            base.variant_locals.clone(),
-            overlay.variant_locals.clone(),
-        ),
-    })
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedTypeEnvCacheMerge> {
+    {
+        let str_union = guarded_union_str_bindings(
+            base.str_bindings.clone(),
+            overlay.str_bindings.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        );
+        Rc::new(GuardedTypeEnvCacheMerge {
+            cache: Rc::new(TypeEnvCache {
+                deps_map: union_deps_map_skip_equal(
+                    base.deps_map.clone(),
+                    overlay.deps_map.clone(),
+                ),
+                str_bindings: str_union.bindings.clone(),
+                cycle_set_str: union_bool_set_skip_equal(
+                    base.cycle_set_str.clone(),
+                    overlay.cycle_set_str.clone(),
+                ),
+                variant_locals: union_variant_locals_skip_equal(
+                    base.variant_locals.clone(),
+                    overlay.variant_locals.clone(),
+                ),
+            }),
+            conflicts: str_union.conflicts.clone(),
+        })
+    }
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_empty_map(),
+        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
             overlay.cycle_set_str.clone(),
@@ -872,59 +1015,6 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
             overlay.variant_locals.clone(),
         ),
     })
-}
-
-struct ChainNameWalk {
-    acc: Rc<HashMap<String, bool>>,
-    seen: Rc<HashMap<String, bool>>,
-}
-
-struct ChainBindingWalk {
-    binding: Option<Rc<TypeBinding>>,
-    seen: Rc<HashMap<String, bool>>,
-    hits: Rc<HashMap<String, Rc<TypeBinding>>>,
-}
-
-struct PeerImportForkLedger {
-    first: Rc<HashMap<String, Rc<TypeBinding>>>,
-    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-    memo: Rc<HashMap<String, Rc<HashMap<String, Rc<TypeBinding>>>>>,
-}
-
-struct ChainIndexMemo {
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    memo: Rc<HashMap<String, Rc<HashMap<String, Rc<TypeBinding>>>>>,
-}
-
-pub fn collect_chain_bare_names(
-    env: Rc<TypeEnv>,
-    acc: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
-    collect_chain_bare_names_seen(env, acc, v1_rt::rc_empty_map()).acc
-}
-
-fn collect_chain_bare_names_seen(
-    env: Rc<TypeEnv>,
-    acc: Rc<HashMap<String, bool>>,
-    seen: Rc<HashMap<String, bool>>,
-) -> ChainNameWalk {
-    match v1_rt::map_get(&seen, env.module_path.clone()) {
-        Some(_) => ChainNameWalk { acc, seen },
-        std::option::Option::None => {
-            let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
-            let with_local = Rc::new(v1_rt::map_keys(&*env.str_bindings))
-                .iter()
-                .cloned()
-                .fold(acc, |a, n| v1_rt::rc_map_insert(a, n.clone(), true));
-            env.parents.iter().cloned().fold(
-                ChainNameWalk {
-                    acc: with_local,
-                    seen,
-                },
-                |st, p| collect_chain_bare_names_seen(p, st.acc, st.seen),
-            )
-        }
-    }
 }
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
@@ -949,320 +1039,12 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
-    lookup_binding_on_chain_seen(
-        env,
-        name,
-        v1_rt::rc_empty_map(),
-        v1_rt::rc_empty_map(),
-        false,
-    )
-    .binding
-}
-
-fn last_wins_merge_bindings(
-    base: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    if base.is_empty() {
-        overlay
-    } else if overlay.is_empty() {
-        base
-    } else {
-        v1_rt::rc_map_merge(base, overlay)
-    }
-}
-
-pub fn type_env_retain_complete_chain_index(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
-        module_path: env.module_path.clone(),
-        bindings: env.bindings.clone(),
-        str_bindings: env.str_bindings.clone(),
-        ancestry_str_bindings: last_wins_merge_bindings(
-            env.ancestry_str_bindings.clone(),
-            env.str_bindings.clone(),
-        ),
-        parents: env.parents.clone(),
-        recursive_types: env.recursive_types.clone(),
-        recursive_type_set: env.recursive_type_set.clone(),
-        inductive_fields: env.inductive_fields.clone(),
-        source_indices: env.source_indices.clone(),
-        intern_table: env.intern_table.clone(),
-        source_visible_names: env.source_visible_names.clone(),
-        authored_import_names: env.authored_import_names.clone(),
-        symbol_index: env.symbol_index.clone(),
-        unit_variant_index: env.unit_variant_index.clone(),
-        unit_variant_index_observed: env.unit_variant_index_observed,
-    })
-}
-
-fn collect_chain_lookup_index_seen(
-    env: Rc<TypeEnv>,
-    memo: Rc<HashMap<String, Rc<HashMap<String, Rc<TypeBinding>>>>>,
-) -> ChainIndexMemo {
-    match v1_rt::map_get(&memo, env.module_path.clone()) {
-        Some(acc) => ChainIndexMemo { acc, memo },
+    match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
         std::option::Option::None => {
-            if !env.ancestry_str_bindings.is_empty() {
-                ChainIndexMemo {
-                    acc: env.ancestry_str_bindings.clone(),
-                    memo: v1_rt::rc_map_insert(
-                        memo,
-                        env.module_path.clone(),
-                        env.ancestry_str_bindings.clone(),
-                    ),
-                }
-            } else {
-                let parent_st = env.parents.iter().cloned().fold(
-                    ChainIndexMemo {
-                        acc: v1_rt::rc_empty_map(),
-                        memo,
-                    },
-                    |st, parent| {
-                        let nxt = collect_chain_lookup_index_seen(parent, st.memo);
-                        ChainIndexMemo {
-                            acc: last_wins_merge_bindings(st.acc, nxt.acc),
-                            memo: nxt.memo,
-                        }
-                    },
-                );
-                let with_local =
-                    last_wins_merge_bindings(parent_st.acc, env.str_bindings.clone());
-                ChainIndexMemo {
-                    acc: with_local.clone(),
-                    memo: v1_rt::rc_map_insert(parent_st.memo, env.module_path.clone(), with_local),
-                }
-            }
+            v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone())
         }
     }
-}
-
-pub fn scratch_parent_chain_overlay(
-    parents: Rc<Vec<Rc<TypeEnv>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    parents
-        .iter()
-        .cloned()
-        .fold(
-            ChainIndexMemo {
-                acc: v1_rt::rc_empty_map(),
-                memo: v1_rt::rc_empty_map(),
-            },
-            |st, parent| {
-                let nxt = collect_chain_lookup_index_seen(parent, st.memo);
-                ChainIndexMemo {
-                    acc: last_wins_merge_bindings(st.acc, nxt.acc),
-                    memo: nxt.memo,
-                }
-            },
-        )
-        .acc
-}
-
-pub fn drop_scratch_overlays_from_resolved_graph(
-    graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
-) -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
-    let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
-        .modules
-        .iter()
-        .map(|m| {
-            Rc::new(crate::v1_compiler_infer_items::TypedModule {
-                type_env: type_env_drop_scratch_overlay(m.type_env.clone()),
-                interface: Rc::new(crate::v1_compiler_infer_items::ModuleInterface {
-                    summary: m.interface.summary.clone(),
-                    env: type_env_drop_scratch_overlay(m.interface.env.clone()),
-                    cache: m.interface.cache.clone(),
-                }),
-                ..(**m).clone()
-            })
-        })
-        .collect();
-    Rc::new(crate::v1_compiler_infer_items::ResolvedGraph {
-        modules: Rc::new(modules.into()),
-        item_registry: graph.item_registry.clone(),
-        diagnostics: graph.diagnostics.clone(),
-        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
-    })
-}
-
-pub fn type_env_drop_scratch_overlay(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
-        module_path: env.module_path.clone(),
-        bindings: env.bindings.clone(),
-        str_bindings: env.str_bindings.clone(),
-        ancestry_str_bindings: v1_rt::rc_empty_map(),
-        parents: env.parents.clone(),
-        recursive_types: env.recursive_types.clone(),
-        recursive_type_set: env.recursive_type_set.clone(),
-        inductive_fields: env.inductive_fields.clone(),
-        source_indices: env.source_indices.clone(),
-        intern_table: env.intern_table.clone(),
-        source_visible_names: env.source_visible_names.clone(),
-        authored_import_names: env.authored_import_names.clone(),
-        symbol_index: env.symbol_index.clone(),
-        unit_variant_index: env.unit_variant_index.clone(),
-        unit_variant_index_observed: env.unit_variant_index_observed,
-    })
-}
-
-fn lookup_binding_on_chain_seen(
-    env: Rc<TypeEnv>,
-    name: String,
-    seen: Rc<HashMap<String, bool>>,
-    hits: Rc<HashMap<String, Rc<TypeBinding>>>,
-    walk_locals_only: bool,
-) -> ChainBindingWalk {
-    match v1_rt::map_get(&seen, env.module_path.clone()) {
-        Some(_) => ChainBindingWalk {
-            binding: v1_rt::map_get(&hits, env.module_path.clone()),
-            seen,
-            hits,
-        },
-        std::option::Option::None => {
-            let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
-            match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
-                Some(binding) => ChainBindingWalk {
-                    binding: Some(binding.clone()),
-                    seen,
-                    hits: v1_rt::rc_map_insert(hits, env.module_path.clone(), binding.clone()),
-                },
-                std::option::Option::None => {
-                    if walk_locals_only || env.ancestry_str_bindings.is_empty() {
-                        WALK_ENTRIES.with(|c| c.set(c.get() + 1));
-                        PARENT_STEPS.with(|c| {
-                            c.set(c.get() + env.parents.len() as u64)
-                        });
-                        let walked = env.parents.iter().cloned().fold(
-                            ChainBindingWalk {
-                                binding: std::option::Option::None,
-                                seen: seen.clone(),
-                                hits,
-                            },
-                            |st, parent| {
-                                let nxt = lookup_binding_on_chain_seen(
-                                    parent,
-                                    name.clone(),
-                                    st.seen,
-                                    st.hits,
-                                    true,
-                                );
-                                match nxt.binding {
-                                    Some(binding) => ChainBindingWalk {
-                                        binding: Some(binding),
-                                        seen: nxt.seen,
-                                        hits: nxt.hits,
-                                    },
-                                    std::option::Option::None => ChainBindingWalk {
-                                        binding: st.binding,
-                                        seen: nxt.seen,
-                                        hits: nxt.hits,
-                                    },
-                                }
-                            },
-                        );
-                        match walked.binding.clone() {
-                            Some(binding) => ChainBindingWalk {
-                                binding: Some(binding.clone()),
-                                seen: walked.seen,
-                                hits: v1_rt::rc_map_insert(
-                                    walked.hits,
-                                    env.module_path.clone(),
-                                    binding,
-                                ),
-                            },
-                            std::option::Option::None => walked,
-                        }
-                    } else {
-                        OVERLAY_PROBES.with(|c| c.set(c.get() + 1));
-                        match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
-                            Some(binding) => ChainBindingWalk {
-                                binding: Some(binding.clone()),
-                                seen,
-                                hits: v1_rt::rc_map_insert(
-                                    hits,
-                                    env.module_path.clone(),
-                                    binding.clone(),
-                                ),
-                            },
-                            std::option::Option::None => ChainBindingWalk {
-                                binding: std::option::Option::None,
-                                seen,
-                                hits,
-                            },
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn ledger_peer_import_binding_forks(
-    envs: Rc<Vec<Rc<TypeEnv>>>,
-    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-) -> Rc<Vec<Rc<TypeEnvCacheMergeConflict>>> {
-    envs.iter()
-        .cloned()
-        .fold(
-            PeerImportForkLedger {
-                first: v1_rt::rc_empty_map(),
-                conflicts,
-                memo: v1_rt::rc_empty_map(),
-            },
-            |st, env| {
-                let idx = collect_chain_lookup_index_seen(env.clone(), st.memo);
-                FORK_LEDGER_NAMES.with(|c| c.set(c.get() + idx.acc.len() as u64));
-                Rc::new(v1_rt::map_keys(&*idx.acc)).iter().cloned().fold(
-                    PeerImportForkLedger {
-                        first: st.first,
-                        conflicts: st.conflicts,
-                        memo: idx.memo,
-                    },
-                    |st2, name| match v1_rt::map_get(&idx.acc, name.clone()) {
-                        std::option::Option::None => st2,
-                        Some(incoming) => match v1_rt::map_get(&st2.first, name.clone()) {
-                            std::option::Option::None => PeerImportForkLedger {
-                                first: v1_rt::rc_map_insert(
-                                    st2.first,
-                                    name.clone(),
-                                    incoming.clone(),
-                                ),
-                                conflicts: st2.conflicts,
-                                memo: st2.memo,
-                            },
-                            Some(existing) => {
-                                if binding_same_authority(existing.clone(), incoming.clone()) {
-                                    st2
-                                } else {
-                                    let existing_file = existing.resolved.span.file.clone();
-                                    let incoming_file = incoming.resolved.span.file.clone();
-                                    let mut next = (*st2.conflicts).clone();
-                                    next.push(Rc::new(TypeEnvCacheMergeConflict {
-                                        name: name.clone(),
-                                        import_path: env.module_path.clone(),
-                                        existing_site: existing_file.clone(),
-                                        incoming_site: incoming_file.clone(),
-                                        span: incoming.resolved.span.clone(),
-                                        same_tree: source_tree_of(existing_file)
-                                            == source_tree_of(incoming_file),
-                                    }));
-                                    PeerImportForkLedger {
-                                        first: v1_rt::rc_map_insert(
-                                            st2.first,
-                                            name.clone(),
-                                            incoming.clone(),
-                                        ),
-                                        conflicts: Rc::new(next),
-                                        memo: st2.memo,
-                                    }
-                                }
-                            }
-                        },
-                    },
-                )
-            },
-        )
-        .conflicts
 }
 
 pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {

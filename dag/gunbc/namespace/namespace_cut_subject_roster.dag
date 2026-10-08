@@ -122,7 +122,7 @@ fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
     ImportScopeOverlays => NamespaceCutSubjectProbes {
       first: DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "merge_scope_from_imports" },
       rest: [
-        DagDeclarationProbe { module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_on_chain" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "overlay_direct_import_exports" },
         DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "func_env_views_for_import" },
         DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "selective_func_env_view" },
         DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "rewire_func_env_parent_links" },

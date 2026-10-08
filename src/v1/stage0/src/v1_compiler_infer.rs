@@ -134,18 +134,16 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    census_declaration_type_env, collect_chain_bare_names, declaration_node_of_ref,
-    declaration_provenance_of_ref, declaration_ref_of_declaration_node,
-    declaration_ref_of_type_node, declaration_substitution_basis, effective_visible_binding,
-    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
-    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
-    host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, ledger_peer_import_binding_forks,
-    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
-    scratch_parent_chain_overlay, type_env_retain_complete_chain_index,
-    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
-    merge_type_env_cache, merge_type_env_cache_skip_equal, node_with_children, node_with_inferred,
-    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    census_declaration_type_env, declaration_node_of_ref, declaration_provenance_of_ref,
+    declaration_ref_of_declaration_node, declaration_ref_of_type_node,
+    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
+    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
+    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
+    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
+    lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
+    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
     symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
@@ -16999,7 +16997,7 @@ pub fn variant_tag_reference_argument_results(
 pub fn presence_check_census_gate_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; ancestry_str_bindings is empty and imports are walked on parents), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the lookup_binding_on_chain (locals then last-wins parent walk) with no fork to guess. The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
+            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -24517,6 +24515,12 @@ pub fn type_env_cache_from_bindings(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentCacheRow {
+    pub import_path: String,
+    pub cache: Rc<TypeEnvCache>,
+}
+
 pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -24525,52 +24529,49 @@ pub fn union_parent_type_env_caches(
         let parent_caches = Rc::new({
             let mut __result = Vec::new();
             for imp in resolved_imports.iter().cloned() {
-                if let Some(parent) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    __result.push(parent.interface.clone().cache.clone());
-                }
+                __result.extend(
+                    (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                        Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
+                            import_path: imp.module_path.clone(),
+                            cache: parent.interface.clone().cache.clone(),
+                        })]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         });
-        let parent_envs = Rc::new({
-            let mut __result = Vec::new();
-            for imp in resolved_imports.iter().cloned() {
-                if let Some(parent) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    __result.push(parent.interface.env.clone());
-                }
-            }
-            __result
-        });
-        let conflicts = crate::v1_compiler_infer_env::ledger_peer_import_binding_forks(
-            parent_envs,
-            Rc::new(vec![]),
-        );
         match parent_caches.clone().first().cloned() {
             std::option::Option::None => Rc::new(GuardedTypeEnvCacheMerge {
                 cache: crate::v1_compiler_infer_env::empty_type_env_cache(),
-                conflicts,
+                conflicts: Rc::new(vec![]),
             }),
-            Some(head) => Rc::new(GuardedTypeEnvCacheMerge {
-                cache: Rc::new(
-                    parent_caches
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                .fold(
-                    head.clone(),
-                    |acc: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>| {
-                        crate::v1_compiler_infer_env::merge_type_env_cache_skip_equal(
-                            acc.clone(),
-                            overlay.clone(),
-                        )
-                    },
-                ),
-                conflicts,
-            }),
+            Some(head) => Rc::new(
+                parent_caches
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(GuardedTypeEnvCacheMerge {
+                    cache: head.cache.clone(),
+                    conflicts: Rc::new(vec![]),
+                }),
+                |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
+                    crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
+                        acc.cache.clone(),
+                        row.cache.clone(),
+                        row.import_path.clone(),
+                        acc.conflicts.clone(),
+                    )
+                },
+            ),
         }
     }
 }
@@ -24902,7 +24903,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             bindings: filtered.bindings.clone(),
             str_bindings: filtered.str_bindings.clone(),
             ancestry_str_bindings: filtered.ancestry_str_bindings.clone(),
-            parents: filtered.parents.clone(),
+            parents: Rc::new(vec![]),
             recursive_types: filtered.recursive_types.clone(),
             recursive_type_set: filtered.recursive_type_set.clone(),
             inductive_fields: filtered.inductive_fields.clone(),
@@ -24929,7 +24930,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             bindings: env.bindings.clone(),
             str_bindings: env.str_bindings.clone(),
             ancestry_str_bindings: env.ancestry_str_bindings.clone(),
-            parents: env.parents.clone(),
+            parents: Rc::new(vec![]),
             recursive_types: env.recursive_types.clone(),
             recursive_type_set: env.recursive_type_set.clone(),
             inductive_fields: env.inductive_fields.clone(),
@@ -24947,7 +24948,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
 pub fn interface_cache_from_module(cache: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: cache.deps_map.clone(),
-        str_bindings: v1_rt::rc_empty_map(),
+        str_bindings: cache.str_bindings.clone(),
         cycle_set_str: cache.cycle_set_str.clone(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     })
@@ -26756,6 +26757,15 @@ pub fn symbol_index_with_qualified_fill(
     }
 }
 
+pub fn direct_import_export_precedence_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn overlay_skips_kernel_name(name: String) -> bool {
     (((((crate::std_types::is_kernel_type(name.clone())
         || crate::std_types::is_container_type(name.clone()))
@@ -26763,6 +26773,62 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
         || (name.clone() == "Optional".to_string()))
         || (name.clone() == "Present".to_string()))
         || (name.clone() == "Absent".to_string()))
+}
+
+pub fn overlay_direct_import_exports(
+    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    resolved_imports.iter().cloned().fold(
+        ancestry_str_bindings.clone(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
+            &parent_index,
+            imp.module_path.clone(),
+        ) {
+            Some(typed_parent) => {
+                let export_surface = interface_env_for_import(
+                    imp.module_path.clone(),
+                    typed_parent.interface.clone().env.clone(),
+                );
+                let selected = if imp.is_all.clone() {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for name in Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
+                            .iter()
+                            .cloned()
+                        {
+                            if (is_type_variable_name(name.clone()) == false) {
+                                __result.push(name);
+                            }
+                        }
+                        __result
+                    })
+                } else {
+                    imp.specific_names.clone()
+                };
+                selected.iter().cloned().fold(
+                    acc.clone(),
+                    |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+                        if overlay_skips_kernel_name(name.clone()) {
+                            bacc.clone()
+                        } else {
+                            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
+                            {
+                                Some(binding) => v1_rt::rc_map_insert(
+                                    bacc.clone(),
+                                    name.clone(),
+                                    binding.clone(),
+                                ),
+                                std::option::Option::None => bacc.clone(),
+                            }
+                        }
+                    },
+                )
+            }
+            std::option::Option::None => acc.clone(),
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26865,13 +26931,12 @@ pub fn build_ancestry_precedence(
             kernel_cache.clone(),
         );
         Rc::new(AncestryPrecedence {
-            cache: Rc::new(TypeEnvCache {
-                deps_map: with_kernel.deps_map.clone(),
-                str_bindings: v1_rt::rc_empty_map(),
-                cycle_set_str: with_kernel.cycle_set_str.clone(),
-                variant_locals: with_kernel.variant_locals.clone(),
-            }),
-            ancestry_str_bindings: v1_rt::rc_empty_map(),
+            cache: with_kernel.clone(),
+            ancestry_str_bindings: overlay_direct_import_exports(
+                with_kernel.str_bindings.clone(),
+                resolved_imports.clone(),
+                parent_index.clone(),
+            ),
             conflicts: import_union.conflicts.clone(),
         })
     }
@@ -27509,6 +27574,7 @@ pub fn build_type_env(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
+        let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
@@ -27533,12 +27599,25 @@ pub fn build_type_env(
                 if imp.is_all.clone() {
                     match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent_mod) => {
-                            let a1 = crate::v1_compiler_infer_env::collect_chain_bare_names(
-                                parent_mod.interface.clone().env.clone(),
+                            let a1 = Rc::new(v1_rt::map_keys(
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .str_bindings
+                                    .clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
                                 acc.clone(),
+                                |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(x, n.clone(), true)
+                                },
                             );
-                            Rc::new(v1_rt::map_keys(
-                                &*parent_mod
+                            let a2 = Rc::new(v1_rt::map_keys(
+                                &parent_mod
                                     .interface
                                     .clone()
                                     .env
@@ -27559,6 +27638,23 @@ pub fn build_type_env(
                                         ),
                                         true,
                                     )
+                                },
+                            );
+                            Rc::new(v1_rt::map_keys(
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .ancestry_str_bindings
+                                    .clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
+                                a2.clone(),
+                                |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
                             )
                         }
@@ -27589,12 +27685,6 @@ pub fn build_type_env(
                 }
             },
         );
-        let source_visible_names = scope_parents
-            .iter()
-            .cloned()
-            .fold(source_visible_names.clone(), |acc, p| {
-                crate::v1_compiler_infer_env::collect_chain_bare_names(p, acc)
-            });
         let authored_import_names = module.resolved_imports.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
@@ -27615,12 +27705,11 @@ pub fn build_type_env(
             scope_parents.clone(),
             source_indices.clone(),
         );
-        let scratch_overlay = scratch_parent_chain_overlay(scope_parents.clone());
         let unresolved_env = Rc::new(TypeEnv {
             module_path: module_name_str.clone(),
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: scratch_overlay.clone(),
+            ancestry_str_bindings: ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set.clone(),
             recursive_type_set: cross_type_set.clone(),
@@ -27645,7 +27734,7 @@ pub fn build_type_env(
             module_path: module_name_str.clone(),
             bindings: resolved_env_out.bindings.clone(),
             str_bindings: resolved_env_out.str_bindings.clone(),
-            ancestry_str_bindings: scratch_overlay.clone(),
+            ancestry_str_bindings: resolved_env_out.ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
@@ -27658,7 +27747,10 @@ pub fn build_type_env(
             unit_variant_index: resolved_env_out.unit_variant_index.clone(),
             unit_variant_index_observed: resolved_env_out.unit_variant_index_observed.clone(),
         });
-        let cache_str_bindings = final_env.str_bindings.clone();
+        let cache_str_bindings = v1_rt::rc_map_merge(
+            final_env.ancestry_str_bindings.clone(),
+            final_env.str_bindings.clone(),
+        );
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
             str_bindings: cache_str_bindings.clone(),
@@ -28096,6 +28188,9 @@ pub fn build_type_env_unresolved(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
+        let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
+        let visible_str_bindings =
+            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let module_variant_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             local_str_bindings.clone(),
             scope_parents.clone(),
@@ -28105,7 +28200,7 @@ pub fn build_type_env_unresolved(
             module_path: module_name_str.clone(),
             bindings: local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: scratch_parent_chain_overlay(scope_parents.clone()),
+            ancestry_str_bindings: ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set.clone(),
             recursive_type_set: cross_type_set.clone(),
@@ -28120,7 +28215,7 @@ pub fn build_type_env_unresolved(
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
-            str_bindings: local_str_bindings.clone(),
+            str_bindings: visible_str_bindings.clone(),
             cycle_set_str: cycle_set_str.clone(),
             variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         });
@@ -30879,14 +30974,13 @@ pub fn typecheck_module(
             __result
         });
         let seed_diags = crate::v1_compiler_infer_method::builtin_kernel_seed_diagnostics();
-        let stored_env = type_env_retain_complete_chain_index(env.clone());
         if ((env_errors.clone().len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
                 typed: Rc::new(TypedModule {
                     progress: ModuleTypecheckProgress::AbandonedBeforeItems,
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
-                    type_env: stored_env.clone(),
+                    type_env: env.clone(),
                     type_env_cache: env_cache.clone(),
                     interface: build_module_interface(
                         crate::v1_std_core::authored_name_at(
@@ -30894,7 +30988,7 @@ pub fn typecheck_module(
                             resolved.module.clone(),
                         ),
                         resolved.module.clone(),
-                        stored_env.clone(),
+                        env.clone(),
                         env_cache.clone(),
                         source_indices.clone(),
                     ),
@@ -31074,12 +31168,12 @@ pub fn typecheck_module(
                 progress: ModuleTypecheckProgress::ItemsChecked,
                 module: typed_module.clone(),
                 items: grounded.items.clone(),
-                type_env: stored_env.clone(),
+                type_env: env.clone(),
                 type_env_cache: module_type_env_cache.clone(),
                 interface: build_module_interface(
                     resolved_module_name.clone(),
                     typed_module.clone(),
-                    stored_env.clone(),
+                    env.clone(),
                     module_type_env_cache.clone(),
                     source_indices.clone(),
                 ),
