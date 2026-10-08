@@ -452,9 +452,10 @@ fn control_outcome_is_bad(o: ControlOutcome<Int, String>) -> Bool {
   }
 }
 
-// RULE: `v2.std.algebra` `length` over host text lowers to `v1_rt::string_length`, the same
-// decision `.length` on a string receiver already takes (v1.compiler.emit_rust emit_typed_call).
-// Without it the generic FreeMonoid body is called at a `String` (E0308 at request_field).
+// RULE: `v2.std.algebra` `length` over HOST text (kernel `String`) lowers to
+// `v1_rt::string_length`. Corpus `v2.std.text.String` is structural FreeMonoid and keeps the
+// generic body. Without the host arm, kernel `String` at `request_field` is E0308; with a
+// leaf-name arm, structural text at `string_split_step` is E0308 the other way.
 fn control_algebra_length_of_string(s: String) -> Int {
   length(xs: s)
 }

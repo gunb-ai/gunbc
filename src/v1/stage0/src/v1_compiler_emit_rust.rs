@@ -26770,7 +26770,7 @@ pub fn rust_emit_length_on_host_string(
             match length_args.clone().first().cloned() {
                 std::option::Option::None => std::option::Option::None,
                 Some(xs_arg) => {
-                    if is_string_typed_expr(
+                    if is_host_text_typed_expr(
                         crate::v1_std_core::arg_value(xs_arg.clone()),
                         scope.type_env.clone().source_indices.clone(),
                     ) {
@@ -35374,6 +35374,24 @@ pub fn is_string_typed_expr(
                 rt.clone()
             };
             is_rust_string_like(inner.clone(), source_indices.clone())
+        }
+        _ => false,
+    }
+}
+
+pub fn is_host_text_typed_expr(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let inner = if is_optional.clone() {
+                crate::v1_std_core::with_required_cardinality(rt.clone())
+            } else {
+                rt.clone()
+            };
+            is_host_text_carrier_type(inner.clone(), source_indices.clone())
         }
         _ => false,
     }
