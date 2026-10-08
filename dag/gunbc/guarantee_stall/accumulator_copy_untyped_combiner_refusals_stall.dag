@@ -33,12 +33,12 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // sorted_map_keys, replace and string_contains; std.algebra refuses at Map (resolve_unbound_name_is_declared_elsewhere
 // std.types.Map; std.algebra cannot import std.types, which imports it), empty_map, map_insert and List.
 // map_get is not importable from v2.std.collection (cycle, and a different outcome contract from the kernel one).
-// native CLI, small modules containing a fold also refused at resolve, anchored at a projected node of
+// On the native CLI, small modules containing a fold also refused at resolve, anchored at a projected node of
 // the fold; that matches the class gunbc.recurring_failure_mode
 // .fold_cons_handler_binder_unbound_on_the_native_resolver, which was measured there on fold_list cons
 // handlers and is here observed on fold f: handlers of those probes only. What this establishes is that
 // no successful route to an inferred tree was found for std.change; it does not establish that none
-// exists, that these three refusals are the whole of what blocks it, or that those inputs, a copied file
+// exists, that the refusals listed above are the whole of what blocks it, or that those inputs, a copied file
 // set among them, stand for the dependency closure a production resolve would see. The closures of
 // v2.extdeps.languages.lean and v2.lens.complexity_accumulator_copy.analyze were NOT measured (runs over
 // the full source roots exceeded 900s). That they share the fold refusal is SUSPECTED, from both files
