@@ -26,3 +26,29 @@ INCIDENT  After that test the host went dark (power On, no console). The event l
           2026-10-07, mostly in pairs ~18 s apart. Operator reseated a DIMM and AC-cycled the
           board; it then POSTed to Setup in ~100 s.                    sel-elist.txt, sol-after-reseat.log
           Whether the paired asserts are a fault or this BMC's per-boot noise is not decided.
+
+THERMAL (2026-10-08)  The host had no CPU heatsink fitted. Redfish EventLog records "Thermal trip"
+          6-7 min after each successful power-on (23:13, 23:51 on 10-07; 23:39, 23:43 on 10-06),
+          and the trip latches: later Redfish power-ons leave the host dark (override never
+          consumed) until an AC cycle. All ten fan headers read "No Reading". The IPMI
+          "Undetermined system hardware failure" pairs are these thermal and power events.
+                                                                        redfish-eventlog.json, sdr-elist-host-dark.txt
+
+BMC 03.22.00 (pushed 2026-10-08 01:00Z, host off; member altrad8ud-1l2t_3.22.00.static.mtd.tar
+          sha256 cb8b8e72...; staged by UpdateService task, active after a Manager reset)
+          First authenticated request with the published credential: HTTP 403, Redfish
+          MessageId Base.1.16.0.PasswordChangeRequired (a wrong password is 401). Rotated by
+          gunbc.tools.bmc_onboard srv13_converge_credential into secret bmc-srv13-admin.
+                                                                        bmc-3.22.00-factory-login-403.json, bmc-push-3.22.00-response.json
+          Boot override targets unchanged (no UefiShell). Registries gain
+          BiosAttributeRegistryA3139.2.6.0, but its entry serves no body and Systems/system/Bios
+          carries no Attributes; Bios/Settings is 404.                  bmc-3.22.00/
+          With BIOS 2.06 the host reached Setup (override consumed ~50 s) and sat ~80 s: no
+          Attributes published.
+
+BIOS 4.01 (pushed 2026-10-08 02:26Z, host off; member obmc-bios-altrad8ud-1l2t-4.01.all.tar
+          sha256 33937359...)  bios_active reads 4.01. First boot after the flash took ~135 s to
+          reach Setup; the second ~85 s. ~2 min in Setup: no Attributes, registry still the
+          2.6.0 stub.                                                   bios-4.01/
+          Not yet tested: whether the BIOS uploads attributes only on leaving Setup for a boot
+          device (needs a heatsink).
