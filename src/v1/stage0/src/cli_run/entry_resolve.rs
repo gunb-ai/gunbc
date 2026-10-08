@@ -3566,8 +3566,8 @@ pub(crate) fn reference_edges_for_file_on_demand<
         // declaration or a name the file imports (the import edge already carries that), so
         // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
         // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
-        // merely declares the same spelling. The proximity tier below stays for import-less files,
-        // where it already applied.
+        // merely declares the same spelling. Import-less files use the same on-chain UniqueBare
+        // rule below — not a leftover proximity rank.
         if !imports.is_empty() {
             continue;
         }
@@ -3580,29 +3580,19 @@ pub(crate) fn reference_edges_for_file_on_demand<
             if mods.contains(&self_module) {
                 continue;
             }
-            // Proximity disambiguation (namespace-only "nearest in the containment tree"):
-            // among declarers, prefer the one sharing the longest module-path prefix with the
-            // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
-            // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
-            let mut best_len = 0usize;
-            let mut winners: Vec<&String> = Vec::new();
-            for m in mods.iter() {
-                let shared = module_prefix_shared_len(&self_module, m);
-                if winners.is_empty() || shared > best_len {
-                    best_len = shared;
-                    winners.clear();
-                    winners.push(m);
-                } else if shared == best_len {
-                    winners.push(m);
-                }
-            }
+            // LEXICAL BINDING, NOT PROXIMITY: UniqueBare only for the unique declarer on the
+            // referencing module's ancestor chain (`global_bare_chain_candidates`). A sibling
+            // that merely shares a longer prefix is not a binder. Zero on-chain declarers is
+            // not an edge (no UniqueBare to the nearest pool homonym; no superset fallback).
+            // Two or more on-chain → AmbiguousBare (typed; the source must qualify).
+            let winners = on_chain_declarers(&self_module, mods.iter());
             match winners.len() {
                 0 => {}
                 1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
                 _ => {
                     // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
                     // AmbiguousBare is a bare ref, in a file that does not declare it, whose
-                    // nearest declarers tie — the definitive "needs qualification" site.
+                    // on-chain declarers are more than one — the definitive "needs qualification" site.
                     if std::env::var("REFAMBIG_DUMP").is_ok() {
                         let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
                         let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();

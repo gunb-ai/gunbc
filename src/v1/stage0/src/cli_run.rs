@@ -9836,6 +9836,39 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Inhabitance: `load_sources_for_entry_with_pool` already binds by the ancestor chain.
+    /// The sibling plant is nearer by prefix and must not enter the compile closure.
+    #[test]
+    fn load_sources_binds_the_on_chain_ancestor_not_the_sibling_plant() {
+        let fixture = Fixture::new(&[
+            (
+                "parent.dag",
+                "module frontier\nfn duplicated() -> Int { 1 }\n",
+            ),
+            (
+                "plant.dag",
+                "module frontier.child.plant\nfn duplicated() -> Int { 99 }\n",
+            ),
+            (
+                "consumer.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("consumer.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<String> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert!(modules.contains("frontier"), "{modules:?}");
+        assert!(!modules.contains("frontier.child.plant"), "{modules:?}");
+        assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
+    }
+
     /// ONE PARSE PER FILE ON THE ENTRY ROUTE. A module reached only by a dotted reference is
     /// pulled by the fixpoint's reference half, which reads the index's shared parse; the
     /// per-entry module-path scan (`extend_with_reference_closure`, timed as
@@ -31150,12 +31183,23 @@ fn collect_node_refs_inner(
     bound.truncate(restore_to);
 }
 
-/// Count of shared leading dot-separated segments between two module paths (containment proximity).
-fn module_prefix_shared_len(a: &str, b: &str) -> usize {
-    a.split('.')
-        .zip(b.split('.'))
-        .take_while(|(x, y)| x == y)
-        .count()
+/// `ancestor` is on `descendant`'s containment chain: equal, or a proper module-path prefix.
+/// Same predicate `global_bare_chain_candidates` uses (LCP == candidate segment count).
+fn module_path_is_containment_ancestor(ancestor: &str, descendant: &str) -> bool {
+    descendant == ancestor || descendant.starts_with(&format!("{ancestor}."))
+}
+
+/// Declarers on the referencing module's ancestor chain, sorted for a stable AmbiguousBare dump.
+fn on_chain_declarers<'a>(
+    referencing_module: &str,
+    declarers: impl IntoIterator<Item = &'a String>,
+) -> Vec<&'a String> {
+    let mut out: Vec<&'a String> = declarers
+        .into_iter()
+        .filter(|m| module_path_is_containment_ancestor(m, referencing_module))
+        .collect();
+    out.sort();
+    out
 }
 
 /// Longest module-path prefix of a qualified chain that names a declared module.
@@ -31290,8 +31334,8 @@ mod reference_edge_producer_tests {
         let emits_any = |from_sub: &str| edges.iter().any(|e| e.path.contains(from_sub));
 
         assert!(
-            has_edge("refless.dag", "test.decl"),
-            "import-less file referencing shared_fn must yield an edge to its declaring module"
+            !has_edge("refless.dag", "test.decl"),
+            "an off-chain unique declarer is not a UniqueBare edge; only an ancestor is"
         );
         assert!(
             !emits_any("reflocal.dag"),
@@ -31301,6 +31345,82 @@ mod reference_edge_producer_tests {
             !emits_any("imported.dag"),
             "an import-bearing file is import-covered — the reference producer skips it"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// THE IMPORT-LESS WRONG-EDGE RED on the real `dependency_resolution_facts` union
+    /// (`reference_edges_for_file` inside it — not a mutant of the producer).
+    ///
+    /// `frontier.child.consumer` calls `duplicated`. The lexical binder is the ancestor
+    /// `frontier`. A sibling `frontier.child.plant` also declares the spelling and shares a
+    /// longer module-path prefix, so proximity UniqueBare-binds the plant. After the climb the
+    /// edge is the ancestor, never the sibling.
+    #[test]
+    fn proximity_must_not_bind_an_importless_bare_name_to_a_sibling_homonym() {
+        let root = fixture_root("proximity-wrong-edge");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "parent.dag",
+            "module frontier\nfn duplicated() -> Int { 1 }\n",
+        );
+        write(
+            &root,
+            "plant.dag",
+            "module frontier.child.plant\nfn duplicated() -> Int { 99 }\n",
+        );
+        write(
+            &root,
+            "consumer.dag",
+            "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let facts = super::dependency_resolution_facts(&roots, &roots, &[]);
+        let consumer_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("consumer.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert!(
+            !consumer_targets.contains(&"frontier.child.plant"),
+            "proximity UniqueBare bound the sibling plant: {consumer_targets:?}"
+        );
+        assert!(
+            consumer_targets.contains(&"frontier"),
+            "the on-chain ancestor must remain the UniqueBare target: {consumer_targets:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Positive control: an import-less bare name whose only declarer is an ancestor still
+    /// produces a UniqueBare edge (lexical binding, not pool uniqueness).
+    #[test]
+    fn an_importless_bare_name_on_the_ancestor_chain_still_resolves() {
+        let root = fixture_root("lexical-on-chain");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "parent.dag",
+            "module frontier\nfn duplicated() -> Int { 1 }\n",
+        );
+        write(
+            &root,
+            "consumer.dag",
+            "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+        );
+        write(
+            &root,
+            "unrelated.dag",
+            "module other.real\nfn unused() -> Int { 0 }\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let facts = super::dependency_resolution_facts(&roots, &roots, &[]);
+        let consumer_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("consumer.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert_eq!(consumer_targets, vec!["frontier"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -37541,13 +37661,14 @@ mod import_bearing_reference_edges {
         assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
     }
 
-    /// Control: the same bare name in an IMPORT-LESS file still resolves by proximity (unchanged),
-    /// and a qualified reference in an import-bearing file is still an edge (the other test).
+    /// After the proximity climb: neither homonym is on `test.claim.a`'s ancestor chain, so
+    /// the import-less file must not UniqueBare-bind the nearer planted fixture.
     #[test]
-    fn the_same_bare_name_without_the_import_still_resolves() {
+    fn the_same_bare_name_without_the_import_does_not_proximity_bind() {
         let src = "module test.claim.a\nfn g() -> Int { Present }\n";
         let t = homonym_edges(src);
-        assert!(t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+        assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+        assert!(!t.contains(&"std.optional".to_string()), "{t:?}");
     }
 }
 
@@ -38992,19 +39113,7 @@ pub fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<
         if mods.contains(module) {
             continue;
         }
-        let mut best_len = 0usize;
-        let mut winners: Vec<&String> = Vec::new();
-        for m in mods.iter() {
-            let shared = module_prefix_shared_len(module, m);
-            if winners.is_empty() || shared > best_len {
-                best_len = shared;
-                winners.clear();
-                winners.push(m);
-            } else if shared == best_len {
-                winners.push(m);
-            }
-        }
-        for w in winners {
+        for w in on_chain_declarers(module, mods.iter()) {
             out.insert(w.clone());
         }
     }
