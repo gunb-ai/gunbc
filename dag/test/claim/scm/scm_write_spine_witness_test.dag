@@ -19,7 +19,7 @@ import std.types { Bool, String, List, Int, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.object_store {
-  CorpusManifestEntry, CorpusManifestObjectRef, ObjectId, object_id_eq,
+  CorpusManifestEntry, CorpusManifestObjectRef, ObjectId, object_id_eq, empty_store,
 }
 import gunbc.scm.integration { NoSquashIntegration }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, empty_repository }

@@ -38,6 +38,7 @@ pub use crate::std_measure::{
 };
 pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 pub use crate::std_process_termination::ProcessTermination;
 use crate::std_process_termination::ProcessTermination::{
     ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,

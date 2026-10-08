@@ -1,0 +1,78 @@
+module test.claim.css_media_condition_witness_test
+import gunbc.site.document { site_styles, site_styles_rules, site_styles_css }
+import gunbc.design.material { BuildRule, StaticRule, MediaRule, decl, serialize_rules, reduced_motion_block }
+import gunbc.design.theme_transition { unthemed_color_decls, untokened_length_decls, rule_decls }
+import gunbc.design.scale { height_control, scale_var }
+import extdeps.languages.css.media_queries {
+  MediaPointer, MediaMaxWidth, MediaPrefersReducedMotion,
+  PointerFine, PointerNone, ReducedMotionNoPreference,
+  media_condition_wire, css_media_rule_wire, coarse_pointer, reduced_motion,
+}
+import extdeps.languages.css.values { css_px }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties { MinHeight, Padding, Color }
+
+fn occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+fn touch_target_rule() -> BuildRule {
+  MediaRule {
+    condition: coarse_pointer,
+    selector: ClassSelector { name: "media-witness-chip" },
+    decls: [decl(prop: MinHeight, value: scale_var(t: height_control))],
+  }
+}
+
+test fn media_conditions_serialize_to_their_spec_features() -> Bool {
+  media_condition_wire(c: coarse_pointer) == "(pointer: coarse)"
+    && media_condition_wire(c: MediaPointer { accuracy: PointerFine }) == "(pointer: fine)"
+    && media_condition_wire(c: MediaPointer { accuracy: PointerNone }) == "(pointer: none)"
+    && media_condition_wire(c: MediaMaxWidth { max: css_px(n: 600) }) == "(max-width: 600px)"
+    && media_condition_wire(c: reduced_motion) == "(prefers-reduced-motion: reduce)"
+    && media_condition_wire(c: MediaPrefersReducedMotion { preference: ReducedMotionNoPreference }) == "(prefers-reduced-motion: no-preference)"
+    && css_media_rule_wire(condition: coarse_pointer, body: ".a { b: c }") == "@media (pointer: coarse) { .a { b: c } }"
+}
+
+// The rule reaches the stylesheet through the one path every rule takes (site_styles_css), inside
+// its condition, exactly once, and after the unconditioned rule it overrides.
+test fn coarse_pointer_rule_is_emitted_once_inside_its_media_block() -> Bool {
+  let base = StaticRule { selector: ClassSelector { name: "media-witness-chip" }, decls: [decl(prop: MinHeight, value: "var(--space-24)")] }
+  let css = site_styles_css(styles: site_styles(rules: [base, touch_target_rule()]))
+  let block = "@media (pointer: coarse) { .media-witness-chip { min-height: var(--h-control) } }"
+  occurrences(s: css, pattern: block) == 1
+    && occurrences(s: css, pattern: ".media-witness-chip { min-height: var(--h-control) }") == 1
+    && occurrences(s: css, pattern: "@media (pointer: coarse)") == 1
+    && occurrences(s: css, pattern: ".media-witness-chip { min-height: var(--space-24) }") == 1
+    && string_contains(s: css, pattern: join([".media-witness-chip { min-height: var(--space-24) }\n", block], ""))
+}
+
+// Positive control: a tokened declaration inside a media rule is not a census row.
+test fn censuses_pass_a_tokened_media_rule() -> Bool {
+  let rules = site_styles_rules(styles: site_styles(rules: [touch_target_rule()]))
+  count(untokened_length_decls(rules: rules)) == 0
+    && count(unthemed_color_decls(rules: rules)) == 0
+    && any(rule_decls(rule: touch_target_rule()), d => d.value == scale_var(t: height_control))
+}
+
+// RED: a raw pixel and a literal colour INSIDE a media rule are caught by the same censuses that
+// catch them in an unconditioned rule, located on the rule's selector.
+test fn censuses_catch_untokened_values_inside_a_media_rule() -> Bool {
+  let rogue = MediaRule {
+    condition: MediaMaxWidth { max: css_px(n: 600) },
+    selector: ClassSelector { name: "media-witness-rogue" },
+    decls: [decl(prop: Padding, value: "19px"), decl(prop: Color, value: "#0002")],
+  }
+  let rules = site_styles_rules(styles: site_styles(rules: [rogue]))
+  let lengths = untokened_length_decls(rules: rules)
+  string_contains(s: serialize_rules(rules: [rogue]), pattern: "@media (max-width: 600px) { .media-witness-rogue { padding: 19px; color: #0002 } }")
+    && count(lengths) == 1
+    && all(lengths, l => l.selector == ".media-witness-rogue" && l.value == "19px")
+    && count(unthemed_color_decls(rules: rules)) == 1
+}
+
+// A media rule carries declarations only, so it contributes no transition carrier and no ambient
+// still to the reduced-motion collapse: the collapse over a stylesheet of media rules is empty.
+test fn media_rule_contributes_nothing_to_the_reduced_motion_collapse() -> Bool {
+  reduced_motion_block(rules: [touch_target_rule()]) == ""
+}

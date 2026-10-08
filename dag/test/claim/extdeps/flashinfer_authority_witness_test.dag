@@ -2,7 +2,7 @@ module test.claim.extdeps.flashinfer_authority_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.flashinfer.flashinfer {
   FlashInferWheel, FlashInferAcquisition, FlashInferPublishedRelease, FlashInferSourceRevision,
   FlashInferPyPi, FlashInferProjectStable, FlashInferProjectNightly,

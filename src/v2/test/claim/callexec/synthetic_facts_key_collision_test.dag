@@ -9,7 +9,7 @@ import v2.compiler.inferred_tree { InferredFactsEntry }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.node { Node }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list }
 import std.types { List }

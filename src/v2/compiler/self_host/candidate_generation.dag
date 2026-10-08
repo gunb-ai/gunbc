@@ -39,7 +39,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 

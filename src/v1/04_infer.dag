@@ -57,7 +57,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
-  EqualityOnFunctionMember, EqualityMemberUnjudgeable,
+  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOptionalityMismatch,
   TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -3516,6 +3516,24 @@ fn equality_operand_is_presence_literal(n: Node, source_indices: Map<String, New
   leaf == "None" || leaf == "Absent" || leaf == "none"
 }
 
+// T? == T HAS NO SINGLE MEANING, so it refuses (gunbc.recurring_failure_mode
+// optional_compared_with_required_value). No declared coercion route lifts T into T?
+// (DESIGN 4, 2026-09-26: implicit coercion is only the implicit-safe subset of DECLARED
+// routes), and the interpreter answered it by representation: true when the optional was
+// stored bare, false when it was wrapped in Present. An emitter-only lift to `== Some(..)`
+// would have legalized the conversion at the target layer. Optionality is read where the
+// emitter reads it -- the typed operand's resolved node carrying CardOptional -- plus the
+// nominal Optional coproduct, the second representation declared_type_conformance_note
+// names. The presence idiom (`== none` / `== Absent`) is exempt before this arm runs.
+fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      rt.return_cardinality == CardOptional
+        || (qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt)) == "Optional" && (rt.children |> count) == 1)
+    _ => false
+  }
+}
+
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
   if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
@@ -3556,6 +3574,9 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       || (lt.inferred != none && is_compiler_error(inferred: lt.inferred.value))
       || (rt.inferred != none && is_compiler_error(inferred: rt.inferred.value)) {
       []
+    } else if equality_operand_is_optional(n: left_typed, source_indices: source_indices) != equality_operand_is_optional(n: right_typed, source_indices: source_indices) {
+      let side = if equality_operand_is_optional(n: left_typed, source_indices: source_indices) { "left" } else { "right" }
+      [make_error_node(diagnostic: EqualityOptionalityMismatch { optional_side: side, span: span }, module_name: scope.module_name)]
     } else {
       match equality_operand_admission(n: lt, scope: scope, visited: empty_map(), depth: 0) {
         Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]

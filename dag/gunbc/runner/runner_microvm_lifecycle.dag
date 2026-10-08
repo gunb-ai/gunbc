@@ -1,7 +1,7 @@
 module gunbc.runner_microvm_lifecycle
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.fabric.sanitation {
   CellId, SandboxId, CellReadiness, SanitationFact, SanitationReadback, SanitationObservation,

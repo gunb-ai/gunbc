@@ -2,7 +2,7 @@ module v2.extdeps.languages.swift.rows
 
 import std.types { String, List, Bool, Int }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.algebra { list_append, length }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.external_authority { ExternalAuthority }

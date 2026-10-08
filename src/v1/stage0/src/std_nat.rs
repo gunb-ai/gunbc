@@ -5,6 +5,7 @@ use self::NatDivision::*;
 use self::NatSubtraction::*;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{CommutativeMonoid, CommutativeSemiring, Ordering};
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
