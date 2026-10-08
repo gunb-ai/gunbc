@@ -2979,6 +2979,8 @@ pub struct RegenRoundCostOutcome {
 }
 
 pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.txt";
+/// Set on the single re-exec after the seed build replaced the running executable.
+const REGEN_ROUND_COST_REEXEC_ENV: &str = "GUNBC_REGEN_ROUND_COST_REEXEC";
 const REGEN_ROUND_COST_PRODUCER: &str = "claim_executor --regen-round-cost";
 const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
 
@@ -5477,10 +5479,29 @@ pub fn run_regen_round_cost(
     let seed_build = seed_cargo_build(&workspace, "round.seed_build")?;
     let exe_after = current_exe_digest()?;
     if exe_before != exe_after {
+        // ROOT CAUSE: the build's output path IS this process's image path, so a build that
+        // relinks replaces the executable that is running it. The emit below runs in this
+        // process, so it must be the built seed: re-exec the built binary ONCE (marker-guarded)
+        // rather than ask the caller to run twice. The re-exec'd process finds an up-to-date
+        // build, so its own seed_build phase prices no compile.
+        if std::env::var_os(REGEN_ROUND_COST_REEXEC_ENV).is_none() {
+            use std::os::unix::process::CommandExt;
+            let on_disk = current_exe_on_disk()?;
+            let err = Command::new(&on_disk)
+                .args(std::env::args_os().skip(1))
+                .env(REGEN_ROUND_COST_REEXEC_ENV, &exe_after)
+                .exec();
+            return Err(format!(
+                "refusal: {REGEN_ROUND_COST_PRODUCER}: the seed build replaced the running \
+                 executable ({exe_before} -> {exe_after}) and re-exec of {} failed: {err}",
+                on_disk.display()
+            ));
+        }
         return Err(format!(
             "refusal: the seed build replaced the running executable ({exe_before} -> \
-             {exe_after}), so an emit from this process would measure a seed the build did not \
-             produce. Re-run {REGEN_ROUND_COST_PRODUCER} so the emitting seed is the built one."
+             {exe_after}) even after the one deterministic re-exec ({REGEN_ROUND_COST_REEXEC_ENV} \
+             is set), so the build is not idempotent over an unchanged tree and an emit from \
+             this process would measure a seed the build did not produce."
         ));
     }
 
