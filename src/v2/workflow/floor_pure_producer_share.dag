@@ -825,7 +825,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.generic_closure_outcome_construct_probe",
     claims: [
-      SingleClaimFillDebtClaim { claim: "gbo_the_bind_outcome_reconstruct_does_not_refuse_int_field_inhabitance_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gbo_a_generic_variant_int_field_is_accepted_and_decided_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gbo_an_alias_of_the_corpus_int_inhabits_it_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "gbo_a_bool_at_the_int_field_still_refuses_holds", standing: ActiveFillDebt }
     ]
   },
