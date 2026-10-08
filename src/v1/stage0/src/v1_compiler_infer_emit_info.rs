@@ -116,14 +116,6 @@ pub enum TypeSummaryLookup {
     TypeSummaryNotDeclared,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum TypeSummaryQuestion {
-    QuestionDecided { value: bool },
-    QuestionNameAmbiguous { leaf: String },
-    QuestionNotDeclared,
-}
-
 pub fn empty_type_summary_index() -> Rc<TypeSummaryIndex> {
     Rc::new(TypeSummaryIndex {
         by_key: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
@@ -1123,6 +1115,14 @@ pub fn lookup_emit_type_summary(
     type_summary_decided(emit_info.type_summaries.clone(), type_name.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeSummaryQuestion {
+    QuestionDecided { value: bool },
+    QuestionNameAmbiguous { leaf: String },
+    QuestionNotDeclared,
+}
+
 pub fn type_summary_answer(
     index: Rc<TypeSummaryIndex>,
     key: String,
@@ -1153,32 +1153,36 @@ pub fn type_summary_answer(
                         std::option::Option::None => acc.clone(),
                     },
                 );
-            if (answers.clone().len() as i64) == 0 {
+            if ((answers.clone().len() as i64) == 0) {
                 Rc::new(TypeSummaryQuestion::QuestionNotDeclared)
-            } else if {
-                let mut __all = true;
-                for a in answers.iter().cloned() {
-                    if !(a.clone()) {
-                        __all = false;
-                        break;
-                    }
-                }
-                __all
-            } {
-                Rc::new(TypeSummaryQuestion::QuestionDecided { value: true })
-            } else if {
-                let mut __all = true;
-                for a in answers.iter().cloned() {
-                    if !(!a.clone()) {
-                        __all = false;
-                        break;
-                    }
-                }
-                __all
-            } {
-                Rc::new(TypeSummaryQuestion::QuestionDecided { value: false })
             } else {
-                Rc::new(TypeSummaryQuestion::QuestionNameAmbiguous { leaf: leaf.clone() })
+                if {
+                    let mut __all = true;
+                    for a in answers.iter().cloned() {
+                        if !(a.clone()) {
+                            __all = false;
+                            break;
+                        }
+                    }
+                    __all
+                } {
+                    Rc::new(TypeSummaryQuestion::QuestionDecided { value: true })
+                } else {
+                    if {
+                        let mut __all = true;
+                        for a in answers.iter().cloned() {
+                            if !(!a.clone()) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    } {
+                        Rc::new(TypeSummaryQuestion::QuestionDecided { value: false })
+                    } else {
+                        Rc::new(TypeSummaryQuestion::QuestionNameAmbiguous { leaf: leaf.clone() })
+                    }
+                }
             }
         }
     }
@@ -1302,39 +1306,40 @@ pub fn find_variant_parent(
     variant_name: String,
     scope_enums: Rc<Vec<String>>,
 ) -> Option<String> {
-    let ambiguous = {
+    if {
         let mut __found = false;
         for en in scope_enums.iter().cloned() {
-            if matches!(
-                (*variant_belongs_to_enum(
-                    type_summaries.clone(),
-                    variant_name.clone(),
-                    en.clone()
-                ))
-                .clone(),
-                TypeSummaryQuestion::QuestionNameAmbiguous { .. }
-            ) {
+            if match (*variant_belongs_to_enum(
+                type_summaries.clone(),
+                variant_name.clone(),
+                en.clone(),
+            ))
+            .clone()
+            {
+                TypeSummaryQuestion::QuestionNameAmbiguous { leaf: _, .. } => true,
+                _ => false,
+            } {
                 __found = true;
                 break;
             }
         }
         __found
-    };
-    if ambiguous {
+    } {
         std::option::Option::None
     } else {
         Rc::new({
             let mut __result = Vec::new();
             for en in scope_enums.iter().cloned() {
-                if matches!(
-                    (*variant_belongs_to_enum(
-                        type_summaries.clone(),
-                        variant_name.clone(),
-                        en.clone()
-                    ))
-                    .clone(),
-                    TypeSummaryQuestion::QuestionDecided { value: true }
-                ) {
+                if match (*variant_belongs_to_enum(
+                    type_summaries.clone(),
+                    variant_name.clone(),
+                    en.clone(),
+                ))
+                .clone()
+                {
+                    TypeSummaryQuestion::QuestionDecided { value: v, .. } => v.clone(),
+                    _ => false,
+                } {
                     __result.push(en);
                 }
             }
