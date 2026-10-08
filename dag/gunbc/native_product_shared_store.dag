@@ -28,20 +28,22 @@ import gunbc.fabric.fabric_blob_r2 {
 // request controls its own CI code, so whatever it wrote would be untrustworthy to every other run.
 // The merge queue's composed revision is trusted code on the revision that lands, so it is the ONLY
 // writer, and it reads too: a pull request whose native closure equals main's hits the queue's product.
-// The queue binds no per-host L1 (compiler_gate_workflow compiler_gate_native_cache_condition), so
-// nothing a pull request wrote on a host reaches it. The residual is stated, not hidden: an entry is
+// Every run binds a JOB-PRIVATE L1 under RUNNER_TEMP (compiler_gate_workflow
+// compiler_gate_native_cache_condition: pull_request or merge_group), empty at job start, so nothing a
+// pull request wrote on a host reaches the queue. The residual is stated, not hidden: an entry is
 // verified on read only against its own manifest, which whoever wrote it controls, so the trust
 // boundary is "who may write", and it is this function's, not a check.
 //
-// DECLARED FRONTIER (DESIGN 3c), NOT YET CONSUMED BY EXECUTION. The named consumer is the seed's
-// preparation step (cli_run native_lane_runner prepare_emitted_compiler_for_entry), which today
-// reads and writes only the per-host L1 under GUNBC_NATIVE_CACHE_ROOT; that L1 keeps working, and
-// this module is the second tier behind it, never a second store of a different key. TRIGGER, the
-// capability and not an artifact: the cache-blobs read and write tokens are minted and pinned in
-// gunbc.cloudflare.r2_origin fabric_cache_blobs_standing (pinned 2026-10-07) AND the required emit-build
-// job carries a workload identity (an id-token grant and the federation step) so an
-// AccessTokenSource of WorkloadIdentityToken is selectable there. Until both hold, the arms below
-// refuse and the run proceeds on the L1 and a rebuild; nothing here widens to a different store.
+// CONSUMED BY EXECUTION IN THIS CHANGE (DESIGN 3c). The consumer is the seed's preparation step
+// (cli_run native_lane_runner prepare_emitted_compiler_for_entry), which on an L1 miss calls
+// restore_from_shared_store, spawning gunbc.native_product_shared_transfer native_product_restore_wet;
+// the merge queue publishes admitted entries with native_product_save_wet. The L1 stays the first tier
+// and this module the second, never a second store of a different key. The credential capability is
+// wired: the cache-blobs tokens are pinned in gunbc.cloudflare.r2_origin fabric_cache_blobs_standing,
+// the emit-build job carries an id-token grant and the federation steps, and gunbc.native_product_federation
+// models the read and write accounts. RESIDUAL: the accounts exist in GCP only after the operator runs
+// gcp_iam_converge, and no cross-host HIT is measured yet; until then the auth step fails soft, the
+// restore is a counted MISS and the run rebuilds. Nothing here widens to a different store.
 
 type NativeProductRunStanding
   = ForkPullRequestRun
