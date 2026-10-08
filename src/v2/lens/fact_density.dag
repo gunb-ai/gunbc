@@ -11,13 +11,7 @@ import std.constructors { Cardinality }
 import v2.lens.common.construction_justification { ConstructionJustification }
 
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
-  s == ^Int ||
-    s == ^Bool ||
-    s == ^String ||
-    s == ^Char ||
-    s == ^List ||
-    s == ^Map ||
-    s == ^fact_density_kernel_ambient_string ||
+  s == ^fact_density_kernel_ambient_string ||
     s == ^fact_density_kernel_ambient_int ||
     s == ^fact_density_kernel_ambient_bool ||
     s == ^fact_density_kernel_ambient_char ||
@@ -73,7 +67,6 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
   } else {
     match carrier.kind {
       ComputationNode { behavior: _ } => NotATypeCarrier
-      TypeNode { connective: Arrow } => NotATypeCarrier
       TypeNode { connective: c } =>
         connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
     }
@@ -88,18 +81,13 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
 fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_spec_fact(carrier: node) {
     NoFact =>
-      match node.kind {
-        TypeNode { connective: Atom { identity: _ } } =>
-          outcome_rejected(
-            Diagnostic {
-              reason: ^fact_density_hollow_alias_locus,
-              at: node_locus(node: node),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        TypeNode { connective: _ } => outcome_accepted(value: Holds { value: node })
-        ComputationNode { behavior: _ } => outcome_accepted(value: Holds { value: node })
-      }
+      outcome_rejected(
+        Diagnostic {
+          reason: ^fact_density_hollow_alias_locus,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
     NotATypeCarrier => outcome_accepted(value: Holds { value: node })
     KernelAmbientAtom => outcome_accepted(value: Holds { value: node })
     NamedFieldFacts { density: _ } => outcome_accepted(value: Holds { value: node })
