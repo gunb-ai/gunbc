@@ -99,60 +99,35 @@ fn fhb_verdict_of(outcome: NativeCensusModuleOutcome) -> FhbVerdict {
   }
 }
 
-fn fhb_verdict_of_entry(context: NativeTestContext, entry: NativeCensusModule, module_name: String, acc: FhbVerdict) -> FhbVerdict {
-  if entry.module == module_name {
-    fhb_verdict_of(
-      outcome: native_census_module_resolution(
-        context: context,
-        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
-        entry: entry
-      ).outcome
-    )
-  } else {
-    acc
-  }
+fn fhb_entry_verdict(context: NativeTestContext, entry: NativeCensusModule) -> FhbVerdict {
+  fhb_verdict_of(
+    outcome: native_census_module_resolution(
+      context: context,
+      refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+      entry: entry
+    ).outcome
+  )
 }
 
-fn fhb_verdict_in(context: NativeTestContext, module_name: String) -> FhbVerdict {
-  match native_census_modules(ingest: fhb_ingest) {
-    Empty => FhbAbsent
-    Cons { head: a, tail: rest } =>
-      match rest {
-        Empty => fhb_verdict_of_entry(context: context, entry: a, module_name: module_name, acc: FhbAbsent)
-        Cons { head: b, tail: rest2 } =>
-          match rest2 {
-            Empty =>
-              fhb_verdict_of_entry(
-                context: context,
-                entry: b,
-                module_name: module_name,
-                acc: fhb_verdict_of_entry(context: context, entry: a, module_name: module_name, acc: FhbAbsent)
-              )
-            Cons { head: c, tail: _ } =>
-              fhb_verdict_of_entry(
-                context: context,
-                entry: c,
-                module_name: module_name,
-                acc: fhb_verdict_of_entry(
-                  context: context,
-                  entry: b,
-                  module_name: module_name,
-                  acc: fhb_verdict_of_entry(context: context, entry: a, module_name: module_name, acc: FhbAbsent)
-                )
-              )
-          }
-      }
-  }
+fn fhb_if_name(entry: NativeCensusModule, verdict: FhbVerdict, module_name: String, acc: FhbVerdict) -> FhbVerdict {
+  if entry.module == module_name { verdict } else { acc }
 }
 
 fn fhb_outcomes() -> FhbOutcomes {
   match native_test_context_from_ingest(ingest: fhb_ingest) {
     Rejected { diagnostics: _ } => FhbContextRefused
     Accepted { value: context, diagnostics: _ } =>
-      FhbOutcomesDecided {
-        fold: fhb_verdict_in(context: context, module_name: "v2.test.fhb_fold"),
-        lambda: fhb_verdict_in(context: context, module_name: "v2.test.fhb_lambda"),
-        undeclared: fhb_verdict_in(context: context, module_name: "v2.test.fhb_undeclared")
+      match native_census_modules(ingest: fhb_ingest) {
+        Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: _ } } } =>
+          let va = fhb_entry_verdict(context: context, entry: a)
+          let vb = fhb_entry_verdict(context: context, entry: b)
+          let vc = fhb_entry_verdict(context: context, entry: c)
+          FhbOutcomesDecided {
+            fold: fhb_if_name(entry: c, verdict: vc, module_name: "v2.test.fhb_fold", acc: fhb_if_name(entry: b, verdict: vb, module_name: "v2.test.fhb_fold", acc: fhb_if_name(entry: a, verdict: va, module_name: "v2.test.fhb_fold", acc: FhbAbsent))),
+            lambda: fhb_if_name(entry: c, verdict: vc, module_name: "v2.test.fhb_lambda", acc: fhb_if_name(entry: b, verdict: vb, module_name: "v2.test.fhb_lambda", acc: fhb_if_name(entry: a, verdict: va, module_name: "v2.test.fhb_lambda", acc: FhbAbsent))),
+            undeclared: fhb_if_name(entry: c, verdict: vc, module_name: "v2.test.fhb_undeclared", acc: fhb_if_name(entry: b, verdict: vb, module_name: "v2.test.fhb_undeclared", acc: fhb_if_name(entry: a, verdict: va, module_name: "v2.test.fhb_undeclared", acc: FhbAbsent)))
+          }
+        _ => FhbOutcomesDecided { fold: FhbAbsent, lambda: FhbAbsent, undeclared: FhbAbsent }
       }
   }
 }
@@ -164,28 +139,45 @@ fn fhb_is_resolved(v: FhbVerdict) -> Bool {
   }
 }
 
-test fn a_fold_handler_item_binder_resolves() -> Bool {
+fn fhb_undeclared_is_sole_unbound_at_its_atom(v: FhbVerdict) -> Bool {
+  match v {
+    FhbRefused { reason: r, at_atom: Present { value: id }, sole_chain: sole } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == ^fhb_undeclared_item) && sole
+    _ => false
+  }
+}
+
+// ONE INGEST, THREE CONJUNCTS. Splitting these into three `test fn`s each calling fhb_outcomes
+// re-paid native_test_context_from_ingest in full (review 77993). The floor discovers test fns;
+// local `--function` of the three names below still works without a second ingest in CI.
+test fn fold_handler_binders_resolve_on_native_ingest() -> Bool {
+  match fhb_outcomes() {
+    FhbOutcomesDecided { fold: fold_v, lambda: lambda_v, undeclared: undeclared_v } =>
+      fhb_is_resolved(v: fold_v)
+        && fhb_is_resolved(v: lambda_v)
+        && fhb_undeclared_is_sole_unbound_at_its_atom(v: undeclared_v)
+    FhbContextRefused => false
+  }
+}
+
+fn a_fold_handler_item_binder_resolves() -> Bool {
   match fhb_outcomes() {
     FhbOutcomesDecided { fold: v, lambda: _, undeclared: _ } => fhb_is_resolved(v: v)
     FhbContextRefused => false
   }
 }
 
-test fn a_non_fold_lambda_argument_still_resolves() -> Bool {
+fn a_non_fold_lambda_argument_still_resolves() -> Bool {
   match fhb_outcomes() {
     FhbOutcomesDecided { fold: _, lambda: v, undeclared: _ } => fhb_is_resolved(v: v)
     FhbContextRefused => false
   }
 }
 
-test fn an_undeclared_name_in_a_fold_handler_is_the_sole_refusal_at_its_atom() -> Bool {
+fn an_undeclared_name_in_a_fold_handler_is_the_sole_refusal_at_its_atom() -> Bool {
   match fhb_outcomes() {
     FhbOutcomesDecided { fold: _, lambda: _, undeclared: v } =>
-      match v {
-        FhbRefused { reason: r, at_atom: Present { value: id }, sole_chain: sole } =>
-          (r == ^resolve_reason_unbound_symbol) && (id == ^fhb_undeclared_item) && sole
-        _ => false
-      }
+      fhb_undeclared_is_sole_unbound_at_its_atom(v: v)
     FhbContextRefused => false
   }
 }
