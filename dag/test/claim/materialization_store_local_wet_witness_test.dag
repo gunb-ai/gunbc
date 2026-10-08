@@ -39,7 +39,7 @@ import extdeps.realization.materialization_store_local {
   local_store_record_recency, local_store_is_object_name, local_store_is_store_file_name, local_store_object_bytes, local_store_family_budget,
   LocalStoreFamilyBudget, local_store_budget_sum,
   LocalStoreRecencyHoldRefused, LocalStoreRecencyReceipt,
-  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under, LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
+  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under, local_store_held_session, LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
   local_store_hold_key, local_store_hold_owner_prefix,
   LocalStoreHoldAcquisition, LocalStoreHoldAcquired, LocalStoreHoldRefused, LocalStoreHoldRefusal, LocalStoreFamilyBusy,
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
@@ -47,9 +47,6 @@ import extdeps.realization.materialization_store_local {
   LocalStoreCatalogMismatch, LocalStoreCatalogInadmissible, LocalStoreSweepIncomplete, LocalStoreUnavailableCause,
   local_store_index_window, local_store_digits_int,
   LocalStoreRecordDeleteAttempt, LocalStoreRecordGone, LocalStoreRecordFileRefused, LocalStoreRecordPartsRefused, LocalStoreRecordPartsUnlisted, LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
-}
-import gunbc.typecheck_module_store {
-  typecheck_module_store_session,
 }
 import gunbc.process_hold_identity { self_process_identity, SelfIdentified, SelfUnidentified, process_hold_text }
 import gunbc.build_cache_instance { ProcessIdentity }
@@ -1450,7 +1447,7 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Absent => false
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: session_root_path)
-      match typecheck_module_store_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
+      match local_store_held_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
         let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit_under(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
         let hits = [1, 2, 3, 4, 5, 6] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
         writes |> all(c => session_commit_ok(c: c)) && hits |> all(x => x)

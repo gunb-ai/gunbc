@@ -1273,8 +1273,13 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 
 // A HELD SESSION: acquire the family once, run many lookups and commits under LocalStoreFamilyHeld,
 // release once. Distinct from local_store_commit, which still brackets every write; this operation
-// does not change that signature. Sealed to gunbc.typecheck_module_store (and the inhabitance
-// witness that proves N commits acquire once).
+// does not change that signature.
+// Consumed now by test.claim.materialization_store_local_wet_witness
+// n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution (inhabitance).
+// Named later consumer: v2.compiler.compile, when its typecheck writes leave per-commit
+// local_store_commit (the host typed_module_cache still does) and take one session around the
+// family's writes; that change adds an admit_callers row here. Until then this is not a second
+// name for local_store_with_family_of -- it is the sealed session operation.
 //
 // DEADLINE AND RENEWAL follow std.durable_exclusive_hold, not a clock. That protocol recovers a
 // hold only when its holder is OBSERVED dead -- there is no timestamp, duration or silent expiry.
@@ -1284,7 +1289,7 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 // whose process has died is recovered by the next writer's liveness observation, never by age.
 fn local_store_held_session<T>(capability: LocalStoreCapability, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
   admit_callers: [
-    decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "typecheck_module_store_session"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
   ]
 {
   local_store_with_family_of(binding: capability.binding, family: family, run: run)
