@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.required_floor_strict_prep_sits_on_memory_high
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data required_floor_strict_prep_sits_on_memory_high: RecurringFailureMode = RecurringFailureMode {
+  identity: "required_floor_strict_prep_sits_on_memory_high" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the required floor's Strict-prep of the gate closure already sits on the CI cgroup memory.high watermark (25 GiB) at prepared-subject-warm, on ordinary merge_group runs that do not plan the MegaRAC forged-probe census. HARM: a changed-witness seed that adds even a small extra Strict module (or extra high-event pressure while already throttled) tips the lane into a 90-minute cancel. The class is the floor's resident set at the edge, not 'this one 13 KiB module costs gigabytes'.",
+
+    "RECOGNITION RULE. Read the same two seams on a green merge_group floor and on a control that only plans an extra witness: prepare-closure-resolve and prepared-subject-warm. If both already charge ~25 GiB and print runner-local memory.high events at the warm seam, an extra planned module is a tipping input, not a gigabyte-scale typed graph of its own. Raising memory.high, sharding, or excluding the witness is the absorbing fallback.",
+
+    "DISTINGUISHING FACT: fixture_compile_retained_on_the_process_shared_index is a different class (census-probe both-closure rows on the process-shared MultiEntryIndex). This class is Strict-prep of the prepared subject before any census probe runs. The forged-probe witness file is 13441 bytes; its authored imports are four production modules; unit control forged_probe_witness_module_both_closure_excludes_string_literal_imports refuses MegaRAC paths named only inside forged_probe_source.",
+
+    "MEASURED MARGIN (same phases). Green merge_group floor run 37744410173 job 113215308533 (not planning those seven claims): prepare-closure-resolve 17.3 to 21.7 GiB with high=0; prepared-subject-warm current=26840956928 (~25.00 GiB) high=26 then discovery high=93; floor wall 08:20-09:07 (~47 min) SUCCESS. Throwaway control #13576 run 37743678634 (plans the seven claims): prepare-closure-resolve 17.5 to 21.9 GiB with high=0; prepared-subject-warm current=26837438464 (~25.00 GiB) high=51 then discovery high=118; floor wall ~90 min CANCEL. Delta at the watermark is ~25 extra high events, not gigabytes of unique RSS and not neat-pike's 3.45M high events.",
+
+    "STRUCTURAL PREDICTION (DESIGN section 6b): deleting the changed_module_seeds Strict-prep of this witness, or not retaining its typed module on prepared.graph into discovery, cannot recover tens of GiB because those tens are already the gate closure. A contradicting instrument is a with/without floor pair whose prepare-closure-resolve peak differs by gigabytes. The pair above does not.",
+
+    "RUNG FOUND AT: silent wrongness on a planned-witness floor (90-minute cancel). RUNG NOW: observed, not yet mechanically preventable as a wall on the floor's own resident set. CEILING: structurally guaranteed once Strict-prep cannot retain a typed graph whose working set reaches memory.high, or the prepared subject's ownership drops before discovery. NEXT-RUNG TRIGGER: a floor control that refuses when prepared-subject-warm current sits on memory.high on a green merge_group (the margin is already zero), independent of any one witness.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Observed by gunbc.cli_run.required_floor_runner prepare-closure-resolve / prepared-subject-warm. GREEN/RED for the sibling fixture-index class stay enrolled separately.",
+  ],
+
+  evidence: [],
+}

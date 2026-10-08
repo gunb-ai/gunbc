@@ -4005,10 +4005,31 @@ mod fixture_closure_union_tests {
             .map(|s| s.path.replace('\\', "/"))
             .filter(|p| p.contains("megarac") && p != rel)
             .collect();
+        let closure_bytes: usize = closed.iter().map(|s| s.content.len()).sum();
+        let self_bytes = source.content.len();
+        eprintln!(
+            "[forged-probe-witness-module] self_bytes={self_bytes} closure_len={} \
+             closure_bytes={closure_bytes}",
+            closed.len()
+        );
         assert!(
             megarac.is_empty(),
             "planning the witness must not both-close MegaRAC production named only inside \
              forged_probe_source; pulled {megarac:?} (closure_len={})",
+            closed.len()
+        );
+        // THE MODULE'S OWN COST: a 13 KiB source cannot account for gigabytes unless its
+        // BOTH-CLOSURE (authored imports, not the string) is itself a second corpus. If this
+        // bound fails, the increment is that closure, not forged_probe_source's text.
+        assert!(
+            self_bytes < 20_000,
+            "witness file itself is the typed-graph leaf; got {self_bytes} bytes"
+        );
+        assert!(
+            closed.len() < 400 && closure_bytes < 8_000_000,
+            "witness-module both-closure is too large to be 'one small seed' \
+             (len={} bytes={closure_bytes}); the Strict-prep increment is that closure, \
+             not the 6 KiB forged_probe_source literal",
             closed.len()
         );
     }
