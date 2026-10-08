@@ -128,6 +128,7 @@ import v1.compiler.infer_env {
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
+  ledger_peer_import_binding_forks,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates, bare_name_miss_diagnostic,
@@ -14110,12 +14111,20 @@ fn union_parent_type_env_caches(
       Absent => []
     }
   )
+  let parent_envs = flat_map(resolved_imports, imp =>
+    match map_get(parent_index, imp.module_path) {
+      Present { value: parent } => [parent.interface.env]
+      Absent => []
+    }
+  )
+  let conflicts = ledger_peer_import_binding_forks(envs: parent_envs, conflicts: [])
   match parent_caches |> first {
-    Absent => GuardedTypeEnvCacheMerge { cache: empty_type_env_cache(), conflicts: [] }
+    Absent => GuardedTypeEnvCacheMerge { cache: empty_type_env_cache(), conflicts: conflicts }
     Present { value: head } =>
-      fold(parent_caches |> skip(1), init: GuardedTypeEnvCacheMerge { cache: head.cache, conflicts: [] }, f: (acc, row) =>
+      let merged = fold(parent_caches |> skip(1), init: GuardedTypeEnvCacheMerge { cache: head.cache, conflicts: [] }, f: (acc, row) =>
         merge_type_env_cache_guarded(base: acc.cache, overlay: row.cache, import_path: row.import_path, conflicts: acc.conflicts)
       )
+      GuardedTypeEnvCacheMerge { cache: merged.cache, conflicts: conflicts }
   }
 }
 

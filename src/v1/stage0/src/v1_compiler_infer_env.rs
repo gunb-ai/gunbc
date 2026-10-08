@@ -1006,29 +1006,48 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
     })
 }
 
+struct ChainNameWalk {
+    acc: Rc<HashMap<String, bool>>,
+    seen: Rc<HashMap<String, bool>>,
+}
+
+struct ChainBindingWalk {
+    binding: Option<Rc<TypeBinding>>,
+    seen: Rc<HashMap<String, bool>>,
+}
+
+struct PeerImportForkLedger {
+    first: Rc<HashMap<String, Rc<TypeBinding>>>,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
 pub fn collect_chain_bare_names(
     env: Rc<TypeEnv>,
     acc: Rc<HashMap<String, bool>>,
 ) -> Rc<HashMap<String, bool>> {
-    collect_chain_bare_names_seen(env, acc, v1_rt::rc_empty_map())
+    collect_chain_bare_names_seen(env, acc, v1_rt::rc_empty_map()).acc
 }
 
 fn collect_chain_bare_names_seen(
     env: Rc<TypeEnv>,
     acc: Rc<HashMap<String, bool>>,
     seen: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
+) -> ChainNameWalk {
     match v1_rt::map_get(&seen, env.module_path.clone()) {
-        Some(_) => acc,
+        Some(_) => ChainNameWalk { acc, seen },
         std::option::Option::None => {
             let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
             let with_local = Rc::new(v1_rt::map_keys(&*env.str_bindings))
                 .iter()
                 .cloned()
                 .fold(acc, |a, n| v1_rt::rc_map_insert(a, n.clone(), true));
-            env.parents.iter().cloned().fold(with_local, |a, p| {
-                collect_chain_bare_names_seen(p, a, seen.clone())
-            })
+            env.parents.iter().cloned().fold(
+                ChainNameWalk {
+                    acc: with_local,
+                    seen,
+                },
+                |st, p| collect_chain_bare_names_seen(p, st.acc, st.seen),
+            )
         }
     }
 }
@@ -1055,46 +1074,128 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map())
+    lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map()).binding
 }
 
 fn lookup_binding_on_chain_seen(
     env: Rc<TypeEnv>,
     name: String,
     seen: Rc<HashMap<String, bool>>,
-) -> Option<Rc<TypeBinding>> {
+) -> ChainBindingWalk {
     match v1_rt::map_get(&seen, env.module_path.clone()) {
-        Some(_) => std::option::Option::None,
+        Some(_) => ChainBindingWalk {
+            binding: std::option::Option::None,
+            seen,
+        },
         std::option::Option::None => {
             let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
             match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
-                Some(binding) => Some(binding.clone()),
+                Some(binding) => ChainBindingWalk {
+                    binding: Some(binding.clone()),
+                    seen,
+                },
                 std::option::Option::None => {
                     if env.ancestry_str_bindings.is_empty() {
                         env.parents.iter().cloned().fold(
-                            std::option::Option::None,
-                            |acc, parent| {
-                                match lookup_binding_on_chain_seen(
-                                    parent,
-                                    name.clone(),
-                                    seen.clone(),
-                                ) {
-                                    Some(binding) => Some(binding),
-                                    std::option::Option::None => acc,
+                            ChainBindingWalk {
+                                binding: std::option::Option::None,
+                                seen,
+                            },
+                            |st, parent| {
+                                let nxt =
+                                    lookup_binding_on_chain_seen(parent, name.clone(), st.seen);
+                                match nxt.binding {
+                                    Some(binding) => ChainBindingWalk {
+                                        binding: Some(binding),
+                                        seen: nxt.seen,
+                                    },
+                                    std::option::Option::None => ChainBindingWalk {
+                                        binding: st.binding,
+                                        seen: nxt.seen,
+                                    },
                                 }
                             },
                         )
                     } else {
-                        match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone())
-                        {
-                            Some(binding) => Some(binding.clone()),
-                            std::option::Option::None => std::option::Option::None,
+                        match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
+                            Some(binding) => ChainBindingWalk {
+                                binding: Some(binding.clone()),
+                                seen,
+                            },
+                            std::option::Option::None => ChainBindingWalk {
+                                binding: std::option::Option::None,
+                                seen,
+                            },
                         }
                     }
                 }
             }
         }
     }
+}
+
+pub fn ledger_peer_import_binding_forks(
+    envs: Rc<Vec<Rc<TypeEnv>>>,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<Vec<Rc<TypeEnvCacheMergeConflict>>> {
+    envs.iter()
+        .cloned()
+        .fold(
+            PeerImportForkLedger {
+                first: v1_rt::rc_empty_map(),
+                conflicts,
+            },
+            |st, env| {
+                Rc::new(v1_rt::map_keys(&*collect_chain_bare_names(
+                    env.clone(),
+                    v1_rt::rc_empty_map(),
+                )))
+                .iter()
+                .cloned()
+                .fold(st, |st2, name| {
+                    match lookup_binding_on_chain(env.clone(), name.clone()) {
+                        std::option::Option::None => st2,
+                        Some(incoming) => match v1_rt::map_get(&st2.first, name.clone()) {
+                            std::option::Option::None => PeerImportForkLedger {
+                                first: v1_rt::rc_map_insert(
+                                    st2.first,
+                                    name.clone(),
+                                    incoming.clone(),
+                                ),
+                                conflicts: st2.conflicts,
+                            },
+                            Some(existing) => {
+                                if binding_same_authority(existing.clone(), incoming.clone()) {
+                                    st2
+                                } else {
+                                    let existing_file = existing.resolved.span.file.clone();
+                                    let incoming_file = incoming.resolved.span.file.clone();
+                                    let mut next = (*st2.conflicts).clone();
+                                    next.push(Rc::new(TypeEnvCacheMergeConflict {
+                                        name: name.clone(),
+                                        import_path: env.module_path.clone(),
+                                        existing_site: existing_file.clone(),
+                                        incoming_site: incoming_file.clone(),
+                                        span: incoming.resolved.span.clone(),
+                                        same_tree: source_tree_of(existing_file)
+                                            == source_tree_of(incoming_file),
+                                    }));
+                                    PeerImportForkLedger {
+                                        first: v1_rt::rc_map_insert(
+                                            st2.first,
+                                            name.clone(),
+                                            incoming.clone(),
+                                        ),
+                                        conflicts: Rc::new(next),
+                                    }
+                                }
+                            }
+                        },
+                    }
+                })
+            },
+        )
+        .conflicts
 }
 
 pub fn ancestry_chain_mismatch_name(flat: Rc<TypeEnv>) -> Option<String> {

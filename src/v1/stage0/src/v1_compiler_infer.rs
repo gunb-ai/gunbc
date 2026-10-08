@@ -134,16 +134,17 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    census_declaration_type_env, collect_chain_bare_names, declaration_node_of_ref, declaration_provenance_of_ref,
-    declaration_ref_of_declaration_node, declaration_ref_of_type_node,
-    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
-    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
-    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
-    lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
-    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    census_declaration_type_env, collect_chain_bare_names, declaration_node_of_ref,
+    declaration_provenance_of_ref, declaration_ref_of_declaration_node,
+    declaration_ref_of_type_node, declaration_substitution_basis, effective_visible_binding,
+    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
+    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
+    host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
+    is_recursive_type, is_recursive_type_by_name, ledger_peer_import_binding_forks,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
+    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
+    merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
+    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
     symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
@@ -24543,35 +24544,54 @@ pub fn union_parent_type_env_caches(
             }
             __result
         });
+        let parent_envs = Rc::new({
+            let mut __result = Vec::new();
+            for imp in resolved_imports.iter().cloned() {
+                if let Some(parent) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    __result.push(parent.interface.env.clone());
+                }
+            }
+            __result
+        });
+        let conflicts = crate::v1_compiler_infer_env::ledger_peer_import_binding_forks(
+            parent_envs,
+            Rc::new(vec![]),
+        );
         match parent_caches.clone().first().cloned() {
             std::option::Option::None => Rc::new(GuardedTypeEnvCacheMerge {
                 cache: crate::v1_compiler_infer_env::empty_type_env_cache(),
-                conflicts: Rc::new(vec![]),
+                conflicts,
             }),
-            Some(head) => Rc::new(
-                parent_caches
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            .fold(
+            Some(head) => {
+                let merged = Rc::new(
+                    parent_caches
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                .fold(
+                    Rc::new(GuardedTypeEnvCacheMerge {
+                        cache: head.cache.clone(),
+                        conflicts: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
+                        crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
+                            acc.cache.clone(),
+                            row.cache.clone(),
+                            row.import_path.clone(),
+                            acc.conflicts.clone(),
+                        )
+                    },
+                );
                 Rc::new(GuardedTypeEnvCacheMerge {
-                    cache: head.cache.clone(),
-                    conflicts: Rc::new(vec![]),
-                }),
-                |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
-                    crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
-                        acc.cache.clone(),
-                        row.cache.clone(),
-                        row.import_path.clone(),
-                        acc.conflicts.clone(),
-                    )
-                },
-            ),
+                    cache: merged.cache.clone(),
+                    conflicts,
+                })
+            }
         }
     }
 }
@@ -27604,7 +27624,13 @@ pub fn build_type_env(
                                 acc.clone(),
                             );
                             Rc::new(v1_rt::map_keys(
-                                &*parent_mod.interface.clone().env.clone().str_bindings.clone(),
+                                &*parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .str_bindings
+                                    .clone(),
                             ))
                             .iter()
                             .cloned()
@@ -27649,10 +27675,12 @@ pub fn build_type_env(
                 }
             },
         );
-        let source_visible_names = scope_parents.iter().cloned().fold(
-            source_visible_names.clone(),
-            |acc, p| crate::v1_compiler_infer_env::collect_chain_bare_names(p, acc),
-        );
+        let source_visible_names = scope_parents
+            .iter()
+            .cloned()
+            .fold(source_visible_names.clone(), |acc, p| {
+                crate::v1_compiler_infer_env::collect_chain_bare_names(p, acc)
+            });
         let authored_import_names = module.resolved_imports.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {

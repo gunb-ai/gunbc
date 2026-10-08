@@ -623,17 +623,34 @@ fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCac
   }
 }
 
-fn collect_chain_bare_names(env: TypeEnv, acc: Map<String, Bool>) -> Map<String, Bool> {
-  collect_chain_bare_names_seen(env: env, acc: acc, seen: empty_map())
+type ChainNameWalk {
+  acc: Map<String, Bool>
+  seen: Map<String, Bool>
 }
 
-fn collect_chain_bare_names_seen(env: TypeEnv, acc: Map<String, Bool>, seen: Map<String, Bool>) -> Map<String, Bool> {
+type ChainBindingWalk {
+  binding: TypeBinding?
+  seen: Map<String, Bool>
+}
+
+type PeerImportForkLedger {
+  first: Map<String, TypeBinding>
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+fn collect_chain_bare_names(env: TypeEnv, acc: Map<String, Bool>) -> Map<String, Bool> {
+  collect_chain_bare_names_seen(env: env, acc: acc, seen: empty_map()).acc
+}
+
+fn collect_chain_bare_names_seen(env: TypeEnv, acc: Map<String, Bool>, seen: Map<String, Bool>) -> ChainNameWalk {
   match map_get(seen, env.module_path) {
-    Present { value: _ } => acc
+    Present { value: _ } => ChainNameWalk { acc: acc, seen: seen }
     Absent =>
       let seen = map_insert(seen, env.module_path, true)
       let with_local = fold(map_keys(env.str_bindings), init: acc, f: (a, n) => map_insert(a, n, true))
-      fold(env.parents, init: with_local, f: (a, p) => collect_chain_bare_names_seen(env: p, acc: a, seen: seen))
+      fold(env.parents, init: ChainNameWalk { acc: with_local, seen: seen }, f: (st, p) =>
+        collect_chain_bare_names_seen(env: p, acc: st.acc, seen: st.seen)
+      )
   }
 }
 
@@ -660,32 +677,66 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 // (scope_parents = imports ++ [kernel]). Serves the v2 self-host floor by not retaining a
 // per-module flatten of shared ancestry.
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
-  lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map())
+  lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map()).binding
 }
 
-fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bool>) -> TypeBinding? {
+fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bool>) -> ChainBindingWalk {
   match map_get(seen, env.module_path) {
-    Present { value: _ } => none
+    Present { value: _ } => ChainBindingWalk { binding: none, seen: seen }
     Absent =>
       let seen = map_insert(seen, env.module_path, true)
       match map_get(env.str_bindings, name) {
-        Present { value: binding } => Present { value: binding }
+        Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
         Absent =>
           if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
-            fold(env.parents, init: none, f: (acc, parent) =>
-              match lookup_binding_on_chain_seen(env: parent, name: name, seen: seen) {
-                Present { value: binding } => Present { value: binding }
-                Absent => acc
+            fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen }, f: (st, parent) =>
+              let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: st.seen)
+              match nxt.binding {
+                Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: nxt.seen }
+                Absent => ChainBindingWalk { binding: st.binding, seen: nxt.seen }
               }
             )
           } else {
             match map_get(env.ancestry_str_bindings, name) {
-              Present { value: binding } => Present { value: binding }
-              Absent => none
+              Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
+              Absent => ChainBindingWalk { binding: none, seen: seen }
             }
           }
       }
   }
+}
+
+// Peer-import binding forks, ledgered from the parent chain (not a retained str_bindings flatten).
+// Overlay-wins: later import replaces first; same-authority names are skipped. The novelty gate
+// still consumes these rows.
+fn ledger_peer_import_binding_forks(envs: List<TypeEnv>, conflicts: List<TypeEnvCacheMergeConflict>) -> List<TypeEnvCacheMergeConflict> {
+  fold(envs, init: PeerImportForkLedger { first: empty_map(), conflicts: conflicts }, f: (st, env) =>
+    fold(collect_chain_bare_names(env: env, acc: empty_map()) |> map_keys, init: st, f: (st2, name) =>
+      match lookup_binding_on_chain(env: env, name: name) {
+        Absent => st2
+        Present { value: incoming } =>
+          match map_get(st2.first, name) {
+            Absent => PeerImportForkLedger { first: map_insert(st2.first, name, incoming), conflicts: st2.conflicts }
+            Present { value: existing } =>
+              if binding_same_authority(a: existing, b: incoming) {
+                st2
+              } else {
+                PeerImportForkLedger {
+                  first: map_insert(st2.first, name, incoming),
+                  conflicts: concat(st2.conflicts, [TypeEnvCacheMergeConflict {
+                    name: name,
+                    import_path: env.module_path,
+                    existing_site: existing.resolved.span.file,
+                    incoming_site: incoming.resolved.span.file,
+                    span: incoming.resolved.span,
+                    same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file)
+                  }])
+                }
+              }
+          }
+      }
+    )
+  ).conflicts
 }
 
 fn ancestry_chain_mismatch_name(flat: TypeEnv) -> String? {
