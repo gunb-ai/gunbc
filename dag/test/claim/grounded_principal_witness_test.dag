@@ -57,8 +57,14 @@ test fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   let principal = fleet_posix_ci_runner_principal()
   let grounded = grounded_principal_privileged_commands(p: principal)
   let composed = srv1_live_deploy_privileged_commands()
-  length(grounded) == list_length(items: ci_runner_sudo_binaries)
-    && length(composed) == list_length(items: ci_runner_sudo_binaries)
+  all(ci_runner_sudo_binaries, b => any(xs: grounded, predicate: fn(c) {
+    c.grant.command_path == ci_runner_sudo_binary_path(b: b)
+  }))
+    && all(grounded, c => any(xs: ci_runner_sudo_binaries, predicate: fn(b) {
+      c.grant.command_path == ci_runner_sudo_binary_path(b: b)
+    }))
+    && length(grounded) == list_length(items: ci_runner_sudo_binaries)
+    && length(composed) == length(grounded)
     && composed == grounded
     && match grounded.first() {
       Present { value: c } => c.grant.command_path == deploy_access_apt_get_binary_path
