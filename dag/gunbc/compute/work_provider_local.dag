@@ -48,7 +48,6 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
-  dashboard_instance_compute_root,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract {
@@ -65,7 +64,7 @@ import gunbc.compute.host_capacity {
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_store, compute_release_on,
+  compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
 }
 import std.measure { kibibyte }
 import gunbc.compute.work_request {
@@ -112,7 +111,7 @@ type ComputeLayout {
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
-  let root = dashboard_instance_compute_root(instance: instance) as String
+  let root = compute_root(instance: instance) as String
   let work_dir = join([root, "/work/", identity_hex], "")
   ComputeLayout {
     root: root,
@@ -990,7 +989,7 @@ fn compute_list(path: String) -> ComputeListing {
 }
 
 fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
-  let root = dashboard_instance_compute_root(instance: instance) as String
+  let root = compute_root(instance: instance) as String
   grant_exceeded_count_decide(
     root: compute_list(path: root),
     parent: compute_list(path: compute_grant_exceeded_parent(root: root)),
@@ -1946,7 +1945,7 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
 // holding a reference, not an identity. Deriving the root through a layout with an empty identity
 // would work and would also be a second spelling of the same path (DESIGN 3).
 fn compute_attempts_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  join([dashboard_instance_compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
+  join([compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
 }
 
 // THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT

@@ -1,0 +1,429 @@
+module gunbc.owned_directory
+
+import std.types { String, NonEmptyStr, Bool, List, Int, FilePath }
+import std.algebra { trim }
+import std.optional { Optional, Present, Absent }
+import v2.std.collection { list_at_optional }
+import extdeps.access.posix { FileMode, file_mode_octal, file_mode_of_octal_text }
+import extdeps.posix.identity { PosixOwnerNames, posix_owner_names_text }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_argv }
+import gunbc.managed_directory {
+  ManagedDirectory,
+  DeclaredDirectoryMode,
+  declared_directory_mode,
+  managed_directory_permissions,
+  managed_directory_admit,
+  ManagedDirectoryAdmitted,
+  ManagedDirectoryRefused,
+}
+import gunbc.ensure {
+  EnsurePolicy,
+  EnsureObservation,
+  EnsureObserved,
+  EnsureAbsent,
+  EnsureInaccessible,
+  EnsurePlan,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+  ensure_decide,
+  ensure_reconcile,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.realization_reconcile {
+  Application,
+  Applied,
+  NotApplied,
+  ReconciledEffect,
+  ConvergedEffect,
+  ReconciledOutcome,
+  EffectConverged,
+  EffectNotConverged,
+  classify_reconciled,
+}
+
+// THE OwnedDirectory TARGET OF D14 (docs/plans/ensure-closure-design.md section 3.1), built corpus-only
+// for the dashboard instance's directories ahead of D14 step 4. A target is a desired environmental
+// fact at a placement: a directory at a path, owned by a principal, at a mode. The host is the
+// placement of whatever realizes the target -- the dashboard apply's target exec or the live_deploy
+// transaction's transport -- so it is not repeated here.
+//
+// NOTHING HERE IS NEW VOCABULARY FOR OWNERSHIP OR MODE. A target's permissions are either one of the
+// closed gunbc.managed_directory DeclaredDirectoryMode arms beside a named owner, or a
+// gunbc.managed_directory ManagedDirectory whose owner, group and mode are derived from its declared
+// dependents. The owner names are extdeps.posix.identity PosixOwnerNames. What this module adds is the
+// ensure lifecycle over them, through gunbc.ensure, and the one install plan both routes realize.
+//
+// THE DISCOVERY IS NOT AUTOMATIC YET. Who demands a directory is still a composition the consumers'
+// demand functions are listed into (gunbc.roadmap.dashboard_instance_directories); D14 step 4 is what
+// derives the demand from the code that writes there.
+type OwnedDirectoryTarget
+  = OwnedDirectoryDeclared {
+      member: NonEmptyStr,
+      path: FilePath,
+      owner: PosixOwnerNames,
+      mode: DeclaredDirectoryMode,
+    }
+  | OwnedDirectoryManaged { directory: ManagedDirectory }
+
+fn owned_directory_path(t: OwnedDirectoryTarget) -> FilePath {
+  match t {
+    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _ } => path
+    OwnedDirectoryManaged { directory } => directory.path
+  }
+}
+
+fn owned_directory_member(t: OwnedDirectoryTarget) -> NonEmptyStr {
+  match t {
+    OwnedDirectoryDeclared { member, path: _, owner: _, mode: _ } => member
+    OwnedDirectoryManaged { directory } => directory.member
+  }
+}
+
+// `-g` is the group principal's USER NAME for a managed directory, the coincidence
+// gunbc.live_deploy.emit install_d_managed_command records; a declared target names its group.
+fn owned_directory_owner(t: OwnedDirectoryTarget) -> PosixOwnerNames {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _ } => owner
+    OwnedDirectoryManaged { directory } =>
+      PosixOwnerNames { user: directory.owner.name, group: directory.group_principal.name }
+  }
+}
+
+type OwnedDirectoryMode
+  = OwnedDirectoryModeResolved { mode: FileMode }
+  | OwnedDirectoryModeRefused { reason: NonEmptyStr }
+
+// A MANAGED DIRECTORY WHOSE WRITER THE OWNER AND GROUP DO NOT COVER HAS NO MODE, and the refusal is
+// carried to the decision rather than lowered to a wider mode (gunbc.managed_directory
+// managed_directory_admit).
+fn owned_directory_mode(t: OwnedDirectoryTarget) -> OwnedDirectoryMode {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode } =>
+      OwnedDirectoryModeResolved { mode: declared_directory_mode(m: mode) }
+    OwnedDirectoryManaged { directory } =>
+      match managed_directory_admit(d: directory) {
+        ManagedDirectoryAdmitted { dir } =>
+          OwnedDirectoryModeResolved { mode: managed_directory_permissions(d: dir).mode }
+        ManagedDirectoryRefused { member, path, writer } =>
+          OwnedDirectoryModeRefused {
+            reason: join([
+              "owned directory ", member as String, " at ", path as String,
+              ": declared writer ", writer as String,
+              " is neither its owner nor in its group, so no mode is derived",
+            ], "") as NonEmptyStr,
+          }
+      }
+  }
+}
+
+fn owned_directory_targets_paths(ts: List<OwnedDirectoryTarget>) -> List<FilePath> {
+  map(ts, t => owned_directory_path(t: t))
+}
+
+fn owned_directory_demand_at(ts: List<OwnedDirectoryTarget>, path: String) -> Optional<OwnedDirectoryTarget> {
+  first(filter(xs: ts, predicate: t => (owned_directory_path(t: t) as String) == path))
+}
+
+// ── OBSERVATION ──────────────────────────────────────────────────────────────────────────────────
+//
+// ONE READING, ONE PARSER, EVERY ROUTE. stat(1)'s %F|%U|%G|%a is GNU coreutils (extdeps.shell
+// shell.Stat IdentityOf names the same argv); each route supplies the line, and this module alone
+// decides what it says. A line that does not parse is not a directory nobody owns: it is an
+// observation that did not happen.
+type OwnedDirectoryReading {
+  is_directory: Bool
+  owner: PosixOwnerNames
+  mode: FileMode
+}
+
+data owned_directory_stat_format: String = "%F|%U|%G|%a"
+
+fn owned_directory_stat_args(path: FilePath) -> List<String> {
+  ["-c", owned_directory_stat_format, "--", path as String]
+}
+
+fn owned_directory_reading_of_stat_line(line: String) -> Optional<OwnedDirectoryReading> {
+  let fields = split(s: trim(s: line), delimiter: "|")
+  if count(fields) != 4 {
+    none
+  } else {
+    match list_at_optional(xs: fields, index: 0) {
+      Absent => none
+      Present { value: kind } => match list_at_optional(xs: fields, index: 1) {
+        Absent => none
+        Present { value: user } => match list_at_optional(xs: fields, index: 2) {
+          Absent => none
+          Present { value: group } => match list_at_optional(xs: fields, index: 3) {
+            Absent => none
+            Present { value: mode_text } =>
+              if user == "" || group == "" {
+                none
+              } else {
+                match file_mode_of_octal_text(text: mode_text) {
+                  Absent => none
+                  Present { value: mode } => Present {
+                    value: OwnedDirectoryReading {
+                      is_directory: kind == "directory",
+                      owner: PosixOwnerNames { user: user as NonEmptyStr, group: group as NonEmptyStr },
+                      mode: mode,
+                    },
+                  }
+                }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE STAT LINE OF A PATH KNOWN TO EXIST, CLASSIFIED. A present path whose stat refused or whose line
+// does not parse is INACCESSIBLE, never absent: absence is a different fact with the opposite
+// actuation, and only an observer that established it may say it (gunbc.ensure EnsureObservation).
+fn owned_directory_observation_of_present_stat(
+  path: FilePath,
+  stat_succeeded: Bool,
+  stdout: String,
+  stderr: String,
+) -> EnsureObservation<OwnedDirectoryReading> {
+  if !stat_succeeded {
+    EnsureInaccessible { reason: join(["stat of ", path as String, " refused: ", trim(s: stderr)], "") }
+  } else {
+    match owned_directory_reading_of_stat_line(line: stdout) {
+      Absent => EnsureInaccessible { reason: join(["stat of ", path as String, " is not an identity line: ", trim(s: stdout)], "") }
+      Present { value: reading } => EnsureObserved { evidence: reading }
+    }
+  }
+}
+
+// THE ONE-PROBE FORM, for a route whose only observer is the stat itself (the dashboard apply's target
+// exec). The probe runs under LC_ALL=C, so ENOENT's strerror is the C library's fixed text; that text
+// and nothing else is absence. Every other failure -- EACCES on a parent, a transport refusal, a
+// missing stat binary -- is inaccessible.
+data owned_directory_enoent_text: String = "No such file or directory"
+
+fn owned_directory_observation_of_stat(
+  path: FilePath,
+  stat_succeeded: Bool,
+  stdout: String,
+  stderr: String,
+) -> EnsureObservation<OwnedDirectoryReading> {
+  if !stat_succeeded && string_contains(s: stderr, pattern: owned_directory_enoent_text) {
+    EnsureAbsent { reason: join(["owned directory ", path as String, " is absent"], "") }
+  } else {
+    owned_directory_observation_of_present_stat(path: path, stat_succeeded: stat_succeeded, stdout: stdout, stderr: stderr)
+  }
+}
+
+// ── DECISION ─────────────────────────────────────────────────────────────────────────────────────
+fn owned_directory_owner_matches(want: PosixOwnerNames, got: PosixOwnerNames) -> Bool {
+  (want.user as String) == (got.user as String) && (want.group as String) == (got.group as String)
+}
+
+fn owned_directory_mode_matches(t: OwnedDirectoryTarget, got: FileMode) -> Bool {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeRefused { reason: _ } => false
+    OwnedDirectoryModeResolved { mode } => file_mode_octal(mode: mode) == file_mode_octal(mode: got)
+  }
+}
+
+fn owned_directory_satisfied(t: OwnedDirectoryTarget, o: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match o {
+    EnsureObserved { evidence } =>
+      evidence.is_directory
+        && owned_directory_owner_matches(want: owned_directory_owner(t: t), got: evidence.owner)
+        && owned_directory_mode_matches(t: t, got: evidence.mode)
+    EnsureAbsent { reason: _ } => false
+    EnsureInaccessible { reason: _ } => false
+  }
+}
+
+// THE INSTALL THIS TARGET IS REALIZED BY, the one plan both routes execute: `install -d -m -o -g`
+// (extdeps.tools.gnu_coreutils coreutils_install_directory_owned_argv), which puts ownership and mode
+// at creation and re-applies the mode to a directory that exists.
+type OwnedDirectoryInstallPlan {
+  path: FilePath
+  owner: PosixOwnerNames
+  mode_octal: NonEmptyStr
+}
+
+fn owned_directory_install_argv(plan: OwnedDirectoryInstallPlan) -> List<String> {
+  coreutils_install_directory_owned_argv(
+    mode: plan.mode_octal,
+    owner: plan.owner.user,
+    group: plan.owner.group,
+    path: plan.path as String,
+  )
+}
+
+// THE SAME ARGV WITHOUT ITS PROGRAM WORD, for a route that resolves the program to a host path itself
+// (the dashboard apply's toolchain, where macOS's GNU install is ginstall).
+fn owned_directory_install_args(plan: OwnedDirectoryInstallPlan) -> List<String> {
+  owned_directory_install_argv(plan: plan).skip(n: 1)
+}
+
+// OWNERSHIP IS NEVER ADOPTED FROM AN OBSERVATION. A directory that exists under another principal, or a
+// path that exists and is not a directory, has no plan: re-owning it would hand the demanding
+// principal whatever someone else put there, and replacing it would destroy it. Both refuse, under
+// every policy, with what was found. Only a mode that differs on a directory the demanded principal
+// already owns is repaired.
+fn owned_directory_plan(t: OwnedDirectoryTarget, o: EnsureObservation<OwnedDirectoryReading>) -> EnsurePlan<OwnedDirectoryInstallPlan> {
+  let foreign: String? = match o {
+    EnsureObserved { evidence } =>
+      if !evidence.is_directory {
+        Present { value: "exists and is not a directory; it is never replaced" }
+      } else if !owned_directory_owner_matches(want: owned_directory_owner(t: t), got: evidence.owner) {
+        Present {
+          value: join([
+            "is owned by ", posix_owner_names_text(names: evidence.owner),
+            ", not ", posix_owner_names_text(names: owned_directory_owner(t: t)),
+            "; ownership is never adopted",
+          ], ""),
+        }
+      } else {
+        none
+      }
+    EnsureAbsent { reason: _ } => Absent
+    EnsureInaccessible { reason: _ } => Absent
+  }
+  match foreign {
+    Present { value: why } =>
+      EnsurePlanUnavailable { reason: join(["owned directory ", owned_directory_path(t: t) as String, " ", why], "") }
+    Absent => owned_directory_install_plan_of(t: t)
+  }
+}
+
+// THE INSTALL A TARGET IS REALIZED BY, independent of any observation: available exactly when its mode
+// derives. A route that emits its apply rather than running it (the live_deploy transaction) lowers
+// this once the plan-time decision has said Apply.
+fn owned_directory_install_plan_of(t: OwnedDirectoryTarget) -> EnsurePlan<OwnedDirectoryInstallPlan> {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeRefused { reason } => EnsurePlanUnavailable { reason: reason as String }
+    OwnedDirectoryModeResolved { mode } =>
+      EnsurePlanAvailable {
+        plan: OwnedDirectoryInstallPlan {
+          path: owned_directory_path(t: t),
+          owner: owned_directory_owner(t: t),
+          mode_octal: file_mode_octal(mode: mode) as NonEmptyStr,
+        },
+      }
+  }
+}
+
+fn owned_directory_mismatch_reason(t: OwnedDirectoryTarget, o: EnsureObservation<OwnedDirectoryReading>) -> String {
+  match owned_directory_plan(t: t, o: o) {
+    EnsurePlanUnavailable { reason } => reason
+    EnsurePlanAvailable { plan } =>
+      match o {
+        EnsureObserved { evidence } =>
+          join([
+            "owned directory ", owned_directory_path(t: t) as String, " is at mode ",
+            file_mode_octal(mode: evidence.mode), ", not ", plan.mode_octal as String,
+          ], "")
+        EnsureAbsent { reason } => reason
+        EnsureInaccessible { reason } => reason
+      }
+  }
+}
+
+// THE DECISION IS gunbc.ensure ensure_decide's, never a second one: Inaccessible refuses under every
+// policy, observe-only refuses anything it would have to change, and May-apply applies the install
+// plan only when one exists -- which a foreign owner or a refused mode derivation never has.
+fn owned_directory_decide(
+  policy: EnsurePolicy,
+  target: OwnedDirectoryTarget,
+  observation: EnsureObservation<OwnedDirectoryReading>,
+) -> UpsertDecision<OwnedDirectoryInstallPlan> {
+  ensure_decide(
+    policy: policy,
+    observation: observation,
+    observation_satisfies: owned_directory_satisfied(t: target, o: observation),
+    mismatch_reason: owned_directory_mismatch_reason(t: target, o: observation),
+    plan: owned_directory_plan(t: target, o: observation),
+  )
+}
+
+// THE RECEIPT: the decision, the application arm and the INDEPENDENT readback classified together
+// (gunbc.ensure ensure_reconcile). The after-observation is a second read of the host, never the
+// install's exit status.
+fn owned_directory_reconcile(
+  policy: EnsurePolicy,
+  target: OwnedDirectoryTarget,
+  before: EnsureObservation<OwnedDirectoryReading>,
+  application: Application,
+  after: EnsureObservation<OwnedDirectoryReading>,
+) -> ReconciledEffect<OwnedDirectoryInstallPlan, OwnedDirectoryReading> {
+  ensure_reconcile(
+    policy: policy,
+    before: before,
+    before_satisfies: owned_directory_satisfied(t: target, o: before),
+    mismatch_reason: owned_directory_mismatch_reason(t: target, o: before),
+    plan: owned_directory_plan(t: target, o: before),
+    application: application,
+    after: after,
+    after_satisfies: owned_directory_satisfied(t: target, o: after),
+    after_mismatch_reason: owned_directory_mismatch_reason(t: target, o: after),
+  )
+}
+
+// ── THE PROVIDER ─────────────────────────────────────────────────────────────────────────────────
+//
+// ONE PROVIDER, THE D14 LIFECYCLE IN ONE NODE: observe, decide, apply when decided, observe again,
+// reconcile. The route supplies only the two host-touching operations -- how to read a path's stat
+// line and how to run the install plan -- so the dashboard apply (its target exec, local or ssh) and any other
+// route that executes synchronously realize the same decision and the same plan. The live_deploy
+// transaction emits its apply as a script rather than running it here, so it consumes the same halves
+// separately: owned_directory_decide over its plan-time observation, owned_directory_install_argv for
+// the emitted install, and the post-apply re-derivation as the readback
+// (gunbc.live_deploy.member_observe observe_owned_directory).
+type OwnedDirectoryEnsureOutcome
+  = OwnedDirectoryEnsured {
+      target: OwnedDirectoryTarget,
+      converged: ConvergedEffect<OwnedDirectoryInstallPlan, OwnedDirectoryReading>,
+    }
+  | OwnedDirectoryEnsureRefused {
+      target: OwnedDirectoryTarget,
+      reason: String,
+    }
+
+fn owned_directory_ensure(
+  policy: EnsurePolicy,
+  target: OwnedDirectoryTarget,
+  observe: fn(FilePath) -> EnsureObservation<OwnedDirectoryReading>,
+  run: fn(OwnedDirectoryInstallPlan) -> Bool,
+) -> OwnedDirectoryEnsureOutcome {
+  let before = observe(owned_directory_path(t: target))
+  let decision = owned_directory_decide(policy: policy, target: target, observation: before)
+  let application = match decision {
+    Apply { plan } => if run(plan) { Applied } else { NotApplied }
+    Noop => NotApplied
+    Refuse { reason: _ } => NotApplied
+  }
+  let after = observe(owned_directory_path(t: target))
+  match classify_reconciled(r: owned_directory_reconcile(
+    policy: policy,
+    target: target,
+    before: before,
+    application: application,
+    after: after,
+  )) {
+    EffectConverged { converged } => OwnedDirectoryEnsured { target: target, converged: converged }
+    EffectNotConverged { reason, attempt: _ } => OwnedDirectoryEnsureRefused { target: target, reason: reason }
+  }
+}
+
+fn owned_directory_outcome_converged(o: OwnedDirectoryEnsureOutcome) -> Bool {
+  match o {
+    OwnedDirectoryEnsured { target: _, converged: _ } => true
+    OwnedDirectoryEnsureRefused { target: _, reason: _ } => false
+  }
+}
+
+fn owned_directory_outcome_detail(o: OwnedDirectoryEnsureOutcome) -> String {
+  match o {
+    OwnedDirectoryEnsured { target, converged: _ } =>
+      join(["owned directory ", owned_directory_path(t: target) as String, " converged"], "")
+    OwnedDirectoryEnsureRefused { target, reason } =>
+      join(["owned directory ", owned_directory_path(t: target) as String, " refused: ", reason], "")
+  }
+}

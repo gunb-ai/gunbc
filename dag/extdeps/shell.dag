@@ -496,6 +496,9 @@ service shell.Remove {
 // consumer compares the WHOLE STRING against declared spellings; nothing extracts a digit, because
 // the substrate has no string indexing and a hand-rolled scan would be a parser standing where a
 // comparison was available.
+// IdentityOf READS THE FOUR FACTS AN OWNED DIRECTORY IS JUDGED BY IN ONE stat CALL -- file type,
+// owning user, owning group, octal mode -- '|'-separated, so one parser (gunbc.owned_directory
+// owned_directory_reading_of_stat_line) reads every route's line. %F and %G are GNU directives too.
 service shell.Stat {
   operation ModeOf {
     requires none
@@ -509,6 +512,22 @@ service shell.Stat {
     transport shell { argv: ["stat", "-c", "%a", "--", "{path}"] }
     exit {
       0 => Unit "the path exists and its octal mode is on stdout"
+      nonzero => String "stat could not read the path"
+    }
+  }
+
+  operation IdentityOf {
+    requires none
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%F|%U|%G|%a", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its file type, owning user, owning group and octal mode are on stdout"
       nonzero => String "stat could not read the path"
     }
   }

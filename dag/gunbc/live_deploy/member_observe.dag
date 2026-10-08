@@ -20,11 +20,16 @@ import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
-  DeploymentStep, ArtifactStep, Dependency,
-  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
-  deployment_provider_state_path,
+  deployment_directory_demands,
 }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.ensure { EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
+import std.upsert_decision { Noop, Apply, Refuse }
+import extdeps.access.posix { file_mode_octal }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryReading, owned_directory_path, owned_directory_demand_at,
+  owned_directory_stat_args, owned_directory_observation_of_present_stat, owned_directory_decide,
+}
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
@@ -43,7 +48,7 @@ import gunbc.live_deploy.member_identity {
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
   MemberDecision, MemberRefused, DesiredExecutableUnreadable, DesiredExecutableAbsent, DesiredIdentityIsForAnotherMember,
   decide_member, release_member_roster, MemberDecision, ConvergedMember, ReleaseTarget,
-  DirectoryRoot, DirectoryRootIdentity, RootAt,
+  DirectoryRoot, DirectoryRootIdentity, RootAt, DirectoryRootStanding, RootConverged, RootModeRepairable, MemberRefusedOnHost,
   EffectDerivation, EffectsDerived, EffectsRefused, derive_member_plan, effect_labels, plan_mutation_count,
 }
 
@@ -493,93 +498,91 @@ fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
 // mapping the roster makes them one. Adding a member is a row in the roster and an arm in each of
 // these two total functions -- the compiler names the arm it is missing, which a record of slots
 // could not do because a slot left unwritten is a type error somewhere else entirely.
-// THE ROOT ROSTER COMES FROM THE SPEC, not from a list here. A second host, or the twin, owns
-// different roots at different paths, and a roster written here would be a second authority for
-// what the deployment owns -- the steps already say it. The four directory roots join as
-// DirectoryRoot; the timer units and the tailscale route stay on the apply-all path and
-// contribute no member. A kind that names no member emits exactly as it does now. The
-// provider-state root is Ensured, not Owned: retract never tears it down. It is still a
-// DirectoryRoot for readback (C7). Its presence and owner are read like any root's, so a host whose
-// provider login has nowhere to write shows as a member to create, not as a converged host.
-fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
-  match st {
-    ArtifactStep { step: art } => match art.kind {
-      DispatchWorktreeRoot => [DirectoryRoot { path: art.path }]
-      AttemptStateRoot => [DirectoryRoot { path: art.path }]
-      ComputeRoot => [DirectoryRoot { path: art.path }]
-      ServeBinary => []
-      GunbcSourceTree => []
-      SystemdUnit => []
-      BeltTimerUnit => []
-      FleetConvergeTimerUnit => []
-      TailscaleServeMapping => []
-      DeployedTreeRemoteUnit => []
-      PublicationHelperTimerUnit => []
-      FabricStorageServeUnit => []
-      FabricStorageServeMapping => []
-      ApprovalBrokerFrontDoor => []
-      TailnetDoorServeUnit => []
-    }
-    Dependency { step: _ } => []
-  }
-}
-
-// THE PROVIDER-STATE ROOT JOINS THE ROSTER FROM THE SPEC, NOT FROM ITS STEPS (C7). Its path and
-// owner are derived by gunbc.live_deploy.spec deployment_provider_state_step, the same function the
-// emitted ensure is built from, so the directory that is created and the directory that is read
-// back cannot name two different paths or two different owners. Deriving it here rather than
-// matching a step is what makes its absence unwritable: no spec can drop the member, so nothing
-// has to refuse a spec that did.
+// THE ROOT ROSTER IS THE DEPLOYMENT'S DIRECTORY DEMANDS, not a list here and not the steps. Every
+// directory the deployment creates is an owned-directory target in
+// gunbc.live_deploy.spec deployment_directory_demands -- the instance's consumers' demands
+// (gunbc.roadmap.dashboard_instance_directories) and the host's -- and each joins the roster as one
+// DirectoryRoot, so the directories created and the directories read back are one list. The first
+// roster read the dispatch roots and the compute root off the step kinds and the provider-state root
+// off the spec, and left out every auth store, the event worktree and the inbox: the production route
+// neither created nor read them back.
 fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
   concat(
-    concat(release_member_roster(), flat_map(spec.steps, st => root_members_of_step(st: st))),
-    [DirectoryRoot { path: deployment_provider_state_path(spec: spec) }],
+    release_member_roster(),
+    map(deployment_directory_demands(spec: spec), t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
   )
 }
 
-// A ROOT'S OWNER IS READ, NOT ASSUMED. Presence alone would call a root:root-owned directory
-// converged, and the service user still could not write it -- which is the state a hand-repaired
-// host leaves and the state a fresh host reaches if install ran under the wrong principal.
-// THE LOCAL ARM CALLS THE MODELLED OPERATION; ONLY THE REMOTE ARM GOES THROUGH THE TRANSPORT.
-//
-// The first version of this routed BOTH arms through run_typed_argv_transport, handing it LocalShell
-// for the host-itself case. That refuses by construction -- "LocalShell has no remote target" -- so
-// root ownership could not be read on the host the deploy actually runs on, and the whole member
-// plan refused. It failed closed and mutated nothing, but it meant the roots could never be
-// observed in production.
-//
-// IT SURVIVED ITS WITNESSES BECAUSE THEY NEVER EXECUTED A HOST EFFECT. The member-identity witnesses
-// are hermetic and supply observations directly, so nothing exercised this leg until the first wet
-// operator deploy. Every other local arm in this module calls its modelled operation directly
-// (Filesystem.List, git.Inspect.HeadCommitIn, shell.Mktemp.FileInDirectory); this one now does too.
-fn root_owner_leg(arm: ObservationArm, path: String) -> Leg {
-  let leg = join(["reading the owner of ", path], "")
+// THE STAT LEG: file type, owning user, owning group and mode in one read
+// (extdeps.shell shell.Stat IdentityOf), the local arm calling the modelled operation and the remote
+// arm the same argv through the transport, as every leg in this module does.
+fn root_identity_leg(arm: ObservationArm, path: String) -> EnsureObservation<OwnedDirectoryReading> {
   match arm {
     OnTheHostItself => {
-      let r = shell.Stat.OwnerOf(path: path as FilePath)
-      if r.success { LegOut { stdout: r.stdout } }
-      else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
+      let r = shell.Stat.IdentityOf(path: path as FilePath)
+      owned_directory_observation_of_present_stat(path: path as FilePath, stat_succeeded: r.success, stdout: r.stdout, stderr: r.stderr)
     }
     OverTransport { transport } =>
-      remote_leg(transport: transport, argv: ["stat", "-c", "%U", "--", path], leg: leg)
+      match remote_leg(transport: transport, argv: concat(["stat"], owned_directory_stat_args(path: path as FilePath)), leg: join(["reading the identity of ", path], "")) {
+        LegRefused { cause } => EnsureInaccessible { reason: cause }
+        LegOut { stdout } => owned_directory_observation_of_present_stat(path: path as FilePath, stat_succeeded: true, stdout: stdout, stderr: "")
+      }
   }
 }
 
-fn observe_directory_root(arm: ObservationArm, path: NonEmptyStr) -> ObservedMember {
+// PRESENCE FROM THE PARENT'S LISTING (an indeterminate listing is never absence), then the identity.
+fn owned_directory_observation_on_host(arm: ObservationArm, path: String) -> EnsureObservation<OwnedDirectoryReading> {
+  match entry_presence(arm: arm, path: path) {
+    EntryPresenceIndeterminate { cause } => EnsureInaccessible { reason: cause }
+    EntryAbsent => EnsureAbsent { reason: join(["owned directory ", path, " is absent"], "") }
+    EntryPresent => root_identity_leg(arm: arm, path: path)
+  }
+}
+
+// THE PROVIDER DECIDES; THIS ONLY PROJECTS ITS DECISION ONTO THE MEMBER VOCABULARY. The decision is
+// gunbc.owned_directory owned_directory_decide's -- the same one the dashboard apply's provider makes --
+// so a directory is converged, created, repaired or refused here for exactly the reasons it would be
+// there:
+//   Noop                          -> observed at RootConverged (the desired identity: keep)
+//   Apply, the directory absent   -> MemberAbsentOnHost (Create -> CreateRoot)
+//   Apply, the directory present  -> observed at RootModeRepairable (Replace -> RepairRootMode)
+//   Refuse, nothing could be read -> MemberUnobservable (refuses the derivation)
+//   Refuse, a state it will not change (another principal's directory, a non-directory, a mode that
+//          cannot be derived)      -> MemberRefusedOnHost (refuses the derivation; never re-owned)
+// The post-apply readback (deployment_identity_readback) re-derives through this same function, so
+// the readback is a second independent observation of every demanded directory.
+fn observe_owned_directory(arm: ObservationArm, spec: DeploymentSpec, path: NonEmptyStr) -> ObservedMember {
   let member = DirectoryRoot { path: path }
-  match entry_presence(arm: arm, path: path as String) {
-    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: member, cause: cause }
-    EntryAbsent => MemberAbsentOnHost { member: member }
-    EntryPresent => match root_owner_leg(arm: arm, path: path as String) {
-      LegRefused { cause } => MemberUnobservable { member: member, cause: cause }
-      LegOut { stdout } => {
-        let owner = trim(stdout)
-        if owner == "" {
-          MemberUnobservable { member: member, cause: join(["the owner of ", path as String, " read back empty"], "") }
-        } else {
-          MemberObserved { identity: RootAt { root: DirectoryRootIdentity { path: path, owner: owner as NonEmptyStr } } }
-        }
+  match owned_directory_demand_at(ts: deployment_directory_demands(spec: spec), path: path as String) {
+    Absent => MemberRefusedOnHost { member: member, cause: join(["no owned-directory demand names ", path as String], "") }
+    Present { value: target } => {
+      let observation = owned_directory_observation_on_host(arm: arm, path: path as String)
+      match observation {
+        EnsureInaccessible { reason } => MemberUnobservable { member: member, cause: reason }
+        EnsureAbsent { reason: _ } => owned_directory_member_of_decision(member: member, path: path, target: target, observation: observation)
+        EnsureObserved { evidence: _ } => owned_directory_member_of_decision(member: member, path: path, target: target, observation: observation)
       }
+    }
+  }
+}
+
+fn owned_directory_member_of_decision(
+  member: ConvergedMember,
+  path: NonEmptyStr,
+  target: OwnedDirectoryTarget,
+  observation: EnsureObservation<OwnedDirectoryReading>,
+) -> ObservedMember {
+  match owned_directory_decide(policy: EnsureMayApply, target: target, observation: observation) {
+    Noop => MemberObserved { identity: RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } } }
+    Refuse { reason } => MemberRefusedOnHost { member: member, cause: reason as String }
+    Apply { plan: _ } => match observation {
+      EnsureObserved { evidence } =>
+        MemberObserved { identity: RootAt { root: DirectoryRootIdentity {
+          path: path,
+          standing: RootModeRepairable { observed_mode: file_mode_octal(mode: evidence.mode) as NonEmptyStr },
+        } } }
+      EnsureAbsent { reason: _ } => MemberAbsentOnHost { member: member }
+      EnsureInaccessible { reason } => MemberUnobservable { member: member, cause: reason }
     }
   }
 }
@@ -596,7 +599,7 @@ fn desired_member_identity(
     UnitFile => desired_unit_file(spec: spec, candidate: candidate)
     UnitManager => desired_unit_manager()
     ServiceProcess => desired_service_process(candidate: candidate)
-    DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, owner: spec.service.service_user } }
+    DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }
   }
 }
 
@@ -613,7 +616,7 @@ fn observed_member_on_host(
     UnitFile => observe_unit_file(arm: arm, spec: spec)
     UnitManager => observe_unit_manager(arm: arm, unit: spec.service.unit_name)
     ServiceProcess => observe_service_process(spec: spec, transport: transport)
-    DirectoryRoot { path } => observe_directory_root(arm: arm, path: path)
+    DirectoryRoot { path } => observe_owned_directory(arm: arm, spec: spec, path: path)
   }
 }
 
@@ -645,6 +648,8 @@ fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, tra
       EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableUnreadable { cause: cause } }] }
     MemberAbsentOnHost { member: _ } =>
       EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableAbsent }] }
+    MemberRefusedOnHost { member: _, cause } =>
+      EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableUnreadable { cause: cause } }] }
     MemberObserved { identity: desired_bin } => match desired_bin {
       ExecutableIdentity { digest } =>
         release_member_plan(

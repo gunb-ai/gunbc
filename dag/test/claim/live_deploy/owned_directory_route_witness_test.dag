@@ -1,0 +1,82 @@
+module test.claim.live_deploy.owned_directory_route_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import gunbc.live_deploy.emit { owned_directory_apply_steps }
+import gunbc.live_deploy.member_identity { DirectoryRoot, converged_member_eq, converged_effect_plan }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_event_carrier_directory }
+import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
+
+// THE ROUTE, NOT ONLY THE ANSWER. For a consumer the production route used to leave without a creator,
+// each claim joins three facts on srv1_live: the path the consumer WRITES (its runtime layout) is its
+// declared demand's path; that demand is in the live_deploy srv1 transaction's directory list; and
+// the transaction both EMITS the provider's install for it (owned_directory_apply_steps over a plan
+// that makes no claim about it, which emits) and READS IT BACK (a DirectoryRoot member of the roster the post-apply readback
+// re-derives). RED CONTROL: deleting the consumer's row from
+// gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands removes the path
+// from deployment_directory_demands, so the membership, the roster member and the emitted install all
+// go false through the live_deploy route; pointing the layout anywhere but the demand reds the first
+// equality. The keep plan emitting nothing is the inhabited negative: emission follows the decision.
+
+fn demands_contain(spec: DeploymentSpec, path: String) -> Bool {
+  any(deployment_directory_demands(spec: spec), t => (owned_directory_path(t: t) as String) == path)
+}
+
+fn roster_reads_back(spec: DeploymentSpec, path: String) -> Bool {
+  any(deployment_member_roster(spec: spec), m => converged_member_eq(a: m, b: DirectoryRoot { path: path as NonEmptyStr }))
+}
+
+fn transaction_emits_install(spec: DeploymentSpec, path: String) -> Bool {
+  string_contains(
+    s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: path), plan: converged_effect_plan(roster: [], target: deploy_witness_release_target(spec: spec)))),
+    pattern: path,
+  )
+}
+
+fn routed(spec: DeploymentSpec, written: String, demanded: String) -> Bool {
+  written == demanded
+    && demands_contain(spec: spec, path: demanded)
+    && roster_reads_back(spec: spec, path: demanded)
+    && transaction_emits_install(spec: spec, path: demanded)
+}
+
+test fn the_event_carrier_worktree_is_created_and_read_back_by_the_srv1_transaction() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  routed(
+    spec: deployment_spec_srv1(),
+    written: roadmap_event_carrier_layout_for_instance(instance: live).worktree as String,
+    demanded: owned_directory_path(t: roadmap_event_carrier_directory(instance: live)) as String,
+  )
+}
+
+test fn the_login_transaction_store_is_created_and_read_back_by_the_srv1_transaction() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  routed(
+    spec: deployment_spec_srv1(),
+    written: login_transaction_store_layout_for_instance(instance: live).root as String,
+    demanded: owned_directory_path(t: login_transaction_store_directory(instance: live)) as String,
+  )
+}
+
+// THE DEMAND IS THE INSTANCE'S: the lab's carrier worktree is not in production's transaction.
+test fn another_instances_demand_is_not_in_the_srv1_transaction() -> Bool {
+  !demands_contain(
+    spec: deployment_spec_srv1(),
+    path: owned_directory_path(t: roadmap_event_carrier_directory(instance: srv1_lab_dashboard_instance())) as String,
+  )
+}
+
+// A CONVERGED PLAN INSTALLS NO DIRECTORY: the emission is the decision's, not unconditional.
+test fn a_converged_plan_emits_no_directory_install() -> Bool {
+  let spec = deployment_spec_srv1()
+  pipeline_steps_text(steps: owned_directory_apply_steps(
+    spec: spec,
+    plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec)),
+  )) == ""
+}
