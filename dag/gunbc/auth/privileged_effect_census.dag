@@ -26,7 +26,7 @@ import gunbc.auth.authorization_pattern_selection {
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
   InterlockPending, UnconditionalStanding, InterlockedBy,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
-  OperatorOwnSession, PastedOperatorToken,
+  OperatorOwnSession,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
@@ -145,7 +145,6 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedHumanStep => false
         RealizedUnauthorized => false
       }
-    PastedOperatorToken => false
   }
 }
 

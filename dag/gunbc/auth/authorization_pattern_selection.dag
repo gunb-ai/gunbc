@@ -47,8 +47,8 @@ import extdeps.uri { Uri, Https }
 // THE READINGS ARE DERIVED FROM REAL CASES, each named in authorization_pattern_evidence: the
 // federated fetch on boot run 35249658152 (no human action), the approval on fleet-converge run
 // 35447067113 (one phone tap, capability bound to one request revision), the Cloudflare bootstrap
-// token (dashboard-only, cloudflare_account_token_bootstrap_intervention), and the 2026-09-19
-// paste relay (pasted_token_relay_receipt). Nothing here is a weight somebody guessed.
+// token (dashboard-only, cloudflare_account_token_bootstrap_intervention). Nothing here is a weight
+// somebody guessed.
 
 // ── The characteristics of a privileged effect: the context parameters ───────────────────────
 //
@@ -210,28 +210,23 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
 //     action per effect; the credential is scoped to the request; receipt is the decision store row.
 // (c) HumanOnlyStep -- the effect has no API. The selection cannot automate it and says so by naming
 //     the std.human_intervention row that models the step.
-// (d) OperatorOwnSession -- the operator's own interactive gcloud session, or the operator's own
-//     token written to a file the operator's own process reads (the GcloudPrintToken and
-//     OperatorSuppliedToken arms). ADMISSIBLE BUT ALWAYS DOMINATED: one human action like (b), a
-//     project-wide credential unlike (b), no receipt unlike (b). It is in the field so its
-//     exclusion is by dominance the fold computes, not by a rule someone could delete, and so a
-//     site still on it is classified diverges rather than unclassifiable.
-// (e) PastedOperatorToken -- (d)'s credential RELAYED: pasted into chat, forwarded by message,
-//     written into another session's token file. Excluded before Pareto by the custody constraint,
-//     every time, for every effect. The substrate cannot see how a token file was filled, so this
-//     row is the executed statement of the refusal and the census carries the tell.
+// (d) OperatorOwnSession -- the operator's own credential, supplied by the operator by any route:
+//     their interactive gcloud session, a token they pasted into a session, or a token written to
+//     a file the run reads (the GcloudPrintToken and OperatorSuppliedToken arms). ADMISSIBLE BUT
+//     ALWAYS DOMINATED: one human action like (b), a project-wide credential unlike (b), no receipt
+//     unlike (b). Its exclusion is by dominance the fold computes, so a site still on it is
+//     classified diverges rather than unclassifiable. Operator ruling 2026-10-08: how the operator
+//     hands over their own token is not a separate pattern, so no relay refusal exists.
 type AuthorizationPattern
   = FederatedScopedGrant
   | OperatorApprovedCapability
   | HumanOnlyStep { step: HumanIntervention }
   | OperatorOwnSession
-  | PastedOperatorToken
 
 data pattern_federated_scoped_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_federated_scoped_grant")
 data pattern_operator_approved_capability: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_approved_capability")
 data pattern_human_only_step: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_human_only_step")
 data pattern_operator_own_session: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_own_session")
-data pattern_pasted_operator_token: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_pasted_operator_token")
 
 fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
   match p {
@@ -239,7 +234,6 @@ fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
     OperatorApprovedCapability => pattern_operator_approved_capability
     HumanOnlyStep { step: _ } => pattern_human_only_step
     OperatorOwnSession => pattern_operator_own_session
-    PastedOperatorToken => pattern_pasted_operator_token
   }
 }
 
@@ -249,7 +243,6 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
     OperatorApprovedCapability => "per-effect operator approval via the ntfy loop" as NonEmptyStr
     HumanOnlyStep { step: s } => join(["human-only step: ", s.identity as String], "") as NonEmptyStr
     OperatorOwnSession => "the operator's own interactive session or token file" as NonEmptyStr
-    PastedOperatorToken => "an operator token relayed through chat or between sessions" as NonEmptyStr
   }
 }
 
@@ -257,7 +250,7 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
 // anything through a console, but a candidate with no HumanIntervention row behind it would be
 // selected with nothing to name, and "do it by hand" is not a step.
 fn candidate_patterns(e: PrivilegedEffect) -> List<AuthorizationPattern> {
-  let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession, PastedOperatorToken]
+  let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
   match e.surface {
     ApiSurface => api_patterns
     HumanSurfaceOnly { step: s } => concat(api_patterns, [HumanOnlyStep { step: s }])
@@ -298,7 +291,6 @@ fn pattern_is_api_pattern(p: AuthorizationPattern) -> Bool {
     FederatedScopedGrant => true
     OperatorApprovedCapability => true
     OperatorOwnSession => true
-    PastedOperatorToken => true
   }
 }
 
@@ -321,16 +313,14 @@ fn identity_bound(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
-    PastedOperatorToken => 1
   }
 }
 
 // CUSTODY: the credential reaches the executing process on the path its issuer issued it on. A
 // federated token is exchanged in-process; a capability travels in the signed link to the broker;
-// the operator's own session is the operator's own process. A relayed token has left that path.
+// the operator's own session or supplied token is the operator's own credential.
 fn credential_custody(p: AuthorizationPattern) -> Int {
   match p {
-    PastedOperatorToken => 0
     FederatedScopedGrant => 1
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
@@ -338,27 +328,25 @@ fn credential_custody(p: AuthorizationPattern) -> Int {
   }
 }
 
-// WITNESSED: a human consented to THIS effect. An operator who pasted a token consented to a
-// session, not to any one of the effects it then performed; a federated run has no human at all.
+// WITNESSED: a human consented to THIS effect. An operator who supplied a session token consented
+// to a session, not to any one of the effects it then performed; a federated run has no human at all.
 fn witnessed(p: AuthorizationPattern) -> Int {
   match p {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
     FederatedScopedGrant => 0
     OperatorOwnSession => 0
-    PastedOperatorToken => 0
   }
 }
 
-// UNATTENDED: the pattern completes with no human present. A pasted token expires in an hour and
-// needs a human to paste again, so it does not run unattended either.
+// UNATTENDED: the pattern completes with no human present. An operator's token expires in an hour
+// and needs a human to supply it again, so it does not run unattended.
 fn unattended(p: AuthorizationPattern) -> Int {
   match p {
     FederatedScopedGrant => 1
     OperatorApprovedCapability => 0
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
-    PastedOperatorToken => 0
   }
 }
 
@@ -381,7 +369,6 @@ fn human_actions_per_effect(p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
-    PastedOperatorToken => 1
   }
 }
 
@@ -393,12 +380,11 @@ fn credential_scoped_to_resource(p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
-    PastedOperatorToken => 0
   }
 }
 
 // RECEIPT: something the corpus can read afterwards -- the run and its cell roster, the decision
-// store row, or the intervention's discharge site when one is modeled. A chat message is not one.
+// store row, or the intervention's discharge site when one is modeled.
 fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
   match p {
     FederatedScopedGrant => 1
@@ -409,7 +395,6 @@ fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
         NoDischargeSiteModeled => 0
       }
     OperatorOwnSession => 0
-    PastedOperatorToken => 0
   }
 }
 
@@ -464,14 +449,12 @@ fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef
 // guidance is the cited statement that a federated job holds a short-lived token minted for that
 // job and no long-lived secret, which is the fact every reading on the custody, scope and receipt
 // axes descends from. The coupling between the term and the pattern variable is FLEET-OBSERVED, and
-// its receipt is the paste relay this module exists because of.
+// its receipt is the evidence row below.
 data github_oidc_hardening_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect" },
 }
 
-data pasted_token_relay_receipt: NonEmptyStr = "2026-09-19: the R2 origin work (gunbc#11713, gunbc#11721) minted Cloudflare account tokens and created Secret Manager containers under an operator GCP access token pasted into chat three times and relayed between sessions by dashboard message. The token was a project-wide bearer with a one-hour lifetime; no receipt names which effects it authorized. The same day, fleet-converge run 35447067113 redeemed one approval capability for one request revision after one phone tap, and boot run 35249658152 fetched a BMC credential under the run's federated identity with no human action." as NonEmptyStr
-
-data authorization_pattern_evidence: NonEmptyStr = "Readings derived from: boot run 35249658152 (federated fetch, zero human actions, receipt is the run and the accessor cell in gunbc.auth.fleet_secret_accessor_roster); fleet-converge run 35447067113 (one tap, capability bound to one request revision, receipt is the approval decision store row); gunbc.cloudflare.r2_token_mint cloudflare_account_token_bootstrap_intervention (dashboard-only, NoDischargeSiteModeled); pasted_token_relay_receipt (project-wide bearer, no receipt, relayed custody)." as NonEmptyStr
+data authorization_pattern_evidence: NonEmptyStr = "Readings derived from: boot run 35249658152 (federated fetch, zero human actions, receipt is the run and the accessor cell in gunbc.auth.fleet_secret_accessor_roster); fleet-converge run 35447067113 (one tap, capability bound to one request revision, receipt is the approval decision store row); gunbc.cloudflare.r2_token_mint cloudflare_account_token_bootstrap_intervention (dashboard-only, NoDischargeSiteModeled)." as NonEmptyStr
 
 data authorization_pattern_subject: NonEmptyStr = "which authorization pattern performs this privileged effect" as NonEmptyStr
 data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_subject")
@@ -481,7 +464,7 @@ data id_policy: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization
 data id_var_pattern: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "var_authorization_pattern")
 data id_term_exposure: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "term_credential_exposure")
 data id_region: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_region")
-data id_coupling: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pasted_token_relay_receipt")
+data id_coupling: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_evidence")
 data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_objective")
 data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_domain")
 
@@ -696,7 +679,6 @@ fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSele
             FederatedScopedGrant => PatternSelected { pattern: p, receipt: r }
             OperatorApprovedCapability => PatternSelected { pattern: p, receipt: r }
             OperatorOwnSession => PatternSelected { pattern: p, receipt: r }
-            PastedOperatorToken => PatternSelected { pattern: p, receipt: r }
           }
       }
     CandidateFieldUnestablished { causes: cs2 } => PatternSelectionRefused { defects: cs2 }
