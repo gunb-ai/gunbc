@@ -6,6 +6,7 @@ use self::ScopeDecision::*;
 use self::ScopeFinding::*;
 use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_optional::Optional;
 pub use crate::std_roster_frontier::declaration_ref_eq;
@@ -22,11 +23,32 @@ pub struct ExternalAuthority {
     pub uri: Rc<Uri>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ObservedReceipt {
+    receipt: Rc<DeclarationRef>,
+}
+impl ObservedReceipt {
+    pub fn receipt(&self) -> Rc<DeclarationRef> {
+        self.receipt.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "_variant")]
 pub enum CitedFigureStanding {
     CitedToAuthority { authority: Rc<ExternalAuthority> },
     TranscribedUncited { read_obligation: NonEmptyStr },
+    ObservedByReceipt { observed: Rc<ObservedReceipt> },
+}
+
+pub fn observed_receipt(receipt: Rc<DeclarationRef>) -> Rc<ObservedReceipt> {
+    Rc::new(ObservedReceipt {
+        receipt: receipt.clone(),
+    })
+}
+
+pub fn observed_receipt_ref(observed: Rc<ObservedReceipt>) -> Rc<DeclarationRef> {
+    observed.receipt()
 }
 
 pub fn cited_figure_read_obligation(standing: Rc<CitedFigureStanding>) -> Option<String> {
@@ -35,6 +57,7 @@ pub fn cited_figure_read_obligation(standing: Rc<CitedFigureStanding>) -> Option
         CitedFigureStanding::TranscribedUncited {
             read_obligation: o, ..
         } => Some(o.clone()),
+        CitedFigureStanding::ObservedByReceipt { observed: _, .. } => std::option::Option::None,
     }
 }
 

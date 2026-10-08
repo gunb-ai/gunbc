@@ -15,7 +15,7 @@ import gunbc.target_binding {
   TargetProducerBound, KnownTargetBindingMissing, TargetUnknown, TargetLookupLabelNotCanonical,
   build_target_binding_index, target_binding_lookup,
 }
-import std.types { String }
+import std.types { String, Bool, List }
 import std.integer { Int }
 import extdeps.bazel.target_pattern {
   TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
@@ -49,18 +49,35 @@ import extdeps.bazel.target_pattern {
 // `PatternAllTargetsUnsupported` have different remedies from each other and from every
 // `PatternLabelRefused` inner cause, and collapsing them into one malformed-operand arm would be
 // the state-space conflation this repository keeps finding.
+//
+// THE CLAIM ROUTE IS THE SECOND UNIVERSE, DECIDED BY THE SAME CONTAINMENT. Witness claims -- the
+// `test fn` declarations the floor's discovery authority enrolls -- are labelled by
+// `gunbc.discovery_census` `site_label` (`a.b.c` + `f` -> `//a/b/c:f`), and the subtree those
+// labels occupy is `gunbc.discovery_census` `claim_route_universe`. An operand inside it -- an exact
+// claim label, a module's `:all`, or a `/...` subtree -- is `TestOperandClaimRoute` and enters the
+// claim executor carrying that pattern; the executor selects the discovered claims the pattern
+// contains and evaluates them with the floor's own claim evaluation. The native universe is asked
+// FIRST, so no operand is answered by both. Like the native universe, the claim universe is a
+// parameter the production caller supplies.
 type TestOperandAdmission
   = TestOperandExactTarget { label: Label }
   | TestOperandNativeRoute { pattern: TargetPattern }
+  | TestOperandClaimRoute { pattern: TargetPattern }
   | TestOperandSetForm { pattern: TargetPattern }
   | TestOperandRefused { operand: String, cause: TargetPatternRefusal }
 
-fn admit_test_operand(operand: String, native_universe: TargetPattern) -> TestOperandAdmission {
+fn admit_test_operand(
+  operand: String,
+  native_universe: TargetPattern,
+  claim_universe: TargetPattern
+) -> TestOperandAdmission {
   match parse_target_pattern(text: operand) {
     TargetPatternRefused { cause: c } => TestOperandRefused { operand: operand, cause: c }
     TargetPatternParsed { pattern: p } =>
       if target_pattern_within(inner: p, outer: native_universe) {
         TestOperandNativeRoute { pattern: p }
+      } else if target_pattern_within(inner: p, outer: claim_universe) {
+        TestOperandClaimRoute { pattern: p }
       } else {
         match p {
           SingleTarget { label: l } => TestOperandExactTarget { label: l }
@@ -71,24 +88,83 @@ fn admit_test_operand(operand: String, native_universe: TargetPattern) -> TestOp
   }
 }
 
-// A SET FORM OUTSIDE THE NATIVE UNIVERSE HAS NO EXECUTOR, AND THAT IS WHAT THIS REFUSES.
+// A SET FORM OUTSIDE EVERY ROUTE'S UNIVERSE HAS NO EXECUTOR, AND THAT IS WHAT THIS REFUSES.
 //
-// The 2026-09-21 ruling this arm carried said set forms run only through the native test route and
-// that the route did not exist. The route exists now and this module routes to it, so the refusal
-// is no longer about the route's availability -- it is about the operand. `//dag/test/claim/...`
-// names a population the native lane's universe does not contain and the instrument registry
-// cannot enumerate, so nothing may answer for it; the verb refuses with status 2 -- no observation
-// -- never 1, which would claim a run happened and did not hold. Delegating it to the interpreter
-// stays forbidden for the reason it always was: an interpreted run would report a result the
-// native compiler never produced.
-//
-// RETIREMENT TRIGGER: an executor that enumerates a population outside the native universe. The
-// instrument registry is not one -- it answers exact labels by construction.
+// Two executors enumerate a population: the native test route (`//v2/test/...`) and the claim
+// route (`//test/claim/...`, the discovered witness claims). The retirement trigger this arm used to
+// carry -- "an executor that enumerates a population outside the native universe" -- is satisfied
+// for the claim population, so `//test/claim/...` is no longer refused here. A set form outside
+// BOTH, such as `//dag/test/claim/...` (a file-path spelling, not a claim label), still names no
+// population any executor enumerates, and the instrument registry is not one -- it answers exact
+// labels by construction. The verb refuses with status 2 -- no observation -- never 1, which would
+// claim a run happened and did not hold. A set form is never widened into another route's
+// universe: that would report a run over a population the operand did not name, and handing a
+// native-universe operand to the interpreter would report a result the native compiler never
+// produced.
 fn test_operand_set_form_refusal_rendered(operand: String) -> String {
   concat(
     concat("gunbc test: ", operand),
-    " denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
+    " denotes a SET of targets outside every route's universe (the native test route and the claim route); no executor enumerates that population, and a set form is never widened into another route"
   )
+}
+
+// THE CLAIM ROUTE'S MEMBER VERDICTS, AND THE FOLD THAT MAKES THEM THE OPERAND'S TERMINATION.
+//
+// One verdict per selected claim. `ClaimDidNotHold` is an OBSERVATION -- the claim evaluated and
+// returned false or a non-Bool value. `ClaimUnobserved` is the absence of one -- a runtime error, a
+// host refusal, an unwind, a budget interrupt -- and is not reported as a failing claim, for the
+// same reason `InvocationSubjectUnreached` is not `InvocationObservationDidNotHold`.
+type ClaimRouteVerdict
+  = ClaimHeld
+  | ClaimDidNotHold
+  | ClaimUnobserved
+
+type ClaimRouteTally {
+  did_not_hold: Bool
+  unobserved: Bool
+  members: Int
+}
+
+fn claim_route_tally_step(acc: ClaimRouteTally, v: ClaimRouteVerdict) -> ClaimRouteTally {
+  match v {
+    ClaimHeld => ClaimRouteTally {
+      did_not_hold: acc.did_not_hold,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    ClaimDidNotHold => ClaimRouteTally {
+      did_not_hold: true,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    ClaimUnobserved => ClaimRouteTally {
+      did_not_hold: acc.did_not_hold,
+      unobserved: true,
+      members: acc.members + 1
+    }
+  }
+}
+
+// A DEFINITE FAILURE DOMINATES; AN EMPTY SELECTION IS UNREACHED. A claim that returned false is a
+// finding whatever happened beside it; a selection with an unobserved member cannot answer "held";
+// and a pattern that selected nothing produced no evidence, so it is `InvocationSubjectUnreached`
+// (exit 2), never a vacuous pass -- the absence-is-not-success rule `gunbc.instrument_targets`
+// `native_route_member_termination` keeps for the native route.
+fn claim_route_termination(verdicts: List<ClaimRouteVerdict>) -> InvocationTermination {
+  let tally = fold(
+    verdicts,
+    init: ClaimRouteTally { did_not_hold: false, unobserved: false, members: 0 },
+    f: (acc, v) => claim_route_tally_step(acc: acc, v: v)
+  )
+  if tally.did_not_hold {
+    InvocationObservationDidNotHold {}
+  } else if tally.unobserved {
+    InvocationSubjectUnreached {}
+  } else if tally.members == 0 {
+    InvocationSubjectUnreached {}
+  } else {
+    InvocationObservationHeld {}
+  }
 }
 
 // A REFUSED OPERAND TERMINATES AS REFUSED, AND THE RENDERING NAMES THE AUTHORITY'S CAUSE. The

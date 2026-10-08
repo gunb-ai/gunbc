@@ -1,0 +1,196 @@
+module test.claim.parse_test_newline_dual_role_operator_mutation
+
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.std.diagnostic { Outcome }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_grammar, dag_lex }
+import v2.std.algebra { fold_list }
+import v2.std.grammar {
+  AfterLineBreak,
+  Choice,
+  Expect,
+  GrammarExpr,
+  GrammarExprFold,
+  GrammarProduction,
+  GrammarRoot,
+  LiteralTerminal,
+  ModeledGrammar,
+  Nonterminal,
+  Optional,
+  ParseGrammar,
+  NotPredicate,
+  RefuseOnMatch,
+  Repeat,
+  Sequence,
+  StampClass,
+  Terminal,
+  VoidGrammar,
+  fold_grammar_expr
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.parse_refusal_reason {
+  DataValueMissingAfterEq,
+  FnExpressionBodyMissingAfterEq,
+  KeywordAsPathSegment,
+  KeywordAsValueName,
+  LayoutUnknownWithoutSource,
+  NewlineBeforeDualRoleOperator,
+  ParseRefusalReason
+}
+import v2.std.integer { Int }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.test.parse.newline_dual_role_operator_parse {
+  newline_minus_after_block_source,
+  newline_minus_after_operand_source,
+  same_line_minus_source
+}
+
+// THE MUTATION THAT REDS THE NEWLINE-`-` REFUSAL (v2.test.parse.newline_dual_role_operator_parse).
+// It rebuilds the live dag grammar with every NewlineBeforeDualRoleOperator RefuseOnMatch arm
+// replaced by a terminal no token carries -- an alternative that can never match -- and asserts that
+// such arms exist. Only that reason is stripped, so the mutant differs from the live grammar in that
+// refusal and nothing else by construction, whatever other refusal rows the grammar carries (the
+// declared-path keyword refusal, v2.extdeps.languages.dag dag_grammar_declared_path_expr, is one). There is more than one arm because the additive row
+// is a helper inlined into each operand position of the comparison and equality rows; it is one
+// authored row. Under the mutant the
+// next-line sources parse again (the silent merge into one subtraction is back); under the live
+// grammar they refuse (the controls in v2.test.parse.newline_dual_role_operator_parse). The
+// same-line form parses under both.
+//
+// THE GRAMMARS ARE SUPPLIED, NOT RE-PREPARED PER CLAIM (DESIGN section 3, a witness discriminates at
+// one interface). The mutant is prepared once by the nullary producer nlm_mutant_prepared and the refusal-arm counts are taken once by
+// nlm_refusal_arm_census, both enrolled WARM in v2.workflow.floor_pure_producer_share. Each claim pays
+// one tokenize and one parse of a one-line declaration.
+
+fn strip_refusals(expr: GrammarExpr) -> GrammarExpr {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, stamp) { Terminal { token_class: token_class, stamp: stamp } },
+      literal_terminal: fn(token_class, lexeme) { LiteralTerminal { token_class: token_class, lexeme: lexeme } },
+      nonterminal: fn(production) { Nonterminal { production: production } },
+      sequence: fn(l, r) { Sequence { left: l, right: r } },
+      choice: fn(l, r) { Choice { left: l, right: r } },
+      optional: fn(e) { Optional { element: e } },
+      repeat: fn(e) { Repeat { element: e } },
+      expect: fn(e, reason) { Expect { element: e, reason: reason } },
+      refuse_on_match: fn(e, reason) {
+        if is_newline_refusal(reason: reason) {
+          Terminal { token_class: ^newline_mutation_no_token_carries_this_class, stamp: StampClass }
+        } else {
+          RefuseOnMatch { element: e, reason: reason }
+        }
+      },
+      after_line_break: fn(e) { AfterLineBreak { element: e } },
+      not_predicate: fn(e) { NotPredicate { element: e } }
+    }
+  )
+}
+
+fn is_newline_refusal(reason: ParseRefusalReason) -> Bool {
+  match reason {
+    NewlineBeforeDualRoleOperator => true
+    FnExpressionBodyMissingAfterEq => false
+    DataValueMissingAfterEq => false
+    LayoutUnknownWithoutSource => false
+    KeywordAsPathSegment => false
+    LetInExpressionDropped => false
+    DeclarationMarkerNotTest => false
+    KeywordAsValueName => false
+    TokenStartsNotIncreasing => false
+  }
+}
+
+fn newline_refusal_arm_count(expr: GrammarExpr) -> Int {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { 0 },
+      literal_terminal: fn(_, _) { 0 },
+      nonterminal: fn(_) { 0 },
+      sequence: fn(l, r) { l + r },
+      choice: fn(l, r) { l + r },
+      optional: fn(e) { e },
+      repeat: fn(e) { e },
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, reason) { if is_newline_refusal(reason: reason) { e + 1 } else { e } },
+      after_line_break: fn(e) { e },
+      not_predicate: fn(e) { e }
+    }
+  )
+}
+
+fn no_productions() -> List<GrammarProduction> {
+  []
+}
+
+fn mutant_grammar() -> ParseGrammar {
+  match dag_grammar() {
+    ModeledGrammar { root: r } =>
+      ModeledGrammar {
+        root: GrammarRoot {
+          start: r.start,
+          productions: fold_list(xs: r.productions, empty: no_productions(), cons: fn(acc, prod) {
+            concat(acc, [GrammarProduction { name: prod.name, expression: strip_refusals(expr: prod.expression), emitted: prod.emitted }])
+          }),
+          sync_tokens: r.sync_tokens
+        }
+      }
+    VoidGrammar => VoidGrammar
+  }
+}
+
+type RefusalArmCensus {
+  newline: Int
+}
+
+// WARM PRODUCER: the newline refusal arms of the live dag grammar, counted once.
+fn nlm_refusal_arm_census() -> RefusalArmCensus {
+  match dag_grammar() {
+    ModeledGrammar { root: r } =>
+      RefusalArmCensus {
+        newline: fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + newline_refusal_arm_count(expr: prod.expression) })
+      }
+    VoidGrammar => RefusalArmCensus { newline: 0 }
+  }
+}
+
+// WARM PRODUCER: the mutant grammar, prepared once.
+fn nlm_mutant_prepared() -> Outcome<PreparedGrammar> {
+  prepare_grammar(grammar: mutant_grammar())
+}
+
+fn accepts_prepared(text: String, file: Symbol, prepared: Outcome<PreparedGrammar>) -> Bool {
+  match prepared {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: p, diagnostics: residue } =>
+      match tokenize(text: text, file: file, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: p, validation_residue: residue) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+test fn witness_the_live_grammar_carries_the_newline_refusal() -> Bool {
+  nlm_refusal_arm_census().newline > 0
+}
+
+// The live grammar's refusals are the controls in v2.test.parse.newline_dual_role_operator_parse;
+// this module asserts only what they cannot: that the refusal arms are what produce them. One claim
+// per source, so each pays one tokenize and one parse against the supplied mutant.
+test fn witness_without_the_refusal_a_next_line_minus_after_an_operand_merges_RED() -> Bool {
+  accepts_prepared(text: newline_minus_after_operand_source, file: ^nlm_plain, prepared: nlm_mutant_prepared())
+}
+
+test fn witness_without_the_refusal_a_next_line_minus_after_a_block_merges_RED() -> Bool {
+  accepts_prepared(text: newline_minus_after_block_source, file: ^nlm_block, prepared: nlm_mutant_prepared())
+}
+
+test fn witness_without_the_refusal_a_same_line_minus_still_parses() -> Bool {
+  accepts_prepared(text: same_line_minus_source, file: ^nlm_same, prepared: nlm_mutant_prepared())
+}

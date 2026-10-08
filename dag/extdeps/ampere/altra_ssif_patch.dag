@@ -1,0 +1,100 @@
+module extdeps.ampere.altra_ssif_patch
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Microsecond, microsecond, measure_le }
+import std.interval { IntervalConstruction, closed_interval }
+import std.optional { Present, Absent }
+import extdeps.version { VersionConstraint }
+import extdeps.uri { Uri, Mailto }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Facts from SSIF_PATCH_V6/readme.txt and the five patch members, acquired
+// 2026-10-07. The readme names Altra and Altra Max, and SSIF host timeouts.
+// These are vendor-stated target ranges, not a compatibility decision for a
+// running kernel; no patch application or production qualification was performed.
+// Consumer: gunbc.altra_firmware_library reference_report.
+// The readme names this upstream support contact. It does not identify the
+// distribution URL from which the operator acquired the archive.
+data altra_ssif_patch_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Mailto, locator: "support@amperecomputing.com" },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.ampere.altra_ssif_patch",
+    decl_name: "altra_ssif_v6_patches", field: WholeDeclaration,
+  } },
+  first_citation: altra_ssif_patch_authority,
+  further_citations: [],
+}
+
+type SsifPatchKernelLineage = GeneralLinux | AmpereSrpCentos8 | Centos8
+
+type AltraSsifPatch {
+  archive_member: NonEmptyStr
+  lineage: SsifPatchKernelLineage
+  kernel_constraint: VersionConstraint
+  removed_abort_hook: NonEmptyStr?
+}
+
+data altra_ssif_v6_purpose: NonEmptyStr = "SSIF host timeouts on Ampere Altra and Altra Max processors."
+
+data altra_ssif_v6_patches: List<AltraSsifPatch> = [
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18.patch",
+    lineage: GeneralLinux, kernel_constraint: "4.18+" as VersionConstraint,
+    removed_abort_hook: Absent,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18-Ampere.patch",
+    lineage: AmpereSrpCentos8, kernel_constraint: "4.18" as VersionConstraint,
+    removed_abort_hook: Present { value: "i2c_dw_wait_bus_not_busy" },
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_5.10.patch",
+    lineage: GeneralLinux, kernel_constraint: "5.10+" as VersionConstraint,
+    removed_abort_hook: Absent,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/collins_ipmi_ssif_issue_tuned_kernel_4.18_c8_365_el8.patch",
+    lineage: Centos8, kernel_constraint: "4.18_365+" as VersionConstraint,
+    removed_abort_hook: Absent,
+  },
+  AltraSsifPatch {
+    archive_member: "SSIF_PATCH_V6/Ampere-Altra-family-SSIF-patch-for-kernel-6.1.patch",
+    lineage: GeneralLinux, kernel_constraint: "6.x" as VersionConstraint,
+    removed_abort_hook: Absent,
+  },
+]
+
+type SsifPatchVendorUsage = | DevelopmentAndTesting
+
+// V6 is the bundle revision, independent of the kernel versions each member targets.
+type AltraSsifPatchBundle {
+  revision: Nat
+  purpose: NonEmptyStr
+  driver_source: NonEmptyStr
+  abort_before_disable_hook: NonEmptyStr
+  abort_wait: IntervalConstruction<Microsecond>
+  vendor_usage: SsifPatchVendorUsage
+  source_standing: CitedFigureStanding
+  patches: List<AltraSsifPatch>
+}
+
+data altra_ssif_v6: AltraSsifPatchBundle = AltraSsifPatchBundle {
+  revision: 6,
+  purpose: altra_ssif_v6_purpose,
+  driver_source: "drivers/i2c/busses/i2c-designware-common.c",
+  abort_before_disable_hook: "__i2c_dw_disable",
+  abort_wait: closed_interval(
+    low: microsecond(count: 50000), high: microsecond(count: 100000),
+    le: fn(a, b) { measure_le(a: a, b: b) },
+  ),
+  vendor_usage: DevelopmentAndTesting,
+  source_standing: TranscribedUncited {
+    read_obligation: "Read the Ampere distribution record for SSIF_PATCH_V6.zip and bind it to this bundle; the inspected readme names Ampere support but the original distribution locator is not established.",
+  },
+  patches: altra_ssif_v6_patches,
+}
