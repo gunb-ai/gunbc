@@ -158,3 +158,21 @@ test fn concat_informed_int_and_bool_lists_refuses() -> Bool {
   (blocking_class_count_for(source: concat_informed_int_and_bool_lists_source, wanted_class: "TypeMismatch") >= 1)
     && !compiles_with_no_blocking_diagnostic(source: concat_informed_int_and_bool_lists_source)
 }
+
+// EVAL CONTROL for gunbc.recurring_failure_mode empty_list_evaluates_to_unit.
+// fold(init: [] as List<T>, concat(acc, [x])) must inhabit T at runtime, not Unit.
+// Deleting the interpreter NoExprData/Unit-as-empty arms must make this field read refuse.
+type EmptyListEvalFile { path: String }
+
+data empty_list_eval_seed: List<EmptyListEvalFile> = [EmptyListEvalFile { path: "a" }]
+
+fn empty_list_eval_concat_from_empty() -> List<EmptyListEvalFile> {
+  fold(empty_list_eval_seed, init: [] as List<EmptyListEvalFile>, f: (acc, f) => concat(acc, [f]))
+}
+
+test fn empty_list_concat_element_is_not_unit_at_eval() -> Bool {
+  match empty_list_eval_concat_from_empty() |> first {
+    Present { value: f } => f.path == "a"
+    Absent => false
+  }
+}
