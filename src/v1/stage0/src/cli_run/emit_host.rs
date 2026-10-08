@@ -4617,7 +4617,7 @@ mod fixture_closure_union_tests {
     }
 
     /// A diamond visited under an earlier parent must still last-wins under a later
-    /// parent's own parent order (sibling walks do not share `seen`).
+    /// parent's own parent order (shared seen/hits reuse that ancestor's result).
     #[test]
     fn diamond_reentered_under_later_parent_last_wins_with_that_parent() {
         let k = Rc::new(v1_compiler_compile::SourceFile {

@@ -16998,7 +16998,7 @@ pub fn variant_tag_reference_argument_results(
 pub fn presence_check_census_gate_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
+            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; ancestry_str_bindings is empty and imports are walked on parents), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the lookup_binding_on_chain (locals then last-wins parent walk) with no fork to guess. The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -26755,15 +26755,6 @@ pub fn symbol_index_with_qualified_fill(
     }
 }
 
-pub fn direct_import_export_precedence_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn overlay_skips_kernel_name(name: String) -> bool {
     (((((crate::std_types::is_kernel_type(name.clone())
         || crate::std_types::is_container_type(name.clone()))
@@ -26771,62 +26762,6 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
         || (name.clone() == "Optional".to_string()))
         || (name.clone() == "Present".to_string()))
         || (name.clone() == "Absent".to_string()))
-}
-
-pub fn overlay_direct_import_exports(
-    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    resolved_imports.iter().cloned().fold(
-        ancestry_str_bindings.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
-            &parent_index,
-            imp.module_path.clone(),
-        ) {
-            Some(typed_parent) => {
-                let export_surface = interface_env_for_import(
-                    imp.module_path.clone(),
-                    typed_parent.interface.clone().env.clone(),
-                );
-                let selected = if imp.is_all.clone() {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for name in Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
-                            .iter()
-                            .cloned()
-                        {
-                            if (is_type_variable_name(name.clone()) == false) {
-                                __result.push(name);
-                            }
-                        }
-                        __result
-                    })
-                } else {
-                    imp.specific_names.clone()
-                };
-                selected.iter().cloned().fold(
-                    acc.clone(),
-                    |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                        if overlay_skips_kernel_name(name.clone()) {
-                            bacc.clone()
-                        } else {
-                            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
-                            {
-                                Some(binding) => v1_rt::rc_map_insert(
-                                    bacc.clone(),
-                                    name.clone(),
-                                    binding.clone(),
-                                ),
-                                std::option::Option::None => bacc.clone(),
-                            }
-                        }
-                    },
-                )
-            }
-            std::option::Option::None => acc.clone(),
-        },
-    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

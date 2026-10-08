@@ -1141,7 +1141,7 @@ fn record_global_bare_ambiguous_silent_pick(
 }
 
 // A KERNEL SPELLING NEVER BINDS A CORPUS DECLARATION THROUGH THE GLOBAL BARE FALLBACK -- kernel
-// precedence (v1.compiler.infer direct_import_export_precedence_note) applied to the last tier. The
+// precedence (v1.compiler.infer overlay_skips_kernel_name) applied to the last tier. The
 // outcome for String used to hold by accident: std.string_type and v2.std.text both declared it,
 // the entry was ambiguous, and nearest-ancestor containment answered nothing for any module outside
 // those two. Deleting std.string_type's duplicate (gunbc.rung_drop text_boundary_identity_wall) left
