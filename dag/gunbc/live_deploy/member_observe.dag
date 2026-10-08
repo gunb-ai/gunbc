@@ -23,14 +23,17 @@ import gunbc.live_deploy.spec {
   deployment_directory_demands,
 }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
-import gunbc.fleet_posix_accounts { fleet_stat_binary_path }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, ListDirectoryEntries, ReadDirectoryIdentity, executor_privileged_operation_elevated_command, executor_privileged_operation_elevated_argv }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.ensure { EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, owned_directory_path, owned_directory_demand_at,
-  owned_directory_stat_args, owned_directory_observation_of_probe, owned_directory_decide,
-  OwnedDirectoryProbe, StatProbeRan, StatProbeNotRun,
+  owned_directory_observe, owned_directory_decide,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverExited,
 }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -515,35 +518,41 @@ fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
   )
 }
 
-// THE DIRECTORY'S OWN METADATA, READ DIRECTLY UNDER THE DEPLOY PRINCIPAL'S GRANTED stat, NEVER BY
-// LISTING ITS PARENT. A managed directory may admit only its owner (the fabric store's root derives
-// owner-execute alone), so listing it to find a child is EACCES for the job user while the child it
-// protects is perfectly observable to a principal with authority over the declared modes. The deploy
-// already performs its installs under `sudo -n`; the observation runs under the same principal's
-// `sudo -n /usr/bin/stat` (gunbc.fleet_posix_accounts SudoStat), so a correctly protected tree reads
-// as converged in planning and in the post-apply readback. The local arm calls the modelled operation
-// (extdeps.shell shell.Stat IdentityOfPrivileged); the remote arm sends the same argv through the
-// transport, whose portable-argv wall refuses the format word, so it reports a probe that did not run
-// -- inaccessible, never absent, and nothing is installed over it.
-fn owned_directory_probe_on_host(arm: ObservationArm, path: String) -> OwnedDirectoryProbe {
+// THE DIRECTORY'S METADATA, READ UNDER THE DEPLOY PRINCIPAL'S PINNED READ-ONLY GRANTS. A managed
+// directory may admit only its owner (the fabric store's root derives owner-execute alone), so the job
+// user can neither list it nor stat what is under it, while a correctly protected tree must still read
+// as converged in planning and readback. Both reads are gunbc.executor_privileged_operation operations
+// bound to one named directory -- ListDirectoryEntries and ReadDirectoryIdentity -- rendered into the
+// runner host's sudoers by gunbc.runner_host_grants for exactly the directories this deployment
+// demands and their ancestors, the same authorization machinery every other root operation of this
+// principal goes through; no path-unrestricted grant is added. The local arm runs the elevated command
+// with its spawn as a value (gunbc.command_runner run_shell_command_observe_outcome); the remote arm
+// sends the same elevated argv through the transport. Either way the read's origin stays typed
+// (gunbc.owned_directory ObserverFailure) and presence and absence are the provider's to decide.
+fn privileged_directory_read(arm: ObservationArm, op: ExecutorPrivilegedOperation) -> ObserverRead {
   match arm {
-    OnTheHostItself => {
-      let r = shell.Stat.IdentityOfPrivileged(path: path as FilePath)
-      StatProbeRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
-    }
+    OnTheHostItself =>
+      match run_shell_command_observe_outcome(command: executor_privileged_operation_elevated_command(op: op), transport: LocalExec) {
+        ProcessNotSpawned { program: _, cause } => ObserverReadFailed { origin: ObserverNotSpawned { cause: cause as String } }
+        ProcessRan { observation: o } =>
+          if o.exit_code == 0 { ObserverReadOut { stdout: o.stdout } }
+          else { ObserverReadFailed { origin: ObserverExited { exit_code: o.exit_code, stderr: o.stderr } } }
+      }
     OverTransport { transport } =>
-      match run_typed_argv_transport(argv: concat(["sudo", "-n", fleet_stat_binary_path as String], owned_directory_stat_args(path: path as FilePath)), transport: transport) {
-        TypedArgvExecRefused { reason } => StatProbeNotRun { reason: reason }
-        TypedArgvExecConverged { result: r } => StatProbeRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+      match run_typed_argv_transport(argv: executor_privileged_operation_elevated_argv(op: op), transport: transport) {
+        TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        TypedArgvExecConverged { result: r } =>
+          if r.exit_code == 0 { ObserverReadOut { stdout: r.stdout } }
+          else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
       }
   }
 }
 
 fn owned_directory_observation_on_host(arm: ObservationArm, path: String) -> EnsureObservation<OwnedDirectoryReading> {
-  owned_directory_observation_of_probe(
-    program: fleet_stat_binary_path as String,
+  owned_directory_observe(
     path: path as FilePath,
-    probe: owned_directory_probe_on_host(arm: arm, path: path),
+    list: p => privileged_directory_read(arm: arm, op: ListDirectoryEntries { path: p as String as NonEmptyStr }),
+    stat: p => privileged_directory_read(arm: arm, op: ReadDirectoryIdentity { path: p as String as NonEmptyStr }),
   )
 }
 

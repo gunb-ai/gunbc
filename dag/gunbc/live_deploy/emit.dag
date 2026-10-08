@@ -3387,32 +3387,6 @@ fn live_deploy_apply_script_for(
   }
 }
 
-// THE SUDOERS DROP-IN INSTALL ON ITS OWN, realized before the deployment plan is derived
-// (gunbc.host_effect_realize realize_live_deploy_sudoers_bootstrap_on_host): the plan's directory
-// observation spends the SudoStat grant this drop-in renders. The same strict options and stage
-// directory the apply frame opens with, then the same install step the apply preamble carries.
-data live_deploy_sudoers_bootstrap_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ live_deploy sudoers bootstrap: the pipeline could not be emitted"
-
-fn live_deploy_sudoers_bootstrap_script() -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      emit_pipeline_or_poison(
-        p: Pipeline {
-          steps: [
-            deploy_raw(command: deploy_shell_strict_options_command),
-            deploy_stage_directory_let_step(),
-            deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
-            deploy_raw(command: deploy_sudoers_install_shell(access: access)),
-          ],
-          on_failure: FailFast,
-        },
-        refused: live_deploy_sudoers_bootstrap_refused_poison,
-      )
-  }
-}
-
 fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
   match spec.target.tailscale_client {
     ScopedRemovalUnsupported { observed: v } =>

@@ -476,6 +476,7 @@ type DashboardToolchain {
   directory_create: FilePath
   path_test: FilePath
   path_stat: FilePath
+  path_list: FilePath
   git: FilePath
   tmux: FilePath
   pipe_shell: FilePath
@@ -533,6 +534,7 @@ data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
   path_test: "/usr/bin/test" as FilePath,
   path_stat: "/usr/bin/stat" as FilePath,
+  path_list: "/usr/bin/ls" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/usr/bin/tmux" as FilePath,
   pipe_shell: "/usr/bin/sh" as FilePath,
@@ -559,6 +561,7 @@ data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/bin/mkdir" as FilePath,
   path_test: "/bin/test" as FilePath,
   path_stat: "/opt/homebrew/bin/gstat" as FilePath,
+  path_list: "/opt/homebrew/bin/gls" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/opt/homebrew/bin/tmux" as FilePath,
   pipe_shell: "/bin/sh" as FilePath,

@@ -128,7 +128,7 @@ import gunbc.owned_directory {
   OwnedDirectoryInstallPlan,
   owned_directory_path,
   owned_directory_stat_args,
-  owned_directory_observation_of_probe, OwnedDirectoryProbe, StatProbeRan, StatProbeNotRun,
+  owned_directory_observe, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ObserverTransportRefused,
   owned_directory_install_args,
   owned_directory_decide,
   owned_directory_ensure,
@@ -734,42 +734,42 @@ fn dashboard_apply_plan(
 
 // ── THE INSTANCE'S DIRECTORIES, THROUGH THE ONE PROVIDER ─────────────────────────────────────────
 //
-// This route's two host operations for gunbc.owned_directory owned_directory_ensure, and nothing else:
-// a stat of the path on the target (under LC_ALL=C through the environment binding, so ENOENT reads as
-// the C library's fixed text and only that is absence) and the owned install. The decision, the plan
-// and the readback classification are the provider's, shared with the live_deploy transaction.
-fn dashboard_owned_directory_observe(
-  instance: HostDashboardInstance,
-  path: FilePath,
-) -> EnsureObservation<OwnedDirectoryReading> {
-  owned_directory_observation_of_probe(
-    program: instance.toolchain.path_stat as String,
-    path: path,
-    probe: dashboard_owned_directory_probe(instance: instance, path: path),
-  )
-}
-
-// THE PROBE KEEPS STAT'S OWN EXIT STATUS, which dashboard_target_exec's Bool discards: an exit of 127
-// from env (no stat at path_stat) and an exit of 1 from stat about its operand are different facts,
-// and only the second can establish absence. A transport refusal is a probe that did not run.
-fn dashboard_owned_directory_probe(instance: HostDashboardInstance, path: FilePath) -> OwnedDirectoryProbe {
-  let argv = concat([instance.toolchain.environment_binding as String, "LC_ALL=C", instance.toolchain.path_stat as String], owned_directory_stat_args(path: path))
+// This route's host operations for gunbc.owned_directory owned_directory_ensure, and nothing else: two
+// read-only metadata reads (list a directory, stat a directory) through the instance's toolchain as the
+// instance's principal, each returning what it read or the typed origin of why it read nothing, and the
+// owned install. The decision, the plan, presence and the readback classification are the provider's,
+// shared with the live_deploy transaction. No exit status or diagnostic text is interpreted here.
+fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, args: List<String>) -> ObserverRead {
   match instance.provision_transport {
     DashboardLocalProvision => {
       let r = gunbc.WitnessBin.Run(
         workdir: dashboard_instance_controller_workdir(instance: instance),
-        bin_path: instance.toolchain.environment_binding,
-        args: argv.skip(n: 1),
+        bin_path: program,
+        args: args,
         expect: OutcomeIsData,
       )
-      StatProbeRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+      if r.success { ObserverReadOut { stdout: r.stdout } }
+      else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
     }
     DashboardSshProvision { host } =>
-      match typed_argv_exec_over_ssh(host: host, argv: argv) {
-        TypedArgvExecConverged { result } => StatProbeRan { exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr }
-        TypedArgvExecRefused { reason } => StatProbeNotRun { reason: reason }
+      match typed_argv_exec_over_ssh(host: host, argv: concat([program as String], args)) {
+        TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        TypedArgvExecConverged { result } =>
+          if result.exit_code == 0 { ObserverReadOut { stdout: result.stdout } }
+          else { ObserverReadFailed { origin: ObserverExited { exit_code: result.exit_code, stderr: result.stderr } } }
       }
   }
+}
+
+fn dashboard_owned_directory_observe(
+  instance: HostDashboardInstance,
+  path: FilePath,
+) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: path,
+    list: p => dashboard_observer_read(instance: instance, program: instance.toolchain.path_list, args: ["-1A", "--", p as String]),
+    stat: p => dashboard_observer_read(instance: instance, program: instance.toolchain.path_stat, args: owned_directory_stat_args(path: p)),
+  )
 }
 
 fn dashboard_owned_directory_install(instance: HostDashboardInstance, plan: OwnedDirectoryInstallPlan) -> Bool {

@@ -126,8 +126,8 @@ fn owned_directory_demand_at(ts: List<OwnedDirectoryTarget>, path: String) -> Op
 
 // ── OBSERVATION ──────────────────────────────────────────────────────────────────────────────────
 //
-// ONE READING, ONE PARSER, EVERY ROUTE. stat(1)'s %F|%U|%G|%a is GNU coreutils (extdeps.shell
-// shell.Stat IdentityOf names the same argv); each route supplies the line, and this module alone
+// ONE READING, ONE PARSER, EVERY ROUTE. stat(1)'s %F|%U|%G|%a is GNU coreutils (gunbc.executor_privileged_operation
+// ReadDirectoryIdentity spells the same argv); each route supplies the line, and this module alone
 // decides what it says. A line that does not parse is not a directory nobody owns: it is an
 // observation that did not happen.
 type OwnedDirectoryReading {
@@ -179,58 +179,100 @@ fn owned_directory_reading_of_stat_line(line: String) -> Optional<OwnedDirectory
 
 // ── THE OBSERVATION CONTRACT: WHAT A ROUTE HANDS IN, AND WHAT IT MAY MEAN ───────────────────────
 //
-// A route supplies ONE PROBE of the target: either stat ran (its own exit status and both streams), or
-// the probe did not run at all (a transport refusal, an executor that could not start). Each route
-// supplies its own transport and the authority stat runs under (the dashboard apply: the instance's
-// toolchain stat under LC_ALL=C; the live_deploy transaction: the deploy principal's granted
-// `sudo -n stat`, which traverses every declared mode); this module alone decides what the probe
-// says.
+// A route supplies two READ-ONLY metadata reads, each bound to one directory and each returning what
+// it read or WHY it read nothing as a typed origin: list a directory's entries, and stat a directory
+// (file type, owner, group, mode). The route chooses the transport and the authority the reads run
+// under -- the dashboard apply: the instance's own toolchain as the instance's principal; the
+// live_deploy transaction: the deploy principal's pinned-argv grants (gunbc.executor_privileged_operation
+// ListDirectoryEntries, ReadDirectoryIdentity), which traverse every declared mode. This module alone
+// decides what the reads say.
 //
-// ABSENCE IS EVIDENCE ABOUT THE TARGET, NEVER A SUBSTRING. stat exits 1 for a failure about its
-// operand and prints one diagnostic naming that operand; an executor that could not start exits 126
-// or 127 (env's, sudo's or the shell's own diagnostic -- and a missing stat binary prints the same
-// "No such file or directory" text about ITSELF), and a refused sudo exits 1 with sudo's text. So a
-// probe is ABSENT only when stat itself ran (exit 1) and its whole stderr is exactly stat's ENOENT
-// diagnostic for THIS operand, spelled with the program word the route invoked. Everything else that
-// is not a parsed identity line is INACCESSIBLE: no install is decided over it under any policy.
-type OwnedDirectoryProbe
-  = StatProbeRan { exit_code: Int, stdout: String, stderr: String }
-  | StatProbeNotRun { reason: String }
+// ABSENCE IS ESTABLISHED, NEVER INFERRED. A directory is absent only when a listing of its parent was
+// actually read and does not name it (or, recursively, when the parent itself was established
+// absent). No diagnostic text is consulted anywhere: a read that failed -- an observer that could not
+// be spawned, a transport that refused, an observer that ran and exited nonzero for any reason --
+// carries that origin as a value, and a failed read establishes nothing. So a missing observer binary,
+// a broken transport or a refused grant yields INACCESSIBLE, under which no policy installs.
+type ObserverFailure
+  = ObserverNotSpawned { cause: String }
+  | ObserverTransportRefused { cause: String }
+  | ObserverExited { exit_code: Int, stderr: String }
 
-data owned_directory_enoent_text: String = "No such file or directory"
+type ObserverRead
+  = ObserverReadOut { stdout: String }
+  | ObserverReadFailed { origin: ObserverFailure }
 
-// coreutils prints `<argv0>: cannot statx '<operand>': <strerror>` (statx builds) or
-// `<argv0>: cannot stat '<operand>': <strerror>` (stat(2) builds); the operand is quoted as written
-// for a path with no character that needs escaping, which every demanded path is.
-fn owned_directory_stat_enoent_diagnostics(program: String, path: FilePath) -> List<String> {
-  [
-    join([program, ": cannot statx '", path as String, "': ", owned_directory_enoent_text], ""),
-    join([program, ": cannot stat '", path as String, "': ", owned_directory_enoent_text], ""),
-  ]
+fn observer_failure_text(f: ObserverFailure) -> String {
+  match f {
+    ObserverNotSpawned { cause } => join(["the observer could not be spawned: ", cause], "")
+    ObserverTransportRefused { cause } => join(["the transport refused the read: ", cause], "")
+    ObserverExited { exit_code, stderr } => join(["the observer exited ", to_string(value: exit_code), ": ", trim(s: stderr)], "")
+  }
 }
 
-fn owned_directory_observation_of_probe(
-  program: String,
-  path: FilePath,
-  probe: OwnedDirectoryProbe,
-) -> EnsureObservation<OwnedDirectoryReading> {
-  match probe {
-    StatProbeNotRun { reason } =>
-      EnsureInaccessible { reason: join(["stat of ", path as String, " did not run: ", reason], "") }
-    StatProbeRan { exit_code, stdout, stderr } =>
-      if exit_code == 0 {
-        match owned_directory_reading_of_stat_line(line: stdout) {
-          Absent => EnsureInaccessible { reason: join(["stat of ", path as String, " is not an identity line: ", trim(s: stdout)], "") }
-          Present { value: reading } => EnsureObserved { evidence: reading }
-        }
-      } else if exit_code == 1
-          && any(owned_directory_stat_enoent_diagnostics(program: program, path: path), d => d == trim(s: stderr)) {
-        EnsureAbsent { reason: join(["owned directory ", path as String, " is absent"], "") }
+fn owned_directory_parent(path: FilePath) -> FilePath {
+  let segments = filter(xs: split(s: path as String, delimiter: "/"), predicate: s => s != "")
+  if count(segments) <= 1 {
+    "/" as FilePath
+  } else {
+    join(["/", join(segments.take(n: count(segments) - 1), "/")], "") as FilePath
+  }
+}
+
+fn owned_directory_basename(path: FilePath) -> String {
+  fold(split(s: path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+// EVERY DIRECTORY WHOSE LISTING CAN BE ASKED WHILE OBSERVING `path`: its parent and each ancestor up to
+// the root. A route that authorizes its listings per directory grants exactly these.
+fn owned_directory_listed_ancestors(path: FilePath) -> List<FilePath> {
+  if (path as String) == "/" {
+    []
+  } else {
+    concat([owned_directory_parent(path: path)], owned_directory_listed_ancestors(path: owned_directory_parent(path: path)))
+  }
+}
+
+type OwnedDirectoryPresence
+  = PresenceListed
+  | PresenceNotListed
+  | PresenceUnestablished { origin: ObserverFailure }
+
+fn owned_directory_presence(path: FilePath, list: fn(FilePath) -> ObserverRead) -> OwnedDirectoryPresence {
+  let parent = owned_directory_parent(path: path)
+  match list(parent) {
+    ObserverReadOut { stdout } =>
+      if any(split(s: stdout, delimiter: "\n"), e => e == owned_directory_basename(path: path)) { PresenceListed } else { PresenceNotListed }
+    ObserverReadFailed { origin } =>
+      if (parent as String) == "/" {
+        PresenceUnestablished { origin: origin }
       } else {
-        EnsureInaccessible {
-          reason: join(["stat of ", path as String, " exited ", to_string(value: exit_code), ": ", trim(s: stderr)], ""),
+        match owned_directory_presence(path: parent, list: list) {
+          PresenceNotListed => PresenceNotListed
+          PresenceListed => PresenceUnestablished { origin: origin }
+          PresenceUnestablished { origin: o } => PresenceUnestablished { origin: o }
         }
       }
+  }
+}
+
+fn owned_directory_observe(
+  path: FilePath,
+  list: fn(FilePath) -> ObserverRead,
+  stat: fn(FilePath) -> ObserverRead,
+) -> EnsureObservation<OwnedDirectoryReading> {
+  match owned_directory_presence(path: path, list: list) {
+    PresenceNotListed => EnsureAbsent { reason: join(["owned directory ", path as String, " is not listed in its parent"], "") }
+    PresenceUnestablished { origin } =>
+      EnsureInaccessible { reason: join(["presence of ", path as String, " not established: ", observer_failure_text(f: origin)], "") }
+    PresenceListed => match stat(path) {
+      ObserverReadFailed { origin } =>
+        EnsureInaccessible { reason: join(["stat of ", path as String, ": ", observer_failure_text(f: origin)], "") }
+      ObserverReadOut { stdout } => match owned_directory_reading_of_stat_line(line: stdout) {
+        Absent => EnsureInaccessible { reason: join(["stat of ", path as String, " is not an identity line: ", trim(s: stdout)], "") }
+        Present { value: reading } => EnsureObserved { evidence: reading }
+      }
+    }
   }
 }
 // ── DECISION ─────────────────────────────────────────────────────────────────────────────────────

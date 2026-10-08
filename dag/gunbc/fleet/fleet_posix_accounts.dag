@@ -238,10 +238,14 @@ data fleet_cp_binary_path: NonEmptyStr = "/usr/bin/cp"
 
 data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
 
-// THE DEPLOY PLAN READS EVERY DEMANDED DIRECTORY THROUGH IT (extdeps.shell shell.Stat IdentityOfPrivileged,
-// which spells this path in its argv): a managed directory whose mode admits only its owner cannot be
-// traversed by the job user, and its standing must still be observable before and after the apply.
+// THE TWO READ-ONLY METADATA BINARIES THE DEPLOY PLAN OBSERVES DIRECTORIES THROUGH. They are NOT rows
+// of ci_runner_sudo_binaries (no path-unrestricted grant): each is granted only as a pinned-argv
+// ExecutorPrivilegedOperation over one named directory (gunbc.executor_privileged_operation
+// ReadDirectoryIdentity, ListDirectoryEntries), rendered into the runner host's sudoers by
+// gunbc.runner_host_grants. A managed directory whose mode admits only its owner cannot be traversed by
+// the job user, and its standing must still be observable before and after the apply.
 data fleet_stat_binary_path: NonEmptyStr = "/usr/bin/stat"
+data fleet_ls_binary_path: NonEmptyStr = "/usr/bin/ls"
 
 // nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
 // readback of the installed ruleset is a granted command like any mutation.
@@ -295,6 +299,7 @@ type CiRunnerSudoBinary
   | SudoCp
   | SudoMv
   | SudoStat
+  | SudoLs
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -313,6 +318,7 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoCp => fleet_cp_binary_path
     SudoMv => fleet_mv_binary_path
     SudoStat => fleet_stat_binary_path
+    SudoLs => fleet_ls_binary_path
   }
 }
 
@@ -333,6 +339,7 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoCp => NopasswdExecuteCheck { check_argv: "--version" }
     SudoMv => NopasswdExecuteCheck { check_argv: "--version" }
     SudoStat => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoLs => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 
@@ -363,7 +370,7 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // gunbc_deploy_sudoers_dropin) is rendered from, and the deploy preamble installs it
 // (gunbc.ci_deploy_sudoers deploy_sudoers_install_shell). So the new rows reach srv1 through the
 // operator-approved deploy that carries this change, not a hand edit.
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv, SudoStat]
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv]
 
 // THE GRANTS THE DROP-IN INSTALL ITSELF SPENDS, and so the only grants a deploy may demand BEFORE
 // the drop-in is installed. gunbc.ci_deploy_sudoers deploy_sudoers_install_shell is the one step that
