@@ -81,11 +81,12 @@ import gunbc.durable_cas_file_store {
   CasWindowReclamation, CasReclamationNotCommitted, CasAttemptAdmission,
   cas_window_generations, CasWindowGenerations, CasWindowGenerationsListed, CasWindowGenerationsUnlisted,
   cas_reclaim_below, CasGenerationWindow,
+  cas_verify_named_window_head, NamedWindowHeadCurrent, NamedWindowHeadMoved,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, DurableHoldReleaseRefusal, DurableHoldRecoveryRefusal,
   HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
-  DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable, HoldNamedWindowHeadMoved,
+  DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
   durable_hold_owner_equal,
 }
 import gunbc.durable_exclusive_hold_file_store {
@@ -94,7 +95,7 @@ import gunbc.durable_exclusive_hold_file_store {
   file_hold_release_assess_windowed_at, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
   file_hold_recovery_assess_windowed, FileHoldRecoveryPlanned, FileHoldRecoveryNotEligible,
-  observe_file_hold_windowed_at,
+  hold_observation_of_cas,
 }
 import gunbc.process_hold_identity {
   process_hold_text, process_hold_marker, process_hold_decode, ProcessHoldHolder,
@@ -907,6 +908,7 @@ type LocalStoreIndexRefusal
   | LocalStoreIndexContended { attempts: Int }
   | LocalStoreIndexUnsettled { settlement: LocalStoreSlotSettlement }
   | LocalStoreIndexHoldStale { observed: DurableHoldObservation }
+  | LocalStoreIndexHoldNamedWindowHeadMoved { named: CasGeneration }
 
 fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
   match refusal {
@@ -927,6 +929,7 @@ fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
     LocalStoreIndexContended { attempts: n } => concat("the occupancy index kept moving under concurrent writers past the attempt bound: ", n as String)
     LocalStoreIndexUnsettled { settlement: st } => concat("the occupancy index cannot advance: ", local_store_settlement_text(s: st))
     LocalStoreIndexHoldStale { observed: _ } => "the occupancy index write was attempted under a hold that is no longer live"
+    LocalStoreIndexHoldNamedWindowHeadMoved { named: _ } => "the occupancy index write was attempted after the named window head moved"
   }
 }
 
@@ -974,6 +977,7 @@ fn local_store_write_index(held: LocalStoreFamilyHeld, expected: CasExpectation,
 {
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexHoldStale { observed: o } }
+    LocalStoreHoldNamedWindowMoved { named: n } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexHoldNamedWindowHeadMoved { named: n } }
     LocalStoreHoldCurrent => local_store_write_index_current(held: held, expected: expected, index: index)
   }
 }
@@ -1070,6 +1074,7 @@ type LocalStoreHoldRefusal
   | LocalStoreHoldWindowTooNarrow { k: Int }
   | LocalStoreHoldUnsettled { settlement: LocalStoreSlotSettlement }
   | LocalStoreHoldStale { observed: DurableHoldObservation }
+  | LocalStoreHoldNamedWindowHeadMoved { named: CasGeneration }
   | LocalStoreHoldWrongFamily { held: ArtifactKindId, requested: ArtifactKindId }
 
 fn local_store_hold_refusal_text(refusal: LocalStoreHoldRefusal) -> String {
@@ -1085,6 +1090,7 @@ fn local_store_hold_refusal_text(refusal: LocalStoreHoldRefusal) -> String {
     LocalStoreHoldWindowTooNarrow { k: k } => concat("the family hold window is narrower than its floor: k = ", k as String)
     LocalStoreHoldUnsettled { settlement: st } => concat("the family hold slot cannot advance: ", local_store_settlement_text(s: st))
     LocalStoreHoldStale { observed: _ } => "the hold this write was given is no longer the family's live hold"
+    LocalStoreHoldNamedWindowHeadMoved { named: _ } => "the named window head moved; this hold is no longer the family's live hold"
     LocalStoreHoldWrongFamily { held: h, requested: r } => concat(concat("the hold is for family ", h as String), concat(", the write is for ", r as String))
   }
 }
@@ -1200,6 +1206,7 @@ fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId,
 type LocalStoreHoldCheck
   = LocalStoreHoldCurrent
   | LocalStoreHoldNotCurrent { observed: DurableHoldObservation }
+  | LocalStoreHoldNamedWindowMoved { named: CasGeneration }
 
 fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
   admit_callers: [
@@ -1210,15 +1217,29 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
-  let observed = observe_file_hold_windowed_at(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), generation: held.generation)
+  match cas_verify_named_window_head(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), generation: held.generation) {
+    NamedWindowHeadMoved { named_generation: n } => LocalStoreHoldNamedWindowMoved { named: n }
+    NamedWindowHeadCurrent { observation: o } =>
+      local_store_hold_from_current_observation(held: held, observed: hold_observation_of_cas(observed: o))
+  }
+}
+
+fn local_store_hold_from_current_observation(held: LocalStoreFamilyHeld, observed: DurableHoldObservation) -> LocalStoreHoldCheck
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
+  ]
+{
   match observed {
-    HoldSlotHeld { generation: g, owner: o } =>
-      if cas_generation_count(g: g) == cas_generation_count(g: held.generation) && durable_hold_owner_equal(left: o, right: held.owner) { LocalStoreHoldCurrent } else { LocalStoreHoldNotCurrent { observed: observed } }
+    HoldSlotHeld { generation: g, owner: owner } =>
+      if cas_generation_count(g: g) == cas_generation_count(g: held.generation) && durable_hold_owner_equal(left: owner, right: held.owner) {
+        LocalStoreHoldCurrent
+      } else {
+        LocalStoreHoldNotCurrent { observed: observed }
+      }
     HoldSlotAbsent => LocalStoreHoldNotCurrent { observed: observed }
     HoldSlotFree { generation: _, released_by: _ } => LocalStoreHoldNotCurrent { observed: observed }
     HoldSlotUndecodable { generation: _, detail: _ } => LocalStoreHoldNotCurrent { observed: observed }
     HoldObservationUnavailable { cause: _ } => LocalStoreHoldNotCurrent { observed: observed }
-    HoldNamedWindowHeadMoved { generation: _ } => LocalStoreHoldNotCurrent { observed: observed }
   }
 }
 
@@ -1679,6 +1700,7 @@ fn local_store_sweep_held(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
     Absent => match local_store_hold_check(held: h) {
       LocalStoreHoldCurrent => none
       LocalStoreHoldNotCurrent { observed: o } => Present { value: LocalStoreSweepHoldRefused { family: h.family, refusal: LocalStoreHoldStale { observed: o }, released: [] } }
+      LocalStoreHoldNamedWindowMoved { named: n } => Present { value: LocalStoreSweepHoldRefused { family: h.family, refusal: LocalStoreHoldNamedWindowHeadMoved { named: n }, released: [] } }
     }
   })
   match stale {
@@ -1759,6 +1781,7 @@ fn local_store_record_recency_held(held: LocalStoreFamilyHeld, served: List<Stri
   let root_path = materialization_store_root_path(root: held.binding.root)
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => LocalStoreRecencyHoldRefused { family: family, refusal: LocalStoreHoldStale { observed: o } }
+    LocalStoreHoldNamedWindowMoved { named: n } => LocalStoreRecencyHoldRefused { family: family, refusal: LocalStoreHoldNamedWindowHeadMoved { named: n } }
     LocalStoreHoldCurrent => local_store_record_recency_current(held: held, served: served)
   }
 }
@@ -2019,6 +2042,7 @@ fn local_store_commit_verified(
   let root_path = materialization_store_root_path(root: root)
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: key, refusal: LocalStoreHoldStale { observed: o })
+    LocalStoreHoldNamedWindowMoved { named: n } => local_store_commit_hold_refused(key: key, refusal: LocalStoreHoldNamedWindowHeadMoved { named: n })
     LocalStoreHoldCurrent =>
       local_store_commit_refused(commit: store_commit_settle(
         store: held.binding.store,
@@ -2285,6 +2309,7 @@ fn local_store_commit_under(
   } else {
     match local_store_hold_check(held: held) {
       LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldStale { observed: o })
+      LocalStoreHoldNamedWindowMoved { named: n } => local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldNamedWindowHeadMoved { named: n })
       LocalStoreHoldCurrent => {
         let staged = parts |> map(p => local_store_read_part(id: p.id, path: p.staged))
         match local_store_first_unreadable(readings: staged) {

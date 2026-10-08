@@ -8,7 +8,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import gunbc.command_runner { run_shell_command_capture }
 import std.decl_ref { DeclarationRef }
 import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
-import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldSlotHeld, HoldSlotUndecodable }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
 import product.host_identity { HostIdentity }
 import product.fabric.identity { fabric_identity_eq }
 import product.fabric.provider_route { CompliancePostureRevision }
@@ -102,7 +102,6 @@ fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentit
               HoldSlotHeld { generation: _, owner: _ } => none
               HoldSlotUndecodable { generation: _, detail: _ } => none
               HoldObservationUnavailable { cause: _ } => none
-              HoldNamedWindowHeadMoved { generation: _ } => none
             }
             match next {
               Absent => Present { value: "allocation slot is held, unreadable, or generation exhausted" }

@@ -12,7 +12,7 @@ import std.durable_exclusive_hold {
   HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
   HoldReleaseNamedWindowHeadMoved,
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
-  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable, HoldNamedWindowHeadMoved,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal,
   HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable, HoldRecoverySlotMoved,
@@ -619,7 +619,6 @@ fn probe_hold_release_decision(observed: DurableHoldObservation, run_id: NonEmpt
     HoldSlotFree { generation: _, released_by: _ } => ProbeHoldFreeNoop
     HoldSlotUndecodable { generation: _, detail: d } => ProbeHoldUnobservable { cause: concat("slot undecodable: ", d as String) }
     HoldObservationUnavailable { cause: _ } => ProbeHoldUnobservable { cause: "the store could not be read" }
-    HoldNamedWindowHeadMoved { generation: _ } => ProbeHoldUnobservable { cause: "the store could not be read" }
     HoldSlotHeld { generation: g, owner: o } =>
       match decode_unit_hold_owner(owner: o) {
         UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: r, process: p, pid_namespace: n } } =>
@@ -884,7 +883,6 @@ fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> Pr
     HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: join([label, ": already free (released by ", b as String, ")"], ""))
     HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
     HoldObservationUnavailable { cause: _ } => exit_failure(reason: concat(label, ": store unavailable"))
-    HoldNamedWindowHeadMoved { generation: _ } => exit_failure(reason: concat(label, ": store unavailable"))
     HoldSlotHeld { generation: g, owner: o } =>
       match decode_unit_hold_owner(owner: o) {
         UnitHoldOwnerUnrecognized { raw: r } =>

@@ -13,10 +13,10 @@ import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
   DurableHoldState, DurableHoldHeld, DurableHoldFree,
   DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld,
-  HoldSlotUndecodable, HoldObservationUnavailable, HoldNamedWindowHeadMoved,
+  HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldAcquireAssessment, HoldAcquireEligible, HoldAcquireRefused,
   DurableHoldAcquireRefusal, HoldAcquireOccupied, HoldAcquireSlotUndecodable,
-  HoldAcquireObservationUnavailable, HoldAcquireNamedWindowHeadMoved,
+  HoldAcquireObservationUnavailable,
   DurableHoldReleaseAssessment, HoldReleaseEligible, HoldReleaseRefused,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
   HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
@@ -32,7 +32,9 @@ import std.durable_exclusive_hold {
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecode, HoldPayloadDecoded, HoldPayloadUndecodable,
   hold_slot_payload, decode_hold_slot_payload, hold_observation_of_cas,
+  windowed_hold_release_from_verify, windowed_hold_recovery_from_verify,
 }
+import gunbc.durable_cas_file_store { NamedWindowHeadMoved }
 
 // THE PURE HALF OF THE HOLD PROTOCOL AND ITS CODEC. Every row here decides
 // from a supplied observation over the PURE assessments; nothing reaches a
@@ -119,7 +121,6 @@ test fn a_bare_free_tag_is_not_an_acquirable_free_slot() -> Bool {
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: _ } } => cas_generation_count(g: g) == 3
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
-    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -192,7 +193,6 @@ fn eh_acquire_occupied_by(a: DurableHoldAcquireAssessment, holder: String) -> Bo
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: h } } => (h as String) == holder
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: _, detail: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
-    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -219,7 +219,6 @@ test fn an_undecodable_slot_is_neither_acquirable_nor_occupied() -> Bool {
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: _ } } => cas_generation_count(g: g) == 2
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
-    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -229,7 +228,6 @@ test fn an_unavailable_observation_is_not_acquirable() -> Bool {
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => true
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: _, detail: _ } } => false
-    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -376,7 +374,11 @@ test fn a_dead_verdict_recovers_only_the_hold_it_was_taken_of() -> Bool {
 }
 
 test fn named_window_head_moved_release_does_not_claim_an_observed_current_generation() -> Bool {
-  match eh_release_assess(observed: HoldNamedWindowHeadMoved { generation: 3 }, owner: "demand-7|offer-1", acquired: 3) {
+  match windowed_hold_release_from_verify(
+    verify: NamedWindowHeadMoved { named_generation: 3 },
+    owner: eh_owner(text: "demand-7|offer-1"),
+    acquired_generation: 3,
+  ) {
     HoldReleaseRefused { refusal: HoldReleaseNamedWindowHeadMoved { named: n } } =>
       cas_generation_count(g: n) == 3
     HoldReleaseRefused { refusal: HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } } => false
@@ -386,7 +388,7 @@ test fn named_window_head_moved_release_does_not_claim_an_observed_current_gener
 
 test fn named_window_head_moved_recovery_does_not_claim_an_observed_current_generation() -> Bool {
   let dead = eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 1)
-  match durable_hold_recovery_assess(observed: HoldNamedWindowHeadMoved { generation: 3 }, report: dead) {
+  match windowed_hold_recovery_from_verify(verify: NamedWindowHeadMoved { named_generation: 3 }, report: dead) {
     HoldRecoveryRefused { refusal: HoldRecoveryNamedWindowHeadMoved { named: n } } =>
       cas_generation_count(g: n) == 3
     HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: _, observed: _ } } => false

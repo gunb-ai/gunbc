@@ -709,31 +709,39 @@ fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: 
 // its successor reads absent. Those two reads are Filesystem.Read of cas_file_slot_path, O(1) in
 // the store's object count. A successor that is present means the head moved; an absent named
 // generation is not this head. The observation is never guessed.
-// Named verify is not a CasSlotProbe: G+1 present is a moved head, not an observation-budget
-// exhaustion, and CasSlotProbe's Unsettled arm is the eight-pass list-and-verify bound. Folding the
-// two together is the meaning-fork DESIGN section 3 names; the hold consumer maps HeadMoved itself.
+// Realization-private: named verify is not CasSlotProbe and not DurableHoldObservation. G+1 present
+// is a moved head, not eight-pass BoundExceeded. Consumers are the windowed hold check and the
+// windowed release assessment; they match HeadMoved directly.
 type CasNamedWindowVerify
-  = NamedWindowVerified { probe: CasSlotProbe }
-  | NamedWindowHeadMoved { generation: CasGeneration }
+  = NamedWindowHeadCurrent { observation: CasSlotObservation<NonEmptyStr> }
+  | NamedWindowHeadMoved { named_generation: CasGeneration }
 
 fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasNamedWindowVerify
   admit_callers: [
-    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed_at"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
   ]
 {
-  match cas_read_generation(root: root, key: key, generation: generation) {
-    GenerationRefused { probe: p } => NamedWindowVerified { probe: p }
-    GenerationAbsent => NamedWindowVerified { probe: ProbedAbsent }
-    GenerationPresent { content: c } =>
-      match cas_generation_successor(g: generation) {
-        CasSuccessorExhausted { head: _ } => NamedWindowVerified { probe: ProbedHead { generation: generation, value: c } }
-        CasSuccessorGeneration { generation: next } =>
-          match cas_read_generation(root: root, key: key, generation: next) {
-            GenerationRefused { probe: p } => NamedWindowVerified { probe: p }
-            GenerationAbsent => NamedWindowVerified { probe: ProbedHead { generation: generation, value: c } }
-            GenerationPresent { content: _ } => NamedWindowHeadMoved { generation: generation }
-          }
-      }
+  if !cas_key_is_slot_addressable(key: key) {
+    NamedWindowHeadCurrent { observation: CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } } }
+  } else {
+    match cas_read_generation(root: root, key: key, generation: generation) {
+      GenerationRefused { probe: p } => NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: p) }
+      GenerationAbsent => NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: ProbedAbsent) }
+      GenerationPresent { content: c } =>
+        match cas_generation_successor(g: generation) {
+          CasSuccessorExhausted { head: _ } =>
+            NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: ProbedHead { generation: generation, value: c }) }
+          CasSuccessorGeneration { generation: next } =>
+            match cas_read_generation(root: root, key: key, generation: next) {
+              GenerationRefused { probe: p } => NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: p) }
+              GenerationAbsent =>
+                NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: ProbedHead { generation: generation, value: c }) }
+              GenerationPresent { content: _ } => NamedWindowHeadMoved { named_generation: generation }
+            }
+        }
+    }
   }
 }
 

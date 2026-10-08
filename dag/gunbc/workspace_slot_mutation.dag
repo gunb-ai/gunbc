@@ -3,7 +3,7 @@ module gunbc.workspace_slot_mutation
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
-import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldSlotUndecodable, HoldSlotAbsent }
+import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldSlotUndecodable, HoldSlotAbsent }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
@@ -100,7 +100,6 @@ fn workspace_slot_mutation_release_fenced(lease: WorkspaceSlotMutationLease) -> 
               HoldSlotHeld { generation: _, owner: _ } => false
               HoldSlotUndecodable { generation: _, detail: _ } => false
               HoldObservationUnavailable { cause: _ } => false
-              HoldNamedWindowHeadMoved { generation: _ } => false
             }
             FileHoldReleaseLost { slot_key: _ } => false
             FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
@@ -128,7 +127,6 @@ fn workspace_commissioning_mutation_held(slot_key: NonEmptyStr, plan_hash: NonEm
       HoldSlotFree { generation: _, released_by: _ } => false
       HoldSlotUndecodable { generation: _, detail: _ } => false
       HoldObservationUnavailable { cause: _ } => false
-      HoldNamedWindowHeadMoved { generation: _ } => false
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
     OwnershipUnread { reason: _ } => false
@@ -146,7 +144,6 @@ fn workspace_slot_mutation_supply_open(slot_key: NonEmptyStr) -> Bool {
       HoldSlotHeld { generation: _, owner: _ } => false
       HoldSlotUndecodable { generation: _, detail: _ } => false
       HoldObservationUnavailable { cause: _ } => false
-      HoldNamedWindowHeadMoved { generation: _ } => false
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
     OwnershipUnread { reason: _ } => false
@@ -162,7 +159,6 @@ fn workspace_slot_mutation_still_owned(held: WorkspaceSlotMutationHeld) -> Bool 
       HoldSlotFree { generation: _, released_by: _ } => false
       HoldSlotUndecodable { generation: _, detail: _ } => false
       HoldObservationUnavailable { cause: _ } => false
-      HoldNamedWindowHeadMoved { generation: _ } => false
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
     OwnershipUnread { reason: _ } => false
@@ -192,7 +188,6 @@ fn workspace_mutation_recovery_standing(observed: DurableHoldObservation,
     HoldSlotAbsent => WorkspaceMutationRecoveryRefused
     HoldSlotUndecodable { generation: _, detail: _ } => WorkspaceMutationRecoveryRefused
     HoldObservationUnavailable { cause: _ } => WorkspaceMutationRecoveryRefused
-    HoldNamedWindowHeadMoved { generation: _ } => WorkspaceMutationRecoveryRefused
   }
 }
 

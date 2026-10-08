@@ -39,7 +39,7 @@ import extdeps.realization.materialization_store_local {
   local_store_record_recency, local_store_is_object_name, local_store_is_store_file_name, local_store_object_bytes, local_store_family_budget,
   LocalStoreFamilyBudget, local_store_budget_sum,
   LocalStoreRecencyHoldRefused, LocalStoreRecencyReceipt,
-  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under, LocalStoreHoldStale, LocalStoreHoldWrongFamily,
+  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under, LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
   local_store_hold_key, local_store_hold_owner_prefix,
   LocalStoreHoldAcquisition, LocalStoreHoldAcquired, LocalStoreHoldRefused, LocalStoreHoldRefusal, LocalStoreFamilyBusy,
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
@@ -57,8 +57,6 @@ import gunbc.durable_exclusive_hold_file_store { file_hold_acquire_windowed, Fil
 import gunbc.durable_cas_file_store { cas_file_slot_path }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef,
-  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
-  HoldNamedWindowHeadMoved,
 }
 import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
@@ -635,6 +633,7 @@ fn hold_refusal_is_busy(r: LocalStoreHoldRefusal?) -> Bool {
       LocalStoreHoldWindowTooNarrow { k: _ } => false
       LocalStoreHoldUnsettled { settlement: _ } => false
       LocalStoreHoldStale { observed: _ } => false
+      LocalStoreHoldNamedWindowHeadMoved { named: _ } => false
       LocalStoreHoldWrongFamily { held: _, requested: _ } => false
     }
     Absent => false
@@ -672,14 +671,8 @@ test fn a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_exe
 fn hold_refusal_is_named_window_head_moved(r: LocalStoreHoldRefusal?) -> Bool {
   match r {
     Present { value: x } => match x {
-      LocalStoreHoldStale { observed: o } => match o {
-        HoldNamedWindowHeadMoved { generation: _ } => true
-        HoldObservationUnavailable { cause: _ } => false
-        HoldSlotAbsent => false
-        HoldSlotFree { generation: _, released_by: _ } => false
-        HoldSlotHeld { generation: _, owner: _ } => false
-        HoldSlotUndecodable { generation: _, detail: _ } => false
-      }
+      LocalStoreHoldNamedWindowHeadMoved { named: _ } => true
+      LocalStoreHoldStale { observed: _ } => false
       LocalStoreFamilyBusy { holder: _, evidence: _ } => false
       LocalStoreHolderUnobservable { holder: _, cause: _ } => false
       LocalStoreHoldRecoveryRefused { refusal: _ } => false
@@ -710,6 +703,7 @@ fn hold_refusal_is_stale(r: LocalStoreHoldRefusal?) -> Bool {
       LocalStoreHoldSelfUnidentified { cause: _ } => false
       LocalStoreHoldWindowTooNarrow { k: _ } => false
       LocalStoreHoldUnsettled { settlement: _ } => false
+      LocalStoreHoldNamedWindowHeadMoved { named: _ } => false
       LocalStoreHoldWrongFamily { held: _, requested: _ } => false
     }
     Absent => false
@@ -749,8 +743,8 @@ fn pin_generation_unlink(path: String, on: Bool) -> Bool {
 // PARTIAL RECLAIM MUST NOT RE-AUTHORIZE A LEAKED HOLD. Independent deletes could remove G+1 while
 // G survived, so named verify would treat leaked G as head. Pin G against unlink, run another
 // acquire/release (the reclaim that used to punch that hole), then reuse G. commit_under observes
-// the hold first: named verify must answer HoldNamedWindowHeadMoved (G present, G+1 still there), mapped to
-// LocalStoreHoldStale, before any occupancy write. occupancy_unavailable on
+// the hold first: named verify must answer NamedWindowHeadMoved (G present, G+1 still there), mapped to
+// LocalStoreHoldNamedWindowHeadMoved, before any occupancy write. occupancy_unavailable on
 // that path is the hold-refuse wrapper, not an occupancy fault from the pin. ioctl-set IMMUTABLE
 // must succeed (CAP_LINUX_IMMUTABLE); without it this claim is false, not vacuously green.
 test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution() -> Bool {

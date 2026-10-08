@@ -28,7 +28,7 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasStoreFailure, CasSlotObservationRefused,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
-  CasReadableAbsent, CasReadablePresent, CasGeneration, CasUnreadableReadRefused,
+  CasReadableAbsent, CasReadablePresent, CasGeneration,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
@@ -37,18 +37,17 @@ import std.durable_exclusive_hold {
   HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldAcquireRefusal, HoldAcquireEligible, HoldAcquireRefused,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
-  HoldAcquireNamedWindowHeadMoved, HoldNamedWindowHeadMoved,
-  HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseRefusal,
+  HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseAssessment, DurableHoldReleaseRefusal, HoldReleaseNamedWindowHeadMoved,
   durable_hold_acquire_assess, durable_hold_release_assess,
-  DurableHoldHolderReport, DurableHoldRecoveryRefusal, HoldRecoveryEligible, HoldRecoveryRefused,
+  DurableHoldHolderReport, DurableHoldRecoveryRefusal, DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
+  HoldRecoveryNamedWindowHeadMoved,
   durable_hold_recovery_assess,
 }
 import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, CasSlotRetention,
   CasGenerationWindow, DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set, file_compare_and_set_retained,
   observe_cas_slot_state, observe_cas_slot_state_retained,
-  cas_verify_named_window_head, cas_probe_as_observation, cas_key_is_slot_addressable,
-  cas_key_not_slot_addressable_detail, NamedWindowVerified, NamedWindowHeadMoved,
+  cas_verify_named_window_head, CasNamedWindowVerify, NamedWindowHeadCurrent, NamedWindowHeadMoved,
 }
 
 // THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
@@ -158,19 +157,38 @@ fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservat
   observe_file_hold_retained(root: root, key: key, retention: KeepAllGenerations)
 }
 
-fn observe_file_hold_windowed_at(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> DurableHoldObservation
+fn windowed_hold_release_from_verify(
+  verify: CasNamedWindowVerify,
+  owner: DurableHoldOwnerRef,
+  acquired_generation: CasGeneration,
+) -> DurableHoldReleaseAssessment
   admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
+    decl_ref(module_path: "test.claim.durable_exclusive_hold_witness", decl_name: "named_window_head_moved_release_does_not_claim_an_observed_current_generation"),
   ]
 {
-  if !cas_key_is_slot_addressable(key: key) {
-    HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
-  } else {
-    match cas_verify_named_window_head(root: root, key: key, generation: generation) {
-      NamedWindowHeadMoved { generation: g } => HoldNamedWindowHeadMoved { generation: g }
-      NamedWindowVerified { probe: p } => hold_observation_of_cas(observed: cas_probe_as_observation(probe: p))
-    }
+  match verify {
+    NamedWindowHeadMoved { named_generation: n } =>
+      HoldReleaseRefused { refusal: HoldReleaseNamedWindowHeadMoved { named: n } }
+    NamedWindowHeadCurrent { observation: o } =>
+      durable_hold_release_assess(observed: hold_observation_of_cas(observed: o), owner: owner, acquired_generation: acquired_generation)
+  }
+}
+
+fn windowed_hold_recovery_from_verify(
+  verify: CasNamedWindowVerify,
+  report: DurableHoldHolderReport,
+) -> DurableHoldRecoveryAssessment
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
+    decl_ref(module_path: "test.claim.durable_exclusive_hold_witness", decl_name: "named_window_head_moved_recovery_does_not_claim_an_observed_current_generation"),
+  ]
+{
+  match verify {
+    NamedWindowHeadMoved { named_generation: n } =>
+      HoldRecoveryRefused { refusal: HoldRecoveryNamedWindowHeadMoved { named: n } }
+    NamedWindowHeadCurrent { observation: o } =>
+      durable_hold_recovery_assess(observed: hold_observation_of_cas(observed: o), report: report)
   }
 }
 
@@ -299,7 +317,6 @@ fn file_hold_acquire_retained(
           FileHoldSlotUndecodable { slot_key: slot_key, generation: g, detail: d }
         HoldAcquireObservationUnavailable { cause: c } =>
           FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
-        HoldAcquireNamedWindowHeadMoved { generation: _ } => FileHoldAcquireLost { slot_key: slot_key }
       }
   }
 }
@@ -383,8 +400,8 @@ fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
   ]
 {
-  match durable_hold_release_assess(
-    observed: observe_file_hold_windowed_at(root: root, key: slot_key, generation: acquired_generation),
+  match windowed_hold_release_from_verify(
+    verify: cas_verify_named_window_head(root: root, key: slot_key, generation: acquired_generation),
     owner: owner,
     acquired_generation: acquired_generation,
   ) {
@@ -453,7 +470,6 @@ fn file_hold_recovery_assess_retained(
 ) -> FileHoldRecoveryAssessment
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess"),
-    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
   ]
 {
   match durable_hold_recovery_assess(observed: observe_file_hold_retained(root: root, key: slot_key, retention: retention), report: report) {
@@ -487,5 +503,23 @@ fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, 
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
   ]
 {
-  file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepGenerationWindow { window: window })
+  match windowed_hold_recovery_from_verify(
+    verify: cas_verify_named_window_head(root: root, key: slot_key, generation: report.generation),
+    report: report,
+  ) {
+    HoldRecoveryRefused { refusal: r } => FileHoldRecoveryNotEligible { slot_key: slot_key, refusal: r }
+    HoldRecoveryEligible { generation: g, dead_holder: h, evidence: e } =>
+      FileHoldRecoveryPlanned {
+        plan: FileHoldReleasePlan {
+          root: root,
+          slot_key: slot_key,
+          owner: h,
+          generation: g,
+          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+          retention: KeepGenerationWindow { window: window },
+        },
+        dead_holder: h,
+        evidence: e,
+      }
+  }
 }

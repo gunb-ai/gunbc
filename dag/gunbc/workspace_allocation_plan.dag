@@ -13,7 +13,7 @@ import std.types { NonEmptyStr, String, Int }
 import std.measure { money_amount_micro }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
-import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, HoldSlotHeld, HoldSlotAbsent, HoldSlotFree, HoldSlotUndecodable, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable, HoldAcquireNamedWindowHeadMoved }
+import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, HoldSlotHeld, HoldSlotAbsent, HoldSlotFree, HoldSlotUndecodable, HoldObservationUnavailable, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import product.fabric.demand { Demand }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
@@ -85,7 +85,6 @@ fn workspace_reservation_prepare(
                     HoldAcquireOccupied { generation: _, holder: _ } => WorkspaceReservationPreparationRefused { reason: "selected slot is occupied; no acquisition plan issued" }
                     HoldAcquireSlotUndecodable { generation: _, detail } => WorkspaceReservationPreparationRefused { reason: detail }
                     HoldAcquireObservationUnavailable { cause: _ } => WorkspaceReservationPreparationRefused { reason: "allocation store observation unavailable; no acquisition plan issued" }
-                    HoldAcquireNamedWindowHeadMoved { generation: _ } => WorkspaceReservationPreparationRefused { reason: "selected slot head moved; no acquisition plan issued" }
                   }
                 }
                 MoneyRefused { refusal: _ } => WorkspaceReservationPreparationRefused { reason: "monetary reservation refused" }
@@ -140,7 +139,6 @@ fn workspace_reservation_apply_under_exclusion(root: NonEmptyStr, plan: Workspac
     HoldSlotFree { generation: _, released_by: _ } => workspace_reservation_acquire(root: root, key: key, owner: owner, reservation: reservation)
     HoldSlotUndecodable { generation: _, detail: _ } => workspace_reservation_acquire(root: root, key: key, owner: owner, reservation: reservation)
     HoldObservationUnavailable { cause: _ } => workspace_reservation_acquire(root: root, key: key, owner: owner, reservation: reservation)
-    HoldNamedWindowHeadMoved { generation: _ } => workspace_reservation_acquire(root: root, key: key, owner: owner, reservation: reservation)
   }
 }
 }
@@ -194,7 +192,6 @@ fn workspace_actor_takeover_decision(plan: WorkspaceReservationPlan, hold: Durab
       else { TakeoverRetain { reason: "slot is held by another reservation or incarnation" } }
     HoldSlotUndecodable { generation: _, detail: _ } => TakeoverRetain { reason: "slot hold is undecodable; the acquisition obligation is retained" }
     HoldObservationUnavailable { cause: _ } => TakeoverRetain { reason: "slot hold is unreadable; the acquisition obligation is retained" }
-    HoldNamedWindowHeadMoved { generation: _ } => TakeoverRetain { reason: "slot hold is unreadable; the acquisition obligation is retained" }
     HoldSlotAbsent => workspace_actor_takeover_unheld(prior: prior, intent: intent)
     HoldSlotFree { generation: _, released_by: _ } => workspace_actor_takeover_unheld(prior: prior, intent: intent)
   }
@@ -231,7 +228,6 @@ fn workspace_reservation_recover(root: NonEmptyStr, plan: WorkspaceReservationPl
       HoldSlotFree { generation: _, released_by: _ } => WorkspaceReservationApplyRefused { reason: "no matching held incarnation observed; do not acquire retired intent" }
       HoldSlotUndecodable { generation: _, detail: _ } => WorkspaceReservationApplyRefused { reason: "no matching held incarnation observed; do not acquire retired intent" }
       HoldObservationUnavailable { cause: _ } => WorkspaceReservationApplyRefused { reason: "no matching held incarnation observed; do not acquire retired intent" }
-      HoldNamedWindowHeadMoved { generation: _ } => WorkspaceReservationApplyRefused { reason: "no matching held incarnation observed; do not acquire retired intent" }
     }
   }
 }

@@ -19,7 +19,7 @@ import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation
 import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
 import gunbc.fabric_control_plane { fabric_control_plane_store_root, fabric_cell_allocation_key }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
-import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable }
 import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.fleet_host_budget { HostAllocationConserves }
@@ -75,7 +75,6 @@ fn workspace_commissioning_no_hold_refusal(provenance: WorkspaceCommissioningPro
       HoldSlotHeld { generation: _, owner: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
       HoldSlotUndecodable { generation: _, detail: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
       HoldObservationUnavailable { cause: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
-      HoldNamedWindowHeadMoved { generation: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
     OwnershipUnread { reason: _ } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
