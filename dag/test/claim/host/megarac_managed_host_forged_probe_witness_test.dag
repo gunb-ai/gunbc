@@ -53,7 +53,7 @@ test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
 // account, firmware or prefix reaches a MegaRAC effect except through admit_megarac_host.
 test fn each_forged_megarac_carrier_is_refused_at_its_literal() -> Bool {
   let c = probe()
-  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AdmittedMegaRacHost") >= 1
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AdmittedMegaRacHost") > 0
     && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "MegaRacSdrSocketNamingRule") >= 1
 }
 
