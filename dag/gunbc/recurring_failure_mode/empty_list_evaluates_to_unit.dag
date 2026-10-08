@@ -17,9 +17,9 @@ data empty_list_evaluates_to_unit: RecurringFailureMode = RecurringFailureMode {
 
     "PRODUCER: v1_interpreter.eval_expr_inner NoExprData arm returned Unit; concat then pushed that Unit as an element (free_monoid_to_vec had no empty-Unit flatten).",
 
-    "CLIMB, gunbc#13475: NoExprData whose inferred (or self) node is an element collection evaluates as the empty list. Concat does not treat a leftover Unit as empty (review 77857: that flatten is an absorbing fallback). child_type_node keeps a TypeVariable child so the type node is not collapsed to error_type/Unit before eval. Admitted under gunbc.v1_maintenance_standing v1_seed_standing: seed defect that silently produced a wrong value, serving the v2 corpus the seed compiles.",
+    "CLIMB, gunbc#13475: child_type_node keeps a TypeVariable child so the type node is not collapsed to error_type/Unit before eval. Concat does not flatten leftover Unit as empty (review 77857). Evaluating a collection type node as [] was withdrawn (review 77868): that was a guard at eval for a state typing can still write (NoExprData). A type node used as a value now TypeErrors. Empty lists that keep ExprListLit already evaluate as []. Admitted under gunbc.v1_maintenance_standing v1_seed_standing.",
 
-    "RUNG FOUND AT: mitigatable (loud TypeError at eval). CLIMBED ON #13475 to mechanically preventable for the empty-collection-as-Unit arm. CEILING: 4 -- an empty list has no constructor that is Unit. NEXT TRIGGER: empty-list literals keep ExprListLit through typing so NoExprData is not the empty-list value path.",
+    "RUNG FOUND AT: mitigatable (loud TypeError at eval). CURRENT RUNG: mitigatable — an empty literal can still lose ExprListLit; nothing in this change makes that unwritable (review 77868, DESIGN §4b(1)). CEILING: 4 -- an empty list has no constructor that is Unit. NEXT TRIGGER: empty-list literals keep ExprListLit through typing so NoExprData is not the empty-list value path.",
   ],
 
   evidence: [],
