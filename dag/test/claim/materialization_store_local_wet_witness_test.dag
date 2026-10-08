@@ -686,30 +686,10 @@ fn hold_refusal_is_named_window_head_moved(r: LocalStoreHoldRefusal?) -> Bool {
   }
 }
 
-fn hold_refusal_is_stale(r: LocalStoreHoldRefusal?) -> Bool {
-  match r {
-    Present { value: x } => match x {
-      LocalStoreHoldStale { observed: _ } => true
-      LocalStoreFamilyBusy { holder: _, evidence: _ } => false
-      LocalStoreHolderUnobservable { holder: _, cause: _ } => false
-      LocalStoreHoldRecoveryRefused { refusal: _ } => false
-      LocalStoreHoldContended => false
-      LocalStoreHoldStoreUnavailable { cause: _ } => false
-      LocalStoreHoldSlotUndecodable { detail: _ } => false
-      LocalStoreHoldKeyNotAddressable => false
-      LocalStoreHoldSelfUnidentified { cause: _ } => false
-      LocalStoreHoldWindowTooNarrow { k: _ } => false
-      LocalStoreHoldUnsettled { settlement: _ } => false
-      LocalStoreHoldNamedWindowHeadMoved { named: _ } => false
-      LocalStoreHoldWrongFamily { held: _, requested: _ } => false
-    }
-    Absent => false
-  }
-}
-
 // RELEASE-THEN-MUTATE REFUSES. A bracket body returns the held value it was given, so it outlives its
-// release. Committing under that leaked value re-observes the family's hold slot, finds it no longer
-// held at that generation by that owner, and refuses as a stale hold; nothing is written.
+// release. Committing under that leaked value named-verifies G with G+1 present (the free successor
+// the release published) and refuses as NamedWindowHeadMoved; nothing is written. The listing path
+// used to decode the new free head as LocalStoreHoldStale; named verify does not observe that head.
 test fn a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
@@ -721,7 +701,7 @@ test fn a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution()
         LocalStoreBracketRan { value: leaked, hold_release: _ } => {
           let rs = bundle_req(module: "s")
           let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
-          commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_stale(r: c.hold_refusal)
+          commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_named_window_head_moved(r: c.hold_refusal)
             && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
             && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
         }
