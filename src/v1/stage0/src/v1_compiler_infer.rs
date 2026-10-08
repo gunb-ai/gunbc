@@ -5257,6 +5257,16 @@ pub fn equality_operand_list_read_name(
             },
             _ => "".to_string(),
         },
+        ExprData::ExprIndex => {
+            if equality_receiver_is_list(
+                crate::v1_std_core::index_base(n.clone()),
+                source_indices.clone(),
+            ) {
+                "index".to_string()
+            } else {
+                "".to_string()
+            }
+        }
         ExprData::ExprCall {
             call_semantics: cs, ..
         } => match (*crate::v1_std_core::call_semantics_target(cs.clone())).clone() {
