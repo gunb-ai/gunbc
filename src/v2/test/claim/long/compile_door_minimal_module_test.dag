@@ -14,8 +14,9 @@ import v2.extdeps.languages.dag { dag_target_model }
 import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -34,7 +35,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // --source-root src/v2 --entry src/v2/test/claim/long/compile_door_minimal_module_test.dag
 // --functions a_minimal_extdeps_module_is_admitted_past_the_compile_door_roster --claim-run.
 
-data door_probe_source: String = "module extdeps.door_probe\n\nfn f() -> Int { 1 }\n"
+// extdeps.fixture.* is the region's exempt prefix (mandatory_tag plants), so this stays an
+// extdeps.* module with the requested `fn f() -> Int { 1 }` body and can be ADMITTED past the
+// whole roster rather than correctly refused for a missing authority tag.
+data door_probe_source: String = "module extdeps.fixture.door_probe\n\nfn f() -> Int { 1 }\n"
 
 data door_probe_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -57,19 +61,26 @@ fn door_probe_ingest() -> SourceRootIngest {
 fn door_probe_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: Cons { head: ^extdeps, tail: Cons { head: ^door_probe, tail: Empty } }
+      name: Cons {
+        head: ^extdeps,
+        tail: Cons { head: ^fixture, tail: Cons { head: ^door_probe, tail: Empty } }
+      }
     },
     imports: Empty
   }
 }
 
-test fn a_minimal_extdeps_module_is_admitted_past_the_compile_door_roster() -> Bool {
+fn door_probe_fatal_or_admitted() -> Symbol {
   match compile_source_root_ingest_with_admission(
     ingest: door_probe_ingest(),
     admission: door_probe_admission(),
     target: dag_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => ^compile_door_roster_admitted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
   }
+}
+
+test fn a_minimal_extdeps_module_is_admitted_past_the_compile_door_roster() -> Bool {
+  door_probe_fatal_or_admitted() == ^compile_door_roster_admitted
 }
