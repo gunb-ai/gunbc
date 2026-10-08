@@ -4266,6 +4266,38 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
   }
 }
 
+// A MODULE SURFACE is identified by a stamp the producer actually wrote, never by the shape of its
+// Authored children. Those children are declarations or nested modules, not record fields, and a
+// lens that asks member_edge_type_node of them reports member_not_a_binder for a well-formed module.
+fn dag_production_is_module_member_declaration(id: Symbol) -> Bool {
+  (id == ^dag_surface_fn_decl)
+    || (id == ^dag_surface_test_fn_decl)
+    || (id == ^dag_surface_data_decl)
+    || (id == ^dag_surface_type_decl)
+    || (id == ^dag_surface_alias_decl)
+    || (id == ^dag_surface_service_decl)
+    || (id == ^dag_surface_resource_decl)
+    || (id == ^dag_surface_import_decl)
+}
+
+fn dag_node_is_module_surface(n: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      (id == ^dag_surface_module)
+        || (id == ^dag_surface_module_header)
+        || (id == ^namespace_graft_module_body)
+        || dag_production_is_module_member_declaration(id: id)
+    Absent => dag_node_is_module_root_conj(n: n)
+  }
+}
+
+// The complementary question for a binder-field fold: a payload that is not a module surface. A
+// hand-built record Conj has neither a declaration identity nor a header production edge, so it
+// remains a record-field carrier.
+fn dag_node_is_record_field_carrier(n: Node) -> Bool {
+  !dag_node_is_module_surface(n: n)
+}
+
 fn dag_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },

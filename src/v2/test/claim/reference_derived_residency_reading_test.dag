@@ -34,7 +34,11 @@ import v2.lens.reference_derived_residency_reading { carrier_reading_from_type_d
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_snoc }
-import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.extdeps.languages.dag {
+  qualified_name_from_module_node,
+  dag_named_edge,
+  dag_surface_edge,
+}
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
 import v2.test.claim.reference_derived_graph_fixture { xl4_fixture_trees, xl4_item_at, consumer_field_bare_local_path }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -236,6 +240,53 @@ test fn the_four_recognised_fixtures_are_readable() -> Bool {
 // expression, so a named type is a spelling it does not know rather than a bounded payload.
 test fn an_alias_typed_field_is_not_readable() -> Bool {
   !readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration()))
+}
+
+fn identity_stamped(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [dag_named_edge(name: ^grammar_production_identity_node_projection, target: atom(identity: id))],
+    occurrence_id: OccurrenceSynthetic,
+  }
+}
+
+fn module_container_with_surface_members() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_surface_edge(edge: ^dag_surface_module_header, target: atom(identity: ^dag_surface_module_header)),
+      Edge { label: Authored { name: ^bit }, target: identity_stamped(id: ^dag_surface_fn_decl) },
+      Edge { label: Authored { name: ^nested }, target: identity_stamped(id: ^dag_surface_module) },
+    ],
+    occurrence_id: OccurrenceSynthetic,
+  }
+}
+
+fn hand_built_record_field_declaration() -> Node {
+  record_of(fields: [Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) }])
+}
+
+fn readability_is_member_not_a_binder(r: ProducerCarrierReading, expected: Symbol) -> Bool {
+  match r.readability {
+    CarrierMemberNotABinder { member: member } => member == expected
+    CarrierTypeRecognized => false
+    CarrierTypeUnrecognized { spelling: _ } => false
+  }
+}
+
+// A MODULE CONTAINER IS NOT A RECORD PAYLOAD. Its Authored members are dag_surface_module nodes and
+// declarations; asking member_edge_type_node of them used to mint CarrierMemberNotABinder.
+test fn a_module_container_is_not_read_as_a_non_binder_record() -> Bool {
+  readability_is_recognised(r: reading_of(decl_name: "ModuleContainer", decl: module_container_with_surface_members()))
+}
+
+// THE RED THE SKIP MUST NOT ERASE: a hand-built name-to-type field on a genuine record still reports
+// CarrierMemberNotABinder, named.
+test fn a_hand_built_record_field_still_reports_member_not_a_binder() -> Bool {
+  readability_is_member_not_a_binder(
+    r: reading_of(decl_name: "HandBuiltCarrier", decl: hand_built_record_field_declaration()),
+    expected: ^trees,
+  )
 }
 
 // THE BLOCKING ARM. Under the earlier derivation this qualified -- both axes fell through to their

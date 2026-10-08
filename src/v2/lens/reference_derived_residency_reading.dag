@@ -20,6 +20,10 @@ import std.decl_ref { DeclarationRef }
 import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.extdeps.languages.dag {
+  dag_node_is_module_surface,
+  dag_node_is_record_field_carrier,
+}
 import v2.std.node_query { member_edge_type_node }
 import v2.std.node {
   Arrow,
@@ -168,26 +172,36 @@ fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
 }
 
 // A Named member that is not a binder is read first: the carrier declares no type for it, and that
-// refuses the whole reading rather than letting the remaining fields decide it.
+// refuses the whole reading rather than letting the remaining fields decide it. A module surface
+// (declaration identity, graft-body stamp, or dag_surface_module_header production edge) is not a
+// record payload, so its Authored members are skipped rather than judged as fields.
 fn decl_first_member_not_a_binder(decl: Node) -> Optional<Symbol> {
-  match decl.kind {
-    TypeNode { connective: _ } =>
-      fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            match edge.label {
-              Positional => acc
-              StructuralLabel { label: _ } => acc
-              Authored { name: nm } =>
-                match member_edge_type_node(e: edge) {
-                  Present { value: _ } => acc
-                  Absent => optional_present(value: nm)
-                }
-            }
-        }
-      })
-    ComputationNode { behavior: _ } => optional_absent()
+  if !dag_node_is_record_field_carrier(n: decl) {
+    optional_absent()
+  } else {
+    match decl.kind {
+      TypeNode { connective: _ } =>
+        fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match edge.label {
+                Positional => acc
+                StructuralLabel { label: _ } => acc
+                Authored { name: nm } =>
+                  if dag_node_is_module_surface(n: edge.target) {
+                    acc
+                  } else {
+                    match member_edge_type_node(e: edge) {
+                      Present { value: _ } => acc
+                      Absent => optional_present(value: nm)
+                    }
+                  }
+              }
+          }
+        })
+      ComputationNode { behavior: _ } => optional_absent()
+    }
   }
 }
 
