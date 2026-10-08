@@ -122,7 +122,7 @@ test fn gbo_a_bool_name_is_not_the_kernel_int_holds() -> Bool {
 // on the real ingest -> resolve -> infer path, ACCEPTED AND DECIDED. The literal is the kernel atom; the declared
 // side reaches the kernel atom only through the join, and only if recognition re-enters after the alias step. So it
 // goes red both when the join is deleted (Alias unfolds to its right-hand side) and when recognition happens only at
-// the input -- the integration and the regression in one claim.
+// the input -- the integration and the regression in one claim (BuildBuddy 50c58a76 and 2002ea86).
 test fn gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds() -> Bool {
   rcf_member_accepted_and_decided(resolved: gbo_resolved_alias(), member: ^one)
 }
