@@ -3736,6 +3736,11 @@ enum SeedHandoffRefusal {
         carried: String,
         observed: String,
     },
+    /// The descriptor opened for the exec holds other bytes than the build produced.
+    OpenedTargetNotBuildOutput {
+        built: String,
+        opened: String,
+    },
     /// This image is not the artifact the first image built.
     WrongArtifactAcrossHandoff {
         built: String,
@@ -3770,6 +3775,11 @@ impl std::fmt::Display for SeedHandoffRefusal {
                 f,
                 "refusal: SourceChangedAcrossHandoff: {p}: first image built source {carried}, \
                  this image sees {observed}"
+            ),
+            Self::OpenedTargetNotBuildOutput { built, opened } => write!(
+                f,
+                "refusal: OpenedTargetNotBuildOutput: {p}: the build produced {built} but the \
+                 descriptor opened for the exec holds {opened}"
             ),
             Self::WrongArtifactAcrossHandoff { built, running } => write!(
                 f,
@@ -3980,6 +3990,21 @@ fn open_exec_target(path: &Path) -> Result<(fs::File, String), String> {
     let mut file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
     let digest = digest_open_file(&mut file)?;
     Ok((file, digest))
+}
+
+/// Admit the exec target: the carry keeps the BUILD-OUTPUT digest, and the opened descriptor's
+/// digest must equal it. Never overwrites the carry from the open.
+fn admit_exec_target(
+    carry: SeedHandoff,
+    opened_digest: &str,
+) -> Result<SeedHandoff, SeedHandoffRefusal> {
+    if carry.built_exe != opened_digest {
+        return Err(SeedHandoffRefusal::OpenedTargetNotBuildOutput {
+            built: carry.built_exe,
+            opened: opened_digest.to_string(),
+        });
+    }
+    Ok(carry)
 }
 
 /// Digest of the bytes of an open file, read from its start.
@@ -5805,11 +5830,11 @@ pub fn run_regen_round_cost(
             use std::os::fd::AsRawFd;
             use std::os::unix::process::CommandExt;
             let on_disk = current_exe_on_disk()?;
-            // built_exe is the digest of the descriptor we exec, hashed here, after the build
-            // and immediately before the exec; not the earlier path read.
+            // `carry.built_exe` is the build-output digest; the descriptor we exec must match
+            // it before the exec, and the carry is never re-identified from the open.
             let (target, target_digest) = open_exec_target(&on_disk)?;
-            let mut carry = carry;
-            carry.built_exe = target_digest;
+            let carry =
+                admit_exec_target(carry, &target_digest).map_err(|cause| cause.to_string())?;
             let err = Command::new(format!("/proc/self/fd/{}", target.as_raw_fd()))
                 .arg0(&on_disk)
                 .args(std::env::args_os().skip(1))
@@ -6329,6 +6354,45 @@ mod regen_round_cost_tests {
 
     fn current_digest_of(p: &Path) -> String {
         bytes_digest(&fs::read(p).unwrap())
+    }
+
+    #[test]
+    fn exec_target_admission_compares_with_the_build_output_and_never_overwrites() {
+        let c = cost(1, 1, None);
+        // production decision: build output B is what the carry names
+        let carry = match decide_seed_handoff(
+            Some(&SeedHandoff {
+                cost: c.clone(),
+                source: "S".into(),
+                built_exe: "B".into(),
+            }),
+            "B",
+            "B",
+            "S",
+            &c,
+        ) {
+            Ok(SeedHandoffDecision::Proceed) => None,
+            _ => panic!(),
+        };
+        assert!(carry.is_none());
+        let carry = match decide_seed_handoff(None, "old", "B", "S", &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!(),
+        };
+        assert_eq!(carry.built_exe, "B");
+        // build=B, install replaced with C before the open: opened=C refuses
+        assert!(matches!(
+            admit_exec_target(carry.clone(), "C"),
+            Err(SeedHandoffRefusal::OpenedTargetNotBuildOutput { .. })
+        ));
+        // build=B, opened=B (a byte-identical replacement included): proceeds, carry intact
+        let admitted = admit_exec_target(carry.clone(), "B").unwrap();
+        assert_eq!(admitted, carry);
+        // and the receiver still proceeds on the admitted carry
+        assert!(matches!(
+            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
     }
 
     #[test]
