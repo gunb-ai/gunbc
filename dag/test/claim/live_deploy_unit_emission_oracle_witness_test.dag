@@ -826,7 +826,7 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
           instance_root: ir, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               provider_state_root: ps,
@@ -874,7 +874,7 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               provider_state_root: ps,
