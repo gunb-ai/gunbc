@@ -4246,6 +4246,67 @@ mod emit_check_read_tests {
         ));
     }
 
+    fn vm_hwm_kb() -> u64 {
+        std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| {
+                s.lines().find_map(|line| {
+                    let rest = line.strip_prefix("VmHWM:")?;
+                    rest.split_whitespace().next()?.parse().ok()
+                })
+            })
+            .unwrap_or(0)
+    }
+
+    #[test]
+    #[ignore = "bounded remote typecheck of gunbc.commit_workflow; not a unit-lane subject"]
+    fn commit_workflow_typecheck_wall_and_peak_rss() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let rel = "dag/gunbc/commit_workflow.dag";
+        let path = process_workspace_root().join(rel);
+        assert!(
+            path.exists(),
+            "named subject missing: {rel} (refuse, do not skip)"
+        );
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        let sources = vec![Rc::new(v1_compiler_compile::SourceFile {
+            path: rel.to_string(),
+            content,
+        })];
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let closed = crate::cli_run::extend_sources_to_both_closure_fixpoint(sources, &shared)
+            .unwrap_or_else(|e| panic!("commit_workflow closure must close: {e}"));
+        let im_sources: im::Vector<Rc<v1_compiler_compile::SourceFile>> =
+            closed.into_iter().collect();
+        let started = std::time::Instant::now();
+        let rss_before_kb = vm_hwm_kb();
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(im_sources));
+        let wall = started.elapsed();
+        let rss_after_kb = vm_hwm_kb();
+        let graph = resolved.graph.clone().expect("resolved graph");
+        assert!(
+            graph
+                .modules
+                .iter()
+                .any(|m| m.type_env.module_path == "gunbc.commit_workflow"),
+            "resolved graph must include gunbc.commit_workflow"
+        );
+        eprintln!(
+            "commit_workflow_typecheck producer=compile_to_resolved wall_ms={} rss_before_kb={} rss_after_kb={} peak_delta_kb={}",
+            wall.as_millis(),
+            rss_before_kb,
+            rss_after_kb,
+            rss_after_kb.saturating_sub(rss_before_kb)
+        );
+        assert!(
+            wall.as_secs() < 2400,
+            "gunbc.commit_workflow closure typecheck wall {}s exceeds 2400s",
+            wall.as_secs()
+        );
+    }
+
     #[test]
     fn memo_key_is_over_source_and_render_only() {
         let a = compile_dag_rust_emit_check_memo_key("s", "src/a.rs", "inv");
