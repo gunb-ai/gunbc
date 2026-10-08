@@ -1,0 +1,141 @@
+module gunbc.native_product_federation
+
+import std.types { String, NonEmptyStr, List, Map }
+import std.optional { Present }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.repository { gunbc_repository_numeric_identity }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member,
+  github_wif_pool_id, github_wif_provider_id, github_wif_attribute_mapping, github_wif_attribute_condition,
+  github_wif_principal_set,
+}
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.cloudflare.r2_origin { fabric_cache_blobs_read_secret_id, fabric_cache_blobs_read_secret_version, fabric_cache_blobs_write_secret_id, fabric_cache_blobs_write_secret_version }
+
+// ── THE NATIVE PRODUCT STORE'S TWO CREDENTIALS ARE TWO PRINCIPALS (gunbc.native_product_shared_store) ──
+// The shared store's trust wall is credential asymmetry, not a directory: a pull request's job can
+// hold the READ token and nothing that can write, and only the merge queue's run can reach the WRITE
+// token. A secret accessor cell is granted per SERVICE ACCOUNT and IAM conditions cannot read
+// principal attributes, so "merge_group only" is a property of WHICH PROVIDER may mint a token for
+// WHICH account -- hence two accounts, and for the write side a dedicated pool whose one provider
+// pins the event (the heal_publisher / managed_host_boot_federation precedent, gunbc#10887).
+//
+// READ SIDE. The account is reachable from the repository's existing github-oidc provider, so a
+// same-repository pull request job can federate to it and read exactly one pinned secret version.
+// It deliberately is NOT fleet-cloud-convergence: that account is reachable from the same provider
+// today (gunbc.gcp.gcp_estate_adoption gcp_estate_desired_convergence_binding binds the whole
+// repository principal set), a standing finding recorded beside this change rather than widened by it.
+// Fork pull requests receive no id-token and so no credential: they build cold.
+data native_product_read_service_account: ServiceAccountEmail = "native-product-read@gunbai-secrets.iam.gserviceaccount.com"
+
+data native_product_read_cell_title: String = "native-product-read"
+
+data native_product_cell_description: String = "gunbc.native_product_federation: the one version the native product store transfer reads"
+
+fn native_product_read_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "native product store reader",
+    pool_id: github_wif_pool_id,
+    pool_display_name: "GitHub Actions",
+    provider_id: github_wif_provider_id,
+    attribute_mapping: github_wif_attribute_mapping,
+    attribute_condition: github_wif_attribute_condition(),
+    principal_set: github_wif_principal_set(),
+    service_account: native_product_read_service_account,
+    service_account_id: "native-product-read",
+    service_account_display_name: "Native product store reader (WIF-only, one pinned secret version, no keys)",
+    service_account_member: federated_service_account_member(email: native_product_read_service_account),
+    secret_grants: [pinned_version_accessor_grant_for(
+      title_prefix: native_product_read_cell_title,
+      description: native_product_cell_description,
+      target: secret_ref_pin_version(
+        ref: fleet_secret_ref(secret_id: fabric_cache_blobs_read_secret_id),
+        version: fabric_cache_blobs_read_secret_version,
+      ),
+    )],
+  }
+}
+
+// WRITE SIDE. The pool's one provider admits this repository by numeric identity and only the
+// `merge_group` event: the queue's composed revision, the sha that lands. The honest residue is the
+// workflow file: the queue's workflow_ref carries the queue branch name, so it cannot be pinned by
+// equality, and the trust is the reviewed composition the queue builds -- the same reviewed-main
+// trust the fleet-converge pins carry. A pull request run presents event_name pull_request and is
+// refused by the provider itself.
+data native_product_write_wif_pool_id: NonEmptyStr = "github-native-product-write"
+
+data native_product_write_wif_provider_id: NonEmptyStr = "github-native-product-write-oidc"
+
+data native_product_write_service_account: ServiceAccountEmail = "native-product-write@gunbai-secrets.iam.gserviceaccount.com"
+
+data native_product_write_cell_title: String = "native-product-write"
+
+data merge_group_event_name: String = "merge_group"
+
+data native_product_write_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.event_name": "assertion.event_name"
+}
+
+fn native_product_write_claim_pins() -> List<OidcClaimPin> {
+  [
+    OidcClaimPin { claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id) },
+    OidcClaimPin { claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id) },
+    OidcClaimPin { claim: "event_name", value: merge_group_event_name },
+  ]
+}
+
+fn native_product_write_attribute_condition() -> String {
+  claim_pins_attribute_condition(pins: native_product_write_claim_pins())
+}
+
+fn native_product_write_principal_set() -> String {
+  join(["principalSet://iam.googleapis.com/", wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: native_product_write_wif_pool_id as String), "/*"], "")
+}
+
+fn native_product_write_provider() -> WifProvider {
+  WifProvider {
+    name: native_product_write_wif_provider_id,
+    pool: native_product_write_wif_pool_id,
+    issuer_uri: github_wif_issuer_uri,
+    attribute_mapping: Present { value: native_product_write_attribute_mapping },
+    attribute_condition: Present { value: native_product_write_attribute_condition() },
+  }
+}
+
+fn native_product_write_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: native_product_write_provider())
+}
+
+fn native_product_write_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "native product store writer (merge queue only)",
+    pool_id: native_product_write_wif_pool_id,
+    pool_display_name: "Native product write (queue)",
+    provider_id: native_product_write_wif_provider_id,
+    attribute_mapping: native_product_write_attribute_mapping,
+    attribute_condition: native_product_write_attribute_condition(),
+    principal_set: native_product_write_principal_set(),
+    service_account: native_product_write_service_account,
+    service_account_id: "native-product-write",
+    service_account_display_name: "Native product store writer (WIF-only, merge_group only, no keys)",
+    service_account_member: federated_service_account_member(email: native_product_write_service_account),
+    secret_grants: [pinned_version_accessor_grant_for(
+      title_prefix: native_product_write_cell_title,
+      description: native_product_cell_description,
+      target: secret_ref_pin_version(
+        ref: fleet_secret_ref(secret_id: fabric_cache_blobs_write_secret_id),
+        version: fabric_cache_blobs_write_secret_version,
+      ),
+    )],
+  }
+}
+
+fn native_product_federations() -> List<DedicatedFederation> {
+  [native_product_read_federation(), native_product_write_federation()]
+}
