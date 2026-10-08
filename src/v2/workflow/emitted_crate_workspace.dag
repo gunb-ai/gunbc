@@ -20,6 +20,7 @@ import gunbc.rust_emitted_edge {
   ReexportFacade,
   SemanticSourceReference,
   rust_module_emit_filename,
+  rust_emit_only_basenames,
   rust_runtime_prelude_module
 }
 import gunbc.stage0_crate_partition_generated {
@@ -216,6 +217,7 @@ fn emitted_workspace_basename_dag(module_dag: ModuleDag, module_by_basename: Map
     match emitted_workspace_lookup(m: emitted_set, key: rust_module_emit_filename(module_name: m as String)) { Present { value: _ } => false  Absent => true })
   let outside = emitted_basenames |> filter(b =>
     b != rust_runtime_prelude_module
+      && !(rust_emit_only_basenames |> any(e => e == b))
       && match emitted_workspace_lookup(m: module_by_basename, key: b) { Present { value: _ } => false  Absent => true })
   if ((not_emitted |> count) + (outside |> count)) > 0 {
     BasenameDagRefused {
@@ -284,12 +286,12 @@ fn emitted_workspace_generated_row(row: Stage0PartitionCrateRow, reexports: List
   }
 }
 
-fn emitted_workspace_runtime_row() -> GeneratedPartitionCrateRow {
+fn emitted_workspace_runtime_row(emitted_basenames: List<String>) -> GeneratedPartitionCrateRow {
   GeneratedPartitionCrateRow {
     package_name: emitted_workspace_runtime_package,
     crate_dir: emitted_workspace_crate_dir(package: emitted_workspace_runtime_package),
     kind: GeneratedFoundationCrate,
-    modules: [rust_runtime_prelude_module],
+    modules: concat([rust_runtime_prelude_module], rust_emit_only_basenames |> filter(e => emitted_basenames |> any(b => b == e))),
     reexport_packages: [],
     carries_non_empty_wrappers: true
   }
@@ -299,8 +301,8 @@ type DerivedRowsBuild
   = DerivedRowsOk { rows: List<GeneratedPartitionCrateRow> }
   | DerivedRowsRefused { cause: EmittedWorkspaceRefusal }
 
-fn emitted_workspace_derived_rows(unit_rows: List<Stage0PartitionCrateRow>, unit_edges: List<UnitDepEdge>) -> DerivedRowsBuild {
-  unit_rows |> fold(init: DerivedRowsOk { rows: [emitted_workspace_runtime_row()] }, f: fn(acc, row) {
+fn emitted_workspace_derived_rows(unit_rows: List<Stage0PartitionCrateRow>, unit_edges: List<UnitDepEdge>, emitted_basenames: List<String>) -> DerivedRowsBuild {
+  unit_rows |> fold(init: DerivedRowsOk { rows: [emitted_workspace_runtime_row(emitted_basenames: emitted_basenames)] }, f: fn(acc, row) {
     match acc {
       DerivedRowsRefused { cause: c } => DerivedRowsRefused { cause: c }
       DerivedRowsOk { rows: rows } =>
@@ -422,7 +424,7 @@ fn emitted_workspace_plan_over(
                     ResolvePartitionOk { assignment: assignment, provenance: _ } => {
                       let unit_ids = list_unique_sorted_ids(items: assignment |> map_values)
                       let unit_edges = assignment_unit_dep_edges(module_dag: closure_dag, assignment: assignment)
-                      match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure_dag.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges) {
+                      match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure_dag.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges, emitted_basenames: emitted_basenames) {
                         DerivedRowsRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
                         DerivedRowsOk { rows: rows } =>
                           match emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges) {

@@ -15,7 +15,7 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   harness_worker_guidance, harness_probe_guidance,
 }
 import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput, prompt_segment_required }
-import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
+import gunbc.harness.harness_tool_kind { RunCommandTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
 }

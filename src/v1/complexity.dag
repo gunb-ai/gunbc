@@ -297,10 +297,9 @@ fn parser_state_arg_expr(call_node: Node, state_param: ParserStateParam, si: Map
     } else {
       let idx = pair.first
       let arg_node = pair.second
-      let matches_state = if arg_name_at(n: arg_node, source_indices: si) != "" {
-        arg_name_at(n: arg_node, source_indices: si) == state_param.name
-      } else {
-        idx == state_param.index
+      let matches_state = match arg_name_at(n: arg_node, source_indices: si) {
+        Present { value: label } => if label != "" { label == state_param.name } else { idx == state_param.index }
+        Absent => idx == state_param.index
       }
       if matches_state {
         Present { value: arg_value(n: arg_node) }
