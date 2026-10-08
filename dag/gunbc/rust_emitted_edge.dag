@@ -21,12 +21,15 @@ import std.types { List, String }
 // emitted body may still path into that module inline (`crate::<module>::`), and those inline
 // paths are not returned as edges (gunbc.guarantee_stall
 // emitted_inline_crate_path_edges_unreturned_stall), so the crate partition reads the import as a
-// structural over-approximation of the body's reach, computed as the answer.
+// structural over-approximation of the body's reach, computed as the answer. ServiceRuntimeSurface
+// is the service runtime the emitter writes into every module that renders a service: the struct's
+// `crate::dry_run::DryRunMode` field and constructor (v1.compiler.emit_rust emit_service_struct).
 type EmittedEdgeProvenance
   = RuntimePrelude
   | ReexportFacade
   | SemanticSourceReference
   | DeclaredImport
+  | ServiceRuntimeSurface
 
 type EmittedEdgeTarget
   = EmittedModuleTarget { module: String }
@@ -81,6 +84,14 @@ fn semantic_source_reference_edge(from: String, to_module: String) -> EmittedEdg
 
 fn declared_import_edge(from: String, to_module: String) -> EmittedEdge {
   EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: DeclaredImport }
+}
+
+// The module the emitter writes the service runtime into (v1.compiler.emit_rust
+// emit_dry_run_module); every service struct paths into it.
+data rust_service_runtime_module: String = "dry_run"
+
+fn service_runtime_surface_edge(from: String) -> EmittedEdge {
+  EmittedEdge { from: from, to: EmittedModuleTarget { module: rust_service_runtime_module }, provenance: ServiceRuntimeSurface }
 }
 
 fn emitted_edge_target_module(edge: EmittedEdge) -> List<String> {

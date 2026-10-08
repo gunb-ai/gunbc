@@ -16,7 +16,7 @@ import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -5695,6 +5695,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     emitted_edges: concat(
       rust_prelude_emitted_edges(module: this_mod_filename),
       declared_import_edges(from: this_mod_filename, imports: module_imports(n: m), source_indices: scope.type_env.source_indices, module_index: module_index),
+      if typed_module.items |> any(item => item.module_item_kind == ModuleItemService) { [service_runtime_surface_edge(from: this_mod_filename)] } else { [] },
       rust_use_line_edges_surviving(
         edges: concat(rendered_imports.edges, reference_plan.edges, rust_use_line_edges(from: this_mod_filename, lines: uncovered_svc_use_lines)),
         final_lines: concat(merged_import_lines, uncovered_svc_imports)

@@ -55,7 +55,7 @@ pub use crate::gunbc_rust_emitted_crate::{EmittedCrateDependencyDemand, EmittedR
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{ReexportFacade, RuntimePrelude};
 pub use crate::gunbc_rust_emitted_edge::{
     declared_import_edge, emitted_edge_target_module, rust_module_emit_filename,
-    rust_prelude_emitted_edges, semantic_source_reference_edge,
+    rust_prelude_emitted_edges, semantic_source_reference_edge, service_runtime_surface_edge,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
 pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
@@ -11338,15 +11338,37 @@ pub fn emit_module_full(
             reference_rows: reference_plan.rows.clone(),
             emitted_edges: v1_rt::concat(
                 v1_rt::concat(
-                    crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
-                        this_mod_filename.clone(),
+                    v1_rt::concat(
+                        crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
+                            this_mod_filename.clone(),
+                        ),
+                        declared_import_edges(
+                            this_mod_filename.clone(),
+                            crate::v1_std_core::module_imports(m.clone()),
+                            scope.type_env.clone().source_indices.clone(),
+                            module_index.clone(),
+                        ),
                     ),
-                    declared_import_edges(
-                        this_mod_filename.clone(),
-                        crate::v1_std_core::module_imports(m.clone()),
-                        scope.type_env.clone().source_indices.clone(),
-                        module_index.clone(),
-                    ),
+                    if {
+                        let mut __found = false;
+                        for item in typed_module.items.clone().iter().cloned() {
+                            if (item.module_item_kind.clone()
+                                == ParsedModuleItemKind::ModuleItemService)
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        Rc::new(vec![
+                            crate::gunbc_rust_emitted_edge::service_runtime_surface_edge(
+                                this_mod_filename.clone(),
+                            ),
+                        ])
+                    } else {
+                        Rc::new(vec![])
+                    },
                 ),
                 rust_use_line_edges_surviving(
                     v1_rt::concat(

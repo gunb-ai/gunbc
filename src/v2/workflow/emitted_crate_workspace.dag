@@ -21,6 +21,7 @@ import gunbc.rust_emitted_edge {
   ReexportFacade,
   SemanticSourceReference,
   DeclaredImport,
+  ServiceRuntimeSurface,
   rust_module_emit_filename,
   rust_runtime_prelude_module
 }
@@ -159,6 +160,7 @@ fn emitted_workspace_provenance(name: String) -> Optional<EmittedEdgeProvenance>
   else if name == "reexport-facade" { optional_present(value: ReexportFacade) }
   else if name == "semantic-source-reference" { optional_present(value: SemanticSourceReference) }
   else if name == "declared-import" { optional_present(value: DeclaredImport) }
+  else if name == "service-runtime-surface" { optional_present(value: ServiceRuntimeSurface) }
   else { Absent }
 }
 
@@ -388,6 +390,7 @@ fn emitted_workspace_red(
           RuntimePrelude => Absent
           ReexportFacade => Absent
           DeclaredImport => Absent
+          ServiceRuntimeSurface => Absent
         }
     }
   })
@@ -453,6 +456,7 @@ fn emitted_workspace_emission_dag(emitted_basenames: List<String>, edges: List<E
         RuntimePrelude => acc
         ReexportFacade => acc
         SemanticSourceReference => acc
+        ServiceRuntimeSurface => acc
       }
     }),
     exports: empty_map(),

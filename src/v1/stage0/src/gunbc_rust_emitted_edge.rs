@@ -20,6 +20,7 @@ pub enum EmittedEdgeProvenance {
     ReexportFacade,
     SemanticSourceReference,
     DeclaredImport,
+    ServiceRuntimeSurface,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -119,6 +120,25 @@ pub fn declared_import_edge(from: String, to_module: String) -> Rc<EmittedEdge> 
     })
 }
 
+pub fn rust_service_runtime_module() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dry_run".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn service_runtime_surface_edge(from: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: rust_service_runtime_module(),
+        }),
+        provenance: EmittedEdgeProvenance::ServiceRuntimeSurface,
+    })
+}
+
 pub fn emitted_edge_target_module(edge: Rc<EmittedEdge>) -> Rc<Vec<String>> {
     match (*edge.to.clone()).clone() {
         EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
@@ -136,3 +156,5 @@ pub struct ReexportFacade;
 pub struct SemanticSourceReference;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredImport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceRuntimeSurface;
