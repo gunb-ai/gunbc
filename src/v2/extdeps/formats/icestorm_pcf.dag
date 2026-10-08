@@ -1,9 +1,8 @@
 module v2.extdeps.formats.icestorm_pcf
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
 import std.nat { Nat }
-import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list }

@@ -1,7 +1,7 @@
 module test.claim.codex_provider_runtime_receipt_witness
 
 import std.types { FilePath, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.codex_provider_runtime_receipt {
   derive_codex_provider_runtime_receipt,
   codex_provider_runtime_receipt_converges_three_roots,

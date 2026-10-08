@@ -1,0 +1,249 @@
+module gunbc.spark.snapshot_rail_replica
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.types { Int }
+import std.optional { Present, Absent }
+import std.content_hash { sha256_hex_digest }
+import product.host_identity { HostIdentity }
+import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory, hub_repo_blob_hard_link_argv }
+import gunbc.artifact_acquisition {
+  AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquire_artifact, acquisition_refusal_text,
+}
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, HubCachePlacement, LocalDirectoryPlacement, snapshot_install_path }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
+import gunbc.spark.fabric_blob_peer {
+  FabricBlobHolder, FabricBlobServing, FabricBlobServeRefused, fabric_blob_serve, fabric_blob_subject, fabric_blob_path, fabric_blob_root, fabric_blob_pull_policy,
+}
+import gunbc.spark.spark_file_blob { spark_file_blob_handler }
+
+// ── A HUB-CACHE SNAPSHOT REPLICATED SPARK TO SPARK OVER THE FABRIC RAIL (rulings of valiant-crab-775,
+// 2026-10-03) ──────────────────────────────────────────────────────────────────────────────────────────
+//
+// NO NEW TRANSPORT AND NO NEW IDENTITY. gunbc.spark.fabric_blob_peer already moves a content-addressed blob
+// between Sparks over the rail: the holder serves its blob root read-only from an rsync daemon bound to its
+// rail address, the target pulls `<sha256 hex>` and gunbc.spark.spark_file_blob publishes it only when its
+// digest equals the name. The Hub cache is ALREADY content-addressed the same way: every LFS weight file
+// under `snapshots/<revision>/` is a symlink into `blobs/<sha256>`. So a shard's blob identity is the
+// sha256 the Hub itself named it by, and a checkpoint replica is that same blob move, once per file.
+//
+// THE THREE STEPS, each on the host it concerns:
+//   1. on the SOURCE (a peer whose own `hf cache verify` already passed -- the caller's admissibility
+//      rule), read the snapshot's file -> blob map and expose each blob in the fabric blob root under its
+//      sha256 by HARD LINK (no bytes copied; a cross-filesystem link refuses rather than copying);
+//   2. on the TARGET, acquire every blob through fabric_blob_peer (each digest-checked on arrival);
+//   3. on the TARGET, place each published blob into the Hub cache by hard link and recreate the
+//      snapshot's symlink; the caller then runs the same `hf cache verify` the Hub path ends with.
+// A few small non-LFS files (config and tokenizer JSON) are cached under git-sha1 names, not sha256. Their
+// sha256 is read on the verified source and they travel the same way under it; the final verify covers
+// them like every other file.
+//
+// A LOCAL-DIRECTORY PLACEMENT IS NOT A CACHE OF BLOBS and refuses here: its files are not named by digest,
+// so there is no identity to pull by without a manifest this module does not have.
+
+type SnapshotFileEntry {
+  rel_path: NonEmptyStr
+  cache_blob: NonEmptyStr
+  sha256_hex: NonEmptyStr
+}
+
+type SnapshotFileMap
+  = SnapshotFileMapRead { entries: List<SnapshotFileEntry> }
+  | SnapshotFileMapUnread { cause: String }
+
+type SnapshotRailReplica
+  = SnapshotReplicated { files: Int, receipt: String }
+  | SnapshotReplicaRefused { step: NonEmptyStr, cause: String }
+
+fn snapshot_hub_paths(snapshot: ModelSnapshotDesired) -> SnapshotHubPaths? {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      match pl {
+        LocalDirectoryPlacement { host_path: _ } => none
+        HubCachePlacement { cache_root: root } => Present { value: SnapshotHubPaths {
+          repo_dir: hub_repo_cache_directory(cache_root: root, repo: r),
+          snapshot_dir: snapshot_install_path(placement: pl, repo: r, revision: rev),
+        } }
+      }
+  }
+}
+
+type SnapshotHubPaths {
+  repo_dir: NonEmptyStr
+  snapshot_dir: NonEmptyStr
+}
+
+fn last_segment(path: String) -> String {
+  match last(split(s: path, delimiter: "/")) {
+    Present { value: x } => x
+    Absent => ""
+  }
+}
+
+fn is_sha256_name(name: String) -> Bool {
+  match sha256_hex_digest(hex: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ONE LINE PER SNAPSHOT ENTRY: `<relative path>\t<link target>`. Every entry of a Hub snapshot is a symlink
+// into `blobs/`; a line of any other shape refuses the map rather than being skipped.
+fn snapshot_entry_of(line: String) -> SnapshotFileEntry? {
+  let parts = split(s: line, delimiter: "\t")
+  if length(parts) != 2 { none } else {
+    match first(parts) {
+      Absent => none
+      Present { value: rel } =>
+        match last(parts) {
+          Absent => none
+          Present { value: target } => {
+            let blob = last_segment(path: target)
+            if rel == "" || blob == "" || !string_contains(s: target, pattern: "blobs/") { none } else {
+              Present { value: SnapshotFileEntry { rel_path: rel as NonEmptyStr, cache_blob: blob as NonEmptyStr, sha256_hex: blob as NonEmptyStr } }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn sha256_of_cache_blob(ctx: SparkMaterializeContext, repo_dir: NonEmptyStr, e: SnapshotFileEntry) -> SnapshotFileEntry? {
+  if is_sha256_name(name: e.cache_blob as String) { Present { value: e } } else {
+    match spark_remote_run(ctx: ctx, argv: ["sha256sum", join([repo_dir as String, "/blobs/", e.cache_blob as String], "")]) {
+      RemoteUnreachable { cause: _, reach: _ } => none
+      RemoteRan { exit_code: c, stdout: out, stderr: _ } =>
+        if c != 0 { none } else {
+          match first(split(s: out, delimiter: " ")) {
+            Absent => none
+            Present { value: hex } =>
+              if is_sha256_name(name: hex) { Present { value: SnapshotFileEntry { rel_path: e.rel_path, cache_blob: e.cache_blob, sha256_hex: hex as NonEmptyStr } } } else { none }
+          }
+        }
+    }
+  }
+}
+
+fn read_snapshot_file_map(ctx: SparkMaterializeContext, paths: SnapshotHubPaths) -> SnapshotFileMap {
+  match spark_remote_run(ctx: ctx, argv: ["find", paths.snapshot_dir as String, "-type", "l", "-printf", "%P\\t%l\\n"]) {
+    RemoteUnreachable { cause: c, reach: _ } => SnapshotFileMapUnread { cause: c }
+    RemoteRan { exit_code: c, stdout: out, stderr: err } =>
+      if c != 0 { SnapshotFileMapUnread { cause: join(["find exited ", to_string(c), ": ", err], "") } } else {
+        let lines = filter(split(s: out, delimiter: "\n"), l => l != "")
+        let parsed = map(lines, l => snapshot_entry_of(line: l))
+        if length(lines) == 0 {
+          SnapshotFileMapUnread { cause: join(["the source's snapshot ", paths.snapshot_dir as String, " lists no files"], "") }
+        } else if any(parsed, p => match p { Present { value: _ } => false  Absent => true }) {
+          SnapshotFileMapUnread { cause: "a snapshot entry is not a link into blobs/, so the map is refused rather than partially read" }
+        } else {
+          let keyed = map(flat_map(parsed, p => match p { Present { value: e } => [e]  Absent => [] as List<SnapshotFileEntry> }), e => sha256_of_cache_blob(ctx: ctx, repo_dir: paths.repo_dir, e: e))
+          if any(keyed, p => match p { Present { value: _ } => false  Absent => true }) {
+            SnapshotFileMapUnread { cause: "a non-LFS file's sha256 could not be read on the source" }
+          } else {
+            SnapshotFileMapRead { entries: flat_map(keyed, p => match p { Present { value: e } => [e]  Absent => [] as List<SnapshotFileEntry> }) }
+          }
+        }
+      }
+  }
+}
+
+// STEP 1, ON THE SOURCE: every blob appears in the fabric blob root under its sha256, by hard link, through
+// extdeps.huggingface.hub hub_repo_blob_hard_link_argv: the model directory's blobs/<name> may be a SYMLINK
+// into the hub-level shared store or a regular file, per file, and the argv dereferences either to the
+// real bytes rather than linking a dangling pointer. On the target the file is placed as a regular file in the
+// model's blobs/, a layout hf also reads; its `hf cache verify` stays the oracle.
+fn expose_snapshot_blobs(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, entries: List<SnapshotFileEntry>) -> String? {
+  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", fabric_blob_root as String]) {
+    RemoteUnreachable { cause: c, reach: _ } => Present { value: c }
+    RemoteRan { exit_code: e, stdout: _, stderr: err } =>
+      if e != 0 { Present { value: join(["mkdir exited ", to_string(e), ": ", err], "") } } else {
+        first_failure(causes: map(entries, x => expose_one(ctx: ctx, paths: paths, x: x)))
+      }
+  }
+}
+
+fn expose_one(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, x: SnapshotFileEntry) -> String {
+  match spark_remote_run(ctx: ctx, argv: hub_repo_blob_hard_link_argv(repo_blob: join([paths.repo_dir as String, "/blobs/", x.cache_blob as String], "") as NonEmptyStr, destination: fabric_blob_path(hex: x.sha256_hex))) {
+    RemoteUnreachable { cause: c, reach: _ } => c
+    RemoteRan { exit_code: e2, stdout: _, stderr: err2 } =>
+      if e2 != 0 { join(["hard-linking ", x.rel_path as String, " into the blob root exited ", to_string(e2), ": ", err2, " (the Hub cache and the blob root must share a filesystem; nothing is copied instead)"], "") } else { "" }
+  }
+}
+
+// THE FIRST NON-EMPTY CAUSE, or none. A step's cause is "" when it succeeded.
+fn first_failure(causes: List<String>) -> String? {
+  first(filter(causes, c => c != ""))
+}
+
+// STEP 3, ON THE TARGET: one published blob into the Hub cache, and its snapshot link.
+fn place_snapshot_entry(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, e: SnapshotFileEntry) -> String {
+  let blob_in_cache = join([paths.repo_dir as String, "/blobs/", e.cache_blob as String], "")
+  let link = join([paths.snapshot_dir as String, "/", e.rel_path as String], "")
+  let script = "set -e; mkdir -p \"$1/blobs\" \"$(dirname \"$3\")\"; ln -f \"$2\" \"$4\"; ln -sfn \"$(realpath --relative-to=\"$(dirname \"$3\")\" \"$4\")\" \"$3\"; rm -f \"$2\""
+  match spark_remote_run(ctx: ctx, argv: ["sh", "-c", script, "sh", paths.repo_dir as String, fabric_blob_path(hex: e.sha256_hex) as String, link, blob_in_cache]) {
+    RemoteUnreachable { cause: c, reach: _ } => c
+    RemoteRan { exit_code: x, stdout: _, stderr: err } =>
+      if x != 0 { join(["placing ", e.rel_path as String, " exited ", to_string(x), ": ", err], "") } else { "" }
+  }
+}
+
+type SnapshotFilePull {
+  entry: SnapshotFileEntry
+  outcome: AcquisitionOutcome
+}
+
+fn pull_refused(p: SnapshotFilePull) -> Bool {
+  match p.outcome {
+    AcquisitionRefused { cause: _ } => true
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => false
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => false
+  }
+}
+
+fn entry_line(e: SnapshotFileEntry, o: AcquisitionOutcome) -> String {
+  match o {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => join(["  ", e.rel_path as String, " sha256=", e.sha256_hex as String, " already in the blob root\n"], "")
+    AcquisitionFetched { identity: _, install_path: _, source: s } => join(["  ", e.rel_path as String, " sha256=", e.sha256_hex as String, " pulled from ", s.identity as String, "\n"], "")
+    AcquisitionRefused { cause: c } => join(["  ", e.rel_path as String, " REFUSED: ", acquisition_refusal_text(cause: c), "\n"], "")
+  }
+}
+
+// THE WHOLE REPLICA: source ctx, target ctx, the snapshot. The caller has already read the source's own
+// verify as passing (that is what makes it admissible) and runs the target's verify afterwards; a refusal
+// at any step names it.
+fn replicate_snapshot_over_rail(source: SparkMaterializeContext, target: SparkMaterializeContext, snapshot: ModelSnapshotDesired) -> SnapshotRailReplica {
+  match snapshot_hub_paths(snapshot: snapshot) {
+    Absent => SnapshotReplicaRefused { step: "replica-placement" as NonEmptyStr, cause: "only a pinned Hub-cache snapshot is content-addressed; a local-directory placement has no blob identity to pull by" }
+    Present { value: paths } =>
+      match read_snapshot_file_map(ctx: source, paths: paths) {
+        SnapshotFileMapUnread { cause: c } => SnapshotReplicaRefused { step: "replica-source-map" as NonEmptyStr, cause: c }
+        SnapshotFileMapRead { entries: es } =>
+          match expose_snapshot_blobs(ctx: source, paths: paths, entries: es) {
+            Present { value: c } => SnapshotReplicaRefused { step: "replica-source-expose" as NonEmptyStr, cause: c }
+            Absent =>
+              match fabric_blob_serve(ctx: source) {
+                FabricBlobServeRefused { holder: _, step: st, cause: c } => SnapshotReplicaRefused { step: st, cause: c }
+                FabricBlobServing { serving: holder } => {
+                  let pulls = map(es, e => SnapshotFilePull { entry: e, outcome: acquire_artifact(
+                    subject: fabric_blob_subject(identity: join(["snapshot file ", e.rel_path as String], "") as NonEmptyStr, hex: e.sha256_hex, holders: [holder]),
+                    handler: spark_file_blob_handler(ctx: target, policy: fabric_blob_pull_policy),
+                  ) })
+                  let lines = join(map(pulls, p => entry_line(e: p.entry, o: p.outcome)), "")
+                  let refused = filter(pulls, p => pull_refused(p: p))
+                  if length(refused) != 0 {
+                    SnapshotReplicaRefused { step: "replica-pull" as NonEmptyStr, cause: join([to_string(length(refused)), " of ", to_string(length(es)), " files did not arrive verified:\n", lines], "") }
+                  } else {
+                    match first_failure(causes: map(es, e => place_snapshot_entry(ctx: target, paths: paths, e: e))) {
+                      Present { value: c } => SnapshotReplicaRefused { step: "replica-place" as NonEmptyStr, cause: c }
+                      Absent => SnapshotReplicated {
+                        files: length(es),
+                        receipt: join(["replicated from ", holder.holder as String, " over the rail at ", holder.rail_address as String, "\n", lines], ""),
+                      }
+                    }
+                  }
+                }
+              }
+          }
+      }
+  }
+}

@@ -121,25 +121,98 @@ pub(crate) fn checker_input_paths(prerequisites: &[String], workspace_root: &Pat
     inputs.into_iter().collect()
 }
 
-/// Observe the checker's inputs from the dep-info beside the running executable. A missing,
-/// unreadable or foreign record is a refusal the `.dag` rule consumes, never an empty set.
+/// THE SIDECAR OF A RESTORED PAIR: `<exe dir>/<exe stem>_checker_inputs`, one workspace-relative
+/// path per line. It is written by `write_checker_inputs_record` in the job that BUILT the pair, from
+/// that build's own cargo dep-info, and travels as a verified member of the release-bins pack
+/// (`gunbc.fleet_release_bins_key` `compiler_pair_release_product` `sidecars`), so a consumer that
+/// restores the pair has it only after the pack's source closure was verified equal to its own tree.
+/// It is a second FORM of the same fact the dep-info records, never a rebased copy of it.
+pub(crate) fn restored_checker_inputs_path(exe: &Path) -> PathBuf {
+    let stem = exe
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    exe.with_file_name(format!("{stem}_checker_inputs"))
+}
+
+/// Observe the checker's inputs: cargo's dep-info beside the running executable when this workspace
+/// built it, else the verified sidecar of a restored pair. A missing, unreadable or foreign record
+/// is a refusal the `.dag` rule consumes, never an empty set; the dep-info form wins when both
+/// exist, because it is the build tool's own record rather than a carried one.
 pub(crate) fn observe_checker_input_paths(workspace_root: &Path) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe()
         .map_err(|e| format!("the running checker's own path is unreadable: {e}"))?;
     let mut dep_info = exe.clone().into_os_string();
     dep_info.push(".d");
     let dep_info = PathBuf::from(dep_info);
-    let text = std::fs::read_to_string(&dep_info).map_err(|e| {
-        format!(
-            "the checker's dependency record {} is unreadable ({e}); the floor must run a binary \
-             cargo built in this workspace",
-            dep_info.display()
-        )
-    })?;
+    let text = match std::fs::read_to_string(&dep_info) {
+        Ok(text) => text,
+        Err(e) => {
+            let sidecar = restored_checker_inputs_path(&exe);
+            return match std::fs::read_to_string(&sidecar) {
+                Ok(carried) => checker_inputs_from_sidecar(&carried, &sidecar),
+                Err(_) => Err(format!(
+                    "the checker's dependency record {} is unreadable ({e}) and no restored-pair \
+                     record {} exists; the floor must run a binary cargo built in this workspace \
+                     or restored from a verified pack",
+                    dep_info.display(),
+                    sidecar.display()
+                )),
+            };
+        }
+    };
     let canonical_root = workspace_root
         .canonicalize()
         .unwrap_or_else(|_| workspace_root.to_path_buf());
     checker_inputs_from_record(&text, &dep_info, &canonical_root)
+}
+
+/// The checker's inputs from a restored pair's sidecar text. The same anchor as the dep-info form
+/// applies: a record that omits the file compiled into this binary describes another build.
+pub(crate) fn checker_inputs_from_sidecar(
+    text: &str,
+    record: &Path,
+) -> Result<Vec<String>, String> {
+    let inputs: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(normalize_repo_path)
+        .collect();
+    let anchor = normalize_repo_path(file!());
+    if !inputs.contains(&anchor) {
+        return Err(format!(
+            "the restored-pair record {} does not list {anchor}, which this binary was compiled \
+             from; it describes another build ({} inputs)",
+            record.display(),
+            inputs.len()
+        ));
+    }
+    Ok(inputs)
+}
+
+/// THE PRODUCER OF THE SIDECAR: the checker's inputs from THIS build's own dep-info (the `.d` form
+/// only, so a sidecar is never re-derived from a sidecar), written one path per line. Refuses when
+/// the dep-info is not the cargo form.
+pub fn write_checker_inputs_record(out: &Path) -> Result<usize, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("the running checker's own path is unreadable: {e}"))?;
+    let mut dep_info = exe.into_os_string();
+    dep_info.push(".d");
+    let dep_info = PathBuf::from(dep_info);
+    let text = std::fs::read_to_string(&dep_info).map_err(|e| {
+        format!(
+            "the checker's dependency record {} is unreadable ({e}); only a binary cargo built in \
+             this workspace can produce the restored-pair record",
+            dep_info.display()
+        )
+    })?;
+    let root = process_workspace_root();
+    let root = root.canonicalize().unwrap_or(root);
+    let inputs = checker_inputs_from_record(&text, &dep_info, &root)?;
+    std::fs::write(out, inputs.join("\n") + "\n")
+        .map_err(|e| format!("cannot write {}: {e}", out.display()))?;
+    Ok(inputs.len())
 }
 
 /// The checker's inputs from one record's text, or the reason the record cannot stand for them.
@@ -446,42 +519,31 @@ mod tests {
         assert!(refusal.contains("does not list"), "{refusal}");
     }
 
-    // THE REAL FRAME DECIDES: the rule is evaluated from v2.workflow.floor_subject_seed, not
-    // restated here.
+    // A RESTORED PAIR'S SIDECAR is admitted only with the anchor, exactly as the dep-info form is:
+    // a record from another build is refused instead of read as "no checker input changed".
     #[test]
-    fn the_modeled_rule_widens_only_for_a_changed_checker_input() {
-        use CheckerSubjectApplication::*;
-        let roots = default_source_roots();
-        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
-        let record = Ok(vec![infer.clone()]);
-        let one = std::slice::from_ref(&infer);
-        // UNDER THE DECLARED STANDING the widening is withheld and names its drop.
+    fn a_restored_pair_record_is_admitted_only_with_its_anchor() {
+        let with_anchor = format!("src/v1/stage0/Cargo.toml\n{}\n", file!());
+        let inputs =
+            checker_inputs_from_sidecar(&with_anchor, Path::new("claim_executor_checker_inputs"))
+                .expect("a record listing the anchor is the checker's inputs");
+        assert!(inputs.contains(&normalize_repo_path(file!())));
+        let refusal = checker_inputs_from_sidecar(
+            "src/v1/stage0/Cargo.toml\n",
+            Path::new("claim_executor_checker_inputs"),
+        )
+        .expect_err("a record omitting the running checker's own file is refused");
+        assert!(refusal.contains("does not list"), "{refusal}");
+        let empty = checker_inputs_from_sidecar("", Path::new("claim_executor_checker_inputs"))
+            .expect_err("an empty record is refused, never read as no checker input changed");
+        assert!(empty.contains("does not list"), "{empty}");
+    }
+
+    #[test]
+    fn the_restored_pair_record_sits_beside_the_binary_under_its_stem() {
         assert_eq!(
-            checker_subject_application(&roots, &record, one).expect("application"),
-            EveryAdmittedModuleWithheld {
-                changed_checker_paths: vec![infer.clone()],
-                drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure"
-                    .to_string(),
-            }
-        );
-        // APPLIED, the same rule prepares every admitted module.
-        assert_eq!(
-            checker_subject_application_when_applied(&roots, &record, one).expect("application"),
-            PrepareEveryAdmittedModule {
-                changed_checker_paths: vec![infer.clone()]
-            }
-        );
-        assert_eq!(
-            checker_subject_application(&roots, &record, &["src/v2/workflow/x.dag".to_string()])
-                .expect("application"),
-            NarrowSubject
-        );
-        // An EMPTY refusal reason is still unobserved: the Bool carries the state, not the text.
-        assert_eq!(
-            checker_subject_application(&roots, &Err(String::new()), one).expect("application"),
-            CheckerSubjectApplicationRefused {
-                reason: String::new()
-            }
+            restored_checker_inputs_path(Path::new("/w/target/release/claim_executor")),
+            PathBuf::from("/w/target/release/claim_executor_checker_inputs")
         );
     }
 

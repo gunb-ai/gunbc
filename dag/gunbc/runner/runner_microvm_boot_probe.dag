@@ -8,9 +8,11 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command, coreutils_timeout_expired_exit_code }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.virtualization.firecracker {
@@ -208,7 +210,12 @@ fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObser
       } else {
         BootConsoleLacksGuestBooted { console: observed.stdout }
       }
-    _ => base
+    BootProducedNoConsole { cause: _ } => base
+    BootConsoleLacksRunnerVersion { expected: _, console: _ } => base
+    BootConsoleLacksGuestBooted { console: _ } => base
+    BootNotAttempted { cause: _ } => base
+    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => base
+    BootVmmFailed { exit_code: _, console: _, detail: _ } => base
   }
 }
 

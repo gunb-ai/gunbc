@@ -6,10 +6,9 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGro
 import gunbc.serving.serving_enrollment {
   serving_enrolled_groups, serving_route, serving_route_ceiling, serving_route_endpoint_wire,
   serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,
+  RouteCeilingStands, RouteCeilingUnresolved, ServingRouteTurnCeiling,
   CeilingByDeclaredPolicy, CeilingFromRouteLaunch, ServingRouteEndpoint,
 }
-import gunbc.spark.group_b_serving_capacity { group_b_restoration_intent }
-import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
 import gunbc.serving.admitted_model {
   serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
 }
@@ -72,27 +71,40 @@ test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool
 // ── 2. A ROUTE'S CEILING IS A DECLARED DECISION, AND THE TWO ROUTES DISAGREE ──────────────────
 //
 // Asserting the counts alone would go green on a single shared row, so what matters is that the two
-// routes read DIFFERENT attributed rows -- group A's allocation decided 2026-09-11 and group B's decided
-// 2026-09-18 -- which no single constant can produce even though both allocate four.
+// routes read DIFFERENT attributed rows -- group A's allocation decided 2026-09-11 and group B's
+// route offer decided 2026-10-02 -- which no single constant can produce.
+fn w_ceiling_row(group: FabricGroup) -> ServingRouteTurnCeiling? {
+  match serving_route_ceiling(group: group) {
+    RouteCeilingStands { ceiling: c } => Present { value: c }
+    RouteCeilingUnresolved { cause: _ } => none
+  }
+}
+
 fn w_ceiling(group: FabricGroup) -> Nat {
-  serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
+  match w_ceiling_row(group: group) {
+    Present { value: c } => serving_route_turn_ceiling_count(c: c)
+    Absent => 0
+  }
 }
 
 test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
   w_ceiling(group: FabricGroupA) == 4
-    && w_ceiling(group: FabricGroupB) == match group_b_restoration_intent() {
-          Present { value: i } => intent_max_active_sequences(i: i)
-          Absent => 1
-        }
-    && (match serving_route_ceiling(group: FabricGroupA) {
-          CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
-            (d as String) != "" && (on as String) == "2026-09-11"
-          CeilingFromRouteLaunch { count: _, basis: _ } => false
+    && w_ceiling(group: FabricGroupB) == 8
+    && (match w_ceiling_row(group: FabricGroupA) {
+          Present { value: row } => match row {
+            CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
+              (d as String) != "" && (on as String) == "2026-09-11"
+            CeilingFromRouteLaunch { count: _, basis: _ } => false
+          }
+          Absent => false
         })
-    && (match serving_route_ceiling(group: FabricGroupB) {
-          CeilingByDeclaredPolicy { count: _, decider: _, decided_on: _, basis: _ } => false
-          CeilingFromRouteLaunch { count: c, basis: b } =>
-            c == 8 && string_contains(s: b, pattern: "2026-09-28")
+    && (match w_ceiling_row(group: FabricGroupB) {
+          Present { value: row } => match row {
+            CeilingByDeclaredPolicy { count: c, decider: d, decided_on: on, basis: _ } =>
+              c == 8 && (d as String) != "" && (on as String) == "2026-10-02"
+            CeilingFromRouteLaunch { count: _, basis: _ } => false
+          }
+          Absent => false
         })
 }
 

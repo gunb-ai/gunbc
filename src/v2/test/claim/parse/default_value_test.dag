@@ -3,10 +3,9 @@ module v2.test.claim.parse.default_value
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.node_query { binder_node_parts }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

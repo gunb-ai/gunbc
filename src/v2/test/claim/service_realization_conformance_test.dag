@@ -22,13 +22,12 @@ import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusal
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.optional { Absent, Optional, Present, optional_absent }
-import v2.std.collection { List }
+import std.optional { Absent, Optional, Present, optional_absent }
+import std.types { List }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Positional, Symbol, TypeNode, node_synthetic, symbol_intern_lexeme }
+import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, node_synthetic, symbol_intern_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -88,23 +87,24 @@ fn sr_transport(kind: String, fields: List<Edge>) -> Edge {
   sr_named(name: realization_transport_label(), target: sr_conj(children: Cons { head: sr_named(name: realization_transport_kind_label(), target: sr_atom(id: sr_lex(s: kind))), tail: fields }))
 }
 
-fn sr_arm(pat: Node) -> Edge {
-  Edge { label: Positional, target: sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: pat), sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))]) }
+fn sr_arm(pat: Node) -> Node {
+  sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: pat), sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))])
 }
 
 fn sr_code(lexeme: String) -> Node {
   sr_conj(children: [sr_named(name: realization_status_code_label(), target: sr_int(lexeme: lexeme))])
 }
 
-fn sr_arms(arms: List<Edge>) -> Edge {
-  sr_named(name: realization_status_arms_label(), target: sr_conj(children: arms))
+// An arms block is a LIST of arm nodes (v2.std.list_introduction), as the lowering builds it.
+fn sr_arms(arms: List<Node>) -> Edge {
+  sr_named(name: realization_status_arms_label(), target: sr_list(elements: arms))
 }
 
 fn sr_projection(field: Symbol, key: String) -> Edge {
   sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: field, target: sr_string(value: key))]))
 }
 
-fn sr_shell_entry(arms: List<Edge>, field: Symbol, key: String) -> Node {
+fn sr_shell_entry(arms: List<Node>, field: Symbol, key: String) -> Node {
   sr_conj(children: [
     sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_argv_ok())]),
     sr_arms(arms: arms),
@@ -248,8 +248,8 @@ fn sr_shell_transport() -> Edge {
   sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_argv_ok())])
 }
 
-fn sr_arms_of(label: Symbol, arms: List<Edge>) -> Edge {
-  sr_named(name: label, target: sr_conj(children: arms))
+fn sr_arms_of(label: Symbol, arms: List<Node>) -> Edge {
+  sr_named(name: label, target: sr_list(elements: arms))
 }
 
 // P1b. THE DOCUMENTED SHAPE. An entry is a Conj; each optional member at most once; a projection
@@ -328,19 +328,19 @@ test fn each_remaining_refusal_has_its_red_holds() -> Bool {
     && sr_refused_as(realization: sr_conj(children: [sr_named(name: realization_config_label(), target: sr_conj(children: Empty))]), reason: ^service_realization_config_malformed)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_argv_ok()), sr_named(name: ^argv, target: sr_argv_ok())])])), reason: ^service_realization_binding_field_repeated)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms_of(label: realization_mock_arms_label(), arms: Empty)])), reason: ^service_realization_arms_empty)
-    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [Edge { label: Positional, target: sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: sr_code(lexeme: "0"))]) }])])), reason: ^service_realization_arm_malformed)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: sr_code(lexeme: "0"))])])])), reason: ^service_realization_arm_malformed)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: Empty))])), reason: ^service_realization_projection_empty)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: ^out, target: sr_int(lexeme: "1"))]))])), reason: ^service_realization_wire_key_not_a_string)
 }
 
 // An arm is a Conj: the same pattern and payload under a Disj refuse as a malformed arm, while the
 // equivalent Conj arm is admitted.
-fn sr_arm_under(connective_conj: Bool) -> Edge {
+fn sr_arm_under(connective_conj: Bool) -> Node {
   let members = [sr_named(name: realization_arm_pattern_label(), target: sr_code(lexeme: "0")), sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))]
   if connective_conj {
-    Edge { label: Positional, target: sr_conj(children: members) }
+    sr_conj(children: members)
   } else {
-    Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Disj }, children: members) }
+    node_synthetic(kind: TypeNode { connective: Disj }, children: members)
   }
 }
 

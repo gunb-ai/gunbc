@@ -1,0 +1,342 @@
+module gunbc.spark.group_arm_serving_load
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import std.content_hash { ContentHash, content_hash_atom }
+import std.measure { token_count_value }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
+import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
+import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
+import product.host_identity { HostIdentity }
+import extdeps.exec.command { argv_words }
+import extdeps.vllm.bench_serve { VllmBenchServeRequest, vllm_bench_serve_request, RandomDatasetSpec, SendAllImmediately, OpenaiChat }
+import extdeps.linux.psi { PsiReading, parse_psi }
+import extdeps.linux.cgroup_v2_memory { parse_cgroup_memory_stat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete, CgroupMemoryStat, cgroup_memory_stat_value }
+import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_identity_from_stdout, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
+import gunbc.spark.serving_load_probe { preemption_count, OperationLedger, LedgerClosed, LedgerIncomplete, CounterContinuity, SameExporter, ExporterChanged, ContinuityUnread }
+import gunbc.spark.serving_load_runner { ServingLoadStepRecord }
+
+// ── ONE LOAD STEP FOR AN ARM ON A FABRIC GROUP: THE RANK READING, THE STOP RULES, THE RECEIPT ──────
+//
+// (deforking cut 8b.) gunbc.spark.serving_load_runner already owns the engineering every model shares --
+// scrape, bench, scrape, observation, per step -- parameterized by the subject (head, container, alias),
+// the step list and a host reading. What was left per model was the rank reading, which V4.1 wrote as
+// its own (gunbc.spark.v41_serving_load v41_read_rank_pressure) though only one of its four reads is
+// V4.1's: the container's cgroup memory.stat, the host's PSI and now the container's memory.events are
+// the same for every arm on a Spark, and only the Engram row-store device's diskstats is V4.1's. So the
+// container-scoped reading is here, over the group's roster, and V4.1 composes its device read on it.
+//
+// AND THE STOP RULES, WHICH V4.1 HAS AS ITS OWN CAPACITY POLICY (gunbc.spark.v41_capacity_measurement)
+// AND THE STAIRCASE NEEDS AS A GUARANTEE: every step keeps the cold floor, so a step stops on anything
+// that breaks the floor or the engine, and admits preemption only above it, where it is the declared
+// overflow behaviour of a best-effort seat (gunbc.spark.serving_capacity_intent SchedulerEnvelope).
+// The result is gunbc.spark.serving_promotion WorkloadCalibrationReceipt -- this is that receipt's first
+// producer (serving_promotion_calibration_producer_frontier).
+
+// ── THE CONTAINER-SCOPED RANK READING ──────────────────────────────────────────────────────────────
+//
+// THE CGROUP PATH IS A STATED BET on dockerd's default systemd cgroup driver (extdeps.docker.cgroup:
+// the container is system.slice/docker-<id>.scope), the same bet V4.1's reading states; a daemon on the
+// cgroupfs driver makes the read refuse with the path it tried, never a misread. memory.events is
+// read for its oom_kill count: the kernel's own record that the OOM killer ended a task in this
+// container, which no engine log can be relied on to say.
+data rank_docker_scope_parent: String = "/sys/fs/cgroup/system.slice"
+
+type RankContainerPressure {
+  host: HostIdentity
+  container_id: NonEmptyStr
+  memory: CgroupMemoryStat
+  oom_kill: Nat
+  psi: PsiReading
+}
+
+type RankContainerPressureRead
+  = RankContainerPressureObserved { pressure: RankContainerPressure }
+  | RankContainerPressureUnread { host: HostIdentity, cause: String }
+
+type RemoteText
+  = RemoteTextRead { stdout: String }
+  | RemoteTextRefused { cause: String }
+
+fn remote_text(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> RemoteText {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: c, reach: _ } => RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { RemoteTextRefused { cause: join([what, " exited ", to_string(code), ": ", trim(s: err)], "") } } else { RemoteTextRead { stdout: out } }
+  }
+}
+
+fn rank_context(ctx: SparkMaterializeContext, host: HostIdentity) -> SparkMaterializeContext {
+  SparkMaterializeContext {
+    host: host, trust: ctx.trust, path: ctx.path,
+    admin_credential: ctx.admin_credential, admin_credential_file: ctx.admin_credential_file, executor: ctx.executor,
+  }
+}
+
+fn read_rank_container_pressure(ctx: SparkMaterializeContext, container: NonEmptyStr) -> RankContainerPressureRead {
+  let host = ctx.host
+  match remote_text(ctx: ctx, what: "docker container inspect", argv: argv_words(command: docker_container_inspect_command(name: container))) {
+    RemoteTextRefused { cause: c } => RankContainerPressureUnread { host: host, cause: c }
+    RemoteTextRead { stdout: inspect } => match docker_container_inspect_identity_from_stdout(stdout: inspect) {
+      DockerContainerInspectIdentityUnreadable { cause: c } => RankContainerPressureUnread { host: host, cause: c }
+      DockerContainerInspectIdentity { id: id, image: _ } => {
+        let scope = join([rank_docker_scope_parent, "/docker-", id as String, ".scope"], "")
+        match remote_text(ctx: ctx, what: join(["cat ", scope, "/memory.stat"], ""), argv: ["cat", "--", join([scope, "/memory.stat"], "")]) {
+          RemoteTextRefused { cause: c } => RankContainerPressureUnread { host: host, cause: c }
+          RemoteTextRead { stdout: stat } => match parse_cgroup_memory_stat(body: stat) {
+            CgroupMemoryStatIncomplete { missing: m } => RankContainerPressureUnread { host: host, cause: join(["memory.stat is missing ", join(m, ", ")], "") }
+            CgroupMemoryStatRead { stat: s } =>
+              match remote_text(ctx: ctx, what: join(["cat ", scope, "/memory.events"], ""), argv: ["cat", "--", join([scope, "/memory.events"], "")]) {
+                RemoteTextRefused { cause: c } => RankContainerPressureUnread { host: host, cause: c }
+                RemoteTextRead { stdout: events } => match cgroup_memory_stat_value(body: events, key: "oom_kill") {
+                  Absent => RankContainerPressureUnread { host: host, cause: "memory.events carries no oom_kill line" }
+                  Present { value: kills } =>
+                    match remote_text(ctx: ctx, what: "cat /proc/pressure/memory", argv: ["cat", "/proc/pressure/memory"]) {
+                      RemoteTextRefused { cause: c } => RankContainerPressureUnread { host: host, cause: c }
+                      RemoteTextRead { stdout: psi } => RankContainerPressureObserved { pressure: RankContainerPressure {
+                        host: host, container_id: id as NonEmptyStr, memory: s, oom_kill: kills, psi: parse_psi(body: psi),
+                      } }
+                    }
+                }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+type GroupRankPressure { ranks: List<RankContainerPressureRead> }
+
+fn read_group_rank_pressure(ctx: SparkMaterializeContext, roster: List<HostIdentity>, container: NonEmptyStr) -> GroupRankPressure {
+  GroupRankPressure { ranks: map(roster, h => read_rank_container_pressure(ctx: rank_context(ctx: ctx, host: h), container: container)) }
+}
+
+// ── THE STOP RULES ─────────────────────────────────────────────────────────────────────────────────
+//
+// ONE VERDICT PER LOAD STEP, AND AN UNREAD READING IS A STOP, never a pass: a step that cannot say
+// whether the engine restarted or a rank was OOM-killed has not shown that it did not.
+type LoadStepVerdict
+  = LoadStepHeld { preemptions: Nat }
+  | LoadStepStopped { reasons: List<String>, unread: Bool }
+
+fn rank_by_host(p: GroupRankPressure, h: HostIdentity) -> RankContainerPressure? {
+  first(flat_map(p.ranks, r => match r {
+    RankContainerPressureObserved { pressure: x } => if (x.host as String) == (h as String) { [x] } else { [] as List<RankContainerPressure> }
+    RankContainerPressureUnread { host: _, cause: _ } => [] as List<RankContainerPressure>
+  }))
+}
+
+fn rank_unread_causes(p: GroupRankPressure, phase: String) -> List<String> {
+  flat_map(p.ranks, r => match r {
+    RankContainerPressureObserved { pressure: _ } => [] as List<String>
+    RankContainerPressureUnread { host: h, cause: c } => [join([phase, " ", h as String, ": ", c], "")]
+  })
+}
+
+// A RANK WHOSE CONTAINER CHANGED BETWEEN THE READINGS RESTARTED, and its OOM count is a different
+// cgroup's, so that is a stop in itself rather than a delta.
+fn rank_stop_reasons(roster: List<HostIdentity>, before: GroupRankPressure, after: GroupRankPressure) -> List<String> {
+  concat(concat(rank_unread_causes(p: before, phase: "before"), rank_unread_causes(p: after, phase: "after")),
+    flat_map(roster, h => match rank_by_host(p: before, h: h) {
+      Absent => [] as List<String>
+      Present { value: b } => match rank_by_host(p: after, h: h) {
+        Absent => [] as List<String>
+        Present { value: a } =>
+          if (a.container_id as String) != (b.container_id as String) {
+            [join([h as String, ": the rank container changed during the step (", b.container_id as String, " -> ", a.container_id as String, "), so the engine restarted"], "")]
+          } else if a.oom_kill > b.oom_kill {
+            [join([h as String, ": the OOM killer ended ", to_string(a.oom_kill - b.oom_kill), " task(s) in the rank container during the step"], "")]
+          } else { [] as List<String> }
+      }
+    }))
+}
+
+fn ledger_stop_reasons(l: OperationLedger) -> List<String> {
+  match l {
+    LedgerClosed { offered: _, completed: _, failed: _ } => [] as List<String>
+    LedgerIncomplete { because: b } => [join(["requests were lost or the ledger did not close: ", b as String], "")]
+  }
+}
+
+fn continuity_stop_reasons(c: CounterContinuity) -> List<String> {
+  match c {
+    SameExporter { start_field: _ } => [] as List<String>
+    ExporterChanged { before: b, after: a } => [join(["the engine's metrics exporter changed during the step (", b as String, " -> ", a as String, "), so the engine restarted"], "")]
+    ContinuityUnread { cause: c } => [join(["whether the engine restarted is unread: ", c as String], "")]
+  }
+}
+
+fn step_preemptions(before_body: String, after_body: String) -> Nat? {
+  match preemption_count(body: before_body) {
+    Absent => none
+    Present { value: b } => match preemption_count(body: after_body) {
+      Absent => none
+      Present { value: a } => if a < b { none } else { Present { value: a - b } }
+    }
+  }
+}
+
+fn load_step_verdict(cold_floor: Nat, roster: List<HostIdentity>, r: ServingLoadStepRecord<GroupRankPressure>) -> LoadStepVerdict {
+  let concurrency = match r.request.max_concurrency { Present { value: c } => c  Absent => 0 }
+  let preempt = step_preemptions(before_body: r.before_body, after_body: r.after_body)
+  let reasons = concat(concat(concat(concat(
+    if concurrency == 0 { ["the step's request carried no max_concurrency, so it names no level to judge"] } else { [] as List<String> },
+    ledger_stop_reasons(l: r.observation.ledger)),
+    continuity_stop_reasons(c: r.observation.continuity)),
+    rank_stop_reasons(roster: roster, before: r.host_before, after: r.host_after)),
+    match preempt {
+      Absent => ["the engine's preemption counter was unread before or after the step"]
+      Present { value: p } =>
+        if p > 0 && concurrency <= cold_floor {
+          [join([to_string(p), " preemption(s) at concurrency ", to_string(concurrency), ", at or below the ", to_string(cold_floor), " cold seats the service guarantees"], "")]
+        } else { [] as List<String> }
+    })
+  let unread = length(rank_unread_causes(p: r.host_before, phase: "before")) != 0
+    || length(rank_unread_causes(p: r.host_after, phase: "after")) != 0
+    || match r.observation.continuity { ContinuityUnread { cause: _ } => true  SameExporter { start_field: _ } => false  ExporterChanged { before: _, after: _ } => false }
+    || match preempt { Absent => true  Present { value: _ } => false }
+  if length(reasons) == 0 {
+    LoadStepHeld { preemptions: match preempt { Present { value: p } => p  Absent => 0 } }
+  } else {
+    LoadStepStopped { reasons: reasons, unread: unread }
+  }
+}
+
+fn load_step_verdict_wire(concurrency: Nat, v: LoadStepVerdict) -> String {
+  match v {
+    LoadStepHeld { preemptions: p } => join(["x", to_string(concurrency), ": HELD (", to_string(p), " best-effort preemption(s) above the floor)\n"], "")
+    LoadStepStopped { reasons: rs, unread: _ } => join(["x", to_string(concurrency), ": STOPPED\n", join(map(rs, x => join(["  - ", x, "\n"], "")), "")], "")
+  }
+}
+
+// ── THE STEP LIST AND THE TRACE IDENTITY ────────────────────────────────────────────────────────
+//
+// A STAIRCASE STEP AT CEILING C IS LOADED TWICE: at the cold floor, where nothing may be preempted, and
+// at C, where the seats above the floor are best-effort. Two prompts per concurrent sequence, every
+// prompt sent at once, as the shared protocol shape both arms already use.
+data load_prompts_per_concurrency: Nat = 2
+
+fn floor_and_ceiling_concurrencies(cold_floor: Nat, ceiling: Nat) -> List<Nat> {
+  if ceiling > cold_floor { [cold_floor, ceiling] } else { [cold_floor] }
+}
+
+fn load_requests(base_url: NonEmptyStr, model: NonEmptyStr, tokenizer: NonEmptyStr, dataset: RandomDatasetSpec, seed: Nat, concurrencies: List<Nat>) -> List<VllmBenchServeRequest> {
+  map(concurrencies, c => vllm_bench_serve_request(
+    backend: OpenaiChat, base_url: base_url, model: model, tokenizer: tokenizer, dataset: dataset,
+    num_prompts: c * load_prompts_per_concurrency, arrival: SendAllImmediately,
+    max_concurrency: Present { value: c }, ignore_eos: true, seed: seed,
+  ))
+}
+
+// THE TRACE A CALIBRATION RECEIPT IS KEYED BY: the dataset shape, the seed and the concurrencies, so two
+// receipts compare only when they offered the same load.
+fn load_trace_digest(dataset: RandomDatasetSpec, seed: Nat, concurrencies: List<Nat>) -> ContentHash {
+  artifact_realization_digest(inputs: [
+    ArtifactRealizationInput { identity: "dataset" as NonEmptyStr, content_digest: content_hash_atom(value: join(["random in=", to_string(token_count_value(t: dataset.input_len)), " out=", to_string(token_count_value(t: dataset.output_len)), " prefix=", to_string(token_count_value(t: dataset.prefix_len))], "") as NonEmptyStr) },
+    ArtifactRealizationInput { identity: "seed" as NonEmptyStr, content_digest: content_hash_atom(value: to_string(seed) as NonEmptyStr) },
+    ArtifactRealizationInput { identity: "concurrencies" as NonEmptyStr, content_digest: content_hash_atom(value: join(map(concurrencies, c => to_string(c)), ",") as NonEmptyStr) },
+    ArtifactRealizationInput { identity: "prompts_per_concurrency" as NonEmptyStr, content_digest: content_hash_atom(value: to_string(load_prompts_per_concurrency) as NonEmptyStr) },
+  ])
+}
+
+// ── THE CALIBRATION RECEIPT ─────────────────────────────────────────────────────────────────────────
+//
+// THE SUSTAINED CONCURRENCY IS THE HIGHEST LEVEL THAT HELD WITH EVERY LEVEL BELOW IT HOLDING: a ceiling
+// that held after the floor stopped sustains nothing, because the floor is the guarantee. The counts are
+// Present only when every step's readings were read; one unread step makes all four Absent, which
+// gunbc.spark.serving_promotion calibration_counts reports as missing rather than as zero.
+type LoadStepResult {
+  concurrency: Nat
+  verdict: LoadStepVerdict
+  completed: Nat?
+  restarts: Nat
+  oom_kills: Nat
+  lost: Nat
+}
+
+fn ledger_completed(l: OperationLedger) -> Nat? {
+  match l {
+    LedgerClosed { offered: _, completed: c, failed: _ } => Present { value: c }
+    LedgerIncomplete { because: _ } => none
+  }
+}
+
+// A CLOSED LEDGER IS MINTED ONLY WITH completed == offered AND failed == 0
+// (gunbc.spark.serving_load_probe ledger_from_bench_stdout), so its lost count is its failed count; an
+// incomplete ledger counts as one lost-or-unaccounted request, never as none.
+fn ledger_lost(l: OperationLedger) -> Nat {
+  match l {
+    LedgerClosed { offered: _, completed: _, failed: f } => f
+    LedgerIncomplete { because: _ } => 1
+  }
+}
+
+fn rank_oom_kills(roster: List<HostIdentity>, before: GroupRankPressure, after: GroupRankPressure) -> Nat {
+  fold(roster, init: 0, f: (acc, h) => match rank_by_host(p: before, h: h) {
+    Absent => acc
+    Present { value: b } => match rank_by_host(p: after, h: h) {
+      Absent => acc
+      Present { value: a } => if (a.container_id as String) == (b.container_id as String) && a.oom_kill > b.oom_kill { acc + (a.oom_kill - b.oom_kill) } else { acc }
+    }
+  })
+}
+
+fn load_step_result(cold_floor: Nat, roster: List<HostIdentity>, r: ServingLoadStepRecord<GroupRankPressure>) -> LoadStepResult {
+  LoadStepResult {
+    concurrency: match r.request.max_concurrency { Present { value: c } => c  Absent => 0 },
+    verdict: load_step_verdict(cold_floor: cold_floor, roster: roster, r: r),
+    completed: ledger_completed(l: r.observation.ledger),
+    restarts: match r.observation.continuity {
+      SameExporter { start_field: _ } => 0
+      ExporterChanged { before: _, after: _ } => 1
+      ContinuityUnread { cause: _ } => 0
+    },
+    oom_kills: rank_oom_kills(roster: roster, before: r.host_before, after: r.host_after),
+    lost: ledger_lost(l: r.observation.ledger),
+  }
+}
+
+fn step_held(r: LoadStepResult) -> Bool {
+  match r.verdict { LoadStepHeld { preemptions: _ } => true  LoadStepStopped { reasons: _, unread: _ } => false }
+}
+
+fn step_fully_read(r: LoadStepResult) -> Bool {
+  match r.verdict {
+    LoadStepHeld { preemptions: _ } => true
+    LoadStepStopped { reasons: _, unread: u } => !u
+  }
+}
+
+// THE LEVELS IN THE ORDER THEY RAN, which is ascending: the sustained level is the last of the
+// unbroken held prefix.
+fn sustained_concurrency(results: List<LoadStepResult>) -> Nat {
+  fold(results, init: SustainFold { level: 0, broken: false }, f: (acc, r) =>
+    if acc.broken { acc } else if step_held(r: r) { SustainFold { level: r.concurrency, broken: false } } else { SustainFold { level: acc.level, broken: true } }
+  ).level
+}
+
+type SustainFold { level: Nat, broken: Bool }
+
+fn calibration_receipt(subject: ServingPerformanceSubject, trace: ContentHash, run_id: NonEmptyStr, results: List<LoadStepResult>, evidence: NonEmptyStr) -> WorkloadCalibrationReceipt {
+  let read = all(results, r => step_fully_read(r: r))
+  WorkloadCalibrationReceipt {
+    subject_key: serving_subject_key(s: subject),
+    trace_digest: trace,
+    run_id: run_id,
+    accepted_turns: if all(results, r => match r.completed { Present { value: _ } => true  Absent => false }) {
+      Present { value: fold(results, init: 0, f: (acc, r) => acc + match r.completed { Present { value: c } => c  Absent => 0 }) }
+    } else { none },
+    observation_window: none,
+    sustained_concurrency: sustained_concurrency(results: results),
+    realized_transport: none,
+    preemptions: if read { Present { value: fold(results, init: 0, f: (acc, r) => acc + match r.verdict { LoadStepHeld { preemptions: p } => p  LoadStepStopped { reasons: _, unread: _ } => 0 }) } } else { none },
+    engine_restarts: if read { Present { value: fold(results, init: 0, f: (acc, r) => acc + r.restarts) } } else { none },
+    out_of_memory_events: if read { Present { value: fold(results, init: 0, f: (acc, r) => acc + r.oom_kills) } } else { none },
+    stalls_or_lost_requests: if read { Present { value: fold(results, init: 0, f: (acc, r) => acc + r.lost) } } else { none },
+    evidence: evidence,
+  }
+}

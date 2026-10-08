@@ -15,9 +15,8 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
@@ -30,22 +29,22 @@ import extdeps.communication.medium { Lossless, Medium }
 // (v2.compiler.compile native_test_context_from_ingest, native_module_resolve_verdict), so they
 // discriminate at the route's interface and not through the corpus's current refusal set.
 
-data same_name_decl_source: String = "module v2.test.efib.probe\n\nimport v2.std.logic { Bool }\n\nfn probe() -> Bool { true }\n"
+data same_name_decl_source: String = "module v2.test.efib.probe\n\nimport std.types { Bool }\n\nfn probe() -> Bool { true }\n"
 
 data rival_b_source: String = "module v2.test.efib.rival_b\n\ntype Shade = | Light | Dark\n"
 
 data rival_c_source: String = "module v2.test.efib.rival_c\n\ntype Shade = | Bright | Dim\n"
 
 // A FILE THE FRONT END REFUSES. It declares its module on its header line, which is what attribution reads.
-data refused_decl_source: String = "module v2.test.efib.broken\n\nimport v2.std.logic { Bool }\n\nfn broken_value( -> Bool { true }\n"
+data refused_decl_source: String = "module v2.test.efib.broken\n\nimport std.types { Bool }\n\nfn broken_value( -> Bool { true }\n"
 
-data same_name_user_source: String = "module v2.test.efib.user\n\nimport v2.std.logic { Bool }\nimport v2.test.efib.probe { probe }\n\nfn uses() -> Bool { probe() }\n"
+data same_name_user_source: String = "module v2.test.efib.user\n\nimport std.types { Bool }\nimport v2.test.efib.probe { probe }\n\nfn uses() -> Bool { probe() }\n"
 
 data rival_user_source: String = "module v2.test.efib.rival_user\n\nimport v2.test.efib.rival_b { Shade, Light }\n\nfn pick() -> Shade { Light }\n"
 
-data refused_target_user_source: String = "module v2.test.efib.refused_user\n\nimport v2.std.logic { Bool }\nimport v2.test.efib.broken { broken_value }\n\nfn uses() -> Bool { broken_value() }\n"
+data refused_target_user_source: String = "module v2.test.efib.refused_user\n\nimport std.types { Bool }\nimport v2.test.efib.broken { broken_value }\n\nfn uses() -> Bool { broken_value() }\n"
 
-data undeclared_user_source: String = "module v2.test.efib.undeclared_user\n\nimport v2.std.logic { Bool }\n\nfn uses() -> Bool { nowhere_declared() }\n"
+data undeclared_user_source: String = "module v2.test.efib.undeclared_user\n\nimport std.types { Bool }\n\nfn uses() -> Bool { nowhere_declared() }\n"
 
 fn efib_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

@@ -9,7 +9,6 @@ import std.content_hash {
   content_hash_combine_structural,
   structural_content_hash,
 }
-import std.string_type { string_is_lexicographically_before }
 import std.nat { Nat }
 import gunbc.guarantee_measurement {
   GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
@@ -26,7 +25,7 @@ import gunbc.guarantee_measurement {
   join_receipt_to_path, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
   MeasurementAnchor,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
 import v2.std.algebra { fold_list }
 import v2.std.node { Symbol, Node, content_hash }
@@ -690,10 +689,22 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       },
     },
     GuaranteeProbeRow {
+      probe: floor_record_completeness_bare_name_control_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: floor_record_completeness_green_probe,
       class: floor_record_field_completeness_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_red_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_record_completeness_zero_field_product_control_probe,
@@ -703,18 +714,6 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
     },
     GuaranteeProbeRow {
       probe: floor_record_completeness_zero_field_variant_control_probe,
-      class: floor_record_field_completeness_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
-      probe: floor_record_completeness_bare_name_control_probe,
-      class: floor_record_field_completeness_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
-      probe: floor_record_completeness_red_probe,
       class: floor_record_field_completeness_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
@@ -901,7 +900,7 @@ fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool 
       match acc.prev {
         Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
         Present { value: prev } =>
-          if string_is_lexicographically_before(left: prev, right: current) {
+          if prev < current {
             ProbeLexWalk { prev: Present { value: current }, ok: true }
           } else {
             ProbeLexWalk { prev: Present { value: current }, ok: false }

@@ -1,0 +1,47 @@
+module test.claim.spark.relaunch_admission_axes_witness_test
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import v2.std.algebra { length }
+import extdeps.vllm.engine_args { vllm_argv_without_admission_flags }
+import gunbc.spark.serving_relaunch_transaction {
+  admission_controls_comparison, AdmissionControlsCompared, AdmissionControlsUnreadable,
+  argv_difference_axes, argv_word_differences, relaunch_axis_wire, KvCacheDtypeAxis,
+}
+
+// THE SUBJECT IS THE RELAUNCH'S ARGV COMPARISON FOR THE AXES A PROMOTION MOVES (deforking cut 7): the
+// admission controls change the argv's length and are compared as typed values after being stripped;
+// --kv-cache-dtype is a declared word axis. Argvs are supplied; the comparison is under test.
+data w_floor: List<String> = ["/models/glm", "--max-num-seqs", "8", "--kv-cache-dtype", "fp8", "--port", "30000"]
+data w_promoted: List<String> = ["/models/glm", "--max-num-seqs", "14", "--kv-cache-dtype", "fp8", "--port", "30000", "--scheduler-reserve-full-isl", "--watermark", "0.0"]
+
+test fn w_stripping_the_admission_flags_restores_the_floor_word_count() -> Bool {
+  vllm_argv_without_admission_flags(argv: w_promoted) == ["/models/glm", "--max-num-seqs", "14", "--kv-cache-dtype", "fp8", "--port", "30000"]
+    && vllm_argv_without_admission_flags(argv: w_floor) == w_floor
+}
+
+test fn w_adding_the_gate_moves_the_admission_axis_and_identical_controls_do_not() -> Bool {
+  (match admission_controls_comparison(planned: w_promoted, observed: w_floor) {
+    AdmissionControlsCompared { moved: m } => m
+    AdmissionControlsUnreadable { cause: _ } => false
+  })
+  && (match admission_controls_comparison(planned: w_promoted, observed: w_promoted) {
+    AdmissionControlsCompared { moved: m } => !m
+    AdmissionControlsUnreadable { cause: _ } => false
+  })
+}
+
+// BOTH SPELLINGS OF THE GATE ON ONE SIDE IS UNREADABLE, NOT A SILENT PICK.
+test fn w_a_conflicting_gate_is_unreadable() -> Bool {
+  match admission_controls_comparison(planned: w_promoted, observed: ["/models/glm", "--scheduler-reserve-full-isl", "--no-scheduler-reserve-full-isl"]) {
+    AdmissionControlsUnreadable { cause: _ } => true
+    AdmissionControlsCompared { moved: _ } => false
+  }
+}
+
+test fn w_a_kv_dtype_change_is_the_kv_dtype_axis() -> Bool {
+  let changed = ["/models/glm", "--max-num-seqs", "8", "--kv-cache-dtype", "fp8_ds_mla", "--port", "30000"]
+  let axes = argv_difference_axes(planned: w_floor, differences: argv_word_differences(planned: w_floor, observed: changed))
+  length(axes) == 1
+    && all(axes, a => (relaunch_axis_wire(a: a) as String) == (relaunch_axis_wire(a: KvCacheDtypeAxis) as String))
+}

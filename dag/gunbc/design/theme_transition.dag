@@ -6,6 +6,7 @@ import gunbc.design.material {
 }
 import extdeps.languages.css.properties { css_property_wire }
 import extdeps.languages.css.selectors { selector_subject_wire }
+import extdeps.languages.css.media_queries { css_media_rule_wire, reduced_motion }
 import gunbc.design.theme {
   night_theme, day_theme,
 }
@@ -45,6 +46,8 @@ fn color_transition_prop(prop: String) -> String {
     "border-bottom-color"
   } else if prop == "border-left" {
     "border-left-color"
+  } else if prop == "box-shadow" || prop == "outline" || prop == "outline-color" || prop == "background-color" || prop == "border-right" || prop == "border-top" {
+    prop
   } else {
     ""
   }
@@ -59,7 +62,12 @@ fn decl_is_role_themed(d: CssDecl) -> Bool {
 }
 
 fn decl_is_literal_color(d: CssDecl) -> Bool {
-  decl_is_color(d: d) && !string_contains(s: d.value, pattern: "var(--")
+  decl_is_color(d: d) && (string_contains(s: d.value, pattern: "#")
+    || string_contains(s: d.value, pattern: "rgb(") || string_contains(s: d.value, pattern: "rgba(")
+    || string_contains(s: d.value, pattern: "hsl(") || string_contains(s: d.value, pattern: "hsla(")
+    || (!string_contains(s: d.value, pattern: "var(--")
+      && d.value != "transparent" && d.value != "currentColor" && d.value != "none"
+      && d.value != "0" && d.value != "inherit" && d.value != "initial" && d.value != "unset"))
 }
 
 fn contains_prop(props: List<String>, prop: String) -> Bool {
@@ -89,6 +97,7 @@ fn rule_selector(rule: BuildRule) -> String {
   match rule {
     StaticRule { selector, decls: _ } => selector_subject_wire(s: selector)
     AmbientRule { selector, cycle: _, timing: _, repeat: _ } => selector_subject_wire(s: selector)
+    MediaRule { condition: _, selector, decls: _ } => selector_subject_wire(s: selector)
     ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
       response_base_selector(subject: subject, shape: shape)
   }
@@ -98,6 +107,7 @@ fn rule_decls(rule: BuildRule) -> List<CssDecl> {
   match rule {
     StaticRule { selector: _, decls } => decls
     AmbientRule { selector: _, cycle, timing: _, repeat: _ } => fold(cycle.frames, init: [], f: (acc, k) => concat(acc, k.decls))
+    MediaRule { condition: _, selector: _, decls } => decls
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
       concat(base_decls, response_decls)
   }
@@ -188,14 +198,12 @@ fn reframe_css(rules: List<BuildRule>) -> String {
         css_block(
           selector: reframe_selector(selector: p.selector),
           decls: [decl(prop: Transition, value: reframe_transition_value(props: p.props, t: reframe_page))])), "\n"),
-      join([
-        "@media (prefers-reduced-motion: reduce) { ",
-        join(map(pairs, p =>
+      css_media_rule_wire(
+        condition: reduced_motion,
+        body: join(map(pairs, p =>
           css_block(
             selector: reframe_selector(selector: p.selector),
-            decls: [decl(prop: Transition, value: "none")])), " "),
-        " }",
-      ], ""),
+            decls: [decl(prop: Transition, value: "none")])), " ")),
     ], "\n")
   }
 }

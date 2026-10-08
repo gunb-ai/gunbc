@@ -1,5 +1,6 @@
 module v2.compiler.reference_conservation_admission
 
+import v2.compiler.tokenize { prepare_lex_rules }
 import v2.compiler.normalize { import_binding_capture }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact }
@@ -35,9 +36,8 @@ import v2.std.diagnostic {
   UserInputBoundary
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
@@ -141,7 +141,7 @@ fn conservation_subject_of_text(path: String, text: String) -> ReferenceConserva
     Accepted { value: prepared, diagnostics: _grammar_residue } =>
       reference_conservation_subject_of_read(
         read: conservation_read_of(path: path, text: text),
-        lm: dag_language_model(),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
         prepared: prepared,
         residue: None
       )
@@ -189,7 +189,10 @@ fn dropped_reference_extent(row: DroppedReference) -> Optional<AtomExtent> {
         ByteRange { start: s, end: e } => optional_present(value: AtomExtent { start: s, end: e })
         WholeFile => Absent
       }
-    _ => Absent
+    NodeLocus { anchor: _ } => Absent
+    SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+    InvariantPortLocus { anchor: _, invariant: _ } => Absent
+    DeclarationLocus { declaration: _ } => Absent
   }
 }
 
@@ -429,7 +432,8 @@ fn changed_scope_observation_of_subjects(subjects: FreeMonoid<ReferenceConservat
       match row {
         ScopeOutside { path: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope, refused: acc.refused }
         ScopeConserved { path: _, report: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused }
-        _ => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
+        ScopeDropped { path: _, report: _, refusals: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
+        ScopeMembershipUnreadable { path: _, diagnostics: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
       }
     }
   )

@@ -3,15 +3,14 @@ module gunbc.fabric_cell_converge
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import std.string_type { string_is_lexicographically_before }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
 import extdeps.systemd {
   systemd_cpu_quota_per_sec_of_threads,
   systemd_cpu_quota_per_sec_magnitude_identity,
   systemd_cpu_quota_unbounded_identity,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_ownership }
@@ -928,7 +927,7 @@ fn fabric_cell_readback_names_enclosing_host(readback: FabricCellHostReadback, r
 // every member is by construction a DIFFERENT host from the enclosing one, and two of them may
 // share an index -- srv1-08 and srv4-07 do not, but srv1-07 and srv4-07 would. Host is compared
 // first and index breaks the tie, on the same lexicographic authority the observer's discovery uses
-// (`std.string_type` string_is_lexicographically_before) rather than a second spelling of "which
+// (host String `<`) rather than a second spelling of "which
 // name sorts first".
 fn fabric_cell_host_mismatch_canonical(
   mismatched: List<FabricCellReadbackHostMismatch>,
@@ -940,10 +939,7 @@ fn fabric_cell_host_mismatch_before(a: FabricCellReadbackHostMismatch, b: Fabric
   if (a.supplied_slot.host as String) == (b.supplied_slot.host as String) {
     a.supplied_slot.slot_index < b.supplied_slot.slot_index
   } else {
-    string_is_lexicographically_before(
-      left: a.supplied_slot.host as String,
-      right: b.supplied_slot.host as String,
-    )
+    (a.supplied_slot.host as String) < (b.supplied_slot.host as String)
   }
 }
 
@@ -1159,17 +1155,11 @@ fn fabric_cell_refusal_insert_ordered(
     let key = fabric_cell_observation_refusal_identity(refusal: r)
     concat(
       fold(acc, init: [], f: (kept, e) =>
-        if string_is_lexicographically_before(
-          left: fabric_cell_observation_refusal_identity(refusal: e),
-          right: key,
-        ) { concat(kept, [e]) } else { kept }),
+        if fabric_cell_observation_refusal_identity(refusal: e) < key { concat(kept, [e]) } else { kept }),
       concat(
         [r],
         fold(acc, init: [], f: (kept, e) =>
-          if string_is_lexicographically_before(
-            left: fabric_cell_observation_refusal_identity(refusal: e),
-            right: key,
-          ) { kept } else { concat(kept, [e]) }),
+          if fabric_cell_observation_refusal_identity(refusal: e) < key { kept } else { concat(kept, [e]) }),
       ),
     )
   }

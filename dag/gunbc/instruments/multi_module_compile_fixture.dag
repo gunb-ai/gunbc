@@ -49,7 +49,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // THE TWO DIGESTS TRAVEL WITH THE RESULT so a receipt quoting this instrument names the subject it
 // measured and the compiler that measured it. source_digest is a structural fnv1a64 over the entry
 // spelling and every (path, content) pair in the order supplied - a reordering is a different
-// subject and a whitespace edit is a different subject. compiler_digest is resolved_graph_cache
+// subject and a whitespace edit is a different subject. compiler_digest is closure_identity
 // transform_content_digest, the content hash of the running compiler binary, which is already the
 // single authority every identity key in the seed consumes for compiler identity rather than a
 // second executable read. Both are absent from the FixtureInstrumentRefused arm on purpose: that

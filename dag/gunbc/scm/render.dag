@@ -58,6 +58,7 @@ import gunbc.scm.repository_envelope {
   RepositoryProtocolRetiredFormat,
   RepositoryProtocolUnrecognizedFormat,
   RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolIndexHasNoObjectRoster,
   RepositoryProtocolNotAProtocolRefusal,
 }
 import gunbc.scm.init {
@@ -221,7 +222,7 @@ fn scm_status_cli_response(
 // count on the success arm is likewise omitted rather than approximated.
 fn repository_save_lines(save: RepositorySave) -> List<String> {
   match save {
-    RepositorySaved { path: p, written: _ } =>
+    RepositorySaved { path: p, written: _, generation: _ } =>
       [concat("wrote repository at ", p)]
     RepositorySaveRefusedByCodec { path: p, cause: _ } =>
       [
@@ -243,7 +244,7 @@ fn repository_save_lines(save: RepositorySave) -> List<String> {
 // reporting success for it would be the fabricated-plausible-output §5 forbids.
 fn scm_save_exit(save: RepositorySave) -> ProcessExit {
   match save {
-    RepositorySaved { path: _, written: _ } => ExitSuccess
+    RepositorySaved { path: _, written: _, generation: _ } => ExitSuccess
     RepositorySaveRefusedByCodec { path: _, cause: _ } =>
       exit_failure(reason: "repository not encodable")
     RepositoryFileUnwritable { path: _, error: _ } =>
@@ -293,6 +294,8 @@ fn unsupported_document_line(protocol: RepositoryDocumentProtocol) -> String {
       concat("the document declares unrecognized repository format ", f)
     RepositoryProtocolUnrecognizedIdentityRule { found: f } =>
       concat("the document declares unrecognized object identity rule ", f)
+    RepositoryProtocolIndexHasNoObjectRoster { found: f } =>
+      concat("the document declares repository format with no object roster, which an indexed read needs: ", f)
     RepositoryProtocolNotAProtocolRefusal => "the document could not be read as a repository"
   }
 }

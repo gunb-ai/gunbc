@@ -2,7 +2,7 @@ module test.claim.wet_receipt_route_standing_witness
 
 import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.compiler.self_host.wet_receipt_route_standing {
   WetReceiptIdentity,
   WetReceiptRouteStanding,
@@ -26,9 +26,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 //
 // So the arms below assert the DERIVATION instead: that a receipt which IS a known-red entry
 // derives BindingRevokedOnMeasuredRed and one that is not derives BindingNeverEstablished; that the
-// partition is total; and that the fault marker equals the exact string the driver source prints,
-// which is an external oracle (dag/gunbc/instruments/self_host_00_compile_shims/witness_main.rs)
-// rather than a measurement of this tree. Restoring a binding changes the standings and must NOT
+// partition is total; and that the fault marker equals the exact string the row's driver prints.
+// That string was fixed against the hand-written driver file this row once had; the driver is now
+// rendered (tools.self_host_curated_seed_linked_harness cssl_contract_driver_main_source), and the
+// literal below stays as the authored referent the derivation is compared to, not a measurement of
+// this tree. Restoring a binding changes the standings and must NOT
 // red this file -- that is the correct behaviour, because the roster is meant to move and the
 // derivation is not.
 

@@ -1,5 +1,6 @@
 module v2.std.operation_realization
 
+import std.optional { Present, Absent }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.effect_grant {
   Envelope, HandlerBinding, CoveredBy, NoCoveringGrant, covering_grant,

@@ -243,6 +243,13 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
         .map_err(TargetPatternRefusal::PatternLabelRefused)
 }
 
+/// `gunbc.target_binding` `V2NativeCensusReading`: which census verb and reader a native-census row takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum V2NativeCensusReading {
+    ResolveRefusal,
+    TypeDeclarationUse,
+}
+
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
 /// Adding one is a row in `instrument_registry` and an arm here; it is not a new route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,6 +257,9 @@ pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
     V2NativeFrontier,
+    V2NativeCensus {
+        reading: V2NativeCensusReading,
+    },
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -267,9 +277,17 @@ pub enum TargetProducer {
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
+    DependencyDemandCensus,
+    GenericIdentityCensus,
+    InterpolationHoleCensus,
+    RegenRoundCost,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
+        entry: &'static str,
+    },
+    /// `NativeServeProgramProducer { entry }`: generic over its entry on the same rule.
+    NativeServeProgram {
         entry: &'static str,
     },
 }
@@ -336,6 +354,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::V2NativeFrontier,
         ),
         (
+            instrument_label("v2-native-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::ResolveRefusal,
+            },
+        ),
+        (
+            instrument_label("type-declaration-use-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::TypeDeclarationUse,
+            },
+        ),
+        (
             instrument_label("emitted-crate-workspace"),
             TargetProducer::EmittedCrateWorkspace,
         ),
@@ -355,6 +385,24 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("dag-emit-real-grammar-round-trips"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
+            },
+        ),
+        (
+            instrument_label("native-materialization-store-closure"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
+            },
+        ),
+        (
+            instrument_label("native-emission-controls"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_emission_controls.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_fixture.dag",
             },
         ),
         (
@@ -400,6 +448,22 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("self-host-behavioral-equivalence"),
             TargetProducer::SelfHostBehavioralEquivalence,
+        ),
+        (
+            instrument_label("dependency-demand-census"),
+            TargetProducer::DependencyDemandCensus,
+        ),
+        (
+            instrument_label("generic-identity-census"),
+            TargetProducer::GenericIdentityCensus,
+        ),
+        (
+            instrument_label("interpolation-hole-census"),
+            TargetProducer::InterpolationHoleCensus,
+        ),
+        (
+            instrument_label("regen-round-cost"),
+            TargetProducer::RegenRoundCost,
         ),
     ]
 }
@@ -780,7 +844,14 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::ResolveRefusal,
+        } => run_v2_native_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::TypeDeclarationUse,
+        } => run_type_declaration_use_census(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
+        TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -808,6 +879,16 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::DependencyDemandCensus => {
+            run_dependency_demand_census(&self_host_source_roots())
+        }
+        TargetProducer::GenericIdentityCensus => {
+            run_generic_identity_census(&self_host_source_roots())
+        }
+        TargetProducer::InterpolationHoleCensus => {
+            run_interpolation_hole_census(&self_host_source_roots())
+        }
+        TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
@@ -1137,6 +1218,199 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
+/// THE V2-NATIVE CENSUS PRODUCER. A report: a completed census is held, a run that did not complete
+/// is the subject unreached, and there is deliberately no did-not-hold arm because no red of the
+/// census is authorable in a real run (review 74324; `gunbc.instrument_targets`
+/// `v2_native_census_label`).
+fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_census(source_roots) {
+        Ok(run) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
+                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.cause_groups
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// `gunbc.instruments.type_declaration_use_census_reading` `TypeCensusFixtureFile` rows, read off the
+/// reader's own list: a value of any other shape refuses rather than writing a partial root.
+fn fixture_file_rows(
+    ctx: &crate::v1_interpreter::InterpContext,
+    files: &crate::v1_interpreter::Value,
+) -> Result<Vec<(String, String)>, String> {
+    use crate::v1_interpreter::Value;
+    let Value::List(rows) = files else {
+        return Err("type-declaration-use-census: the fixture rows are not a list".to_string());
+    };
+    rows.iter()
+        .map(|row| {
+            let Value::Record { fields, .. } = row else {
+                return Err(
+                    "type-declaration-use-census: a fixture row is not a record".to_string()
+                );
+            };
+            match (ctx.field(fields, "path"), ctx.field(fields, "content")) {
+                (Some(Value::Str(path)), Some(Value::Str(content))) => {
+                    Ok((path.to_string(), content.to_string()))
+                }
+                _ => Err(
+                    "type-declaration-use-census: a fixture row lacks a string path or content"
+                        .to_string(),
+                ),
+            }
+        })
+        .collect()
+}
+
+/// THE TYPE-DECLARATION-USE CENSUS PRODUCER (the nominal-type plan's M0). The host writes the two
+/// control roots from the reader's own rows (`type_census_fixture_files`,
+/// `type_census_unindexed_files`), runs the emitted compiler's `census-infer` over them and over the
+/// whole tree, and hands all three to `type_declaration_use_census_standing`, which decides the
+/// standing and filters the affected modules by the required gate. The host decides nothing.
+fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome {
+    let label_name = "type-declaration-use-census";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/type_declaration_use_census_reading.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let scratch = std::path::Path::new("target").join("type-declaration-use-census");
+    let mut write_root = |name: &str, function: &str| -> Result<String, String> {
+        let root = scratch.join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{label_name}: {function} failed: {cause}"))?;
+        for (path, content) in fixture_file_rows(&ctx, &files)? {
+            let target = root.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+            }
+            std::fs::write(&target, content).map_err(|e| format!("{label_name}: {e}"))?;
+        }
+        Ok(root.to_string_lossy().into_owned())
+    };
+    let roots_written = write_root("fixture", "type_census_fixture_files")
+        .and_then(|f| write_root("unindexed", "type_census_unindexed_files").map(|u| (f, u)));
+    let (fixture_root, unindexed_root) = match roots_written {
+        Ok(pair) => pair,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let runs = match cli_run::run_type_declaration_use_census_runs(
+        source_roots,
+        &fixture_root,
+        &unindexed_root,
+    ) {
+        Ok(runs) => runs,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let status = |s: Option<i32>| crate::v1_interpreter::Value::Int(i64::from(s.unwrap_or(-1)));
+    let args = [
+        (
+            Some("fixture_stdout".to_string()),
+            crate::v1_interpreter::Value::Str(runs.fixture.stdout.clone().into()),
+        ),
+        (
+            Some("fixture_status".to_string()),
+            status(runs.fixture.status),
+        ),
+        (
+            Some("unindexed_status".to_string()),
+            status(runs.unindexed.status),
+        ),
+        (
+            Some("tree_stdout".to_string()),
+            crate::v1_interpreter::Value::Str(runs.tree.stdout.clone().into()),
+        ),
+        (Some("tree_status".to_string()), status(runs.tree.status)),
+    ];
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "type_declaration_use_census_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the reader failed: {cause}"),
+            }
+        }
+    };
+    match cli_run::classify_cli_wire(&value, &ctx) {
+        cli_run::CliWireClass::Printable { bytes, exit } => {
+            let (termination, verdict) = match exit {
+                cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+                cli_run::ExitClass::Failure { code: 1, reason } => (
+                    Termination::ObservationDidNotHold,
+                    reason.unwrap_or_else(|| "not held".to_string()),
+                ),
+                cli_run::ExitClass::Failure { reason, .. } => (
+                    Termination::SubjectUnreached,
+                    reason.unwrap_or_else(|| "no observation".to_string()),
+                ),
+                cli_run::ExitClass::NotProcessExit { type_name } => (
+                    Termination::Refused,
+                    format!("the reader returned `{type_name}`, not a ProcessExit"),
+                ),
+            };
+            InvocationOutcome { termination, message: format!("{bytes}{label_name}: {verdict}") }
+        }
+        cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: renderer refused: {cause}"),
+        },
+        cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: type_declaration_use_census_standing returned `{type_name}`, not a CliWireResponse"
+            ),
+        },
+        cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: malformed CliWireResponse: {detail}"),
+        },
+    }
+}
+
 /// THE V2-NATIVE CLI PRODUCER: does the v2-exclusive front door compile.
 ///
 /// The three terminations are the same partition its sibling makes and for the same reason. A
@@ -1326,6 +1600,159 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             run.binary_identity,
             run.seed_identity,
             run.warning_count,
+            run.stderr.trim_end(),
+        ),
+    }
+}
+
+/// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeServeDriver` entry, exchange
+/// the requests `gunbc.native_serve_probe` names over real TCP, then let that module decide what the
+/// run established. The host decides nothing about a case: the requests and both launch revisions
+/// are read from the reader module, the bytes go back to `native_serve_probe_standing` unjudged, and
+/// its `ProcessExit` maps through the one classifier exactly as the claim producer's does.
+fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
+    let label_name = "native-serve";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/native_serve_probe.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let read = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
+        crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{label_name}: {READER} {function} failed: {cause}"))
+    };
+    let text = |value: &crate::v1_interpreter::Value| -> Option<String> {
+        match value {
+            crate::v1_interpreter::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    };
+    let plan = (|| -> Result<(Vec<String>, String, String, String), String> {
+        let requests = match &read("native_serve_probe_requests")? {
+            crate::v1_interpreter::Value::List(items) => items
+                .iter()
+                .map(|item| text(item).ok_or("a request is not a String".to_string()))
+                .collect::<Result<Vec<String>, String>>()?,
+            _ => return Err("native_serve_probe_requests is not a List".to_string()),
+        };
+        let release = text(&read("native_serve_probe_release_revision")?)
+            .ok_or("the release revision is not a String")?;
+        let refused = text(&read("native_serve_probe_refused_revision")?)
+            .ok_or("the refused revision is not a String")?;
+        let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
+            .ok_or("the request deadline is not a String")?;
+        Ok((requests, release, refused, deadline))
+    })();
+    let (requests, release, refused, deadline) = match plan {
+        Ok(plan) => plan,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the probe plan is unreadable: {cause}"),
+            }
+        }
+    };
+    let run = match cli_run::run_native_serve_program(
+        &v2_native_cli_source_roots(),
+        entry,
+        &release,
+        &refused,
+        &deadline,
+        &requests,
+    ) {
+        Ok(run) => run,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let refused_status = i64::from(run.refused_status.unwrap_or(-1));
+    let args = [
+        (
+            Some("announcement".to_string()),
+            crate::v1_interpreter::Value::Str(run.announcement.clone().into()),
+        ),
+        (
+            Some("responses".to_string()),
+            crate::v1_interpreter::Value::List(std::rc::Rc::new(
+                run.responses
+                    .iter()
+                    .map(|r| crate::v1_interpreter::Value::Str(r.clone().into()))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
+        ),
+        (
+            Some("refused_status".to_string()),
+            crate::v1_interpreter::Value::Int(refused_status),
+        ),
+        (
+            Some("refused_stderr".to_string()),
+            crate::v1_interpreter::Value::Str(run.refused_stderr.clone().into()),
+        ),
+        (
+            Some("served_exit_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(run.served_exit_status.unwrap_or(-1))),
+        ),
+    ];
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_serve_probe_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the probe reader failed: {cause}"),
+            }
+        }
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the probe reader returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} requests={} refused_status={refused_status} -- {verdict}\n{}\n{}",
+            run.closure_identity,
+            run.binary_identity,
+            run.seed_identity,
+            run.warning_count,
+            run.responses.len(),
+            run.announcement,
             run.stderr.trim_end(),
         ),
     }
@@ -1647,6 +2074,337 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     format!(
         "gunbc test: {operand} denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
     )
+}
+
+/// `gunbc.target_invocation` `BinaryInput`, mirrored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinaryInput {
+    NotNewer(String),
+    Newer(String),
+    Missing(String),
+    OutsideWorktree(String),
+}
+
+/// `gunbc.target_invocation` `BinaryInputObservation`, mirrored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinaryInputObservation {
+    Observed {
+        binary: String,
+        inputs: Vec<BinaryInput>,
+    },
+    DepInfoUnreadable {
+        binary: String,
+        reason: String,
+    },
+}
+
+/// `gunbc.target_invocation` `BinaryFreshness`, mirrored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinaryFreshness {
+    Fresh {
+        binary: String,
+        inputs: usize,
+    },
+    Stale {
+        binary: String,
+        input: String,
+        why: String,
+    },
+    Undecided {
+        binary: String,
+        reason: String,
+    },
+}
+
+fn binary_built_elsewhere(binary: &str, path: &str) -> BinaryFreshness {
+    BinaryFreshness::Undecided {
+        binary: binary.to_string(),
+        reason: format!(
+            "its dep-info names an input outside this worktree ({path}); it was built from another checkout, so nothing here says whether it answers for this one"
+        ),
+    }
+}
+
+/// `gunbc.target_invocation` `binary_freshness_step`, mirrored arm for arm.
+fn binary_freshness_step(acc: BinaryFreshness, input: &BinaryInput) -> BinaryFreshness {
+    match acc {
+        BinaryFreshness::Undecided { .. } => acc,
+        BinaryFreshness::Stale { ref binary, .. } => match input {
+            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(binary, p),
+            _ => acc,
+        },
+        BinaryFreshness::Fresh { binary, inputs } => match input {
+            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(&binary, p),
+            BinaryInput::Newer(p) => BinaryFreshness::Stale {
+                binary,
+                input: p.clone(),
+                why: "changed after the binary was built".to_string(),
+            },
+            BinaryInput::Missing(p) => BinaryFreshness::Stale {
+                binary,
+                input: p.clone(),
+                why: "no longer exists".to_string(),
+            },
+            BinaryInput::NotNewer(_) => BinaryFreshness::Fresh {
+                binary,
+                inputs: inputs + 1,
+            },
+        },
+    }
+}
+
+/// `gunbc.target_invocation` `assess_binary_freshness`, mirrored.
+pub fn assess_binary_freshness(observed: &BinaryInputObservation) -> BinaryFreshness {
+    match observed {
+        BinaryInputObservation::DepInfoUnreadable { binary, reason } => {
+            BinaryFreshness::Undecided {
+                binary: binary.clone(),
+                reason: reason.clone(),
+            }
+        }
+        BinaryInputObservation::Observed { binary, inputs } => inputs.iter().fold(
+            BinaryFreshness::Fresh {
+                binary: binary.clone(),
+                inputs: 0,
+            },
+            binary_freshness_step,
+        ),
+    }
+}
+
+/// `gunbc.target_invocation` `binary_freshness_rendered`, mirrored.
+pub fn binary_freshness_rendered(f: &BinaryFreshness) -> String {
+    match f {
+        BinaryFreshness::Fresh { binary, .. } => {
+            format!("gunbc test: binary fresh against its dep-info: {binary}")
+        }
+        BinaryFreshness::Stale { binary, input, why } => format!(
+            "gunbc test: REFUSED cause=StaleBinary — {binary}: input {input} {why}; rebuild before measuring"
+        ),
+        BinaryFreshness::Undecided { binary, reason } => {
+            format!("gunbc test: REFUSED cause=BinaryFreshnessUndecided — {binary}: {reason}")
+        }
+    }
+}
+
+/// The inputs of a cargo dep-info file: the first rule's prerequisites, `\ `-escaped spaces
+/// unescaped. Cargo's uplifted `<bin>.d` is one rule, `<bin>: <input> <input> ...`.
+pub fn dep_info_inputs(dep_info: &str) -> Result<Vec<String>, String> {
+    let rule = dep_info
+        .lines()
+        .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .ok_or("dep-info carries no rule")?;
+    let (_, prerequisites) = rule
+        .split_once(": ")
+        .ok_or("dep-info rule has no `: ` separator")?;
+    let mut inputs = Vec::new();
+    let mut current = String::new();
+    let mut chars = prerequisites.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if chars.peek() == Some(&' ') => {
+                current.push(' ');
+                chars.next();
+            }
+            ' ' => {
+                if !current.is_empty() {
+                    inputs.push(std::mem::take(&mut current));
+                }
+            }
+            other => current.push(other),
+        }
+    }
+    if !current.is_empty() {
+        inputs.push(current);
+    }
+    if inputs.is_empty() {
+        return Err("dep-info lists no inputs".to_string());
+    }
+    Ok(inputs)
+}
+
+/// THE CRATE THE BINARY WAS BUILT FROM is the directory of the first `Cargo.toml` its dep-info
+/// lists; the checkout is that manifest's `src/v1/stage0` ancestor. Comparing that ONE root
+/// against ours is the "built elsewhere" test -- not a list of excluded prefixes. Registry and
+/// sysroot inputs are outside every checkout and are judged by mtime like any other input.
+///
+/// Git paths are skipped, with a reason: build.rs watches `HEAD`, `index`, `packed-refs` and the
+/// branch ref only to re-stamp `GUNBC_BUILD_IDENTITY`, the version string. `packed-refs` moves on
+/// any fetch in any worktree, so judging them would refuse a binary whose code did not change --
+/// the spurious refusal this check exists not to make. The cost is that a fresh binary may print
+/// an older commit as its identity; its bytes are still those that commit built.
+pub fn classify_binary_inputs(
+    inputs: &[String],
+    workspace: &std::path::Path,
+    built_at: std::time::SystemTime,
+) -> Result<Vec<BinaryInput>, String> {
+    // NO BUILD ROOT IS A REFUSAL, NOT A SKIPPED CHECK (review 74282). If no input names the
+    // crate manifest, the checkout the binary was built from is unknown, and judging the
+    // remaining inputs by mtime alone would answer `Fresh` for a binary another worktree built.
+    let build_root = inputs
+        .iter()
+        .find(|p| p.ends_with("/src/v1/stage0/Cargo.toml"))
+        .map(|p| p.trim_end_matches("/src/v1/stage0/Cargo.toml").to_string())
+        .ok_or_else(|| {
+            "its dep-info names no src/v1/stage0/Cargo.toml, so the checkout it was built from is unknown"
+                .to_string()
+        })?;
+    let mut out = Vec::new();
+    if std::path::Path::new(&build_root) != workspace {
+        out.push(BinaryInput::OutsideWorktree(build_root.clone()));
+    }
+    for input in inputs {
+        if input.contains("/.git/") {
+            continue;
+        }
+        // Only NotFound is `Missing`; any other stat failure (permission, I/O) is a reading we
+        // could not take, which refuses with its own cause rather than a wrong label (review 74474).
+        let classified = match std::fs::metadata(input).and_then(|m| m.modified()) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                BinaryInput::Missing(input.clone())
+            }
+            Err(e) => return Err(format!("cannot stat dep-info input {input}: {e}")),
+            Ok(modified) if modified > built_at => BinaryInput::Newer(input.clone()),
+            Ok(_) => BinaryInput::NotNewer(input.clone()),
+        };
+        out.push(classified);
+    }
+    Ok(out)
+}
+
+/// THE ANCHOR IS WHEN COMPILATION STARTED, NOT WHEN THE BINARY WAS LINKED. An input edited after
+/// rustc read it but before the link finished is older than the binary and newer than the
+/// compile, so comparing against the binary's mtime would answer `Fresh` where cargo rebuilds
+/// (calm-boar-904's objection on #13007). Cargo's own comparator is the unit's fingerprint
+/// dep-info, `.fingerprint/<pkg>-<hash>/dep-bin-<name>`, whose mtime it rewinds to build start.
+///
+/// THE UNIT IS DERIVED, NOT SEARCHED FOR BY NAME. The uplifted executable is a hard link to
+/// `deps/<name>-<hash>`; that file is found by inode, its `<hash>` names exactly one fingerprint
+/// directory, and `dep-bin-<name>` in it is the anchor. Many fingerprint directories carry
+/// `dep-bin-gunbc` (one per past build configuration), so picking by name or by newest mtime
+/// would be a guess. Every break in the chain -- no hard-link twin, two twins, zero or several
+/// fingerprint directories -- is an error, which refuses.
+pub fn build_start_anchor(exe: &std::path::Path) -> Result<std::time::SystemTime, String> {
+    use std::os::unix::fs::MetadataExt;
+    let profile_dir = exe
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", exe.display()))?;
+    let name = exe
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| format!("{} has no file name", exe.display()))?;
+    let inode = std::fs::metadata(exe)
+        .map_err(|e| format!("cannot stat {}: {e}", exe.display()))?
+        .ino();
+    let deps = profile_dir.join("deps");
+    let prefix = format!("{name}-");
+    let twins: Vec<String> = std::fs::read_dir(&deps)
+        .map_err(|e| format!("cannot list {}: {e}", deps.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.metadata().map(|m| m.ino() == inode).unwrap_or(false))
+        .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+        .filter(|file| file.starts_with(&prefix) && !file.ends_with(".d"))
+        .collect();
+    let hash = match twins.as_slice() {
+        [one] => one[prefix.len()..].to_string(),
+        _ => {
+            return Err(format!(
+                "the binary has {} hard-link twins under {}, so the compile unit that built it is unknown",
+                twins.len(),
+                deps.display()
+            ))
+        }
+    };
+    let fingerprint = profile_dir.join(".fingerprint");
+    let suffix = format!("-{hash}");
+    let units: Vec<std::path::PathBuf> = std::fs::read_dir(&fingerprint)
+        .map_err(|e| format!("cannot list {}: {e}", fingerprint.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.ends_with(&suffix))
+                .unwrap_or(false)
+        })
+        .collect();
+    let unit = match units.as_slice() {
+        [one] => one.join(format!("dep-bin-{name}")),
+        _ => {
+            return Err(format!(
+                "{} fingerprint units end in {suffix}, so the build-start anchor is unknown",
+                units.len()
+            ))
+        }
+    };
+    std::fs::metadata(&unit)
+        .and_then(|m| m.modified())
+        .map_err(|e| format!("cannot read the build-start anchor {}: {e}", unit.display()))
+}
+
+/// The effectful half: read the binary's dep-info, anchor at build start, and stat its inputs.
+/// Every failure is `DepInfoUnreadable`, which refuses -- never a pass because the question could
+/// not be asked.
+pub fn observe_binary_inputs_of(
+    exe: &std::path::Path,
+    workspace: &std::path::Path,
+) -> BinaryInputObservation {
+    let binary = exe.display().to_string();
+    let dep_info_path = exe.with_extension("d");
+    let observed = (|| {
+        let build_start = build_start_anchor(exe)?;
+        let text = std::fs::read_to_string(&dep_info_path)
+            .map_err(|e| format!("cannot read dep-info {}: {e}", dep_info_path.display()))?;
+        let inputs = dep_info_inputs(&text)?;
+        classify_binary_inputs(&inputs, workspace, build_start)
+    })();
+    match observed {
+        Ok(inputs) => BinaryInputObservation::Observed { binary, inputs },
+        Err(reason) => BinaryInputObservation::DepInfoUnreadable { binary, reason },
+    }
+}
+
+fn observe_binary_inputs() -> BinaryInputObservation {
+    match std::env::current_exe() {
+        Ok(exe) => observe_binary_inputs_of(&exe, &cli_run::process_workspace_root()),
+        Err(e) => BinaryInputObservation::DepInfoUnreadable {
+            binary: "<current_exe unreadable>".to_string(),
+            reason: e.to_string(),
+        },
+    }
+}
+
+/// THE INVOCATION'S FIRST ACT: refuse a binary that no longer answers for its own inputs
+/// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
+/// rather than inside it so the routing tests stay a function of the operand alone.
+pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+    test_verb_after(operand, &assess_binary_freshness(&observe_binary_inputs()))
+}
+
+fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {
+    match stale_binary_refusal(freshness) {
+        Some(refused) => refused,
+        None => test_verb(operand),
+    }
+}
+
+/// THE FRESHNESS DECISION, ALONE: `Some` is the refusal a stale or undecided binary earns before any
+/// producer runs, `None` admits the run (after logging the fresh inputs). Split from
+/// `test_verb_after` so its witness exercises the decision without reaching `test_verb`'s producers,
+/// several of which set the process cwd (`process_cwd_mutation_reachability_gate`).
+fn stale_binary_refusal(freshness: &BinaryFreshness) -> Option<InvocationOutcome> {
+    let line = binary_freshness_rendered(freshness);
+    match freshness {
+        BinaryFreshness::Fresh { inputs, .. } => {
+            eprintln!("{line} inputs={inputs}");
+            None
+        }
+        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => {
+            Some(InvocationOutcome {
+                termination: Termination::Refused,
+                message: line,
+            })
+        }
+    }
 }
 
 pub fn test_verb(operand: &str) -> InvocationOutcome {
@@ -2514,5 +3272,426 @@ mod native_route_termination_tests {
             "s",
         );
         assert_eq!(out.termination, Termination::ObservationDidNotHold);
+    }
+}
+
+#[cfg(test)]
+mod binary_freshness_tests {
+    use super::*;
+
+    /// THE OLD BEHAVIOUR RAN THE INSTRUMENT ON EVERY ARM BELOW; the stale and undecided arms are
+    /// the refusals it lacked. Mirrors `test.claim.target_invocation_witness`'s freshness tests.
+    #[test]
+    fn freshness_precedence_matches_the_model() {
+        let obs = |inputs: Vec<BinaryInput>| BinaryInputObservation::Observed {
+            binary: "bin".into(),
+            inputs,
+        };
+        let fresh = assess_binary_freshness(&obs(vec![
+            BinaryInput::NotNewer("a".into()),
+            BinaryInput::NotNewer("b".into()),
+        ]));
+        assert!(matches!(fresh, BinaryFreshness::Fresh { inputs: 2, .. }));
+        match assess_binary_freshness(&obs(vec![
+            BinaryInput::NotNewer("a".into()),
+            BinaryInput::Newer("b".into()),
+            BinaryInput::Missing("c".into()),
+        ])) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(input, "b"),
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            assess_binary_freshness(&obs(vec![
+                BinaryInput::Newer("b".into()),
+                BinaryInput::OutsideWorktree("/w/other".into()),
+            ])),
+            BinaryFreshness::Undecided { .. }
+        ));
+        assert!(matches!(
+            assess_binary_freshness(&BinaryInputObservation::DepInfoUnreadable {
+                binary: "bin".into(),
+                reason: "none".into()
+            }),
+            BinaryFreshness::Undecided { .. }
+        ));
+    }
+
+    /// The observation over REAL files: a file touched after the build instant is named; a
+    /// git watch path is skipped; another checkout's manifest is outside; escaped spaces parse.
+    #[test]
+    fn dep_info_classification_over_real_files() {
+        let dir = std::env::temp_dir().join(format!("freshness-{}", std::process::id()));
+        let ws = dir.join("ws");
+        std::fs::create_dir_all(ws.join("src/v1/stage0")).unwrap();
+        let old = ws.join("old file.rs");
+        std::fs::write(&old, "x").unwrap();
+        let built_at = std::time::SystemTime::now();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let new = ws.join("new.rs");
+        std::fs::write(&new, "y").unwrap();
+        let manifest = ws.join("src/v1/stage0/Cargo.toml");
+        std::fs::write(&manifest, "").unwrap();
+        let text = format!(
+            "/t/gunbc: {} {} {} {} /nowhere/.git/index\n",
+            manifest.display(),
+            old.display().to_string().replace(' ', "\\ "),
+            new.display(),
+            ws.join("gone.rs").display()
+        );
+        let inputs = dep_info_inputs(&text).unwrap();
+        assert_eq!(inputs.len(), 5);
+        let classified = classify_binary_inputs(&inputs, &ws, built_at).unwrap();
+        assert_eq!(
+            classified.len(),
+            4,
+            "the .git path is skipped: {classified:?}"
+        );
+        assert!(classified.contains(&BinaryInput::NotNewer(old.display().to_string())));
+        assert!(classified.contains(&BinaryInput::Newer(new.display().to_string())));
+        assert!(classified.contains(&BinaryInput::Missing(
+            ws.join("gone.rs").display().to_string()
+        )));
+        let elsewhere = classify_binary_inputs(&inputs, &dir.join("other"), built_at).unwrap();
+        assert_eq!(
+            elsewhere[0],
+            BinaryInput::OutsideWorktree(ws.display().to_string())
+        );
+        // NO MANIFEST, NO VERDICT: dep-info without the crate's Cargo.toml refuses rather than
+        // judging the other inputs by mtime alone (review 74282's silent-Fresh case).
+        let no_manifest = dep_info_inputs(&format!(
+            "/t/gunbc: {}\n",
+            old.display().to_string().replace(' ', "\\ ")
+        ))
+        .unwrap();
+        assert!(classify_binary_inputs(&no_manifest, &dir.join("other"), built_at).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE MID-BUILD EDIT (calm-boar-904): build_start < input_mtime < binary_mtime must be
+    /// StaleBinary. Against the binary's mtime it read Fresh. Laid out as cargo lays it out: an
+    /// uplifted binary hard-linked to deps/<name>-<hash>, and .fingerprint/<pkg>-<hash>/dep-bin-<name>
+    /// stamped at build start. A decoy unit with the same file name and a later stamp must not be
+    /// chosen, because only the hash names the unit.
+    #[test]
+    fn an_input_edited_during_the_build_is_stale() {
+        use std::time::{Duration, SystemTime};
+        let dir = std::env::temp_dir().join(format!("anchor-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let ws = dir.join("ws");
+        let release = dir.join("target/release");
+        std::fs::create_dir_all(ws.join("src/v1/stage0")).unwrap();
+        std::fs::create_dir_all(release.join("deps")).unwrap();
+        std::fs::create_dir_all(release.join(".fingerprint/pkg-abc123")).unwrap();
+        std::fs::create_dir_all(release.join(".fingerprint/pkg-decoy99")).unwrap();
+        let t0 = SystemTime::now() - Duration::from_secs(100);
+        let stamp = |path: &std::path::Path, at: SystemTime| {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(at)
+                .unwrap();
+        };
+        let start = release.join(".fingerprint/pkg-abc123/dep-bin-gunbc");
+        std::fs::write(&start, "").unwrap();
+        stamp(&start, t0);
+        let decoy = release.join(".fingerprint/pkg-decoy99/dep-bin-gunbc");
+        std::fs::write(&decoy, "").unwrap();
+        stamp(&decoy, t0 + Duration::from_secs(80));
+        let manifest = ws.join("src/v1/stage0/Cargo.toml");
+        std::fs::write(&manifest, "").unwrap();
+        stamp(&manifest, t0 - Duration::from_secs(10));
+        let edited = ws.join("edited.rs");
+        std::fs::write(&edited, "").unwrap();
+        stamp(&edited, t0 + Duration::from_secs(30));
+        let linked = release.join("deps/gunbc-abc123");
+        std::fs::write(&linked, "bin").unwrap();
+        stamp(&linked, t0 + Duration::from_secs(60));
+        let exe = release.join("gunbc");
+        std::fs::hard_link(&linked, &exe).unwrap();
+        std::fs::write(
+            release.join("gunbc.d"),
+            format!(
+                "{}: {} {}\n",
+                exe.display(),
+                manifest.display(),
+                edited.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(build_start_anchor(&exe).unwrap(), t0);
+        match assess_binary_freshness(&observe_binary_inputs_of(&exe, &ws)) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(input, edited.display().to_string()),
+            other => panic!("a mid-build edit must be stale: {other:?}"),
+        }
+        // THE OLD ANCHOR, FOR CONTRAST: against the binary's own mtime the same tree reads fresh.
+        let at_link = std::fs::metadata(&exe).unwrap().modified().unwrap();
+        let inputs =
+            dep_info_inputs(&std::fs::read_to_string(release.join("gunbc.d")).unwrap()).unwrap();
+        assert!(matches!(
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "b".into(),
+                inputs: classify_binary_inputs(&inputs, &ws, at_link).unwrap()
+            }),
+            BinaryFreshness::Fresh { .. }
+        ));
+        // A copied binary has no hard-link twin: undecided, not fresh.
+        let copied = release.join("copied");
+        std::fs::copy(&linked, &copied).unwrap();
+        assert!(build_start_anchor(&copied).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE ROUTE: a stale verdict refuses with status 2 and never reaches the producer.
+    #[test]
+    fn a_stale_binary_is_refused_before_any_instrument_runs() {
+        let stale = BinaryFreshness::Stale {
+            binary: "bin".into(),
+            input: "a.rs".into(),
+            why: "changed after the binary was built".into(),
+        };
+        let outcome = stale_binary_refusal(&stale).expect("a stale binary is refused");
+        assert_eq!(outcome.termination, Termination::Refused);
+        assert!(
+            outcome.message.contains("cause=StaleBinary"),
+            "{}",
+            outcome.message
+        );
+        assert!(outcome.message.contains("a.rs"));
+    }
+}
+
+/// `gunbc.instrument_targets` `interpolation_hole_census_label`. TRANSPORT ONLY: every `.dag` file
+/// under the source roots is read and handed to `v1.tests.claim.interpolation_hole_census` as
+/// `SourceFile` data; that module decides which files are subjects (those whose v1 lexing yields an
+/// interpolating template), the host loads each subject's closure, and the union is handed back for
+/// one compile. The standing, every row, every count and every completeness mismatch are that
+/// module's; this function holds only when the fixture standing AND the receipt's corpus standing (its first line) both hold. An unreadable root,
+/// file, fixture or closure is `SubjectUnreached`, never a standing.
+fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_tests_claim_interpolation_hole_census as census;
+    use std::rc::Rc;
+    const FIXTURE: &str = "fixtures/interpolation_hole_census/a.dag";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("interpolation-hole-census: subject unreached: {detail}"),
+    };
+    let fixture = match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => vec![Rc::new(SourceFile {
+            path: FIXTURE.to_string(),
+            content,
+        })],
+        Err(err) => return unreached(format!("fixture {FIXTURE}: {err}")),
+    };
+    let standing = census::interpolation_hole_fixture_standing(Rc::new(fixture.into()));
+    if standing.starts_with("REFUSED") {
+        return unreached(format!("fixture did not compile: {standing}"));
+    }
+    for line in standing.lines() {
+        println!("interpolation-hole-census: {line}");
+    }
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    for root in source_roots {
+        if let Err(detail) =
+            cli_run::collect_dag_files_result(std::path::Path::new(root), &mut paths)
+        {
+            return unreached(format!("root {root}: {detail}"));
+        }
+    }
+    let mut corpus: Vec<Rc<SourceFile>> = Vec::new();
+    for path in &paths {
+        let path = path.to_string_lossy().to_string();
+        match std::fs::read_to_string(&path) {
+            Ok(content) => corpus.push(Rc::new(SourceFile { path, content })),
+            Err(err) => return unreached(format!("corpus file {path}: {err}")),
+        }
+    }
+    let corpus_files = corpus.len();
+    let subjects: Vec<String> = census::interpolation_hole_census_subjects(Rc::new(corpus.into()))
+        .iter()
+        .map(|p| p.to_string())
+        .collect();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut closure: Vec<Rc<SourceFile>> = Vec::new();
+    for subject in &subjects {
+        let sources =
+            match cli_run::load_sources_for_entry_with_pool_index(source_roots, subject, false) {
+                Ok(sources) => sources,
+                Err(detail) => return unreached(format!("closure of {subject}: {detail}")),
+            };
+        for source in sources {
+            if seen.insert(source.path.clone()) {
+                closure.push(source);
+            }
+        }
+    }
+    let compiled = closure.len();
+    let receipt = census::interpolation_hole_census_from_sources(
+        Rc::new(closure.into()),
+        Rc::new(subjects.clone().into()),
+    );
+    if receipt.starts_with("REFUSED") {
+        return unreached(format!("subject closure did not compile: {receipt}"));
+    }
+    for line in receipt.lines() {
+        println!("interpolation-hole-census: report {line}");
+    }
+    let held = standing.lines().next() == Some("STANDING held")
+        && receipt.lines().next() == Some("CORPUS complete");
+    InvocationOutcome {
+        termination: if held {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message: format!(
+            "interpolation-hole-census: {} {} (controls over {FIXTURE}; report over {} subjects of {corpus_files} corpus files, {compiled} sources compiled)",
+            standing.lines().next().unwrap_or("STANDING absent"),
+            receipt.lines().next().unwrap_or("CORPUS absent"),
+            subjects.len()
+        ),
+    }
+}
+
+/// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
+/// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
+/// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
+/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
+/// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
+/// and 2 or a refused preparation is no observation.
+/// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
+/// `v2.compiler.compile` closure are read from disk and handed to
+/// `v1.tests.claim.generic_identity_census` as `SourceFile` data. The standing line, each control,
+/// the report's counts and the unobserved populations are that module's; this function maps the
+/// first line of the returned standing to a termination and decides nothing else. A fixture or
+/// closure that cannot be read is `SubjectUnreached`, never a standing.
+fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_tests_claim_generic_identity_census as census;
+    use std::rc::Rc;
+    const FIXTURE: &str = "fixtures/generic_identity_census/a.dag";
+    const REPORT_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("generic-identity-census: subject unreached: {detail}"),
+    };
+    let fixture = match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => vec![Rc::new(SourceFile {
+            path: FIXTURE.to_string(),
+            content,
+        })],
+        Err(err) => return unreached(format!("fixture {FIXTURE}: {err}")),
+    };
+    let standing = census::generic_identity_fixture_standing(Rc::new(fixture.into()));
+    if standing.starts_with("REFUSED") {
+        return unreached(format!("fixture did not compile: {standing}"));
+    }
+    for line in standing.lines() {
+        println!("generic-identity-census: {line}");
+    }
+    let closure =
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, REPORT_ENTRY, false) {
+            Ok(sources) => sources,
+            Err(detail) => return unreached(format!("closure of {REPORT_ENTRY}: {detail}")),
+        };
+    let subjects = closure.len();
+    let report = census::generic_identity_census_summary_from_sources(Rc::new(closure.into()));
+    if report.starts_with("REFUSED") {
+        return unreached(format!(
+            "closure of {REPORT_ENTRY} did not compile: {report}"
+        ));
+    }
+    for line in report.lines() {
+        println!("generic-identity-census: report {line}");
+    }
+    let held = standing.lines().next() == Some("STANDING held");
+    InvocationOutcome {
+        termination: if held {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message: format!(
+            "generic-identity-census: {} (controls over {FIXTURE}; report over the closure of {REPORT_ENTRY}, {subjects} sources)",
+            standing.lines().next().unwrap_or("STANDING absent")
+        ),
+    }
+}
+
+fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_demand_census(source_roots) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// `gunbc test //gunbc/instruments:regen-round-cost`: one whole-population regen round, priced
+/// by phase on two clocks (`gunbc.regen_round_cost`), then the one-mirror discriminator over the
+/// same corpus. On-demand only: it is reached through instrument-dispatch and no required job.
+///
+/// The probe's mirror is a fixed fact of the instrument rather than an option, so two runs
+/// measure the same selection. `std_measure.rs` is an ordinary leaf mirror of the population.
+const REGEN_ROUND_COST_PROBE_MIRROR: &str = "std_measure.rs";
+
+fn run_regen_round_cost_instrument() -> InvocationOutcome {
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("regen-round-cost: subject unreached: {detail}"),
+    };
+    let roots = self_host_source_roots();
+    let round = match cli_run::run_regen_round_cost(
+        "target/stage0-regen-candidate",
+        "target/stage0-regen-receipt.json",
+        &roots,
+        false,
+    ) {
+        Ok(round) => round,
+        Err(e) => return unreached(format!("round: {e}")),
+    };
+    print!("{}", round.rendered);
+    let rows = match cli_run::run_regen_one_mirror_emit_probe(REGEN_ROUND_COST_PROBE_MIRROR) {
+        Ok(rows) => rows,
+        Err(e) => return unreached(format!("one-mirror probe: {e}")),
+    };
+    for row in &rows {
+        println!(
+            "regen-round-cost: one-mirror-probe mirror={} phase={} wall_ms={} cpu_ms={}",
+            REGEN_ROUND_COST_PROBE_MIRROR,
+            row.label,
+            row.wall_ms,
+            row.cpu_ms
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "unreadable".to_string())
+        );
+    }
+    if round.round_failures.is_empty() {
+        InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "regen-round-cost: round clean; receipt={}",
+                round.receipt_path.display()
+            ),
+        }
+    } else {
+        InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: format!(
+                "regen-round-cost: round not clean: {}",
+                round.round_failures.join("; ")
+            ),
+        }
     }
 }

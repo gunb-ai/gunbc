@@ -5,8 +5,8 @@ import extdeps.ethernet.link_mode { ieee_25gbase_cr, link_mode_eq }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { NoLaneSpeedForMode }
 import product.cable_order_admission { OrderRefused, OrderCodingUndeclared, LegCodingUndeclared }
-import product.placement_supply { host_identity_eq }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_expansion_candidates { expansion_candidates, InstalledUnobserved }
 import gunbc.machine_intake_mtcollins1_connectx4lx_observation {
   connectx4lx_host_observation, Connectx4LxHostUnobserved, Connectx4LxHostObserved,

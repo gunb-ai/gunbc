@@ -1,6 +1,7 @@
 module v2.compiler.self_host.frontier_probe
 
-import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import std.types { List }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme, Symbol }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
@@ -24,7 +25,6 @@ import v2.compiler.program_assembly {
   ProgramAssemblyFoldOk
 }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
-  frontier_probe_assemble_located_reason_from_diagnostics,
   frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
@@ -86,9 +86,10 @@ import std.content_hash {
   content_hash_eq_structural
 }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
+  diagnostics_fatal,
+  diagnostics_fatal_reason,
   Correction,
   Diagnostic,
   LocusAnchor,
@@ -106,7 +107,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.qualified_name { QualifiedName }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data frontier_probe_closure_duplicate_ref_reason: Symbol = ^frontier_probe_closure_duplicate_ref
@@ -239,13 +240,16 @@ fn frontier_probe_source_ref_for_read_diagnostic(
   refs: List<SourceRef>,
   d: NonEmptyDiagnostics
 ) -> Optional<SourceRef> {
-  match d.head.at {
+  match diagnostics_fatal(d: d).at {
     Textual { file: module_file, extent: _ } =>
       frontier_probe_source_ref_for_path(
         refs: refs,
         path: symbol_lexeme(sym: module_file)
       )
-    _ => optional_absent()
+    NodeLocus { anchor: _ } => optional_absent()
+    SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+    InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+    DeclarationLocus { declaration: _ } => optional_absent()
   }
 }
 
@@ -262,7 +266,9 @@ fn frontier_probe_diagnostic_tail_port_lexeme(d: NonEmptyDiagnostics) -> String 
             symbol_lexeme(sym: port)
           InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } =>
             symbol_lexeme(sym: port)
-          _ => ""
+          Textual { file: _, extent: _ } => ""
+          NodeLocus { anchor: _ } => ""
+          DeclarationLocus { declaration: _ } => ""
         }
       }
     }
@@ -306,7 +312,9 @@ fn frontier_probe_first_missing_import_lookup(
         Absent =>
           match module_root_lookup(roots: roots, name: import_edge.target) {
             ModuleRootMissing { requested: qn } => optional_present(value: qn)
-            _ => optional_absent()
+            ModuleRootFound { root: _ } => optional_absent()
+            ModuleRootAmbiguous { requested: _ } => optional_absent()
+            ModuleRootLookupRejected { diagnostics: _ } => optional_absent()
           }
       }
     }
@@ -558,7 +566,7 @@ fn frontier_probe_receipt_from_discovered_closure(
                         module_path: module_path
                       ) {
                         Rejected { diagnostics: d } => {
-                          let reason = d.head.reason
+                          let reason = diagnostics_fatal_reason(d: d)
                           let blocker = frontier_classify_rejection_reason(reason: reason)
                           FrontierProbeReceipt {
                             module_path: module_path,
@@ -590,7 +598,7 @@ fn frontier_probe_receipt_from_admission_diagnostic_rejected(
   admission: Admission,
   d: NonEmptyDiagnostics
 ) -> FrontierProbeReceipt {
-  let reason = d.head.reason
+  let reason = diagnostics_fatal_reason(d: d)
   let blocker = frontier_classify_rejection_reason(reason: reason)
   FrontierProbeReceipt {
     module_path: module_path,
@@ -704,7 +712,7 @@ fn frontier_probe_emit_from_populated_ingest(
         module_path: module_path,
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
-          reason: frontier_probe_assemble_located_reason_from_diagnostics(d: d),
+          reason: diagnostics_fatal_reason(d: d),
           d: d,
           ingest: ingest,
           admission: admission
@@ -731,12 +739,12 @@ fn frontier_probe_emit_from_populated_ingest(
             assemble_detail: NoFrontierProbeDetail
           }
         Rejected { diagnostics: d } => {
-          let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
+          let blocker = frontier_classify_rejection_reason(reason: diagnostics_fatal_reason(d: d))
           FrontierProbeReceipt {
             module_path: module_path,
             blocker_class: blocker,
             located_stage: frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
-            located_reason: d.head.reason,
+            located_reason: diagnostics_fatal_reason(d: d),
             detail: FrontierProbeDetailAbsent,
             assemble_detail: NoFrontierProbeDetail
           }

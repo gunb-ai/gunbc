@@ -7,15 +7,14 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_declares_resource_at, symbol_index_lookup }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, None, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list }
-import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
+import std.optional { Absent, Present }
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v2.std.collection { List }
+import std.types { List }
 
 // DECLARATION-GRADE RESOURCE LOWERING (v2.compiler.body_lowering_fold body_lower_resource_decl). A
 // resource lowers to a service's shape -- its capabilities are operation Arrows of its payload -- and
@@ -283,18 +282,21 @@ test fn entries_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: entries_source, file: ^resource_lowering_probe, supplied: entries_stream())
 }
 
-// A well-formed io tail on a capability output field with an `= 1` default: the shared io grammar admits it, and it refuses as a service's
-// set-aside member does -- the owned fatal service_realization_unreachable at the capability, with
-// interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
+// A capability output field with an `= 1` default: since XL-2 PR2c-ii (#12948) a default lowers onto its
+// binder, so the capability is admitted and nothing is set aside. This claim asserted the pre-#12948 set-aside
+// and stood red on main from #12948 until XL-2 PR3b-i corrected it (re-run against main at 3756d624).
 data default_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int = 1 }\n  }\n}\n"
 
-test fn a_default_tail_refuses_as_a_service_set_aside_RED() -> Bool {
-  match census_of_stream(tokens: default_tail_stream()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } =>
-      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
-        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
-        && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
+// The census outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and the claim reads it.
+fn rdl_default_tail_census() -> Outcome<CensusTree> {
+  census_of_stream(tokens: default_tail_stream())
+}
+
+test fn a_default_tail_lowers_onto_its_binder_holds() -> Bool {
+  match rdl_default_tail_census() {
+    Accepted { value: _, diagnostics: d } => reason_count_is_zero(d: d, reason: ^body_lowering_reason_interface_member_unmodeled)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -377,6 +379,13 @@ fn wire_key_tail_stream() -> TokenStream {
 
 test fn wire_key_tail_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: wire_key_tail_source, file: ^resource_lowering_probe, supplied: wire_key_tail_stream())
+}
+
+fn reason_count_is_zero(d: Diagnostics, reason: Symbol) -> Bool {
+  match d {
+    None => true
+    Some { diagnostics: ne } => !carries(ne: ne, reason: reason)
+  }
 }
 
 fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {

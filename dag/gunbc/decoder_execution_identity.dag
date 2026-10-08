@@ -1,5 +1,6 @@
 module gunbc.decoder_execution_identity
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { FreeMonoid }
 import std.content_hash {
@@ -32,6 +33,7 @@ import gunbc.bmc_fan_program_interpretation {
   decoder_identity_instrument_obligation,
   fan_program_decoder,
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THE INSTRUMENT THAT DISCHARGES DecoderIdentityNotInstrumented. A semantic program digest says
 // what a document MEANS; this says which reader decided that, so a corrected decoder producing a

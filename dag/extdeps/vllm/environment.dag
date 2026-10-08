@@ -1,6 +1,7 @@
 module extdeps.vllm.environment
 
 import std.types { String, NonEmptyStr }
+import std.measure { Second, second }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -55,14 +56,37 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type VllmEnvironmentVariable
   = VllmEngineReadyTimeoutSeconds
   | VllmSparseIndexerMaxLogitsMb
+  | VllmFlashinferAutotuneSkipOps
 
 fn vllm_environment_variable_name(v: VllmEnvironmentVariable) -> NonEmptyStr {
   match v {
     VllmEngineReadyTimeoutSeconds => "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr
     VllmSparseIndexerMaxLogitsMb => "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr
+    VllmFlashinferAutotuneSkipOps => "VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS" as NonEmptyStr
   }
 }
 
 fn vllm_environment_assignment_wire(variable: VllmEnvironmentVariable, value: String) -> String {
   join([vllm_environment_variable_name(v: variable) as String, "=", value], "")
 }
+
+// VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS, read from vllm/envs.py in the pinned Group A runtime (gunbc.spark.serving_arm
+// glm53_kvplan_v2_group_a_row; fleet-converge observe 37227706992): a comma list of FlashInfer op names that
+// vllm.model_executor.warmup.kernel_warmup _flashinfer_autotune_skip_ops passes as fi_utils.autotune(skip_ops=...)
+// to the SYNCHRONIZED autotune phase. A skipped op runs FlashInfer's heuristic tactic on any rank without a
+// cached key for it.
+//
+// THE HAZARD IT AVOIDS, an upstream fact cited here (the same read): flashinfer.fused_moe.core MoERunner
+// get_cache_key_extras keys trtllm::fused_moe tactics by tp_rank/ep_rank/cluster_rank, and
+// vllm.model_executor.warmup.flashinfer_sparse_mla_warmup pre-tunes on the leader ONLY (rank_in_group == 0)
+// and broadcasts the leader's file. So the leader enters the synchronized phase with its fused_moe keys
+// cached and every other rank with none of its own; the leader skips the per-tactic timing collective over
+// world.cpu_group (gloo) that the other ranks block in, and the phase deadlocks until a timeout
+// (gunbc.recurring_failure_mode a_leader_only_pre_tune_seeds_a_rank_keyed_cache).
+
+// UPSTREAM'S DEFAULT FOR THE ENGINE READY TIMEOUT, read from vllm/envs.py at both
+// 07b75534651a0dd584c6f3be75d8c62fb8426397 and 8d09804c877c48165c6ba69bc9dc02d09bae0b83:
+// `VLLM_ENGINE_READY_TIMEOUT_S: int = 600`, `int(os.environ.get("VLLM_ENGINE_READY_TIMEOUT_S", "600"))`.
+// A launch that does not set the variable waits this long, which is what a runtime bound derived from
+// that launch must use -- not another model's figure.
+data vllm_engine_ready_timeout_default: Second = second(count: 600)

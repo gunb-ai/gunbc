@@ -2,7 +2,6 @@ module extdeps.http.client
 import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -48,6 +47,23 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
   ]
 }
 
+// The same bounded GET over a unix socket (curl --unix-socket, curl(1)): the URL names the path the
+// server routes on and the connection is made to the socket file. GetWithinUnixSocket is its
+// local-transport twin.
+fn http_client_get_unix_socket_argv(socket: NonEmptyStr, url: NonEmptyStr, max_time: Second) -> List<String> {
+  [
+    "curl",
+    "-fsS",
+    "--unix-socket",
+    socket as String,
+    "--connect-timeout",
+    http_client_localhost_connect_timeout_flag(),
+    "--max-time",
+    http_client_max_time_flag(max_time: max_time) as String,
+    url as String,
+  ]
+}
+
 // THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
 // section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
 // for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
@@ -75,6 +91,11 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
 // handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
 // stderr text.
+// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
+// at module grain because an operation's rationale cannot live inside the service body: it is
+// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
+// them), one content-type line differs, and the body still rides --data @{file} so a client
+// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
@@ -84,6 +105,14 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
 // them), one content-type line differs, and the body still rides --data @{file} so a client
 // secret in the form body is never an argv word (gunbc.credential_argv_exposure).
+// Probe, A LIVENESS PROBE: one bounded connection attempt, answered as DATA on every arm. This is
+// the observation half of a readiness poll (the retry loop lives with the caller, which owns the
+// budget): StatusWithin REFUSES a nonzero curl, which is the wrong shape for polling a server that
+// is still warming up -- "connection refused" is an expected answer mid-startup, not a refusal.
+// Probe maps the curl exit code through untouched (7 refused, 28 timed out, 0 with an HTTP status
+// in stdout; `000` on stdout is curl's no-response marker per man curl(1), `-w %{http_code}`), so
+// the caller can distinguish "not up yet" from "up and wrong" without this operation inventing a
+// retry policy.
 service http.Client {
   operation Get {
     requires Network
@@ -163,6 +192,23 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
+    }
+  }
+
+  operation GetWithinUnixSocket {
+    requires Network
+    input { socket: NonEmptyStr, url: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--max-time", "{max_seconds}", "{url}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client GET over a unix socket within a caller deadline failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live socket; a bounded observation refuses rather than fabricate a body"
     }
   }
 
@@ -249,7 +295,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",
@@ -271,7 +317,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",
@@ -320,6 +366,35 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live registry; observation refuses rather than fabricate a body"
+    }
+  }
+
+  operation Probe {
+    requires Network
+    input { url: NonEmptyStr, connect_time: Second, max_time: Second }
+    output {
+      status: String from "stdout"
+      answered: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "-sS",
+        "-o", "/dev/null",
+        "-w", "%\{http_code\}",
+        "--connect-timeout", http_client_max_time_flag(max_time: connect_time),
+        "--max-time", http_client_max_time_flag(max_time: max_time),
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { status: "", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
 }

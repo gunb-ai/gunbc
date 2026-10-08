@@ -3,11 +3,11 @@ module gunbc.heal_publication
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.git.plumbing
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.github.pulls { Open, Closed }
 import extdeps.github.commits { comparison_files_listing_cap }
 import extdeps.github.git_database { GitTreeItemWire, GitTreeEntryInput, git_blob_encoding_utf8 }
@@ -204,21 +204,11 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
   }
 }
 
-fn rest_outcome_text(o: RestOutcome) -> String {
+fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
-    RestOk => "ok"
     RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
     RestTransportRefused { cause } => concat("transport: ", cause as String)
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
-  }
-}
-
-fn rest_outcome_ok(o: RestOutcome) -> Bool {
-  match o {
-    RestOk => true
-    RestStatusRefused { status: _, body: _ } => false
-    RestTransportRefused { cause: _ } => false
-    RestBodyUndecodable { status: _, cause: _ } => false
   }
 }
 
@@ -226,55 +216,62 @@ fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: Strin
 {
   let owner = subject.repository.owner
   let repo = subject.repository.name
-  let pr = github.Pulls.Get(auth_token: "", owner: owner, repo: repo, pull_number: candidate.pull_number)
-  let branch = github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", candidate.head_ref as String))
-  if !rest_outcome_ok(o: branch.outcome) {
-    PublisherRunRefused {
-      cause: refusal_line(refusal: BranchRefUnreadable { head_ref: candidate.head_ref as String, detail: rest_outcome_text(o: branch.outcome) })
-    }
-  } else {
-    let head_commit = github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: candidate.expected_head_sha as String)
-    if !rest_outcome_ok(o: head_commit.outcome) {
+  match github.Pulls.Get(auth_token: "", owner: owner, repo: repo, pull_number: candidate.pull_number) {
+    RestRefused { refusal } =>
       PublisherRunRefused {
-        cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: candidate.expected_head_sha as String, detail: rest_outcome_text(o: head_commit.outcome) })
+        cause: join(["PullRequestUnreadable: pull_number=", to_string(candidate.pull_number), " ", rest_refusal_text(o: refusal)], "")
       }
-    } else {
-      let base_tree = github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head_commit.commit.tree.sha)
-      if !rest_outcome_ok(o: base_tree.outcome) {
-        PublisherRunRefused {
-          cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_commit.commit.tree.sha, detail: rest_outcome_text(o: base_tree.outcome) })
-        }
-      } else {
-        let reads = map(candidate.entries, e => read_candidate_blob(directory: directory, blob_hex: git_object_id_wire_hex(oid: e.proposed_blob) as String))
-        let observations = PublisherObservations {
-          repository_full_name: subject.repository.full_name as NonEmptyStr,
-          default_branch: subject.repository.default_branch as NonEmptyStr,
-          candidate_producer_workflow_path: subject.candidate_producer_workflow_path as NonEmptyStr,
-          run: run,
-          pull_request: PullRequestFacts {
-            number: pr.pr.number,
-            open: match pr.pr.state { Open => true  Closed => false },
-            head_ref: pr.pr.head.ref as String,
-            base_ref: pr.pr.base.ref as String
-          },
-          branch_head_sha: branch.reference.object.sha,
-          base_tree_sha: head_commit.commit.tree.sha,
-          base_tree_truncated: base_tree.tree_object.truncated,
-          base_tree: base_tree.tree_object.tree,
-          proposed_blobs: map(reads, r => observed_blob_observation(r: r))
-        }
-        match admit_heal_publication(
-          candidate: candidate,
-          observations: observations,
-          policy: publisher_path_policy(committed_artifact_paths: subject.committed_artifact_paths)
-        ) {
-          HealPublicationRefused { refusal } =>
-            PublisherRunRefused { cause: refusal_line(refusal: refusal) }
-          HealPublicationAdmitted { admitted } =>
-            PublisherRunAdmitted { admitted: admitted, blobs: observed_blob_contents(reads: reads) }
-        }
+    RestAnswered { answer: pr } =>
+      match github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", candidate.head_ref as String)) {
+        RestRefused { refusal } =>
+          PublisherRunRefused {
+            cause: refusal_line(refusal: BranchRefUnreadable { head_ref: candidate.head_ref as String, detail: rest_refusal_text(o: refusal) })
+          }
+        RestAnswered { answer: branch } =>
+          match github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: candidate.expected_head_sha as String) {
+            RestRefused { refusal } =>
+              PublisherRunRefused {
+                cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: candidate.expected_head_sha as String, detail: rest_refusal_text(o: refusal) })
+              }
+            RestAnswered { answer: head_commit } =>
+              match github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head_commit.commit.tree.sha) {
+                RestRefused { refusal } =>
+                  PublisherRunRefused {
+                    cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_commit.commit.tree.sha, detail: rest_refusal_text(o: refusal) })
+                  }
+                RestAnswered { answer: base_tree } => {
+                  let reads = map(candidate.entries, e => read_candidate_blob(directory: directory, blob_hex: git_object_id_wire_hex(oid: e.proposed_blob) as String))
+                  let observations = PublisherObservations {
+                    repository_full_name: subject.repository.full_name as NonEmptyStr,
+                    default_branch: subject.repository.default_branch as NonEmptyStr,
+                    candidate_producer_workflow_path: subject.candidate_producer_workflow_path as NonEmptyStr,
+                    run: run,
+                    pull_request: PullRequestFacts {
+                      number: pr.pr.number,
+                      open: match pr.pr.state { Open => true  Closed => false },
+                      head_ref: pr.pr.head.ref as String,
+                      base_ref: pr.pr.base.ref as String
+                    },
+                    branch_head_sha: branch.reference.object.sha,
+                    base_tree_sha: head_commit.commit.tree.sha,
+                    base_tree_truncated: base_tree.tree_object.truncated,
+                    base_tree: base_tree.tree_object.tree,
+                    proposed_blobs: map(reads, r => observed_blob_observation(r: r))
+                  }
+                  match admit_heal_publication(
+                    candidate: candidate,
+                    observations: observations,
+                    policy: publisher_path_policy(committed_artifact_paths: subject.committed_artifact_paths)
+                  ) {
+                    HealPublicationRefused { refusal } =>
+                      PublisherRunRefused { cause: refusal_line(refusal: refusal) }
+                    HealPublicationAdmitted { admitted } =>
+                      PublisherRunAdmitted { admitted: admitted, blobs: observed_blob_contents(reads: reads) }
+                  }
+                }
+              }
+          }
       }
-    }
   }
 }
 
@@ -313,19 +310,20 @@ fn write_blob_wet(subject: HealPublicationSubject, entry: AdmittedEntry, blobs: 
   let hex = git_object_id_wire_hex(oid: entry.blob) as String
   match content_for(blobs: blobs, blob_hex: hex) {
     Absent => BlobWritesRefused { refusal: BlobWriteRefused { path: path, detail: "the admitted blob's bytes were not retained" } }
-    Present { value: content } => {
-      let created = github.GitDatabase.CreateBlob(
+    Present { value: content } =>
+      match github.GitDatabase.CreateBlob(
         auth_token: "", owner: subject.repository.owner, repo: subject.repository.name,
         content: content, encoding: git_blob_encoding_utf8
-      )
-      if !rest_outcome_ok(o: created.outcome) {
-        BlobWritesRefused { refusal: BlobWriteRefused { path: path, detail: rest_outcome_text(o: created.outcome) } }
-      } else if created.blob.sha != hex {
-        BlobWritesRefused { refusal: BlobIdentityDisagreed { path: path, admitted: hex, created: created.blob.sha } }
-      } else {
-        BlobsWritten
+      ) {
+        RestRefused { refusal } =>
+          BlobWritesRefused { refusal: BlobWriteRefused { path: path, detail: rest_refusal_text(o: refusal) } }
+        RestAnswered { answer: created } =>
+          if created.blob.sha != hex {
+            BlobWritesRefused { refusal: BlobIdentityDisagreed { path: path, admitted: hex, created: created.blob.sha } }
+          } else {
+            BlobsWritten
+          }
       }
-    }
   }
 }
 
@@ -382,45 +380,45 @@ fn publish_admitted_wet(subject: HealPublicationSubject, admitted: AdmittedHealP
   let repo = subject.repository.name
   match write_blobs_wet(subject: subject, admitted: admitted, blobs: blobs) {
     BlobWritesRefused { refusal } => refused_exit(refusal: refusal)
-    BlobsWritten => {
-      let tree = github.GitDatabase.CreateTree(
+    BlobsWritten =>
+      match github.GitDatabase.CreateTree(
         auth_token: "", owner: owner, repo: repo,
         base_tree: admitted.base_tree_sha, tree: map(admitted.entries, e => tree_entry_input(e: e))
-      )
-      if !rest_outcome_ok(o: tree.outcome) {
-        refused_exit(refusal: TreeWriteRefused { detail: rest_outcome_text(o: tree.outcome) })
-      } else {
-        let commit = github.GitDatabase.CreateCommit(
-          auth_token: "", owner: owner, repo: repo,
-          message: admitted.message as String, tree: tree.created.sha, parents: [admitted.expected_head_sha as String]
-        )
-        if !rest_outcome_ok(o: commit.outcome) {
-          refused_exit(refusal: CommitWriteRefused { detail: rest_outcome_text(o: commit.outcome) })
-        } else if commit.commit.tree.sha != tree.created.sha
-          || count(commit.commit.parents) != 1
-          || !any(commit.commit.parents, p => p.sha == (admitted.expected_head_sha as String)) {
-          refused_exit(refusal: CommitShapeDisagreed { detail: "the created commit does not name the created tree and exactly the expected head as parent" })
-        } else {
-          let updated = github.GitDatabase.UpdateRefFastForward(
+      ) {
+        RestRefused { refusal } => refused_exit(refusal: TreeWriteRefused { detail: rest_refusal_text(o: refusal) })
+        RestAnswered { answer: tree } =>
+          match github.GitDatabase.CreateCommit(
             auth_token: "", owner: owner, repo: repo,
-            ref: concat("heads/", admitted.head_ref as String), sha: commit.commit.sha
-          )
-          match updated.outcome {
-            RestStatusRefused { status, body } =>
-              if (status as Int) == 422 {
-                refused_exit(refusal: ReferenceNotFastForward { detail: body })
-              } else if (status as Int) >= 500 {
-                readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+            message: admitted.message as String, tree: tree.created.sha, parents: [admitted.expected_head_sha as String]
+          ) {
+            RestRefused { refusal } => refused_exit(refusal: CommitWriteRefused { detail: rest_refusal_text(o: refusal) })
+            RestAnswered { answer: commit } =>
+              if commit.commit.tree.sha != tree.created.sha
+                || count(commit.commit.parents) != 1
+                || !any(commit.commit.parents, p => p.sha == (admitted.expected_head_sha as String)) {
+                refused_exit(refusal: CommitShapeDisagreed { detail: "the created commit does not name the created tree and exactly the expected head as parent" })
               } else {
-                refused_exit(refusal: ReferenceWriteRefused { detail: rest_outcome_text(o: updated.outcome) })
+                match github.GitDatabase.UpdateRefFastForward(
+                  auth_token: "", owner: owner, repo: repo,
+                  ref: concat("heads/", admitted.head_ref as String), sha: commit.commit.sha
+                ) {
+                  RestAnswered { answer: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                  RestRefused { refusal } => match refusal {
+                    RestStatusRefused { status, body } =>
+                      if (status as Int) == 422 {
+                        refused_exit(refusal: ReferenceNotFastForward { detail: body })
+                      } else if (status as Int) >= 500 {
+                        readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                      } else {
+                        refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
+                      }
+                    RestTransportRefused { cause: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                  }
+                }
               }
-            RestTransportRefused { cause: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-            RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-            RestOk => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
           }
-        }
       }
-    }
   }
 }
 
@@ -428,57 +426,62 @@ fn readback_wet(subject: HealPublicationSubject, admitted: AdmittedHealPublicati
 {
   let owner = subject.repository.owner
   let repo = subject.repository.name
-  let branch = github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String))
-  if !rest_outcome_ok(o: branch.outcome) {
-    exit_failure(reason: concat("HealPublicationUnverified: the branch could not be read back: ", rest_outcome_text(o: branch.outcome)))
-  } else {
-    let head = github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: branch.reference.object.sha)
-    if !rest_outcome_ok(o: head.outcome) {
-      exit_failure(reason: concat("HealPublicationUnverified: the branch head could not be read back: ", rest_outcome_text(o: head.outcome)))
-    } else {
-      let head_tree = github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head.commit.tree.sha)
-      if !rest_outcome_ok(o: head_tree.outcome) {
-        exit_failure(reason: concat("HealPublicationUnverified: the published tree could not be read back: ", rest_outcome_text(o: head_tree.outcome)))
-      } else {
-        let comparison = github.Commits.Compare(
-          auth_token: "", owner: owner, repo: repo,
-          basehead: join([admitted.expected_head_sha as String, "...", branch.reference.object.sha], "")
-        )
-        let changed = match comparison.comparison.files {
-          Absent => []
-          Present { value: files } => map(files, f => f.filename)
-        }
-        let truncated = match comparison.comparison.files {
-          Absent => true
-          Present { value: files } => count(files) >= comparison_files_listing_cap
-        }
-        match publication_readback_verdict(
-          admitted: admitted,
-          created_commit_sha: created_commit,
-          created_tree_sha: created_tree,
-          readback: PublicationReadback {
-            branch_head_sha: branch.reference.object.sha,
-            head_parents: map(head.commit.parents, p => p.sha),
-            head_tree_sha: head.commit.tree.sha,
-            changed_paths: changed,
-            comparison_truncated: truncated,
-            head_tree_truncated: head_tree.tree_object.truncated,
-            head_tree: head_tree.tree_object.tree
+  match github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String)) {
+    RestRefused { refusal } =>
+      exit_failure(reason: concat("HealPublicationUnverified: the branch could not be read back: ", rest_refusal_text(o: refusal)))
+    RestAnswered { answer: branch } =>
+      match github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: branch.reference.object.sha) {
+        RestRefused { refusal } =>
+          exit_failure(reason: concat("HealPublicationUnverified: the branch head could not be read back: ", rest_refusal_text(o: refusal)))
+        RestAnswered { answer: head } =>
+          match github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head.commit.tree.sha) {
+            RestRefused { refusal } =>
+              exit_failure(reason: concat("HealPublicationUnverified: the published tree could not be read back: ", rest_refusal_text(o: refusal)))
+            RestAnswered { answer: head_tree } =>
+              match github.Commits.Compare(
+                auth_token: "", owner: owner, repo: repo,
+                basehead: join([admitted.expected_head_sha as String, "...", branch.reference.object.sha], "")
+              ) {
+                RestRefused { refusal } =>
+                  exit_failure(reason: concat("HealPublicationUnverified: the comparison against the expected head could not be read back: ", rest_refusal_text(o: refusal)))
+                RestAnswered { answer: comparison } => {
+                  let changed = match comparison.comparison.files {
+                    Absent => []
+                    Present { value: files } => map(files, f => f.filename)
+                  }
+                  let truncated = match comparison.comparison.files {
+                    Absent => true
+                    Present { value: files } => count(files) >= comparison_files_listing_cap
+                  }
+                  match publication_readback_verdict(
+                    admitted: admitted,
+                    created_commit_sha: created_commit,
+                    created_tree_sha: created_tree,
+                    readback: PublicationReadback {
+                      branch_head_sha: branch.reference.object.sha,
+                      head_parents: map(head.commit.parents, p => p.sha),
+                      head_tree_sha: head.commit.tree.sha,
+                      changed_paths: changed,
+                      comparison_truncated: truncated,
+                      head_tree_truncated: head_tree.tree_object.truncated,
+                      head_tree: head_tree.tree_object.tree
+                    }
+                  ) {
+                    HealPublicationUnverified { detail } => exit_failure(reason: concat("HealPublicationUnverified: ", detail))
+                    HealPublicationWriteRefused { refusal } => refused_exit(refusal: refusal)
+                    HealPublished { receipt } => {
+                      let w = Filesystem.Write(path: heal_publication_receipt_path, content: receipt_text(r: receipt))
+                      if w.success {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: join(["HealPublishedReceiptUnwritten: the publication landed and was read back, but ", heal_publication_receipt_path, " could not be written: ", w.error, " -- ", receipt_text(r: receipt)], ""))
+                      }
+                    }
+                  }
+                }
+              }
           }
-        ) {
-          HealPublicationUnverified { detail } => exit_failure(reason: concat("HealPublicationUnverified: ", detail))
-          HealPublicationWriteRefused { refusal } => refused_exit(refusal: refusal)
-          HealPublished { receipt } => {
-            let w = Filesystem.Write(path: heal_publication_receipt_path, content: receipt_text(r: receipt))
-            if w.success {
-              ExitSuccess
-            } else {
-              exit_failure(reason: join(["HealPublishedReceiptUnwritten: the publication landed and was read back, but ", heal_publication_receipt_path, " could not be written: ", w.error, " -- ", receipt_text(r: receipt)], ""))
-            }
-          }
-        }
       }
-    }
   }
 }
 

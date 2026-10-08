@@ -1,0 +1,130 @@
+module test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test
+
+// THE PUBLISH REALIZER, EXECUTED AGAINST A REAL GIT REPOSITORY (ruling on #13111, 2026-10-04). The
+// pure plan claims (test.claim.roadmap.roadmap_belt_stale_line_witness_test) prove the plan reaches
+// the head's population as a map; a map has no file-versus-directory topology and no pathspec
+// parsing, so they cannot expose an ordering or quoting defect in the realization. This claim builds
+// a base tree in a throwaway git repository, commits it, runs the SAME realizer production runs
+// (gunbc.roadmap_belt_actuate belt_publish_realize) over the plan belt_publish_plan derives, stages
+// the result, and requires the tracked path population and every file's bytes to equal the head's.
+// The base/head pair covers add, modify, delete, rename (delete + bind), a delete below a nested
+// directory, directory -> file, file -> directory, and a tracked file literally named `:(glob)src*`
+// beside `srcX`: an unquoted pathspec reads the name as magic, deletes `srcX` and keeps the named
+// file (measured), so only the git_pathspec_literal spelling reaches the head.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.scm.object_store { CorpusManifestEntry, AuthoredSourceTarget, AuthoredSourceText, scm_object_identity, authored_source_object }
+import gunbc.scm.checkout { RecoveredSourceFile }
+import gunbc.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap_belt_actuate {
+  belt_publish_realize, belt_publish_plan, belt_publish_binds, belt_publish_deletes,
+  belt_exec, belt_path_parent_dir, ExecOk, ExecFailed, ExecRefused,
+  ScmCandidateCaptured, ScmCaptureRefused, ScmCapturePoisoned,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type PublishFixtureFile { path: String, text: String }
+
+fn realization_base() -> List<PublishFixtureFile> {
+  [
+    PublishFixtureFile { path: "src/kept.dag", text: "kept" },
+    PublishFixtureFile { path: "src/modified.dag", text: "before" },
+    PublishFixtureFile { path: "src/deleted.dag", text: "gone" },
+    PublishFixtureFile { path: "src/old_name.dag", text: "moved" },
+    PublishFixtureFile { path: "src/deep/nested/leaf.dag", text: "nested" },
+    PublishFixtureFile { path: "src/d/x.dag", text: "a directory's only child" },
+    PublishFixtureFile { path: "src/f", text: "a file that becomes a directory" },
+    PublishFixtureFile { path: ":(glob)src*", text: "a name that spells pathspec magic" },
+    PublishFixtureFile { path: "srcX", text: "a sibling the magic would select" },
+  ]
+}
+
+fn realization_head() -> List<PublishFixtureFile> {
+  [
+    PublishFixtureFile { path: "src/kept.dag", text: "kept" },
+    PublishFixtureFile { path: "src/modified.dag", text: "after" },
+    PublishFixtureFile { path: "src/new_name.dag", text: "moved" },
+    PublishFixtureFile { path: "src/added.dag", text: "new" },
+    PublishFixtureFile { path: "src/d", text: "a directory that became a file" },
+    PublishFixtureFile { path: "src/f/y.dag", text: "under the former file" },
+    PublishFixtureFile { path: "srcX", text: "a sibling the magic would select" },
+  ]
+}
+
+fn fixture_entry(f: PublishFixtureFile) -> CorpusManifestEntry {
+  CorpusManifestEntry {
+    path: f.path as NonEmptyStr,
+    source: AuthoredSourceTarget { locator: scm_object_identity(object: authored_source_object(text: f.text)) },
+  }
+}
+
+fn fixture_text_at(files: List<PublishFixtureFile>, path: String) -> String {
+  match (files |> filter(f => f.path == path)).first() {
+    Present { value: f } => f.text
+    Absent => ""
+  }
+}
+
+fn run_git(dir: FilePath, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir as String) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn git_stdout(dir: FilePath, args: List<String>) -> String? {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir as String) {
+    ExecOk { stdout } => Present { value: stdout }
+    ExecFailed { program: _, exit_code: _, stderr: _ } => none
+    ExecRefused { program: _, reason: _ } => none
+  }
+}
+
+fn write_fixture(dir: FilePath, files: List<PublishFixtureFile>) -> Bool {
+  let parents = files |> map(f => belt_path_parent_dir(path: f.path)) |> filter(p => p != "")
+  let made = match belt_exec(cmd: host_exec_argv(program: "install", args: concat(["-d", "-m", "0700"], parents)), workdir: dir as String) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+  made && fold(files, init: true, f: (ok, f) => ok && Filesystem.Write(path: join([dir as String, "/", f.path], ""), content: f.text).success)
+}
+
+fn realize_over(dir: FilePath) -> Bool {
+  let plan = belt_publish_plan(head: map(realization_head(), f => fixture_entry(f: f)), root: map(realization_base(), f => fixture_entry(f: f)))
+  let files = map(belt_publish_binds(plan: plan), e => RecoveredSourceFile {
+    path: e.path,
+    content: AuthoredSourceText(fixture_text_at(files: realization_head(), path: e.path as String) as NonEmptyStr),
+  })
+  let based = write_fixture(dir: dir, files: realization_base())
+    && run_git(dir: dir, args: ["init", "-q"])
+    && run_git(dir: dir, args: ["add", "-A"])
+    && run_git(dir: dir, args: ["-c", "user.name=witness", "-c", "user.email=witness@invalid", "commit", "-q", "-m", "base"])
+  let realized = match belt_publish_realize(git_program: "git", install_program: "install", worktree: dir as String, files: files, deletes: belt_publish_deletes(plan: plan)) {
+    ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } => true
+    ScmCaptureRefused { detail: _ } => false
+    ScmCapturePoisoned { detail: _ } => false
+  }
+  let tracked = run_git(dir: dir, args: ["add", "-A"]) && match git_stdout(dir: dir, args: ["ls-files"]) {
+    Absent => false
+    Present { value: listing } =>
+      sort_by(split(s: listing, delimiter: "\n") |> filter(p => p != ""), p => p)
+        == sort_by(map(realization_head(), f => f.path), p => p)
+  }
+  let bytes = fold(realization_head(), init: true, f: (ok, f) => ok && Filesystem.Read(path: join([dir as String, "/", f.path], "")).content == f.text)
+  based && realized && tracked && bytes
+}
+
+test fn the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = dir.success && realize_over(dir: dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  observed && cleaned.success
+}

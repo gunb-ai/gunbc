@@ -3,6 +3,7 @@ module gunbc.compute.work_request
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
 import std.measure { Kibibyte, kibibyte_count }
+import extdeps.systemd.systemd_run { SystemdRunOptionWordsRefusedCause, systemd_run_option_words_refused_cause_detail }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -215,6 +216,7 @@ type WorkInfrastructureRefusal
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
   | FreshEffectNotServed { detail: String }
+  | UnitLaunchRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
   match o {
@@ -284,6 +286,8 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     FreshEffectNotServed { detail } => join(["this provider does not serve a fresh effect: ", detail], "")
     UnitEndingUnclassifiable { exit_code, cause } =>
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
+    UnitLaunchRefused { cause } =>
+      join(["the unit was never launched: the systemd-run builder refused the invocation, so there is no exit to report: ", systemd_run_option_words_refused_cause_detail(cause: cause)], "")
     UnitMemoryGrantExceeded { class, granted, peak_upper, grant_was_ceiling } =>
       join(["the unit was OOM-killed at its memory grant: class ", class, " was granted ", to_string(value: kibibyte_count(k: granted)),
         " KiB and its manager reported a peak of ", match peak_upper { Present { value: k } => join(["at most ", to_string(value: kibibyte_count(k: k)), " KiB"], "")  Absent => "NOTHING (no Memory peak line was reported)" },
@@ -341,7 +345,7 @@ type StoredOutcomeRead
 
 fn stored_outcome_member(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  _ => none }
+    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  JsonNull => none  JsonBool { value: _ } => none  JsonNumber { lexeme: _ } => none  JsonArray { elements: _ } => none  JsonObject { members: _ } => none }
     JsonMemberAbsent => none
     JsonMemberDuplicated => none
     JsonMemberNotAnObject => none

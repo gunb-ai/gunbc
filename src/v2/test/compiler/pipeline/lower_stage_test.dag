@@ -4,7 +4,6 @@ import v2.compiler.translate { translate }
 import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_add_translate_target }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { well_formed }
 import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 

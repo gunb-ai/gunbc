@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_xl0.list_literal_value_lowering
 
+import std.types { List }
 import v2.compiler.compile {
   NativeCensusModuleFileRefused,
   NativeCensusModuleOutcome,
@@ -20,13 +21,12 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Authored, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -54,15 +54,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the WHOLE decoded list against the authored elements in order, so a producer that kept only the
 // first element, dropped the tail, reordered, nested, or answered `[` fails every claim; the
 // mutation control states that directly.
-data llv_calls_source: String = "module v2.test.llv_calls\n\nimport v2.std.logic { Bool }\n\nfn llv_id(p: Bool) -> Bool { p }\n\nfn llv_probe(llv_a: Bool, llv_b: Bool) -> List<Bool> { [llv_id(p: llv_a), llv_id(p: llv_b)] }\n"
+data llv_calls_source: String = "module v2.test.llv_calls\n\nimport std.types { Bool }\n\nfn llv_id(p: Bool) -> Bool { p }\n\nfn llv_probe(llv_a: Bool, llv_b: Bool) -> List<Bool> { [llv_id(p: llv_a), llv_id(p: llv_b)] }\n"
 
-data llv_nested_source: String = "module v2.test.llv_nested\n\nimport v2.std.logic { Bool }\n\nfn llv_probe(llv_c: Bool, llv_d: Bool, llv_e: Bool) -> List<List<Bool>> { [[llv_c], [llv_d, llv_e]] }\n"
+data llv_nested_source: String = "module v2.test.llv_nested\n\nimport std.types { Bool }\n\nfn llv_probe(llv_c: Bool, llv_d: Bool, llv_e: Bool) -> List<List<Bool>> { [[llv_c], [llv_d, llv_e]] }\n"
 
-data llv_empty_arg_source: String = "module v2.test.llv_empty_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(p: Bool) -> Bool { llv_take(xs: []) }\n"
+data llv_empty_arg_source: String = "module v2.test.llv_empty_arg\n\nimport std.types { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(p: Bool) -> Bool { llv_take(xs: []) }\n"
 
-data llv_long_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+data llv_long_source: String = "module v2.test.llv_long\n\nimport std.types { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
 
-data llv_arg_source: String = "module v2.test.llv_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_f: Bool, llv_g: Bool, llv_h: Bool) -> Bool { llv_take(xs: [llv_f, llv_g, llv_h]) }\n"
+data llv_arg_source: String = "module v2.test.llv_arg\n\nimport std.types { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_f: Bool, llv_g: Bool, llv_h: Bool) -> Bool { llv_take(xs: [llv_f, llv_g, llv_h]) }\n"
 
 fn llv_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

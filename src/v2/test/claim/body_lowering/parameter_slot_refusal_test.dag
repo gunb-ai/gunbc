@@ -12,9 +12,8 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound, dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.algebra { list_snoc_item }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

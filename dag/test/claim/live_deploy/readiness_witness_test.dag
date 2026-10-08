@@ -16,6 +16,7 @@ import gunbc.live_deploy.readiness {
   HealthzBodyDoesNotGround,
   ServiceProbeUnanswered,
   ServiceReadinessIdentityPending,
+  ServiceTailnetDoorPending,
   ServiceReadinessPollBound,
   ProcessRevisionMismatch,
   HealthzBodyRead,
@@ -34,7 +35,7 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.spec { deployment_plan_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
@@ -63,7 +64,7 @@ import gunbc.roadmap_site_healthz_validate {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -102,10 +103,8 @@ fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
     subject_identity: witness_expected_surface_identity(),
     producer_identity: witness_expected_surface_identity(),
     bundle_identity: witness_expected_surface_identity(),
-    roadmap_md: unused_surface_artifact(),
     dispatch_json: unused_surface_artifact(),
     daily_html: unused_surface_artifact(),
-    full_html: unused_surface_artifact(),
     dispatch_js: unused_surface_artifact(),
     healthz_body: "",
   }
@@ -114,10 +113,8 @@ fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
 fn unused_process_body_at_admitted_revision() -> String {
   let bundle = unused_surface_bundle()
   healthz_body_with_release_identity(
-    roadmap: bundle.roadmap_md,
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
-    full: bundle.full_html,
     dispatch_js: bundle.dispatch_js,
     release_revision: deploy_witness_release_revision,
     surface_bundle_identity: bundle.bundle_identity,
@@ -194,6 +191,7 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
     Pending { cause: ServiceProbeUnanswered { detail } } =>
       string_contains(s: detail, pattern: "timed out")
     Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
+    Pending { cause: ServiceTailnetDoorPending { socket: _, detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
   }
@@ -212,6 +210,7 @@ test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Boo
         && o == (deploy_witness_release_revision as String)
     Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
     Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
+    Pending { cause: ServiceTailnetDoorPending { socket: _, detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
   }

@@ -1,5 +1,22 @@
 module gunbc.roadmap_serve
+import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
+import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
+import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
+import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
+import gunbc.auth.request_authentication { ServeActionSaveOwnView }
+import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
+import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
+import extdeps.languages.json.emit { JsonNull }
 
+import gunbc.site.document { site_document }
+import gunbc.site.markup { el, txt }
+import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
+import gunbc.site.controls { site_client_path, site_client_source }
+import gunbc.roadmap_style { roadmap_styles }
+import gunbc.site.document { SiteStyles }
+
+import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
+import gunbc.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
 
 import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
@@ -8,19 +25,28 @@ import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
-import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
+import gunbc.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
-import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_allocation_client { allocation_client_source }
 
 
 import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
 
-import extdeps.tailscale.serve { ServeStatusUnreadable }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
+import gunbc.auth.tailnet_serve_readback {
+  TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken, tailnet_serve_readback_take, tailnet_route_standing,
+}
+import gunbc.live_deploy.desired {
+  desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
+}
+import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence,
@@ -28,13 +54,16 @@ import gunbc.auth.request_authentication {
   GoogleOidcSession,
   FabricServiceEvidence,
   SessionStandingInvalid,
-  request_access_path_of,
+  request_access_path_of_standing,
+  TailnetReadbackNotDemanded,
+  RequestIngress, IngressUnattested, IngressAttestedPeer, request_ingress_is_the_proxy,
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
   ServeActionCommentIssue,
+  RequestAccessPath,
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
 import extdeps.uri { Uri, uri_wire }
@@ -50,7 +79,6 @@ import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
@@ -62,6 +90,8 @@ import extdeps.http.server {
   ServeHttpRequest,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
+  ServeRequestHeader, ServeRequestHeaderReading, ServeRequestHeaderAbsent, ServeRequestHeaderSingle, ServeRequestHeaderRepeated,
+  serve_request_header_reading,
   ServedRoute, StaticRoute, DynamicRoute,
   ServedRouteTable,
   ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
@@ -82,52 +112,36 @@ import extdeps.languages.json.emit {
   json_int,
   json_array,
   JsonValue,
+  JsonKeyValue,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
-  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
 }
-import gunbc.roadmap_page {
-  roadmap_page_for_projection_launch, roadmap_fleet_page,
+import gunbc.roadmap_page { issue_detail_not_found_page,
+  roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
-  project_suite_headline, project_suite_not_found_page, project_suite_page_launch, project_suite_rows,
 }
 import gunbc.roadmap_authority {
   roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection,
-  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  declared_roadmap_edges,
+  RoadmapAuthorityProjectionRefused,
 }
-import gunbc.roadmap_nesting { roadmap_memberships }
-import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
-  sandbox_client_js_source, sandbox_asset_path,
-  instrument_tuner_client_js_source, instrument_tuner_asset_path,
-  instrument_motion_client_js_source, instrument_motion_asset_path, instrument_motion_page_path,
-  repo_atlas_page_path,
-  instrument_sandbox_page_path, instrument_tuner_page_path,
 }
-import gunbc.roadmap_sandbox { sandbox_page }
-import gunbc.roadmap_instrument_sandbox { instrument_sandbox_page }
-import gunbc.roadmap_instrument_tuner { instrument_tuner_page }
-import gunbc.roadmap_instrument_motion { instrument_motion_page }
-import gunbc.roadmap_repo_atlas_sandbox { repo_atlas_page }
 import gunbc.roadmap_static_site {
-  roadmap_site_roadmap_md_body_over,
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
 import gunbc.site.markup { page_render_refusal_body }
 import gunbc.roadmap_site_surface_render {
   roadmap_site_health_path,
-  roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
   roadmap_site_daily_url_path,
-  roadmap_site_full_url_path,
 }
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
@@ -143,11 +157,13 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_events_read_all,
   EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
   AllEventsRead, AllEventsReadRefused,
+  RoadmapEventsRead, RoadmapAllEventsRead, RoadmapEventAppend,
+  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
   EventPrincipal, EventPrincipalAuthenticated,
-  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  roadmap_node_standing, roadmap_node_standing_text, roadmap_history_unordered_reason,
   roadmap_recent_claimed_assignees,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present,
 }
@@ -161,8 +177,6 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
-  belt_dispatch_result_for_label,
-  belt_dispatch_all_status_labels,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
   BeltPublishOutcome,
@@ -262,26 +276,22 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 
 type RoadmapServeHandler
   = RoadmapDailyPageHandler
-  | RoadmapFullPageHandler
   | AllocationPageHandler
+  | SiteFaviconHandler
+  | SiteClientHandler
+  | WebFontStylesheetHandler
+  | AllocationCreateHandler
+  | AllocationListHandler
+  | AllocationGetHandler
+  | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
-  | RoadmapMdHandler
   | DispatchJsonHandler
   | HealthzHandler
   | DashboardInstanceHandler
   | ProviderReadinessHandler
   | BeltDispatchHandler
   | DispatchAssetHandler
-  | SandboxPageHandler
-  | InstrumentSandboxPageHandler
-  | InstrumentTunerPageHandler
-  | InstrumentTunerAssetHandler
-  | InstrumentMotionPageHandler
-  | InstrumentMotionAssetHandler
-  | RepoAtlasPageHandler
-  | SandboxAssetHandler
-  | SandboxEchoHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
@@ -292,9 +302,14 @@ type RoadmapServeHandler
   | IssueDetailPageHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
+  | IssueQueryHandler
+  | IssueViewPreferencesReadHandler
+  | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
-  | ProjectSuitePageHandler
   | AuthSessionHandler
+  | AuthLoginHandler
+  | AuthGoogleCallbackHandler
+  | AuthLogoutHandler
 
 // Fail-closed table construction (review 40286, the section 5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -340,11 +355,16 @@ type ServedDailyBodyAuthority
 fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
-    ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
+    ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
+    ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
+    ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
+    ServedRouteSpec { method: POST, raw: allocation_release_route(), handler: AllocationReleaseHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
+    ServedRouteSpec { method: GET, raw: site_favicon_path, handler: SiteFaviconHandler },
+    ServedRouteSpec { method: GET, raw: site_client_path, handler: SiteClientHandler },
+    ServedRouteSpec { method: GET, raw: web_font_stylesheet_path(), handler: WebFontStylesheetHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
-    ServedRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     ServedRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
@@ -354,22 +374,18 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
-    ServedRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_sandbox_page_path, handler: InstrumentSandboxPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_tuner_page_path, handler: InstrumentTunerPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_tuner_asset_path, handler: InstrumentTunerAssetHandler },
-    ServedRouteSpec { method: GET, raw: instrument_motion_page_path, handler: InstrumentMotionPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_motion_asset_path, handler: InstrumentMotionAssetHandler },
-    ServedRouteSpec { method: GET, raw: repo_atlas_page_path, handler: RepoAtlasPageHandler },
-    ServedRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
-    ServedRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
-    ServedRouteSpec { method: GET, raw: "/project/\{node_id\}", handler: ProjectSuitePageHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
+    ServedRouteSpec { method: POST, raw: "/issues/query", handler: IssueQueryHandler },
+    ServedRouteSpec { method: GET, raw: "/preferences/issues", handler: IssueViewPreferencesReadHandler },
+    ServedRouteSpec { method: POST, raw: "/preferences/issues", handler: IssueViewPreferencesSaveHandler },
+    ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
+    ServedRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
+    ServedRouteSpec { method: POST, raw: auth_logout_route_path, handler: AuthLogoutHandler },
     ServedRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     ServedRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     ServedRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
@@ -388,7 +404,7 @@ fn roadmap_serve_route_table_build() -> ServedRouteTableBuild<RoadmapServeHandle
 }
 
 fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
-  ServeHttpResponse { status: status, content_type: content_type, body: body }
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: [] }
 }
 
 // A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and
@@ -399,6 +415,17 @@ fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String
 // process is serving THIS tree, and a digest taken over a body that is merely supposed to match the
 // route's would be validation standing where construction was available — the check would go green
 // while the route lied. Only the STATUS split lives here, because a digest has no status.
+
+// The self-hosted face stylesheet (gunbc.site.web_fonts). Its path is content-addressed, so the
+// response is immutable under that path for as long as any client may hold it.
+fn web_font_stylesheet_response() -> ServeHttpResponse {
+  ServeHttpResponse {
+    status: 200,
+    content_type: text_css_utf8,
+    body: web_font_stylesheet(),
+    headers: [ServeResponseHeaderCacheImmutable { max_age_seconds: web_font_stylesheet_max_age_seconds }],
+  }
+}
 
 fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
@@ -454,6 +481,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchRevisionUnobserved { cause: _ } => 503
     LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
     LaunchGateNotEvaluated { gate: _ } => 503
+    LaunchNoPlacementGrant { detail: _ } => 503
   }
 }
 
@@ -479,10 +507,16 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
 // backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
 // 5: an unreachable arm refuses, never fabricates).
 
+// THE EXECUTOR IS AN OPTIONAL ?executor=LABEL ON THE DISPATCH ROUTE (gunbc.roadmap_dispatch_actuator
+// DispatchExecutorRequest): absent, it is the default executor; a vendor label routes the attempt to
+// that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
+// An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
+// run the attempt somewhere the operator did not ask.
 fn serve_dispatch_handler_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
+  executor_word: String,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
@@ -492,9 +526,18 @@ fn serve_dispatch_handler_response_over(
       body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    belt_dispatch_response(
-      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
-    )
+    match decode_dispatch_executor_request(word: executor_word) {
+      DispatchExecutorRequestUnknown { word, known } =>
+        serve_text_response(
+          status: 400,
+          content_type: text_plain_utf8,
+          body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
+        )
+      DispatchExecutorRequestDecoded { request: executor } =>
+        belt_dispatch_response(
+          r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+        )
+    }
   }
 }
 
@@ -506,6 +549,7 @@ fn serve_dispatch_handler_response_for_instance(
     instance: instance,
     plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     params: params,
+    executor_word: "",
   )
 }
 
@@ -601,6 +645,7 @@ fn serve_publish_handler_response_for_instance(
 // check -- the widening becomes unwritable instead of merely reviewable.
 fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
   match h {
+    ApprovalSiteFaviconHandler => false
     ApprovalConfirmPageHandler => true
     ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
@@ -652,28 +697,28 @@ fn serve_issue_detail_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-  else { match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_page_response_with_status(page: issue_detail_not_found_page(node_id: node_id, viewer: ""), status: 404) }
+  else { match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
     EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
       body: join(["Issue history unavailable at ", step, ": ", reason, ". No revision-pinned mutations are available."], ""))
     EventsRead { node: _, envelopes } => {
       let state = roadmap_issue_state(envs: envelopes)
       let standing = state.standing
-      let standing_key = roadmap_node_standing_key(s: standing)
-      if standing_key == "forked" || standing_key == "history_incomplete" {
-        serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", roadmap_node_standing_text(s: standing)))
-      } else {
+      match roadmap_history_unordered_reason(envs: envelopes) {
+      Present { value: why } =>
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", why))
+      Absent => {
         let context = match request.security.authentication {
           GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
           FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
-        let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
+        let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
         let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
         let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
         let attempts = match observed {
@@ -697,47 +742,9 @@ fn serve_issue_detail_response_over(
         let response = serve_page_response_with_status(page: page, status: 200)
         response
       }
+      }
     }
   } }
-}
-
-// THE PROJECT SUITE ROUTE (GET /project/<node_id>): ONE project's direct membership listing
-// rendered live from the same authorities the issue detail route reads -- the declared nesting
-// for the member set, the declared dependency edges for the topological layering, the plan's own
-// rows for the titles. The heading is the project row's own ticket headline; an absent row or a
-// non-ticket row renders the not-found document at 404, the issue route's grain. The page carries
-// no form and no session secret, so it renders for every viewer standing exactly alike; the
-// viewer label is still resolved here, so the render entry keeps the issue route's signature
-// shape. A refused plan is a located 503, never a silent empty page.
-fn serve_project_suite_response_over(
-  plan: RoadmapAuthorityProjection,
-  params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
-) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
-  match plan {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
-      serve_text_response(status: 503, content_type: text_plain_utf8,
-        body: join(["project suite unavailable: the roadmap authority refused at ", detail], ""))
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
-      match project_suite_headline(nodes: doc_all_nodes(doc: doc), node_id: node_id) {
-        Absent =>
-          serve_page_response_with_status(page: project_suite_not_found_page(node_id: node_id, viewer: viewer), status: 404)
-        Present { value: headline } =>
-          serve_page_response_with_status(
-            page: project_suite_page_launch(
-              headline: headline,
-              node_id: node_id,
-              rows: project_suite_rows(
-                memberships: roadmap_memberships(),
-                edges: declared_roadmap_edges(),
-                nodes: doc_all_nodes(doc: doc),
-                project: node_id),
-              viewer: viewer),
-            status: 200)
-      }
-  }
 }
 
 // THE AUTH PROFILE ROSTER, read once per render under the never-blocks law: the store's refusal
@@ -761,7 +768,7 @@ fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<Principa
 fn serve_issue_assignment_context_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
@@ -771,11 +778,11 @@ fn serve_issue_assignment_context_over(
         serve_text_response(status: 404, content_type: text_plain_utf8, body: "Issue not found.")
       } else {
         let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-        match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+        match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
           EventsReadRefused { node: _, step, reason } =>
             serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["Cannot load assignment history at ", step, ": ", reason], ""))
           EventsRead { node: _, envelopes } =>
-            let recents = match roadmap_events_read_all(layout: layout) {
+            let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
               AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events)
               AllEventsReadRefused { step: _, reason: _ } => []
             }
@@ -783,7 +790,7 @@ fn serve_issue_assignment_context_over(
               Absent => serve_text_response(status: 503, content_type: text_plain_utf8, body: "Cannot prepare a stable assignment operation. Try again before submitting.")
               Present { value: nonce } => serve_text_response(
                 status: 200, content_type: application_json_utf8,
-                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce))
+                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce, node_id: node_id))
             }
         }
       }
@@ -826,7 +833,7 @@ fn assignee_lookup_refusal(raw: String) -> String {
 // GoogleOidcSession arm -- session expiry -- and only that arm can reach the append that records
 // it; absent, invalid and service evidence refuse at the authentication axis without it. So the
 // early refusals (404 unknown issue, 403 without a session) answer before any host read.
-fn human_write_observed_at(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> String {
+fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> String {
   match security.authentication {
     GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => ""
@@ -860,7 +867,7 @@ fn human_write_observed_at(security: RequestSecurityContext<RequestAuthenticatio
 fn serve_issue_assign_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
@@ -881,11 +888,11 @@ fn serve_issue_assign_response_over(
               Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "return_to has no admitted principal")
               Present { value: return_to } => {
                 let expected = issue_form_field(body: request.body, name: "expected_revision")
-                let outcome = issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+                let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
                   command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
                     author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
                     expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
-                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at)
+                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at))
                 match outcome {
                   EventAppended { id } => serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String)
                   EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
@@ -915,7 +922,7 @@ fn issue_command_refusal_response(step: String, reason: String) -> ServeHttpResp
 // service-writer law). Only reachable past the write law's Permit arm; the Absent fallback is the
 // loud spelling of an unreachable state, refused at the call site, never a value that reaches the
 // durable record.
-fn authenticated_write_author_principal(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> PrincipalRef? {
+fn authenticated_write_author_principal(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> PrincipalRef? {
   match security.authentication {
     GoogleOidcSession { session } => Present { value: session.principal }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
@@ -927,7 +934,7 @@ fn authenticated_write_author_principal(security: RequestSecurityContext<Request
 // THE AUTHOR OF AN ADMITTED HUMAN WRITE. Only reachable past the write law's Permit arm, which
 // only a GoogleOidcSession can produce; every other arm is refused above, so the fallback string
 // is the loud spelling of an unreachable state, never a value that can reach the durable record.
-fn authenticated_write_author_label(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> NonEmptyStr {
+fn authenticated_write_author_label(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> NonEmptyStr {
   match security.authentication {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal) as NonEmptyStr
     FabricServiceEvidence { kind: _, authenticated_at: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
@@ -994,7 +1001,13 @@ fn serve_assignment_launch_follow_through_over(
       node_id: node_id,
       assignee_display: assignee_display,
       event_id: event_id,
-      outcome: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
+      outcome: belt_dispatch_node_for_instance_over(
+        instance: instance,
+        plan: plan,
+        node_id: node_id,
+        request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
+        executor: ExecutorDefault,
+      ),
     )
   } else {
     serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
@@ -1055,7 +1068,7 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
 // equal text with another operation identity is an intentional second comment.
 fn serve_issue_comment_response_over(
   instance: HostDashboardInstance,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
@@ -1075,9 +1088,9 @@ fn serve_issue_comment_response_over(
             let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
             let expected = issue_form_field(body: request.body, name: "expected_revision")
             let operation = issue_form_field(body: request.body, name: "key")
-            let outcome = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
+            let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
               node: node_id as NonEmptyStr as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: author }, operation: operation as NonEmptyStr,
-              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at)
+              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
             match outcome {
               EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
               EventAppended { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false)
@@ -1100,7 +1113,7 @@ fn serve_issue_comment_response_over(
 // A committed or already-present comment answers from the event log read back after the commit;
 // a refused readback is a 503 that names its step, never a page built from the request.
 fn issue_comment_readback_response(layout: RoadmapEventCarrierLayout, node_id: String, operation: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
-  match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+  match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
     EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
       body: concat("comment commit acknowledged, but readback refused; retry with the same operation key: ", concat(step, concat(": ", reason))))
     EventsRead { node: _, envelopes } => serve_comment_recorded_response(node_id: node_id, comments: roadmap_issue_comments(envs: envelopes), comment: operation,
@@ -1175,35 +1188,6 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
   ]))
 }
 
-// The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable
-// without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param —
-// the query survives in request.path; match_path_template strips it only for routing) and maps it
-// to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME
-// belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is
-// identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a
-// 400 that names the valid label set, never a fabricated arm.
-
-fn sandbox_echo_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  let status = uri_query_param(path: request.path, key: "status")
-  match belt_dispatch_result_for_label(wire_label: status) {
-    Present { value: r } =>
-      serve_text_response(
-        status: 200,
-        content_type: application_json_utf8,
-        body: serialize_json(v: belt_spawn_outcome_json(o: r)),
-      )
-    Absent =>
-      serve_text_response(
-        status: 400,
-        content_type: text_plain_utf8,
-        body: join([
-          "unknown status label: ", status,
-          " (fail-closed; valid: ", join(belt_dispatch_all_status_labels(), ", "), ")\n",
-        ], ""),
-      )
-  }
-}
-
 // Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was
 // formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would
 // have silently seen the empty string — a latent widen).
@@ -1214,8 +1198,8 @@ fn sandbox_echo_response(request: ServeHttpRequest<RequestAuthenticationEvidence
 // CALLING this fold, and nothing here enumerates or registers callers. The handlers that consult a
 // roadmap read the parameter instead of the public carrier, so one response cannot mix two plans.
 //
-// WHICH HANDLERS IGNORE IT, AND THE ONE THAT ONLY LOOKS LIKE IT DOES. Assets and the sandbox echo
-// consult no roadmap at all. The sessions, attempts, workflow and observation surfaces read bodies
+// WHICH HANDLERS IGNORE IT, AND THE ONE THAT ONLY LOOKS LIKE IT DOES. Assets consult no roadmap
+// at all. The sessions, attempts, workflow and observation surfaces read bodies
 // the belt tick already wrote, and none of them is a roadmap render.
 //
 // RoadmapDailyPageHandler IS a roadmap render and must not be filed with them (review 63341, which
@@ -1240,10 +1224,14 @@ fn roadmap_serve_invoke_over(
   daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match handler {
+    AuthLoginHandler => auth_login_response(instance: instance, request: request)
+    AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path, cookie_header: cookie_header)
+    AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
     RoadmapDailyPageHandler =>
       match daily_body {
         DailyBodyRenderedUnderThisPlan => serve_daily_page_response_for_instance(instance: instance)
@@ -1263,17 +1251,16 @@ fn roadmap_serve_invoke_over(
             ], ""),
           )
       }
-    RoadmapFullPageHandler => {
-      let p = plan()
-      serve_page_response(page: roadmap_page_for_projection_launch(
-        proj: p,
-        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: p),
-      ))
-    }
     AllocationPageHandler => allocation_page_response(request: request)
+    SiteFaviconHandler => serve_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source())
+    SiteClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: site_client_source())
+    WebFontStylesheetHandler => web_font_stylesheet_response()
+    AllocationCreateHandler => workspace_route_create(request: request)
+    AllocationListHandler => workspace_route_list(request: request)
+    AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
+    AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
@@ -1289,22 +1276,15 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"))
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
-    SandboxPageHandler => serve_page_response(page: sandbox_page())
-    InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
-    InstrumentTunerPageHandler => serve_page_response(page: instrument_tuner_page())
-    InstrumentTunerAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_tuner_client_js_source())
-    InstrumentMotionPageHandler => serve_page_response(page: instrument_motion_page())
-    InstrumentMotionAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_motion_client_js_source())
-    RepoAtlasPageHandler => serve_page_response(page: repo_atlas_page())
-    SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
-    SandboxEchoHandler => sandbox_echo_response(request: request)
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
-    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueQueryHandler => serve_issue_query(instance: instance, request: request)
+    IssueViewPreferencesReadHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: false)
+    IssueViewPreferencesSaveHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: true)
     AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
@@ -1321,7 +1301,7 @@ fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
@@ -1338,7 +1318,7 @@ fn roadmap_serve_invoke_for_instance(
 fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
@@ -1478,8 +1458,9 @@ fn roadmap_serve_selection_response_over(
   plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
@@ -1491,9 +1472,10 @@ fn roadmap_serve_selection_response_over(
         params: ps,
         request: request,
         release_revision: release_revision,
+        cookie_header: cookie_header,
       )
     SelectedStatic { route: r } =>
-      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body, headers: [] }
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
@@ -1501,14 +1483,14 @@ fn roadmap_serve_selection_response_over(
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
     NoRouteMatched =>
-      serve_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
+      serve_page_response_with_status(page: site_document(title: "Page not found · gunbc", heading: "page not found", styles: roadmap_styles(), content: [el("main", [el("h1", [txt("Page not found")]), el("p", [txt("Use the workspace navigation to find an issue or project.")])])]), status: 404)
   }
 }
 
 fn roadmap_serve_selection_response_for_instance(
   instance: HostDashboardInstance,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
@@ -1523,7 +1505,7 @@ fn roadmap_serve_selection_response_for_instance(
 
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
@@ -1535,25 +1517,113 @@ fn roadmap_serve_selection_response(
 }
 
 // THE REQUEST-SECURITY CONTEXT, built at the one seam every route shares. The access path is
-// modeled from the instance bind and the tailnet header through the ACL and serve-route
-// authorities (a header alone mints no tailnet path — the readback does). No authentication
-// evidence crosses the socket seam on this revision: the session-cookie channel and the OIDC
-// login routes moved to a follow-up modeled in .dag, so every request reads as AuthAbsent and
-// the write law refuses each write with its located cause. NO REQUEST IS AUTHENTICATED BY
-// TAILNET TRANSPORT.
+// modeled from the instance bind, the tailnet header and the serve-route readback through the ACL
+// and serve-route authorities: a header alone mints no tailnet path, and neither does a reading
+// that is absent, stale, unreadable, or shows another backend at this instance's declared route.
+// Authentication evidence is the session cookie the seam passes through, resolved against the
+// session store (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent
+// cookie is AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid
+// with its cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
 fn roadmap_serve_request_security(
   instance: HostDashboardInstance,
   tailscale_identity: String,
-) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+  cookie_header: String = "",
+) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
-    access_path: request_access_path_of(
-      listen_host: instance.listen_host,
-      tailscale_header: tailscale_identity,
-      serve_status: ServeStatusUnreadable,
-      serve_route: none,
-      acl_policy: operator_tailscale_acl_policy,
-    ),
-    authentication: AuthAbsent,
+    access_path: roadmap_serve_access_path(instance: instance, tailscale_identity: tailscale_identity, ingress: ingress, readback: readback, decided_at: decided_at),
+    authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+  }
+}
+
+// THE ACCESS-PATH HALF OF THE SEAM. The route the reading is compared to is the one the
+// desired-deployment roster declares for this instance, so the route a write is admitted on and
+// the route the deployment installs are one value.
+fn roadmap_serve_access_path(
+  instance: HostDashboardInstance,
+  tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+) -> RequestAccessPath {
+  roadmap_serve_access_path_over(
+    listen_host: instance.listen_host,
+    declared: roadmap_serve_declared_serve_endpoint(instance: instance),
+    tailscale_identity: tailscale_identity,
+    ingress: ingress,
+    readback: readback,
+    decided_at: decided_at,
+  )
+}
+
+// The same fold over a supplied bind and declared route.
+fn roadmap_serve_access_path_over(
+  listen_host: NonEmptyStr,
+  declared: TailscaleServeEndpoint?,
+  tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+) -> RequestAccessPath {
+  request_access_path_of_standing(
+    listen_host: listen_host,
+    tailscale_header: tailscale_identity,
+    ingress: ingress,
+    standing: tailnet_route_standing(readback: readback, declared: declared, decided_at: decided_at),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+}
+
+// An instance outside the desired-deployment roster, or one whose bind differs from its roster
+// row, has no declared serve route, so no reading can vouch for a tailnet path to it.
+fn roadmap_serve_declared_serve_endpoint(instance: HostDashboardInstance) -> TailscaleServeEndpoint? {
+  match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+    DesiredDeploymentFound { row } =>
+      if row.instance.listen_port == instance.listen_port && (row.instance.listen_host as String) == (instance.listen_host as String) {
+        Present { value: row.names.tailscale_serve_endpoint }
+      } else {
+        none
+      }
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => none
+    DesiredDeploymentRosterRefused { refusal: _ } => none
+  }
+}
+
+// WHICH SELECTED ROUTES DEMAND THE READING: the ones whose write law requires the tailnet path
+// (gunbc.workspace_allocation_routes workspace_allocation_deployment_access_policy). Every other
+// route decides nothing over the access path's tailnet arm, so it is handed an untaken reading
+// rather than paying a process spawn per request -- as is a connection whose ingress is not the
+// proxy, which no reading could vouch for.
+fn roadmap_serve_selection_requires_tailnet_path(sel: RouteSelection<RoadmapServeHandler>) -> Bool {
+  match sel {
+    SelectedDynamic { handler: h, params: _ } => h == AllocationCreateHandler || h == AllocationReleaseHandler
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn roadmap_serve_tailnet_readback(sel: RouteSelection<RoadmapServeHandler>, tailscale_identity: String, ingress: RequestIngress) -> TailnetServeReadback {
+  if !roadmap_serve_selection_requires_tailnet_path(sel: sel) || tailscale_identity == "" || !request_ingress_is_the_proxy(ingress: ingress) {
+    TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }
+  } else {
+    tailnet_serve_readback_take()
+  }
+}
+
+// The instant the access path is decided at, read AFTER the readback so the reading's age is
+// measured rather than assumed. An unreadable clock is the empty instant, which no reading is
+// fresh against.
+fn roadmap_serve_decided_at(readback: TailnetServeReadback) -> String {
+  match readback {
+    TailnetServeReadbackUntaken { gap: _ } => ""
+    TailnetServeReadbackTaken { status_json: _, observed_at: _ } =>
+      match clock_now_probed_at() {
+        Present { value: now } => now as String
+        Absent => ""
+      }
   }
 }
 
@@ -1565,6 +1635,8 @@ fn roadmap_serve_respond_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  ingress: RequestIngress,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
@@ -1587,12 +1659,15 @@ fn roadmap_serve_respond_over(
               " (fail-closed — fix the literal in gunbc.roadmap_serve.roadmap_serve_route_specs)\n",
             ], ""),
           )
-        ServedRouteTableBuilt { table: t } =>
+        ServedRouteTableBuilt { table: t } => {
+          let sel = serve_select_route(table: t, method: m, path: path)
+          let readback = roadmap_serve_tailnet_readback(sel: sel, tailscale_identity: tailscale_identity, ingress: ingress)
           roadmap_serve_selection_response_over(
             instance: instance,
             plan: plan,
             daily_body: daily_body,
-            sel: serve_select_route(table: t, method: m, path: path),
+            sel: sel,
+            cookie_header: cookie_header,
             request: ServeHttpRequest {
               method: m,
               path: path,
@@ -1600,10 +1675,15 @@ fn roadmap_serve_respond_over(
               security: roadmap_serve_request_security(
                 instance: instance,
                 tailscale_identity: tailscale_identity,
+                ingress: ingress,
+                readback: readback,
+                decided_at: roadmap_serve_decided_at(readback: readback),
+                cookie_header: cookie_header,
               ),
             },
             release_revision: release_revision,
           )
+        }
       }
   }
 }
@@ -1614,6 +1694,7 @@ fn roadmap_serve_respond_for_instance(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
@@ -1624,6 +1705,8 @@ fn roadmap_serve_respond_for_instance(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1633,6 +1716,7 @@ fn roadmap_serve_respond(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
@@ -1641,6 +1725,7 @@ fn roadmap_serve_respond(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1690,26 +1775,35 @@ fn roadmap_serve_handle_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  ingress: RequestIngress,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  let response = roadmap_serve_respond_over(
-    instance: instance,
-    plan: plan,
-    daily_body: daily_body,
-    method_label: method,
-    path: path,
-    body: body,
-    tailscale_identity: tailscale_identity,
-    release_revision: release_revision,
-  )
-  serve_wire_response(r: response)
+  match serve_request_header_reading(headers: request_headers, name: "cookie") {
+    ServeRequestHeaderRepeated { occurrences: _ } =>
+      serve_wire_response(r: serve_text_response(status: 400, content_type: text_plain_utf8, body: "bad request: duplicate cookie header\n"))
+    ServeRequestHeaderAbsent =>
+      serve_wire_response(r: roadmap_serve_respond_over(
+        instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: "", release_revision: release_revision,
+      ))
+    ServeRequestHeaderSingle { value: cookie_header } =>
+      serve_wire_response(r: roadmap_serve_respond_over(
+        instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: cookie_header, release_revision: release_revision,
+      ))
+  }
 }
 
+// EVERY ENTRY THAT DECLARES NO peer_user IS LAUNCHED ON A TCP LISTENER, which attests no peer, so
+// each hands the seam IngressUnattested: its requests cannot mint the tailnet path and the
+// tailnet-required writes answer unavailable there. roadmap_serve_handle_door is the one that can.
 fn roadmap_serve_handle(
   method: String,
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1720,6 +1814,8 @@ fn roadmap_serve_handle(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1731,11 +1827,39 @@ fn roadmap_serve_handle(
 // the repo root at request time would make the served identity depend on where the binary happened
 // to be launched, which is an ambient fact, and it would re-answer per request a question that is
 // fixed for a process's whole life.
+// THE PRODUCTION INSTANCE'S TAILNET DOOR ENTRY, launched on the unix socket its serve route
+// targets (gunbc.live_deploy.spec deployment_tailnet_door_socket). The listener attests the peer of
+// each connection and this entry hands it to the seam as the request's ingress, which is what lets
+// a proxied request mint the tailnet path and a local account dialing the socket not.
+fn roadmap_serve_handle_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_live_dashboard_instance(),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
 fn roadmap_serve_handle_macbook_local(
   method: String,
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1746,6 +1870,8 @@ fn roadmap_serve_handle_macbook_local(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1755,6 +1881,7 @@ fn roadmap_serve_handle_srv1_lab(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1765,6 +1892,8 @@ fn roadmap_serve_handle_srv1_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1774,6 +1903,7 @@ fn roadmap_serve_handle_srv2_preview(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1784,6 +1914,8 @@ fn roadmap_serve_handle_srv2_preview(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1796,6 +1928,7 @@ fn roadmap_serve_handle_srv2_deploy(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1806,6 +1939,8 @@ fn roadmap_serve_handle_srv2_deploy(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1815,6 +1950,7 @@ fn roadmap_serve_handle_srv2_lab(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1825,6 +1961,8 @@ fn roadmap_serve_handle_srv2_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1839,7 +1977,7 @@ fn roadmap_serve_handle_srv2_lab(
 // verified token's name claim), so the header greets the operator's display name and falls
 // back to the principal label's short form. Both are presentation only, never an input to
 // identity or authorization, and a read renders; it never decides.
-fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+fn auth_session_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   serve_text_response(
     status: 200,
     content_type: application_json_utf8,
@@ -1853,7 +1991,7 @@ fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence
 // the projection is the display authority; a member the projection does not hold falls back to
 // the session's. The roster's degradation standing (unreadable store, skipped records) is
 // reported as data -- a missing-looking avatar must not read as 'nobody published'.
-fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
   serve_text_response(
     status: 200,
@@ -1862,14 +2000,14 @@ fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHtt
   )
 }
 
-fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
-  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
-  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonKeyValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ]
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ]
   match roster {
     ProfileStoreUnread { step: _, reason: _ } => unreadable
     ProfileStoreRead { profiles: _, skipped } =>
       if count(skipped) == 0 {
-        [] as List<JsonValue>
+        []
       } else {
         partial
       }
@@ -1934,7 +2072,7 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
 // projected one — absence is the member's ABSENCE, never an empty string standing in for none,
 // and the client reads absence (like a failed fetch) as the initials fallback, never an
 // identity claim from a hole in the wire.
-fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
+fn auth_session_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
@@ -1943,7 +2081,7 @@ fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
 
 // THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
 // never an empty string standing in for none.
-fn auth_session_name_members(name: String?) -> List<JsonValue> {
+fn auth_session_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
@@ -1951,7 +2089,7 @@ fn auth_session_name_members(name: String?) -> List<JsonValue> {
 }
 
 // THE OPTIONAL EMAIL MEMBER, the same law as the name: absence is the member's ABSENCE.
-fn auth_session_email_members(email: Email?) -> List<JsonValue> {
+fn auth_session_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []
@@ -1985,22 +2123,123 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
 }
 
 // Session-dependent HTML; its no-store header moved to the OAuth follow-up with the response-header channel.
-fn allocation_page_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  allocation_page_response_over(request: request, roadmap_stylesheet: roadmap_css())
+fn allocation_page_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  allocation_page_response_over(request: request, roadmap_stylesheet: roadmap_styles())
 }
 
 // The response over a supplied roadmap stylesheet: the session and header decisions do not read the
 // stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
 // allocation_page_with_stylesheet).
-fn allocation_page_response_over(request: ServeHttpRequest<RequestAuthenticationEvidence>, roadmap_stylesheet: String) -> ServeHttpResponse {
-  let signed_in = match request.security.authentication {
-    GoogleOidcSession { session: _ } => true
-    AuthAbsent => false
-    SessionStandingInvalid { standing: _ } => false
-    FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: SiteStyles) -> ServeHttpResponse {
+  let viewer = match request.security.authentication {
+    GoogleOidcSession { session } => AllocationViewerSignedIn { csrf: session.csrf.token as String }
+    AuthAbsent => AllocationViewerSignedOut
+    SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
   }
-  match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: signed_in, roadmap_stylesheet: roadmap_stylesheet)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
+  }
+}
+
+// Preferences are owned by the seated account, independent of the session id. Neither route
+// accepts a principal selector. No-store prevents account/CSRF context entering shared caches.
+fn issue_view_response(status: HttpStatus, body: String) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: application_json_utf8, body: body, headers: [ServeResponseHeaderNoStore] }
+}
+fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, saving: Bool) -> ServeHttpResponse {
+  match request.security.authentication {
+    GoogleOidcSession { session } => {
+      if saving {
+        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: human_write_observed_at(security: request.security)) {
+          Deny { refusal: _ } => issue_view_response(status: 403, body: "Preference save requires a valid session and CSRF proof.")
+          Permit => match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
+            Absent => issue_view_response(status: 400, body: "Invalid issue view preferences.")
+            Present { value: prefs } => match issue_view_store_key(principal: session.principal) {
+              Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
+              Present { value: key } => match issue_view_store_save(root: issue_view_store_root(instance: instance), key: key, prefs: prefs, revision: issue_form_field(body: request.body, name: "revision")) {
+                IssueViewSaveOk { revision } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "revision", value: json_int(n: revision))])))
+                IssueViewSaveConflict => issue_view_response(status: 409, body: "Preferences changed in another tab or browser. Reload to sync.")
+                IssueViewSaveRefused => issue_view_response(status: 503, body: "Account preferences could not be saved.")
+              }
+            }
+          }
+        }
+      } else {
+        match issue_view_store_key(principal: session.principal) {
+          Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
+          Present { value: key } => match issue_view_store_read(root: issue_view_store_root(instance: instance), key: key) {
+            IssueViewUnread => issue_view_response(status: 503, body: "Account preferences could not be read.")
+            IssueViewAbsent => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
+              json_kv(key: "revision", value: json_int(n: 0)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: JsonNull),
+            ])))
+            IssueViewFound { prefs, revision, expected: _ } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
+              json_kv(key: "revision", value: json_int(n: revision)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: issue_view_preferences_json(prefs: prefs)),
+            ])))
+          }
+        }
+      }
+    }
+    AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
+    SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+  }
+}
+
+// Read-only query: validated view terms select from the complete, digest-checked observation.
+// Filtering and stable multi-column ordering happen before the fixed-size page is selected.
+fn serve_issue_query(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
+    Absent => issue_view_response(status: 400, body: "Invalid issue query.")
+    Present { value: prefs } => match parse_int(s: issue_form_field(body: request.body, name: "offset")) {
+      Absent => issue_view_response(status: 400, body: "Invalid issue offset.")
+      Present { value: offset } => if offset < 0 || offset > 100000 { issue_view_response(status: 400, body: "Invalid issue offset.") } else {
+        let stored = served_observation_surface_response_for_instance(instance: instance, kind: IssueQueryRows)
+        if stored.status != 200 { stored } else {
+          let identity = served_observation_body_digest(body: stored.body)
+          let expected = issue_form_field(body: request.body, name: "snapshot")
+          if offset > 0 && expected != identity { issue_view_response(status: 409, body: "Issues changed; refresh the results before loading more.") }
+          else { match issue_query_rows_of(body: stored.body) {
+            Absent => issue_view_response(status: 503, body: "Issue query observation unreadable.")
+            Present { value: rows } => issue_view_response(status: 200, body: issue_query_response_body(rows: rows, prefs: prefs, offset: offset, snapshot: identity))
+          } }
+        }
+      }
+    }
+  }
+}
+
+// A SERVED RESPONSE HAS NO SURFACE FOR A LEAKED EVENT-LOG SNAPSHOT. The body is the client's answer
+// to its own request -- a page, a redirect, a refusal it can act on -- and the path of a scratch
+// worktree on the host is neither the client's to act on nor the client's to see; the serve process
+// writes no operator log of its own. So in the three functions below the snapshot's standing is
+// matched by name and the carrier's result passes through unchanged. THIS FAILURE ITSELF IS
+// RECORDED NOWHERE. What exists is the instance's snapshot census
+// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance), taken by the
+// belt tick from the repository's worktree registry: a snapshot a served request left registered is
+// listed there for as long as it stays registered. The census does not know a removal failed, and
+// one whose worktree is gone before the next census appears nowhere.
+fn serve_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) -> RoadmapEventsRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+  }
+}
+
+fn serve_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>) -> RoadmapAllEventsRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+  }
+}
+
+fn serve_append_after_snapshot_close(appended: CarrierClosed<RoadmapEventAppend>) -> RoadmapEventAppend {
+  match appended.close {
+    SnapshotNotOpened => appended.result
+    SnapshotClosed => appended.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => appended.result
   }
 }

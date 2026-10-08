@@ -697,6 +697,28 @@ pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_generic_identity_census;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_interpolation_hole_census;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 #[allow(
     unused_imports,
@@ -789,10 +811,10 @@ pub mod wt_common;
 #[macro_use]
 pub mod v1_interpreter_dispatch_generated;
 pub mod cli_run;
+pub mod closure_identity;
 pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
-pub mod derived_realization_schedule;
 pub mod evaluation_budget_consequence_generated;
 pub mod gunbc_file_transport_generated;
 pub mod memory_governor;
@@ -800,8 +822,6 @@ pub mod module_path_index;
 pub mod process_group;
 pub mod recorded_fixture;
 pub mod release_locus_seed_constants_generated;
-pub mod resolved_graph_cache;
-pub mod shared_typecheck_store;
 pub mod std_logic;
 pub mod v1_interpreter;
 

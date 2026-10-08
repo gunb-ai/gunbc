@@ -140,7 +140,7 @@ test fn witness_readback_verdict_drifts_RED_when_live_mismatch() -> Bool {
     Present { value: Drifted } => true
     Present { value: VerdictConverged } => false
     Absent => false
-    Present { value: Absent } => false
+    Present { value: VerdictAbsent } => false
   }
 }
 

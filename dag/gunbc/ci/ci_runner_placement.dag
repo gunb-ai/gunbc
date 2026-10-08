@@ -2,7 +2,7 @@ module gunbc.ci_runner_placement
 
 import gunbc.ci_fleet { ComputeOffer }
 import gunbc.fleet_intent { compute_host_primary_cpu }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
@@ -10,17 +10,17 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
+import gunbc.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
 import gunbc.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
   host_session_reservation_outcome,
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
 }
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, SessionAdmissionDeclared, SessionAdmissionUnestablished,
 }
-import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim }
 import gunbc.fleet_host_budget {
   host_allocation_verdict,
   HostAllocationVerdict,
@@ -65,12 +65,10 @@ import gunbc.host_memory_observation {
   HostUsableRamMeasured,
   HostUsableRamConservativeLowerBound,
   HostUsableRamUnmeasured,
-  gunbc_ci_host_usable_ram_for,
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
-  gunbc_ci_host_fixed_overhead_for,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 
@@ -510,7 +508,8 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
 // THE CAUSE RENDERS FROM ITS OWN MODULE so the manifest, the witnesses and any later consumer all
 // read one projection rather than each spelling the variants again.
 // NAMED FOR ITS SUBJECT BECAUSE A BARE `refusal_cause_text` IS AMBIGUOUS CORPUS-WIDE.
-// gunbc.roadmap_instrument_sandbox already declares one over ProgramViewRefusalCause. Modules that
+// gunbc.roadmap_instrument_sandbox (since deleted with its page) declared one over
+// ProgramViewRefusalCause when this was named. Modules that
 // resolve by bare reference -- the witness tests do -- then see two candidates and refuse, and the
 // refusal surfaces only in a whole-corpus resolve, never in a per-entry run whose closure happens
 // to contain one of them. The two functions are genuinely different facts, not a nickname pair, so
@@ -573,6 +572,34 @@ fn refuse_host(host: HostIdentity, cause: HostRunnerDeploymentRefusal) -> HostRu
 // carrier through which it could reach another host. That is the per-host grain as a structural
 // property rather than as care taken by every arm.
 fn host_deployment_standing(offer: ComputeOffer, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
+  host_deployment_standing_given(
+    offer: offer,
+    facts: host_width_facts(host: offer.supply.physical.identity),
+    control_plane_placement: control_plane_placement,
+  )
+}
+
+// THE SESSION SLICE FROM THE FACTS RECORD. The record carries the reservation as
+// gunbc.session_reservation_policy session_reservation_bytes resolves it; both the unsized and the
+// disagreement outcomes arrive as ReservationBytesUnestablished with the policy's own cause, which
+// this quotes.
+fn session_slice_of(f: HostWidthFacts) -> HostSessionSliceResolution {
+  match f.session {
+    ReservationBytes { bytes: b } => SessionSliceCharged { bytes: b }
+    ReservationBytesNotApplicable => SessionSliceNotApplicable
+    ReservationBytesUnestablished { cause: why } =>
+      SessionSliceUnsized {
+        reason: concat("no session reservation is established for this host, so the largest non-runner claim on it is unknown: refuse to derive a runner width rather than charge zero for it. Cause: ", why, " Host: ", f.host)
+      }
+  }
+}
+
+// ONE HOST'S STANDING FROM ITS OFFER AND A SUPPLIED FACTS RECORD. host_deployment_standing supplies
+// gunbc.runner_slot_allocation host_width_facts, the production producer; a witness may supply a
+// record directly, and then the whole standing -- width, conservation, jobserver -- is a function
+// of values it chose. The control-plane claim is the one input still read here, because it is
+// evaluated under the placement argument rather than the default placement the record holds.
+fn host_deployment_standing_given(offer: ComputeOffer, facts: HostWidthFacts, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
   let host_id = offer.supply.physical.identity
   match compute_host_primary_cpu(host: offer.supply.physical) {
     Absent =>
@@ -580,17 +607,17 @@ fn host_deployment_standing(offer: ComputeOffer, control_plane_placement: Fabric
         cause: concat("compute offer has no primary CPU facts: ", host_id)
       })
     Present { value: cpu } =>
-      match host_usable_ram_or_refusal(host: host_id, r: gunbc_ci_host_usable_ram_for(host: host_id)) {
+      match host_usable_ram_or_refusal(host: host_id, r: facts.usable_ram) {
         HostUsableRamUnresolved { reason: rr } =>
           refuse_host(host: host_id, cause: UsableRamUnavailable { cause: rr })
         HostUsableRamResolved { bytes: host_ram } =>
-          match host_session_slice_resolution(host: host_id) {
+          match session_slice_of(f: facts) {
             SessionSliceUnsized { reason: sr } =>
               refuse_host(host: host_id, cause: SessionReservationUnestablished { cause: sr })
             SessionSliceNotApplicable =>
-              host_standing_with_session_slice(offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: byte_size(0), control_plane_placement: control_plane_placement)
+              host_standing_with_session_slice(offer: offer, facts: facts, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: byte_size(0), control_plane_placement: control_plane_placement)
             SessionSliceCharged { bytes: session_pool } =>
-              host_standing_with_session_slice(offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: session_pool, control_plane_placement: control_plane_placement)
+              host_standing_with_session_slice(offer: offer, facts: facts, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: session_pool, control_plane_placement: control_plane_placement)
           }
       }
   }
@@ -606,6 +633,7 @@ fn host_deployment_standing(offer: ComputeOffer, control_plane_placement: Fabric
 // refusal with a general one and killing an arm that names the actual root.
 fn host_standing_with_session_slice(
   offer: ComputeOffer,
+  facts: HostWidthFacts,
   cpu: CpuFacts,
   host_id: HostIdentity,
   host_ram: ByteSize,
@@ -613,7 +641,7 @@ fn host_standing_with_session_slice(
   session_pool: ByteSize,
   control_plane_placement: FabricControlPlanePlacement
 ) -> HostRunnerDeploymentStanding {
-  match gunbc_runner_committed_width(host: host_id) {
+  match committed_width_of(f: facts) {
     RunnerWidthUnresolved { cause: wc } =>
       refuse_host(host: host_id, cause: CommittedWidthUnresolved {
         cause: runner_width_unresolved_cause_text(cause: wc)
@@ -621,6 +649,7 @@ fn host_standing_with_session_slice(
     RunnerWidthDerived { slots: slots } =>
       host_standing_at_width(
         offer: offer,
+        facts: facts,
         slots: slots,
         cpu: cpu,
         host_id: host_id,
@@ -634,6 +663,7 @@ fn host_standing_with_session_slice(
 
 fn host_standing_at_width(
   offer: ComputeOffer,
+  facts: HostWidthFacts,
   slots: Int,
   cpu: CpuFacts,
   host_id: HostIdentity,
@@ -642,7 +672,7 @@ fn host_standing_at_width(
   session_pool: ByteSize,
   control_plane_placement: FabricControlPlanePlacement
 ) -> HostRunnerDeploymentStanding {
-  match host_overhead_or_refusal(host: host_id, o: gunbc_ci_host_fixed_overhead_for(host: host_id)) {
+  match host_overhead_or_refusal(host: host_id, o: facts.fixed_overhead) {
     HostOverheadUnresolved { reason: orr } =>
       refuse_host(host: host_id, cause: FixedOverheadUnavailable { cause: orr })
     HostOverheadResolved { bytes: overhead } =>
@@ -663,7 +693,7 @@ fn host_standing_at_width(
             session_pool: session_pool,
             compile_pool: compile_pool,
             control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement),
-            served_deployment: host_served_deployment_claim(host: host_id)
+            served_deployment: facts.served_deployment
           ) {
             HostAllocationOversubscribed =>
               refuse_host(host: host_id, cause: HostAllocationOversubscribedOnHost {

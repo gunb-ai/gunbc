@@ -1,7 +1,7 @@
 module gunbc.required_lane_resolution_census
 
 import std.types { String, Bool, List, Int }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import extdeps.languages.json.emit { serialize_json_string }
 
 // FOR EVERY MODULE UNDER THE SOURCE ROOTS, DOES AT LEAST ONE REQUIRED LANE RESOLVE IT?

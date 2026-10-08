@@ -12,10 +12,11 @@ import v2.std.orchestration {
   FailFast,
   EnvSet,
   EnvUnset,
+  Exit,
   Predicate,
   ExitZero
 }
-import v2.std.optional { Optional, Present }
+import std.optional { Optional, Present }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -125,6 +126,34 @@ fn orch_if_cond() -> Predicate {
 
 fn orch_do_step(command: String) -> PipelineStep {
   Do { run: Run { command: command, env: Empty, redirect: Absent, capture: Absent } }
+}
+
+fn orch_pipeline_exit_step() -> PipelineStep {
+  Exit { status: "1" }
+}
+
+fn orch_pipeline_with_exit() -> Pipeline {
+  Pipeline {
+    steps: [orch_do_step("rm -f \"$ORCH_TMP\""), orch_pipeline_exit_step()],
+    on_failure: FailFast
+  }
+}
+
+fn orch_pipeline_with_exit_expected() -> String {
+  "rm -f \"$ORCH_TMP\"\nexit 1"
+}
+
+// WITNESS (quick-eagle-786): the Exit arm's carried unwrap. The bind over orch_emit_exit_step
+// receives a Medium<String>; the carried slot wants its .carried text. Red without the unwrap --
+// the script line renders the carried struct itself ("Medium { carried: exit 1, fidelity:
+// Lossless }"), which is exactly the fleet-converge.yml drift this witness pins at the fixture
+// level. Positive control: the claim passes with the unwrap in place.
+test fn orch_pipeline_exit_line_is_bare_statement_holds() -> Bool {
+  match orch_emit_pipeline(p: orch_pipeline_with_exit(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == orch_pipeline_with_exit_expected()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn orch_if_then_one_step() -> Pipeline {

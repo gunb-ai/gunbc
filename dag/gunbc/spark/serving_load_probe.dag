@@ -7,7 +7,7 @@ import std.measure {
 }
 import std.decimal { ExactDecimal, canonical_exact_decimal, checked_decimal_rescale, checked_decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.checked_arithmetic { checked_int_to_nat, CheckedIntReady, CheckedIntOverflow }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
 import extdeps.prometheus.client {
@@ -746,7 +746,7 @@ type BenchServeExecution
 
 fn bench_serve_from_remote(protocol: VllmBenchServeRequest, remote: SparkRemoteRun) -> BenchServeExecution {
   match remote {
-    RemoteUnreachable { cause: c } =>
+    RemoteUnreachable { cause: c, reach: _ } =>
       BenchServeUnreachable { protocol: protocol, cause: c as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       BenchServeRan { protocol: protocol, exit_code: code, stdout: out, stderr: err }

@@ -163,7 +163,7 @@ fn external_consumers() -> List<BoundaryConsumer> {
       justification: "managed principal leg transport endpoint",
     ),
     endpoint_consumer(
-      module_path: "gunbc.spark.managed_grant_install",
+      module_path: "gunbc.spark.grant_privileged_operation",
       decl_name: "spark_grant_install_transport",
       justification: "grant install transport endpoint",
     ),

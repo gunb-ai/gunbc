@@ -1,8 +1,10 @@
 module v2.test.parse.choice_plan
 
+import std.types { List }
+import v2.std.live_tree { LiveTreeDisposition }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.collection { List, empty_map, map_lookup }
+import v2.std.collection { empty_map, map_lookup }
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar {
   Choice,
@@ -40,11 +42,12 @@ import v2.compiler.parse {
   parse_table_for_production,
   prepare_grammar_expr
 }
-import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
 import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, None, Rejected, Some, invariant_port_locus }
-import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, content_hash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -167,6 +170,7 @@ fn pcp_choice_plan(expr: GrammarExpr) -> PreparedChoicePlan {
     expr: expr,
     nullable_set: Empty,
     first_rows: empty_map(),
+    productions: empty_map(),
     production: ^pcp_start,
     token_dispatch: true
   ).tree {
@@ -349,6 +353,7 @@ test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
     expr: stamp_split_left,
     nullable_set: Empty,
     first_rows: empty_map(),
+    productions: empty_map(),
     production: ^pcp_start,
     token_dispatch: true
   )
@@ -356,6 +361,7 @@ test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
     expr: stamp_split_right,
     nullable_set: Empty,
     first_rows: empty_map(),
+    productions: empty_map(),
     production: ^pcp_start,
     token_dispatch: true
   )

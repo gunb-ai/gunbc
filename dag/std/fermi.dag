@@ -1,6 +1,8 @@
 module std.fermi
 
-import std.types { FermiDepth }
+import std.types { FermiDepth, L, List, M, Milliseconds, S, Xl, Xs }
+import std.algebra { BoundedLattice }
+import std.optional { Absent, Present }
 
 fn fermi_ordinal(depth: FermiDepth) -> Int {
   match depth {

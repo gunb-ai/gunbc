@@ -1,0 +1,643 @@
+module test.claim.serving.serving_front_door_witness_test
+
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List, EpochSecs, Secret }
+import std.nat { Nat }
+import extdeps.crypto.mac { MacKey, MacVerification, MacTagMismatch, HmacSha256, mac_verify }
+import gunbc.auth.request_authentication {
+  RequestAuthenticationEvidence, FabricServiceEvidence, FabricServiceEvidenceSubmissionMac, AuthAbsent,
+  fabric_service_principal,
+}
+import gunbc.principal_projection { PrincipalRef, principal_ref_label }
+import gunbc.harness.harness_seat {
+  HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
+  harness_seat_reference_record, harness_seat_reference_wire,
+}
+import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, QuiescenceRequired, Quiescent, QuiescenceUnobserved, lease_grant, lease_fence_of }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEnvelope, ChainEvent, ChainWalk, ChainWalked, HeadExpectation, HeadAbsent, HeadAt,
+  AppendAdmitted, AppendStale, decide_append,
+}
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, PoolFolded, PoolFoldRefused, pool_fold }
+import product.capacity.redemption {
+  RedemptionEvent, GrantRedeemed, RedemptionState, Unredeemed, InFlight, UseEnded,
+  RedemptionProposed, RedemptionRefused, GrantAlreadyRedeemed, GrantUseAlreadyEnded,
+  ReleaseOpen, ReleaseOwnedByGate, RecoveryHoldCharged, RecoveryEndThenRelease, GrantUseEnded,
+  redemption_partition_of, redemption_state_of, propose_redemption, propose_use_end,
+  redemption_release_owner, redemption_recovery,
+}
+import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch, vllm_endpoint_process_launch_key }
+import gunbc.serving.serving_front_door {
+  ServingSeatPermit, ServingSeatPermitClaims, FrontDoorIdentity, FrontDoorVerdict, FrontDoorForward, FrontDoorRefused,
+  FrontDoorRefusal, DoorCallerUnauthenticated, DoorPermitAbsent, DoorPermitMacRefused, DoorPermitForAnotherGroup,
+  DoorPermitForAnotherLaunch, DoorPermitExpired, DoorSeatReleased, DoorSeatNeverAdmitted, SeatPermitIssued,
+  DoorSeatHeldByAnotherCaller, DoorSeatLeaseExpired, DoorPermitPartitionNotThisPool, DoorPermitClassNotServed,
+  DoorSeatAmountNotOneSeat, DoorSeatAcquiredMoreThanOnce, DoorSeatFenceGenerationDisagrees, DoorPermitAlreadyRedeemed,
+  FrontDoorRedemption, DoorRedeemed, DoorRedemptionRefused,
+  DoorPoolConfiguredForAnotherGroup, DoorPoolConfiguredTwice, DoorPoolSelected, front_door_pool_for,
+  PlanLeaveWithHolder, PlanRelease, front_door_recovery_plan,
+  SeatGrantCurrency, FrontDoorTally,
+  serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
+  seat_grant_currency_of, front_door_admit, front_door_tally, front_door_tally_empty, front_door_refused_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── Supplied boundary values ──────────────────────────────────────────────────────────────────
+// The witness discriminates at ONE interface, front_door_admit: its inputs are SUPPLIED -- a grant
+// built through product.capacity.lease's own constructor, seat pools minted by the seat authority's
+// own function, a ledger history and a redemption chain built from their own event constructors and
+// folded by the real folds, and a MAC verdict computed by the real bound HMAC over the claims' one
+// signing input. Nothing here runs placement or touches the fabric DB.
+
+data witness_key: MacKey = MacKey {
+  id: serving_seat_permit_key_id,
+  suite: HmacSha256,
+  material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
+}
+
+data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB, class: InteractiveQualitySensitive, seats: 1)
+data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB, class: BatchQualityTolerant, seats: 2)
+data group_a_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupA, class: InteractiveQualitySensitive, seats: 1)
+data witness_partition: PartitionId = quality_pool.partition
+data witness_attempt: NonEmptyStr = "attempt-7" as NonEmptyStr
+data witness_admitting: EventId = "ev-acquire-7" as EventId
+data witness_granted_at: EpochSecs = 1000
+data witness_term: EpochSecs = 600
+
+data group_b_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
+  group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
+)
+data group_b_relaunch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
+  group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
+)
+data group_a_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
+  group: FabricGroupA, endpoint: "http://192.168.1.232:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
+)
+
+fn seat_for(attempt: NonEmptyStr, launch: VllmEndpointProcessLaunch) -> HarnessSeatReference {
+  harness_seat_reference_record(attempt: attempt, offer_key: vllm_endpoint_process_launch_key(launch: launch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
+}
+data witness_seat: HarnessSeatReference = seat_for(attempt: witness_attempt, launch: group_b_launch)
+data relaunch_seat: HarnessSeatReference = seat_for(attempt: witness_attempt, launch: group_b_relaunch)
+data other_attempt_seat: HarnessSeatReference = seat_for(attempt: "attempt-8" as NonEmptyStr, launch: group_b_launch)
+data witness_reference: NonEmptyStr = harness_seat_reference_wire(r: witness_seat)
+data relaunch_reference: NonEmptyStr = harness_seat_reference_wire(r: relaunch_seat)
+
+data service_actor: NonEmptyStr = principal_ref_label(p: fabric_service_principal()) as NonEmptyStr
+data other_actor: NonEmptyStr = "principal:gunbc/workflows/ac-dialogue" as NonEmptyStr
+data proxy: NonEmptyStr = "front-door@group-b" as NonEmptyStr
+data request_one: NonEmptyStr = "request-1" as NonEmptyStr
+data request_two: NonEmptyStr = "request-2" as NonEmptyStr
+
+// THE ACQUISITION IS THE FIRST EVENT OF ITS PARTITION, so the fence generation it admitted is 1.
+data witness_grant: LeaseGrant = lease_grant(
+  reference: witness_reference,
+  fence: lease_fence_of(admitting_event: witness_admitting, generation: 1),
+  granted_at: witness_granted_at,
+  policy: LeasePolicy { maximum_duration_seconds: witness_term, release_law: QuiescenceRequired },
+)
+
+data group_b_door: FrontDoorIdentity = FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool, tolerant_pool] }
+
+data service_caller: RequestAuthenticationEvidence = FabricServiceEvidence {
+  kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-10-03T00:00:00Z",
+}
+
+fn claims_on(launch: VllmEndpointProcessLaunch, group_wire: String) -> ServingSeatPermitClaims {
+  serving_seat_permit_claims(
+    group_wire: group_wire, partition: witness_partition, class: InteractiveQualitySensitive,
+    seat: seat_for(attempt: witness_attempt, launch: launch), grant: witness_grant, caller: fabric_service_principal(),
+  )
+}
+
+fn permit_of(claims: ServingSeatPermitClaims) -> ServingSeatPermit? {
+  match issue_serving_seat_permit(claims: claims, key: witness_key) {
+    SeatPermitIssued { permit: p } => Present { value: p }
+    _ => none
+  }
+}
+
+fn good_permit() -> ServingSeatPermit? {
+  permit_of(claims: claims_on(launch: group_b_launch, group_wire: "group-b"))
+}
+
+// A KEY HOLDER'S FORGERY: claims written by hand and signed with the REAL key. Every field is the
+// forger's choice; only the ledger and the redemption chain can refuse it.
+fn forged_with(seat: HarnessSeatReference, partition: PartitionId, class: ServingCoTenancyClass, generation: Nat, expires_at: EpochSecs) -> ServingSeatPermit? {
+  let c = claims_on(launch: group_b_launch, group_wire: "group-b")
+  permit_of(claims: ServingSeatPermitClaims {
+    protocol: c.protocol, group: c.group, partition: partition, class: class,
+    seat: seat, grant: c.grant, generation: generation, caller: c.caller,
+    granted_at: c.granted_at, expires_at: expires_at, key_id: c.key_id,
+  })
+}
+
+fn forged(seat: HarnessSeatReference, partition: PartitionId, expires_at: EpochSecs) -> ServingSeatPermit? {
+  forged_with(seat: seat, partition: partition, class: InteractiveQualitySensitive, generation: 1, expires_at: expires_at)
+}
+
+fn envelope_by(id: NonEmptyStr, at: EpochSecs, actor: NonEmptyStr, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope { id: id as EventId, event: ChainEvent { partition: witness_partition, parent: none, recorded_at: at, actor: actor, payload: payload } }
+}
+
+fn acquired(id: NonEmptyStr, actor: NonEmptyStr, reference: NonEmptyStr, amount: Nat) -> ChainEnvelope<PoolEvent> {
+  envelope_by(id: id, at: 1000, actor: actor, payload: PoolAcquired { reference: reference, amount: amount, term_seconds: 600 })
+}
+
+fn acquired_by(actor: NonEmptyStr, reference: NonEmptyStr) -> ChainWalk<PoolEvent> {
+  ChainWalked { oldest_first: [acquired(id: "ev-acquire-7" as NonEmptyStr, actor: actor, reference: reference, amount: 1)] }
+}
+
+data held_history: ChainWalk<PoolEvent> = acquired_by(actor: service_actor, reference: witness_reference)
+
+data released_history: ChainWalk<PoolEvent> = ChainWalked { oldest_first: [
+  acquired(id: "ev-acquire-7" as NonEmptyStr, actor: service_actor, reference: witness_reference, amount: 1),
+  envelope_by(id: "ev-release-7" as NonEmptyStr, at: 1100, actor: service_actor, payload: PoolReleased { reference: witness_reference, reason: "turn ended" as NonEmptyStr }),
+] }
+
+data empty_history: ChainWalk<PoolEvent> = ChainWalked { oldest_first: [] }
+
+// ── The redemption chain, supplied ───────────────────────────────────────────────────────────
+
+fn redemption_envelope(id: NonEmptyStr, payload: RedemptionEvent) -> ChainEnvelope<RedemptionEvent> {
+  ChainEnvelope { id: id as EventId, event: ChainEvent { partition: redemption_partition_of(pool_partition: witness_partition), parent: none, recorded_at: 1050, actor: proxy, payload: payload } }
+}
+
+data no_redemptions: ChainWalk<RedemptionEvent> = ChainWalked { oldest_first: [] }
+
+data redeemed_once: ChainWalk<RedemptionEvent> = ChainWalked { oldest_first: [
+  redemption_envelope(id: "ev-redeem-1" as NonEmptyStr, payload: GrantRedeemed { reference: witness_reference, request: request_one, holder: proxy }),
+] }
+
+// The gate's step, decided exactly as fabric_grant_redeem decides it: fold the chain, propose from
+// the state, and -- for a chain read at its head -- the append is admitted.
+fn redeem_against(redemptions: ChainWalk<RedemptionEvent>) -> fn(HarnessSeatPoolIdentity, NonEmptyStr, NonEmptyStr) -> FrontDoorRedemption {
+  fn(pool, reference, request) {
+    match propose_redemption(state: redemption_state_of(walk: redemptions, reference: reference), head: HeadAbsent, partition: redemption_partition_of(pool_partition: pool.partition), at: 1050, actor: proxy, reference: reference, request: request, holder: proxy) {
+      RedemptionProposed { event: _, expected: _ } => DoorRedeemed
+      RedemptionRefused { cause: c } => DoorRedemptionRefused { cause: c }
+    }
+  }
+}
+
+fn mac_for(presented: ServingSeatPermit?) -> MacVerification {
+  match presented {
+    Absent => MacTagMismatch { key_id: witness_key.id }
+    Present { value: p } => mac_verify(key: witness_key, message: serving_seat_permit_signing_input(c: p.claims), tag_hex: p.tag_hex)
+  }
+}
+
+fn door_verdict_with(evidence: RequestAuthenticationEvidence, presented: ServingSeatPermit?, at: EpochSecs, history: ChainWalk<PoolEvent>, redemptions: ChainWalk<RedemptionEvent>) -> FrontDoorVerdict {
+  front_door_admit(
+    evidence: evidence, presented: presented, mac_result: mac_for(presented: presented), door: group_b_door, observed_at: at, request: request_one,
+    ledger: fn(pool, reference, grant, generation) { seat_grant_currency_of(pool: pool, walk: history, reference: reference, grant: grant, generation: generation) },
+    redeem: redeem_against(redemptions: redemptions),
+  )
+}
+
+fn door_verdict(evidence: RequestAuthenticationEvidence, presented: ServingSeatPermit?, at: EpochSecs, history: ChainWalk<PoolEvent>) -> FrontDoorVerdict {
+  door_verdict_with(evidence: evidence, presented: presented, at: at, history: history, redemptions: no_redemptions)
+}
+
+// ── RED FIRST: the operator's case ───────────────────────────────────────────────────────────
+
+test fn a_valid_caller_with_no_seat_grant_is_refused_and_the_refusal_is_counted() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: none, at: 1100, history: held_history)
+  let tally = front_door_tally(tally: front_door_tally_empty, verdict: v)
+  let refused = match v {
+    FrontDoorRefused { cause: DoorPermitAbsent } => true
+    _ => false
+  }
+  refused && front_door_refused_count(tally: tally, cause: "permit-absent" as NonEmptyStr) == 1 && tally.forwarded == 0
+}
+
+test fn a_permit_granted_on_another_group_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_a_launch, group_wire: "group-a")), at: 1100, history: held_history)
+  match v {
+    FrontDoorRefused { cause: DoorPermitForAnotherGroup { permit_group: _, door_group: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_granted_against_another_launch_of_this_group_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_relaunch, group_wire: "group-b")), at: 1100, history: held_history)
+  match v {
+    FrontDoorRefused { cause: DoorPermitForAnotherLaunch { permit_launch: _, door_launch: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_observed_at_its_lease_expiry_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: good_permit(), at: witness_granted_at + witness_term, history: held_history)
+  match v {
+    FrontDoorRefused { cause: DoorPermitExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+}
+
+// ── The positive control, on the same supplied values ────────────────────────────────────────
+
+test fn a_current_unredeemed_permit_for_this_door_presented_by_its_caller_is_forwarded() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: witness_granted_at + witness_term - 1, history: held_history) {
+    FrontDoorForward { claims: c, pool: p, request: q } =>
+      (harness_seat_reference_wire(r: c.seat) as String) == (witness_reference as String)
+        && (p.partition as String) == (witness_partition as String)
+        && (q as String) == (request_one as String)
+    FrontDoorRefused { cause: _ } => false
+  }
+}
+
+test fn a_current_permit_with_no_caller_authentication_is_refused() -> Bool {
+  match door_verdict(evidence: AuthAbsent, presented: good_permit(), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorCallerUnauthenticated { evidence: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_for_a_released_seat_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1200, history: released_history) {
+    FrontDoorRefused { cause: DoorSeatReleased { reason: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_validly_signed_permit_for_a_seat_never_admitted_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: empty_history) {
+    FrontDoorRefused { cause: DoorSeatNeverAdmitted } => true
+    _ => false
+  }
+}
+
+test fn a_permit_whose_claims_were_rewritten_after_signing_is_refused_by_the_mac() -> Bool {
+  match good_permit() {
+    Absent => false
+    Present { value: p } => {
+      let c = p.claims
+      let widened = ServingSeatPermit {
+        claims: ServingSeatPermitClaims {
+          protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+          seat: c.seat, grant: c.grant, generation: c.generation, caller: c.caller,
+          granted_at: c.granted_at, expires_at: c.expires_at + 86400, key_id: c.key_id,
+        },
+        tag_hex: p.tag_hex,
+      }
+      match door_verdict(evidence: service_caller, presented: Present { value: widened }, at: 1100, history: held_history) {
+        FrontDoorRefused { cause: DoorPermitMacRefused { verification: _ } } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// ── The signed representation authenticates every field, uniquely ───────────────────────────
+
+test fn a_permit_whose_protocol_was_rewritten_after_signing_is_refused_by_the_mac() -> Bool {
+  match good_permit() {
+    Absent => false
+    Present { value: p } => {
+      let c = p.claims
+      let rewritten = ServingSeatPermit {
+        claims: ServingSeatPermitClaims {
+          protocol: "gunbc.serving-seat-permit.v0" as NonEmptyStr, group: c.group, partition: c.partition, class: c.class,
+          seat: c.seat, grant: c.grant, generation: c.generation, caller: c.caller,
+          granted_at: c.granted_at, expires_at: c.expires_at, key_id: c.key_id,
+        },
+        tag_hex: p.tag_hex,
+      }
+      match door_verdict(evidence: service_caller, presented: Present { value: rewritten }, at: 1100, history: held_history) {
+        FrontDoorRefused { cause: DoorPermitMacRefused { verification: _ } } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// THE RULING'S OUTER COLLISION: a seat head ending where a grant begins. Under a separator-joined
+// signing input A and B share every byte; under the length-prefixed one they do not, so a tag over A
+// cannot authenticate B.
+test fn two_claim_sets_that_collide_under_a_separator_join_sign_apart() -> Bool {
+  let sep = from_code_point(cp: 31)
+  let c = claims_on(launch: group_b_launch, group_wire: "group-b")
+  let a = ServingSeatPermitClaims {
+    protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+    seat: harness_seat_reference_record(attempt: witness_attempt, offer_key: c.seat.offer_key, now: 1000, round: 1, head: "h" as NonEmptyStr),
+    grant: join(["g", sep, "x"], "") as GrantIdentity, generation: c.generation, caller: c.caller,
+    granted_at: c.granted_at, expires_at: c.expires_at, key_id: c.key_id,
+  }
+  let b = ServingSeatPermitClaims {
+    protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+    seat: harness_seat_reference_record(attempt: witness_attempt, offer_key: c.seat.offer_key, now: 1000, round: 1, head: join(["h", sep, "g"], "") as NonEmptyStr),
+    grant: "x" as GrantIdentity, generation: c.generation, caller: c.caller,
+    granted_at: c.granted_at, expires_at: c.expires_at, key_id: c.key_id,
+  }
+  (serving_seat_permit_signing_input(c: a) as String) != (serving_seat_permit_signing_input(c: b) as String)
+}
+
+// ── The ledger is the authority: a holder of the real key cannot mint its way through ────────
+
+test fn a_permit_signed_with_the_real_key_for_a_grant_that_does_not_exist_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: other_attempt_seat, partition: witness_partition, expires_at: 1600), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorSeatNeverAdmitted } => true
+    _ => false
+  }
+}
+
+test fn a_permit_for_another_callers_live_grant_is_refused_on_the_recorded_actor() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: acquired_by(actor: other_actor, reference: witness_reference)) {
+    FrontDoorRefused { cause: DoorSeatHeldByAnotherCaller { ledger_actor: _, caller: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_whose_seat_names_another_launch_is_refused_before_the_ledger() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: relaunch_seat, partition: witness_partition, expires_at: 1600), at: 1100, history: acquired_by(actor: service_actor, reference: relaunch_reference)) {
+    FrontDoorRefused { cause: DoorPermitForAnotherLaunch { permit_launch: _, door_launch: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_claiming_this_launch_for_a_seat_taken_against_another_launch_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: witness_partition, expires_at: 1600), at: 1100, history: acquired_by(actor: service_actor, reference: relaunch_reference)) {
+    FrontDoorRefused { cause: DoorSeatNeverAdmitted } => true
+    _ => false
+  }
+}
+
+test fn a_permit_that_extends_its_own_expiry_is_refused_on_the_recorded_term() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: witness_partition, expires_at: 99999), at: 1700, history: held_history) {
+    FrontDoorRefused { cause: DoorSeatLeaseExpired { ledger_expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+}
+
+// ── The join is on the exact seat pool, not a partition-name prefix ──────────────────────────
+
+test fn a_permit_naming_a_same_group_partition_that_is_not_a_seat_pool_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: "group-group-b-not-a-seat" as PartitionId, expires_at: 1600), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_naming_another_groups_seat_partition_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: group_a_pool.partition, expires_at: 1600), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_whose_class_and_partition_disagree_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: BatchQualityTolerant, generation: 1, expires_at: 1600), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_for_a_class_the_door_serves_no_pool_for_is_refused() -> Bool {
+  let quality_only = FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool] }
+  let presented = forged_with(seat: witness_seat, partition: tolerant_pool.partition, class: BatchQualityTolerant, generation: 1, expires_at: 1600)
+  match front_door_admit(
+    evidence: service_caller, presented: presented, mac_result: mac_for(presented: presented), door: quality_only, observed_at: 1100, request: request_one,
+    ledger: fn(pool, reference, grant, generation) { seat_grant_currency_of(pool: pool, walk: held_history, reference: reference, grant: grant, generation: generation) },
+    redeem: redeem_against(redemptions: no_redemptions),
+  ) {
+    FrontDoorRefused { cause: DoorPermitClassNotServed { class: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_acquisition_of_zero_seats_is_not_a_seat() -> Bool {
+  let zero = ChainWalked { oldest_first: [acquired(id: "ev-acquire-7" as NonEmptyStr, actor: service_actor, reference: witness_reference, amount: 0)] }
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: zero) {
+    FrontDoorRefused { cause: DoorSeatAmountNotOneSeat { amount: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_reference_acquired_twice_is_refused_rather_than_resolved() -> Bool {
+  let twice = ChainWalked { oldest_first: [
+    acquired(id: "ev-acquire-7" as NonEmptyStr, actor: service_actor, reference: witness_reference, amount: 1),
+    acquired(id: "ev-acquire-8" as NonEmptyStr, actor: service_actor, reference: witness_reference, amount: 1),
+  ] }
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: twice) {
+    FrontDoorRefused { cause: DoorSeatAcquiredMoreThanOnce { acquisitions: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_claiming_another_fence_generation_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: InteractiveQualitySensitive, generation: 2, expires_at: 1600), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorSeatFenceGenerationDisagrees { claimed: _, recorded: _ } } => true
+    _ => false
+  }
+}
+
+// ── Redemption: one seat, one request in flight, released once, by the door ────────────────
+
+// CONTROL 1. Two gates admit one permit concurrently: both read the chain at the same head and both
+// propose a redemption, and the store's compare-and-set (product.capacity.event_chain decide_append)
+// admits exactly one. The loser re-reads the chain the winner produced and is refused as already
+// redeemed -- so exactly one request is forwarded on the seat.
+test fn two_concurrent_admissions_of_one_permit_forward_exactly_one() -> Bool {
+  let partition = redemption_partition_of(pool_partition: witness_partition)
+  let state0 = redemption_state_of(walk: no_redemptions, reference: witness_reference)
+  let a = propose_redemption(state: state0, head: HeadAbsent, partition: partition, at: 1050, actor: proxy, reference: witness_reference, request: request_one, holder: proxy)
+  let b = propose_redemption(state: state0, head: HeadAbsent, partition: partition, at: 1050, actor: proxy, reference: witness_reference, request: request_two, holder: proxy)
+  match a {
+    RedemptionRefused { cause: _ } => false
+    RedemptionProposed { event: ea, expected: xa } =>
+      match decide_append(expected: xa, observed: HeadAbsent, new_head: "ev-redeem-a" as EventId, generation_before: 0) {
+        AppendStale { expected: _, observed: _ } => false
+        AppendAdmitted { new_head: winner, generation: _ } => {
+          let chain1 = ChainWalked { oldest_first: [ChainEnvelope { id: winner, event: ea }] }
+          let b_lost = match b {
+            RedemptionRefused { cause: _ } => false
+            RedemptionProposed { event: _, expected: xb } =>
+              match decide_append(expected: xb, observed: HeadAt { id: winner }, new_head: "ev-redeem-b" as EventId, generation_before: 1) {
+                AppendAdmitted { new_head: _, generation: _ } => false
+                AppendStale { expected: _, observed: _ } => true
+              }
+          }
+          let b_retry = match propose_redemption(state: redemption_state_of(walk: chain1, reference: witness_reference), head: HeadAt { id: winner }, partition: partition, at: 1051, actor: proxy, reference: witness_reference, request: request_two, holder: proxy) {
+            RedemptionRefused { cause: GrantAlreadyRedeemed { request: q, holder: _ } } => (q as String) == (request_one as String)
+            _ => false
+          }
+          let forwards = [
+            door_verdict_with(evidence: service_caller, presented: good_permit(), at: 1100, history: held_history, redemptions: no_redemptions),
+            door_verdict_with(evidence: service_caller, presented: good_permit(), at: 1100, history: held_history, redemptions: chain1),
+          ]
+          let tally = fold(forwards, init: front_door_tally_empty, f: (t, v) => front_door_tally(tally: t, verdict: v))
+          b_lost && b_retry && tally.forwarded == 1 && front_door_refused_count(tally: tally, cause: "permit-already-redeemed" as NonEmptyStr) == 1
+        }
+      }
+  }
+}
+
+// CONTROL 2. A redeemed permit presented again refuses; it never starts a second stream.
+test fn replaying_a_redeemed_permit_refuses() -> Bool {
+  match door_verdict_with(evidence: service_caller, presented: good_permit(), at: 1100, history: held_history, redemptions: redeemed_once) {
+    FrontDoorRefused { cause: DoorPermitAlreadyRedeemed { cause: GrantAlreadyRedeemed { request: _, holder: _ } } } => true
+    _ => false
+  }
+}
+
+// CONTROL 3. While the stream is in flight the release belongs to the door: the sender's release --
+// which reaches the pool only through gunbc.harness.harness_seat release_retry's redemption gate --
+// does not free the seat.
+test fn a_sender_release_while_the_stream_is_in_flight_does_not_free_the_seat() -> Bool {
+  match redemption_release_owner(state: redemption_state_of(walk: redeemed_once, reference: witness_reference)) {
+    ReleaseOwnedByGate { request: q, holder: h } => (q as String) == (request_one as String) && (h as String) == (proxy as String)
+    _ => false
+  }
+}
+
+// CONTROL 4. The stream's end is one transition for the running request, after which the release is
+// open; a second end refuses, and the pool itself refuses a second release of the reference.
+test fn stream_termination_permits_exactly_one_release() -> Bool {
+  let partition = redemption_partition_of(pool_partition: witness_partition)
+  match propose_use_end(state: redemption_state_of(walk: redeemed_once, reference: witness_reference), head: HeadAt { id: "ev-redeem-1" as EventId }, partition: partition, at: 1200, actor: proxy, reference: witness_reference, request: request_one, outcome: "stream complete" as NonEmptyStr) {
+    RedemptionRefused { cause: _ } => false
+    RedemptionProposed { event: end, expected: _ } => {
+      let ended = ChainWalked { oldest_first: [
+        redemption_envelope(id: "ev-redeem-1" as NonEmptyStr, payload: GrantRedeemed { reference: witness_reference, request: request_one, holder: proxy }),
+        ChainEnvelope { id: "ev-end-1" as EventId, event: end },
+      ] }
+      let state = redemption_state_of(walk: ended, reference: witness_reference)
+      let open_after_end = match redemption_release_owner(state: state) {
+        ReleaseOpen => true
+        _ => false
+      }
+      let second_end_refused = match propose_use_end(state: state, head: HeadAt { id: "ev-end-1" as EventId }, partition: partition, at: 1201, actor: proxy, reference: witness_reference, request: request_one, outcome: "again" as NonEmptyStr) {
+        RedemptionRefused { cause: GrantUseAlreadyEnded { request: _ } } => true
+        _ => false
+      }
+      let double_release = [
+        acquired(id: "ev-acquire-7" as NonEmptyStr, actor: service_actor, reference: witness_reference, amount: 1),
+        envelope_by(id: "ev-release-1" as NonEmptyStr, at: 1200, actor: proxy, payload: PoolReleased { reference: witness_reference, reason: "stream ended" as NonEmptyStr }),
+        envelope_by(id: "ev-release-2" as NonEmptyStr, at: 1201, actor: proxy, payload: PoolReleased { reference: witness_reference, reason: "stream ended again" as NonEmptyStr }),
+      ]
+      let pool_refuses_second = match pool_fold(root: quality_pool.root, oldest_first: double_release) {
+        PoolFoldRefused { at_event: e, wire: _ } => (e as String) == "ev-release-2"
+        PoolFolded { pool: _, generation: _ } => false
+      }
+      open_after_end && second_end_refused && pool_refuses_second
+    }
+  }
+}
+
+// CONTROL 5. The door dies after redeeming: nothing ends the use, so the seat stays held, its release
+// stays the door's, and recovery reports it held AND charged to the redeemed request and proxy since
+// the redemption -- until quiescence is observed, which alone lets recovery end it and release.
+test fn controller_death_after_redemption_leaves_recoverable_charged_state() -> Bool {
+  let state = redemption_state_of(walk: redeemed_once, reference: witness_reference)
+  let held = match redemption_release_owner(state: state) {
+    ReleaseOwnedByGate { request: _, holder: _ } => true
+    _ => false
+  }
+  let charged = match redemption_recovery(state: state, quiescence: QuiescenceUnobserved) {
+    RecoveryHoldCharged { request: q, holder: h, since: s } => (q as String) == (request_one as String) && (h as String) == (proxy as String) && s == 1050
+    _ => false
+  }
+  let recoverable = match redemption_recovery(state: state, quiescence: Quiescent { observed_at: 1300 }) {
+    RecoveryEndThenRelease { request: q } => (q as String) == (request_one as String)
+    _ => false
+  }
+  held && charged && recoverable
+}
+
+// ── The count is per cause ───────────────────────────────────────────────────────────────────
+
+test fn the_tally_keeps_each_refusal_cause_separately_and_counts_forwards_apart() -> Bool {
+  let verdicts = [
+    door_verdict(evidence: service_caller, presented: none, at: 1100, history: held_history),
+    door_verdict(evidence: service_caller, presented: none, at: 1100, history: held_history),
+    door_verdict(evidence: service_caller, presented: good_permit(), at: 1200, history: released_history),
+    door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: held_history),
+  ]
+  let tally = fold(verdicts, init: front_door_tally_empty, f: (t, v) => front_door_tally(tally: t, verdict: v))
+  front_door_refused_count(tally: tally, cause: "permit-absent" as NonEmptyStr) == 2
+    && front_door_refused_count(tally: tally, cause: "seat-released" as NonEmptyStr) == 1
+    && tally.forwarded == 1
+}
+
+// THE LOOKUP IS SOUND ONLY IF THE SEAT RENDERING IS INJECTIVE. These two records render to one string
+// under a plain join of their parts and to two strings here.
+test fn two_seat_records_that_collide_under_a_plain_join_render_apart() -> Bool {
+  let swallowing = harness_seat_reference_record(attempt: "a@1#1/k" as NonEmptyStr, offer_key: "x" as NonEmptyStr, now: 5, round: 1, head: "h" as NonEmptyStr)
+  let honest = harness_seat_reference_record(attempt: "a" as NonEmptyStr, offer_key: "k@5#1/x" as NonEmptyStr, now: 1, round: 1, head: "h" as NonEmptyStr)
+  (harness_seat_reference_wire(r: swallowing) as String) != (harness_seat_reference_wire(r: honest) as String)
+}
+
+// ── Recovery never releases a grant that was never used ─────────────────────────────────────
+
+// THE RULING'S RED. An acquired seat whose permit was never presented is Unredeemed. Recovery -- with
+// or without a quiescence observation -- leaves it with its holder; it is not a release.
+test fn an_acquired_seat_that_was_never_redeemed_survives_recovery() -> Bool {
+  let state = redemption_state_of(walk: no_redemptions, reference: witness_reference)
+  let left_quiescent = match front_door_recovery_plan(recovery: redemption_recovery(state: state, quiescence: Quiescent { observed_at: 1300 })) {
+    PlanLeaveWithHolder => true
+    _ => false
+  }
+  let left_unobserved = match front_door_recovery_plan(recovery: redemption_recovery(state: state, quiescence: QuiescenceUnobserved)) {
+    PlanLeaveWithHolder => true
+    _ => false
+  }
+  left_quiescent && left_unobserved
+}
+
+// THE CONTROL BESIDE IT: a use that ENDED with its seat still held is what recovery releases.
+test fn a_seat_whose_use_ended_but_was_not_released_is_released_by_recovery() -> Bool {
+  let ended = ChainWalked { oldest_first: [
+    redemption_envelope(id: "ev-redeem-1" as NonEmptyStr, payload: GrantRedeemed { reference: witness_reference, request: request_one, holder: proxy }),
+    redemption_envelope(id: "ev-end-1" as NonEmptyStr, payload: GrantUseEnded { reference: witness_reference, request: request_one, outcome: "stream complete" as NonEmptyStr }),
+  ] }
+  match front_door_recovery_plan(recovery: redemption_recovery(state: redemption_state_of(walk: ended, reference: witness_reference), quiescence: QuiescenceUnobserved)) {
+    PlanRelease => true
+    _ => false
+  }
+}
+
+// ── The door's pools belong to the door's group ──────────────────────────────────────────────
+
+fn door_with(pools: List<HarnessSeatPoolIdentity>) -> FrontDoorIdentity {
+  FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: pools }
+}
+
+fn verdict_at_door(door: FrontDoorIdentity) -> FrontDoorVerdict {
+  let presented = good_permit()
+  front_door_admit(
+    evidence: service_caller, presented: presented, mac_result: mac_for(presented: presented), door: door, observed_at: 1100, request: request_one,
+    ledger: fn(pool, reference, grant, generation) { seat_grant_currency_of(pool: pool, walk: held_history, reference: reference, grant: grant, generation: generation) },
+    redeem: redeem_against(redemptions: no_redemptions),
+  )
+}
+
+test fn a_door_configured_with_another_groups_pool_for_the_class_refuses() -> Bool {
+  match verdict_at_door(door: door_with(pools: [group_a_pool, tolerant_pool])) {
+    FrontDoorRefused { cause: DoorPoolConfiguredForAnotherGroup { class: _, pool_group: g } } => (g as String) == "group-a"
+    _ => false
+  }
+}
+
+test fn a_door_configured_with_two_pools_for_one_class_refuses_rather_than_choosing() -> Bool {
+  match verdict_at_door(door: door_with(pools: [quality_pool, quality_pool, tolerant_pool])) {
+    FrontDoorRefused { cause: DoorPoolConfiguredTwice { class: _, pools: n } } => n == 2
+    _ => false
+  }
+}
+
+test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
+  let selected = match front_door_pool_for(door: group_b_door, class: InteractiveQualitySensitive) {
+    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(group: FabricGroupB, class: InteractiveQualitySensitive, seats: 1).partition as String)
+    _ => false
+  }
+  let admits = match verdict_at_door(door: group_b_door) {
+    FrontDoorForward { claims: _, pool: _, request: _ } => true
+    FrontDoorRefused { cause: _ } => false
+  }
+  selected && admits
+}

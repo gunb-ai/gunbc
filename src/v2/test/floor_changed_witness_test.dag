@@ -1,11 +1,12 @@
 module v2.test.floor_changed_witness
 
+import std.types { List }
 import v2.workflow.wet_evidence {
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused, WetTerminalMissing,
   WetEvidenceBinding, CoResidentPreparedSubject,
 }
 
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
   HermeticRouteGapWetEvidence, HermeticRouteGapWetUnavailable, HermeticRouteGapWetAdmitted,
@@ -27,7 +28,7 @@ import v2.workflow.floor_changed_witness {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
+  Planned, PlannedAsChangedWitness, PlannedAsReachConsumer, DeclinedLongModule, DeclinedFixtureMember,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery,
   DeclinedCostDebt,
   required_floor_disposition_with_changed_selection,
@@ -48,8 +49,6 @@ import v2.workflow.floor_terminal_ledger {
   PassedOverBudget, BudgetRefusedBeforeVerdict,
 }
 import v2.std.algebra { Cons, Empty, any }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.nat { Nat }
 import std.measure { CpuClock, WallClock, millisecond, millisecond_count, nanosecond, nanosecond_count }
@@ -188,6 +187,7 @@ test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm()
     declared_wet_pattern: Absent {},
   ) {
     PlannedAsChangedWitness => true
+    PlannedAsReachConsumer => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
@@ -209,6 +209,7 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
     DeclinedOutsideGateClosure => true
     Planned => false
     PlannedAsChangedWitness => false
+    PlannedAsReachConsumer => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
@@ -988,6 +989,7 @@ test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool {
     DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     Planned => false
     PlannedAsChangedWitness => false
+    PlannedAsReachConsumer => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false

@@ -5,12 +5,9 @@ import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_
 import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
+import gunbc.type_declaration_use_census_seed_growth { type_declaration_use_census_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
-import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
-  persisted_resolved_graph_format_wall_seed_growth_justification,
-  resolved_graph_provider_ctx_reuse_seed_growth_justification
-}
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
 import gunbc.floor_teardown_attribution_seed_growth { floor_teardown_attribution_seed_growth_justification }
@@ -29,8 +26,11 @@ import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_gr
 import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
 import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
+import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
+import gunbc.fixture_closure_union_emit_seed_growth { fixture_closure_union_emit_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
-import gunbc.typed_module_store_seed_growth { typed_module_store_seed_growth_justification }
+import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
+import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
@@ -57,10 +57,17 @@ import gunbc.kernel_grounding_interpreter_seed_growth { kernel_grounding_interpr
 import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
+import gunbc.pool_reading_attribution_seed_growth { pool_reading_attribution_seed_growth_justification }
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
+import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
+import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
+import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
+import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
+import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
+import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
 import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
@@ -74,14 +81,20 @@ import gunbc.joint_claim_join_seed_growth { joint_claim_join_seed_growth_justifi
 import gunbc.floor_arm_set_consumer_seed_growth { floor_arm_set_consumer_seed_growth_justification }
 import gunbc.floor_corpus_census_allowance_seed_growth { floor_corpus_census_allowance_seed_growth_justification }
 import gunbc.enrolment_dead_band_seed_growth { enrolment_dead_band_seed_growth_justification }
+import gunbc.host_speed_calibration_seed_growth { host_speed_calibration_seed_growth_justification }
+import gunbc.floor_annotation_erased_attribution_seed_growth { floor_annotation_erased_attribution_seed_growth_justification }
 import gunbc.modeled_operation_realization_seed_growth { modeled_operation_realization_seed_growth_justification }
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
+import gunbc.regen_round_cost_instrument_seed_growth { regen_round_cost_instrument_seed_growth_justification }
+import gunbc.regen_scope_worktree_seed_growth { regen_scope_worktree_seed_growth_justification }
+import gunbc.regen_rustfmt_batch_seed_growth { regen_rustfmt_batch_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
 import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
+import gunbc.process_lifecycle_seed_growth { process_lifecycle_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -115,6 +128,7 @@ import gunbc.floor_route_gap_seed_growth { floor_route_gap_seed_growth_justifica
 import gunbc.floor_cgroup_stat_beat_seed_growth { floor_cgroup_stat_beat_seed_growth_justification }
 import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_growth_justification }
 import gunbc.cross_claim_demand_census_seed_growth { cross_claim_demand_census_seed_growth_justification }
+import gunbc.floor_call_site_demand_seed_growth { floor_call_site_demand_seed_growth_justification }
 import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
 import gunbc.floor_cost_debt_edit_seed_growth { floor_cost_debt_edit_seed_growth_justification }
@@ -122,7 +136,9 @@ import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth
 import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_justification }
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
+import gunbc.floor_cost_debt_verdict_seed_growth { floor_cost_debt_verdict_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
+import gunbc.filesystem_link_create_new_seed_growth { filesystem_link_create_new_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.disposition { Disposition }
@@ -259,8 +275,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
     claim_scope_fixture_seed_growth_justification,
     evaluation_store_address_census_seed_growth_justification,
-    persisted_resolved_graph_format_wall_seed_growth_justification,
-    resolved_graph_provider_ctx_reuse_seed_growth_justification,
     anonymous_record_resolution_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
@@ -271,8 +285,10 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     derived_row_roster_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
+    floor_call_site_demand_seed_growth_justification,
     frame_independent_symbol_seed_growth_justification,
     floor_cost_debt_standing_seed_growth_justification,
+    floor_cost_debt_verdict_seed_growth_justification,
     floor_population_projection_seed_growth_justification,
     stage0_rust_observation_seed_growth_justification,
     observation_scoped_run_seed_growth_justification(),
@@ -290,13 +306,23 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_batch_function_preflight_seed_growth_justification,
     claim_batch_entry_closure_preflight_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
+    pool_reading_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
+    native_serve_program_seed_growth_justification,
+    dependency_demand_census_seed_growth_justification,
+    generic_identity_census_seed_growth_justification,
+    interpolation_hole_census_seed_growth_justification,
+    native_route_refusal_summary_seed_growth_justification,
+    native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,
+    fixture_render_selection_seed_growth_justification,
+    fixture_closure_union_emit_seed_growth_justification,
     fabric_door_socket_seed_growth_justification,
-    typed_module_store_seed_growth_justification,
+    serve_cookie_header_seed_growth_justification,
+    serve_declared_binding_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,
@@ -306,6 +332,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_memory_instrumentation_seed_growth_justification,
     portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
+    filesystem_link_create_new_seed_growth_justification,
     emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,
     parsed_import_statement_bridge_seed_growth_justification,
@@ -318,6 +345,9 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     generated_artifact_boundary_seed_growth_justification,
     regen_convergence_seed_growth_justification,
     dag_artifact_identity_seed_growth_justification,
+    regen_round_cost_instrument_seed_growth_justification,
+    regen_scope_worktree_seed_growth_justification,
+    regen_rustfmt_batch_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
     collect_authored_string_literals_seed_growth_justification,
     authored_string_literal_edge_seed_growth_justification,
@@ -338,16 +368,20 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     operation_requires_query_seed_growth_justification,
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
+    type_declaration_use_census_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
     unimported_bare_provider_gate_seed_growth_justification,
     native_cache_root_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,
+    host_speed_calibration_seed_growth_justification,
+    floor_annotation_erased_attribution_seed_growth_justification,
     modeled_operation_realization_seed_growth_justification,
     observation_file_effect_seed_growth_justification,
     floor_checker_input_seed_growth_justification,
     match_arm_guard_seed_growth_justification,
     value_depth_seed_growth_justification,
-    value_drop_binding_adaptation_seed_growth_justification
+    value_drop_binding_adaptation_seed_growth_justification,
+    process_lifecycle_seed_growth_justification
   ]
 }
 
@@ -418,7 +452,8 @@ fn seed_growth_roster_has_duplicate_keys() -> Bool {
 
 fn seed_growth_uncitable_item_keys() -> List<String> {
   [
-    "v1_compiler.cli_run::impl std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
+    "v1_compiler.cli_run::impl std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt",
+    "v1_compiler.cli_run::impl std::fmt::Display for FixtureRenderRefusal::fmt"
   ]
 }
 
@@ -464,12 +499,26 @@ fn seed_growth_live_lookup(live: Map<String, Bool>, key: String) -> Bool? {
 }
 
 fn seed_growth_stale_justifications(live_items: List<DeclarationRef>) -> List<String> {
+  seed_growth_stale_declarations(live_items: live_items)
+    |> map(r => declaration_ref_display_key(ref: r))
+}
+
+// THE ROSTER BINDING IS ONE STEP AND THE KEY RENDERING ANOTHER. The real-roster binding is its own
+// function so a witness can hold it to the COMPLETE roster (every row reported stale against a live
+// population that names none of them) without paying the display-key render of every row, which is
+// the expense and which no completeness assertion inspects.
+fn seed_growth_stale_declarations(live_items: List<DeclarationRef>) -> List<DeclarationRef> {
+  seed_growth_stale_over(roster: seed_growth_roster_all_declarations(), live_items: live_items)
+}
+
+// THE STALENESS RELATION OVER A SUPPLIED ROSTER. A witness of the relation's shape supplies a
+// small roster (DESIGN section 3, a witness discriminates at one interface).
+fn seed_growth_stale_over(roster: List<DeclarationRef>, live_items: List<DeclarationRef>) -> List<DeclarationRef> {
   let live = seed_growth_live_set(live_items: live_items)
   filter(
-    xs: seed_growth_roster_all_declarations(),
+    xs: roster,
     predicate: fn(r) { !seed_growth_live_has(live: live, r: r) }
   )
-    |> map(r => declaration_ref_display_key(ref: r))
 }
 
 fn seed_growth_unjustified_additions(added: List<DeclarationRef>) -> List<String> {

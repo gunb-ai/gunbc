@@ -25,6 +25,7 @@ import gunbc.host_budget_source {
   HostBudgetSource,
   BudgetSourceCgroupMemoryHigh,
   BudgetSourceCgroupMemoryMax,
+  BudgetSourceCgroupV1HierarchicalMemoryLimit,
   BudgetSourceDarwinPhysicalMemory,
   HostBudgetResolution,
   HostBudgetResolved,
@@ -88,6 +89,7 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 data all_sources: List<HostBudgetSource> = [
   BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
+  BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: "/sys/fs/cgroup/memory/docker/abc" },
   BudgetSourceDarwinPhysicalMemory,
 ]
 
@@ -167,6 +169,9 @@ test fn memory_high_is_an_observed_throttle_not_an_enforced_cap() -> Bool {
     )
     && host_budget_source_bounds_this_process(
       s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" }
+    )
+    && host_budget_source_bounds_this_process(
+      s: BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: "/sys/fs/cgroup/memory" }
     )
 }
 

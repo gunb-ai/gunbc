@@ -14,15 +14,18 @@ import gunbc.compute.work_provider_local {
   compute_stuck_reservation_remedy,
   UnitLifecycleObservations, unit_lifecycle_decide, unit_population,
   UnitPopulation, PopulationOccupied, PopulationEmpty, PopulationUnknown,
-  compute_kill_mode_property, compute_kill_mode_value,
   UnitPropertyReading, unit_property_from_shell,
 }
+import gunbc.compute.unit_bounds { compute_kill_mode_property, compute_kill_mode_value }
+import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
 }
 import std.measure { kibibyte }
+import extdeps.systemd { systemd_unit_property_wire }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.content_hash { serialize_content_hash, content_hash_atom }
 import std.cache_identity { compute_work_artifact_kind }
@@ -356,14 +359,20 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
 // rejected the property, or a unit started by some other path are all outside what any fold over
 // our own argv can see. That is precisely why the release predicate does not lean on the binding --
 // completion must still be confirmed by a positively empty cgroup, and this row only ensures we are
-// not ALSO shipping an invocation that opts into the dangerous mode.
+// not ALSO shipping an invocation that opts into the dangerous mode. The claims are about WHICH
+// SETTINGS the unit binds; rendering the typed properties back to their wire words here is a test
+// observation, not a builder -- nothing hands these words to systemd-run.
+fn property_words(props: List<SystemdRunProperty>) -> List<String> {
+  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+}
+
 test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
   let props = compute_unit_properties(
     layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
     granted: kibibyte(count: 1048576))
-  contains(props, join([compute_kill_mode_property, "=", compute_kill_mode_value], ""))
-    && compute_kill_mode_value == "control-group"
-    && count(filter(props, p => starts_with(s: p, prefix: "MemoryMax="))) == 1
+  contains(property_words(props), join([systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String], ""))
+    && contains(property_words(props), join([systemd_unit_property_wire(property: KillModeProperty) as String, "=", systemd_kill_mode_wire(mode: KillModeControlGroup) as String], ""))
+    && count(filter(property_words(props), p => starts_with(s: p, prefix: "MemoryMax="))) == 1
 }
 
 // A LOSS ANYWHERE IN THE CHAIN REACHES A TERMINAL CONSUMER, which is the property three separate

@@ -1,0 +1,11 @@
+Maximum User IDs     : 10
+Enabled User IDs     : 2
+
+User ID              : 5
+User Name            : 
+Fixed Name           : No
+Access Available     : call-in / callback
+Link Authentication  : disabled
+IPMI Messaging       : disabled
+Privilege Level      : NO ACCESS
+Enable Status        : disabled

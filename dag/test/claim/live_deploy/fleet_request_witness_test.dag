@@ -1,11 +1,15 @@
 module test.claim.live_deploy.fleet_request_witness_test
 
+import gunbc.fleet_converge_scope { LiveDeploy }
+
+import gunbc.fleet_converge_terminal { FullyApplied, AwaitingCapability }
+
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
 import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, serialize_content_hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.member_identity {
   ConvergedMember,
   DirectoryRoot,
@@ -63,14 +67,11 @@ import gunbc.fleet_converge_plan {
   fleet_converge_apply_terminal,
   fleet_converge_plan_artifact_of_request,
   live_deploy_converge_request,
-  LiveDeploy,
   ApplyAdmitted,
   ApplyMemberSetMismatch,
   ApplyAwaitingCapability,
-  FullyApplied,
-  AwaitingCapability,
   ScopeDecoded,
-  ScopeUndecodable,
+  ScopeUndecodable
 }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }

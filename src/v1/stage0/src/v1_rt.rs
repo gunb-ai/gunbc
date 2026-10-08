@@ -265,7 +265,7 @@ impl V2Concat for String {
 
 impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
-        self.extend(other);
+        self.append(other);
         self
     }
 }
@@ -700,7 +700,26 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+// THE EMITTED ORDERING-KEY ADMISSION: the counterpart of the interpreter's admit_emitted_ord_keys.
+// Only String, i64 and bool (and their aliases) are admitted, because on exactly those kinds the
+// native Ord IS the canonical content order (std.algebra TotalOrder). Any other key type -- a
+// derived-Ord record or enum (declaration order), or f64 (no total Ord) -- fails to compile here,
+// at the call, rather than sorting in an order the interpreter would not produce.
+#[diagnostic::on_unimplemented(
+    message = "EMIT REFUSED: `{Self}` is not an admitted ordering key; sorted_map_keys and sort_by admit only String, Int and Bool keys, whose order is the canonical content order in both realizations",
+    label = "ordering key of a type with no canonical emitted order"
+)]
+pub trait CanonicalOrdKey: Ord {}
+impl CanonicalOrdKey for String {}
+impl CanonicalOrdKey for RcStr {}
+impl CanonicalOrdKey for i64 {}
+impl CanonicalOrdKey for bool {}
+
+pub fn canonical_key_cmp<K: CanonicalOrdKey>(a: &K, b: &K) -> std::cmp::Ordering {
+    a.cmp(b)
+}
+
+pub fn sorted_map_keys<K: CanonicalOrdKey + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     let mut keys = map_keys(m);
     keys.sort();
     keys
@@ -730,7 +749,7 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
 }
 
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
-    a.extend(b);
+    a.append(b);
     a
 }
 
@@ -831,7 +850,7 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
-    Rc::make_mut(&mut result).extend(b.iter().cloned());
+    Rc::make_mut(&mut result).append((*b).clone());
     result
 }
 
@@ -1384,6 +1403,10 @@ pub fn gunbc_file_write_create_new(
     let published = std::fs::hard_link(&staging_path, file_path);
     let _ = std::fs::remove_file(&staging_path);
     published
+}
+
+pub fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {
+    std::fs::hard_link(source_path, file_path)
 }
 
 #[derive(Debug, Clone)]

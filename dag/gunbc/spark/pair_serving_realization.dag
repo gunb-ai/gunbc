@@ -2,13 +2,13 @@ module gunbc.spark.pair_serving_realization
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.tools.sha256sum
 import gunbc.output_policy { OutcomeIsData }
 import std.measure { token_count_value, millisecond_count }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, vllm_memory_request_argv, vllm_prefix_caching_argv, ChunkedPrefillRequested, ChunkedPrefillNotRequested }

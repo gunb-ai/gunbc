@@ -4,7 +4,7 @@
 use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
-use crate::std_types::Bool::*;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

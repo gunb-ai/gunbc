@@ -20,15 +20,19 @@ import gunbc.extdeps_scope_frontier {
   DiffAddedObservation, AddedPathsObserved, DiffObserveFailed, DiffParseTruncated,
 }
 
-// THIS GATE DOES NOT CURRENTLY RUN (measured 2026-08-19): no workflow in .github/workflows/
-// references it, and the only executing CI step is `claim_executor --required-ci`, whose floor phase is the fold this refers to (it was `--required-floor` until the 2026-08-20 consolidation folded parse, regen and the floor into one invocation). The note
-// below calls it a "server-side per-PR wall" that "refuses" — present tense, and not true today.
-// DESIGN's "Building & checks" section already declares the floor cut's bounded rung drop and names
-// the effect gates among what is unguarded; this comment carries that fact to the module a reader
-// actually opens. Nothing is re-added, deleted, or re-rostered here — only the description is
-// corrected. The durable rule this is an instance of is stated in full in
-// tools.prose_row_introduction_gate: the .dag call graph is not the execution graph, and "runs in
-// CI" is decided by .github/workflows/ and the fold it invokes, never by who calls whom in .dag.
+// EXECUTING ROUTE (re-measured 2026-10-01, replacing a stale "does not run" note from 2026-08-19):
+// this gate DOES execute on a CI route. It runs wherever `claim_executor --required-ci` runs the
+// required floor's gate witnesses (`.github/workflows/witnesses.yml`), as the
+// `extdeps_scope_placement_gate_passes` witness of `tools.floor_effect_gate_witness` — enrolled on
+// the GithubActionsCiJob surface by the `ExtdepsScopePlacementGate` row of `commit_gate_roster`
+// (dag/gunbc/commit_workflow.dag), projected into `gunbc_ci_floor_gates` by `gunbc.ci_spec`, and
+// dispatched by `tools.ci_gates` `run_spec_gate`. Its reds were loud on that route before the
+// 2026-08-24 loudness repair (ten consecutive `extdeps_scope_placement_gate_passes` reds are
+// recorded at cli_run::entry_resolve's failure-receipt companion note), and the required floor
+// has billed the gate row directly (83.0s before the module-path-index warm, required_floor_runner
+// quarantine note). The durable rule the old note was an instance of still holds: the .dag call
+// graph is not the execution graph, and "runs in CI" is decided by the executing fold
+// (`claim_executor --required-ci`) reading the gate roster — never by who calls whom in .dag.
 // Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281;
 // modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling
 // in #7591 — this gate is independent and remains). It collects Added/Copied/Renamed paths with
@@ -63,7 +67,12 @@ fn diff_added_paths_observation(success: Bool, raw: String) -> DiffAddedObservat
               DiffAddedStatus => concat(acc, [entry.path])
               DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
               DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
-              _ => acc
+              DiffDeletedStatus => acc
+              DiffModifiedStatus => acc
+              DiffPairingBrokenStatus => acc
+              DiffTypeChangedStatus => acc
+              DiffUnmergedStatus => acc
+              DiffUnknownGitStatus { raw: _ } => acc
             }
           })
         }

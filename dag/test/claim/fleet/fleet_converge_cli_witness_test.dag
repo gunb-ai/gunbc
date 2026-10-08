@@ -288,18 +288,17 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
 // as un-migrated modeling for that reason; the enumeration only preserves behaviour if
 // something asserts what the behaviour IS, so the table is the evidence and not the note.
 //
-// Read as a lattice Absent < Drifted < VerdictConverged: the meet is the weaker of the two,
-// commutative, idempotent, with VerdictConverged as the identity and Absent absorbing. The
-// clauses run in that order: Absent absorbing from either side, then the Drifted row the
+// Read as a lattice VerdictAbsent < Drifted < VerdictConverged: the meet is the weaker of the two,
+// commutative, idempotent, with VerdictConverged as the identity and VerdictAbsent absorbing. The
+// clauses run in that order: VerdictAbsent absorbing from either side, then the Drifted row the
 // wildcard used to answer, then converged reachable only when both sides are converged.
 test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
-  let absent = converge_verdict(effective: "", expected: "x")
-  converge_verdict_label(v: absent) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: absent, b: absent)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: absent, b: Drifted)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: absent, b: VerdictConverged)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: absent)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: absent)) == "absent"
+  converge_verdict_label(v: converge_verdict(effective: "", expected: "x")) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: VerdictAbsent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: Drifted)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: VerdictConverged)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictAbsent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: VerdictAbsent)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Drifted)) == "drifted"
     && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictConverged)) == "drifted"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Drifted)) == "drifted"

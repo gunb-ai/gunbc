@@ -1,7 +1,7 @@
 module std.literal_elaboration
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
 // THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
@@ -78,8 +78,6 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 // renamed variant is a changed row, never a stale spelling inside the compiler.
 //   PeanoUnfold    a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
 //                  n deep around the nullary `zero`.
-//   BooleanUnfold  a kernel bool unfolds to the destination's nullary true or false constructor
-//                  (v2.std.logic Bool = True | False, declared structural on purpose).
 //   UnicodeScalarSequenceUnfold
 //                  a kernel string literal unfolds to the sequence of its Unicode scalar values
 //                  (std.unicode.types, definition D76) -- the unique monoid homomorphism from the
@@ -96,11 +94,10 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 //                  scalar values, not its UTF-8 encoding.
 type LiteralUnfolding
   = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
-  | BooleanUnfold { true_variant: DeclarationRef, false_variant: DeclarationRef }
   | UnicodeScalarSequenceUnfold
 
 // THE DESTINATION KEY SURVIVES RESOLUTION. `destination` names the declaration the resolved
-// boundary type actually presents. For a nominal destination (v2.std.nat.Nat, v2.std.logic.Bool)
+// boundary type actually presents. For a nominal destination (v2.std.nat.Nat)
 // that is the declaration itself and `element` is Absent. For the text carrier the resolver
 // deliberately peels every `type X = FreeMonoid<Char>` spelling to the one structural carrier
 // (String is a container-alias spelling, `std.types` `container_template_alias_rows`, so no
@@ -252,4 +249,88 @@ type LiteralElaboration {
   source_kind: LiteralSourceKind
   destination: DeclarationRef
   homomorphism: LiteralHomomorphism
+}
+
+// A KERNEL MINT THAT STANDS FOR A CORPUS DECLARATION. The seed mints a small set of types into its
+// kernel scope so that surface sugar has something to resolve to before any import is read: `T?`
+// resolves to a kernel coproduct spelled Optional. Such a mint has no declaration of its own, so an
+// arm read through it could only report that its owner was unrecovered -- while the same arm read
+// through an import of the corpus declaration reported that declaration. One concept, two
+// identities. A row here says which declaration the mint IS, keyed on the exact DeclarationRef, and
+// the consumer reads the arm's identity from the row. The mint's SHAPE is checked against the
+// declaration where the declaring module is typechecked (v1.compiler.infer
+// kernel_mint_shape_diagnostics), so a row cannot bind a mint to a declaration it does not match.
+// A minted name with no row keeps its kernel identity.
+type KernelMintDeclaration {
+  minted_name: NonEmptyStr
+  declaration: DeclarationRef
+}
+
+type KernelMintDeclarationLookup
+  = KernelMintDeclarationFound { declaration: DeclarationRef }
+  | KernelMintDeclarationAbsent
+  | KernelMintDeclarationAmbiguous { row_count: Int }
+
+fn kernel_mint_declaration_for(rows: List<KernelMintDeclaration>, minted_name: String) -> KernelMintDeclarationLookup {
+  let matching = rows |> filter(r => (r.minted_name as String) == minted_name)
+  let n = matching |> count
+  if n == 0 {
+    KernelMintDeclarationAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => KernelMintDeclarationFound { declaration: row.declaration }
+      Absent => KernelMintDeclarationAbsent
+    }
+  } else {
+    KernelMintDeclarationAmbiguous { row_count: n }
+  }
+}
+
+// WHETHER A DECLARATION OWNS THE ARMS OF A NAMED KERNEL MINT, for a consumer holding an arm's
+// declaration identity. Three answers, because the binding itself can be undecidable: with two
+// rows for one mint no declaration can be said to be the one, and a consumer that read that as
+// "not the mint" would silently stop treating the mint's arms as the mint's. The ambiguous answer
+// is its own arm so the consumer must refuse on it.
+type KernelMintOwnership
+  = DeclarationOwnsTheMint
+  | DeclarationDoesNotOwnTheMint
+  | KernelMintOwnershipAmbiguous { row_count: Int }
+
+fn kernel_mint_ownership(rows: List<KernelMintDeclaration>, minted_name: String, declaration: DeclarationRef) -> KernelMintOwnership {
+  match kernel_mint_declaration_for(rows: rows, minted_name: minted_name) {
+    KernelMintDeclarationFound { declaration: bound } =>
+      if declaration_ref_eq(a: bound, b: declaration) { DeclarationOwnsTheMint } else { DeclarationDoesNotOwnTheMint }
+    KernelMintDeclarationAbsent => DeclarationDoesNotOwnTheMint
+    KernelMintDeclarationAmbiguous { row_count: n } => KernelMintOwnershipAmbiguous { row_count: n }
+  }
+}
+
+// WHETHER AN AUTHORED IMPORT OF A KERNEL-MINTED SPELLING IS THE MINT ITSELF. The exemption is the
+// full DeclarationRef, not the module path: a row for owner.Maybe does not admit importing
+// owner.Optional. Ambiguous mint rows are their own arm so the consumer cannot guess a module.
+type KernelNamedImportStanding
+  = KernelNamedImportAdmitted
+  | KernelNamedImportCollides { kernel_declaration_module: String }
+  | KernelNamedImportMintAmbiguous { row_count: Int }
+
+fn kernel_named_import_standing(
+  imported_name: String,
+  import_path: String,
+  module_declares_type: Bool,
+  rows: List<KernelMintDeclaration>
+) -> KernelNamedImportStanding {
+  if module_declares_type == false {
+    KernelNamedImportAdmitted
+  } else {
+    match kernel_mint_declaration_for(rows: rows, minted_name: imported_name) {
+      KernelMintDeclarationFound { declaration: d } =>
+        if declaration_ref_eq(a: d, b: decl_ref(module_path: import_path, decl_name: imported_name)) {
+          KernelNamedImportAdmitted
+        } else {
+          KernelNamedImportCollides { kernel_declaration_module: d.module_path as String }
+        }
+      KernelMintDeclarationAbsent => KernelNamedImportAdmitted
+      KernelMintDeclarationAmbiguous { row_count: n } => KernelNamedImportMintAmbiguous { row_count: n }
+    }
+  }
 }

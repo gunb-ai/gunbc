@@ -1,0 +1,416 @@
+module extdeps.cloudflare.r2_lifecycle
+import std.resources { Network }
+
+import std.types { NonEmptyStr, List, Secret, Int, Bool, Json }
+import std.optional { Present, Absent }
+import v2.std.algebra { skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.cloudflare.client_v4 { cloudflare_client_v4_base, CloudflareApiError }
+import extdeps.languages.json.emit {
+  JsonValue, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject, JsonNull,
+  json_kv, json_string, json_int, json_bool, json_object, json_array, serialize_json,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+
+// THE R2 BUCKET LIFECYCLE RESOURCE OF THE client/v4 API, one module per API resource as
+// extdeps.cloudflare.r2_buckets is (and for its reason: a `service cloudflare.*` binds the name
+// `cloudflare` in every importer). Modeled as the upstream reference pages state it, read 2026-10-02:
+//
+//   PUT /accounts/{account_id}/r2/buckets/{bucket_name}/lifecycle  body { rules: [rule] }
+//   GET /accounts/{account_id}/r2/buckets/{bucket_name}/lifecycle  result { rules: [rule] }
+//   rule = { id: string, enabled: boolean, conditions: { prefix: string },
+//            deleteObjectsTransition?: { condition?: { maxAge: number, type: "Age" }
+//                                                   | { date: string, type: "Date" } },
+//            abortMultipartUploadsTransition?: ..., storageClassTransitions?: [...] }
+//   maxAge: "Condition for lifecycle transitions to apply after an object reaches an age in seconds."
+//
+// THE PUT REPLACES THE BUCKET'S WHOLE RULE SET: the body is the complete list, so a caller converges
+// the set, never one rule. Two Age transitions are modeled, deleteObjectsTransition and
+// abortMultipartUploadsTransition (the second is how Cloudflare's default rule on a new bucket is
+// written), scoped to a prefix or to the whole bucket. A rule carrying both or neither, a Date
+// condition or storageClassTransitions is read back as a rule this model does not describe, and a
+// converge comparing against it refuses rather than overwriting it unread.
+// The cf-r2-jurisdiction header is not carried, so both operations address the default
+// jurisdiction, as extdeps.cloudflare.r2_buckets states for its own.
+
+data r2_lifecycle_put_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/lifecycle/methods/update"
+  }
+}
+
+data r2_lifecycle_get_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/lifecycle/methods/get"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = r2_lifecycle_get_authority
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloudflare.r2_lifecycle",
+      decl_name: "R2LifecycleRule",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [r2_lifecycle_put_authority]
+}
+
+// A RULE'S ACTION, ONE OF THE TWO AGE TRANSITIONS THIS MODEL DESCRIBES: deleteObjectsTransition and
+// abortMultipartUploadsTransition, each with an { type: "Age", maxAge } condition. A rule carrying both,
+// neither, a Date condition or storageClassTransitions is not modeled and reads as unmodeled.
+type R2LifecycleTransition
+  = R2DeleteObjectsAfterAge { max_age_seconds: Int }
+  | R2AbortMultipartUploadsAfterAge { max_age_seconds: Int }
+
+// A RULE'S SCOPE, BY MEANING RATHER THAN BY SPELLING. The UPDATE reference declares
+// `conditions.prefix: string` and says an empty prefix scopes the rule to every object; the live GET
+// answered Cloudflare's own default with `conditions: {}`. Both spellings are R2BucketWide, so a rule
+// read back in either form compares equal to the one this model writes, which is the documented
+// `prefix: ""`. A non-empty prefix is R2Prefix.
+type R2LifecycleScope
+  = R2BucketWide
+  | R2Prefix { prefix: NonEmptyStr }
+
+type R2LifecycleRule {
+  id: NonEmptyStr
+  enabled: Bool
+  scope: R2LifecycleScope
+  transition: R2LifecycleTransition
+}
+
+// GetRaw READS ITS BODY AS TEXT, WHOLE, and r2_lifecycle_read_body parses it. Without response_format:
+// Text the transport JSON-decodes the answer and projects a top-level `body` field the client/v4
+// envelope { result, success, errors, messages } never has, so every read refused "null at body"
+// (fleet-converge r2_bucket_ensure run 37294324885, 2026-10-05) -- the class
+// extdeps.cloudflare.account_api_tokens names beside ListPermissionGroupsRaw.
+service cloudflare.R2BucketLifecycle {
+  config {
+    endpoint: cloudflare_client_v4_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation GetRaw {
+    requires Network
+    input {
+      auth_token: Secret
+      account_id: String
+      bucket_name: String
+    }
+    output {
+      body: String from "body"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}/lifecycle",
+      response_format: Text
+    }
+    response {
+      200 => String
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      404 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
+  operation Put {
+    requires Network
+    input {
+      auth_token: Secret
+      account_id: String
+      bucket_name: String
+      rules: Json
+    }
+    transport rest {
+      method: PUT,
+      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}/lifecycle",
+      body: { rules: rules }
+    }
+    response {
+      200 => String
+      400 => CloudflareApiError
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      404 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+}
+
+// THE WIRE FORM OF THE RULE SET A PUT CARRIES, derived from the modeled rules and nothing else.
+fn r2_lifecycle_rule_json(rule: R2LifecycleRule) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "id", value: json_string(s: rule.id as String)),
+    json_kv(key: "enabled", value: json_bool(b: rule.enabled)),
+    json_kv(key: "conditions", value: json_object(members: [json_kv(key: "prefix", value: json_string(s: match rule.scope {
+      R2BucketWide => ""
+      R2Prefix { prefix: p } => p as String
+    }))])),
+    json_kv(key: r2_lifecycle_transition_key(t: rule.transition), value: json_object(members: [
+      json_kv(key: "condition", value: json_object(members: [
+        json_kv(key: "type", value: json_string(s: "Age")),
+        json_kv(key: "maxAge", value: json_int(n: r2_lifecycle_transition_age(t: rule.transition))),
+      ])),
+    ])),
+  ])
+}
+
+fn r2_lifecycle_transition_key(t: R2LifecycleTransition) -> String {
+  match t {
+    R2DeleteObjectsAfterAge { max_age_seconds: _ } => "deleteObjectsTransition"
+    R2AbortMultipartUploadsAfterAge { max_age_seconds: _ } => "abortMultipartUploadsTransition"
+  }
+}
+
+fn r2_lifecycle_transition_age(t: R2LifecycleTransition) -> Int {
+  match t {
+    R2DeleteObjectsAfterAge { max_age_seconds: a } => a
+    R2AbortMultipartUploadsAfterAge { max_age_seconds: a } => a
+  }
+}
+
+fn r2_lifecycle_rules_wire(rules: List<R2LifecycleRule>) -> String {
+  serialize_json(v: json_array(elements: map(rules, r => r2_lifecycle_rule_json(rule: r))))
+}
+
+// THE CANONICAL TEXT OF A RULE SET, so a desired set and a read-back set compare as one string:
+// one line per rule, sorted by id, every modeled field.
+fn r2_lifecycle_rule_line(rule: R2LifecycleRule) -> String {
+  join([
+    rule.id as String,
+    if rule.enabled { "enabled" } else { "disabled" },
+    match rule.scope { R2Prefix { prefix: p } => concat("prefix=", p as String) R2BucketWide => "bucket-wide" },
+    r2_lifecycle_transition_key(t: rule.transition),
+    concat("max_age=", to_string(r2_lifecycle_transition_age(t: rule.transition))),
+  ], " ")
+}
+
+fn r2_lifecycle_rules_canonical(rules: List<R2LifecycleRule>) -> String {
+  join(map(sort_by(rules, fn(r) { r.id as String }), r => r2_lifecycle_rule_line(rule: r)), "\n")
+}
+
+// ── READING THE RULE SET BACK ───────────────────────────────────────────────────────────────────
+//
+// THREE ANSWERS AND NO FOURTH. The bucket's rules, every one of them modeled; a rule set this model
+// cannot describe (a transition other than delete-by-age, a Date condition, a missing field), named
+// so the converge refuses instead of replacing rules it never read; or no reading at all. A rule
+// set that is merely EMPTY is a reading -- the bucket has no rules -- and not a refusal.
+type R2LifecycleRead
+  = R2LifecycleRulesRead { rules: List<R2LifecycleRule> }
+  | R2LifecycleRulesUnmodeled { cause: NonEmptyStr }
+  | R2LifecycleReadRefused { cause: NonEmptyStr }
+
+fn lifecycle_member(v: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: x } => Present { value: x }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn lifecycle_member_absent(v: JsonValue, key: String) -> Bool {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => true
+    JsonMemberFound { value: _ } => false
+    JsonMemberDuplicated { count: _ } => false
+    JsonMemberNotAnObject => false
+  }
+}
+
+fn lifecycle_string_of(v: JsonValue) -> String? {
+  match v {
+    JsonString { value: s } => Present { value: s }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn lifecycle_bool_of(v: JsonValue) -> Bool? {
+  match v {
+    JsonBool { value: b } => Present { value: b }
+    JsonNull => none
+    JsonString { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn lifecycle_int_of(v: JsonValue) -> Int? {
+  match v {
+    JsonNumber { lexeme: lex } => parse_int(s: lex as String)
+    JsonNull => none
+    JsonString { value: _ } => none
+    JsonBool { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn lifecycle_string(v: JsonValue?) -> String? {
+  match v {
+    Present { value: x } => lifecycle_string_of(v: x)
+    Absent => none
+  }
+}
+
+fn lifecycle_bool(v: JsonValue?) -> Bool? {
+  match v {
+    Present { value: x } => lifecycle_bool_of(v: x)
+    Absent => none
+  }
+}
+
+fn lifecycle_int(v: JsonValue?) -> Int? {
+  match v {
+    Present { value: x } => lifecycle_int_of(v: x)
+    Absent => none
+  }
+}
+
+fn lifecycle_age_transition(rule: JsonValue, key: String) -> Int? {
+  match lifecycle_member(v: rule, key: key) {
+    Absent => none
+    Present { value: t } =>
+      match lifecycle_member(v: t, key: "condition") {
+        Absent => none
+        Present { value: c } =>
+          match lifecycle_string(v: lifecycle_member(v: c, key: "type")) {
+            Present { value: kind } =>
+              if kind == "Age" { lifecycle_int(v: lifecycle_member(v: c, key: "maxAge")) } else { none }
+            Absent => none
+          }
+      }
+  }
+}
+
+// EXACTLY ONE MODELED TRANSITION, read only when the other is absent: a rule carrying both, or
+// neither, or one this model cannot read, is not modeled.
+fn lifecycle_transition(rule: JsonValue) -> R2LifecycleTransition? {
+  let has_delete = !lifecycle_member_absent(v: rule, key: "deleteObjectsTransition")
+  let has_abort = !lifecycle_member_absent(v: rule, key: "abortMultipartUploadsTransition")
+  if has_delete && !has_abort {
+    match lifecycle_age_transition(rule: rule, key: "deleteObjectsTransition") {
+      Present { value: a } => Present { value: R2DeleteObjectsAfterAge { max_age_seconds: a } }
+      Absent => none
+    }
+  } else if has_abort && !has_delete {
+    match lifecycle_age_transition(rule: rule, key: "abortMultipartUploadsTransition") {
+      Present { value: a } => Present { value: R2AbortMultipartUploadsAfterAge { max_age_seconds: a } }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+// READING THE SCOPE: an absent prefix and an empty one are both R2BucketWide; a non-empty string is
+// R2Prefix; any other value (a non-string, a duplicated member) is unreadable, and the rule is not
+// modeled.
+type LifecycleScopeRead
+  = LifecycleScopeRead { scope: R2LifecycleScope }
+  | LifecycleScopeUnreadable
+
+fn lifecycle_scope(conditions: JsonValue) -> LifecycleScopeRead {
+  if lifecycle_member_absent(v: conditions, key: "prefix") {
+    LifecycleScopeRead { scope: R2BucketWide }
+  } else {
+    match lifecycle_string(v: lifecycle_member(v: conditions, key: "prefix")) {
+      Present { value: p } =>
+        if p == "" { LifecycleScopeRead { scope: R2BucketWide } } else { LifecycleScopeRead { scope: R2Prefix { prefix: p as NonEmptyStr } } }
+      Absent => LifecycleScopeUnreadable
+    }
+  }
+}
+
+fn lifecycle_rule_with(id: String, enabled: Bool, scope: R2LifecycleScope, rule: JsonValue) -> R2LifecycleRule? {
+  match lifecycle_transition(rule: rule) {
+    Absent => none
+    Present { value: t } =>
+      if id == "" { none } else {
+        Present { value: R2LifecycleRule { id: id as NonEmptyStr, enabled: enabled, scope: scope, transition: t } }
+      }
+  }
+}
+
+fn lifecycle_rule_of(rule: JsonValue) -> R2LifecycleRule? {
+  if !lifecycle_member_absent(v: rule, key: "storageClassTransitions") {
+    none
+  } else {
+    match lifecycle_string(v: lifecycle_member(v: rule, key: "id")) {
+      Absent => none
+      Present { value: id } =>
+        match lifecycle_bool(v: lifecycle_member(v: rule, key: "enabled")) {
+          Absent => none
+          Present { value: enabled } =>
+            match lifecycle_member(v: rule, key: "conditions") {
+              Absent => none
+              Present { value: conditions } =>
+                match lifecycle_scope(conditions: conditions) {
+                  LifecycleScopeUnreadable => none
+                  LifecycleScopeRead { scope: sc } => lifecycle_rule_with(id: id, enabled: enabled, scope: sc, rule: rule)
+                }
+            }
+        }
+    }
+  }
+}
+
+fn lifecycle_rules_of(elements: List<JsonValue>, acc: List<R2LifecycleRule>) -> R2LifecycleRead {
+  match first(elements) {
+    Absent => R2LifecycleRulesRead { rules: acc }
+    Present { value: e } =>
+      match lifecycle_rule_of(rule: e) {
+        Absent => R2LifecycleRulesUnmodeled { cause: concat("the bucket holds a lifecycle rule this model does not describe: ", serialize_json(v: e)) as NonEmptyStr }
+        Present { value: r } => lifecycle_rules_of(elements: skip(xs: elements, n: 1), acc: concat(acc, [r]))
+      }
+  }
+}
+
+// PURE OVER THE BODY, so every arm is witnessable from a fixture document.
+fn r2_lifecycle_read_body(body: String) -> R2LifecycleRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: gap } => R2LifecycleReadRefused { cause: concat("the lifecycle answer is not one JSON document: ", json_document_gap_text(gap: gap)) as NonEmptyStr }
+    JsonDocumentParsed { value: doc } =>
+      match lifecycle_member(v: doc, key: "result") {
+        Absent => R2LifecycleReadRefused { cause: "the lifecycle answer carries no result" }
+        Present { value: result } =>
+          match lifecycle_member(v: result, key: "rules") {
+            Present { value: JsonArray { elements: es } } => lifecycle_rules_of(elements: es, acc: [])
+            Absent => R2LifecycleRulesRead { rules: [] }
+            Present { value: _ } => R2LifecycleReadRefused { cause: "the lifecycle answer's rules is not an array" }
+          }
+      }
+  }
+}
+
+fn r2_lifecycle_read(outcome: RestResult<String>) -> R2LifecycleRead {
+  match outcome {
+    RestAnswered { answer } => r2_lifecycle_read_body(body: answer)
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: status, body: b } =>
+        R2LifecycleReadRefused { cause: join(["the lifecycle read was refused with status ", to_string(status), ": ", b], "") as NonEmptyStr }
+      RestTransportRefused { cause: cause } => R2LifecycleReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
+      RestBodyUndecodable { status: status, cause: cause } =>
+        R2LifecycleReadRefused { cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr }
+    }
+  }
+}

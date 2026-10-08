@@ -1,5 +1,6 @@
 module v2.test.claim.body_cast_node
 
+import std.types { List }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, list_snoc_item }
@@ -16,7 +17,6 @@ import v2.test.lens_common.infer_fixture { claim_canonical_grounding, claim_infe
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -30,7 +30,6 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
@@ -47,7 +46,7 @@ import v2.std.node {
   node_synthetic,
   well_formed
 }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.runtime { RuntimeValue }
 import v2.std.type_binder { cast_target_edge, cast_target_optional, type_binder_labels_conform }
 import v2.test.claim.fold_lowering { lowered_fixture_loop }
@@ -72,12 +71,6 @@ fn bcn_tail_cast() -> Outcome<ResolvedTree> {
 
 fn bcn_let_value_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
-}
-
-// The `in` form of the let: its value was located by a depth-first search that stopped inside the
-// cast's own `as T` spine, so on main this refused body_lowering_reason_let_navigation_refused.
-fn bcn_let_in_value_cast() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int in y\n}\n")
 }
 
 fn bcn_call_argument_cast() -> Outcome<ResolvedTree> {
@@ -249,18 +242,6 @@ test fn bcn_tail_cast_carries_its_target() -> Bool {
 
 test fn bcn_let_value_cast_carries_its_target() -> Bool {
   bcn_one_cast(o: bcn_let_value_cast())
-}
-
-// The let-in row's verdict is a nullary pure producer over the production route, enrolled warm in
-// v2.workflow.floor_pure_producer_share: its assemble is paid once in preparation, and the claim
-// reads the stored Bool. Its first floor run refused the claim that paid its own assemble against
-// the new-witness budget.
-fn bcn_let_in_value_cast_verdict() -> Bool {
-  bcn_one_cast(o: bcn_let_in_value_cast())
-}
-
-test fn bcn_let_in_value_cast_carries_its_target() -> Bool {
-  bcn_let_in_value_cast_verdict()
 }
 
 test fn bcn_call_argument_cast_carries_its_target() -> Bool {

@@ -1,11 +1,15 @@
 module gunbc.auth.approval_store_receipt
 
+import std.logic { Bool }
 import std.types { NonEmptyStr, Timestamp, String, Int, List }
-import v2.std.algebra { skip, length }
-import v2.std.optional { Present, Absent }
+import v2.std.algebra { skip }
+import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_first }
-import extdeps.crypto.mac { MacKey, MacKeyId, MacVerification, MacVerified, mac_verify, mac_verification_reason }
+import extdeps.crypto.mac {
+  MacKey, MacKeyId, MacVerification, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed,
+  mac_verify, mac_verification_reason,
+}
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.durable_cas_file_store { CasGenerationRead, GenerationPresent, GenerationAbsent, GenerationRefused, cas_read_generation }
 import gunbc.auth.approval_capability {
@@ -245,7 +249,7 @@ fn receipt_line_at(lines: List<String>, i: Int) -> String {
 
 fn request_field(line: String, key: String) -> String {
   let prefix = join([key, "="], "")
-  if starts_with(s: line, prefix: prefix) { substring(s: line, start: length(prefix), end: length(line)) } else { "" }
+  if starts_with(s: line, prefix: prefix) { substring(s: line, start: string_length(s: prefix), end: string_length(s: line)) } else { "" }
 }
 
 // THE WIRE A RECEIPT TRAVELS AS: its signing input, then its tag, one line each. The signing input
@@ -265,48 +269,73 @@ fn receipt_refused(status: Int, reason: String) -> StoreReceiptAnswer {
   StoreReceiptAnswer { status: status, body: join(["store-receipt refused: ", reason, "\n"], "") }
 }
 
-// THE ANSWER OVER SUPPLIED READINGS, the order the handler holds: parse the body, authenticate the
-// asker under the submission key, and only then read the escalation -- so an unauthenticated asker
-// learns nothing about which escalations exist or how they stand.
-fn store_receipt_answer_over(
-  escalation_id: NonEmptyStr,
-  body: String,
-  submission_keyring: ApprovalKeyringRead,
-  slot: fn() -> EscalationSlot,
-  filing: fn() -> CasGenerationRead,
-  receipt_keyring: fn() -> ApprovalKeyringRead,
-) -> StoreReceiptAnswer {
+// THE ASKER'S STANDING, decided before any escalation is read: either the asker is authenticated
+// under the submission key for the attempt it presents, or the route already has its answer.
+type StoreReceiptAsker
+  = StoreReceiptAskerAuthenticated { attempt: AttemptIdentity }
+  | StoreReceiptAskerRefused { answer: StoreReceiptAnswer }
+
+// THE AUTHENTICATION OVER SUPPLIED READINGS: parse the body, then verify the MAC under the
+// submission key. Pure, and it takes no escalation reading at all -- the order the handler holds
+// (authenticate, and only then read the escalation, so an unauthenticated asker learns nothing
+// about which escalations exist or how they stand) is carried by the route's control flow and not
+// by a deferred reader handed in here.
+fn authenticate_store_receipt_asker(escalation_id: NonEmptyStr, body: String, submission_keyring: ApprovalKeyringRead) -> StoreReceiptAsker {
   match parse_store_receipt_request(body: body) {
-    Absent => receipt_refused(status: 400, reason: "the body is not `attempt=<attempt>` then `tag=<hex>`")
+    Absent => StoreReceiptAskerRefused { answer: receipt_refused(status: 400, reason: "the body is not `attempt=<attempt>` then `tag=<hex>`") }
     Present { value: req } =>
       match submission_keyring {
-        ApprovalKeyringRefused { cause: _ } => receipt_refused(status: 503, reason: "the submission key is unavailable, so no asker can be authenticated")
+        ApprovalKeyringRefused { cause: _ } => StoreReceiptAskerRefused { answer: receipt_refused(status: 503, reason: "the submission key is unavailable, so no asker can be authenticated") }
         ApprovalKeyLoaded { key: key } => {
           let message = store_receipt_request_message(escalation_id: escalation_id, attempt: req.attempt)
           let verification: MacVerification = mac_verify(key: key, message: message, tag_hex: req.tag_hex)
-          let authenticated = match verification { MacVerified { verified: v } => v.message == message  _ => false }
-          if !authenticated {
-            receipt_refused(status: 403, reason: join(["the asker is not authenticated under the submission key: ", mac_verification_reason(v: verification)], ""))
+          if mac_verification_covers(verification: verification, message: message) {
+            StoreReceiptAskerAuthenticated { attempt: req.attempt }
           } else {
-            match issue_store_receipt_over(slot: slot(), filing: filing(), attempt: req.attempt, keyring: receipt_keyring()) {
-              StoreReceiptIssued { receipt: r } => StoreReceiptAnswer { status: 200, body: store_receipt_wire(receipt: r) }
-              StoreReceiptRefused { refusal: why } => receipt_refused(status: store_receipt_refusal_status(r: why), reason: store_receipt_refusal_reason(r: why))
-            }
+            StoreReceiptAskerRefused { answer: receipt_refused(status: 403, reason: join(["the asker is not authenticated under the submission key: ", mac_verification_reason(v: verification)], "")) }
           }
         }
       }
   }
 }
 
+fn mac_verification_covers(verification: MacVerification, message: NonEmptyStr) -> Bool {
+  match verification {
+    MacVerified { verified: v } => v.message == message
+    MacTagMismatch { key_id: _ } => false
+    MacKeyUnknown { key_id: _ } => false
+    MacKeyRetired { key_id: _, retired_at: _ } => false
+    MacSuiteMismatch { expected: _, key_suite: _ } => false
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => false
+  }
+}
+
+fn store_receipt_issuance_answer(issuance: StoreReceiptIssuance) -> StoreReceiptAnswer {
+  match issuance {
+    StoreReceiptIssued { receipt: r } => StoreReceiptAnswer { status: 200, body: store_receipt_wire(receipt: r) }
+    StoreReceiptRefused { refusal: why } => receipt_refused(status: store_receipt_refusal_status(r: why), reason: store_receipt_refusal_reason(r: why))
+  }
+}
+
+// THE ROUTE. The three escalation readings (the slot, its generation-1 filing, the receipt keyring)
+// are performed HERE, in the authenticated arm and nowhere else, and handed to the pure mint as
+// values.
 fn store_receipt_answer(escalation_id: NonEmptyStr, body: String) -> StoreReceiptAnswer {
-  store_receipt_answer_over(
-    escalation_id: escalation_id,
-    body: body,
-    submission_keyring: read_submission_keyring(),
-    slot: fn() { observe_escalation(root: approval_decision_store_root, escalation_id: escalation_id) },
-    filing: fn() { cas_read_generation(root: approval_decision_store_root, key: escalation_id, generation: cas_generation_first()) },
-    receipt_keyring: fn() { read_store_receipt_keyring() },
-  )
+  match authenticate_store_receipt_asker(escalation_id: escalation_id, body: body, submission_keyring: read_submission_keyring()) {
+    StoreReceiptAskerRefused { answer: refused } => refused
+    StoreReceiptAskerAuthenticated { attempt: attempt } => {
+      let slot = observe_escalation(root: approval_decision_store_root, escalation_id: escalation_id)
+      let filing = cas_read_generation(root: approval_decision_store_root, key: escalation_id, generation: cas_generation_first())
+      let keyring = read_store_receipt_keyring()
+      store_receipt_authenticated_answer(attempt: attempt, slot: slot, filing: filing, keyring: keyring)
+    }
+  }
+}
+
+// The authenticated arm's composition, pure over the readings the route took: the one body both the
+// route and its witness answer through, so the witness does not carry a second copy of it.
+fn store_receipt_authenticated_answer(attempt: AttemptIdentity, slot: EscalationSlot, filing: CasGenerationRead, keyring: ApprovalKeyringRead) -> StoreReceiptAnswer {
+  store_receipt_issuance_answer(issuance: issue_store_receipt_over(slot: slot, filing: filing, attempt: attempt, keyring: keyring))
 }
 
 fn store_receipt_refusal_status(r: StoreReceiptRefusal) -> Int {

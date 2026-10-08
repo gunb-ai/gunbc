@@ -1,6 +1,6 @@
 module v2.compiler.resolution_provenance
 
-import v2.std.collection { List }
+import std.types { List }
 
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -13,9 +13,8 @@ import v2.std.algebra {
   list_map,
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, EdgeLabel, label_sort_key }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

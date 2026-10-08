@@ -2,12 +2,12 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { Unmarked, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
-import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent }
-import std.decl_ref { decl_ref, DeclarationRef }
+import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
+import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
@@ -998,7 +998,19 @@ fn record_global_bare_ambiguous_silent_pick(
   }
 }
 
+// A KERNEL SPELLING NEVER BINDS A CORPUS DECLARATION THROUGH THE GLOBAL BARE FALLBACK -- kernel
+// precedence (v1.compiler.infer direct_import_export_precedence_note) applied to the last tier. The
+// outcome for String used to hold by accident: std.string_type and v2.std.text both declared it,
+// the entry was ambiguous, and nearest-ancestor containment answered nothing for any module outside
+// those two. Deleting std.string_type's duplicate (gunbc.rung_drop text_boundary_identity_wall) left
+// one candidate, which a unique entry binds from anywhere -- so every service output field spelled
+// `String` became v2.std.text's code-point sequence. The rule is stated here so it no longer depends
+// on how many modules happen to reuse a kernel spelling.
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
+  if is_kernel_type(name: name) { none } else { global_bare_lookup_candidates(env: env, name: name) }
+}
+
+fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
@@ -1072,10 +1084,10 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 // cycle -- had to re-derive the same question inside declaration_provenance_of. So the ruling's
 // "exists once" was true of the name and false of the fact. The body that stood here inlined
 // `concat("<kernel:", name, ">")`, reproducing kernel_span's output by hand, which made it a second
-// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. Both
-// consumers this module used to supply -- the infer-side rewire guard
-// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision -- now import it from
-// v1.std.core directly, so they cite the authority's real home rather than this waypoint. The
+// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. This
+// module used to supply two consumers. The infer-side rewire guard (ancestry_binding_is_kernel_identity)
+// is deleted along with the import-str identity rewire it guarded. The emit-side use-line decision now
+// imports it from v1.std.core directly, citing the authority's real home rather than this waypoint. The
 // emitter's additional condition -- that the kernel node is a host-realized structureless scalar
 // (NoConnective, zero children), which excludes structural kernels like Bool = True | False whose
 // use-line IS the path to the realization -- is unchanged: a SEPARATE fact composed beside this
@@ -1531,10 +1543,13 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // ITS REPLACEMENT IS BUILT IN SHADOW (§3's staged form for a gap-intolerant boundary; neat-boar-16,
 // 2026-09-29). Resolve records identity on Node.declaration (v1.compiler.infer_resolve
 // field_inferred_with_declaration), a separate slot from `inferred`, because consumers read
-// `inferred` as resolved structure. NOTHING HERE OR IN ANY PRODUCTION READER CONSUMES
-// Node.declaration YET, so a live consumer never has two sources for one fact. Its one consumer is
-// the recorded_declaration column of v1.tests.claim.carrier_realization_census, so it is a declared
-// frontier, not dangling (§3c).
+// `inferred` as resolved structure. NO READER IN THIS MODULE CONSUMES Node.declaration YET, so the
+// type-identity readings below never have two sources for one fact. Its production readers are in
+// the Rust emitter: v1.compiler.infer_emit_info resolve_type_decl_routed, which keys the
+// type-declaration index and the Clone-bound and map-key fixpoints of v1.compiler.trait_derive_emit
+// on it, and v1.compiler.emit_rust expr_realizes_as_refusing_int. The census
+// (v1.tests.claim.carrier_realization_census) reads it in the recorded_declaration column and
+// records, in emitter_decl_route, which emitter resolutions still fall past it.
 // THE TRANSITION TRIGGER IS MEASURED. On that census, over the self-host and dag closures, the
 // recorded_declaration column must name a declaration at every position this reading identifies,
 // at identity grain. Type-variable binders (cause 3) are excluded by type, not by count. Then ONE
@@ -1611,9 +1626,9 @@ fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineInd
 // then the node resolve bound (`inferred Resolved`). Both hops are the one derivation above; neither
 // consults the caller's env by name. A kernel spelling and a type-variable binder are identified by
 // the kernel and by the binder respectively, and are reported as such rather than counted as
-// unidentified -- they are not corpus declarations and no DeclarationRef names them. This is the
-// population gunbc.rung_drop text_boundary_identity_wall's trigger measures, through
-// v1.tests.claim.carrier_realization_census.
+// unidentified -- they are not corpus declarations and no DeclarationRef names them.
+// v1.tests.claim.carrier_realization_census records it per authored reference position, and
+// text_representation_by_identity reads it at checker text boundaries.
 type TypeReferenceDeclarationReading
   = TypeReferenceNamesDeclaration { declaration: DeclarationRef }
   | TypeReferenceIsKernelType { name: String }
@@ -1702,6 +1717,219 @@ fn declaration_node_of_ref(d: DeclarationRef, env: TypeEnv) -> Node? {
 // census (module prefix must equal the census row's declarer); a BARE authored name answers none
 // here — no prefix, and the occurrence span matches no declaration — so every unqualified
 // destination takes exactly the hops it took before this arm existed.
+// TEXT REPRESENTATION BY DECLARATION IDENTITY (gunbc.rung_drop text_boundary_identity_wall; XL-0T
+// ruling B; review 72252). A type node's representation is decided by WHICH DECLARATION it resolves
+// to, never by its spelling:
+//   - HostText: the kernel String mint, identified by declaration_provenance_of (the exact kernel_span
+//     constructor test), on the node or on its resolved node.
+//   - CodePointSequence: the declaration std.algebra FreeMonoid applied to the declaration std.types
+//     Char, reached directly or through a chain of transparent aliases.
+//   - NotText: any other identified declaration.
+//   - TextRepresentationUnidentified: no identity could be read. Never defaulted.
+// IDENTITY IS READ IN THE AUTHORING MODULE'S TERMS, NEVER RE-RESOLVED IN THE CONSUMER'S SCOPE: only by
+// the node's declaring span in the corpus-wide index or by its qualified name
+// (declaration_ref_of_type_node), and on the node the resolver already produced in the declaring
+// module (its inferred Resolved node). The by-name fallbacks of type_reference_declaration_ref
+// (lookup_type_for / lookup_type_by_name in the caller's env) are deliberately NOT used: re-reading
+// a callee's bare `String` in a foreign caller's scope is the caller-re-resolution escape.
+fn text_identity_std_algebra_free_monoid() -> DeclarationRef { decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid") }
+fn text_identity_std_types_char() -> DeclarationRef { decl_ref(module_path: "std.types", decl_name: "Char") }
+
+// A kernel mint that names no corpus declaration (Int, Bool, the seed's Hash, ...) is identified by
+// the kernel itself as a distinct nominal type: not text. It is consulted only AFTER the identity
+// read, so a stand-in the resolver minted for a qualified corpus reference is still read as the
+// declaration it names.
+fn node_is_kernel_mint(n: Node) -> Bool {
+  match declaration_provenance_of(item: n) {
+    KernelMinted { minted_name: _ } => true
+    CorpusDeclared { decl_file: _ } => false
+    DeclarationIdentityAbsent => false
+  }
+}
+
+fn node_is_kernel_mint_named(n: Node, name: String) -> Bool {
+  match declaration_provenance_of(item: n) {
+    KernelMinted { minted_name: m } => m == name
+    CorpusDeclared { decl_file: _ } => false
+    DeclarationIdentityAbsent => false
+  }
+}
+
+fn declaration_binding_of_ref(d: DeclarationRef, env: TypeEnv) -> TypeBinding? {
+  match map_get(env.symbol_index.global_bare, d.decl_name as String) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      if mp == (d.module_path as String) { Present { value: b } } else { none }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => c.module_path == (d.module_path as String)) |> first {
+        Present { value: c } => Present { value: c.binding }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// THE IDENTITY A TEXT CLASSIFICATION READS is v1's one type-reference derivation
+// (type_reference_declaration_reading, neat-boar-16 ruling), so the unidentified sides this wall
+// declines to judge are exactly the population carrier_realization_census counts at those positions.
+fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
+  match n.children |> first {
+    Absent => TextRepresentationUnidentified
+    Present { value: ch } =>
+      let el = match ch.inferred { Present { value: Resolved { node: r } } => r  _ => ch }
+      match type_reference_declaration_reading(n: el, source_indices: env.source_indices, env: env) {
+        TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
+        TypeReferenceIsKernelType { name: _ } => NotText
+        TypeReferenceIsTypeVariable { id: _ } => NotText
+        TypeReferenceUnidentified { authored: _, resolved: _ } => TextRepresentationUnidentified
+      }
+  }
+}
+
+fn text_representation_by_identity(n: Node, env: TypeEnv) -> TextRepresentation {
+  text_representation_by_identity_bounded(n: n, env: env, fuel: 16, visited: [])
+}
+
+// A declaration with no body, or whose resolved form is itself, is opaque: a type of its own
+// (v2.std.node Symbol), and not text. A generic type variable is a slot, not a declaration, and a
+// compiler-error type already carries its own diagnostic, so neither is text and neither is refused
+// here a second time.
+fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, visited: List<String>) -> TextRepresentation {
+  let resolved = match n.inferred { Present { value: Resolved { node: r } } => Present { value: r }  _ => none }
+  let kernel_string = node_is_kernel_mint_named(n: n, name: "String") || match resolved {
+    Present { value: r } => node_is_kernel_mint_named(n: r, name: "String")
+    Absent => false
+  }
+  let generic_or_error = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    Present { value: CompilerError { message: _, span: _ } } => true
+    _ => false
+  }
+  let kernel_other = node_is_kernel_mint(n: n) || match resolved {
+    Present { value: r } => node_is_kernel_mint(n: r)
+    Absent => false
+  }
+  if kernel_string { HostText }
+  else if generic_or_error { NotText }
+  else if fuel <= 0 { TextRepresentationUnidentified }
+  else if is_where_refinement_node(n: n) {
+    match n.children |> first {
+      Present { value: base } => text_representation_by_identity_bounded(n: base, env: env, fuel: fuel - 1, visited: visited)
+      Absent => TextRepresentationUnidentified
+    }
+  }
+  else {
+    match type_reference_declaration_reading(n: n, source_indices: env.source_indices, env: env) {
+      TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
+      TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
+      TypeReferenceIsTypeVariable { id: _ } => NotText
+      TypeReferenceNamesDeclaration { declaration: d } =>
+        if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
+          text_element_is_char(n: n, env: env)
+        } else {
+          let key = declaration_ref_display_key(ref: d)
+          if visited |> any(v => v == key) { TextRepresentationUnidentified }
+          else {
+            match declaration_binding_of_ref(d: d, env: env) {
+              Absent => TextRepresentationUnidentified
+              Present { value: b } =>
+                let decl = b.resolved
+                let is_alias = decl.connective == NoConnective && (decl.children |> count) == 0
+                if is_where_refinement_node(n: decl) {
+                  text_representation_by_identity_bounded(n: decl, env: env, fuel: fuel - 1, visited: concat(visited, [key]))
+                }
+                else if !is_alias { NotText }
+                else {
+                  match decl.inferred {
+                    Present { value: Resolved { node: target } } =>
+                      let target_is_itself = match type_reference_declaration_reading(n: target, source_indices: env.source_indices, env: env) {
+                        TypeReferenceNamesDeclaration { declaration: t } => declaration_ref_eq(a: t, b: d)
+                        _ => false
+                      }
+                      if target_is_itself { NotText }
+                      else { text_representation_by_identity_bounded(n: target, env: env, fuel: fuel - 1, visited: concat(visited, [key])) }
+                    _ => NotText
+                  }
+                }
+            }
+          }
+        }
+    }
+  }
+}
+
+// REFINEMENT PEELING IS A CLASSIFICATION RULE (not a reader fallback): a where-refinement
+// `T where p` has T's representation -- a refinement narrows which values inhabit a type, it does
+// not change how they are represented. So std.types NonEmptyStr (`String where non_empty`) is host
+// text exactly as String is, and a NonEmptyStr at a code-point formal unfolds or refuses exactly
+// like a String would (test.claim.text_boundary_identity_wall_witness_test's refinement rows).
+fn is_where_refinement_node(n: Node) -> Bool {
+  n.connective == Conj && n.type_annotation != none && (n.children |> count) == 1
+}
+
+fn text_representation_is_unidentified(r: TextRepresentation) -> Bool {
+  match r { TextRepresentationUnidentified => true  HostText => false  CodePointSequence => false  NotText => false }
+}
+
+fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
+  match r { HostText => true  CodePointSequence => true  NotText => false  TextRepresentationUnidentified => false }
+}
+
+// A CROSSING: both sides are identified, one as each representation. An UNIDENTIFIED side makes no
+// judgment here -- measured, most v1 type references carry no readable declaration identity yet, so
+// refusing them refused thousands of correct host-text sites; that population is a declared drop
+// (gunbc.rung_drop text_boundary_identity_wall) whose trigger is the resolver recording declaration
+// identity on every type reference.
+// HOST TEXT AT A STRUCTURAL SEQUENCE OF ANY ELEMENT. text_crossing_by_identity judges two TEXT
+// readings, and a FreeMonoid<T> whose element is an unbound type variable is not text by that reading
+// (its element is not std.types Char), so the crossing never registered -- and the direct-call check
+// stops judging a formal that carries an unbound variable before it would ask. But host text is not a
+// FreeMonoid at all: whatever T becomes, a kernel String handed to a std.algebra FreeMonoid formal is a
+// representation crossing with no implicit route, so it is refused whatever the element (reported by
+// neat-boar-16: std.effect_grant passed a host String to v2.std.algebra length and only rustc caught
+// it). The declaration read is the same one text_representation_by_identity uses, so an alias of
+// FreeMonoid is judged through its declaration, never its spelling. The argument is HOST TEXT only when
+// its peeled type reads as host AND its unpeeled type does not read as a code-point sequence: peeling a
+// qualified v2.std.text String alias yields a node that reads as host, while an unpeeled kernel String
+// reference reads as nothing at all, so each reading alone is wrong in one direction (measured at
+// target_model apply_emit_spelling_escapes, refused falsely when peeled alone, and at the fixture
+// r_host_string_into_generic_free_monoid_formal_refuses, admitted when unpeeled alone). The caller
+// also skips callable formals: a callable's return carrier is not the formal.
+fn host_text_into_structural_sequence(formal: Node, actual: Node, unpeeled_actual: Node, env: TypeEnv) -> Bool {
+  let unpeeled_is_structural = match text_representation_by_identity(n: unpeeled_actual, env: env) {
+    CodePointSequence => true
+    HostText => false
+    NotText => false
+    TextRepresentationUnidentified => false
+  }
+  if unpeeled_is_structural {
+    false
+  } else {
+    match text_representation_by_identity(n: actual, env: env) {
+      HostText =>
+        match type_reference_declaration_reading(n: formal, source_indices: env.source_indices, env: env) {
+          TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid())
+          _ => false
+        }
+      _ => false
+    }
+  }
+}
+
+fn text_crossing_by_identity(left: Node, right: Node, env: TypeEnv) -> Bool {
+  text_representations_cross(a: text_representation_by_identity(n: left, env: env), b: text_representation_by_identity(n: right, env: env))
+}
+
+// THE ONE CROSSING RULE: host text against a code-point sequence, in either order. Every other pair,
+// including one with an unidentified side, is not a crossing.
+fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> Bool {
+  match a {
+    HostText => match b { CodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
+    CodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NotText => false }
+    NotText => false
+    TextRepresentationUnidentified => false
+  }
+}
+
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let from_authored = declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
   if from_authored != none { return from_authored }

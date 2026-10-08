@@ -1,0 +1,305 @@
+module v2.test.claim.binder_admission.callable_binder_slice
+
+import v2.compiler.resolve {
+  LexicalBinding,
+  frame_binders_add,
+  frame_binders_empty,
+  lexical_frame,
+  NotDeclaring,
+  BinderAdmission,
+  BinderDuplicateInFrame,
+  BinderHidesVisibleValue,
+  BindersAdmitted,
+  Namespace,
+  Scope,
+  ScopeFrame,
+  ScopeRoot,
+  arrow_domain_frame_binders,
+  admit_value_binders,
+  empty_canonical_symbol_set,
+  empty_namespace,
+  ResolveContext,
+  ResolveNodeWalk,
+  ResolveWalkAccepted,
+  ResolveWalkRefused,
+  resolve_node_walk,
+}
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.fold_lowering { fold_carrier_binder_atom }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty }
+import v2.std.language_model { void_language_model }
+import v2.std.text { String }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.node {
+  Arrow,
+  Loop,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Authored,
+  LoopCarrierEdge,
+  core_edge_label,
+  Node,
+  Positional,
+  TypeNode,
+
+}
+import std.optional { Absent, Present, optional_absent }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+
+// THE CALLABLE-BINDER SLICE, READ AT ONE INTERFACE EACH, WITH SUPPLIED NODES. Every claim here
+// constructs the node it asks about. None assembles source, resolves a corpus or runs infer: the
+// subject is what a binder-harvesting function answers for a node of a given shape, so executing the
+// front end to obtain that node would re-run production the claim is not about (DESIGN section 3
+// witness rule) -- and it is exactly the reach whose cost refused this lane's other claim sets at the
+// enrolment margin.
+//
+// WHAT THE SLICE ESTABLISHES. `fold(xs, init: false, f: fn(found, e) { found || ... })` refuses at
+// resolve with resolve_unbound_name_is_declared_in_several_modules on `found`. The rows below locate
+// that in the lowering rather than in resolve's binder model: the Arrow path admits its binders, and
+// the fold seam the step is lowered to carries none.
+
+// THE LOOP THESE ROWS SUPPLY MIRRORS THE FOLD ENCODING'S, and it is built here rather than by calling the
+// producer because gunbc#12550 retired the old single-purpose seam builder: the encoding is now a Bind
+// whose body is this Loop (v2.compiler.fold_lowering fold_recurrence_encoding), and calling THAT to obtain
+// a Loop would drag a collection, an init and a realized head into a row whose subject is one edge. The
+// carrier atom still comes from the production constructor (fold_carrier_binder_atom), so a change to how
+// a carrier binder is spelled reaches these rows.
+fn cbs_carrier_loop(body: Node, carrier: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: body },
+      Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: carrier) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cbs_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+// An Arrow shaped the way a fn literal's is (v2.compiler.body_lowering_fold
+// body_lower_function_value_arrow): a domain Conj of Named binders, then the codomain twice.
+fn cbs_fn_literal_shaped_arrow() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Authored { name: ^found }, target: cbs_atom(id: ^tv_found) },
+            Edge { label: Authored { name: ^e }, target: cbs_atom(id: ^tv_e) }
+          ],
+          occurrence_id: OccurrenceSynthetic
+        }
+      },
+      Edge { label: Positional, target: cbs_atom(id: ^tv_ret) },
+      Edge { label: Positional, target: cbs_atom(id: ^tv_ret) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cbs_admits(locals: Map<Symbol, Symbol>, name: Symbol) -> Bool {
+  match map_lookup(m: locals, key: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn cbs_arrow_locals() -> Map<Symbol, Symbol> {
+  arrow_domain_frame_binders(n: cbs_fn_literal_shaped_arrow()).locals
+}
+
+// (1) THE ARROW PATH ADMITS BOTH BINDERS. So resolve's binder model is not the defect: a callable
+// whose domain carries Named binders opens a frame holding every one of them.
+test fn cbs_the_arrow_path_admits_both_binders_holds() -> Bool {
+  cbs_admits(locals: cbs_arrow_locals(), name: ^found)
+    && cbs_admits(locals: cbs_arrow_locals(), name: ^e)
+}
+
+// (2) AND IT ADMITS ONLY WHAT THE DOMAIN DECLARES, so row (1) is not a function that answers true for
+// every name.
+test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
+  !cbs_admits(locals: cbs_arrow_locals(), name: ^unrelated)
+}
+
+// (3) THE FOLD SEAM ADMITS NEITHER BINDER -- THE DISCRIMINATING RED FOR THIS SLICE. The step literal
+// is destructured into an iteration body and ONE carrier symbol (v2.compiler.fold_lowering
+// fold_call_seam_from_step), and the seam it builds is a Loop, not an Arrow. arrow_domain_frame_binders
+// answers the empty map for it because it is not an Arrow at all, and resolve harvests binders in
+// exactly two places -- an Arrow's domain and a Bind's atom -- with NO loop-carrier harvester. So the
+// body's `found` reaches the bare-name census and refuses as declared in several modules.
+//
+// THIS ROW FLIPS WHEN THE CONSOLIDATION LANDS: once the step lowers through the one callable Arrow
+// constructor and loop carriers go through the one binder-admission operation, the seam admits its
+// binders and this row must be rewritten to assert that, not deleted (DESIGN section 4b(4)).
+test fn cbs_the_fold_seam_admits_no_binder_today_holds() -> Bool {
+  let seam_locals = arrow_domain_frame_binders(
+    n: cbs_carrier_loop(body: cbs_atom(id: ^step_body), carrier: ^found)
+  ).locals
+  !cbs_admits(locals: seam_locals, name: ^found)
+    && !cbs_admits(locals: seam_locals, name: ^e)
+}
+
+// THE ADMISSION'S THREE RULES, each at its own interface with a supplied Scope. The scopes are
+// constructed, not obtained by resolving a corpus: the subject is what admit_value_binders answers for
+// a (names, scope) pair.
+fn cbs_root_scope() -> Scope {
+  ScopeRoot { module: empty_namespace() }
+}
+
+fn cbs_root_scope_declaring(name: Symbol) -> Scope {
+  ScopeRoot {
+    module: Namespace {
+      bindings: map_insert(empty_map(), name, name),
+      canonical_symbols: empty_canonical_symbol_set(),
+      symbol_index: empty_symbol_index(),
+      module_qn: Empty,
+      test_code: test_code_index_empty(),
+      declared_in: Empty,
+      imported_origins: empty_map()
+    }
+  }
+}
+
+// A Lexical frame as resolve builds one (v2.compiler.resolve lexical_frame over frame_binders_add): the name
+// is both a local and a recorded binding, so a use it answers is minted as a lexical reference rather than
+// refused as unrecorded.
+fn cbs_frame_binding(name: Symbol) -> Scope {
+  lexical_frame(
+    fb: frame_binders_add(
+      fb: frame_binders_empty(),
+      name: name,
+      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent() }
+    ),
+    outer: cbs_root_scope()
+  )
+}
+
+// A use with a MINTED occurrence: a lexical reference is keyed by its own occurrence, and a synthetic one
+// refuses as unkeyed (resolve_lexical_reference), which would answer for a different reason than row (9)'s.
+fn cbs_minted_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 2 } } }
+}
+
+fn cbs_admitted_has(a: BinderAdmission, name: Symbol) -> Bool {
+  match a {
+    BindersAdmitted { locals: m } => cbs_admits(locals: m, name: name)
+    BinderDuplicateInFrame { binder: _ } => false
+    BinderHidesVisibleValue { binder: _ } => false
+  }
+}
+
+// (4) A CARRIER IS ADMITTED. The positive control for the Loop repair: the name a fold seam carries
+// opens a frame instead of falling through to the global lookup.
+test fn cbs_a_loop_carrier_name_is_admitted_holds() -> Bool {
+  cbs_admitted_has(a: admit_value_binders(names: [^found], outer: cbs_root_scope()), name: ^found)
+}
+
+// (5) SAME-FRAME DUPLICATES REFUSE.
+test fn cbs_a_same_frame_duplicate_refuses_holds() -> Bool {
+  match admit_value_binders(names: [^found, ^found], outer: cbs_root_scope()) {
+    BinderDuplicateInFrame { binder: b } => b == ^found
+    BindersAdmitted { locals: _ } => false
+    BinderHidesVisibleValue { binder: _ } => false
+  }
+}
+
+// (6) A BINDER HIDING A VISIBLE VALUE BINDING REFUSES. `found` is already bound by an enclosing FRAME.
+test fn cbs_a_binder_hiding_an_enclosing_binder_refuses_holds() -> Bool {
+  match admit_value_binders(names: [^found], outer: cbs_frame_binding(name: ^found)) {
+    BinderHidesVisibleValue { binder: b } => b == ^found
+    BindersAdmitted { locals: _ } => false
+    BinderDuplicateInFrame { binder: _ } => false
+  }
+}
+
+// (7) AND A NAME DECLARED AT THE MODULE ROOT IS STILL ADMITTED -- the clause that keeps unrelated
+// declarations elsewhere in the corpus from deciding whether a local binder is legal. This is the
+// discriminating negative for row (6): if the admission consulted the namespace rather than the lexical
+// frames, (6) and (7) would both refuse and the pair would establish nothing.
+test fn cbs_a_binder_spelled_like_a_root_declaration_is_admitted_holds() -> Bool {
+  cbs_admitted_has(
+    a: admit_value_binders(names: [^found], outer: cbs_root_scope_declaring(name: ^found)),
+    name: ^found
+  )
+}
+
+// THE PAIRING OBLIGATION FOR THIS SLICE IS THE NATIVE EIGHT, NOT A SOURCE FIXTURE HERE, and that is a
+// measured conclusion rather than a preference. A fold cannot be written in a bare single-module fixture
+// at all: `List`, a list literal and `fold` itself are each unbound without imports, and DECLARING an
+// import turns the file's bare-reference channel off (gunbc.recurring_failure_mode
+// bare_reference_channel_declines_a_pull_in_silence), which changes the very name resolution under test.
+// Three fixtures were tried and all three refused before reaching any binder.
+//
+// So the claim that the real producer emits this shape is
+// `//v2/test/parse/expression_bodied_fn_decl_parse:all` run natively -- the eight whose refusal opened
+// this slice, whose own `fold(root.children, init: false, f: fn(found, e) { found || ... })` is the
+// producer in question. Until that runs green the rows above are readings of a boundary, and this
+// comment is where that debt is recorded rather than in a green row that would imply otherwise.
+
+// (8) AND A LOOP DOES NOT BIND ITS CARRIER -- THE ENCLOSING Bind DOES. These two rows asserted the
+// opposite until gunbc#12550 landed, and the reversal is the honest record of a repair that dissolved
+// rather than a test that was wrong. The pre-#12550 fold seam built a BARE Loop with no enclosing Bind, so
+// its carrier was bound by nothing and a step body's use of it reached the bare-name census; a frame
+// opened at the Loop repaired that, and these rows were its evidence. #12550 replaced the seam with
+// Bind { carrier := init, Loop { ... } }, where v2.std.node's role model always said the binder lived --
+// "the carried state's initial value lives on an enclosing Bind" -- and the frame became redundant AND
+// harmful, because the Loop re-admitted a name the Bind had bound and this file's own admission refused it
+// as hiding a visible binding.
+//
+// So the rows now assert the model that is true: a BARE Loop's carrier binds nothing, and a body that uses
+// it is unbound. A reader who expects the old behaviour is reading evidence for a seam that no longer
+// exists (DESIGN section 4b(4): the production handling goes, the evidence stays and flips).
+fn cbs_ctx(scope: Scope) -> ResolveContext {
+  ResolveContext {
+    scope: scope,
+    type_scope: scope,
+    namespace: empty_namespace(),
+    policy: default_name_resolution_policy(),
+    position: Empty,
+    lm: void_language_model(identity: ^cbs_void_language),
+    under_module_root: false,
+    declaring: NotDeclaring
+  }
+}
+
+fn cbs_walk_accepts(n: Node) -> Bool {
+  match resolve_node_walk(ctx: cbs_ctx(scope: cbs_root_scope()), n: n) {
+    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
+  }
+}
+
+test fn cbs_a_bare_loop_does_not_bind_its_carrier_holds() -> Bool {
+  !cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found))
+}
+
+// NEITHER ROW CARRIES A BOUND MEASURE, AND THAT IS NOT TIDYING -- IT CLOSES A VACUITY. The measure the
+// fold encoding uses is ^dag_surface_fold_iteration_measure, a symbol the CORPUS declares (it is
+// registered in v2.std.cardinality measure_descent_fact_registry); the supplied namespace these rows walk
+// under is empty, so it cannot bind that symbol and a Loop carrying it refuses for THAT reason. Row (8)
+// passed with a measure present, which means it would have passed even if the carrier HAD been bound --
+// the measure was answering for it. Measured: the measure atom alone refuses under this context, and the
+// same carrier Loop without it resolves once the name is bound above.
+
+// (9) AND THE SAME BARE LOOP UNDER A SCOPE THAT DOES BIND THE NAME RESOLVES -- so row (8) reports "the
+// Loop opens no frame" rather than "this Loop never resolves". That is the discriminating pair: the only
+// variable between them is whether something ABOVE the Loop binds the carrier, which is exactly what the
+// fold encoding's Bind now does.
+test fn cbs_a_loop_carrier_bound_above_resolves_holds() -> Bool {
+  match resolve_node_walk(
+    ctx: cbs_ctx(scope: cbs_frame_binding(name: ^found)),
+    n: cbs_carrier_loop(body: cbs_minted_atom(id: ^found), carrier: ^found)
+  ) {
+    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
+  }
+}

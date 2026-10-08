@@ -1,7 +1,7 @@
 module gunbc.dispatch_selection
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
-import v2.std.optional { optional_absent, optional_present }
+import std.optional { optional_absent, optional_present }
 import extdeps.llm.cli {
   ProviderModelSelection,
   ProviderAccountDefaultModel,
@@ -46,11 +46,12 @@ import gunbc.codex_provider_runtime_receipt {
 }
 import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.claude_code_credential { claude_code_oauth_harness_secret_ref }
 import gunbc.roadmap_sizing {
   NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   IntricacyHigh, VolumeMedium,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_capacity_control {
   fleet_capacity_admission, fleet_capacity_admission_in, fleet_capacity_admission_admits,
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
@@ -432,12 +433,14 @@ fn automatic_refusal_reason_for_inventory(
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
-// PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a / msg_0ec68b71): OfferClaude is omitted
-// from provider_inventory_for_instance until the WorkerTurn PR. resolve_provider_offer still
-// delegates OfferClaude to resolve_claude_offer when a fixture or future inventory row includes it
-// — production deferral is inventory omission, not a blanket resolver refusal. Fixture controls
-// (fixture_inventory_codex_then_claude, resolve_dispatch_selection) prove a future eligible Claude
-// standing is selectable.
+// PRODUCTION WIRING (the deferral under operator ruling msg_3b291a6a / msg_0ec68b71 -- "OfferClaude is
+// omitted until the WorkerTurn PR" -- is discharged, 2026-10-05): the srv1 live inventory now
+// carries OfferClaude, appended AFTER Codex, credential claude_dispatch_credential(), at declared
+// inventory-unobserved standing. That standing admits no draw, so the automatic path still cannot
+// pick Claude; the only route that reaches it is the operator's explicit executor request
+// (gunbc.roadmap_dispatch_actuator DispatchExecutorRequest), which observes the credential first and
+// selects over inventory_with_observed_standing. The custody file the attempt snapshots exists on
+// srv1 only, so the row is offered on srv1's live instance only.
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -672,6 +675,115 @@ fn fixture_inventory_claude_then_codex(
   }
 }
 
+// THE ONE ANSWER TO WHICH CLAUDE CREDENTIAL A DISPATCHED CLAUDE ATTEMPT RUNS UNDER: the inventory
+// offer carries it and the actuator's spawn reads it, so the credential the selection judged and
+// the credential the process receives cannot diverge. It is the subscription setup-token secret
+// (gunbc.claude_code_credential), never the ambient ~/.claude profile tree -- a profile on disk is
+// not the authority to act (CARRIER-SHAPE note below).
+// ONE CREDENTIAL IDENTITY FROM REQUEST TO RECEIPT TO PROCESS (review 76871). The resolved selection
+// carries the REQUESTED credential into the receipt's credential_binding, so a request that names a
+// different credential than the offer binds would produce a receipt naming one credential while the
+// spawn runs under another -- what was requested presented as what ran. Selection therefore refuses
+// a Claude request whose credential is not the offer's.
+fn claude_credential_ref_same(a: ClaudeCredentialRef, b: ClaudeCredentialRef) -> Bool {
+  match a {
+    ClaudeStateRootRef { root: ra } =>
+      match b {
+        ClaudeStateRootRef { root: rb } => ra == rb
+        ClaudeOAuthTokenSecretRef { secret_ref: _ } => false
+        ClaudeApiKeySecretRef { secret_ref: _ } => false
+      }
+    ClaudeOAuthTokenSecretRef { secret_ref: sa } =>
+      match b {
+        ClaudeOAuthTokenSecretRef { secret_ref: sb } =>
+          sa.project == sb.project && sa.secret == sb.secret && sa.version == sb.version
+        ClaudeStateRootRef { root: _ } => false
+        ClaudeApiKeySecretRef { secret_ref: _ } => false
+      }
+    ClaudeApiKeySecretRef { secret_ref: sa } =>
+      match b {
+        ClaudeApiKeySecretRef { secret_ref: sb } =>
+          sa.project == sb.project && sa.secret == sb.secret && sa.version == sb.version
+        ClaudeStateRootRef { root: _ } => false
+        ClaudeOAuthTokenSecretRef { secret_ref: _ } => false
+      }
+  }
+}
+
+fn claude_credential_ref_wire(c: ClaudeCredentialRef) -> String {
+  match c {
+    ClaudeStateRootRef { root } => join(["state root ", root as String], "")
+    ClaudeOAuthTokenSecretRef { secret_ref } => join(["oauth token secret ", secret_ref.secret as String], "")
+    ClaudeApiKeySecretRef { secret_ref } => join(["api key secret ", secret_ref.secret as String], "")
+  }
+}
+
+fn claude_dispatch_credential() -> ClaudeCredentialRef {
+  ClaudeOAuthTokenSecretRef { secret_ref: claude_code_oauth_harness_secret_ref }
+}
+
+// AN OBSERVED STANDING REPLACES THE DECLARED ROW'S, ON THE NAMED PROVIDER'S OFFER ONLY. A declared
+// inventory row carries inventory-unobserved standing, which no draw admits; an explicit vendor draw
+// observes its credential (for Claude, gunbc.claude_code_limit_standing) and substitutes that reading
+// here, so selection judges the same row with evidence rather than a second row being minted. Every
+// other provider's offer passes through unchanged.
+fn inventory_with_observed_standing(inventory: ProviderInventory, kind: ProviderKind, standing: ProviderStanding) -> ProviderInventory {
+  ProviderInventory {
+    offers: map(inventory.offers, offer =>
+      match offer {
+        OfferClaude { offer: o } =>
+          match kind {
+            ClaudeCliProvider =>
+              OfferClaude {
+                offer: ClaudeOffer {
+                  instance: o.instance,
+                  credential: o.credential,
+                  standing: standing,
+                  default_effort: o.default_effort,
+                  deep: o.deep,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            CodexCliProvider => offer
+            CursorCliProvider => offer
+          }
+        OfferCodex { offer: o } =>
+          match kind {
+            CodexCliProvider =>
+              OfferCodex {
+                offer: CodexOffer {
+                  instance: o.instance,
+                  account_state_root: o.account_state_root,
+                  account_binding: o.account_binding,
+                  standing: standing,
+                  default_effort: o.default_effort,
+                  deep: o.deep,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            ClaudeCliProvider => offer
+            CursorCliProvider => offer
+          }
+        OfferCursor { offer: o } =>
+          match kind {
+            CursorCliProvider =>
+              OfferCursor {
+                offer: CursorOffer {
+                  instance: o.instance,
+                  credential: o.credential,
+                  standing: standing,
+                  default_model: o.default_model,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            ClaudeCliProvider => offer
+            CodexCliProvider => offer
+          }
+      }
+    ),
+  }
+}
+
 fn claude_offer_for_instance_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
@@ -687,7 +799,7 @@ fn claude_offer_for_instance_with_standing(
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
       state_directory: ProviderInstanceFieldUnobserved {
-        reason: "ClaudeStateRootRef is the credential reference" as NonEmptyStr,
+        reason: "the credential is a managed secret reference, not a state root" as NonEmptyStr,
       },
       credential_storage_method: ProviderInstanceFieldUnobserved {
         reason: "claude credentials live under explicit state root or managed secret" as NonEmptyStr,
@@ -696,7 +808,7 @@ fn claude_offer_for_instance_with_standing(
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
     },
-    credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+    credential: claude_dispatch_credential(),
     standing: standing,
     default_effort: ReasoningMedium,
     deep: DeepUnavailable,
@@ -843,8 +955,17 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
       ),
     }
   } else {
-    ProviderInventory {
-      offers: codex_inventory_offers_for_instance(instance: instance),
+    if instance.instance_id == srv1_live_dashboard_instance().instance_id {
+      ProviderInventory {
+        offers: concat(
+          codex_inventory_offers_for_instance(instance: instance),
+          [OfferClaude { offer: claude_offer_for_instance(instance: instance) }],
+        ),
+      }
+    } else {
+      ProviderInventory {
+        offers: codex_inventory_offers_for_instance(instance: instance),
+      }
     }
   }
 }
@@ -1124,6 +1245,17 @@ fn resolve_claude_offer(
           }
       }
     SelectClaude { profile, credential, model, effort, workflow_mode } =>
+      if !claude_credential_ref_same(a: credential, b: offer.credential) {
+        DispatchSelectionRefused {
+          sizing_expectation: sizing_expectation,
+          requested_selection: request,
+          reason: join([
+            "the requested Claude credential (", claude_credential_ref_wire(c: credential),
+            ") is not the credential this offer binds (", claude_credential_ref_wire(c: offer.credential),
+            "); a receipt must name the credential the process receives",
+          ], "") as NonEmptyStr,
+        }
+      } else {
       match profile {
         ProfileAutomatic => {
           let resolved = ResolvedClaude {
@@ -1197,6 +1329,7 @@ fn resolve_claude_offer(
             ),
           }
         }
+      }
       }
     SelectCodex {
       profile: _,
@@ -1329,7 +1462,7 @@ fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionR
     ClaudeCliProvider =>
       SelectClaude {
         profile: ProfileAutomatic,
-        credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+        credential: claude_dispatch_credential(),
         model: dispatch_claude_default_model,
         effort: ReasoningMedium,
         workflow_mode: dispatch_claude_default_workflow_mode,
@@ -1681,7 +1814,7 @@ fn fixture_claude_offer(standing: ProviderStanding) -> ProviderOffer {
           reason: "fixture claude inventory row" as NonEmptyStr,
         },
       },
-      credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+      credential: claude_dispatch_credential(),
       standing: standing,
       default_effort: ReasoningMedium,
       deep: DeepUnavailable,

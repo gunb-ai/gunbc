@@ -1,6 +1,7 @@
 module gunbc.bmc_dry_realization
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_snoc_item }
 import std.measure { Second, second }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
@@ -27,6 +28,7 @@ import extdeps.bmc.megarac_observed_output {
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.machine_intake_megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_hpm_check_bmc0_32,
   ipmitool_mc_info_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
   ipmitool_sel_elist_line,
@@ -117,6 +119,12 @@ fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: ipmitool_mc_info_mt_collins, world: world }
 }
 
+// THE COMPONENT TABLE AS THE CONTROLLER PRINTED IT: the one retained capture, a layout fixture of
+// BMC 0.32 (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32), not a modeled version.
+fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
+}
+
 // One IPMI round trip takes one virtual second.
 fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> fn(S, OperationCall) -> OperationStep<S> {
   fn(state, call) {
@@ -140,6 +148,7 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
   ]
 }
 
@@ -153,9 +162,9 @@ fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) 
     identity: identity,
     initial: initial,
     epoch: epoch,
-    bindings: list_append(
-      bmc_bindings(get: fn(w) { w }, put: fn(w, next) { next }),
-      virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
+    bindings: list_snoc_item(
+      xs: bmc_bindings(get: fn(w) { w }, put: fn(w, next) { next }),
+      item: virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
     ),
     advance: bmc_advance,
   }

@@ -10,9 +10,9 @@ import std.measure {
   PositiveShardCount, positive_shard_count, positive_shard_count_value,
 }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, ipv4_address_eq }
-import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.model_snapshot_acquisition { spark_models_root }
 
 // A SERVING DEPLOYMENT THAT SPANS TWO HOSTS, WHICH THIS CORPUS HAD NO WAY TO SAY.
@@ -196,7 +196,7 @@ type LlamaCppRpcDeployment sole_constructor {
 }
 
 fn llama_cpp_rpc_construct(
-  alias: NonEmptyStr,
+  served_alias: NonEmptyStr,
   front_door: LlamaCppRpcFrontDoor,
   weights_peer: LlamaCppRpcWeightsPeer,
   fabric: LlamaCppRpcFabricObserved,
@@ -218,7 +218,7 @@ fn llama_cpp_rpc_construct(
               none
             } else {
               Present { value: LlamaCppRpcDeployment {
-                alias: alias,
+                alias: served_alias,
                 front_door: front_door,
                 weights_peer: weights_peer,
                 fabric: fabric,
@@ -454,7 +454,7 @@ fn llama_cpp_rpc_observed() -> LlamaCppRpcDeployment? {
     Absent => none
     Present { value: peer } =>
       llama_cpp_rpc_construct(
-        alias: llama_cpp_rpc_observed_alias,
+        served_alias: llama_cpp_rpc_observed_alias,
         front_door: llama_cpp_rpc_observed_front_door,
         weights_peer: peer,
         fabric: llama_cpp_rpc_observed_fabric,

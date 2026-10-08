@@ -7,7 +7,6 @@ import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tok
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, canonicalize_node_strip_provenance }
 
@@ -21,74 +20,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // boundary is the prepared-grammar parse the native route runs, then normalize; the refusing
 // controls pin that each row admits only the seed's spelling.
 
-// THE INPUT IS SUPPLIED; PARSE AND NORMALIZE STILL EXECUTE. These rows are gunbc#11998's claims,
-// carried on this branch and converted here rather than in their own PR, because the floor
-// enforces the per-claim ceiling on this branch and they breach it here. Supplying the token
-// stream keeps parse in the subject, which matters for the rows whose subject IS parsing, and
-// each specimen owes a cp_fidelity_* claim that the stream IS what the real tokenizer emits
-// (v2.test.parse.supplied_token_stream_support).
-fn cp_parses(o: Outcome<Node>) -> Bool {
-  match o {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
+// THE FOUR fn-DECLARATION CLAIMS, HELD UNGATED AND UNCHANGED. The v2.test.parse census (gunbc#13372)
+// moved this module's other claims into test.claim.parse_test_coproduct_leading_pipe. These four
+// lower a whole fn declaration; at fragment grain each still exceeds the required floor's CPU enrolment
+// margin (floor run 37456790634: 441-587 ms against 391 ms), a wall no declared drop lowers, so they
+// stay here in their original form, outside required_gate_prefixes, with their single-claim fill-debt
+// rows active as before. They run only when a change touches them, and a red here can stand on main
+// unseen. STATED FRONTIER: gunbc.recurring_failure_mode fn_fragment_lowering_exceeds_the_enrolment_margin.
 
 fn cp_normalizes(o: Outcome<NormalizedTree>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn leading_pipe_multiline_coproduct_parses_and_normalizes_holds() -> Bool {
-  cp_normalizes(o: cps_normalized_0())
-}
-
-test fn leading_pipe_single_line_coproduct_parses_holds() -> Bool {
-  cp_parses(o: cps_parsed_1())
-}
-
-test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool {
-  match cp_parses(o: cps_parsed_2()) {
-    true => false
-    false => true
-  }
-}
-
-test fn positional_payload_variants_parse_and_normalize_holds() -> Bool {
-  cp_normalizes(o: cps_normalized_3())
-}
-
-test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool {
-  match cp_parses(o: cps_parsed_4()) {
-    true => false
-    false => true
-  }
-}
-
-test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
-  match cp_parses(o: cps_parsed_5()) {
-    true => false
-    false => true
-  }
-}
-
-
-// THE LEADING SEPARATOR IS LAYOUT, NOT MEANING: `type H = | A | B` and `type H = A | B` must
-// normalize to the same provenance-free tree (the leading `|` mints occurrence ids of its own, so
-// the comparison is over canonicalize_node_strip_provenance), so the
-// optional `|` cannot change the alternatives the rhs production yields.
-test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> Bool {
-  match cps_normalized_1() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: with_pipe, diagnostics: _ } =>
-      match cps_normalized_6() {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: without_pipe, diagnostics: _ } =>
-          canonicalize_node_strip_provenance(n: with_pipe.root)
-            == canonicalize_node_strip_provenance(n: without_pipe.root)
-      }
   }
 }
 
@@ -121,197 +64,6 @@ test fn positional_wildcard_pattern_still_normalizes_holds() -> Bool {
 test fn braced_pattern_binder_still_normalizes_holds() -> Bool {
   cp_normalizes(
     o: cps_normalized_10()
-  )
-}
-
-// The discriminating half of the equality above: the same projection DOES separate two coproducts
-// whose alternatives differ, so the leading-pipe equality is not a comparison that cannot fail.
-test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool {
-  match cps_normalized_1() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: left, diagnostics: _ } =>
-      match cps_normalized_11() {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: right, diagnostics: _ } =>
-          canonicalize_node_strip_provenance(n: left.root)
-            != canonicalize_node_strip_provenance(n: right.root)
-      }
-  }
-}
-
-fn cps_stream_0() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 25, end: 26 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 29, end: 30 },
-    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 31, end: 32 }
-  ])
-}
-
-test fn cps_fidelity_0() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype H =\n  | A\n  | B\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_0()
-  )
-}
-
-fn cps_stream_1() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 25, end: 26 },
-    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 27, end: 28 }
-  ])
-}
-
-test fn cps_fidelity_1() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype H = | A | B\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_1()
-  )
-}
-
-fn cps_stream_2() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 23, end: 24 }
-  ])
-}
-
-test fn cps_fidelity_2() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype H =\n  |\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_2()
-  )
-}
-
-fn cps_stream_3() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "C", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 25, end: 26 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^coproduct_parse_probe, start: 26, end: 27 },
-    Token { class: ^dag_token_ident, lexeme: "X", file: ^coproduct_parse_probe, start: 27, end: 28 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^coproduct_parse_probe, start: 28, end: 29 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 32, end: 33 },
-    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 34, end: 35 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^coproduct_parse_probe, start: 36, end: 37 },
-    Token { class: ^dag_token_ident, lexeme: "n", file: ^coproduct_parse_probe, start: 38, end: 39 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^coproduct_parse_probe, start: 39, end: 40 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^coproduct_parse_probe, start: 41, end: 44 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^coproduct_parse_probe, start: 45, end: 46 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 49, end: 50 },
-    Token { class: ^dag_token_ident, lexeme: "D", file: ^coproduct_parse_probe, start: 51, end: 52 }
-  ])
-}
-
-test fn cps_fidelity_3() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype C =\n  | A(X)\n  | B { n: Int }\n  | D\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_3()
-  )
-}
-
-fn cps_stream_4() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "C", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^coproduct_parse_probe, start: 22, end: 23 },
-    Token { class: ^dag_token_ident, lexeme: "X", file: ^coproduct_parse_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_comma, lexeme: ",", file: ^coproduct_parse_probe, start: 24, end: 25 },
-    Token { class: ^dag_token_ident, lexeme: "Z", file: ^coproduct_parse_probe, start: 26, end: 27 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^coproduct_parse_probe, start: 27, end: 28 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 29, end: 30 },
-    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 31, end: 32 }
-  ])
-}
-
-test fn cps_fidelity_4() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype C = A(X, Z) | B\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_4()
-  )
-}
-
-fn cps_stream_5() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "R", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^coproduct_parse_probe, start: 18, end: 19 },
-    Token { class: ^dag_token_ident, lexeme: "X", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^coproduct_parse_probe, start: 20, end: 21 }
-  ])
-}
-
-test fn cps_fidelity_5() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype R(X)\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_5()
-  )
-}
-
-fn cps_stream_6() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 25, end: 26 }
-  ])
-}
-
-test fn cps_fidelity_6() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype H = A | B\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_6()
   )
 }
 
@@ -510,106 +262,6 @@ test fn cps_fidelity_10() -> Bool {
   )
 }
 
-fn cps_stream_11() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_ident, lexeme: "C", file: ^coproduct_parse_probe, start: 25, end: 26 }
-  ])
-}
-
-test fn cps_fidelity_11() -> Bool {
-  supplied_stream_matches_tokenize(
-    text: "module m.t\n\ntype H = A | C\n",
-    file: ^coproduct_parse_probe,
-    supplied: cps_stream_11()
-  )
-}
-
-fn cps_parsed_0() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_0())
-}
-
-fn cps_normalized_0() -> Outcome<NormalizedTree> {
-  match cps_parsed_0() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
-fn cps_parsed_1() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_1())
-}
-
-fn cps_normalized_1() -> Outcome<NormalizedTree> {
-  match cps_parsed_1() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
-fn cps_parsed_2() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_2())
-}
-
-fn cps_normalized_2() -> Outcome<NormalizedTree> {
-  match cps_parsed_2() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
-fn cps_parsed_3() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_3())
-}
-
-fn cps_normalized_3() -> Outcome<NormalizedTree> {
-  match cps_parsed_3() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
-fn cps_parsed_4() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_4())
-}
-
-fn cps_normalized_4() -> Outcome<NormalizedTree> {
-  match cps_parsed_4() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
-fn cps_parsed_5() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_5())
-}
-
-fn cps_normalized_5() -> Outcome<NormalizedTree> {
-  match cps_parsed_5() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
-fn cps_parsed_6() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_6())
-}
-
-fn cps_normalized_6() -> Outcome<NormalizedTree> {
-  match cps_parsed_6() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}
-
 fn cps_parsed_7() -> Outcome<Node> {
   supplied_stream_parse(tokens: cps_stream_7())
 }
@@ -654,13 +306,3 @@ fn cps_normalized_10() -> Outcome<NormalizedTree> {
   }
 }
 
-fn cps_parsed_11() -> Outcome<Node> {
-  supplied_stream_parse(tokens: cps_stream_11())
-}
-
-fn cps_normalized_11() -> Outcome<NormalizedTree> {
-  match cps_parsed_11() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
-  }
-}

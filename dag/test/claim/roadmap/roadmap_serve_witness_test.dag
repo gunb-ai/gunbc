@@ -1,19 +1,21 @@
 module test.claim.roadmap_serve_witness
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession }
+import gunbc.site.document { site_styles }
+import std.access { Permit, Deny }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap_serve {
-  RoadmapServeHandler,
-  RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
+  RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
+  roadmap_serve_handle_over,
+  RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
-  SandboxPageHandler, InstrumentSandboxPageHandler, InstrumentTunerPageHandler,
-  InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
-  SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
-  serve_issue_assignment_context_over,
-  AuthSessionHandler,
+  serve_issue_assignment_context_over, serve_issue_view_preferences_over,
+  IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
+  AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
   roadmap_serve_own_route_specs,
@@ -48,14 +50,13 @@ import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContra
 import gunbc.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import gunbc.roadmap_component { instrument_tuner_asset_path }
-import gunbc.roadmap_component { instrument_motion_asset_path, instrument_motion_page_path }
-import gunbc.roadmap_component { instrument_lab_links }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
+import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
-  RequestSecurityContext, AccessPathLocalDev,
-  ServedRouteTable,
+  ServeWireResponse, ServeRequestHeader,
+  ServeRequestHeaderReading, ServeRequestHeaderAbsent, ServeRequestHeaderSingle, ServeRequestHeaderRepeated,
+  serve_request_header_reading,
+  RequestSecurityContext, ServedRouteTable,
   ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   serve_build_route_table,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
@@ -84,7 +85,7 @@ import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
 import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
-import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
+import gunbc.roadmap_site_surface_render { roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.auth.approval_status_wire { filed_approval_status_text, StatusNotFiled }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -112,8 +113,6 @@ fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool 
 
 test fn witness_serve_table_selection() -> Bool {
   selects(method: GET, path: "/", want: RoadmapDailyPageHandler)
-    && selects(method: GET, path: "/roadmap", want: RoadmapFullPageHandler)
-    && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
     && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
     && selects(method: GET, path: "/healthz", want: HealthzHandler)
     && selects(method: GET, path: "/instance.json", want: DashboardInstanceHandler)
@@ -121,14 +120,6 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/attempts.json", want: AttemptsJsonHandler)
     && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
     && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
-    && selects(method: GET, path: "/sandbox", want: SandboxPageHandler)
-    && selects(method: GET, path: "/sandbox/instrument", want: InstrumentSandboxPageHandler)
-    && selects(method: GET, path: "/sandbox/instrument/tuner", want: InstrumentTunerPageHandler)
-    && selects(method: GET, path: instrument_tuner_asset_path, want: InstrumentTunerAssetHandler)
-    && selects(method: GET, path: instrument_motion_page_path, want: InstrumentMotionPageHandler)
-    && selects(method: GET, path: instrument_motion_asset_path, want: InstrumentMotionAssetHandler)
-    && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
-    && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
@@ -153,26 +144,6 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && string_contains(s: r.body, pattern: "fetch('/cleanup/' + sess.node_id")
 }
 
-// The shared header renders its links from instrument_lab_links, and the route table builds its
-// specs from the same declarations. This claim is what makes that ONE authority rather than two
-// that happen to agree: every rendered link is required to select a route, so a roster row without
-// a route reds here rather than shipping a header link to a 404. The RED direction is a row added
-// to the roster with no matching route spec.
-
-fn lab_link_selects_something(path: String) -> Bool {
-  match serve_select_route(table: live_table_or_empty(), method: GET, path: path) {
-    SelectedDynamic { handler: _, params: _ } => true
-    SelectedStatic { route: _ } => true
-    MethodNotAllowed { allowed: _ } => false
-    NoRouteMatched => false
-  }
-}
-
-test fn witness_every_lab_nav_link_resolves() -> Bool {
-  count(instrument_lab_links) == 4
-    && all(instrument_lab_links, l => lab_link_selects_something(path: l.path))
-}
-
 test fn witness_dispatch_param_bound() -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: POST, path: "/dispatch/2-cd-transport") {
     SelectedDynamic { handler: _, params: ps } =>
@@ -192,7 +163,7 @@ test fn witness_dispatch_get_folds_405() -> Bool {
   }
 }
 
-fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
   ServeHttpRequest {
     method: method,
     path: path,
@@ -416,8 +387,8 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
 
 // THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
 // this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
-// unless the access-path modeling vouches for it behind a serve-status readback — and this seam
-// performs no readback — so the consent record names no login. Without this the plumbing could
+// unless the access-path modeling vouches for it — and this entry's ingress attests no peer, so
+// nothing can — so the consent record names no login. Without this the plumbing could
 // be silently laundering the header back into an identity and every unit-level witness would
 // still pass. The positive half (a modeled proxy path carries the observation) is
 // test.claim.request_authentication_witness's subject; the wiring between them is one function
@@ -518,18 +489,9 @@ fn serve_over_plan_declaring(
     path: path,
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     release_revision: deploy_witness_release_revision,
   )
-}
-
-test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool {
-  let r = serve_over_plan(
-    plan: caller_supplied_plan_fixture(),
-    path: roadmap_site_roadmap_url_path as String,
-  )
-  r.status == 200
-    && string_contains(s: r.body, pattern: caller_supplied_plan_section_title())
-    && !string_contains(s: r.body, pattern: public_plan_section_title())
 }
 
 test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
@@ -545,22 +507,16 @@ test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
 // roadmap: the detail the caller handed over is what the reader sees.
 test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool {
   let detail = "the caller's plan carrier could not be read"
-  let md = serve_over_plan(
-    plan: RoadmapAuthorityProjectionRefused { detail: detail },
-    path: roadmap_site_roadmap_url_path as String,
-  )
   let dispatch = serve_over_plan(
     plan: RoadmapAuthorityProjectionRefused { detail: detail },
     path: roadmap_site_dispatch_url_path as String,
   )
-  string_contains(s: md.body, pattern: "# roadmap unavailable")
-    && string_contains(s: md.body, pattern: detail)
-    && !string_contains(s: md.body, pattern: public_plan_section_title())
-    && string_contains(s: dispatch.body, pattern: "\"refused\": true")
+  string_contains(s: dispatch.body, pattern: "\"refused\": true")
+    && !string_contains(s: dispatch.body, pattern: public_plan_section_title())
     && string_contains(s: dispatch.body, pattern: detail)
 }
 
-// A CONTROL FOR THE CONTROL. The three witnesses above are claims about the PLAN, and a wrong path
+// A CONTROL FOR THE CONTROL. The witnesses above are claims about the PLAN, and a wrong path
 // would make every one of them vacuous while looking identical to a pass on the negative
 // assertions. This one asks an unrouted path and requires the 404, so "the responder answered from
 // the supplied plan" stays distinguishable from "the responder never reached a handler".
@@ -607,7 +563,7 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
     stale_nodes: [],
     profiles: [],
     memberships: roadmap_memberships(),
-    stylesheet: "",
+    stylesheet: site_styles(rules: []),
   )) {
     EmitOk { html } => html
     EmitRejected { reason } => reason
@@ -638,14 +594,13 @@ test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool {
 // caller that cannot vouch for the daily body still gets every other route answered from its own
 // plan, and the refusal is located on / alone.
 test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
-  let md = serve_over_plan_declaring(
+  let dispatch = serve_over_plan_declaring(
     plan: caller_supplied_plan_fixture(),
     daily_body: DailyBodyAuthorityUnknown,
-    path: roadmap_site_roadmap_url_path as String,
+    path: roadmap_site_dispatch_url_path as String,
   )
-  md.status == 200
-    && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
-    && !string_contains(s: md.body, pattern: public_plan_section_title())
+  dispatch.status == 200
+    && !string_contains(s: dispatch.body, pattern: public_plan_section_title())
 }
 
 // THE ISSUE DETAIL ROUTES (owner ruling 2026-09-24): the issue's detail page is a real served
@@ -924,11 +879,11 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
   }
 }
 
-// THE SESSION ROUTE IS SERVED AND THE LOGIN ROUTES ARE NOT: the OIDC login, callback and
-// logout routes moved to a follow-up (their redirect and Set-Cookie answers need a socket
-// runtime that writes response headers, which this revision's seed does not), so each path
-// selects no route rather than reaching a handler whose headers would be dropped.
-test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
+// THE SESSION AND LOGIN ROUTES ARE SERVED, EACH BY ITS OWN HANDLER: the OIDC login, callback and
+// logout routes land with the seed's response-header transport (cli_run serve_write_response
+// writes the handler's Location and Set-Cookie lines), so each path selects its handler rather
+// than no route. RED if a login path stops selecting, or selects another handler.
+test fn the_session_and_login_routes_select_their_handlers() -> Bool {
   match roadmap_serve_route_table_build() {
     ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     ServedRouteTableBuilt { table: t } =>
@@ -937,15 +892,15 @@ test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
         _ => false
       }
         && match serve_select_route(table: t, method: GET, path: "/auth/login") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthLoginHandler, params: _ } => true
           _ => false
         }
         && match serve_select_route(table: t, method: GET, path: "/auth/google/callback") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthGoogleCallbackHandler, params: _ } => true
           _ => false
         }
         && match serve_select_route(table: t, method: POST, path: "/auth/logout") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthLogoutHandler, params: _ } => true
           _ => false
         }
   }
@@ -1048,4 +1003,82 @@ test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
     && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
+}
+
+// PLANTED REQUEST HEADERS AT THE READING: a field is selected by its name and nothing else, and
+// the three answers stay apart -- absent, one value, repeated with its count. A field whose name
+// merely contains the one asked for is not it.
+test fn a_planted_header_list_reads_as_absent_single_or_repeated() -> Bool {
+  let headers = [
+    ServeRequestHeader { name: "accept", value: "text/html" },
+    ServeRequestHeader { name: "x-cookie", value: "gunbc_session=planted" },
+    ServeRequestHeader { name: "cookie", value: "theme=dark" },
+  ]
+  serve_request_header_reading(headers: headers, name: "cookie") == ServeRequestHeaderSingle { value: "theme=dark" }
+    && serve_request_header_reading(headers: headers, name: "authorization") == ServeRequestHeaderAbsent
+    && serve_request_header_reading(headers: [], name: "cookie") == ServeRequestHeaderAbsent
+    && serve_request_header_reading(
+      headers: concat(headers, [ServeRequestHeader { name: "cookie", value: "theme=light" }]),
+      name: "cookie",
+    ) == ServeRequestHeaderRepeated { occurrences: 2 }
+}
+
+fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { caller_supplied_plan_fixture() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: "GET",
+    path: "/issue/demo-node/assignment",
+    body: "",
+    tailscale_identity: "",
+    ingress: IngressUnattested,
+    request_headers: headers,
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+// THE SERVED ENTRY, declared request headers to wire record, on the real assignment-context
+// route. That route answers from the authentication evidence alone when no human session is
+// present, so the claim performs no host read: no Cookie field and a Cookie field carrying no
+// session both answer the signed-out 401; a malformed session cookie answers the invalid-session
+// 401, so the field's VALUE reached the cookie decode; two Cookie fields answer 400 before any
+// route runs. Deleting the header reading from the entry, or handing it a field other than
+// Cookie, makes this fail.
+test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_headers() -> Bool {
+  let absent = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "accept", value: "application/json" }])
+  let other = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "theme=dark" }])
+  let malformed = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "gunbc_session=a; gunbc_session=b" }])
+  let repeated = witness_assignment_context_over_headers(headers: [
+    ServeRequestHeader { name: "cookie", value: "gunbc_session=a" },
+    ServeRequestHeader { name: "cookie", value: "gunbc_session=b" },
+  ])
+  absent.status == 401
+    && absent.body == "Sign in to assign this issue."
+    && other.status == 401
+    && other.body == absent.body
+    && malformed.status == 401
+    && malformed.body == "Your session has expired or is unavailable. Sign in again."
+    && repeated.status == 400
+    && repeated.body == "bad request: duplicate cookie header\n"
+}
+
+
+test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool {
+  let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } }
+  selects(method: GET, path: "/preferences/issues", want: IssueViewPreferencesReadHandler)
+    && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
+    && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
+    && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: true).status == 401
+    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: "2026-09-27T01:00:00Z") {
+      Deny { refusal: _ } => true
+      Permit => false
+    }
+}
+
+test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool {
+  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
+    && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
 }

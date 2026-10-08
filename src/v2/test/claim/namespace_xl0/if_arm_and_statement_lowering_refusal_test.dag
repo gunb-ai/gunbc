@@ -11,6 +11,7 @@ import v2.compiler.compile {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
@@ -18,12 +19,12 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -51,36 +52,36 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // block, a match, and a let followed by its body, and must resolve. Two neighbours already held on
 // main and hold on both sides: a bare name in an arm, and a let-headed spine whose later statement
 // does not bind.
-data iasl_ifarm_und_source: String = "module v2.test.iasl_ifarm_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: iasl_undeclared_ifarm) } else { c } }\n"
+data iasl_ifarm_und_source: String = "module v2.test.iasl_ifarm_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: iasl_undeclared_ifarm) } else { c } }\n"
 
-data iasl_ifarm_else_und_source: String = "module v2.test.iasl_ifarm_else_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { c } else { iasl_t(p: iasl_undeclared_else) } }\n"
+data iasl_ifarm_else_und_source: String = "module v2.test.iasl_ifarm_else_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { c } else { iasl_t(p: iasl_undeclared_else) } }\n"
 
-data iasl_ifarm_nested_und_source: String = "module v2.test.iasl_ifarm_nested_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { if c { iasl_t(p: iasl_undeclared_nested) } else { c } } else { c } }\n"
+data iasl_ifarm_nested_und_source: String = "module v2.test.iasl_ifarm_nested_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { if c { iasl_t(p: iasl_undeclared_nested) } else { c } } else { c } }\n"
 
-data iasl_block_und_source: String = "module v2.test.iasl_block_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  c\n  iasl_undeclared_block_second\n}\n"
+data iasl_block_und_source: String = "module v2.test.iasl_block_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  c\n  iasl_undeclared_block_second\n}\n"
 
-data iasl_ifarm_block_und_source: String = "module v2.test.iasl_ifarm_block_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c {\n    c\n    iasl_undeclared_arm_second\n  } else { c } }\n"
+data iasl_ifarm_block_und_source: String = "module v2.test.iasl_ifarm_block_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c {\n    c\n    iasl_undeclared_arm_second\n  } else { c } }\n"
 
-data iasl_let_then_bare_und_source: String = "module v2.test.iasl_let_then_bare_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  let d = c\n  d\n  iasl_undeclared_after_let\n}\n"
+data iasl_let_then_bare_und_source: String = "module v2.test.iasl_let_then_bare_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  let d = c\n  d\n  iasl_undeclared_after_let\n}\n"
 
-data iasl_block_ctl_source: String = "module v2.test.iasl_block_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  1\n  c\n}\n"
+data iasl_block_ctl_source: String = "module v2.test.iasl_block_ctl\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  1\n  c\n}\n"
 
-data iasl_ifarm_ctl_source: String = "module v2.test.iasl_ifarm_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: c) } else { c } }\n"
+data iasl_ifarm_ctl_source: String = "module v2.test.iasl_ifarm_ctl\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: c) } else { c } }\n"
 
-data iasl_ifarm_nested_ctl_source: String = "module v2.test.iasl_ifarm_nested_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { if c { iasl_t(p: c) } else { c } } else { iasl_g(a: c, b: true) } }\n"
+data iasl_ifarm_nested_ctl_source: String = "module v2.test.iasl_ifarm_nested_ctl\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { if c { iasl_t(p: c) } else { c } } else { iasl_g(a: c, b: true) } }\n"
 
-data iasl_ifarm_letblock_ctl_source: String = "module v2.test.iasl_ifarm_letblock_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c {\n    let d = iasl_t(p: c)\n    d\n  } else { c } }\n"
+data iasl_ifarm_letblock_ctl_source: String = "module v2.test.iasl_ifarm_letblock_ctl\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c {\n    let d = iasl_t(p: c)\n    d\n  } else { c } }\n"
 
-data iasl_let_block_ctl_source: String = "module v2.test.iasl_let_block_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  let d = iasl_t(p: c)\n  iasl_g(a: d, b: c)\n}\n"
+data iasl_let_block_ctl_source: String = "module v2.test.iasl_let_block_ctl\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  let d = iasl_t(p: c)\n  iasl_g(a: d, b: c)\n}\n"
 
-data iasl_ifarm_bare_und_source: String = "module v2.test.iasl_ifarm_bare_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_undeclared_ifarm_bare } else { c } }\n"
+data iasl_ifarm_bare_und_source: String = "module v2.test.iasl_ifarm_bare_und\n\nimport std.types { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_undeclared_ifarm_bare } else { c } }\n"
 
-data iasl_ifarm_match_ctl_source: String = "module v2.test.iasl_ifarm_match_ctl\n\nimport v2.std.logic { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: x } => x\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
+data iasl_ifarm_match_ctl_source: String = "module v2.test.iasl_ifarm_match_ctl\n\nimport std.types { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: x } => x\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
 
 // A MATCH BINDER USED IN A NESTED IF, INSIDE A MATCH, INSIDE AN IF-ARM, RESOLVES. Written to pin a
 // reported resolve-scope refusal (zesty-dove-429); on CI this shape resolves, so it is kept as the
 // positive control for binder scope across a nested if, beside iasl_ifarm_match_ctl.
-data iasl_ifarm_match_if_binder_source: String = "module v2.test.iasl_ifarm_match_if_binder\n\nimport v2.std.logic { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: iasl_bound } => if iasl_bound { iasl_bound } else { c }\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
+data iasl_ifarm_match_if_binder_source: String = "module v2.test.iasl_ifarm_match_if_binder\n\nimport std.types { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: iasl_bound } => if iasl_bound { iasl_bound } else { c }\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
 
 fn iasl_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -168,7 +169,7 @@ fn iasl_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optiona
     xs: context.file_refusals,
     empty: optional_absent(),
     cons: fn(acc, refusal) {
-      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+      if refusal.path == unit { optional_present(value: native_test_file_refusal_fatal_reason(fr: refusal)) } else { acc }
     }
   )
 }

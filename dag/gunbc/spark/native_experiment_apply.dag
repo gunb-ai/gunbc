@@ -1,14 +1,15 @@
 module gunbc.spark.native_experiment_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count_value }
 import v2.std.algebra { zip_map }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { serialize_content_hash }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -183,7 +184,7 @@ fn spark_refusal_for_phase(phase: ExecutionCellPhase, member: SystemdExecutionMe
 
 fn spark_result_of_outcome(actuation: ExecutionCellActuation<SystemdExecutionMember>, outcome: SparkPairHostApplyOutcome) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
   match outcome {
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => ExecutionCellActuated { actuation: actuation }
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => ExecutionCellActuated { actuation: actuation }
     SparkPairHostApplyFailed { host: _, cause: c } =>
       ExecutionCellPhaseRefused { refusal: spark_refusal_for_phase(phase: actuation.phase, member: actuation.member, detail: c) }
     SparkPairHostUnreached { host: _, cause: c } =>
@@ -457,7 +458,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
       Present { value: head } =>
         let window = spark_churn_window_seconds(admitted_seconds: plan.max_runtime_seconds)
         let context_window = token_count_value(t: plan.profile.max_model_len)
-        let alias = plan.profile.served_alias
+        let served = plan.profile.served_alias
         Present { value: SparkExperimentWorkloadPhase {
           variant: variant,
           readiness_gate: SparkExperimentWorkloadLeg {
@@ -474,9 +475,9 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
               host: head.host,
               unit_name: head.unit_name,
               script: match variant.mode {
-                SparkSeatsConcurrent => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: false, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
-                SparkSeatsSequential => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: true, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
-                SparkCacheReuseQualification => systemd_workload_cache_reuse_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_window: seat_window, context_window: context_window)
+                SparkSeatsConcurrent => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: false, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
+                SparkSeatsSequential => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: true, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
+                SparkCacheReuseQualification => systemd_workload_cache_reuse_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, seat_window: seat_window, context_window: context_window)
               },
             },
           },
@@ -485,7 +486,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: variant.request_timeout_seconds),
+              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: variant.request_timeout_seconds),
             },
           },
           sampling: SparkExperimentWorkloadLeg {
@@ -620,9 +621,9 @@ fn arm_experiment_actuation_admission(
   plan: ArmMemoryExperimentPlan?,
 ) -> ArmExperimentActuationAdmission {
   match verdict {
-    ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } =>
+    ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } =>
       ArmExperimentActuationRefused { cause: "the actuation requires a FitUnestablished verdict with named open obligations; this subject is PROVED, so there is nothing a wet experiment measures that the proof does not already establish" as NonEmptyStr }
-    ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } =>
+    ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: c } =>
       ArmExperimentActuationRefused { cause: join(["the actuation requires a FitUnestablished verdict with named open obligations; this subject is REFUSED (", c as String, "), and a shape that cannot fit has nothing a measurement can rescue"], "") as NonEmptyStr }
     ArmMemoryFitUnestablished { obligations: os } =>
       match length(os) == 0 {
@@ -634,7 +635,7 @@ fn arm_experiment_actuation_admission(
               match plan.checkpoint == checkpoint && plan.runtime == runtime && plan.topology == topology {
                 false => ArmExperimentActuationRefused { cause: "the experiment plan names a different checkpoint, runtime or topology than the actuation was asked to run: the plan and the actuation must be one subject" as NonEmptyStr }
                 true =>
-                  match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: plan.profile) {
+                  match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: plan.profile) {
                     ArmMemorySubjectRefused { cause: c } => ArmExperimentActuationRefused { cause: c }
                     ArmMemorySubjectReady { subject: subject } =>
                       let open = arm_memory_subject_open_components(subject: subject)
@@ -784,8 +785,8 @@ fn spark_profile_readback_verdict(head_leg: SparkProfileReadbackLeg, head_outcom
       SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: head_leg.member, cause: c as NonEmptyStr } }
     SparkPairHostUnreached { host: _, cause: c } =>
       SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: head_leg.member, cause: c as NonEmptyStr } }
-    SparkPairHostApplied { host: _, detail: _, standing: _ } =>
-      match first(filter(rank_outcomes, o => match o { SparkPairHostApplyFailed { host: _, cause: _ } => true  SparkPairHostUnreached { host: _, cause: _ } => true  SparkPairHostApplied { host: _, detail: _, standing: _ } => false })) {
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } =>
+      match first(filter(rank_outcomes, o => match o { SparkPairHostApplyFailed { host: _, cause: _ } => true  SparkPairHostUnreached { host: _, cause: _ } => true  SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => false })) {
         Present { value: SparkPairHostApplyFailed { host: failed_host, cause: c } } =>
           match first(filter(rank_legs, l => host_identity_eq(a: l.member.host, b: failed_host))) {
             Present { value: l } =>
@@ -798,7 +799,7 @@ fn spark_profile_readback_verdict(head_leg: SparkProfileReadbackLeg, head_outcom
               SparkProfileReadbackHalted { refusal: SparkRankProfileReadbackRefused { member: l.member, cause: c as NonEmptyStr } }
             Absent => SparkProfileReadbacksConverged
           }
-        Present { value: SparkPairHostApplied { host: _, detail: _, standing: _ } } => SparkProfileReadbacksConverged
+        Present { value: SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } } => SparkProfileReadbacksConverged
         Absent => SparkProfileReadbacksConverged
       }
   }
@@ -881,28 +882,28 @@ fn spark_workload_run(phase: SparkExperimentWorkloadPhase, run_leg: fn(SparkPair
       SparkWorkloadRun { outcomes: [gate_outcome], workload_halt: Present { value: SparkEndpointReadinessRefused { member: phase.readiness_gate.member, cause: c as NonEmptyStr } } }
     SparkPairHostUnreached { host: _, cause: c } =>
       SparkWorkloadRun { outcomes: [gate_outcome], workload_halt: Present { value: SparkEndpointReadinessRefused { member: phase.readiness_gate.member, cause: c as NonEmptyStr } } }
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => {
       let prefill_outcome = run_leg(phase.prefill_seats.plan)
       match prefill_outcome {
         SparkPairHostApplyFailed { host: _, cause: c } =>
           SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
         SparkPairHostUnreached { host: _, cause: c } =>
           SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
-        SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+        SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => {
           let churn_outcome = run_leg(phase.churn.plan)
           match churn_outcome {
             SparkPairHostApplyFailed { host: _, cause: c } =>
               SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
             SparkPairHostUnreached { host: _, cause: c } =>
               SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
-            SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+            SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => {
               let sampling_outcome = run_leg(phase.sampling.plan)
               match sampling_outcome {
                 SparkPairHostApplyFailed { host: _, cause: c } =>
                   SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
                 SparkPairHostUnreached { host: _, cause: c } =>
                   SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
-                SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+                SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } =>
                   SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: none }
               }
             }
@@ -938,7 +939,7 @@ fn spark_experiment_route(
           ExecutionCellConverged { started: _ } => {
             let head_outcome = run_leg(head_readback.plan)
             let rank_outcomes = match head_outcome {
-              SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+              SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } =>
                 map(rank_readbacks, l => run_leg(l.plan))
               SparkPairHostApplyFailed { host: _, cause: _ } =>
                 [] as List<SparkPairHostApplyOutcome>
@@ -1041,14 +1042,14 @@ fn spark_native_experiment_default_actuation() -> ArmExperimentActuationAdmissio
     Absent => ArmExperimentActuationRefused { cause: "the restoration intent refused, so no experiment subject exists" as NonEmptyStr }
     Present { value: executable } =>
       let profile = executable.profile
-      match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+      match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
         ArmMemorySubjectRefused { cause: c } => ArmExperimentActuationRefused { cause: c }
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_verdict(subject: subject) {
             ArmMemoryFitUnestablished { obligations: _ } =>
               match arm_memory_fit_experiment_plan(
                 checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-                workload: subject.intent, policy_profile: profile, targets: arm_memory_subject_open_components(subject: subject)) {
+                workload: subject.intent, policy_profile: profile, targets: arm_memory_subject_open_components(subject: subject), deployment_env: glm_group_b_deployment_env()) {
                 ArmMemoryExperimentAdmitted { plan: p } => arm_experiment_actuation_admission(
                   checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
                   verdict: arm_memory_fit_verdict(subject: subject), plan: Present { value: p })

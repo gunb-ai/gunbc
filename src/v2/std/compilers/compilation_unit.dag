@@ -11,13 +11,13 @@ import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
   map_get
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
   optional_present
 }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted, outcome_rejected }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted }
 import v2.std.node {
   Atom,
   Conj,
@@ -212,7 +212,7 @@ fn module_unit_id_outcome(
 ) -> Outcome<Optional<CompilationUnitId>> {
   match map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -347,7 +347,7 @@ fn module_export_declarations_outcome(
         Present { value: nodes } => nodes
         Absent => Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -361,7 +361,7 @@ fn module_type_definition_rows_outcome(
         Present { value: rows } => rows
         Absent => Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -428,7 +428,12 @@ fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> Symbol {
 fn type_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 

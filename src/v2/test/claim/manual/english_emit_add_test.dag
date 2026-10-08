@@ -22,7 +22,7 @@ import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -44,7 +44,6 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
 import v2.std.node { Edge, Authored, Node, Positional, StructuralLabel }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.verification {

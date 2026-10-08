@@ -5,8 +5,14 @@ import gunbc.roadmap_sizing {
 }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
-import v2.std.optional { Present }
+import std.optional { Present }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.exec.command { argv_words }
+import v2.std.collection { List }
+import v2.std.algebra { fold_list }
+import std.types { GitRef }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
+import std.measure { byte_size_count }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
@@ -53,7 +59,12 @@ import extdeps.llm.cli {
   reasoning_effort_label,
 }
 import gunbc.roadmap_dispatch_actuator {
+  dispatch_audit_unit_command,
+  dispatch_supervisor_unit_command,
+  dispatch_attempt_audit_events_path_for_instance,
+  dispatch_attempt_supervisor_events_path_for_instance,
   attempt_state_prepare_argv_for_instance,
+  dispatch_reviewer_attempt_identity,
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
   dispatch_actuator_selection,
@@ -68,6 +79,7 @@ import gunbc.roadmap_dispatch_actuator {
   CursorProviderSpawnUnwired,
   CodexProviderExecutableAbsent,
   GunbcHarnessSpawnNeedsInstance,
+  ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
   CodexDispatchProvider,
   dispatch_tmux_session_name,
@@ -88,7 +100,8 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_brief_fields_for_environment,
   dispatch_brief_with_centering,
   dispatch_continuation_alignment_preamble,
-  dispatch_supervisor_unit_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity,
+  dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv,
+  dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity,
   DispatchSpawnCommands,
   HostExecArgv,
   SystemdUnitContainer,
@@ -119,7 +132,6 @@ import gunbc.roadmap_dispatch_actuator {
   SpawnSession,
   dispatch_current_attempt_events_projection_argv_for_instance,
   gunbc_harness_review_argv,
-  dispatch_review_unit_argv,
 }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
@@ -422,7 +434,7 @@ fn codex_tmux_command_shape_holds(
   codex_executable: String,
 ) -> Bool {
   match cmds.session_container {
-    SystemdUnitContainer { run: _ } => false
+    SystemdUnitContainer { plan: _ } => false
     TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start } =>
       codex_tmux_arm_shape_holds(spawn: spawn, provider_start: provider_start, codex_executable: codex_executable)
   }
@@ -476,7 +488,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 
 fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
   match commands.session_container {
-    SystemdUnitContainer { run: _ } => false
+    SystemdUnitContainer { plan: _ } => false
     TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe, provider_start } =>
       lab_instance_tmux_shape_holds(commands: commands, lab: lab, spawn: spawn, event_pipe: event_pipe, provider_start: provider_start)
   }
@@ -630,8 +642,11 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
     TmuxLsParsed { entries } => {
       let filtered = filter_dispatch_tmux_sessions(entries: entries)
       count(filtered) == 1
-        && filtered.first().session_name == "gunbc-dispatch-node-4"
-        && filtered.first().windows == 2
+        && match filtered.first() {
+             Present { value: entry } =>
+               entry.session_name == "gunbc-dispatch-node-4" && entry.windows == 2
+             Absent => false
+           }
     }
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
@@ -1098,6 +1113,7 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
     CursorProviderSpawnUnwired { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
+    ClaudeProviderCredentialUnbound { reason: r } => r as String
   }
 }
 
@@ -1137,10 +1153,10 @@ test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
 // every reviewer lane exited 1 before any ssh leg with no verdict written (measured 2026-09-20 on
 // srv2, all fourteen lanes of one belt review pass). The criterion key is part of the mint because
 // the lanes of one attempt share the node id and attempt key, and each lane's identity must stay
-// distinct.
+// distinct, and the head is part of it because one criterion is reviewed again at each new head.
 
 test fn witness_review_attempt_identity_is_a_safe_path_segment() -> Bool {
-  path_segment_is_safe(raw: join(["reviewer:", "node-1", "-", "att-20260920", "-", "conformance-external-facts"], ""))
+  path_segment_is_safe(raw: dispatch_reviewer_attempt_identity(node_id: "node-1", attempt_key: "att-20260920", criterion_key: "conformance-external-facts", head_sha: "abc123"))
 }
 
 test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
@@ -1159,14 +1175,13 @@ test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
   string_contains(s: join(argv, separator: "\0"), pattern: "\0--arg\0attempt_identity=reviewer:node-1-att-20260920-c")
 }
 
-// THE SPAWN SITE, not just the argv row: dispatch_review_unit_argv is where the mint lives, and it
+// THE SPAWN SITE, not just the argv row: dispatch_review_unit_command is where the mint lives, and it
 // is the fold the belt's review pass actually spawns through. This witness fails if a future edit
 // re-drops the argument between the unit fold and the argv row, which compilation alone would not
 // catch once the parameter exists and could be ignored.
 
 test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool {
-  let cmd = dispatch_review_unit_argv(
-    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+  match dispatch_review_unit_command(
     instance: srv1_lab_dashboard_instance(),
     node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
     attempt_key: "att-20260920",
@@ -1174,8 +1189,13 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     brief: "brief",
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
-  )
-  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let cmd = dispatch_unit_exec_argv(command: command, resolved_program: "/usr/bin/systemd-run" as FilePath)
+      string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:6.node-1.12.att-20260920.26.conformance-external-facts.6.abc123")
+    }
+  }
 }
 
 // THE ROW THAT WOULD HAVE CAUGHT THE ORIGINAL BUG: an attempt identity built from a path-bearing
@@ -1353,27 +1373,83 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
 // reads. The session invokes the supervisor's own CLI function, never the worker's.
 test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let argv = dispatch_supervisor_unit_argv(
-    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+  match dispatch_supervisor_unit_command(
     instance: lab,
     node_id: roadmap_dispatch_actuator_nid(s: "shell-dag-cron-entry-line-builder"),
     attempt_key: "cd172fe81b806160",
     turn: 3,
     worktree_path: "/x/attempts/wt",
     brief: "BRIEF-MARKER",
-  )
-  let wire = join(argv.args, separator: "\0")
-  wire.contains("gunbc-supervisor-shell-dag-cron-entry-line-builder-cd172fe81b806160-t3.service")
-    && wire.contains("\0--function\0harness_supervisor_cli\0")
-    && wire.contains("\0worktree=/x/attempts/wt\0")
-    && wire.contains("BRIEF-MARKER")
-    && wire.contains("\0verdict_name=supervisor-verdict.json\0")
-    && wire.contains("/supervisor/harness-request.json")
-    && wire.contains("/supervisor/provider-events.jsonl")
-    && wire.contains("ReadWritePaths=")
-    && wire.contains("/supervisor\0")
-    && !wire.contains("harness_worker_cli")
-    && dispatch_supervisor_attempt_identity(node_id: "shell-dag-cron-entry-line-builder", attempt_key: "cd172fe81b806160", turn: 3)
-      == "supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3"
-    && wire.contains("attempt_identity=supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3")
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let cmd = dispatch_unit_exec_argv(command: command, resolved_program: "/usr/bin/systemd-run" as FilePath)
+      let wire = join(cmd.args, separator: "\0")
+      wire.contains("gunbc-supervisor-shell-dag-cron-entry-line-builder-cd172fe81b806160-t3.service")
+        && wire.contains("\0--function\0harness_supervisor_cli\0")
+        && wire.contains("\0worktree=/x/attempts/wt\0")
+        && wire.contains("BRIEF-MARKER")
+        && wire.contains("\0verdict_name=supervisor-verdict.json\0")
+        && wire.contains("/supervisor/harness-request.json")
+        && wire.contains("/supervisor/t3.provider-events.jsonl")
+        && wire.contains("ReadWritePaths=")
+        && wire.contains("/supervisor\0")
+        && !wire.contains("harness_worker_cli")
+        && dispatch_supervisor_attempt_identity(node_id: "shell-dag-cron-entry-line-builder", attempt_key: "cd172fe81b806160", turn: 3)
+          == "supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3"
+        && wire.contains("attempt_identity=supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3")
+    }
+  }
+}
+
+// The writer/reader pairing for token metering: each launch's argv must name the SAME per-launch
+// events path the metering reader opens — a path shared across launches let a later launch
+// rewrite an earlier one's stream and erase its token usage (see the comment above
+// dispatch_audit_unit_command in the actuator).
+fn witness_argv_member(xs: List<String>, x: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, y) { acc || (y == x) })
+}
+
+test fn witness_auditor_launch_writes_the_events_path_metering_reads() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  match dispatch_audit_unit_command(
+    instance: instance,
+    node_id: roadmap_dispatch_actuator_nid(s: "witness-node"),
+    attempt_key: "witness-attempt",
+    worktree_path: "/tmp/fci-witness-worktree",
+    brief: "witness brief",
+    head_sha: "fci1witnesssha",
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      witness_argv_member(
+        xs: argv_words(command: command),
+        x: join(
+          ["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", head_sha: "fci1witnesssha")],
+          "",
+        ),
+      )
+  }
+}
+
+test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  match dispatch_supervisor_unit_command(
+    instance: instance,
+    node_id: roadmap_dispatch_actuator_nid(s: "witness-node"),
+    attempt_key: "witness-attempt",
+    turn: 7,
+    worktree_path: "/tmp/fci-witness-worktree",
+    brief: "witness brief",
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      witness_argv_member(
+        xs: argv_words(command: command),
+        x: join(
+          ["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", turn: 7)],
+          "",
+        ),
+      )
+  }
 }

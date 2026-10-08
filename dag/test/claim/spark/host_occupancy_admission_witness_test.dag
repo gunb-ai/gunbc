@@ -2,8 +2,8 @@ module test.claim.spark.host_occupancy_admission_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, mebibyte_count }
-import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import extdeps.nvidia.system_management_interface {
   NvidiaComputeAppsRead, ComputeAppsParsed, ComputeAppsUnparsed, parse_compute_apps,
   UsedMemoryReported, UsedMemoryWithheld,

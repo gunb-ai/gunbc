@@ -1,5 +1,6 @@
 module v2.test.self_host.direct_rust_door_group_algebra
 
+import std.types { List }
 import v2.compiler.self_host.candidate_generation {
   ArtifactProduced,
   AssemblyRejected,
@@ -10,6 +11,7 @@ import v2.compiler.self_host.candidate_generation {
   ProvenancedRustEmissionObservation,
 }
 import v2.compiler.self_host.direct_rust_door_observation {
+  AssemblyRefused,
   CandidateRejected,
   DirectRustDoorSourceProduced,
   EmittedSourceMismatch,
@@ -74,10 +76,8 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   invariant_port_locus,
 }
-import v2.std.logic { Bool }
-import v2.std.collection { List }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 // FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying
@@ -535,5 +535,38 @@ test fn behavioral_advance_still_reachable_with_a_bound_probe() -> Bool {
         Absent => false
       }
     Absent => false
+  }
+}
+
+fn residue_headed_diag(fatal: Symbol) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: ^parse_grammar_choice_overlap_residue,
+      at: invariant_port_locus(port: ^direct_rust_door_group_algebra, invariant: ^parse_grammar_choice_overlap_residue),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      Diagnostic {
+        reason: fatal,
+        at: invariant_port_locus(port: ^direct_rust_door_group_algebra, invariant: fatal),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    ]
+  }
+}
+
+// THE PROGRAM'S RED CONTROL AT THE DIRECT-RUST DOOR. Two assembly refusals share the overlap
+// residue as their head and differ in their fatal cause; the observation must name each fatal.
+// Reading the head named the residue for both.
+test fn a_shared_residue_head_yields_each_assembly_refusals_own_fatal_holds() -> Bool {
+  let a = project_direct_rust_door_observation(group: group_of(emission: AssemblyRejected { diagnostics: residue_headed_diag(fatal: ^normalize_rejected) }))
+  let b = project_direct_rust_door_observation(group: group_of(emission: AssemblyRejected { diagnostics: residue_headed_diag(fatal: ^resolve_reason_unbound_symbol) }))
+  match a {
+    AssemblyRefused { reason: ra } =>
+      match b {
+        AssemblyRefused { reason: rb } => (ra == ^normalize_rejected) && (rb == ^resolve_reason_unbound_symbol)
+        _ => false
+      }
+    _ => false
   }
 }

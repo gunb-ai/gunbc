@@ -1,4 +1,5 @@
 module v2.std.decl_index
+import std.types { List }
 import v2.std.arrow_signature { declared_signature_arrow }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
@@ -172,7 +173,10 @@ fn logical_qualified_name_from_module(module_name: String, name: String) -> Stri
 fn decl_facts_is_fn_like(kind: ItemKind) -> Bool {
   match kind {
     FnItem => true
-    _ => false
+    TypeItem => false
+    DataItem => false
+    ServiceItem => false
+    OtherItem => false
   }
 }
 

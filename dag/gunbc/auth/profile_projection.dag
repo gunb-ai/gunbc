@@ -10,9 +10,10 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded,
 }
 import extdeps.languages.json.emit {
-  serialize_json, json_object, json_kv, json_string, JsonValue,
+  serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
 }
 import extdeps.languages.json.parse {
   parse_json_document, json_field_string, json_document_gap_text,
@@ -86,21 +87,21 @@ fn principal_profile_json(profile: PrincipalProfile) -> String {
   ], profile_name_members(name: profile.name)), concat(profile_email_members(email: profile.email), profile_picture_members(picture: profile.picture)))))
 }
 
-fn profile_name_members(name: String?) -> List<JsonValue> {
+fn profile_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
   }
 }
 
-fn profile_email_members(email: Email?) -> List<JsonValue> {
+fn profile_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []
   }
 }
 
-fn profile_picture_members(picture: Uri?) -> List<JsonValue> {
+fn profile_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
@@ -374,19 +375,22 @@ fn profile_store_decode_entries(
         { profiles: acc, skipped: skipped_acc }
       } else {
         let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
-        if !read_result.success {
-          { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", read_result.error], "") }]) }
-        } else {
-          match principal_profile_of_json(text: read_result.content) {
-            ProfileFileMalformed { detail } => {
-              let skipped_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
-              skipped_file
-            }
-            ProfileFileDecoded { profile: p } => {
-              let decoded_file = { profiles: concat(acc, [p]), skipped: skipped_acc }
-              decoded_file
-            }
+        match filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error) {
+          FilesystemReadRefused { error } => {
+            let refused_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", error], "") }]) }
+            refused_file
           }
+          FilesystemReadSucceeded { content } =>
+            match principal_profile_of_json(text: content) {
+              ProfileFileMalformed { detail } => {
+                let skipped_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
+                skipped_file
+              }
+              ProfileFileDecoded { profile: p } => {
+                let decoded_file = { profiles: concat(acc, [p]), skipped: skipped_acc }
+                decoded_file
+              }
+            }
         }
       }
       profile_store_decode_entries(layout: layout, entries: entries.skip(n: 1), acc: stepped.profiles, skipped_acc: stepped.skipped)

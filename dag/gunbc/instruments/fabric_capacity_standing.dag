@@ -1,7 +1,7 @@
 module gunbc.instruments.fabric_capacity_standing
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
@@ -9,7 +9,7 @@ import std.measure { TokenCount, token_count, concurrent_request_hundredths, All
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, pair_serving_capacity_subject,
   CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,

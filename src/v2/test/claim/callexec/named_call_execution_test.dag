@@ -1,0 +1,48 @@
+module v2.test.callexec.named_call_execution
+
+import std.types { Bool, Int }
+
+// NATIVE EXECUTION OF A NAMED CALL. Grounding at infer is not execution: this runs through the real
+// route, so the call must be typed AND evaluated. Bool-returning on purpose -- an Int result compared
+// with `==` would couple the first execution proof to the equality operation, which has its own typing.
+//
+// THE FALSE CONTROL IS THE DISCRIMINATOR. A call that refuses and a call that returns false are
+// different outcomes that a single positive row cannot separate: if the route reported both as "not
+// holding", a refusal would read as a false answer. So one row must HOLD and the other must RETURN
+// FALSE, and the pair together establishes that the body ran.
+fn truth(only_arg: Int) -> Bool {
+  true
+}
+
+fn falsity(only_arg: Int) -> Bool {
+  false
+}
+
+// EXECUTING, AND THE PAIR DISCRIMINATES. The refusal this file recorded is gone: both calls run and
+// answer their own bodies. The boundary was two disagreeing readers of a callee's arrow --
+// v2.compiler.infer infer_application_formal_args read it FACTS-BLIND while its caller's formals came
+// from infer_application_callee_arrow_with_facts, so a named call (whose callee is a resolved
+// declaration reference, a Conj and never an Arrow) produced no formal/actual pairs at all -- together
+// with infer_declaration_reference_facts reading the declaration from the AUTHORED symbol_index, whose
+// return atom is the source spelling that dag_binding_denotation does not denote.
+//
+// THESE ROWS WERE NOT ENROLLED BY ANYTHING BEFORE, and that is worth recording rather than quietly
+// fixing. They were declared plain `fn`, so the claim route never ran them and the native pattern
+// selected nothing either: a `*_test.dag` that enrols nothing is the decoration DESIGN section 4b
+// names, and the floor's own discovery gate is what refused it. It surfaced only once the type errors
+// ahead of it were repaired -- a refusal earlier in the phase had been masking it. The seven's own file
+// (v2.test.parse.expression_bodied_fn_decl_parse) declares `test fn` at a `*_test.dag` path, which is
+// the convention these rows now follow.
+//
+// THE FALSE CONTROL IS A NEGATION, NOT AN EQUALITY. Asserting `falsity(...) == false` would couple this
+// execution proof to the equality operation, which has its own typing rule and its own standing -- the
+// coupling the header above already refuses. `!falsity(...)` holds only if the call RETURNED false: a
+// refusal fails the row, and a `true` answer fails it too, so the pair separates a refusal from a false
+// answer, which is what a single positive row cannot do.
+test fn nc_a_named_bool_call_executes_holds() -> Bool {
+  truth(only_arg: 1)
+}
+
+test fn nc_the_false_returning_call_returns_false_holds() -> Bool {
+  !falsity(only_arg: 1)
+}

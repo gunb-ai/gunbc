@@ -1,0 +1,194 @@
+module extdeps.ampere.mt_collins_firmware_release
+
+import std.types { Int, NonEmptyStr, List }
+import std.measure { ByteSize, byte_size, Second, second }
+import extdeps.crypto.hash { sha256_digest }
+import std.optional { Present }
+import extdeps.boards.types { AmpereMtCollins }
+import extdeps.firmware.types {
+  FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
+  BmcController, HostBios, ScpFirmware, MainboardCpld,
+  PicmgHpmImage, NoFirmwarePrerequisite, firmware_semantic_version,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE FOXCONN MT. COLLINS FIRMWARE RELEASES DELIVERED ON AMPERE SUPPORT TICKET #7426 (2026-09-18), AND
+// THE VENDOR'S UPGRADE PROCEDURE FOR THEM. Two bundles: mt-collins-srp-mgmt-mgr-bin-r1.12-0.45_3 (BMC,
+// CPLD/VRD, and the SOPs) and mt.collins-fw-aptv-bin-r2.10c-0ACOD014 (BIOS and SCP). The bundles and
+// their own digests are recorded where the bytes are held (gunbc-private strategy.vendor_correspondence
+// delivery_mt_collins_bmc_management and delivery_mt_collins_bios_scp); this module states the
+// upstream facts about the .hpm members a flash consumes.
+//
+// THE DIGESTS ARE MEASURED, NOT TRANSCRIBED. Each image_digest below is sha256 over the .hpm member,
+// computed 2026-10-02 from bundles whose own sha256 matched the private rows. The vendor manifests
+// publish MD5 only, which std.content_hash does not carry, so they corroborate the members without
+// being restated here.
+//
+// image_uri IS THE VENDOR'S DISTRIBUTION SURFACE, NOT A FETCH ROUTE. Ampere delivered these through a
+// temporary upload on the ticket, which has since been removed; no public locator exists for these
+// bytes, so the row names the portal they were delivered through. A realization fetches from the
+// private route and accepts the bytes only when their digest matches the row.
+//
+// VERSIONS ARE THE VENDOR'S, PROJECTED ONTO THE TRIPLE. BMC 0.45.3 and SCP 2.10 are already triples. The
+// BIOS release note states "BIOS Version : 0ACOD 0.14.0" for build 0ACOD014, so 0.14.0 is the vendor's
+// own projection -- and it DISCARDS THE FAMILY LETTER: mtcollins1 shipped with 0ACOC017, which projects
+// to 0.17.0 and so orders ABOVE 0ACOD014. Ordering on BIOS triples across families is meaningless; the
+// convergence compares them for equality only. The MB CPLD release is "Revision : V06", carried as 6.0.0; that projection is ours,
+// stated here so a readback parser has one place to agree with -- and BMC 0.45.3 reports that CPLD as
+// "4.00 00000000", so no parser agrees with it yet.
+data mt_collins_firmware_delivery_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "connect.amperecomputing.com" }
+}
+
+data mt_collins_bmc_0_45_3_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AmpereMtCollins,
+  target: BmcController,
+  version: firmware_semantic_version(major: 0, minor: 45, patch: 3),
+  released_on: 1703635200000,
+  image_kind: PicmgHpmImage,
+  image_uri: mt_collins_firmware_delivery_authority.uri,
+  image_bytes: byte_size(count: 67109015),
+  image_digest: Present { value: sha256_digest(hex: "8efa56a952e4c92c740f1ab22fe964c08bedd094cb82506d6b41a5856a7458c3") },
+  release_notes: "MtCollinsBmc0_45_3.hpm, BMC_Release_Note.txt 12/27/2023: Basic Auth on every system interface (CVE-2023-34329, CVE-2023-34330), requiring a BIOS that supports it; Yafuflash unsupported from 0.45.2.",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: mt_collins_firmware_delivery_authority,
+}
+
+data mt_collins_bios_0acod014_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AmpereMtCollins,
+  target: HostBios,
+  version: firmware_semantic_version(major: 0, minor: 14, patch: 0),
+  released_on: 1702339200000,
+  image_kind: PicmgHpmImage,
+  image_uri: mt_collins_firmware_delivery_authority.uri,
+  image_bytes: byte_size(count: 14419791),
+  image_digest: Present { value: sha256_digest(hex: "e250802973e2301a8773de8f59163ac5aa36b17ff37f8b19cddcd88f27eecb2e") },
+  release_notes: "collins_aptiov_atf_signed_2.10c_0ACOD014.hpm, Mt.Collins-BIOS-0ACOD014-ReleaseNote.txt 2023/12/12: SRP 2.10c; BMC Redfish Basic Auth mode. Note 1: BIOS reference code and SCP versions must match. Note 4: reflash SCP and BIOS when changing CPU.",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: mt_collins_firmware_delivery_authority,
+}
+
+data mt_collins_scp_2_10_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AmpereMtCollins,
+  target: ScpFirmware,
+  version: firmware_semantic_version(major: 2, minor: 10, patch: 0),
+  released_on: 1674691200000,
+  image_kind: PicmgHpmImage,
+  image_uri: mt_collins_firmware_delivery_authority.uri,
+  image_bytes: byte_size(count: 261221),
+  image_digest: Present { value: sha256_digest(hex: "75b59a873fe4941d1289791fa799d4b83cdf97f18493ed4024534bcfd0a3d56d") },
+  release_notes: "altra_scp_signed_2.10.20230126.hpm, shipped in the r2.10c BIOS bundle beside 0ACOD014.",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: mt_collins_firmware_delivery_authority,
+}
+
+data mt_collins_mb_cpld_v06_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AmpereMtCollins,
+  target: MainboardCpld,
+  version: firmware_semantic_version(major: 6, minor: 0, patch: 0),
+  released_on: 1654560000000,
+  image_kind: PicmgHpmImage,
+  image_uri: mt_collins_firmware_delivery_authority.uri,
+  image_bytes: byte_size(count: 1477347),
+  image_digest: Present { value: sha256_digest(hex: "86fea80cab30dc43907966e8762a979bdfa4aa74cd0e88bcb86d9631cc89371e") },
+  release_notes: "Mt.Collins_MB_CPLD_v06_20220607.hpm, MB_CPLD_Release Notes_20220607.txt: Mt.Collins MB CPLD (U3), LCMXO3LF-4300C-5BG400C, revision V06, PVT.",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: mt_collins_firmware_delivery_authority,
+}
+
+// ── THE VENDOR PROCEDURE (System_FW_Upgrade_Guide.txt and the SOP_BMC_HPM_Out-Band, SOP_BIOS_HPM_Out-Band
+// and SOP_SCP_Out-Band documents in the BMC bundle). The MB CPLD step's facts are NOT taken from its SOP:
+// they are what the 2026-10-02 manual run on mtcollins1 did and observed. These are Foxconn's statements, so they are upstream facts here;
+// whether a fleet FOLLOWS them is gunbc's policy and is decided there.
+//
+// THE RECOMMENDED ORDER is "1) BMC 2) BIOS 3) SCP 4) MB CPLD". A list, because the order is the fact.
+data mt_collins_vendor_upgrade_order: List<FirmwareTarget> = [BmcController, HostBios, ScpFirmware, MainboardCpld]
+
+// THE PER-STEP CONDITIONS THE BMC, BIOS AND SCP SOPs STATE, read 2026-10-02. Each first confirms the
+// host is powered off (`chassis power off`, `chassis status`); each runs `hpm upgrade <file> force` with
+// an upload block size of 30000 for the BMC and 8196 for BIOS and SCP, and answers a Y/y confirmation;
+// each ends "AC power cycle the system by removing power from the server for at least 10 seconds". The
+// MB CPLD step has no row here: its facts were observed on the manual run, not read from a vendor
+// procedure, so its binding lives downstream in gunbc.fleet.mtcollins_firmware_converge.
+//
+// THE SCP SOP'S BANK SELECT IS THE SOP'S INSTRUCTION AND IS NOT CARRIED, because it does not work: the SOP first sends OEM command
+// `raw 0x3c 0x0B` with 0x00 (primary) or 0x02 (secondary), and BMC 0.45.3 REFUSES it with completion
+// code 0xc9 (mtcollins1, 2026-10-02). The upgrade that followed wrote the default image and the SMpro
+// version register r0x01 read 0x0a02 (2.10) afterwards. A procedure row that told a realization to send
+// a command the controller refuses would be a vendor statement standing where an observation
+// contradicts it (§4d). The SCP SOP's upgrade line also reads `hpm <file> force` with no `upgrade`
+// verb, taken as a typo for the line every sibling SOP prints.
+type MtCollinsHpmStepProcedure {
+  firmware_release: FirmwareReleaseRow
+  upload_block: ByteSize
+}
+
+data mt_collins_minimum_ac_off: Second = second(count: 10)
+
+data mt_collins_hpm_procedures: List<MtCollinsHpmStepProcedure> = [
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_bmc_0_45_3_hpm, upload_block: byte_size(count: 30000) },
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_bios_0acod014_hpm, upload_block: byte_size(count: 8196) },
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_scp_2_10_hpm, upload_block: byte_size(count: 8196) },
+]
+
+// ── WHICH BIOS AND SCP VERSIONS ARE A PAIR. BIOS release note 1: "The BIOS Reference code version and
+// the SCP F/W version should be matched." The vendor publishes no table, so the pairs stated here are
+// the ones the vendor SHIPPED TOGETHER in one SRP bundle -- 0ACOD014 (SRP 2.10c) beside SCP 2.10 --
+// and a pair not on this list is unknown, never assumed compatible.
+type BiosScpPair {
+  bios: FirmwareSemanticVersion
+  scp: FirmwareSemanticVersion
+}
+
+data mt_collins_bios_scp_pairs: List<BiosScpPair> = [
+  BiosScpPair {
+    bios: firmware_semantic_version(major: 0, minor: 14, patch: 0),
+    scp: firmware_semantic_version(major: 2, minor: 10, patch: 0),
+  },
+]
+
+// ── BMC 0.45.3 NEEDS A BASIC-AUTH BIOS. BMC release note: "This change required users upgrading latest
+// BIOS which support 'Basic Auth' feature, otherwise Redfish communication between BMC and BIOS will
+// not function." The BIOS that adds it is 0ACOD014 (change list 1). This is an interoperation
+// requirement between two running images, not a flash prerequisite: the BMC flashes fine without it.
+// requires_one_of is a SET OF RELEASE ROWS, joined by their own image digests (each row owns its digest),
+// never a version bound: BIOS triples do
+// not order across families (0ACOC017 projects ABOVE 0ACOD014 and lacks Basic Auth), so the only honest
+// question is membership in the releases the vendor states support the feature. A release not in the
+// set -- including any of an unknown family -- does not meet it.
+type InteropRequirement {
+  when_target: FirmwareTarget
+  at_least: FirmwareSemanticVersion
+  requires_target: FirmwareTarget
+  requires_one_of: List<FirmwareReleaseRow>
+  consequence: NonEmptyStr
+}
+
+data mt_collins_interop_requirements: List<InteropRequirement> = [
+  InteropRequirement {
+    when_target: BmcController,
+    at_least: firmware_semantic_version(major: 0, minor: 45, patch: 3),
+    requires_target: HostBios,
+    requires_one_of: [mt_collins_bios_0acod014_hpm],
+    consequence: "Redfish over the BMC-BIOS HTTP-over-USB host interface does not function; WebUI and Redfish lose host inventory.",
+  },
+]
+
+// ── WHICH SILICON THE BIOS FAMILY STATES IT SUPPORTS. The 0ACOD release notes say from 0ACOD006 on that
+// the BIOS "supports Altra and Altra Max"; they say nothing about engineering-sample parts. Both halves
+// are the vendor's statement: the named production lines are stated, and an engineering sample is
+// UNSTATED -- not unsupported, not supported. A consumer may not read the silence as either (§4d).
+type BiosSiliconSupportStatement {
+  bios_family: NonEmptyStr
+  from_build: NonEmptyStr
+  stated_production_lines: List<NonEmptyStr>
+  engineering_samples_stated: Bool
+}
+
+data mt_collins_0acod_silicon_support: BiosSiliconSupportStatement = BiosSiliconSupportStatement {
+  bios_family: "0ACOD",
+  from_build: "0ACOD006",
+  stated_production_lines: ["Altra", "Altra Max"],
+  engineering_samples_stated: false,
+}

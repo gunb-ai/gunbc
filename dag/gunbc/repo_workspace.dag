@@ -45,6 +45,12 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       ]
     },
     WorkspaceFootprint {
+      provenance: RepoTool { display: "Derived rung-drop roster", owner_module: "gunbc.rung_drop" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/dag/gunbc/rung_drop/roster.dag", meaning: "membership list derived from sibling RungDrop row files before compile; not a second authored authority", reason: RegenerableFromSource }
+      ]
+    },
+    WorkspaceFootprint {
       provenance: RepoTool { display: "Generator stamp files", owner_module: "gunbc.generated_artifact" },
       artifacts: [
         WorkspaceArtifact { pattern: ".*-stamp", meaning: "producer-centric generator stamps", reason: RegenerableFromSource }
@@ -61,6 +67,13 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       artifacts: [
         WorkspaceArtifact { pattern: "/.gunbc-build-receipts/", meaning: "per-invocation receipt channel of `gunbc build`, written under the cwd by the bootstrap launcher and printed back", reason: SessionRuntimeState },
         WorkspaceArtifact { pattern: "/.gunbc-converge-receipts/", meaning: "per-invocation receipt channel of `gunbc converge`, same launcher, same shape", reason: SessionRuntimeState }
+      ]
+    },
+    WorkspaceFootprint {
+      provenance: RepoTool { display: "CI attempt receipts", owner_module: "gunbc.ci_failure_class" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/gunbc-floor-cmd.log", meaning: "per-attempt command log a fleet step tees under the checkout before classifying its exit", reason: SessionRuntimeState },
+        WorkspaceArtifact { pattern: "/gunbc-floor-outcome.txt", meaning: "per-attempt class receipt that step writes beside the log", reason: SessionRuntimeState }
       ]
     },
     WorkspaceFootprint {

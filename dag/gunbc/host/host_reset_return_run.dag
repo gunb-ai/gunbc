@@ -1,9 +1,10 @@
 module gunbc.host_reset_return_run
 
-import gunbc.machine_intake_mtcollins1_maintenance_hold {
+import gunbc.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
-  unit_hold_store_root, host_reset_owner,
+  host_reset_owner, admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired,
 }
+import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { Second, second }
@@ -23,7 +24,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_reset_return {
   AttemptReceiptMinted,
   AttemptReceiptPairingRefused,
@@ -78,7 +79,7 @@ import gunbc.host_reset_return {
   select_reset_observer,
   subject_for_observer,
 }
-import gunbc.host_reset_subject_roster { ResetSubjectCandidate, ResetUnitHoldRequired, ResetNoUnitHold, reset_observer_peer_roster, reset_subject_candidate_for, reset_subject_roster }
+import gunbc.host_reset_subject_roster { AdmittedResetSubject, reset_observer_peer_roster, reset_subject_for, reset_subject_roster }
 import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff,
   BootControlIssued,
@@ -390,14 +391,14 @@ data host_reset_down_watch_samples: Nat = 120
 
 data host_reset_back_watch_samples: Nat = 200
 
-fn reset_unit_hold_gate(candidate: ResetSubjectCandidate, proof: UnitHoldProof?) -> NonEmptyStr? {
-  match candidate.unit_hold {
-    ResetNoUnitHold => none
-    ResetUnitHoldRequired { key: k, store_host: _ } =>
+fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) -> NonEmptyStr? {
+  match admit_unit_hold_subject(host: candidate.binding.host) {
+    UnitHoldNotRequired { host: _ } => none
+    UnitHoldSubjectAdmitted { subject: _ } =>
       match proof {
-        Absent => Present { value: join(["subject ", candidate.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
+        Absent => Present { value: join(["subject ", candidate.binding.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
         Present { value: p } =>
-          match unit_hold_proof_refusal(proof: p, key: k, label: "host reset-return") {
+          match unit_hold_proof_refusal(proof: p, host: candidate.binding.host.host, label: "host reset-return") {
             Present { value: why } => Present { value: why as NonEmptyStr }
             Absent => none
           }
@@ -407,21 +408,21 @@ fn reset_unit_hold_gate(candidate: ResetSubjectCandidate, proof: UnitHoldProof?)
 
 fn host_reset_return_attempt(
   proof: UnitHoldProof?,
-  candidate: ResetSubjectCandidate,
+  candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
   attempt: NonEmptyStr,
   route: ResetIssuanceRoute,
   password_file: NonEmptyStr,
 ) -> ResetAttemptMint
 {
-  let subject = candidate.host as NonEmptyStr
+  let subject = candidate.binding.host.host as NonEmptyStr
   let selection = select_reset_observer(
     subject_roster: reset_subject_roster(),
     peer_roster: reset_observer_peer_roster(),
     subject: subject,
     observer: observer,
   )
-  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.host)
+  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.binding.host.host)
   match reset_issuance_block(selection: selection, identity: identity) {
     Present { value: blocked } =>
       return mint_reset_attempt_receipt(
@@ -476,10 +477,10 @@ fn host_reset_return_attempt(
 }
 
 // A HOLD-GATED SUBJECT IS NOT WRITTEN WITHOUT A PROOF FOR ITS SLOT, and the proof exists only if the
-// entry's live acquire committed (gunbc.machine_intake_mtcollins1_maintenance_hold UnitHoldProof).
+// entry's live acquire committed (gunbc.managed_host_unit_hold UnitHoldProof).
 fn host_reset_return_issue_and_watch(
   proof: UnitHoldProof?,
-  candidate: ResetSubjectCandidate,
+  candidate: AdmittedResetSubject,
   selection: ResetObserverSelection,
   identity: ObserverSelfIdentity,
   attempt: NonEmptyStr,
@@ -487,6 +488,9 @@ fn host_reset_return_issue_and_watch(
   password_file: NonEmptyStr,
   issued_at: EpochMs,
 ) -> ResetAttemptMint
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_attempt"),
+  ]
 {
   match reset_unit_hold_gate(candidate: candidate, proof: proof) {
     Present { value: why } =>
@@ -501,15 +505,15 @@ fn host_reset_return_issue_and_watch(
     Absent => {}
   }
   let outcome = oob_boot_handoff(
-    observation: candidate.observation,
-    capability_row: candidate.capability_row,
-    username: candidate.username,
+    observation: candidate.binding.observation,
+    capability_row: candidate.binding.host.capability_row,
+    username: candidate.binding.account,
     password_file: password_file,
     selection: candidate.boot_selection,
   )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
   let observation = observe_reset_return(
-    host: candidate.host as NonEmptyStr,
+    host: candidate.binding.host.host as NonEmptyStr,
     down_samples_max: host_reset_down_watch_samples,
     back_samples_max: host_reset_back_watch_samples,
   )
@@ -543,8 +547,8 @@ fn host_reset_return_issue_and_watch(
 //
 // AND extdeps.shell IS IMPORTED FOR A MEASURED REASON. Service operations register from the IMPORT
 // CLOSURE, so an unimported service compiles clean and refuses at RUN TIME naming the operation
-// rather than the missing import; gunbc.machine_intake_mtcollins1_actuate lost a run to exactly that
-// diagnostic and wrote it down.
+// rather than the missing import; gunbc.managed_host_boot_handoff records the run lost to exactly
+// that diagnostic.
 data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" as NonEmptyStr
 
 // THE PREFLIGHT REFUSAL WRITES ITS RECEIPT AND THEN EXITS, in that order, because the upload step
@@ -608,7 +612,7 @@ data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE
 
 fn host_reset_return_attempt_exit(
   proof: UnitHoldProof?,
-  candidate: ResetSubjectCandidate,
+  candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
   subject: NonEmptyStr,
   route: ResetIssuanceRoute,
@@ -676,28 +680,28 @@ fn host_reset_return_wet() -> ProcessExit
         remedy: "this runner is not an assigned observer, so it has no subject to watch",
       )
     Present { value: subject } =>
-      match reset_subject_candidate_for(host: subject) {
+      match reset_subject_for(host: subject) {
         Absent =>
           host_reset_return_preflight_exit(
             refusal: SubjectHasNoRosterRow { subject: subject },
             remedy: "the assigned subject has no roster row carrying its controller evidence",
           )
         Present { value: candidate } =>
-          match candidate.unit_hold {
-            ResetNoUnitHold =>
+          match admit_unit_hold_subject(host: candidate.binding.host) {
+            UnitHoldNotRequired { host: _ } =>
               host_reset_return_attempt_exit(proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
-            ResetUnitHoldRequired { key: k, store_host: h } =>
-              if (observer as String) != (h as String) {
+            UnitHoldSubjectAdmitted { subject: held } =>
+              if (observer as String) != (held.store_host as String) {
                 host_reset_return_preflight_exit(
-                  refusal: UnitHoldStoreNotOnObserver { subject: subject, observer: observer, store_host: h },
+                  refusal: UnitHoldStoreNotOnObserver { subject: subject, observer: observer, store_host: held.store_host },
                   remedy: "the subject's maintenance hold lives on the store host; a reset observed from anywhere else would take a hold in a store the operator never sees",
                 )
               } else {
-                match unit_hold_acquire(root: unit_hold_store_root, key: k, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
+                match unit_hold_acquire(subject: held, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
                   UnitHoldRefused { reason: r } =>
                     host_reset_return_preflight_exit(
                       refusal: UnitHeldForMaintenance { subject: subject, reason: r },
-                      remedy: "the unit is held (maintenance or another run); nothing was written to its controller",
+                      remedy: "the unit hold was not acquired: it is held (maintenance or another run), or this runner was not observed on the hold store's host; nothing was written to its controller",
                     )
                   UnitHeld { proof: p } =>
                     unit_hold_release(

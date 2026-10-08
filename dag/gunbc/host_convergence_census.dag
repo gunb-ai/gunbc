@@ -66,11 +66,13 @@ type HostConvergenceSubject
   | GuestImage
   | Srv3InstallMedia
   | SrvBmcCredential
+  | BmcSecureAccountState
   | TypedRemoteFileBytes
   | HostToolchain
   | RunnerMemoryCaps
   | ContributorRepoLocalGitConfig
   | FleetHostKeyEnrollment
+  | MachineIntakeArrival
 
 type PersistentHostEffectStatus
   = ReachesPersistentHostMutation
@@ -570,7 +572,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, false, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "FleetConvergeWorkflowMode"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "FleetConvergeScope") },
+    disposition: BindToAuthority { target: cite(module_path: "gunbc.fleet_converge_scope", decl_name: "FleetConvergeScope") },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -766,6 +768,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
   ),
   census_row(
+    identity: cite(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "inspect_bmc_secure_state"),
+    subject: BmcSecureAccountState,
+    phases: protocol_phases(false, true, true, true, true, true, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "inspect_bmc_secure_state"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: std_reconcile() },
+    first_consumer: cite(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
+  ),
+  census_row(
     identity: cite(module_path: "gunbc.host_toolchain_ensure", decl_name: "host_toolchain_ensure"),
     subject: HostToolchain,
     phases: protocol_phases(false, false, false, false, true, true, false),
@@ -809,6 +820,33 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_authorized_key_enroll_target"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "access_discover"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, false, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "access_discover"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, false, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, true, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
   ),
 ]
 

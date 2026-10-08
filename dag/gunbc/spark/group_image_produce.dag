@@ -1,0 +1,263 @@
+module gunbc.spark.group_image_produce
+
+import std.types { String, NonEmptyStr }
+import std.measure { Second, second }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.container.oci.digest { render_oci_content_digest_wire }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_occupancy_admission { admit_spark_host_unoccupied, spark_ctx_argv_run }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject, distribute_vllm_image, vllm_image_distribution_wire, vllm_image_distribution_succeeded, vllm_image_transfer_tar_path, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue, vllm_build_host_memory_need, vllm_image_read_held, VllmImageHeldAs, VllmImageNotHeld, VllmImageHeldUnread }
+
+// ── ONE ENTRY FOR PRODUCING A RUNTIME IMAGE ON A FABRIC GROUP'S HOST (deforking cut 8c) ─────────
+//
+// gunbc.spark.v41_runtime_image_converge v41_runtime_image_produce_ci_wet was this body with V4.1's build
+// inlined, and the GLM kvplan image needs exactly the same entry: the session host named by
+// SPARK_CONVERGE_TARGET (unset refuses -- a build occupies one host for hours), admitted because the
+// group's serving subject HOLDS it (gunbc.spark.host_commitment admit_host_held_by_subject; the unplaced
+// relation refuses every Group A host by design), the host-effect claim of a source build so two builds
+// never share a box, the occupancy admission, the privileged session, and the receipt. What differs
+// between images is only the work done inside the session, so that is the one parameter.
+type GroupImageProduction {
+  title: NonEmptyStr
+  group: FabricGroup
+  attempt_raw: String
+  identity_file_name: NonEmptyStr
+  produce: fn(SshTarget, FleetSshExecutionContext, SparkMaterializeContext) -> SparkBuildHostWork
+}
+
+fn group_image_produce_wet(p: GroupImageProduction, receipt_path: String) -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: producing an image occupies one host for hours, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: build_host } =>
+      match admit_host_held_by_subject(raw: build_host, subject: PairServingUnitOn { group: p.group }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match claim_host_effect_live(host: build_host, term: vllm_build_host_effect_term, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
+            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+            HostEffectClaimLanded { handle: handle } =>
+              release_host_effect_live(handle: Present { value: handle }, exit: {
+                match with_spark_build_host(
+                  host: build_host,
+                  attempt_raw: p.attempt_raw,
+                  identity_file_name: p.identity_file_name,
+                  use: fn(target, context, ctx) {
+                    match admit_spark_host_unoccupied(run: spark_ctx_argv_run(ctx: ctx), host: build_host, purpose: vllm_build_host_purpose, need: vllm_build_host_memory_need) {
+                      Present { value: why } => SparkBuildHostWork { receipt: join(["refused-before-run: ", why, "\n"], ""), converged: false }
+                      Absent => p.produce(target, context, ctx)
+                    }
+                  },
+                ) {
+                  SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+                  SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+                    let body = join([
+                      join([p.title as String, " probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
+                      trust_receipt,
+                      work.receipt,
+                    ], "")
+                    let w = Filesystem.Write(path: receipt_path, content: body)
+                    if !w.success {
+                      exit_failure(reason: join([p.title as String, " receipt write failed: ", w.error], ""))
+                    } else if work.converged {
+                      ExitSuccess
+                    } else {
+                      exit_failure(reason: join([p.title as String, " was not produced:\n", body], ""))
+                    }
+                  }
+                }})
+          }
+      }
+  }
+}
+
+// ── ONE ENTRY FOR DISTRIBUTING A PRODUCED IMAGE TO ANOTHER HOST OF ITS GROUP (deforking cut 8c) ──────
+//
+// gunbc.spark.v41_runtime_image_converge v41_runtime_image_distribute_ci_wet with V4.1's row inlined;
+// generalized because every produced image moves the same way: the subject is the PRODUCTION RECEIPT
+// (tag and configuration digest, the host that answered, the run that produced it), never a tag
+// typed at dispatch; SPARK_CONVERGE_TARGET names the target; both hosts are admitted because the
+// group's subject holds them and both are claimed, because both carry the effect; the transport is
+// gunbc.spark.vllm_runtime_image_build distribute_vllm_image (save, rail pull, load, readback by
+// digest).
+type ProducedImageHeld {
+  title: NonEmptyStr
+  group: FabricGroup
+  subject: VllmImageDistributionSubject
+  held_on: HostIdentity
+  receipt_run: NonEmptyStr
+}
+
+data image_distribution_host_purpose: NonEmptyStr = "a runtime image distribution, which saves or loads the produced image through a digest-named staging tar" as NonEmptyStr
+data image_distribution_host_effect_term: Second = second(count: 7200)
+
+fn image_distribution_residue(h: ProducedImageHeld) -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: vllm_image_transfer_tar_path(config: h.subject.config), container: none }
+}
+
+fn with_image_distribution_claim(host: HostIdentity, h: ProducedImageHeld, run: fn() -> ProcessExit) -> ProcessExit {
+  match claim_host_effect_live(host: host, term: image_distribution_host_effect_term, purpose: image_distribution_host_purpose, residue: image_distribution_residue(h: h)) {
+    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+    HostEffectClaimLanded { handle: handle } => release_host_effect_live(handle: Present { value: handle }, exit: run())
+  }
+}
+
+// ── THE SOURCE IS ANY GROUP HOST WHOSE READBACK OF THE DIGEST MATCHES (ruling of valiant-crab-775,
+// 2026-10-03) ─────────────────────────────────────────────────────────────────────────────────────────
+//
+// The production host is where the image was BUILT (h.held_on, the receipt), not the only place it can
+// be moved from: a host the distribution already delivered to holds the same configuration digest, read
+// back by the same inspect. So a host is an admissible source exactly when its image under the tag reads
+// back as the subject's digest. The production host is asked first, then the group's other hosts in roster
+// order, never the target; the first that reads back the digest is the source. A host that is unreachable,
+// holds nothing, or holds another image is not a source, and each such reading is kept: when no host
+// qualifies the distribution refuses with every candidate's cause, never moving a tag-matched stranger.
+type DistributionSource
+  = DistributionSourceAdmitted { host: HostIdentity, reading: String }
+  | NoAdmissibleDistributionSource { causes: List<String> }
+
+fn distribution_source_candidates(h: ProducedImageHeld, target: HostIdentity) -> List<HostIdentity> {
+  concat([h.held_on], filter(fabric_group_hosts(g: h.group), x => !host_identity_eq(a: x, b: h.held_on) && !host_identity_eq(a: x, b: target)))
+}
+
+fn distribution_source_reading(h: ProducedImageHeld, candidate: HostIdentity) -> DistributionSource {
+  let want = render_oci_content_digest_wire(d: h.subject.config)
+  match with_spark_build_host(
+    host: candidate,
+    attempt_raw: "runtime-image-source-readback",
+    identity_file_name: "gunbc-runtime-image-distribute-admin-password" as NonEmptyStr,
+    use: fn(target, context, ctx) {
+      match vllm_image_read_held(ctx: ctx, step: "distribute-source-readback" as NonEmptyStr, tag: h.subject.tag) {
+        VllmImageHeldUnread { step: _, cause: why } => SparkBuildHostWork { receipt: join(["unread: ", why], ""), converged: false }
+        VllmImageNotHeld => SparkBuildHostWork { receipt: join(["holds no image under ", h.subject.tag as String], ""), converged: false }
+        VllmImageHeldAs { id: id, size: _ } =>
+          if (id as String) == want { SparkBuildHostWork { receipt: join(["holds ", want], ""), converged: true } }
+          else { SparkBuildHostWork { receipt: join(["holds ", id as String, ", not ", want], ""), converged: false } }
+      }
+    },
+  ) {
+    SparkBuildHostRefused { cause: c } => NoAdmissibleDistributionSource { causes: [join([candidate as String, ": ", c], "")] }
+    SparkBuildHostRan { work: w, endpoint: _, executor: _, trust_receipt: _ } =>
+      if w.converged { DistributionSourceAdmitted { host: candidate, reading: w.receipt } }
+      else { NoAdmissibleDistributionSource { causes: [join([candidate as String, ": ", w.receipt], "")] } }
+  }
+}
+
+// EVERY CANDIDATE WHOSE READBACK MATCHES, in order, with the causes of those that did not.
+type DistributionSources {
+  admitted: List<HostIdentity>
+  causes: List<String>
+}
+
+fn distribution_sources_for(h: ProducedImageHeld, target: HostIdentity) -> DistributionSources {
+  fold(distribution_source_candidates(h: h, target: target), init: DistributionSources { admitted: [] as List<HostIdentity>, causes: [] as List<String> }, f: (acc, c) =>
+    match distribution_source_reading(h: h, candidate: c) {
+      DistributionSourceAdmitted { host: s, reading: _ } => DistributionSources { admitted: concat(acc.admitted, [s]), causes: acc.causes }
+      NoAdmissibleDistributionSource { causes: now } => DistributionSources { admitted: acc.admitted, causes: concat(acc.causes, now) }
+    })
+}
+
+// THE RECEIPT NAMES THE SOURCE USED AND WHY EACH EARLIER CANDIDATE WAS SKIPPED (operator ruling, 2026-10-03:
+// no silent degradation): the readback causes of hosts that did not hold the digest, and the claim causes of
+// matching hosts held by another effect, each on its own line; with none admissible the run refuses with all.
+// A SOURCE MUST ALSO BE CLAIMABLE. Its save into the blob root is a host effect, so the source is used only
+// when its host-effect claim lands; a source still held by another live effect (a stale claim that has not
+// been read quiescent, for instance) is passed over for the next matching host, and its cause is kept.
+type DistributionAttempt
+  = DistributionNotYet { causes: List<String> }
+  | DistributionRan { exit: ProcessExit }
+
+fn distribute_from_claimed_source(h: ProducedImageHeld, source: HostIdentity, target_host: HostIdentity, receipt_path: String, skipped: List<String>) -> ProcessExit {
+  if host_identity_eq(a: target_host, b: source) {
+    produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path, skipped: skipped)
+  } else {
+    with_image_distribution_claim(host: target_host, h: h, run: fn() { produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path, skipped: skipped) })
+  }
+}
+
+fn distribute_from_first_claimable(h: ProducedImageHeld, target_host: HostIdentity, sources: List<HostIdentity>, receipt_path: String, unread: List<String>) -> DistributionAttempt {
+  fold(sources, init: DistributionNotYet { causes: unread }, f: (acc, source) =>
+    match acc {
+      DistributionRan { exit: _ } => acc
+      DistributionNotYet { causes: before } =>
+        match admit_host_held_by_subject(raw: source, subject: PairServingUnitOn { group: h.group }) {
+          Present { value: why } => DistributionNotYet { causes: concat(before, [join([source as String, ": ", why], "")]) }
+          Absent =>
+            match claim_host_effect_live(host: source, term: image_distribution_host_effect_term, purpose: image_distribution_host_purpose, residue: image_distribution_residue(h: h)) {
+              HostEffectClaimNotLanded { cause: why } => DistributionNotYet { causes: concat(before, [join([source as String, ": ", why as String], "")]) }
+              HostEffectClaimLanded { handle: handle } =>
+                DistributionRan { exit: release_host_effect_live(handle: Present { value: handle }, exit: distribute_from_claimed_source(h: h, source: source, target_host: target_host, receipt_path: receipt_path, skipped: before)) }
+            }
+        }
+    })
+}
+
+fn produced_image_distribute_to(source: HostIdentity, target_host: HostIdentity, h: ProducedImageHeld, receipt_path: String, skipped: List<String>) -> ProcessExit {
+  let now = clock_now_probed_at()
+  match with_spark_build_host(
+    host: source,
+    attempt_raw: "runtime-image-distribute",
+    identity_file_name: "gunbc-runtime-image-distribute-admin-password" as NonEmptyStr,
+    use: fn(target, context, ctx) {
+      let dist = distribute_vllm_image(source_ctx: ctx, image: h.subject, targets: [target_host])
+      SparkBuildHostWork { receipt: vllm_image_distribution_wire(dist: dist), converged: vllm_image_distribution_succeeded(dist: dist) }
+    },
+  ) {
+    SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+    SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+      let body = join([
+        join([h.title as String, " distribute probed_at=", probed_at_word(reading: now) as String, " source=", source as String, " produced_on=", h.held_on as String, " endpoint=", endpoint as String, " target=", target_host as String, " executor=", executor, "\n"], ""),
+        join(map(skipped, x => join(["  source candidate skipped: ", x, "\n"], "")), ""),
+        trust_receipt,
+        join(["image tag=", h.subject.tag as String, " config_digest=", render_oci_content_digest_wire(d: h.subject.config), " receipt_run=", h.receipt_run as String, "\n"], ""),
+        work.receipt,
+      ], "")
+      let w = Filesystem.Write(path: receipt_path, content: body)
+      if !w.success {
+        exit_failure(reason: join([h.title as String, " distribute receipt write failed: ", w.error], ""))
+      } else if work.converged {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join([h.title as String, " was not verified on the target:\n", body], ""))
+      }
+    }
+  }
+}
+
+fn produced_image_distribute_wet(h: ProducedImageHeld, receipt_path: String) -> ProcessExit
+{
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: distributing an image writes tens of gigabytes to the host it names, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: h.group }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent => {
+              let found = distribution_sources_for(h: h, target: target_host)
+              let srcs = found.admitted
+              let rc = found.causes
+              if length(srcs) == 0 {
+                exit_failure(reason: join(["no group host reads back ", render_oci_content_digest_wire(d: h.subject.config), " under ", h.subject.tag as String, ", so nothing is a source:\n  ", join(rc, "\n  ")], ""))
+              } else {
+                match distribute_from_first_claimable(h: h, target_host: target_host, sources: srcs, receipt_path: receipt_path, unread: rc) {
+                  DistributionRan { exit: e } => e
+                  DistributionNotYet { causes: cc } => exit_failure(reason: join(["every host that reads back the digest is held by another effect, so none could be claimed as the source:\n  ", join(cc, "\n  ")], ""))
+                }
+              }
+          }
+      }
+  }
+}

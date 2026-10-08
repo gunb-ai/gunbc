@@ -30,6 +30,7 @@ import std.realization_schedule {
   cost_account_predicted_zero,
   cost_account_time_count,
 }
+import std.optional { Absent, Present }
 
 fn int_min(a: Int, b: Int) -> Int {
   if a < b { a } else { b }

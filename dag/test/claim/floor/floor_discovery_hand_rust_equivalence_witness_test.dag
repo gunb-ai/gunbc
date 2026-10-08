@@ -37,15 +37,14 @@ import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection {
-  List,
   fold_list
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
 }
-import std.types { Bool, String }
+import std.types { Bool, String, List }
 import std.disposition { Scaffold, SingleAuthority }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

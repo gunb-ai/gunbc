@@ -10,7 +10,7 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::retires_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-use crate::std_types::Bool::*;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -275,9 +275,7 @@ pub fn rust_crate_package_idents(package_names: Rc<Vec<String>>) -> Rc<PackageId
                 bindings: Rc::new(vec![]),
                 refusal: std::option::Option::None,
             }),
-            |acc: Rc<PackageIdentFold>, package_name: String| {
-                package_ident_step(acc, package_name.clone())
-            },
+            |acc: _, package_name: String| package_ident_step(acc, package_name.clone()),
         );
         match folded.refusal.clone() {
             Some(cause) => Rc::new(PackageIdentSetOutcome::PackageIdentSetRefused {
@@ -296,9 +294,7 @@ pub fn package_ident_bound(
 ) -> Option<String> {
     bindings.iter().cloned().fold(
         std::option::Option::None,
-        |found: Option<String>, binding: Rc<PackageIdentBinding>| match (binding
-            .package_name
-            .clone()
+        |found: _, binding: Rc<PackageIdentBinding>| match (binding.package_name.clone()
             == package_name.clone())
         {
             true => Some(binding.ident.clone()),

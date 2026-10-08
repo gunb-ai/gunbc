@@ -23,7 +23,7 @@ import gunbc.host_convergence_protocol {
   HostEffectDomainProjection,
   inspect_via_host_effect_projection,
 }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   DesiredRosterRefusal,
@@ -132,7 +132,11 @@ fn root_path_in_roster(roster: List<ConvergedMember>, path: NonEmptyStr) -> Bool
     } else {
       match x {
         DirectoryRoot { path: p } => (p as String) == (path as String)
-        _ => false
+        TreePublication => false
+        Executable => false
+        UnitFile => false
+        UnitManager => false
+        ServiceProcess => false
       }
     })
 }
@@ -143,7 +147,10 @@ fn replacement_is_foreign(target: ReleaseTarget, roster: List<ConvergedMember>, 
       match from {
         UnitFileAt { file: f } => !unit_owned_by_target(target: target, file: f)
         RootAt { root: r } => !root_path_in_roster(roster: roster, path: r.path)
-        _ => false
+        TreeIdentity { tree: _ } => false
+        ExecutableIdentity { digest: _ } => false
+        UnitManagerAt { standing: _ } => false
+        ProcessAt { process: _ } => false
       }
     AlreadyConverged { member: _ } => false
     Create { member: _, to: _ } => false
@@ -160,7 +167,8 @@ fn live_deploy_observe_supplied(
     Present { value: o } =>
       match o {
         MemberUnobservable { member: _, cause: c } => ObservationRefused { cause: c }
-        _ => ObservationEstablished { observed: o }
+        MemberObserved { identity: _ } => ObservationEstablished { observed: o }
+        MemberAbsentOnHost { member: _ } => ObservationEstablished { observed: o }
       }
   }
 }
@@ -225,7 +233,8 @@ fn first_unreadable(observed: List<ObservedMember>) -> LiveDeployAdmissionRefusa
         match o {
           MemberUnobservable { member: m, cause: c } =>
             Present { value: LiveDeployUnreadableMember { member: m, cause: c } }
-          _ => none
+          MemberObserved { identity: _ } => none
+          MemberAbsentOnHost { member: _ } => none
         }
     })
 }
@@ -377,10 +386,18 @@ fn bind_release_target_to_desired(
                 unit: row.names.unit_name,
               },
             }
-          _ => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          TreeIdentity { tree: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          UnitFileAt { file: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          UnitManagerAt { standing: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          ProcessAt { process: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          RootAt { root: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
         }
       }
-    _ => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    TreeIdentity { tree: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    ExecutableIdentity { digest: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    UnitManagerAt { standing: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    ProcessAt { process: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    RootAt { root: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
   }
 }
 

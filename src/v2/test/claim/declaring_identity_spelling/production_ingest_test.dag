@@ -1,5 +1,6 @@
 module v2.test.claim.declaring_identity_spelling.production_ingest
 
+import std.types { List }
 import v2.compiler.declaring_identity_spelling_census {
   DeclaringIdentitySpellingCensus,
   spelling_census_from_ingest
@@ -24,10 +25,8 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name {
   qualified_name_last_segment,
   qualified_name_snoc,

@@ -1,5 +1,6 @@
 module test.claim.roadmap_workflow_command_witness
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -20,6 +21,7 @@ import gunbc.roadmap_workflow_command {
   attempt_key_short_form,
 }
 import gunbc.roadmap_workflow_progress {
+  AttemptWorktreeUnobserved,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
@@ -83,8 +85,9 @@ test fn retry_mechanism_cannot_mint_attempt() -> Bool {
 }
 
 test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool {
-  legacy_attempt_cannot_satisfy_obligations(modeled_state_present: false)
-    && !legacy_attempt_cannot_satisfy_obligations(modeled_state_present: true)
+  legacy_attempt_cannot_satisfy_obligations(modeled_state: WorkflowModeledStateAbsent)
+    && !legacy_attempt_cannot_satisfy_obligations(modeled_state: WorkflowModeledStateObserved)
+    && !legacy_attempt_cannot_satisfy_obligations(modeled_state: WorkflowModeledStateUnreadable { cause: "Permission denied (os error 13)" })
 }
 
 test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
@@ -92,7 +95,8 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     node_id: "legacy-node",
     attempt_key: "",
     branch: "dispatch/legacy-node",
-    modeled_state_present: false,
+    modeled_state: WorkflowModeledStateAbsent,
+    worktree: AttemptWorktreeUnobserved { path: "", cause: "no modeled state pointer" },
     admission_receipt_readable: false,
     admission_receipt: "",
     spawn_failure_present: false,
@@ -115,6 +119,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   })
   match activity_view_from_progress(progress: progress) {
     LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>

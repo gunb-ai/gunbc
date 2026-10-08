@@ -2,7 +2,7 @@ module test.claim.approval_mac_key_provision_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
-import extdeps.transports.rest { RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeUnreached }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import gunbc.secret_provision_actuator { classify_secret_observation, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused }
 
@@ -13,12 +13,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // arm that decides whether the provisioning run may CREATE (review 67090).
 test fn only_a_404_establishes_an_absent_container() -> Bool {
   let project = "gunbai-secrets" as GcpProjectId
-  match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "", performance: RestExchangeStatusRefused { status: 404, body: "not found" }) {
+  match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", read: RestRefused { refusal: RestStatusRefused { status: 404, body: "not found" } }) {
     SecretContainerAbsent { project: _, secret_id: id } => id == "approval-submission-mac-key"
     _ => false
   }
-    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "", performance: RestExchangeStatusRefused { status: 403, body: "forbidden" }) { SecretObservationRefused { cause: _ } => true  _ => false }
-    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "", performance: RestExchangeUnreached { cause: "connection refused" }) { SecretObservationRefused { cause: _ } => true  _ => false }
-    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "projects/gunbai-secrets/secrets/some-other-secret", performance: RestExchangeSucceeded) { SecretObservationRefused { cause: _ } => true  _ => false }
-    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "projects/gunbai-secrets/secrets/approval-submission-mac-key", performance: RestExchangeSucceeded) { SecretContainerObserved { container: c } => c.secret_id == "approval-submission-mac-key"  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", read: RestRefused { refusal: RestStatusRefused { status: 403, body: "forbidden" } }) { SecretObservationRefused { cause: _ } => true  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", read: RestRefused { refusal: RestTransportRefused { cause: "connection refused" } }) { SecretObservationRefused { cause: _ } => true  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", read: RestAnswered { answer: "projects/gunbai-secrets/secrets/some-other-secret" }) { SecretObservationRefused { cause: _ } => true  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", read: RestAnswered { answer: "projects/gunbai-secrets/secrets/approval-submission-mac-key" }) { SecretContainerObserved { container: c } => c.secret_id == "approval-submission-mac-key"  _ => false }
 }

@@ -2,12 +2,12 @@ module fixture.closure.rustc_shell_single_field_projection_probe
 
 import std.types { Bool, String }
 
-// A KNOWN HOLE, NOT A DESIRED BEHAVIOUR, and it is named as one so nobody reads its red as a wall
-// working. The subject is v1.compiler.emit_rust emit_shell_return: a shell operation's emitted method
-// is signed `Result<.., Box<dyn Error>>`, and the projection wraps its value in `Ok(..)` only when the
-// declared output carries MORE THAN ONE field. A single-field output answers the channel expression
-// bare, so the emitted body returns the field where its own declared signature wants the Result --
-// rustc E0308. gunbc accepts the source with zero blocking diagnostics.
+// A REGRESSION CONTROL THAT WAS A KNOWN HOLE. The subject is v1.compiler.emit_rust emit_shell_return:
+// a shell operation's emitted method is signed `Result<.., Box<dyn Error>>`, and the projection used
+// to wrap its value in `Ok(..)` only when the declared output carried MORE THAN ONE field, so this
+// single-field operation was refused by rustc E0308 while gunbc reported zero blocking diagnostics.
+// The return convention is now unconditional; per DESIGN 4b(4) this arm flipped to compiling and is
+// kept, so a rustc refusal here means the arity fork came back.
 //
 // THE ARITY IS THE WHOLE MECHANISM, MEASURED RATHER THAN ASSUMED. This file and its control differ in
 // ONE authored thing: how many fields the output block declares. Three things that look like they

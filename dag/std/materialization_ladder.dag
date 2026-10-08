@@ -12,10 +12,12 @@ import std.cache_interface {
   ReleasedAtProviderScopeExit,
   ReleasedNever,
   ReleasedManually,
+  ReleasedAfterInterval,
   CapacityUnbounded,
   CapacityBounded,
   CapacityUnobserved,
 }
+import std.optional { Absent, Present }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
@@ -538,6 +540,7 @@ fn retention_admission(r: ProviderRetention) -> RetentionAdmission {
     ReleasedAtProviderScopeExit => RetentionAdmitted
     ReleasedNever => capacity_admission(c: r.capacity)
     ReleasedManually => capacity_admission(c: r.capacity)
+    ReleasedAfterInterval { after_write: _ } => capacity_admission(c: r.capacity)
   }
 }
 

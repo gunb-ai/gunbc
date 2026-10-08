@@ -1,5 +1,6 @@
 module v2.compiler.occurrence_role
 
+import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.occurrence_identity {
   CallableOccurrence,
@@ -36,13 +37,12 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
 import v2.std.integer { Int }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 // WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
 // prerequisite gunbc.compiler_frontend_program_status LoweringOccurrenceProjection, tracked by
@@ -182,12 +182,13 @@ fn read_named_arg_label(captured: Node) -> NameRead {
 }
 
 // A field pattern is `name: pattern` (the label) or the shorthand `name`, where the one token is
-// both the label and a new binder. Both are outside the XL-2 population; the shorthand is recorded
-// as the declaration it also is.
+// both the label and a new binder; both are recorded as the declaration the name is. The grammar
+// left-factors the two (v2.extdeps.languages.dag dag_grammar_field_pattern_expr), so the capture is
+// always `(name, optional(: pattern))` and the name is the pair's left; a capture that is no pair
+// is not a field pattern this reader knows, and refuses.
 fn read_field_pattern_name(captured: Node) -> NameRead {
-  let unwrapped = body_lower_deep_unwrap_optional(node: captured)
-  match sugar_sequence_pair_optional(node: unwrapped) {
-    Absent => one_name(atom: body_lower_param_binding_atom_optional(node: unwrapped))
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => NameReadRefused
     Present { value: pair } => one_name(atom: body_lower_param_binding_atom_optional(node: pair.left))
   }
 }
@@ -251,7 +252,7 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_primary_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_postfix_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_where_predicate, disposition: NamesAreReferences),
-    name_row(production: ^dag_production_status_pattern, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_status_pattern_name, disposition: NamesAreMarkers),
     name_row(production: ^dag_production_param_list, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadParamListBinders }),
     name_row(production: ^dag_production_field_decl_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldDeclBinders }),
     name_row(production: ^dag_production_generic_params, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadGenericParamBinders }),

@@ -1,0 +1,744 @@
+module gunbc.machine_intake_arrival_converge
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  GoalSatisfied,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalAssessmentRefused,
+  GoalInspected,
+  GoalObservationRefused,
+}
+import std.algebra { FreeSemigroup, Empty }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcEndpoint, BmcFirmwareFamily, Redfish }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { SurfaceManagerIdentity }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_phase {
+  ArrivalPhase,
+  AccessDiscover,
+  IdentityBindProvisional,
+  PriorLifeBoundary,
+  BmcSecure,
+  BootDeliveryEstablish,
+  DiagnosticBootAttest,
+  InventoryConform,
+  MemoryFastQualify,
+  MemoryAuthoritativeQualify,
+  SubsystemQualify,
+  AcceptanceSoak,
+  ArrivalCleanup,
+  IntakePhase,
+  Arrival,
+  Provisioning,
+  Placement,
+  arrival_phases_all,
+  intake_phase_rank,
+}
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  BoardSerialObservation,
+  BmcFru,
+  HostSmbios,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  UnitIdentityInputs,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyRefusalCause,
+  bind_unit_key,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake_bmc_firmware_family_discriminator { discriminate_family, family_standing_from_discrimination }
+import gunbc.machine_intake_mtjade1_access_observation {
+  ControllerClockReading,
+  CurrentManagerRead,
+  RecordedManagerCaptureGap,
+  RecordedManagerDecoded,
+  RecordedManagerRefused,
+  FruRead,
+  FruObserved,
+  FruReadRefused,
+  RecordedFruObservation,
+  SmbiosRead,
+  SmbiosObserved,
+  SmbiosReadRefused,
+  RecordedSmbiosObservation,
+  fru_gap_text,
+  smbios_gap_text,
+  sol_session_controller,
+  provisional_assembly_of_fru,
+  read_mtjade1_current_manager_read,
+  read_mtjade1_fru,
+  read_mtjade1_smbios_type2,
+}
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding,
+  ObservedSurfaceRead,
+  rotation_route_candidate,
+  redfish_account_password_write,
+}
+import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
+import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
+import gunbc.machine_intake_prior_life_boundary {
+  DryPriorLifeWorld,
+  PriorLifeBoundaryEstablished,
+  PriorLifeRefusal,
+  PriorLifeIncomplete,
+  PriorLifeArchiveEstablished,
+  PriorLifeArchiveRefused,
+  PriorLifeArchiveIncomplete,
+  dry_archive_prior_life,
+  mt_jade_platform_ref,
+  prior_life_receipt_key,
+  prior_life_receipt_consumed_identity,
+}
+import gunbc.fleet.convergence_fold {
+  ConvergenceRunId,
+  StepSubjectKey,
+  StepInstanceKey,
+  ConvergenceStep,
+  SameSubject,
+  ConvergenceOrderAuthority,
+  ConvergencePlanningAuthority,
+  convergence_planning_authority,
+  convergence_receipt_projection,
+  ConvergencePlanRefusal,
+  ConvergencePlanAdmitted,
+  ConvergencePlanRefused,
+  StepOutcome,
+  StepEstablished,
+  StepRefused,
+  StepIncomplete,
+  ConvergenceReceiptProjection,
+  ConvergenceRunVerdict,
+  admit_convergence_plan,
+  fold_convergence_run,
+  step_instance_key,
+  step_outcome_receipt,
+}
+
+// THE ARRIVAL CONVERGENCE PREFIX (docs/plans/managed-host-untangle.md, cuts O1c-1 and O1c-2): the first
+// real consumer of gunbc.fleet.convergence_fold. Its three steps are the first three phases of
+// gunbc.machine_intake_phase arrival_phases_all -- AccessDiscover, IdentityBindProvisional and
+// PriorLifeBoundary -- each a protocol step through gunbc.host_convergence_protocol
+// HostEffectDomainProjection (observe, assess, decide) with its own row in
+// gunbc.host_convergence_census. The first two are read-only: the only decision either can reach is
+// Noop (the phase's goal is read back as already holding) or Refuse; neither has an Apply, so an Apply
+// decision is itself a typed refusal, and the read each consumes is a committed capture.
+// PriorLifeBoundary is the first effectful step: its archive arm writes the controller's prior-life
+// records to the evidence store and reads them back, DRY in this cut
+// (gunbc.machine_intake_prior_life_boundary), so it is the one step that can be INCOMPLETE. Nothing
+// here performs a live BMC call or a live store write. gunbc.bmc_onboarding is not imported.
+//
+// ORDERING TIME. No field of the read-only steps is an ordering clock. The controller's own DateTime is
+// kept as an AccessDiscover observation only; the observer clock (gunbc.clock_read) orders the
+// archive write's leg against its deadline, and nothing here orders by the controller's clock.
+
+data arrival_order_authority_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_phase", decl_name: "arrival_phases_all")
+
+data access_discover_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "access_discover")
+
+data identity_bind_provisional_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional")
+
+data prior_life_boundary_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary")
+
+// A read-only phase has no remedy. The plan type of its projection is sealed to this module and this
+// module constructs none, so an Apply over a read-only phase has no value to carry.
+type ReadOnlyPhaseRemedy sole_constructor {
+  phase: ArrivalPhase
+}
+
+// ── ACCESSDISCOVER ─────────────────────────────────────────────────────────────────────────────
+
+// What the current read establishes: the unit it is bound to, the endpoint it answered at, the
+// discriminated firmware family and build, the controller's own clock reading, and the read receipt.
+type AccessObservation {
+  unit: NonEmptyStr
+  endpoint: BmcControllerEndpoint
+  family: BmcFirmwareFamily
+  firmware: BmcFirmwareReleaseIdentity
+  controller_clock: ControllerClockReading
+  read_receipt: EvidenceRef
+}
+
+type AccessDiscoverGoal {
+  unit: StepSubjectKey
+}
+
+type AccessObserveRefusal
+  = ManagerReadRefused { gap: RecordedManagerCaptureGap }
+  | FamilyNotDiscriminated { discriminator: NonEmptyStr }
+  | FirmwareVersionUnread
+  | EndpointUnobserved
+  | ReadReceiptDigestUnreadable { capture_sha256: NonEmptyStr }
+
+type AccessDeviation
+  = AccessReadForAnotherUnit { read_unit: NonEmptyStr, goal_unit: StepSubjectKey }
+
+fn observe_access(key: StepInstanceKey, read: CurrentManagerRead) -> ObservationAttempt<AccessObservation, AccessObserveRefusal> {
+  let identity = read.identity
+  match identity.decoded {
+    RecordedManagerRefused { gap: g } => ObservationRefused { cause: ManagerReadRefused { gap: g } }
+    RecordedManagerDecoded { observation: o } =>
+      match family_standing_from_discrimination(discrimination: discriminate_family(observation: o)) {
+        FamilyUnobserved { discriminator: d } => ObservationRefused { cause: FamilyNotDiscriminated { discriminator: d } }
+        FamilyObserved { family: f } =>
+          if length(o.firmware_version) == 0 {
+            ObservationRefused { cause: FirmwareVersionUnread }
+          } else {
+            match mtjade1_observed_endpoint(network: identity.endpoint) {
+              Absent => ObservationRefused { cause: EndpointUnobserved }
+              Present { value: endpoint } =>
+                match manager_read_receipt(read: identity) {
+                  Absent => ObservationRefused { cause: ReadReceiptDigestUnreadable { capture_sha256: identity.capture_sha256 } }
+                  Present { value: receipt } =>
+                    ObservationEstablished {
+                      observed: AccessObservation {
+                        unit: identity.subject,
+                        endpoint: endpoint,
+                        family: f,
+                        firmware: bmc_firmware_release_identity_of_wire(family: f, wire: o.firmware_version as NonEmptyStr),
+                        controller_clock: read.controller_clock,
+                        read_receipt: receipt,
+                      },
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn assess_access(goal: AccessDiscoverGoal, observed: AccessObservation) -> GoalAssessment<AccessObservation, AccessDeviation, NonEmptyStr, NonEmptyStr> {
+  if (observed.unit as String) == ((goal.unit as NonEmptyStr) as String) {
+    GoalSatisfied { evidence: observed }
+  } else {
+    GoalDiverged { deviations: FreeSemigroup { head: AccessReadForAnotherUnit { read_unit: observed.unit, goal_unit: goal.unit }, tail: Empty } }
+  }
+}
+
+fn decide_read_only<E, D>(assessment: GoalAssessment<E, D, NonEmptyStr, NonEmptyStr>) -> UpsertDecision<ReadOnlyPhaseRemedy> {
+  match assessment {
+    GoalSatisfied { evidence: _ } => Noop
+    GoalDiverged { deviations: _ } => Refuse { reason: "the read-only phase's goal diverges from what was read, and a read-only phase has no remedy" as NonEmptyStr }
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => Refuse { reason: "the read-only phase's goal is indeterminate over what was read" as NonEmptyStr }
+    GoalAssessmentRefused { cause: c } => Refuse { reason: c }
+  }
+}
+
+fn decide_access(assessment: GoalAssessment<AccessObservation, AccessDeviation, NonEmptyStr, NonEmptyStr>) -> UpsertDecision<ReadOnlyPhaseRemedy> {
+  decide_read_only(assessment: assessment)
+}
+
+fn decide_identity(assessment: GoalAssessment<ProvisionalIdentity, NonEmptyStr, NonEmptyStr, NonEmptyStr>) -> UpsertDecision<ReadOnlyPhaseRemedy> {
+  decide_read_only(assessment: assessment)
+}
+
+fn access_discover_projection() -> HostEffectDomainProjection<StepInstanceKey, AccessDiscoverGoal, CurrentManagerRead, AccessObservation, AccessObservation, AccessDeviation, NonEmptyStr, AccessObserveRefusal, NonEmptyStr, ReadOnlyPhaseRemedy> {
+  HostEffectDomainProjection {
+    observe: observe_access,
+    assess: assess_access,
+    decide: decide_access,
+  }
+}
+
+// THE ACCESSDISCOVER RECEIPT, SEALED. Minted only by access_discover, so the CURRENT route standing it
+// carries is derived inside this step from the read it consumed, at the endpoint that read answered,
+// and is never passed in. A Manager read proves a Redfish Manager surface and no account write, so
+// the standing is a qualification CANDIDATE naming the Redfish account-password write, and nothing
+// stronger: gunbc.machine_intake_bmc_rotation_route admit_rotation_apply refuses it.
+type AccessDiscoverEstablished sole_constructor {
+  key: StepInstanceKey
+  access: AccessObservation
+  route: BmcRotationRouteStanding
+}
+
+fn current_route_standing_of(access: AccessObservation) -> BmcRotationRouteStanding {
+  rotation_route_candidate(
+    endpoint: access.endpoint,
+    firmware: access.firmware,
+    request: redfish_account_password_write(),
+    evidence: ObservedSurfaceRead { surface: SurfaceManagerIdentity, receipt: access.read_receipt },
+  )
+}
+
+// ── IDENTITYBINDPROVISIONAL ────────────────────────────────────────────────────────────────────
+
+// WHAT THE UNIT SUPPLIES, SEALED: its two board-serial reads, each a sealed observation minted only
+// by its own fail-closed file read (gunbc.machine_intake_mtjade1_access_observation read_mtjade1_fru
+// and read_mtjade1_smbios_type2), and the unit keys already bound elsewhere in the fleet. Constructed
+// only in this module, by the per-unit function that performs those reads. No supplied-value path
+// reaches the step: the supplied-value controls go to classify_board_serial_agreement, which returns
+// no carrier. The access receipt is the step's precondition and is checked against the ledger.
+type IdentityBindInputs sole_constructor {
+  fru: FruRead
+  smbios: SmbiosRead
+  other_units: List<UnitKey>
+}
+
+type IdentityBindRequest {
+  access: AccessDiscoverEstablished
+  inputs: IdentityBindInputs
+}
+
+// WHY THE TWO SOURCES DO NOT AGREE ABOUT THIS UNIT. Pure, over supplied values, so every arm is
+// exercisable; its only production consumer is observe_identity below, over sealed observations.
+type BoardSerialAgreementRefusal
+  = FruCaptureUnread { cause: NonEmptyStr }
+  | SmbiosCaptureUnread { cause: NonEmptyStr }
+  | FruObservedForAnotherUnit { subject: NonEmptyStr }
+  | SmbiosObservedForAnotherUnit { subject: NonEmptyStr }
+  | SmbiosSessionForAnotherController { attested: BmcControllerEndpoint, accessed: BmcControllerEndpoint }
+  | BoardSerialsDisagree { fru: NonEmptyStr, smbios: NonEmptyStr }
+
+fn classify_board_serial_agreement(
+  unit: StepSubjectKey,
+  accessed: BmcControllerEndpoint,
+  fru_subject: NonEmptyStr,
+  fru_serial: NonEmptyStr,
+  smbios_subject: NonEmptyStr,
+  smbios_controller: BmcControllerEndpoint,
+  smbios_serial: NonEmptyStr,
+) -> BoardSerialAgreementRefusal? {
+  if (fru_subject as String) != ((unit as NonEmptyStr) as String) {
+    Present { value: FruObservedForAnotherUnit { subject: fru_subject } }
+  } else if (smbios_subject as String) != ((unit as NonEmptyStr) as String) {
+    Present { value: SmbiosObservedForAnotherUnit { subject: smbios_subject } }
+  } else if (smbios_controller.host as String) != (accessed.host as String) {
+    Present { value: SmbiosSessionForAnotherController { attested: smbios_controller, accessed: accessed } }
+  } else if (fru_serial as String) != (smbios_serial as String) {
+    Present { value: BoardSerialsDisagree { fru: fru_serial, smbios: smbios_serial } }
+  } else {
+    none
+  }
+}
+
+// THE TWO-SOURCE AGREEMENT, SEALED and minted only in observe_identity: exactly one BMC FRU and one
+// host SMBIOS observation, both of this unit, the SMBIOS session attested to the controller this run's
+// AccessDiscover read, and equal board serials. IdentityBoundProvisional retains it, so a consumer can
+// tell a two-source key from a one-source one; without both observations there is no agreement and
+// the step does not converge.
+type BoardSerialAgreement sole_constructor {
+  fru: RecordedFruObservation
+  smbios: RecordedSmbiosObservation
+  serial: NonEmptyStr
+}
+
+type IdentityObservation {
+  unit_key: UnitKey
+  agreement: BoardSerialAgreement
+  assembly: AssemblyManifest
+  firmware: FirmwareManifest
+}
+
+type ProvisionalIdentity {
+  subject: MachineIntakeSubject
+  agreement: BoardSerialAgreement
+}
+
+type IdentityBindGoal {
+  attempt: IntakeAttemptId
+}
+
+type IdentityObserveRefusal
+  = BoardSerialsNotInAgreement { cause: BoardSerialAgreementRefusal }
+  | UnitKeyNotBound { cause: UnitKeyRefusalCause }
+
+// THE LIVE FIRMWARE MANIFEST: the build the controller reported in this run's AccessDiscover read.
+// Only the BMC build is read before boot; host firmware and configuration digests join the manifest
+// when an observation names them.
+fn live_firmware_manifest(access: AccessDiscoverEstablished) -> FirmwareManifest {
+  FirmwareManifest {
+    entries: [FirmwareEntry { component: "bmc", version: access.access.firmware.raw_version }],
+    configuration_digests: [],
+  }
+}
+
+fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
+  match request.inputs.fru {
+    FruReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: fru_gap_text(gap: g) } } }
+    FruObserved { observation: fru } =>
+      match request.inputs.smbios {
+        SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
+        SmbiosObserved { observation: smbios } =>
+          match classify_board_serial_agreement(
+            unit: key.subject,
+            accessed: request.access.access.endpoint,
+            fru_subject: fru.subject,
+            fru_serial: fru.fields.board_serial,
+            smbios_subject: smbios.subject,
+            smbios_controller: sol_session_controller(a: smbios.sol_session),
+            smbios_serial: smbios.serial,
+          ) {
+            Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
+            Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, smbios: smbios, serial: fru.fields.board_serial })
+          }
+      }
+  }
+}
+
+// The unit key through gunbc.machine_intake_subject bind_unit_key, unchanged, over the agreement's two
+// observations; it still refuses a serial already bound to another unit.
+fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: BoardSerialAgreement) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
+  let inputs = UnitIdentityInputs {
+    bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
+    board_serial_observations: [
+      BoardSerialObservation { source: BmcFru, serial: agreement.fru.fields.board_serial },
+      BoardSerialObservation { source: HostSmbios, serial: agreement.smbios.serial },
+    ],
+  }
+  match bind_unit_key(inputs: inputs, other_units: request.inputs.other_units) {
+    UnitKeyRefused { cause: c } => ObservationRefused { cause: UnitKeyNotBound { cause: c } }
+    UnitKeyBound { key: k } =>
+      ObservationEstablished {
+        observed: IdentityObservation {
+          unit_key: k,
+          agreement: agreement,
+          assembly: provisional_assembly_of_fru(fru: agreement.fru),
+          firmware: live_firmware_manifest(access: request.access),
+        },
+      }
+  }
+}
+
+fn assess_identity(goal: IdentityBindGoal, observed: IdentityObservation) -> GoalAssessment<ProvisionalIdentity, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+  GoalSatisfied {
+    evidence: ProvisionalIdentity {
+      subject: MachineIntakeSubject {
+        subject: qualification_subject_of(unit_key: observed.unit_key, assembly: observed.assembly, firmware: observed.firmware),
+        attempt_id: goal.attempt,
+      },
+      agreement: observed.agreement,
+    },
+  }
+}
+
+fn identity_bind_projection() -> HostEffectDomainProjection<StepInstanceKey, IdentityBindGoal, IdentityBindRequest, IdentityObservation, ProvisionalIdentity, NonEmptyStr, NonEmptyStr, IdentityObserveRefusal, NonEmptyStr, ReadOnlyPhaseRemedy> {
+  HostEffectDomainProjection {
+    observe: observe_identity,
+    assess: assess_identity,
+    decide: decide_identity,
+  }
+}
+
+// THE IDENTITYBINDPROVISIONAL RECEIPT, SEALED. It names the AccessDiscover instance it consumed, so
+// the fold can refuse a subject bound from another unit's or another run's access receipt, and it
+// retains the two-source agreement the unit key was bound from.
+type IdentityBoundProvisional sole_constructor {
+  key: StepInstanceKey
+  consumed_access: StepInstanceKey
+  subject: MachineIntakeSubject
+  agreement: BoardSerialAgreement
+}
+
+// ONE INTAKE ATTEMPT PER RUN, BY CONSTRUCTION: the attempt identity is the run identity.
+fn intake_attempt_of_run(run: ConvergenceRunId) -> IntakeAttemptId {
+  (run as NonEmptyStr) as IntakeAttemptId
+}
+
+// ── THE STEPS, AS THE FOLD SEES THEM ───────────────────────────────────────────────────────────
+
+type ArrivalStepReceipt
+  = AccessDiscoverReceipt { receipt: AccessDiscoverEstablished }
+  | IdentityBindReceipt { receipt: IdentityBoundProvisional }
+  | PriorLifeBoundaryReceipt { receipt: PriorLifeBoundaryEstablished }
+
+type ArrivalStepRefusal
+  = AccessDiscoverObserveRefused { cause: AccessObserveRefusal }
+  | IdentityBindObserveRefused { cause: IdentityObserveRefusal }
+  | IdentityBindAccessForAnotherInstance { access: StepInstanceKey }
+  | ReadOnlyPhaseRefused { phase: ArrivalPhase, reason: NonEmptyStr }
+  | ReadOnlyPhaseDecidedApply { phase: ArrivalPhase }
+  | ReadOnlyPhaseSatisfiedWithoutEvidence { phase: ArrivalPhase }
+  | PriorLifeIdentityForAnotherInstance { identity: StepInstanceKey }
+  | PriorLifeBoundaryRefused { cause: PriorLifeRefusal }
+
+// A STEP WHOSE EFFECT WAS ATTEMPTED AND IS NOT GROUNDED BY ITS READBACK. Only PriorLifeBoundary has
+// an effect in this prefix; the read-only phases cannot be incomplete.
+type ArrivalStepIncomplete
+  = PriorLifeBoundaryIncomplete { cause: PriorLifeIncomplete }
+
+fn arrival_receipt_key(r: ArrivalStepReceipt) -> StepInstanceKey {
+  match r {
+    AccessDiscoverReceipt { receipt: a } => a.key
+    IdentityBindReceipt { receipt: i } => i.key
+    PriorLifeBoundaryReceipt { receipt: p } => prior_life_receipt_key(r: p)
+  }
+}
+
+fn arrival_receipt_consumed(r: ArrivalStepReceipt) -> List<StepInstanceKey> {
+  match r {
+    AccessDiscoverReceipt { receipt: _ } => []
+    IdentityBindReceipt { receipt: i } => [i.consumed_access]
+    PriorLifeBoundaryReceipt { receipt: p } => [prior_life_receipt_consumed_identity(r: p)]
+  }
+}
+
+fn arrival_receipt_projection() -> ConvergenceReceiptProjection<ArrivalStepReceipt> {
+  convergence_receipt_projection(key_of: arrival_receipt_key, consumed_of: arrival_receipt_consumed)
+}
+
+fn read_only_refusal(phase: ArrivalPhase, decision: UpsertDecision<ReadOnlyPhaseRemedy>) -> ArrivalStepRefusal {
+  match decision {
+    Refuse { reason: r } => ReadOnlyPhaseRefused { phase: phase, reason: r }
+    Apply { plan: _ } => ReadOnlyPhaseDecidedApply { phase: phase }
+    Noop => ReadOnlyPhaseSatisfiedWithoutEvidence { phase: phase }
+  }
+}
+
+// THE ACCESSDISCOVER STEP: observe the current read, assess it against the unit the instance names,
+// decide; only Noop over a satisfied assessment mints the receipt.
+fn access_discover(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  let projection = access_discover_projection()
+  match inspect_via_host_effect_projection(subject: key, goal: AccessDiscoverGoal { unit: key.subject }, request: read, projection: projection) {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => StepRefused { key: key, cause: AccessDiscoverObserveRefused { cause: c } }
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: a } => {
+      let decision = projection.decide(a)
+      match decision {
+        Noop =>
+          match a {
+            GoalSatisfied { evidence: access } =>
+              StepEstablished {
+                receipt: AccessDiscoverReceipt {
+                  receipt: AccessDiscoverEstablished { key: key, access: access, route: current_route_standing_of(access: access) },
+                },
+              }
+            GoalDiverged { deviations: _ } => StepRefused { key: key, cause: read_only_refusal(phase: AccessDiscover, decision: decision) }
+            GoalIndeterminate { known_deviations: _, unknowns: _ } => StepRefused { key: key, cause: read_only_refusal(phase: AccessDiscover, decision: decision) }
+            GoalAssessmentRefused { cause: _ } => StepRefused { key: key, cause: read_only_refusal(phase: AccessDiscover, decision: decision) }
+          }
+        Apply { plan: _ } => StepRefused { key: key, cause: read_only_refusal(phase: AccessDiscover, decision: decision) }
+        Refuse { reason: _ } => StepRefused { key: key, cause: read_only_refusal(phase: AccessDiscover, decision: decision) }
+      }
+    }
+  }
+}
+
+// THE IDENTITYBINDPROVISIONAL STEP: the unit key from bind_unit_key over the unit's board-serial
+// observations, the provisional assembly, the live firmware manifest from the consumed access
+// receipt, qualification_subject_of, then MachineIntakeSubject with this run's one attempt identity.
+fn identity_bind_provisional(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  if (access.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (access.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: IdentityBindAccessForAnotherInstance { access: access.key } }
+  } else {
+    identity_bind_for_access(key: key, access: access, inputs: inputs)
+  }
+}
+
+// The access receipt is this instance's own (same run, same subject): the step binds from it.
+fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  let projection = identity_bind_projection()
+  let request = IdentityBindRequest { access: access, inputs: inputs }
+  match inspect_via_host_effect_projection(subject: key, goal: IdentityBindGoal { attempt: intake_attempt_of_run(run: key.run) }, request: request, projection: projection) {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => StepRefused { key: key, cause: IdentityBindObserveRefused { cause: c } }
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: a } => {
+      let decision = projection.decide(a)
+      match decision {
+        Noop =>
+          match a {
+            GoalSatisfied { evidence: s } =>
+              StepEstablished {
+                receipt: IdentityBindReceipt {
+                  receipt: IdentityBoundProvisional { key: key, consumed_access: access.key, subject: s.subject, agreement: s.agreement },
+                },
+              }
+            GoalDiverged { deviations: _ } => StepRefused { key: key, cause: read_only_refusal(phase: IdentityBindProvisional, decision: decision) }
+            GoalIndeterminate { known_deviations: _, unknowns: _ } => StepRefused { key: key, cause: read_only_refusal(phase: IdentityBindProvisional, decision: decision) }
+            GoalAssessmentRefused { cause: _ } => StepRefused { key: key, cause: read_only_refusal(phase: IdentityBindProvisional, decision: decision) }
+          }
+        Apply { plan: _ } => StepRefused { key: key, cause: read_only_refusal(phase: IdentityBindProvisional, decision: decision) }
+        Refuse { reason: _ } => StepRefused { key: key, cause: read_only_refusal(phase: IdentityBindProvisional, decision: decision) }
+      }
+    }
+  }
+}
+
+// THE PRIORLIFEBOUNDARY STEP: the archive of the unit's prior-life records, dry, over the subject the
+// IdentityBindProvisional receipt of this run and this subject bound. The platform's policy row is
+// selected by the caller before the step (DESIGN §3d); the archive, its write, its deadline and its
+// readback are gunbc.machine_intake_prior_life_boundary's. A refusal wrote nothing; an incomplete
+// write is its own outcome and never converged.
+fn prior_life_boundary(key: StepInstanceKey, identity: IdentityBoundProvisional, platform: DeclarationRef, world: DryPriorLifeWorld) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  if (identity.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: PriorLifeIdentityForAnotherInstance { identity: identity.key } }
+  } else {
+    match dry_archive_prior_life(key: key, consumed_identity: identity.key, subject: identity.subject, platform: platform, world: world).outcome {
+      PriorLifeArchiveEstablished { receipt: r } => StepEstablished { receipt: PriorLifeBoundaryReceipt { receipt: r } }
+      PriorLifeArchiveRefused { cause: c } => StepRefused { key: key, cause: PriorLifeBoundaryRefused { cause: c } }
+      PriorLifeArchiveIncomplete { cause: i } => StepIncomplete { key: key, cause: PriorLifeBoundaryIncomplete { cause: i } }
+    }
+  }
+}
+
+// ── THE PLAN: a prefix of the authority's order, never a second list ───────────────────────────
+
+fn arrival_order_authority() -> ConvergenceOrderAuthority<IntakePhase> {
+  ConvergenceOrderAuthority { authority: arrival_order_authority_ref, rank_of: intake_phase_rank }
+}
+
+// THE ONE BINDING OF THE ARRIVAL ORDER AS A PLANNING AUTHORITY: gunbc.machine_intake_phase's own
+// ranking under its own name. gunbc.fleet.convergence_fold convergence_planning_authority admits this
+// function and no other caller in this domain.
+fn arrival_planning_authority() -> ConvergencePlanningAuthority<IntakePhase> {
+  convergence_planning_authority(order: arrival_order_authority())
+}
+
+// The step each arrival phase is realized by in this cut. A phase of the prefix with no step refuses
+// the plan; it is never skipped.
+fn arrival_step_of_phase(phase: ArrivalPhase) -> ConvergenceStep<IntakePhase>? {
+  match phase {
+    AccessDiscover => Present { value: ConvergenceStep { identity: access_discover_step_ref, order_member: Arrival { phase: AccessDiscover }, preconditions: [] } }
+    IdentityBindProvisional => Present { value: ConvergenceStep { identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: [SameSubject { step: access_discover_step_ref }] } }
+    PriorLifeBoundary => Present { value: ConvergenceStep { identity: prior_life_boundary_step_ref, order_member: Arrival { phase: PriorLifeBoundary }, preconditions: [SameSubject { step: identity_bind_provisional_step_ref }] } }
+    BmcSecure => none
+    BootDeliveryEstablish => none
+    DiagnosticBootAttest => none
+    InventoryConform => none
+    MemoryFastQualify => none
+    MemoryAuthoritativeQualify => none
+    SubsystemQualify => none
+    AcceptanceSoak => none
+    ArrivalCleanup => none
+  }
+}
+
+// THE PREFIX OF arrival_phases_all THROUGH `last`, cut by intake_phase_rank: the authority's own
+// members in its own order, none omitted and none added.
+fn arrival_prefix_through(last: ArrivalPhase) -> List<IntakePhase> {
+  match intake_phase_rank(phase: Arrival { phase: last }) {
+    Absent => []
+    Present { value: bound } =>
+      arrival_phases_all |> filter(p => match intake_phase_rank(phase: p) {
+        Present { value: r } => r <= bound
+        Absent => false
+      })
+  }
+}
+
+data arrival_prefix_last: ArrivalPhase = PriorLifeBoundary
+
+type ArrivalPrefixSteps
+  = ArrivalPrefixStepped { steps: List<ConvergenceStep<IntakePhase>> }
+  | ArrivalPrefixPhaseUnstepped { phase: IntakePhase }
+
+fn arrival_prefix_steps(phases: List<IntakePhase>) -> ArrivalPrefixSteps {
+  fold(phases, init: ArrivalPrefixStepped { steps: [] }, f: (acc, p) =>
+    match acc {
+      ArrivalPrefixPhaseUnstepped { phase: q } => ArrivalPrefixPhaseUnstepped { phase: q }
+      ArrivalPrefixStepped { steps: ss } =>
+        match p {
+          Arrival { phase: a } =>
+            match arrival_step_of_phase(phase: a) {
+              Present { value: s } => ArrivalPrefixStepped { steps: concat(ss, [s]) }
+              Absent => ArrivalPrefixPhaseUnstepped { phase: p }
+            }
+          Provisioning { phase: _ } => ArrivalPrefixPhaseUnstepped { phase: p }
+          Placement { phase: _ } => ArrivalPrefixPhaseUnstepped { phase: p }
+        }
+    })
+}
+
+// ── THE RUN ────────────────────────────────────────────────────────────────────────────────────
+
+type ArrivalPrefixVerdict
+  = ArrivalPrefixUnstepped { phase: IntakePhase }
+  | ArrivalPlanRefused { cause: ConvergencePlanRefusal<IntakePhase> }
+  | ArrivalRunFolded { verdict: ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> }
+
+// THE PRIOR-LIFE INPUTS: the unit's platform (which selects its policy row) and the dry world the
+// archive reads and writes.
+type PriorLifeInputs {
+  platform: DeclarationRef
+  world: DryPriorLifeWorld
+}
+
+// The domain executes its steps in the admitted order, each consuming only the receipt its
+// precondition produced in this run; a step whose precondition did not establish is not executed and
+// the fold records it NotReached. Then the fold composes the outcomes into the run's ledger.
+fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
+  let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read)
+  match step_outcome_receipt(outcome: access) {
+    Absent => [access]
+    Present { value: r } =>
+      match r {
+        AccessDiscoverReceipt { receipt: a } => {
+          let identity = identity_bind_provisional(key: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: subject), access: a, inputs: inputs)
+          match step_outcome_receipt(outcome: identity) {
+            Present { value: ir } =>
+              match ir {
+                IdentityBindReceipt { receipt: i } =>
+                  [access, identity, prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world)]
+                AccessDiscoverReceipt { receipt: _ } => [access, identity]
+                PriorLifeBoundaryReceipt { receipt: _ } => [access, identity]
+              }
+            Absent => [access, identity]
+          }
+        }
+        IdentityBindReceipt { receipt: _ } => [access]
+        PriorLifeBoundaryReceipt { receipt: _ } => [access]
+      }
+  }
+}
+
+fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>>) -> ArrivalPrefixVerdict {
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: steps) {
+    ConvergencePlanRefused { cause: c } => ArrivalPlanRefused { cause: c }
+    ConvergencePlanAdmitted { plan: plan } =>
+      ArrivalRunFolded { verdict: fold_convergence_run(plan: plan, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection()) }
+  }
+}
+
+fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs) -> ArrivalPrefixVerdict {
+  match arrival_prefix_steps(phases: arrival_prefix_through(last: arrival_prefix_last)) {
+    ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
+    ArrivalPrefixStepped { steps: steps } =>
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life))
+  }
+}
+
+// ── mtjade1 ────────────────────────────────────────────────────────────────────────────────────
+
+// The unit keys already bound in this fleet, so a duplicated board serial refuses across units.
+fn arrival_bound_unit_keys() -> List<UnitKey> {
+  match mtcollins1_unit_key_standing {
+    UnitKeyBound { key: k } => [k]
+    UnitKeyRefused { cause: _ } => []
+  }
+}
+
+// mtjade1 FROM ITS COMMITTED EVIDENCE AND NOTHING ELSE (all 2026-10-04, at 192.168.1.246):
+// - AccessDiscover: the Redfish Manager capture (firmware 2.11.104000, MegaRAC, candidate route);
+// - board serials: the BMC FRU capture (bound to the unit by Board Extra) and the host SMBIOS Type 2
+//   capture (bound by an operator-attested SOL session to this controller), which agree
+//   (B810301000412080005AJ0C1), so the step mints the two-source agreement and binds the unit key;
+// - provisional assembly: from the FRU capture, chassis part number B60.0300E.0001 with the chassis
+//   (serial 21000012N0A1) as its one component;
+// - live firmware manifest: the bmc entry 2.11.104000 from this run's Manager read, nothing else;
+// - PriorLifeBoundary: DRY ONLY. No capture of mtjade1's prior-life carriers is committed, so the
+//   archive reads the dry world the caller supplies, under the Mt. Jade policy row, and its receipt
+//   names the dry realization; the world claims no controller family.
+fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys() }
+}
+
+fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_prefix(
+    run: run,
+    subject: "mtjade1" as StepSubjectKey,
+    read: read_mtjade1_current_manager_read(),
+    inputs: mtjade1_identity_bind_inputs(),
+    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+  )
+}

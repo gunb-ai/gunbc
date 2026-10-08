@@ -1,11 +1,12 @@
 module gunbc.spark.model_snapshot_materialize
 
+import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_words, hub_cache_environment_unset }
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
-import std.content_hash { content_hash_atom }
-import product.placement_supply { HostIdentity }
+import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
+import product.host_identity { HostIdentity }
 import std.algebra { trim }
-import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -13,6 +14,8 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRefused,
 }
 import extdeps.exec.command { shell_quote }
+import extdeps.ssh.session { ssh_client_error_exit_status }
+import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
 }
@@ -31,6 +34,7 @@ import gunbc.artifact_acquisition {
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf,
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
+  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement,
 }
 
 // THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
@@ -60,7 +64,68 @@ type SparkMaterializeContext {
 
 type SparkRemoteRun
   = RemoteRan { exit_code: Int, stdout: String, stderr: String }
-  | RemoteUnreachable { cause: String }
+  | RemoteUnreachable { cause: String, reach: SparkLegUnreachability }
+
+// WHY A LEG'S RESULT DID NOT ARRIVE, TYPED, AND THE TWO CLAIMS IT DOES NOT MAKE. Every Spark reaches
+// the executor only over its management Wi-Fi (wlP9s9). On 2026-10-03 that link went dark on srv8 and
+// Group B spark-3336 (NetworkManager left it DISCONNECTED after a failed 4-way handshake) and srv7
+// stayed associated but forwarded nothing 05:33-06:53 EDT; none of the hosts rebooted or wedged, yet
+// the runs reported them as down.
+//
+//   LegNotAttempted     -- nothing was sent: no endpoint, an inexpressible command, a refused password
+//                          prerequisite. The only arm that may be read as "did not run".
+//   LegBeginUnobserved  -- ssh exited with its own 255 and the remote shell's began-line
+//                          (gunbc.spark.remote_leg_began remote_leg_began_word) never ARRIVED. That is not "never began": the
+//                          marker and the command travel in one unacknowledged stream, so the path can
+//                          go dark after the shell wrote the marker, or after the command started,
+//                          before the marker reached the client. The command MAY HAVE RUN.
+//
+// FIRST CLAIM NOT MADE: "host down". From one leg the executor cannot tell a dark LAN leg from a host
+// that is off (DESIGN §4d), so there is no HostDown arm. The FIRST settling readback is a probe of the
+// host's fabric-rail address (enp1s0f1np1, 192.168.110.x) from a same-group peer: rail answers -> LAN
+// dark, host up; rail dark too -> host down or both links down, still undecided. Uptime and the wlP9s9
+// NetworkManager journal come after, since they need a session. This is how the 2026-10-03 incident
+// was closed by hand, as LAN-dark every time.
+//
+// SECOND CLAIM NOT MADE: "did not run". spark_remote_argv_run projects LegBeginUnobserved to
+// ArgvLegMayHaveRun, never ArgvLegDidNotRun, so an effect consumer reads the host back before retrying
+// a non-idempotent effect.
+//
+// NEXT RUNGS, not built here: (1) a two-phase protocol -- the client receives an acknowledgement before
+// it sends the effect command -- after which a NeverBegan arm is supportable; (2) an automatic
+// rail-jump classifier with its own consumer, splitting LegBeginUnobserved into LAN-dark-host-up vs
+// rail-also-dark.
+type SparkLegUnreachability
+  = LegNotAttempted { cause: String }
+  | LegBeginUnobserved { endpoint: String, stderr: String }
+
+fn spark_leg_unreachability_text(u: SparkLegUnreachability) -> String {
+  match u {
+    LegNotAttempted { cause: c } => c
+    LegBeginUnobserved { endpoint: e, stderr: err } =>
+      join([
+        "the ssh leg to ", e, " lost its session before the remote began-line arrived (ssh exit 255): the command MAY HAVE RUN; ",
+        "management LAN leg dark or host down, UNDECIDED from this leg -- settle it first by probing the host's fabric-rail address ",
+        "from a same-group peer, then uptime and the wlP9s9 journal; stderr=",
+        err,
+      ], "")
+  }
+}
+
+fn spark_remote_unreachable(u: SparkLegUnreachability) -> SparkRemoteRun {
+  RemoteUnreachable { cause: spark_leg_unreachability_text(u: u), reach: u }
+}
+
+// THE READING OF ONE LANDED SESSION RESULT, pure so a witness can supply the result rather than a
+// host. 255 with no began-line received is LegBeginUnobserved (may have run); 255 WITH a began-line
+// is a command that ran (or a session lost after it began) and is reported as ran.
+fn spark_remote_run_of_session(endpoint: String, exit_code: Int, stdout: String, stderr: String) -> SparkRemoteRun {
+  if exit_code == ssh_client_error_exit_status && !remote_leg_reported_began(stdout: stdout) {
+    spark_remote_unreachable(u: LegBeginUnobserved { endpoint: endpoint, stderr: trim(s: stderr) })
+  } else {
+    RemoteRan { exit_code: exit_code, stdout: remote_leg_stdout_without_began(stdout: stdout), stderr: trim(s: stderr) }
+  }
+}
 
 // EVERY LEG IS PRIVILEGED, BECAUSE THE DAEMON IT MUST REACH IS. Acquisition drives docker on the
 // target, and docker's socket is root-owned on these hosts -- an unprivileged run answers
@@ -78,10 +143,10 @@ type SparkRemoteRun
 // so this module and the grant installer can no longer disagree about how briansrls is reached.
 fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
-    Absent => RemoteUnreachable { cause: "the remote invocation is not expressible as portable remote words" }
+    Absent => spark_remote_unreachable(u: LegNotAttempted { cause: "the remote invocation is not expressible as portable remote words" })
     Present { value: words } =>
       match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
-        Absent => RemoteUnreachable { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") }
+        Absent => spark_remote_unreachable(u: LegNotAttempted { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") })
         Present { value: endpoint } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: ctx.trust,
@@ -90,12 +155,12 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
               principal: fleet_bootstrap_principal_login(),
             },
             words: words,
-            stdin_payload: join([ctx.admin_credential as String, "\n", shell_command_line(argv: argv), "\n"], ""),
+            stdin_payload: join([ctx.admin_credential as String, "\n", remote_leg_began_payload_line(), shell_command_line(argv: argv), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: ctx.admin_credential_file },
           ) {
-            FleetPrincipalLegRefused { cause: why } => RemoteUnreachable { cause: why as String }
+            FleetPrincipalLegRefused { cause: why } => spark_remote_unreachable(u: LegNotAttempted { cause: why as String })
             FleetPrincipalLegRan { session: _, result: r } =>
-              RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+              spark_remote_run_of_session(endpoint: endpoint as String, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
           }
       }
   }
@@ -128,12 +193,66 @@ fn shell_command_line(argv: List<String>) -> String {
 // landed. The path is now carried per executor.
 type SnapshotAcquisitionExecutor
   = HostCli
-  | ContainerizedCli {
-      image: NonEmptyStr
-      cli_path: NonEmptyStr
-      host_path: NonEmptyStr
-      container_path: NonEmptyStr
-    }
+  | ContainerizedCli { cli: ContainerizedHubCli }
+
+// THE CONTAINERISED CLI CARRIES THE ENVIRONMENT THAT DECIDES WHERE IT WRITES, AND IT CAN ONLY BE BUILT
+// AGREEING WITH ITS PLACEMENT (operator ruling, 2026-10-03). The Hub CLI resolves its cache from its own
+// environment and HOME (extdeps.huggingface.hub hub_cache_root_for); inside a container with no cache
+// variables that is the container's /root/.cache, which --rm deletes, so a Hub-cache fetch "converged" while
+// nothing reached the host. The executor that owns the mount is therefore the one that sets the cache: for a
+// Hub-cache placement it sets HF_HUB_CACHE to the container side of the mount it declares, and the record is
+// sealed (sole_constructor) behind containerized_hub_cli, which REFUSES to build one whose resolved cache root
+// is not that mount. A wrap that writes anywhere but the placement has no constructor.
+type ContainerizedHubCli sole_constructor {
+  image: NonEmptyStr
+  cli_path: NonEmptyStr
+  host_path: NonEmptyStr
+  container_path: NonEmptyStr
+  container_home: NonEmptyStr
+  cache_env: HubCacheEnvironment
+}
+
+data containerized_cli_home: NonEmptyStr = "/root" as NonEmptyStr
+
+type ContainerizedHubCliStanding
+  = ContainerizedHubCliBuilt { executor: SnapshotAcquisitionExecutor }
+  | ContainerizedHubCliRefused { cause: NonEmptyStr }
+
+// THE CACHE ROOT A CONTAINERISED CLI WOULD WRITE TO, for a given environment: the one fold every check and
+// witness asks.
+fn containerized_cache_root(cache_env: HubCacheEnvironment) -> NonEmptyStr {
+  hub_cache_root_for(env: cache_env, executing_home: containerized_cli_home)
+}
+
+// THE ONE CONSTRUCTOR. For a Hub-cache placement the mount's host side is the placement's cache root and the
+// environment points the CLI at the mount's container side; for a local-directory placement the command names
+// its own --local-dir (translated across the mount), and no cache variable is set. The resolved cache root is
+// then checked against the placement, so the refusal is at render, before any command exists.
+fn containerized_hub_cli(image: NonEmptyStr, cli_path: NonEmptyStr, placement: SnapshotPlacement, container_path: NonEmptyStr, cache_env: HubCacheEnvironment) -> ContainerizedHubCliStanding {
+  match placement {
+    HubCachePlacement { cache_root: root } =>
+      if (containerized_cache_root(cache_env: cache_env) as String) != (container_path as String) {
+        ContainerizedHubCliRefused { cause: join(["the containerised Hub CLI would write to ", containerized_cache_root(cache_env: cache_env) as String, " inside the container, not the mount ", container_path as String, " of the placement's cache ", root as String, "; its fetch would be deleted with the container"], "") as NonEmptyStr }
+      } else {
+        ContainerizedHubCliBuilt { executor: ContainerizedCli { cli: ContainerizedHubCli { image: image, cli_path: cli_path, host_path: root, container_path: container_path, container_home: containerized_cli_home, cache_env: cache_env } } }
+      }
+    LocalDirectoryPlacement { host_path: p } =>
+      ContainerizedHubCliBuilt { executor: ContainerizedCli { cli: ContainerizedHubCli { image: image, cli_path: cli_path, host_path: p, container_path: container_path, container_home: containerized_cli_home, cache_env: cache_env } } }
+  }
+}
+
+// THE ENVIRONMENT A PLACEMENT NEEDS FROM ITS CONTAINER: the mount's container side as HF_HUB_CACHE for a Hub
+// cache; nothing for a local directory.
+fn placement_cache_env(placement: SnapshotPlacement, container_path: NonEmptyStr) -> HubCacheEnvironment {
+  match placement {
+    HubCachePlacement { cache_root: _ } => HubCacheEnvironment { hf_hub_cache: Present { value: container_path }, hf_home: none, xdg_cache_home: none }
+    LocalDirectoryPlacement { host_path: _ } => hub_cache_environment_unset
+  }
+}
+
+fn containerized_hub_cli_for(image: NonEmptyStr, cli_path: NonEmptyStr, placement: SnapshotPlacement, container_path: NonEmptyStr) -> ContainerizedHubCliStanding {
+  containerized_hub_cli(image: image, cli_path: cli_path, placement: placement, container_path: container_path, cache_env: placement_cache_env(placement: placement, container_path: container_path))
+}
 
 // THE EXECUTOR DOES NOT ADD PRIVILEGE OF ITS OWN. Every remote leg already runs under `sudo -S`
 // (see spark_remote_run), so wrapping `sudo` here too would nest it -- and a second privilege
@@ -152,15 +271,16 @@ type SnapshotAcquisitionExecutor
 fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
   match executor {
     HostCli => with_execution_sentinel(argv: argv)
-    ContainerizedCli { image: img, cli_path: cli, host_path: hp, container_path: cp } =>
-      ["docker", "run", "--rm",
-       "-v", join([hp as String, ":", cp as String], ""),
-       "--entrypoint", "sh", img as String,
-       "-c", sentinel_command_line(argv: translate_mounted_paths(
-         host_path: hp, container_path: cp,
-         argv: concat([cli as String], argv.skip(n: 1)),
-       )),
-      ]
+    ContainerizedCli { cli: c } =>
+      concat(concat(
+        ["docker", "run", "--rm", "-v", join([c.host_path as String, ":", c.container_path as String], "")],
+        flat_map(hub_cache_environment_words(env: c.cache_env), w => ["-e", w])),
+        ["--entrypoint", "sh", c.image as String,
+         "-c", sentinel_command_line(argv: translate_mounted_paths(
+           host_path: c.host_path, container_path: c.container_path,
+           argv: concat([c.cli_path as String], argv.skip(n: 1)),
+         )),
+        ])
   }
 }
 
@@ -312,7 +432,7 @@ fn read_instrument_failed_claim(exit_code: Int) -> InstrumentReading {
 // engine launch on a partial checkpoint.
 fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject) -> AcquisitionObservation {
   match spark_remote_run(ctx: ctx, argv: ["test", "-d", subject.install_path as String]) {
-    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
     RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
       if present != 0 {
         AcquisitionAbsent
@@ -350,7 +470,7 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
 // distinction, at which point this arm may narrow to the digest claim it currently declines to make.
 fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
-    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       match read_instrument(exit_code: code, stdout: out) {
         InstrumentDidNotRun =>
@@ -366,7 +486,7 @@ fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<
 
 fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
   match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String]) {
-    RemoteUnreachable { cause: _ } => false
+    RemoteUnreachable { cause: _, reach: _ } => false
     RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
   }
 }
@@ -466,19 +586,21 @@ type SparkTransferState
 
 fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
   match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ActiveState", "--value"]) {
-    RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
-    RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
+    RemoteUnreachable { cause: c, reach: _ } => TransferStateUnreadable { cause: c }
+    RemoteRan { exit_code: _, stdout: raw_state, stderr: _ } => {
+      let state = remote_stdout_as_one_word(stdout: raw_state)
       if state == "active" || state == "activating" || state == "deactivating" {
         TransferRunning
       } else if state == "" || state == "inactive" {
         TransferAbsent
       } else {
         match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
-          RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+          RemoteUnreachable { cause: c, reach: _ } => TransferStateUnreadable { cause: c }
           RemoteRan { exit_code: _, stdout: code, stderr: _ } =>
-            if trim(s: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: trim(s: code) } }
+            if remote_stdout_as_one_word(stdout: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: remote_stdout_as_one_word(stdout: code) } }
         }
       }
+    }
   }
 }
 
@@ -494,8 +616,38 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // place a reader will believe.
 fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
   match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String]) {
-    RemoteUnreachable { cause: _ } => false
+    RemoteUnreachable { cause: _, reach: _ } => false
     RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
+  }
+}
+
+// THE TRANSFER'S OWN CANCEL PATH (ruling of valiant-crab-775, 2026-10-03). A detached transfer survives
+// the run that started it, so stopping it is its unit's stop, by the same derived name, followed by a
+// readback: the cancel holds only when the unit then reads as no longer running. A transfer superseded by
+// a rail replica of the same subject is stopped this way, never by hand.
+type SparkTransferCancel
+  = TransferCancelledNothingRunning
+  | TransferCancelled
+  | TransferCancelRefused { cause: String }
+
+fn spark_transfer_cancel(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferCancel {
+  match spark_transfer_state(ctx: ctx, subject: subject) {
+    TransferStateUnreadable { cause: c } => TransferCancelRefused { cause: join(["the transfer's state could not be read: ", c], "") }
+    TransferAbsent => TransferCancelledNothingRunning
+    TransferExitedClean => TransferCancelledNothingRunning
+    TransferExitedFailed { status: _ } => TransferCancelledNothingRunning
+    TransferRunning =>
+      match spark_remote_run(ctx: ctx, argv: ["systemctl", "stop", spark_transfer_unit_for(subject: subject) as String]) {
+        RemoteUnreachable { cause: c, reach: _ } => TransferCancelRefused { cause: c }
+        RemoteRan { exit_code: _, stdout: _, stderr: _ } =>
+          match spark_transfer_state(ctx: ctx, subject: subject) {
+            TransferRunning => TransferCancelRefused { cause: "the transfer unit still reads as running after its stop" }
+            TransferStateUnreadable { cause: c } => TransferCancelRefused { cause: join(["the transfer's state could not be read back after its stop: ", c], "") }
+            TransferAbsent => TransferCancelled
+            TransferExitedClean => TransferCancelled
+            TransferExitedFailed { status: _ } => TransferCancelled
+          }
+      }
   }
 }
 
@@ -534,17 +686,34 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
   }
 }
 
+// THE TRANSFER OUTLIVES A RADIO DROP (valiant-crab-775's diagnosis, 2026-10-03). The Sparks reach the
+// internet only over a WIRELESS management link that drops for minutes to hours (srv7: DNS to the router
+// failed from 05:40 to ~06:53 and the Hub fetch died on "Temporary failure in name resolution"; srv8: a
+// band-steer left wlP9s9 disconnected), while the host itself stays up. So the transfer unit restarts on
+// failure, and the Hub CLI resumes the files it has: a DNS or transport failure costs a retry, not the run.
+// It is BOUNDED, never a loop: at most spark_transfer_restart_burst starts within the interval, then the
+// unit stays failed and the supervision reads TransferExitedFailed, exactly as one failure did before.
+data spark_transfer_restart_delay_seconds: Nat = 120
+data spark_transfer_restart_burst: Nat = 30
+data spark_transfer_restart_interval_seconds: Nat = 21600
+
+data spark_transfer_restart_properties: List<String> = [
+  "--property=Restart=on-failure",
+  join(["--property=RestartSec=", to_string(spark_transfer_restart_delay_seconds)], ""),
+  join(["--property=StartLimitIntervalSec=", to_string(spark_transfer_restart_interval_seconds)], ""),
+  join(["--property=StartLimitBurst=", to_string(spark_transfer_restart_burst)], ""),
+]
+
 fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionSubject, argv: List<String>) -> TransferStartOutcome {
   match spark_remote_run(ctx: ctx, argv: concat(
-    [
+    concat([
       "systemd-run",
       join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
-      join(["--description=", spark_transfer_unit_description(subject: subject)], ""),
-      "--",
-    ],
+      join(["--description=", spark_transfer_unit_description(subject: subject), " ", spark_transfer_command_tag(executor: ctx.executor, argv: argv)], ""),
+    ], concat(spark_transfer_restart_properties, ["--"])),
     executor_wrap(executor: ctx.executor, argv: argv),
   )) {
-    RemoteUnreachable { cause: c } => TransferStartUnreachable { cause: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => TransferStartUnreachable { cause: c as NonEmptyStr }
     RemoteRan { exit_code: e, stdout: _, stderr: err } =>
       if e == 0 {
         TransferStarted
@@ -615,10 +784,51 @@ fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: Acquisit
 // A BUDGET-EXHAUSTED TRANSFER IS REFUSED WITHOUT BEING KILLED, and the refusal says so. The unit is
 // left running; re-running apply reattaches to it. Killing it would throw away hours of progress to
 // report a cleaner state.
+// A RUNNING TRANSFER IS REATTACHED ONLY WHEN IT RUNS THIS ACQUISITION'S COMMAND (2026-10-03). The unit name
+// is derived from the subject, so a transfer started by an EARLIER revision of the command -- the one that
+// wrote to the container's default cache and landed nothing -- would otherwise be supervised as though it
+// were this run's. The unit's description must carry this run's command digest (spark_transfer_command_tag); a different
+// command is stopped through the transfer's own cancel path and started afresh, and an unread description is
+// unreachable, never a match.
+type SparkTransferCommand
+  = TransferCommandMatches
+  | TransferCommandDiffers
+  | TransferCommandUnread
+
+// THE COMMAND'S DIGEST RIDES IN THE UNIT'S DESCRIPTION, which systemd prints verbatim, unlike ExecStart,
+// whose argv it re-quotes.
+fn spark_transfer_command_tag(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> String {
+  join(["cmd=", serialize_content_hash(hash: content_hash_of_value(value: join(executor_wrap(executor: executor, argv: argv), "\n") as NonEmptyStr)) as String], "")
+}
+
+fn spark_transfer_runs_command(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> SparkTransferCommand {
+  match origin.locator {
+    SourceUrl { url: _ } => TransferCommandDiffers
+    SourceArgv { argv: a } =>
+      match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=Description", "--value"]) {
+        RemoteUnreachable { cause: _, reach: _ } => TransferCommandUnread
+        RemoteRan { exit_code: code, stdout: out, stderr: _ } =>
+          if code != 0 { TransferCommandUnread }
+          else if string_contains(s: out, pattern: spark_transfer_command_tag(executor: ctx.executor, argv: a)) { TransferCommandMatches }
+          else { TransferCommandDiffers }
+      }
+  }
+}
+
 fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   match spark_transfer_state(ctx: ctx, subject: subject) {
     TransferStateUnreadable { cause: _ } => AttemptUnreachable
-    TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+    TransferRunning =>
+      match spark_transfer_runs_command(ctx: ctx, subject: subject, origin: origin) {
+        TransferCommandMatches => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+        TransferCommandUnread => AttemptUnreachable
+        TransferCommandDiffers =>
+          match spark_transfer_cancel(ctx: ctx, subject: subject) {
+            TransferCancelRefused { cause: _ } => AttemptUnreachable
+            TransferCancelled => if !spark_transfer_clear(ctx: ctx, subject: subject) { AttemptUnreachable } else { spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin) }
+            TransferCancelledNothingRunning => spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+          }
+      }
     TransferExitedClean =>
       if !spark_transfer_clear(ctx: ctx, subject: subject) {
         AttemptUnreachable
@@ -664,7 +874,7 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
 
 fn spark_verify_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
-    RemoteUnreachable { cause: c } =>
+    RemoteUnreachable { cause: c, reach: _ } =>
       AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
         identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
       } } }
@@ -728,6 +938,11 @@ type SparkMaterializeOutcome
 // honest standing is that this transport is unbuilt, and a typed refusal says so at the one place a
 // caller could otherwise assume it worked.
 //
+// REALIZED BESIDE THIS ARM, NOT THROUGH IT (2026-10-03): gunbc.spark.snapshot_rail_replica replicates a
+// Hub-cache snapshot over the rail through gunbc.spark.fabric_blob_peer, each file a blob named by the sha256
+// the cache keys it by, with every host-native step in its own leg and the verify in the runtime image -- the
+// source-specific execution split, applied by the caller (gunbc.spark.group_checkpoint_materialize). This
+// role arm stays the wall for any caller that hands a replica role to this one-executor context.
 // DISSOLVE-ON: the source carries its own execution locus -- containerised for Hub, host-native for
 // rail -- so `spark_snapshot_handler` stops applying one executor to every source. That is the source
 // -specific execution split; until it lands, this arm is the wall.
@@ -771,9 +986,17 @@ fn spark_materialize_seed(
 // declares that container as host-effect residue, and the fleet agent cannot read the docker socket,
 // so the lane hands this leg to gunbc.spark.host_commitment release_host_effect_live_over /
 // host_effect_recover_over and its release observes with the privilege its effect used.
+// THE PROJECTION, and the arm it must not take: only a leg that sent nothing is ArgvLegDidNotRun.
+fn spark_argv_run_of_unreachable(cause: String, reach: SparkLegUnreachability) -> ArgvRun {
+  match reach {
+    LegNotAttempted { cause: _ } => ArgvLegDidNotRun { cause: cause }
+    LegBeginUnobserved { endpoint: _, stderr: _ } => ArgvLegMayHaveRun { cause: cause }
+  }
+}
+
 fn spark_remote_argv_run(ctx: SparkMaterializeContext, argv: List<String>) -> ArgvRun {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: why } => ArgvLegDidNotRun { cause: why as String }
+    RemoteUnreachable { cause: why, reach: r } => spark_argv_run_of_unreachable(cause: why, reach: r)
     RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
   }
 }

@@ -1,4 +1,5 @@
 module v2.extdeps.languages.java
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
@@ -46,13 +47,12 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection {
-  List,
   Map,
   PointwisePower,
   empty_map,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Present,
   Optional
@@ -88,7 +88,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
 import v2.std.algebra { BooleanAlgebra, fold_list, fold_list_right }
 import v2.std.algebra_structure_signature { boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node }
@@ -266,7 +266,7 @@ data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
   java_facts_boolean,
 ]
 
-data java_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data java_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn java_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -1338,7 +1338,7 @@ fn java_grammar_root() -> GrammarRoot {
     expression: java_grammar_result_expr(),
     emitted: ^java_surface_result
   )
-  let type = java_grammar_production(
+  let type_production = java_grammar_production(
     name: ^java_production_type,
     expression: java_grammar_type_expr(),
     emitted: ^java_surface_type
@@ -1418,7 +1418,7 @@ fn java_grammar_root() -> GrammarRoot {
       field_declaration,
       primitive_type,
       result,
-      type,
+      type_production,
       formal_parameter_list,
       method_declarator,
       block,

@@ -13,7 +13,7 @@ import gunbc.harness.harness_seat {
   harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
 }
-import gunbc.serving.serving_enrollment { serving_route_ceiling, serving_route_turn_ceiling_count }
+import gunbc.serving.serving_enrollment { serving_route_ceiling, serving_route_turn_ceiling_count, RouteCeilingStands, RouteCeilingUnresolved }
 import gunbc.harness.harness_cli {
   harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds,
 }
@@ -38,7 +38,10 @@ fn w_tolerant_ceiling(group: FabricGroup) -> Int {
 // The route's own declared allocation, read from the row that owns it, so the claims below compare
 // the harness's reading against its authority rather than against a copy of it.
 fn w_route_ceiling(group: FabricGroup) -> Int {
-  serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
+  match serving_route_ceiling(group: group) {
+    RouteCeilingStands { ceiling: c } => serving_route_turn_ceiling_count(c: c)
+    RouteCeilingUnresolved { cause: _ } => 0
+  }
 }
 
 // The engine's OWN scheduler count limit, read straight off the desired unit. This witness needs it

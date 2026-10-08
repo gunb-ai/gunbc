@@ -1,0 +1,177 @@
+module gunbc.workspace_allocation_admission
+
+import std.types { NonEmptyStr, String, Timestamp, List }
+import std.optional { Optional, Absent, Present }
+import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceAllocationId, workspace_profile_parse, workspace_policy_ref, workspace_lease_bound_seconds }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
+import extdeps.http.server { RequestSecurityContext }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
+import std.list { distinct_by_key }
+import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
+import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.auth.request_authentication { RequestAccessPath,
+  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
+  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
+  human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
+}
+
+// Enrollment is stable-principal policy supplied by the administrator, never email comparison.
+// Each enrolled owner carries the server-side reference of the one guest public key enrolled for
+// it. The roster and catalog are administrator-authored and unadmitted; only workspace_policy_admit
+// mints the policy every consumer reads, so a request names no key, path or OpenSSH option and a
+// shared, duplicated or dangling enrollment cannot reach any consumer.
+type WorkspaceOwnerEnrollment { principal: PrincipalRef, public_key_ref: NonEmptyStr }
+type WorkspaceEnrollmentRoster { enrollments: List<WorkspaceOwnerEnrollment> }
+type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, key: SshPublicKey }
+type WorkspaceAuthorizationPolicy sole_constructor { enrollments: List<WorkspaceOwnerEnrollment>, catalog: List<WorkspacePublicKeyCatalogRow> }
+type WorkspacePolicyAdmission
+  = WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy }
+  | WorkspacePolicyRefused { reason: String }
+
+// The join is one-to-one at identity grain: each principal once, each reference owned by one
+// principal, each reference naming exactly one catalog key, every catalog key serving exactly one
+// enrollment, and no key identity (algorithm plus canonical material; the comment is presentation
+// only) shared between references. Every key must be one well-formed ssh-ed25519 blob whose comment
+// cannot open another authorized_keys record. Nothing is deduplicated or reordered.
+fn workspace_policy_admit(roster: WorkspaceEnrollmentRoster, catalog: List<WorkspacePublicKeyCatalogRow>) -> WorkspacePolicyAdmission {
+  let enrolled = count(roster.enrollments)
+  let refs = map(roster.enrollments, e => e.public_key_ref as String)
+  let catalog_refs = map(catalog, r => r.reference as String)
+  if count(distinct_by_key(roster.enrollments, e => principal_ref_label(p: e.principal))) != enrolled {
+    WorkspacePolicyRefused { reason: "a workspace principal is enrolled more than once" }
+  } else if count(distinct_by_key(refs, r => r)) != enrolled {
+    WorkspacePolicyRefused { reason: "a workspace public key reference is enrolled for more than one principal" }
+  } else if count(distinct_by_key(catalog_refs, r => r)) != count(catalog) {
+    WorkspacePolicyRefused { reason: "a workspace public key reference names more than one catalog line" }
+  } else if count(catalog) != enrolled || count(distinct_by_key(concat(refs, catalog_refs), r => r)) != enrolled {
+    WorkspacePolicyRefused { reason: "enrolled key references and catalog lines are not one-to-one" }
+  } else if !all(catalog, r => r.key.algorithm == Ed25519) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key uses an unsupported algorithm" }
+  } else if !all(catalog, r => match ssh_ed25519_key_identity(material: r.key.material) { Present { value: _ } => true Absent => false }) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key is not one exactly parsed ssh-ed25519 public key" }
+  } else if any(catalog, r => string_contains(s: r.key.comment, pattern: "\n") || string_contains(s: r.key.comment, pattern: "\r")) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key comment contains a record separator" }
+  } else if count(distinct_by_key(catalog, r => r.key.material as String)) != count(catalog) {
+    WorkspacePolicyRefused { reason: "two workspace key references carry the same key material" }
+  } else {
+    WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy { enrollments: roster.enrollments, catalog: catalog } }
+  }
+}
+
+fn workspace_owner_enrollment(policy: WorkspaceAuthorizationPolicy, owner: PrincipalRef) -> Optional<WorkspaceOwnerEnrollment> {
+  first(filter(policy.enrollments, e => principal_ref_eq(a: e.principal, b: owner)))
+}
+
+// Owner discovery is the enrolled roster: the consumer and controller reread exactly these
+// ledgers, never a principal named by a plan or a directive that the policy does not enroll.
+fn workspace_enrolled_owners(policy: WorkspaceAuthorizationPolicy) -> List<PrincipalRef> {
+  map(policy.enrollments, e => e.principal)
+}
+
+fn workspace_owner_admission(
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  owner: PrincipalRef,
+  policy: WorkspaceAuthorizationPolicy,
+  observed_at: Timestamp,
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+) -> AccessDecision {
+  decision_meet(
+    human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
+    match security.authentication {
+      GoogleOidcSession { session } =>
+        if principal_ref_eq(a: session.principal, b: owner) && any(policy.enrollments, e => principal_ref_eq(a: e.principal, b: session.principal)) { Permit }
+        else { write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace owner and explicit allocation authorization required" }) }
+      FabricServiceEvidence { kind: _, authenticated_at: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+      SessionStandingInvalid { standing: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+      AuthAbsent => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+    },
+  )
+}
+
+fn workspace_write_admission(
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  owner: PrincipalRef,
+  policy: WorkspaceAuthorizationPolicy,
+  deployment_policy: DeploymentAccessPolicy,
+  observed_at: Timestamp,
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  csrf_presented: String,
+) -> AccessDecision {
+  match action {
+    ServeActionCreateAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
+    ServeActionReleaseAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
+    ServeActionAssignIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionCommentIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionSaveOwnView => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionApproveDecision => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+  }
+}
+
+fn workspace_mutation_admission(
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>, owner: PrincipalRef,
+  policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
+  observed_at: Timestamp, route_path: NonEmptyStr, action: ServeRouteAction, csrf_presented: String,
+) -> AccessDecision {
+  decision_meet(
+    workspace_owner_admission(security: security, owner: owner, policy: policy, observed_at: observed_at, route_path: route_path, action: action),
+    decision_meet(
+      csrf_write_decision(route_path: route_path, action: action, security: security, csrf_presented: csrf_presented),
+      deployment_path_decision(route_path: route_path, action: action, security: security, policy: deployment_policy),
+    ),
+  )
+}
+
+// The browser never supplies ownership, image identity, key enrollment, or lease policy.
+type WorkspaceRequestAdmission
+  = WorkspaceRequestAdmitted { request: WorkspaceRequest }
+  | WorkspaceRequestAdmissionRefused { decision: AccessDecision }
+  | WorkspaceRequestPolicyRefused { reason: NonEmptyStr }
+
+fn workspace_request_admit(
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
+  observed_at: Timestamp, expires_at: Timestamp, csrf_presented: String,
+  idempotency_key: WorkspaceAllocationId, profile_wire: String,
+  pinned_image: NonEmptyStr,
+) -> WorkspaceRequestAdmission {
+  match security.authentication {
+    GoogleOidcSession { session } => {
+      let decision = workspace_write_admission(security: security, owner: session.principal,
+        policy: policy, deployment_policy: deployment_policy, observed_at: observed_at,
+        route_path: allocation_page_path, action: ServeActionCreateAllocation, csrf_presented: csrf_presented)
+      match decision {
+        Permit => match workspace_owner_enrollment(policy: policy, owner: session.principal) {
+          Absent => WorkspaceRequestPolicyRefused { reason: "owner has no enrolled guest public key" }
+          Present { value: enrollment } => workspace_request_compose(owner: session.principal, observed_at: observed_at, expires_at: expires_at,
+            idempotency_key: idempotency_key, profile_wire: profile_wire, pinned_image: pinned_image,
+            enrolled_public_key_ref: enrollment.public_key_ref)
+        }
+        Deny { refusal: r } => WorkspaceRequestAdmissionRefused { decision: Deny { refusal: r } }
+      }
+    }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+  }
+}
+
+// The request-shape policy every producer shares once its owner is authorized: canonical lease
+// instants within the lease bound and a supported profile. Ownership is the caller's admitted
+// principal; image, key and lease policy are server authorities, never caller-chosen.
+fn workspace_request_compose(owner: PrincipalRef, observed_at: Timestamp, expires_at: Timestamp,
+  idempotency_key: WorkspaceAllocationId, profile_wire: String,
+  pinned_image: NonEmptyStr, enrolled_public_key_ref: NonEmptyStr) -> WorkspaceRequestAdmission {
+  if !utc_instant_is_canonical(t: observed_at) || !utc_instant_is_canonical(t: expires_at) { WorkspaceRequestPolicyRefused { reason: "canonical UTC lease instants required" } }
+  else if utc_instant_seconds_after(later: expires_at, earlier: observed_at) <= 0 || utc_instant_seconds_after(later: expires_at, earlier: observed_at) > workspace_lease_bound_seconds() { WorkspaceRequestPolicyRefused { reason: "workspace lease must be positive and at most sixty minutes" } }
+  else { match workspace_profile_parse(value: profile_wire) {
+    Absent => WorkspaceRequestPolicyRefused { reason: "choose a supported workspace profile" }
+    Present { value: selected_profile } => WorkspaceRequestAdmitted { request: WorkspaceRequest {
+      owner: owner, idempotency_key: idempotency_key.value,
+      profile: selected_profile, image: pinned_image, public_key_ref: enrolled_public_key_ref,
+      expires_at: expires_at, policy: workspace_policy_ref(),
+    } }
+  } }
+}

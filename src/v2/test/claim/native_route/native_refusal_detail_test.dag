@@ -52,9 +52,8 @@ import v2.std.diagnostic {
 }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol, Atom, Conj, TypeNode, node_synthetic, symbol_intern_lexeme }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
@@ -91,21 +90,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   referencing node, so the row must identify that node's occurrence.
 // - clean: a module that resolves, so a route that refused everything cannot green the rest.
 
-data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport v2.std.logic { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
-data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport v2.std.logic { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
-data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport v2.std.logic { Bool }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
+data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport std.types { Bool }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
 
-data ndp_collision_left_source: String = "module v2.ndq.left\n\nimport v2.std.logic { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
+data ndp_collision_left_source: String = "module v2.ndq.left\n\nimport std.types { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
 
-data ndp_collision_right_source: String = "module v2.ndq.right\n\nimport v2.std.logic { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
+data ndp_collision_right_source: String = "module v2.ndq.right\n\nimport std.types { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
 
-data ndp_collision_user_source: String = "module v2.ndq.user\n\nimport v2.std.logic { Bool }\n\nfn user_value(p: Bool) -> Bool { lone_value(p) }\n"
+data ndp_collision_user_source: String = "module v2.ndq.user\n\nimport std.types { Bool }\n\nfn user_value(p: Bool) -> Bool { lone_value(p) }\n"
 
-data ndp_unbound_source: String = "module v2.ndp.unbound\n\nimport v2.std.logic { Bool }\n\nfn unbound_value(p: Bool) -> Bool { ndp_absent_callee(p) }\n"
+data ndp_unbound_source: String = "module v2.ndp.unbound\n\nimport std.types { Bool }\n\nfn unbound_value(p: Bool) -> Bool { ndp_absent_callee(p) }\n"
 
-data ndp_clean_source: String = "module v2.ndp.clean\n\nimport v2.std.logic { Bool }\n\nfn clean_value(p: Bool) -> Bool { p }\n"
+data ndp_clean_source: String = "module v2.ndp.clean\n\nimport std.types { Bool }\n\nfn clean_value(p: Bool) -> Bool { p }\n"
 
 fn ndp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -134,7 +133,7 @@ fn ndp_universe_module(module: String, path: Symbol, declaration: String) -> Nat
 // ONE NULLARY PRODUCER, FORCED ONCE, for the reason v2.test.claim.native_census.whole_tree_census_resolve
 // gives on its own producer: the floor builds a fresh evaluation frame per claim, and every claim
 // here inspects one row of a value that costs one whole-ingest front end plus four resolves to
-// build. Enrolled WARM in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm;
+// build. Shared by v2.workflow.floor_pure_producer_share derive_cross_claim_share;
 // the stored value is four NativeLaneModuleResolution arms carrying rows, diagnostics, symbols
 // and nodes -- no closures, no resolution context -- so it is portable across claim frames.
 type NdpResolutions

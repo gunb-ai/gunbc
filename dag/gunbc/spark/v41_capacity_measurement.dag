@@ -1,6 +1,8 @@
 module gunbc.spark.v41_capacity_measurement
 
 import v2.std.algebra { filter }
+import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
+import gunbc.spark.serving_performance_subject { ServingSubjectKey }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_min, nat_max }
@@ -10,9 +12,9 @@ import std.measure {
   BasisPoint, basis_point, basis_point_count, concurrent_request_hundredths_count,
   Gibibyte, gibibyte, gibibyte_to_byte_size,
 }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.staircase { StepVerdict, StepStops, StepContinues, StaircaseOutcome, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StaircasePlanEmpty, StaircasePlanLevelDuplicated, run_staircase }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }
@@ -907,21 +909,19 @@ fn v41_capacity_wire(c: V41Capacity) -> String {
   }
 }
 
-// ── THE PRODUCTION GATE, WHICH DOES NOT GATE THE MEASUREMENT SERVE ─────────────────────────────
+// ── THE REPORT IS V4.1'S WORKLOAD CALIBRATION, NOT ITS OWN PRODUCTION GATE ────────────────────
 //
-// The measurement serve is admitted with a no-production-traffic contract: it is what produces the
-// report, so gating it on the report would be circular. Production admission requires all three
-// capacities to be CapacityAt, and it admits the MINIMUM of the three. The larger two are headroom
-// on axes that are not the binding one.
-type V41ServingRealization
-  = V41MeasurementServe { run_id: NonEmptyStr }
-  | V41ProductionServe
-
-type V41ServingAdmission
-  = MeasurementServeAdmitted { run_id: NonEmptyStr }
-  | ProductionAdmitted { run_id: NonEmptyStr, concurrency: Nat }
-  | ProductionRefused { cause: NonEmptyStr }
-
+// V4.1's production admission was a fold of its own here (v41_serving_admission), consumed by nothing
+// but its witnesses, and it asked no quality question and bound its report to no subject. It is
+// deleted (deforking cut 5): production admission for every model is gunbc.spark.serving_promotion
+// serving_promotion_standing, and this report enters it as the shared WorkloadCalibrationReceipt.
+// The projection keeps the old fold's law -- all three capacities must be CapacityAt, and the
+// sustained concurrency is their MINIMUM -- and states what the report does not observe: accepted
+// turns and their observation window, preemptions, restarts and OOM events are absent, so the promotion fold names them
+// missing rather than reading the report as a clean run. The measurement serve itself is not gated on
+// the report (that would be circular); it runs as a bounded experiment. Its route into a launch's
+// promotion receipts is a declared frontier, not yet a call: gunbc.spark.serving_promotion
+// serving_promotion_calibration_producer_frontier names the trigger.
 fn v41_capacity_at(c: V41Capacity) -> Nat? {
   match c {
     CapacityAt { concurrency: n } => Present { value: n }
@@ -930,20 +930,31 @@ fn v41_capacity_at(c: V41Capacity) -> Nat? {
   }
 }
 
-fn v41_serving_admission(realization: V41ServingRealization, report: V41CapacityReport?) -> V41ServingAdmission {
-  match realization {
-    V41MeasurementServe { run_id: r } => MeasurementServeAdmitted { run_id: r }
-    V41ProductionServe => match report {
-      Absent => ProductionRefused { cause: "no V4.1 capacity report has been admitted; the first serving action is the measurement" as NonEmptyStr }
-      Present { value: rep } => match v41_capacity_at(c: rep.kv_admission) {
-        Absent => ProductionRefused { cause: join(["KV admission: ", v41_capacity_wire(c: rep.kv_admission)], "") as NonEmptyStr }
-        Present { value: kv } => match v41_capacity_at(c: rep.engram_resident) {
-          Absent => ProductionRefused { cause: join(["Engram resident: ", v41_capacity_wire(c: rep.engram_resident)], "") as NonEmptyStr }
-          Present { value: en } => match v41_capacity_at(c: rep.sla_sustainable) {
-            Absent => ProductionRefused { cause: join(["SLA sustainable: ", v41_capacity_wire(c: rep.sla_sustainable)], "") as NonEmptyStr }
-            Present { value: sla } => ProductionAdmitted { run_id: rep.run_id, concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla) }
-          }
-        }
+type V41CalibrationProjection
+  = V41CalibrationProjected { receipt: WorkloadCalibrationReceipt }
+  | V41CalibrationRefused { cause: NonEmptyStr }
+
+fn v41_calibration_receipt(report: V41CapacityReport, subject_key: ServingSubjectKey, trace_digest: ContentHash) -> V41CalibrationProjection {
+  match v41_capacity_at(c: report.kv_admission) {
+    Absent => V41CalibrationRefused { cause: join(["KV admission: ", v41_capacity_wire(c: report.kv_admission)], "") as NonEmptyStr }
+    Present { value: kv } => match v41_capacity_at(c: report.engram_resident) {
+      Absent => V41CalibrationRefused { cause: join(["Engram resident: ", v41_capacity_wire(c: report.engram_resident)], "") as NonEmptyStr }
+      Present { value: en } => match v41_capacity_at(c: report.sla_sustainable) {
+        Absent => V41CalibrationRefused { cause: join(["SLA sustainable: ", v41_capacity_wire(c: report.sla_sustainable)], "") as NonEmptyStr }
+        Present { value: sla } => V41CalibrationProjected { receipt: WorkloadCalibrationReceipt {
+          subject_key: subject_key,
+          trace_digest: trace_digest,
+          run_id: report.run_id,
+          accepted_turns: none,
+          observation_window: none,
+          sustained_concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla),
+          realized_transport: none,
+          preemptions: none,
+          engine_restarts: none,
+          out_of_memory_events: none,
+          stalls_or_lost_requests: none,
+          evidence: join(["V4.1 capacity report, run ", report.run_id as String, ": the minimum of KV admission, Engram residency and SLA-sustainable concurrency"], "") as NonEmptyStr,
+        } }
       }
     }
   }

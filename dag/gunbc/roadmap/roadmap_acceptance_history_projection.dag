@@ -1,9 +1,9 @@
 module gunbc.roadmap_acceptance_history_projection
 
+import std.types { List }
 import gunbc.roadmap_model { RoadmapAcceptanceEvent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import v2.std.collection { List }
 import v2.std.text { String }
 
 // One-time migration bootstrap: evaluate roadmap_acceptance_event_history from revision-addressed

@@ -1,18 +1,17 @@
 module gunbc.bmc_megarac_web_transport
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.string_type { String }
 import std.algebra { trim }
 import std.measure { second }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.owned_process {
-  OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedForeign, OwnedNotRecorded, OwnedRelease,
+  OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedForeign, OwnedUnreadable, OwnedUnparseable, OwnedNotRecorded, OwnedRelease,
   owned_process_standing, owned_process_release, owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line,
 }
 
@@ -75,6 +74,14 @@ fn listening_port(line: String) -> String {
   }
 }
 
+// A process that is not running is a transport that exited before ready, once its exit line is in the output.
+fn megarac_web_transport_exit_readiness(exit_lines: List<String>) -> MegaRacWebTransportStart? {
+  match exit_lines.first() {
+    Present { value: l } => Present { value: TransportNotServing { cause: TransportExitedBeforeReady { exit_line: l } } }
+    Absent => none
+  }
+}
+
 // ONE READINESS OBSERVATION, pure over what was read.
 fn megarac_web_transport_readiness(standing: OwnedProcessStanding, out: String, events: String) -> MegaRacWebTransportStart? {
   let listening: List<String> = filter(lines_of(text: events), l => string_contains(s: l, pattern: " listening start="))
@@ -92,11 +99,11 @@ fn megarac_web_transport_readiness(standing: OwnedProcessStanding, out: String, 
           Absent => none
         }
       }
-      _ =>
-        match exit_lines.first() {
-          Present { value: l } => Present { value: TransportNotServing { cause: TransportExitedBeforeReady { exit_line: l } } }
-          Absent => none
-        }
+      OwnedGone { pid: _ } => megarac_web_transport_exit_readiness(exit_lines: exit_lines)
+      OwnedForeign { pid: _, observed_start: _ } => megarac_web_transport_exit_readiness(exit_lines: exit_lines)
+      OwnedUnreadable { pid: _, detail: _ } => megarac_web_transport_exit_readiness(exit_lines: exit_lines)
+      OwnedUnparseable { pid: _, detail: _ } => megarac_web_transport_exit_readiness(exit_lines: exit_lines)
+      OwnedNotRecorded { detail: _ } => megarac_web_transport_exit_readiness(exit_lines: exit_lines)
     }
   }
 }

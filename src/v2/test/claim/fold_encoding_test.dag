@@ -1,8 +1,10 @@
 module v2.test.claim.fold_encoding
 
+import std.algebra { Empty }
+import v2.std.anonymous_binder { is_fold_carrier_binder }
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -102,6 +104,24 @@ type FeSlots {
   head: OccurrenceId
 }
 
+// THE CARRIER IS NOT AN AUTHORED OPERAND, SO IT IS NOT CHECKED AS ONE. This conjunct read
+// fe_atom_is(n: carrier, sym: ^acc) -- the step's own first binder -- which held while
+// v2.compiler.fold_lowering spelled the persistent slot with operands.carrier, and which made the lowered
+// tree hold two visible binders with one name (the slot and the step Arrow's freshly-bound formal).
+// v2.compiler.resolve's value-binder admission refused the inner one.
+//
+// The slot is now minted by v2.std.anonymous_binder fresh_fold_carrier, so it has no authored occurrence
+// and no authored spelling -- which is why it never appears in FeSlots beside init, collection and head.
+// Those three ARE authored operands and this claim still holds each at its own minted occurrence. The
+// carrier is instead asserted to BE a generated slot and NOT to be the authored binder: either half alone
+// is satisfiable by accident, and together they are the separation the encoding now guarantees.
+fn fe_carrier_is_a_generated_slot(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: sym } => is_fold_carrier_binder(sym: sym) && !(sym == ^acc)
+    Absent => false
+  }
+}
+
 fn fe_slots(encoding: Node) -> Optional<FeSlots> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => Absent
@@ -122,7 +142,7 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
                         Absent => Absent
                         Present { value: step } =>
                           if fe_atom_is(n: init, sym: ^seed) && fe_atom_is(n: collection, sym: ^xs)
-                            && fe_atom_is(n: head, sym: ^fold) && fe_atom_is(n: carrier, sym: ^acc)
+                            && fe_atom_is(n: head, sym: ^fold) && fe_carrier_is_a_generated_slot(n: carrier)
                             && fe_is_arrow(n: step) {
                             match fe_minted(n: init) {
                               Absent => Absent
@@ -346,6 +366,7 @@ fn fe_dropped_identities_under(drop: FeDrop) -> FreeMonoid<Symbol> {
         test_markers: tree.test_markers,
         import_bindings: tree.import_bindings,
         type_declaration_kinds: tree.type_declaration_kinds,
+        type_declaration_modifiers: tree.type_declaration_modifiers,
         diagnostics: None
       ) {
         Rejected { diagnostics: _ } => Empty

@@ -3,7 +3,7 @@ module gunbc.machine_intake_mtcollins1_boot_dry_realization
 import extdeps.tools.gnu_coreutils { readlink_command }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
-import std.algebra { trim }
+import std.algebra { trim, list_snoc_item }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
@@ -32,7 +32,7 @@ import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { millisecond }
 import v2.std.operation_argv { InputText, InputTextList }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_megarac_kvm_still {
   KvmInstant, KvmJournalEvent, KvmJournalRendered, KvmJournalRenderRefused, kvm_journal_line,
   KvmJournalConnectionRequested, KvmJournalConnectionOpen, KvmJournalEstablished, KvmJournalStill,
   KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped,
@@ -148,7 +148,7 @@ fn proc_cmdline_path(pid: Int) -> String {
 // THE WORKER'S OWN PROCESS, as procfs shows it (proc(5), proc_pid_stat(5)): the host's boot id, and
 // one stat line per process -- pid, a parenthesized comm, then fields 3.. with starttime at field 22 --
 // under /proc/<pid>/stat and, for the reader itself, /proc/self/stat. The boot's unit-hold owner is
-// read from these (gunbc.machine_intake_mtcollins1_maintenance_hold self_process_identity) and a
+// read from these (gunbc.managed_host_unit_hold self_process_identity) and a
 // successor observes the holder through them (holder_process_liveness), so a worker that starts writes
 // both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
 // directory. Only the fields a reader uses are meaningful; the others are zeros. The worker's pid
@@ -236,7 +236,7 @@ fn live_collectors(w: MtCollins1BootWorld) -> List<ModeledProcess> {
 }
 
 fn started(w: MtCollins1BootWorld, p: ModeledProcess, fs: ModeledFilesystem) -> MtCollins1BootWorld {
-  with_worker(w: with_fs(w: w, fs: if p.alive { process_visible(fs: fs, p: p) } else { fs }), worker: ModeledWorker { next_pid: p.pid + 1, processes: list_append(w.worker.processes, p), uptime_at_origin: w.worker.uptime_at_origin })
+  with_worker(w: with_fs(w: w, fs: if p.alive { process_visible(fs: fs, p: p) } else { fs }), worker: ModeledWorker { next_pid: p.pid + 1, processes: list_snoc_item(xs: w.worker.processes, item: p), uptime_at_origin: w.worker.uptime_at_origin })
 }
 
 // THE NOTICE WATCHER the boot step starts before the entry (gunbc.ci_spec): its token in the
@@ -246,7 +246,7 @@ fn started(w: MtCollins1BootWorld, p: ModeledProcess, fs: ModeledFilesystem) -> 
 fn with_notice_watcher(w: MtCollins1BootWorld, capture_path: String, token: String) -> MtCollins1BootWorld {
   let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: second(count: 0)), comm: "bash", cmdline: "bash -c gunbc-sol-notice-watch", capture_path: capture_path, diagnostic_path: "", alive: true }
   let fs = fs_with_file(fs: fs_with_file(fs: w.fs, path: concat(capture_path, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n")), path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path), content: process_identity(p: p))
-  let env = list_append(w.environment, ModeledVariable { name: mtcollins1_sol_notice_token_env as String, value: token })
+  let env = list_snoc_item(xs: w.environment, item: ModeledVariable { name: mtcollins1_sol_notice_token_env as String, value: token })
   started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }, p: p, fs: fs)
 }
 
@@ -404,7 +404,7 @@ fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
 
 // THE BMC KVM VIEWER AND THE OBSERVER HELD AGAINST IT (gunbc#12492: the boot's handoff is admitted
 // only while the observer it started is established). The observer is the process
-// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_mtcollins1_kvm_still
+// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_megarac_kvm_still
 // kvm_observer_launch_in's node command. The model starts it the way the launch does -- a live process
 // in /proc, its "<pid> <start>" record at the pid path -- and writes its journal ONLY through
 // kvm_journal_line, the writer the production parser is the inverse of, so the dry observer cannot
@@ -416,7 +416,7 @@ fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
 // session, the attempt and the generation; then, while it lives, one still per trigger file (the
 // script's 'trigger:'+name reason) and, on the stop file, stop-requested, the session release, the
 // browser close and stopped, after which the process has exited. It takes no periodic still: the
-// boot's attempt ends well inside mtcollins1_kvm_observer_cadence's first period in every scenario
+// boot's attempt ends well inside megarac_kvm_observer_cadence's first period in every scenario
 // the matrix runs, and a longer one reports the gap through kvm_still_gaps as the real journal would.
 //
 // A still's bytes are one fixed modeled frame, and its digest is supplied beside it (the precedent is
@@ -533,7 +533,7 @@ fn owned_launch_handler(w: MtCollins1BootWorld, call: OperationCall) -> Operatio
               KvmModeledRefused { event_word: word, would_write: line } => OperationHarnessFault { reason: concat("kvm_journal_line refused the modeled ", concat(word, concat(" line: ", line))) as NonEmptyStr }
               KvmModeledRendered { text: t } => {
                 let fs = appended(fs: fs_write(fs: w.fs, path: pid_path, content: process_identity(p: p), create_new: false).fs, path: concat(dir, "/journal"), text: t)
-                let screen = ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: list_append(w.screen.observers, ModeledKvmObserver { pid: p.pid, dir: dir, seq: 0, seen_files: 0 }) }
+                let screen = ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: list_snoc_item(xs: w.screen.observers, item: ModeledKvmObserver { pid: p.pid, dir: dir, seq: 0, seen_files: 0 }) }
                 exited_step(state: with_screen(w: started(w: w, p: p, fs: fs), screen: screen), stdout: "", exit_code: 0)
               }
             }

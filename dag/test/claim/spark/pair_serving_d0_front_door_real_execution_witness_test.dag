@@ -2,7 +2,7 @@ module test.claim.spark.pair_serving_d0_front_door_real_execution
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath, List, Int, Port }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { second }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
@@ -22,6 +22,7 @@ import gunbc.host_effect { LocalShell }
 import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, AuthorityTransitionAppended, pair_serving_authority_transition, AuthorityEstablishedAt, AuthorityEstablishmentRefused, pair_serving_authority_establish }
 import gunbc.spark.pair_serving_d0 {
+  D0SuspendForSuccessor, RankVacancyReading,
   FrontDoorReading, FrontDoorNoStatus, FrontDoorAnsweredUnread, FrontDoorUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
   IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation, RankOccupancyReading,
   HeadEndpointReading, HeadEndpointQuiet, HeadEndpointListening, HeadEndpointUnread,
@@ -190,7 +191,7 @@ test fn a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_
                                  Present { value: r } => r
                                  Absent => IncumbentDidNotAnswer { receipt: "witness: the front door answered 2xx, which this fixture does not" as NonEmptyStr, head: HeadEndpointQuiet }
                                },
-                               ranks: [] as List<RankOccupancyReading>,
+                               ranks: [] as List<RankOccupancyReading>, vacancy: [] as List<RankVacancyReading>,
                              }
                            }) {
                        D0Settled { decision: D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
@@ -247,7 +248,7 @@ fn d0fd_w_admitted(store: FabricStorageBinding, successor: ContentHash) -> Admit
 }
 
 fn d0fd_w_admitted_as(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, esc: NonEmptyStr) -> AdmittedD0Grant? {
-  let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+  let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
   match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: tx) {
     Absent => none
     Present { value: intent } => {
@@ -293,7 +294,7 @@ test fn a_front_door_answering_500_fences_the_group_through_the_transaction_by_r
                            Present { value: r } => r
                            Absent => IncumbentDidNotAnswer { receipt: "witness: the front door answered 2xx, which this fixture does not" as NonEmptyStr, head: HeadEndpointQuiet }
                          },
-                         ranks: [] as List<RankOccupancyReading>,
+                         ranks: [] as List<RankOccupancyReading>, vacancy: [] as List<RankVacancyReading>,
                        }
                      }) {
                  D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
@@ -333,6 +334,7 @@ fn d0fd_observe_failed_connect(head_active: Bool, g: FabricGroup) -> D0Observati
     group: g,
     incumbent: IncumbentDidNotAnswer { receipt: "witness: the front door could not be connected" as NonEmptyStr, head: HeadEndpointQuiet },
     ranks: d0fd_ranks(head_active: head_active),
+    vacancy: [] as List<RankVacancyReading>,
   }
 }
 
@@ -399,7 +401,7 @@ test fn a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_rea
                                 Present { value: r } => r
                                 Absent => IncumbentAnsweredUnread { cause: "witness: 127.0.0.2 answered" as NonEmptyStr }
                               },
-                              ranks: d0fd_ranks(head_active: false),
+                              ranks: d0fd_ranks(head_active: false), vacancy: [] as List<RankVacancyReading>,
                             }
                           }) {
                       D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: c } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2 && (c as String).contains("LISTEN")

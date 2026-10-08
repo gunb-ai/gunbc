@@ -3,6 +3,7 @@ module v2.compiler.normalized_tree
 import v2.compiler.body_lowering_fold {
   BodyLoweredTree,
   DeclaredTypeKind,
+  DeclaredTypeModifiers,
   declared_record_names,
   declared_resource_names,
   wrapper_retention_diagnostic
@@ -16,7 +17,8 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   rejected_with_pending,
-  UserInputBoundary
+  UserInputBoundary,
+  Unavailable
 }
 import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
@@ -56,6 +58,7 @@ type NormalizedTree sole_constructor {
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
+  type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
 }
 
 // THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
@@ -175,6 +178,11 @@ fn no_type_declaration_kinds() -> FreeMonoid<DeclaredTypeKind> {
   Empty
 }
 
+// A hand-built root carries no declaration modifiers either: it has no parse to read the slot from.
+fn no_type_declaration_modifiers() -> FreeMonoid<DeclaredTypeModifiers> {
+  Empty
+}
+
 // THE KIND OF EACH PLAIN-CONJ TYPE THIS MODULE DECLARES, read at normalize by
 // v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional: after lowering, a record,
 // a where-refinement and a payload-bearing single variant share one shape. One list of one coproduct,
@@ -186,6 +194,7 @@ fn admit_normalized_tree(
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
+  type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
   match occurrence_wall_refusal(root: root) {
@@ -197,7 +206,8 @@ fn admit_normalized_tree(
           root: root,
           test_markers: test_markers,
           import_bindings: import_bindings,
-          type_declaration_kinds: type_declaration_kinds
+          type_declaration_kinds: type_declaration_kinds,
+          type_declaration_modifiers: type_declaration_modifiers
         },
         diagnostics: diagnostics
       }
@@ -281,7 +291,7 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
 }
 
 // Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
-// imports without unsealing the carrier: v2.compiler.compile native_import_target_file_refusal,
+// imports without unsealing the carrier: v2.compiler.compile native_import_target_attribution,
 // which attributes a resolve refusal to an import target the context refused at ingest.
 fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
   tree.import_bindings
@@ -345,7 +355,8 @@ fn admit_unmarked_normalized_roots(
             root: root,
             test_markers: test_marker_channel_empty(),
             import_bindings: no_import_bindings(),
-            type_declaration_kinds: no_type_declaration_kinds()
+            type_declaration_kinds: no_type_declaration_kinds(),
+            type_declaration_modifiers: no_type_declaration_modifiers()
           }
         )
       }

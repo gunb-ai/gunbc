@@ -1,5 +1,6 @@
 module v2.test.claim.effect_demand.effect_demand_floor_join_test
 
+import std.types { List }
 import v2.compiler.effect_demand_floor_join {
   DuplicateClaimIdentity,
   EntryPathUndeclared,
@@ -16,9 +17,7 @@ import v2.compiler.effect_demand { effect_demand_seam_roster }
 import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { Cons, Empty, any, filter, length }
-import v2.std.collection { List }
 import v2.std.live_tree { SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.required_floor {
@@ -122,9 +121,9 @@ test fn floor_join_witness_an_unreached_entry_is_excluded_not_refused() -> Bool 
 
 test fn floor_join_witness_standing_is_the_floors_own_rule() -> Bool {
   let j = probe_join()
-  probe_disposition_of(join: j, identity: "test.claim.infer_probe_a.t_a", expected: fn(d) { match d { Planned => true, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } })
-    && probe_disposition_of(join: j, identity: "v2.test.long.probe_c.t_c", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => matched_prefix == "v2.test.long.", DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } })
-    && probe_disposition_of(join: j, identity: "test.claim.probe_d.t_d", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => true, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } })
+  probe_disposition_of(join: j, identity: "test.claim.infer_probe_a.t_a", expected: fn(d) { match d { Planned => true, PlannedAsChangedWitness => false, PlannedAsReachConsumer => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } })
+    && probe_disposition_of(join: j, identity: "v2.test.long.probe_c.t_c", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, PlannedAsReachConsumer => false, DeclinedLongModule { matched_prefix } => matched_prefix == "v2.test.long.", DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } })
+    && probe_disposition_of(join: j, identity: "test.claim.probe_d.t_d", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, PlannedAsReachConsumer => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => true, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } })
 }
 
 test fn floor_join_witness_cost_debt_arm_is_reached_from_the_policy_roster() -> Bool {
@@ -134,7 +133,7 @@ test fn floor_join_witness_cost_debt_arm_is_reached_from_the_policy_roster() -> 
   probe_disposition_of(
     join: effect_demand_floor_join(discovered: rows, nodes: nodes, edges: edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0),
     identity: "test.claim.belt_tick_receipt_home_witness.the_belt_member_bootstraps_its_own_receipts_directory",
-    expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => true, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } }
+    expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, PlannedAsReachConsumer => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => true, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } }
   )
 }
 

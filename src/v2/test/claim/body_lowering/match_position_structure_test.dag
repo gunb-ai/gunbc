@@ -1,20 +1,20 @@
 module v2.test.claim.body_lowering.match_position_structure
 
+import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.compilers.body_lowering { Application, ApplicationRefused, NotApplication, application_read }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Bind, ComputationNode, Found, Match, Node, Symbol, node_subtree_nodes, MatchArmBodyEdge, core_edge_target_lookup }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty, FreeMonoid }

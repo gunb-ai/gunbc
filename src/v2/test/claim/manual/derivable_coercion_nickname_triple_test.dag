@@ -1,5 +1,6 @@
 module v2.test.manual.derivable_coercion_nickname_triple
 
+import std.types { List }
 import v2.compiler.eval { run_test_claim_assert }
 import v2.test.fixture.derivable_coercion_task_id {
   account_id_wrong_inhabitant_node,
@@ -9,7 +10,6 @@ import v2.test.fixture.derivable_coercion_task_id {
   task_id_semantic_core_node,
   task_id_wire_inhabitant_node
 }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   None,

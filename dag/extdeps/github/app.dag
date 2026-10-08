@@ -34,9 +34,10 @@ import extdeps.languages.json.emit {
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
-import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
+import v2.std.collection { map_lookup }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -52,6 +53,11 @@ data installation_auth_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// GET /app/hook/config documents exactly one response status, 200 OK (read 2026-10-04 against
+// API version 2026-03-10). No 404 is documented, and nothing reads a 404 as "this App has no
+// webhook configured", so a consumer may not mint hook absence from a non-success: it is a refused
+// read (gunbc.fleet.app_control_plane_inspection hook_config_attempt_of_response). The shell
+// transport of GetAppHookConfigJson also carries no status code, only exit success.
 data app_webhook_config_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -819,7 +825,7 @@ fn observed_permissions_from_wire_map(m: Map<String, String>) -> ObservedPermiss
         ObservedPermissionKeyUnanswered { wire_name } =>
           ObservedPermissionKeyUnanswered { wire_name: wire_name }
         ObservedPermissionsDecoded { permissions } =>
-          match map_get(m, key) {
+          match map_lookup(m: m, key: key) {
             Absent => ObservedPermissionKeyUnanswered { wire_name: key as NonEmptyStr }
             Present { value: raw } =>
               match permission_access_from_wire(name: raw) {
@@ -1446,7 +1452,6 @@ service github.AppManifests {
     }
     output {
       result: GitHubAppManifestConversion
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -1477,7 +1482,6 @@ service github.AppPublicRegistry {
     }
     output {
       result: GitHubAppPublicRecord
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -1522,7 +1526,6 @@ service github.AppInstallations {
     }
     output {
       result: List<GitHubAppInstallationRecord>
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -1692,7 +1695,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // Bearer is an RS256 App JWT (extdeps.auth.jws), never an installation or user token -- and answers
 // 201 with a token valid for one hour. The token is decoded straight into a Secret so it has no
 // String life in this process. A mutation: a transport refusal is commit-ambiguous, and the caller
-// classifies it through extdeps.transports.rest classify_rest_outcome as RestMutationExchange.
+// classifies the refusal through extdeps.transports.rest classify_rest_refusal as RestMutationExchange.
 service github.AppInstallationAccessTokens {
   config {
     endpoint: default_api_base
@@ -1708,7 +1711,6 @@ service github.AppInstallationAccessTokens {
     }
     output {
       token: Secret from "token"
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -1743,7 +1745,6 @@ service github.AuthenticatedApp {
     }
     output {
       result: GitHubAppPublicRecord
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -1766,7 +1767,6 @@ service github.AuthenticatedApp {
     }
     output {
       result: GitHubAppInstallationRecord
-      outcome: RestOutcome
     }
     readonly
     transport rest {

@@ -1,5 +1,6 @@
 module v2.test.claim.infer_list_introduction
 
+import std.types { List }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
@@ -8,13 +9,12 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_nod
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }

@@ -2,13 +2,11 @@ module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, AuthScheme }
-import std.string_type { String }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.github.pulls_contracts {
   pull_request_state_wire_contract,
@@ -17,6 +15,7 @@ import extdeps.github.pulls_contracts {
 }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -209,7 +208,6 @@ service github.Pulls {
     }
     output {
       pulls: List<PullRequest>
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -347,7 +345,6 @@ service github.Pulls {
       user: GitHubUser from "user"
       head: PullRequestRef from "head"
       base: PullRequestRef from "base"
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -374,7 +371,6 @@ service github.Pulls {
     output {
       number: Int from "number"
       state: PullRequestState from "state"
-      outcome: RestOutcome
     }
     transport rest {
       method: PATCH,

@@ -1,6 +1,6 @@
 module extdeps.cpu.ampere_altra_package
 
-import std.types { String, NonEmptyStr, List, Map }
+import std.types { String, NonEmptyStr, List, Map, Int }
 import std.measure { Micrometer, micrometer }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket, ampere_altra_max_rev_a1_datasheet_authority }
@@ -176,12 +176,12 @@ fn signal_is_reference_name(signal: NonEmptyStr) -> Bool {
 }
 
 fn signal_has_positive_polarity_suffix(signal: NonEmptyStr) -> Bool {
-  ends_with(s: signal as String, suffix: "_P")
+  (signal as String).ends_with(suffix: "_P")
 }
 
 fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
-  ends_with(s: signal as String, suffix: "_N")
-    || ends_with(s: signal as String, suffix: "_M")
+  (signal as String).ends_with(suffix: "_N")
+    || (signal as String).ends_with(suffix: "_M")
 }
 
 fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
@@ -312,7 +312,13 @@ fn classified_signal_pin_count(contacts: List<PackageContact>) -> Int {
     match c.function {
       SingleEndedSignalContact => acc + 1
       DifferentialPairMemberContact { pair: _ } => acc + 1
-      _ => acc
+      PowerSupplyContact => acc
+      PowerReturnContact => acc
+      SignalReferenceContact => acc
+      IncompleteDifferentialPolarityContact { pair: _ } => acc
+      NoConnectContact => acc
+      ReservedContact => acc
+      FunctionUnstated => acc
     }
   })
 }
@@ -323,7 +329,12 @@ fn classified_power_and_ground_pin_count(contacts: List<PackageContact>) -> Int 
       PowerSupplyContact => acc + 1
       PowerReturnContact => acc + 1
       SignalReferenceContact => acc + 1
-      _ => acc
+      SingleEndedSignalContact => acc
+      DifferentialPairMemberContact { pair: _ } => acc
+      IncompleteDifferentialPolarityContact { pair: _ } => acc
+      NoConnectContact => acc
+      ReservedContact => acc
+      FunctionUnstated => acc
     }
   })
 }
@@ -332,7 +343,14 @@ fn classified_reserved_pin_count(contacts: List<PackageContact>) -> Int {
   fold(contacts, init: 0, f: fn(acc, c) {
     match c.function {
       ReservedContact => acc + 1
-      _ => acc
+      PowerSupplyContact => acc
+      PowerReturnContact => acc
+      SignalReferenceContact => acc
+      SingleEndedSignalContact => acc
+      DifferentialPairMemberContact { pair: _ } => acc
+      IncompleteDifferentialPolarityContact { pair: _ } => acc
+      NoConnectContact => acc
+      FunctionUnstated => acc
     }
   })
 }
@@ -357,7 +375,14 @@ fn scan_differential_pair_population(contacts: List<PackageContact>) -> Differen
           counts: map_insert(acc.counts, p, prior + 1),
         }
       }
-      _ => acc
+      PowerSupplyContact => acc
+      PowerReturnContact => acc
+      SignalReferenceContact => acc
+      SingleEndedSignalContact => acc
+      IncompleteDifferentialPolarityContact { pair: _ } => acc
+      NoConnectContact => acc
+      ReservedContact => acc
+      FunctionUnstated => acc
     }
   })
 }
@@ -372,7 +397,14 @@ fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> NonEmptyStr
       Present { value: _ } => acc
       Absent => match c.function {
         IncompleteDifferentialPolarityContact { pair: p } => Present { value: p }
-        _ => none
+        PowerSupplyContact => none
+        PowerReturnContact => none
+        SignalReferenceContact => none
+        SingleEndedSignalContact => none
+        DifferentialPairMemberContact { pair: _ } => none
+        NoConnectContact => none
+        ReservedContact => none
+        FunctionUnstated => none
       }
     }
   })
@@ -398,7 +430,14 @@ fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPai
                 IncompleteDifferentialPair { pair: p, member_count: members }
               }
             }
-            _ => AllDifferentialPairsComplete
+            PowerSupplyContact => AllDifferentialPairsComplete
+            PowerReturnContact => AllDifferentialPairsComplete
+            SignalReferenceContact => AllDifferentialPairsComplete
+            SingleEndedSignalContact => AllDifferentialPairsComplete
+            IncompleteDifferentialPolarityContact { pair: _ } => AllDifferentialPairsComplete
+            NoConnectContact => AllDifferentialPairsComplete
+            ReservedContact => AllDifferentialPairsComplete
+            FunctionUnstated => AllDifferentialPairsComplete
           }
         }
       })

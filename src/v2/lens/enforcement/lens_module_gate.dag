@@ -1,5 +1,6 @@
 module v2.lens.enforcement.lens_module_gate
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -29,9 +30,7 @@ import v2.lens.registry.completeness {
 import std.disposition { RealizationDispatch }
 import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, HeadFound, HeadAbsent }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String, string_eq }
 

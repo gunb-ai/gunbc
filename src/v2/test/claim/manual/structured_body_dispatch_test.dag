@@ -19,7 +19,6 @@ import v2.extdeps.languages.dag {
   dag_pick_arrow_with_body_fixture
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 
 fn structured_body_non_behavior_node() -> Node {
   node_synthetic(

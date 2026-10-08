@@ -88,6 +88,7 @@ type KnownMethodResolution {
   semantics: MethodSemantics?
   result_type: Node?
   diagnostics: List<ErrorNode>
+  rest_operation: Bool
 }
 
 fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
@@ -1118,7 +1119,8 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       KnownMethodResolution {
         semantics: Present { value: semantics },
         result_type: Present { value: mfr.result_type },
-        diagnostics: tier0.kernel_diagnostics
+        diagnostics: tier0.kernel_diagnostics,
+        rest_operation: false
       }
     Absent =>
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: source_indices) {
@@ -1126,10 +1128,11 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       KnownMethodResolution {
         semantics: Present { value: ServiceMethodSemantics { service_name: authored_name_at(source_indices: source_indices, node: receiver_type), op_params: svc_result.op_params } },
         result_type: Present { value: svc_result.result_type },
-        diagnostics: tier0.kernel_diagnostics
+        diagnostics: tier0.kernel_diagnostics,
+        rest_operation: svc_result.rest
       }
     Absent =>
-      KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics }
+      KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics, rest_operation: false }
   }
   }
 }

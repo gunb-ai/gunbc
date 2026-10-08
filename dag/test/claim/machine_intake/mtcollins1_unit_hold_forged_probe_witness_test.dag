@@ -38,7 +38,7 @@ fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: Stri
   }
 }
 
-data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key }\nfn key() -> NonEmptyStr { mtcollins1_unit_hold_key }\n"
+data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.managed_host_unit_hold { unit_hold_store_root }\nfn root() -> NonEmptyStr { unit_hold_store_root }\n"
 
 fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
   match c {
@@ -73,10 +73,10 @@ test fn a_forged_unit_hold_proof_is_refused_at_the_literal() -> Bool {
 // EACH SEALED WRITE REFUSES A CALLER FROM OUTSIDE ITS ADMITTED ROOTS, named per callee.
 test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
   let c = probe()
-  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_drive_handoff") >= 1
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "boot_drive_handoff") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_handoff_when_media_ready") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_observe_presentation") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_attach_diskless_image") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_observe_boot_presentation") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_attach_boot_image") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_boot_handoff") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_action_after_confirmed_selection") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_actuate_and_read_back") >= 1

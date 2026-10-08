@@ -2,7 +2,7 @@ module v2.test.long.accumulator_copy_fold_analysis
 
 import v2.std.live_tree { LiveTreeDisposition }
 
-import v2.std.node { Authored, StructuralLabel }
+import v2.std.node { Authored, StructuralLabel, Positional, Edge, Node, ComputationNode, TypeNode, Transform, Atom }
 
 import v2.std.algebra { Cons, Empty }
 
@@ -266,8 +266,22 @@ fn edge_is_seq_left(e: Edge) -> Bool {
   }
 }
 
+// THE HEAD POSITION ON EITHER ROUTE: the surface call's sequence-left projection, and the lowered
+// call's operator -- a Positional edge (v2.compiler.body_lowering_fold body_lower_call_arg_edge puts
+// every NAMED actual on an Authored edge, so in this specimen `mystery_op` is the only positional atom).
+// The sole-body fold lowers to a seam Loop, so the surface form never reaches the lens and a mutation
+// keyed on sequence-left alone rewrote nothing: the witness read the intact head and was red for the
+// fixture, not for the lens.
+fn edge_is_head_slot(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    StructuralLabel { label: _ } => false
+    Authored { name: _ } => edge_is_seq_left(e: e)
+  }
+}
+
 fn rebuilt_edge(e: Edge) -> Edge {
-  if edge_is_seq_left(e: e) {
+  if edge_is_head_slot(e: e) {
     if edge_target_is_mystery(e: e) {
       Edge { label: e.label, target: opaque_head_node() }
     } else {
@@ -307,8 +321,8 @@ test fn named_step_fold_refuses_accumulator_unread() -> Bool {
   }
 }
 
-// RED, rostered at gunbc.explicit_witness_admission: the planted copy after a `let` is admitted in
-// silence. Greens with no edit when the fold site reaches the lens at this position.
+// REGRESSION CONTROL (was a rostered RED): the planted copy after a `let`. Body lowering now carries
+// the fold site at this position, so the planted copy reaches the lens and mints a suspect.
 test fn let_prefixed_fold_copy_is_caught() -> Bool {
   match findings_of(source_text: let_prefixed_planted_snippet, file: ^letplanted_file) {
     Absent => false
@@ -316,7 +330,7 @@ test fn let_prefixed_fold_copy_is_caught() -> Bool {
   }
 }
 
-// RED, rostered at gunbc.explicit_witness_admission: the same planted copy in a match arm.
+// REGRESSION CONTROL (was a rostered RED): the same planted copy in a match arm.
 test fn match_arm_fold_copy_is_caught() -> Bool {
   match findings_of(source_text: match_arm_planted_snippet, file: ^matchplanted_file) {
     Absent => false
@@ -448,4 +462,68 @@ test fn report_counters_state_the_domain() -> Bool {
         let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
         (r.folds_seen == 1) && (r.carriers_bound == 0)
     }
+}
+
+// THE QUALIFIED-CALLEE IDENTITY CLAIMS (review on gunbc#13337), over a SUPPLIED lowered call (DESIGN
+// section 3: a witness discriminates at one interface). The subject is the lens's reading of a lowered
+// call's dotted head, so each claim constructs that call -- operator, then the named actuals -- and hands
+// it to analyze with `acc` as a bound carrier; no ingest is paid per claim. The INHABITANCE of the shape
+// is the enrolled real-route claim projection_call_carrier_is_classified: it ingests `helper.step(..)` and
+// reaches ^combiner_unregistered_carrier_reaches only if the real producer's dotted head is read by the
+// same lowered_transform_combiner_optional path branch these claims exercise.
+fn supplied_lowered_call(head: Node, left: Symbol, right: Symbol) -> Node {
+  v2.std.node.node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: head },
+      Edge { label: Authored { name: ^left }, target: supplied_atom(identity: left) },
+      Edge { label: Authored { name: ^right }, target: supplied_atom(identity: right) }
+    ]
+  )
+}
+
+fn supplied_atom(identity: Symbol) -> Node {
+  v2.std.node.node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn supplied_dotted_head(dotted: String) -> Node {
+  v2.std.qualified_name.qualified_name_spine_node(
+    qn: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: dotted),
+    occurrence_id: OccurrenceSynthetic
+  )
+}
+
+fn supplied_findings(call: Node) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  v2.lens.complexity_accumulator_copy.analyze.analyze(node: call, carriers: [^acc], bindings: Empty, iterating: true)
+}
+
+fn refuses_unregistered_without_suspect(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+  !v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+    && v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+}
+
+// RED before the identity fix, measured: matched by leaf, `foreign.list_append(left: acc, right: x)`
+// reads as std.algebra list_append with the carrier on its uncopied port, so no finding was minted.
+test fn same_leaf_foreign_qualifier_does_not_borrow_the_cited_contract() -> Bool {
+  refuses_unregistered_without_suspect(fs: supplied_findings(call: supplied_lowered_call(head: supplied_dotted_head(dotted: "foreign.list_append"), left: ^acc, right: ^x)))
+}
+
+// The same identity read through the RESOLVED form of the head: a declaration reference to
+// foreign.list_append is not the cited declaration either.
+test fn same_leaf_foreign_declaration_reference_does_not_borrow_the_cited_contract() -> Bool {
+  refuses_unregistered_without_suspect(fs: supplied_findings(call: supplied_lowered_call(
+    head: v2.std.qualified_name.declaration_reference_node(qn: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "foreign.list_append"), occurrence_id: OccurrenceSynthetic),
+    left: ^acc,
+    right: ^x
+  )))
+}
+
+test fn unrelated_leaf_foreign_qualifier_refuses_unregistered() -> Bool {
+  refuses_unregistered_without_suspect(fs: supplied_findings(call: supplied_lowered_call(head: supplied_dotted_head(dotted: "foreign.grow"), left: ^acc, right: ^x)))
+}
+
+test fn cited_qualified_callee_reaches_its_contract() -> Bool {
+  v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(
+    fs: supplied_findings(call: supplied_lowered_call(head: supplied_dotted_head(dotted: "std.algebra.list_append"), left: ^x, right: ^acc))
+  )
 }

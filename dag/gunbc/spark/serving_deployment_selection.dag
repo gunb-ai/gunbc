@@ -4,8 +4,11 @@ import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_add, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
-import v2.std.optional { Present, Absent }
-import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
+import std.optional { Present, Absent }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, vllm_memory_request_key,
+  VllmKvCacheDtypeRequest, KvFp8DsMla, vllm_kv_cache_dtype_wire, vllm_kv_cache_dtype_request_matching_wire,
+}
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
@@ -75,7 +78,7 @@ import gunbc.fabric.engram_materialization {
   PoolReliefStanding, NoPoolReliefEveryHopInMemoryPool, PoolReliefBoundedByWorkingSet, PoolReliefNeedsWorkingSetEvidence,
   PoolReliefRouteUnresolved,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.serving_subject {
   ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_wire,
   ServingRulingCitation, serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment,
@@ -485,13 +488,12 @@ fn spark_fleet_snapshot_for(subject: ServingSubject) -> FleetSnapshot {
 // physically has, turning an impossible profile into a passing one.
 type ExecutorProfile = ExecutorRayProfile | ExecutorMpProfile
 
-// THE REQUESTED LAYOUT, AND `fp8` WAS NOT EXPRESSIBLE. The canary's launch asks for `--kv-cache-dtype
-// fp8` and the engine RESOLVES that to fp8_ds_mla for an MLA model, reporting so on its own startup
-// line. This type spells the REQUEST, so it needs the spelling the request actually uses: without it,
-// describing the canary meant claiming it requested fp8_ds_mla, which is the resolved value rather
-// than the argument, and two launches sending different arguments would have shared one identity.
-type KvLayoutPolicy = KvAutoLayout | KvFp8Layout | KvFp8DsMlaLayout | KvFp4Layout
-
+// THE KV REQUEST IS UPSTREAM'S, NOT THIS SELECTOR'S. A selector-local `KvLayoutPolicy` stood here --
+// auto, fp8, fp8_ds_mla and an "fp4" no runtime accepts -- a second vocabulary for the argument
+// extdeps.vllm.engine_args VllmKvCacheDtypeRequest already owns, with no conversion between them and a
+// constructor each the other lacked. It is deleted: candidates carry the canonical request, render it
+// with the canonical wire, and the former fp4 candidate is upstream's nvfp4, whose admission is a
+// capability question answered with a refusal rather than a spelling nobody can launch.
 type SpeculativePolicy = SpeculationOff | SpeculationOn | SpeculationDraft { algorithm: SpeculativeDraftAlgorithm }
 
 fn speculative_policy_wire(s: SpeculativePolicy) -> NonEmptyStr {
@@ -513,26 +515,6 @@ fn executor_wire(e: ExecutorProfile) -> NonEmptyStr {
   }
 }
 
-fn kv_layout_wire(k: KvLayoutPolicy) -> NonEmptyStr {
-  match k {
-    KvAutoLayout => "auto" as NonEmptyStr
-    KvFp8Layout => "fp8" as NonEmptyStr
-    KvFp8DsMlaLayout => "fp8_ds_mla" as NonEmptyStr
-    KvFp4Layout => "fp4" as NonEmptyStr
-  }
-}
-
-fn kv_layout_policies() -> List<KvLayoutPolicy> {
-  [KvAutoLayout, KvFp8Layout, KvFp8DsMlaLayout, KvFp4Layout]
-}
-
-// WIRE MATCH IS NOT ADMISSION. The serving KvLayoutPolicy is the constructor whose wire equals
-// v41_sm12_kv_layout. Whether that spelling is in v41_sm12_admitted_kv_cache_dtypes is a separate
-// standing: a miss is an AxisGap / NeedsEvidence, never a dropped profile and never Auto.
-fn kv_layout_policy_matching_wire(wire: NonEmptyStr) -> KvLayoutPolicy? {
-  (filter(kv_layout_policies(), k => (kv_layout_wire(k: k) as String) == (wire as String))).first()
-}
-
 fn kv_wire_in_roster(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
   any(admitted, d => (d as String) == (wire as String))
 }
@@ -540,7 +522,7 @@ fn kv_wire_in_roster(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
 // THE JOIN IS PRESERVED BEFORE ANY PROFILE LIST. A miss is this standing, never Absent→[] and never
 // Auto. Field establishment consumes the failed arm so the missing fact keeps its name.
 type Sm12KvLayoutStanding
-  = Sm12KvLayoutAdmitted { policy: KvLayoutPolicy }
+  = Sm12KvLayoutAdmitted { policy: VllmKvCacheDtypeRequest }
   | Sm12KvLayoutJoinFailed { wire: NonEmptyStr, obligation: NonEmptyStr }
 
 data sm12_kv_layout_ref: DeclarationRef = DeclarationRef {
@@ -563,7 +545,7 @@ data sm12_kv_admit_obligation: NonEmptyStr = join([
 ], "") as NonEmptyStr
 
 fn sm12_kv_layout_standing(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Sm12KvLayoutStanding {
-  match kv_layout_policy_matching_wire(wire: wire) {
+  match vllm_kv_cache_dtype_request_matching_wire(wire: wire) {
     Absent => Sm12KvLayoutJoinFailed { wire: wire, obligation: sm12_kv_admit_obligation }
     Present { value: k } =>
       if kv_wire_in_roster(wire: wire, admitted: admitted) {
@@ -634,7 +616,7 @@ type ServingDecisionParameters sole_constructor {
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
   executor: ExecutorProfile
-  kv_layout: KvLayoutPolicy
+  kv_cache_dtype: VllmKvCacheDtypeRequest
   speculative: SpeculativePolicy
   runtime: RuntimeRevision
 }
@@ -645,7 +627,7 @@ fn serving_decision_parameters(
   max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat,
   executor: ExecutorProfile,
-  kv_layout: KvLayoutPolicy,
+  kv_cache_dtype: VllmKvCacheDtypeRequest,
   speculative: SpeculativePolicy,
   runtime: RuntimeRevision,
 ) -> ServingDecisionParameters {
@@ -655,7 +637,7 @@ fn serving_decision_parameters(
     max_num_batched_tokens: max_num_batched_tokens,
     max_num_seqs: max_num_seqs,
     executor: executor,
-    kv_layout: kv_layout,
+    kv_cache_dtype: kv_cache_dtype,
     speculative: speculative,
     runtime: runtime,
   }
@@ -668,7 +650,7 @@ fn parameters_key(p: ServingDecisionParameters) -> String {
     "|batch", to_string(token_count_value(t: p.max_num_batched_tokens)),
     "|seqs", to_string(p.max_num_seqs),
     "|", executor_wire(e: p.executor) as String,
-    "|", kv_layout_wire(k: p.kv_layout) as String,
+    "|", vllm_kv_cache_dtype_wire(request: p.kv_cache_dtype) as String,
     "|", speculative_policy_wire(s: p.speculative) as String,
     "|", runtime_revision_key(r: p.runtime),
   ], "")
@@ -708,7 +690,7 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
   max_num_batched_tokens: spark_host_max_num_batched_tokens,
   max_num_seqs: spark_host_max_num_seqs,
   executor: ExecutorRayProfile,
-  kv_layout: KvFp8DsMlaLayout,
+  kv_cache_dtype: KvFp8DsMla,
   speculative: SpeculationOff,
   runtime: spark_runtime,
 )
@@ -735,7 +717,7 @@ fn v4_1_profile_from_standing(runtime: RuntimeRevision, standing: Sm12KvLayoutSt
         max_num_batched_tokens: spark_host_max_num_batched_tokens,
         max_num_seqs: spark_host_max_num_seqs,
         executor: ExecutorRayProfile,
-        kv_layout: k,
+        kv_cache_dtype: k,
         speculative: SpeculationDraft { algorithm: DSpark },
         runtime: runtime,
       )
@@ -804,14 +786,14 @@ fn deployment_candidate_at(identity: DeclarationRef, label: NonEmptyStr, artifac
 // KV LAYOUT IS A CANDIDATE FACT. Bytes-per-token for that layout are a separate capacity
 // observation. The card's 890 B/token is not this layout; DSV41-4 owns the GB10 fp8_ds_mla figure.
 type KvBytesPerTokenStanding
-  = KvBytesPerTokenUnestablished { layout: KvLayoutPolicy, obligation: NonEmptyStr }
+  = KvBytesPerTokenUnestablished { layout: VllmKvCacheDtypeRequest, obligation: NonEmptyStr }
   | KvBytesPerTokenNotThisSubject
 
 data v4_1_gb10_kv_bytes_obligation: NonEmptyStr = "Cite v4_1_selection_frontier / the DSV41-4 declaration when it lands; do not transcribe a dashboard rate. The card's 890 B/token is not the whole-model fp8_ds_mla quantity on sm_12x. Do not use 656 (withdrawn; Kimi K3 stride). Indexer ownership is the kv-source ∩ index-source set, not eight caches. SWA is excluded from the per-token rate. Unpadded source derivation is a floor; the allocator report decides. Higher-precision KV is a capacity fact, not a native-quality violation" as NonEmptyStr
 
 fn kv_bytes_per_token_standing(c: DeploymentCandidate) -> KvBytesPerTokenStanding {
   if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
-    KvBytesPerTokenUnestablished { layout: c.profile.kv_layout, obligation: v4_1_gb10_kv_bytes_obligation }
+    KvBytesPerTokenUnestablished { layout: c.profile.kv_cache_dtype, obligation: v4_1_gb10_kv_bytes_obligation }
   } else {
     KvBytesPerTokenNotThisSubject
   }
@@ -2083,7 +2065,7 @@ fn domain_profiles_defect(d: ServingDeploymentChoiceDomain) -> List<NonEmptyStr>
 
 fn sm12_kv_standing_key(st: Sm12KvLayoutStanding) -> String {
   match st {
-    Sm12KvLayoutAdmitted { policy: k } => join(["admitted|", kv_layout_wire(k: k) as String], "")
+    Sm12KvLayoutAdmitted { policy: k } => join(["admitted|", vllm_kv_cache_dtype_wire(request: k) as String], "")
     Sm12KvLayoutJoinFailed { wire: w, obligation: o } =>
       join(["join-failed|wire:", w as String, "|obl:", o as String], "")
   }

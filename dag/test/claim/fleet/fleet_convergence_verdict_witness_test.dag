@@ -3,12 +3,12 @@ module test.claim.fleet_convergence_verdict_witness
 import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.types { Bool, String, NonEmptyStr, List, Int }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.host_phase_status { fleet_subsumption_enrollments }
 import gunbc.host_assimilation_program { HostEnrollmentIntent }
 import gunbc.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
-import gunbc.host_converge { VerdictConverged, Absent, Drifted }
+import gunbc.host_converge { VerdictConverged, VerdictAbsent, Drifted }
 import gunbc.fleet_convergence_verdict {
   fleet_convergence_verdict,
   FleetConvergenceVerdict,
@@ -88,7 +88,7 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
         host: operator_host_srv1 as String,
         applied: 0,
         drifted: 1,
-        verdict: Absent,
+        verdict: VerdictAbsent,
         reason: Present { value: KnobFrontier { reason: "witness fixture" } },
       }],
     ) {

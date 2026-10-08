@@ -1,0 +1,29 @@
+module test.claim.spark.kv_roster_group_vocabulary_witness_test
+
+import std.types { Bool }
+import std.measure { token_count, token_count_value }
+import std.optional { Present, Absent }
+import extdeps.vllm.kv_layout { FullAttention, SlidingWindowAttention, MambaState, KPoolIndex }
+import gunbc.spark.arm_memory_fit {
+  ExpectMambaKind, ExpectFullAttentionKind, ExpectSlidingWindowKind, expected_group_kind_matches, kv_group_kpool_interval,
+}
+
+// THE SUBJECT IS THE EXPECTED-ROSTER GROUP VOCABULARY: a roster can now require a sliding-window group
+// AT ITS WINDOW, so a checkpoint with windowed layers states them rather than having no spelling. A window
+// is part of the kind: a 128-token window does not satisfy a 256-token requirement, and neither a full-
+// attention nor a recurrent group satisfies it.
+test fn w_a_sliding_window_requirement_matches_only_its_own_window() -> Bool {
+  let w = ExpectSlidingWindowKind { window: token_count(count: 128) }
+  expected_group_kind_matches(kind: w, g: SlidingWindowAttention { window: token_count(count: 128) })
+    && !expected_group_kind_matches(kind: w, g: SlidingWindowAttention { window: token_count(count: 256) })
+    && !expected_group_kind_matches(kind: w, g: FullAttention)
+    && !expected_group_kind_matches(kind: w, g: MambaState)
+    && !expected_group_kind_matches(kind: ExpectFullAttentionKind, g: SlidingWindowAttention { window: token_count(count: 128) })
+    && expected_group_kind_matches(kind: ExpectMambaKind, g: MambaState)
+}
+
+test fn w_only_a_kpool_group_has_a_kpool_interval() -> Bool {
+  (match kv_group_kpool_interval(k: KPoolIndex { pool_every: token_count(count: 64) }) { Present { value: p } => token_count_value(t: p) == 64  Absent => false })
+    && (match kv_group_kpool_interval(k: SlidingWindowAttention { window: token_count(count: 64) }) { Present { value: _ } => false  Absent => true })
+}
+

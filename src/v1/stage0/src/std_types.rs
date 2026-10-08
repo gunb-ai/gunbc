@@ -2,7 +2,6 @@
 // Source module: std.types
 
 use self::AuthScheme::*;
-use self::Bool::*;
 use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::TopologyNodeKind::*;
@@ -12,6 +11,7 @@ pub use crate::std_algebra::{
     carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
+pub use crate::std_optional::Optional;
 pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -166,23 +166,7 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
     )))
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum Bool {
-    True,
-    False,
-}
-// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)
-impl From<Bool> for bool {
-    fn from(b: Bool) -> bool {
-        match b {
-            Bool::True => true,
-            Bool::False => false,
-        }
-    }
-}
+pub type Bool = bool;
 
 pub type Unit = ();
 

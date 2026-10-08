@@ -1,5 +1,6 @@
 module v2.compiler.program_partition
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }
@@ -25,10 +26,9 @@ import v2.lens.application { subterm_at }
 import std.algebra { Empty, list_append, list_snoc_item }
 import v2.std.algebra { any, fold_list, FreeMonoid }
 import v2.std.collection {
-  List,
   Map
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -73,13 +73,24 @@ import v2.std.node {
   Disj,
   Edge,
   Authored,
+  StructuralLabel,
   Node,
   Symbol,
   Transform,
   TypeNode,
   node_subtree_nodes,
-  well_formed
+  well_formed,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Positional,
+  Bind,
+  Branch,
+  Loop,
+  Match,
+  Value,
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.verification { node_in_subtree_by_identity }
 import v2.std.program_segment {
   AmbientContextAvailable,
@@ -108,7 +119,11 @@ fn partition_user_semantic_type_shape(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Disj } => true
     TypeNode { connective: Conj } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -128,7 +143,12 @@ fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
             }
           }
         )
-      _ => Absent
+      TypeNode { connective: Atom { identity: _ } } => Absent
+      TypeNode { connective: Disj } => Absent
+      TypeNode { connective: Arrow } => Absent
+      TypeNode { connective: Cardinality } => Absent
+      TypeNode { connective: Instantiation } => Absent
+      ComputationNode { behavior: _ } => Absent
     }
   }
 }
@@ -166,7 +186,8 @@ fn partition_collect_user_semantic_type_edge(
           )
         Absent => acc
       }
-    _ => acc
+    StructuralLabel { label: _ } => acc
+    Positional => acc
   }
 }
 
@@ -183,7 +204,12 @@ fn partition_collect_user_semantic_types_from_module(
           partition_collect_user_semantic_type_edge(acc: a, edge: edge)
         }
       )
-    _ => acc
+    TypeNode { connective: Atom { identity: _ } } => acc
+    TypeNode { connective: Disj } => acc
+    TypeNode { connective: Arrow } => acc
+    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Instantiation } => acc
+    ComputationNode { behavior: _ } => acc
   }
 }
 
@@ -284,10 +310,10 @@ fn partition_symbol_snoc_unique(acc: List<Symbol>, sym: Symbol) -> List<Symbol> 
 }
 
 fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
       partition_symbol_snoc_unique(acc: acc, sym: id)
-    _ => acc
+    Absent => acc
   }
 }
 
@@ -551,7 +577,17 @@ fn resolve_program_partition(
 fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Transform } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
@@ -567,7 +603,8 @@ fn partition_segment_is_ambient_arrow_body_behavior(
           needle: segment_root
         )
         && partition_segment_root_is_transform_computation(root: segment_root)
-    _ => false
+    WholeProgram => false
+    SubtreeAtPath { path: _ } => false
   }
 }
 

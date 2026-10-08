@@ -1,9 +1,8 @@
 module v2.compiler.self_host.stage0_crate_layout
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // The stage0 crate's module layout, authored as registration rows.
@@ -27,6 +26,17 @@ type SeedRetainedSupportDirRegistration {
   basename: String
 }
 
+// THE PREMISE OF THE NOTE BELOW NO LONGER HOLDS, AND IT IS KEPT AS HISTORY, NOT AS THE REASON
+// (2026-10-04). It argues from the witness drivers opening with `use v1_compiler::v2_compiler_X as
+// seed;`. Those seed oracles were removed in gunbc#12316 and gunbc#12376, and the drivers
+// themselves -- every `self_host_*_shims/witness_main.rs` -- were deleted in gunbc#13098 and
+// gunbc#13185: a row's driver is now rendered from the roster row and calls a .dag contract
+// emitted beside its subject, and it imports nothing from the seed crate. The roster fields the
+// note cites (`shim_lib_rel`, `shim_writes`) are gone too. So the nine rows below are still
+// `has_pub_mod: true`, but the argument that made them so is no longer the reason they need to be;
+// whether any of them can flip back is a question this note does not answer and nobody has
+// measured. The 2026-08-20 text follows unchanged.
+//
 // NINE ROWS FLIPPED TO `has_pub_mod: true` (2026-08-20), AND THIS CORRECTS A CLAIM THE ROW BELOW
 // MAKES. `pre_existing_hand_retained_registration_backfill_note` states that the Gate-A oracles are
 // "never part of the stage0 crate's own mod tree at all" because the CSSL harness compiles them
@@ -52,6 +62,14 @@ type SeedRetainedSupportDirRegistration {
 // `--required-regen` reports as drifted -- so these declarations reach the built crate when the
 // seed is regenerated, not when this row merges.
 //
+// THE PREMISE ABOVE NO LONGER HOLDS (2026-10-04). No behavioral driver imports the seed any more:
+// the seed oracles were removed by gunbc#12316 and gunbc#12376, and gunbc#13185 deleted every
+// `self_host_*_shims/witness_main.rs` -- each roster row now names a .dag `contract_module` whose
+// driver is rendered beside the emitted subject. So the seed-import reason given for the nine
+// `has_pub_mod: true` flips is gone. Whether those rows are still needed for another reason is NOT
+// decided here: unflipping them is a two-generation change to the emitted lib.rs and owes its own
+// regenerated-seed receipt.
+//
 // ONE ROW DELETED (2026-08-20): `v1_compiler_expected_red_roster_join`. #8527 modelled that module
 // in `src/v1/expected_red_roster_join.dag` and deleted its hand-authored `.rs`, so it became
 // compiler-emitted -- but that commit RENAMED its registration row here (`expected_red_roster_join`
@@ -71,13 +89,11 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "declaration_index", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "closure_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "derived_realization_schedule", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "namespace_baseline", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },

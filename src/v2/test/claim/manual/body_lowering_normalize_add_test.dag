@@ -1,5 +1,6 @@
 module v2.test.manual.body_lowering_normalize_add
 
+import std.types { List }
 import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
   body_lower_domain_from_param_list,
@@ -8,7 +9,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_unwrap_captured
 }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.compiler.parse { parse_module }
@@ -23,16 +24,14 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty }
 import v2.std.collection {
-  List,
   list_at_optional
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   ComputationNode,
@@ -353,7 +352,7 @@ fn body_lowering_tree_contains_atom(root: Node, wanted: Symbol) -> Bool {
 
 test fn body_lowering_fixture_resolves() -> Bool {
   let lm = dag_language_model()
-  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), test_markers: test_marker_channel_empty(), root: dag_add_arrow_with_body_fixture, diagnostics: None) {
+  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: dag_add_arrow_with_body_fixture, diagnostics: None) {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
       match resolve(tree: admitted, lm: lm) {
@@ -723,7 +722,7 @@ test fn body_lowering_normalized_arrow_root_resolves() -> Bool {
       match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
-          match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), test_markers: test_marker_channel_empty(), root: arrow, diagnostics: None) {
+          match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: arrow, diagnostics: None) {
             Rejected { diagnostics: _ } => false
             Accepted { value: admitted_arrow, diagnostics: _ } =>
               match resolve(tree: admitted_arrow, lm: lm) {

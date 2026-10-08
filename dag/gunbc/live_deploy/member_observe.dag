@@ -24,14 +24,9 @@ import gunbc.live_deploy.spec {
   DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
   deployment_provider_state_path,
 }
-import gunbc.live_deploy.candidate { CandidateRelease }
-import gunbc.live_deploy.emit {
-  live_deploy_systemd_unit_for,
-}
-import gunbc.live_deploy.release_locus {
-  ReleaseRevisionBinding,
-  RevisionBoundAtEmission,
-}
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
 import gunbc.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity { observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified }
@@ -328,7 +323,11 @@ fn observe_service_process(spec: DeploymentSpec, transport: HostEffectTransport)
       Absent => MemberUnobservable { member: ServiceProcess, cause: join(["ActiveState not in the systemd vocabulary: ", trim(s: raw)], "") }
       Present { value: active } => match active {
         Active => running_process_identity(spec: spec, transport: transport)
-        _ => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Inactive => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Activating => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Deactivating => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Reloading => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Failed => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
       }
     }
   }
@@ -508,7 +507,18 @@ fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
       DispatchWorktreeRoot => [DirectoryRoot { path: art.path }]
       AttemptStateRoot => [DirectoryRoot { path: art.path }]
       ComputeRoot => [DirectoryRoot { path: art.path }]
-      _ => []
+      ServeBinary => []
+      GunbcSourceTree => []
+      SystemdUnit => []
+      BeltTimerUnit => []
+      FleetConvergeTimerUnit => []
+      TailscaleServeMapping => []
+      DeployedTreeRemoteUnit => []
+      PublicationHelperTimerUnit => []
+      FabricStorageServeUnit => []
+      FabricStorageServeMapping => []
+      ApprovalBrokerFrontDoor => []
+      TailnetDoorServeUnit => []
     }
     Dependency { step: _ } => []
   }
@@ -623,6 +633,12 @@ fn release_member_plan(
   )
 }
 
+// THE DESIRED EXECUTABLE READ BACK AS ANOTHER MEMBER'S IDENTITY: one refusal, shared by every
+// non-executable MemberIdentity arm of deployment_effect_plan.
+fn desired_executable_is_another_member(desired_bin: MemberIdentity) -> EffectDerivation {
+  EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredIdentityIsForAnotherMember { desired: gunbc.live_deploy.member_identity.member_identity_member(i: desired_bin) } }] }
+}
+
 fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> EffectDerivation {
   match desired_executable() {
     MemberUnobservable { member: _, cause } =>
@@ -638,8 +654,16 @@ fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, tra
           desired_bin: desired_bin,
           target: ReleaseTarget { revision: candidate.revision, executable: digest, unit: spec.service.unit_name },
         )
-      _ =>
-        EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredIdentityIsForAnotherMember { desired: gunbc.live_deploy.member_identity.member_identity_member(i: desired_bin) } }] }
+      TreeIdentity { tree: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      UnitFileAt { file: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      UnitManagerAt { standing: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      ProcessAt { process: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      RootAt { root: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
     }
   }
 }

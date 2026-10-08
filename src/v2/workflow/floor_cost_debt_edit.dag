@@ -3,16 +3,14 @@ module v2.workflow.floor_cost_debt_edit
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { LexRules, Token, token_stream_all }
-import v2.std.collection { List }
 import v2.std.algebra { Cons, Empty, any, contains, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail, list_reverse }
-import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import std.measure { EvalStepCount }
-import std.types { GitRef, FilePath }
+import std.types { GitRef, FilePath, List }
 import extdeps.git
 import v2.workflow.required_floor {
   ClaimCeilingTier,
@@ -386,10 +384,12 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
 
 // THE DECISION OVER TWO TOKEN STREAMS. The claim-grain interface: witnesses supply the streams'
 // sources directly (DESIGN section 3, a witness discriminates at one interface).
+// Resolve removed calls only after the token walk establishes a nonempty conjunct removal.
+// Other edits already have a final refusal and need no whole-file import scan.
 fn cost_debt_edit_from_decl_tokens(
   base: List<Token>,
   head: List<Token>,
-  resolution: BaseResolution,
+  base_file: List<Token>,
   test_fn_identities: List<String>
 ) -> CostDebtWitnessEdit {
   let walk = fold(base, init: RemovalWalk { head: head, phase: WalkAligned {}, removed: 0, prev_kept: optional_absent(), follower_pending: false, call_path: "", call_dotted: false, removed_calls: [] }, f: fn(acc, b) {
@@ -412,12 +412,15 @@ fn cost_debt_edit_from_decl_tokens(
     ReJudgedAsNewWitness { cause: EditIsNotAConjunctRemoval {} }
   } else if walk.removed == 0 {
     ReJudgedAsNewWitness { cause: WitnessTokensUnchanged {} }
-  } else if any(xs: walk.removed_calls, predicate: fn(c) {
-    !removed_call_is_test_fn(call: c, resolution: resolution, test_fn_identities: test_fn_identities)
-  }) {
-    ReJudgedAsNewWitness { cause: RemovedCallIsNotATestFn {} }
   } else {
-    PureConjunctRemoval { removed_conjuncts: walk.removed }
+    let resolution = cost_debt_edit_base_resolution(tokens: base_file)
+    if any(xs: walk.removed_calls, predicate: fn(c) {
+      !removed_call_is_test_fn(call: c, resolution: resolution, test_fn_identities: test_fn_identities)
+    }) {
+      ReJudgedAsNewWitness { cause: RemovedCallIsNotATestFn {} }
+    } else {
+      PureConjunctRemoval { removed_conjuncts: walk.removed }
+    }
   }
 }
 
@@ -554,22 +557,6 @@ fn removed_call_is_test_fn(call: RemovedCall, resolution: BaseResolution, test_f
   }
 }
 
-type DeclReading =
-    DeclSourceUntokenizable
-  | DeclNotFound
-  | DeclFound { tokens: List<Token>, file_tokens: List<Token> }
-
-fn cost_debt_edit_decl_of(source: String, function: String, rules: LexRules) -> DeclReading {
-  match cost_debt_edit_source_tokens(source: source, rules: rules) {
-    Absent => DeclSourceUntokenizable {}
-    Present { value: tokens } =>
-      match cost_debt_edit_decl_tokens(tokens: tokens, function: function) {
-        Absent => DeclNotFound {}
-        Present { value: decl } => DeclFound { tokens: decl, file_tokens: tokens }
-      }
-  }
-}
-
 // THE DECISION OVER TWO FILE SOURCES, which is what the witnesses exercise and what the wet entry
 // below calls once the base is read.
 // The language model is built ONCE per decision and lent to both sides.
@@ -580,21 +567,69 @@ fn cost_debt_edit_from_sources(
   test_fn_identities: List<String>
 ) -> CostDebtWitnessEdit {
   let rules = dag_language_model().lex
-  match cost_debt_edit_decl_of(source: base_source, function: function, rules: rules) {
-    DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
-    DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }
-    DeclFound { tokens: base_decl, file_tokens: base_file } =>
-      match cost_debt_edit_decl_of(source: head_source, function: function, rules: rules) {
-        DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
-        DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
-        DeclFound { tokens: head_decl, file_tokens: _ } =>
-          cost_debt_edit_from_decl_tokens(
-            base: base_decl,
-            head: head_decl,
-            resolution: cost_debt_edit_base_resolution(tokens: base_file),
-            test_fn_identities: test_fn_identities
-          )
+  cost_debt_edit_from_file_tokens(
+    base_tokens: cost_debt_edit_source_tokens(source: base_source, rules: rules),
+    head_tokens: cost_debt_edit_source_tokens(source: head_source, rules: rules),
+    function: function, test_fn_identities: test_fn_identities)
+}
+
+// File tokenization is shared by all changed identities in one observed file pair.
+// Each declaration still receives its own edit decision and ceiling.
+fn cost_debt_edit_from_file_tokens(
+  base_tokens: Optional<List<Token>>,
+  head_tokens: Optional<List<Token>>,
+  function: String,
+  test_fn_identities: List<String>
+) -> CostDebtWitnessEdit {
+  match base_tokens {
+    Absent => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
+    Present { value: base_file } => match cost_debt_edit_decl_tokens(tokens: base_file, function: function) {
+      Absent => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }
+      Present { value: base_decl } => match head_tokens {
+        Absent => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
+        Present { value: head_file } => match cost_debt_edit_decl_tokens(tokens: head_file, function: function) {
+          Absent => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
+          Present { value: head_decl } => cost_debt_edit_from_decl_tokens(
+            base: base_decl, head: head_decl,
+            base_file: base_file,
+            test_fn_identities: test_fn_identities)
+        }
       }
+    }
+  }
+}
+
+type CostDebtNamedCeiling {
+  function: String
+  ceiling: CostDebtChangedWitnessCeiling
+}
+
+fn cost_debt_changed_witness_ceilings_from_sources(
+  base_source: String, head_source: String, functions: List<String>, test_fn_identities: List<String>
+) -> List<CostDebtNamedCeiling> {
+  let rules = dag_language_model().lex
+  let base_tokens = cost_debt_edit_source_tokens(source: base_source, rules: rules)
+  let head_tokens = cost_debt_edit_source_tokens(source: head_source, rules: rules)
+  map(functions, function => CostDebtNamedCeiling {
+    function: function,
+    ceiling: cost_debt_changed_witness_ceiling(edit: cost_debt_edit_from_file_tokens(
+      base_tokens: base_tokens, head_tokens: head_tokens,
+      function: function, test_fn_identities: test_fn_identities))
+  })
+}
+
+fn cost_debt_changed_witness_ceilings_at_base(
+  base: String, path: String, functions: List<String>, head_source: String, test_fn_identities: List<String>
+) -> List<CostDebtNamedCeiling> {
+  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+  if !shown.success {
+    map(functions, function => CostDebtNamedCeiling {
+      function: function,
+      ceiling: cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} })
+    })
+  } else {
+    cost_debt_changed_witness_ceilings_from_sources(base_source: shown.content,
+      head_source: head_source, functions: functions, test_fn_identities: test_fn_identities)
   }
 }
 

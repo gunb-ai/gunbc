@@ -1,6 +1,6 @@
 module test.claim.spark_managed_grant_install_witness
 
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
@@ -14,20 +14,25 @@ import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_ins
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.managed_grant_install {
+  RetiredDropinAbsent,
+  RetiredDropinRemovalWithheldOnRun,
+  spark_retired_dropin_standing_wire,
+  spark_grant_install_administrator_standing,
+  SparkGrantInstallRun,
+  spark_grant_install_run_succeeded,
+  spark_grant_install_run_leaves_obligation_outstanding,
+  spark_grant_install_run_text,
+}
+import gunbc.spark.grant_privileged_operation {
   spark_grant_install_plan,
   spark_grant_install_operation_labels,
   cleanup_grant_staging_argv,
   spark_grant_cleanup_standing,
-  spark_grant_install_administrator_standing,
   spark_grant_install_plan_wire,
   spark_grant_staging_path,
   SparkGrantInstallSteps,
   SparkGrantInstallRefused,
-  SparkGrantInstallRun,
   SparkGrantInstallNotAttempted,
-  spark_grant_install_run_succeeded,
-  spark_grant_install_run_leaves_obligation_outstanding,
-  spark_grant_install_run_text,
   spark_grant_install_outcome_wire,
   spark_grant_credential_requirement,
   spark_grant_install_from_privileged,
@@ -348,6 +353,7 @@ test fn a_rejected_credential_is_an_executed_failure_not_an_awaiting_one() -> Bo
 
 test fn a_run_holding_a_not_attempted_outcome_refuses() -> Bool {
   !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -364,6 +370,7 @@ test fn a_run_holding_a_not_attempted_outcome_refuses() -> Bool {
 // grant in the install set, so an empty list cannot have arrived from ignorance.
 test fn a_run_with_nothing_to_install_succeeds() -> Bool {
   spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=true\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -376,6 +383,7 @@ test fn a_run_with_nothing_to_install_succeeds() -> Bool {
 // that motivated each install beside what the install did.
 test fn the_run_text_carries_the_standing_and_each_outcome() -> Bool {
   let text = spark_grant_install_run_text(run: SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -482,6 +490,7 @@ test fn the_awaiting_credential_arm_asks_for_a_credential_and_not_a_hand_mutatio
 // It refuses like any other unfinished install: naming the floor never converts it into success.
 test fn the_root_of_trust_arm_still_refuses() -> Bool {
   !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -511,6 +520,7 @@ test fn the_credential_request_names_the_exact_grant_it_authorizes() -> Bool {
 // the withheld list, and only the empty one may exit green.
 test fn an_empty_install_set_from_a_withheld_grant_does_not_succeed() -> Bool {
   let withheld = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -521,6 +531,7 @@ test fn an_empty_install_set_from_a_withheld_grant_does_not_succeed() -> Bool {
     outcomes: [],
   }
   let needed_nothing = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=true\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -535,6 +546,7 @@ test fn an_empty_install_set_from_a_withheld_grant_does_not_succeed() -> Bool {
 // and no withheld grant; it must fail, while a host that genuinely needed nothing still succeeds.
 test fn an_empty_install_set_from_an_unobserved_standing_does_not_succeed() -> Bool {
   let unobserved = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [GrantInstallStandingUnobserved {
       grant: RebootThisHost,
@@ -545,6 +557,7 @@ test fn an_empty_install_set_from_an_unobserved_standing_does_not_succeed() -> B
     outcomes: [],
   }
   let needed_nothing = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=true\n",
     unobserved: [],
     admitted_on_accepted_risk: [],
@@ -563,6 +576,7 @@ test fn a_run_admitted_on_accepted_risk_greens_and_still_reports_the_obligation_
   let listing = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
   let admitted = spark_managed_grants_admitted_on_accepted_risk(outcome: GrantEnumerated { listing: listing })
   let run = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=false\n",
     outcomes: [],
     withheld: [],
@@ -570,17 +584,48 @@ test fn a_run_admitted_on_accepted_risk_greens_and_still_reports_the_obligation_
     admitted_on_accepted_risk: admitted,
   }
   let clean = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
     standing_report: "grant-standing host=srv6 converged=true\n",
     outcomes: [],
     withheld: [],
     unobserved: [],
     admitted_on_accepted_risk: [],
   }
-  admitted.length() == 1
+  let inspect_grants = filter(spark_managed_grant_population, g => match g {
+    InspectServingContainer { container: _ } => true
+    _ => false
+  })
+  inspect_grants.length() >= 2
+    && admitted.length() == inspect_grants.length()
     && spark_grant_install_run_succeeded(run: run)
     && spark_grant_install_run_leaves_obligation_outstanding(run: run)
     && !spark_grant_install_run_leaves_obligation_outstanding(run: clean)
     && string_contains(spark_grant_install_run_text(run: run), "outstanding-after-install grant=inspect the serving container only obligation=")
     && string_contains(spark_grant_install_run_text(run: run), spark_inspect_grant_disclosure_unestablished_obligation as String)
     && !string_contains(spark_grant_install_run_text(run: clean), "outstanding-after-install")
+}
+
+// A WITHHELD REMOVAL OF THE RETIRED SHARED DROP-IN IS NOT A GREEN RUN. Every grant can read held while
+// the shared file is still present and something rides only on it; exiting green there would leave the
+// receipt saying "withheld" and the process saying "converged".
+test fn a_withheld_retired_dropin_removal_does_not_read_as_converged() -> Bool {
+  let base = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinAbsent,
+    standing_report: "grant-standing host=srv9 converged=true\n",
+    unobserved: [],
+    admitted_on_accepted_risk: [],
+    withheld: [],
+    outcomes: [],
+  }
+  let withheld = SparkGrantInstallRun {
+    retired_dropin: RetiredDropinRemovalWithheldOnRun { cause: "would lapse gunbc-docker-inspect-glm-native-tp4" as NonEmptyStr },
+    standing_report: "grant-standing host=srv9 converged=true\n",
+    unobserved: [],
+    admitted_on_accepted_risk: [],
+    withheld: [],
+    outcomes: [],
+  }
+  spark_grant_install_run_succeeded(run: base)
+    && !spark_grant_install_run_succeeded(run: withheld)
+    && contains(spark_grant_install_run_text(run: withheld), "retired-shared-dropin REMOVAL-WITHHELD would lapse gunbc-docker-inspect-glm-native-tp4")
 }

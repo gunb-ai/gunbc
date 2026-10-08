@@ -1,10 +1,11 @@
 module gunbc.spark.first_party_serving
 
 import std.types { NonEmptyStr, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
-import product.placement_supply { SiteIdentity, HostIdentity, host_identity_eq }
+import product.placement_supply { SiteIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
@@ -19,7 +20,7 @@ import product.fabric.provider_admission {
 }
 import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
 import gunbc.spark.vllm_observed {
-  VllmModelsRouteReadbackStanding, ModelsRouteRead, VllmModelsRouteReadback,
+  VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent, ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, ModelsRouteEntryDuplicated, ModelsRouteDocumentUnreadable, VllmModelsRouteReadback,
 }
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
@@ -34,10 +35,7 @@ import gunbc.spark.vllm_serving_launch {
 }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_intent_network {
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
-  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-}
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 
 // ── WHY A SERVING ROUTE EXISTS AT ALL NOW, AND WHAT KIND OF FACT IT RESTS ON ──────────────────
 //
@@ -565,7 +563,11 @@ fn spark_realization_identity(realization: SparkServingRealization) -> SparkReal
           }
         Absent => RealizationDeclaredPathUnpinned
       }
-    _ => RealizationReadbackUnresolved
+    ModelsRouteEntryAbsent { served_model_id: _, unexaminable_entries: _ } => RealizationReadbackUnresolved
+    ModelsRouteFieldAbsent { served_model_id: _, field: _ } => RealizationReadbackUnresolved
+    ModelsRouteFieldUnreadable { served_model_id: _, field: _, cause: _ } => RealizationReadbackUnresolved
+    ModelsRouteEntryDuplicated { served_model_id: _, count: _ } => RealizationReadbackUnresolved
+    ModelsRouteDocumentUnreadable { cause: _ } => RealizationReadbackUnresolved
   }
 }
 

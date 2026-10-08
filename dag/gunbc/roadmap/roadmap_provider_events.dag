@@ -15,8 +15,25 @@ import extdeps.languages.json.grammar {
   json_text_skip_ws,
   json_text_starts_with_at,
 }
-import extdeps.languages.json.parse { json_text_parseable }
+import gunbc.harness.harness_tool_kind {
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
+  harness_tool_item_read,
+}
+import extdeps.languages.json.parse {
+  json_text_parseable, parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field_string, json_field_int, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed,
+}
 
+// THE HARNESS ARMS ARE THE READ SIDE OF gunbc.harness.harness_tool_kind. A harness tool use is
+// written with an item type derived from its HarnessTool, and codex_item_activity inverts that same
+// declaration, so a file read, a file write, a single-match edit and a command arrive as four
+// different activities. Write and edit are NOT folded onto CodexEditingFiles: that arm is the Codex
+// provider's file_change, a patch item that does not say which of the two happened, and folding
+// them would make the read lossy where the write was exact. A consumer that wants "anything that
+// changed a file" takes the three arms together; one that wants them apart still can.
+// HarnessRefusingUnrecognizedTool is a tool use whose name the harness does not declare -- the
+// dispatcher refused it, and it is reported as that rather than as a command or an unknown item.
 type CodexItemActivity
   = CodexRunningCommand
   | CodexEditingFiles
@@ -25,6 +42,10 @@ type CodexItemActivity
   | CodexUpdatingPlan
   | CodexReasoningItem
   | CodexReporting
+  | HarnessReadingFile
+  | HarnessWritingFile
+  | HarnessEditingFile
+  | HarnessRefusingUnrecognizedTool
   | CodexUnclassifiedItem
 
 // THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in the Codex-shaped stream: round.usage, the
@@ -32,7 +53,8 @@ type CodexItemActivity
 // turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on;
 // and turn.wire_log_unwritable, the non-terminal notice that a round's durable wire-log write
 // refused (gunbc.harness.harness_turn). The phase fold leaves the provider state unchanged on the
-// non-terminal pair; before these arms the whole stream was refused at such a line as an unknown
+// non-terminal pair; turn.placement_waiting, the worker announcing that it is waiting in line for a
+// serving seat before any provider call (gunbc.harness.harness_cli harness_bind_seat_waiting). Before these arms the whole stream was refused at such a line as an unknown
 // event type, so a live harness attempt rendered as "Agent evidence refused" with no strip
 // (first belt-dispatched attempt, 2026-09-04).
 type CodexProviderEventKind
@@ -47,6 +69,7 @@ type CodexProviderEventKind
   | HarnessBudgetExhausted
   | HarnessAlignmentCheckpointDue
   | HarnessWireLogUnwritable
+  | HarnessPlacementWaiting
 
 type CodexProviderEvent {
   line_number: Int
@@ -84,6 +107,7 @@ type CodexParseFold {
 type ProviderExecutionState
   = ProviderNotStarted
   | ProviderStarting { activity: String }
+  | ProviderAwaitingSeat { detail: String }
   | ProviderRunning { activity: String }
   | ProviderCompleted { activity: String }
   | ProviderFailed { activity: String, detail: String }
@@ -136,7 +160,7 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
   "]),\"truncated\":((.item.text | length) > ",
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
-  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) else {\"type\":$type} end",
+  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
 fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
@@ -244,45 +268,59 @@ fn codex_line_has_top_level_type(raw: String, event_type: String) -> Bool {
   }
 }
 
-fn codex_line_item_type_is(raw: String, item_type: String) -> Bool {
+// THE ITEM TYPE IS READ ONCE, AS A VALUE, and classified afterwards. The walk is the anchored one
+// described above; what it returns is the text between the quotes of item's first member, and only
+// when that member is a well-formed string followed by `,` or `}`. An item type carrying an escape
+// comes back in its escaped spelling, which equals no declared kind and so classifies as
+// unclassified -- the same answer the per-candidate token comparison this replaces gave.
+fn codex_line_item_type(raw: String) -> String? {
   match codex_envelope_object_first_member(raw: raw, at: 0) {
-    Absent => false
+    Absent => none
     Present { value: member } =>
       match codex_envelope_member_value_start(raw: raw, at: member, key: "type") {
-        Absent => false
+        Absent => none
         Present { value: type_value } =>
           match json_text_parse_string(s: raw, i: type_value) {
-            JsonTextParseFail { end: _ } => false
+            JsonTextParseFail { end: _ } => none
             JsonTextParseOk { end: after_type } => {
               let comma = json_text_skip_ws(s: raw, i: after_type)
               if !json_text_starts_with_at(s: raw, i: comma, lit: ",") {
-                false
+                none
               } else {
                 match codex_envelope_member_value_start(
                   raw: raw,
                   at: comma + 1,
                   key: "item",
                 ) {
-                  Absent => false
+                  Absent => none
                   Present { value: item_object } =>
                     match codex_envelope_object_first_member(
                       raw: raw,
                       at: item_object,
                     ) {
-                      Absent => false
+                      Absent => none
                       Present { value: item_member } =>
                         match codex_envelope_member_value_start(
                           raw: raw,
                           at: item_member,
                           key: "type",
                         ) {
-                          Absent => false
+                          Absent => none
                           Present { value: item_value } =>
-                            codex_envelope_string_member_is(
-                              raw: raw,
-                              at: item_value,
-                              expected: item_type,
-                            )
+                            match json_text_parse_string(s: raw, i: item_value) {
+                              JsonTextParseFail { end: _ } => none
+                              JsonTextParseOk { end: after_item } => {
+                                let after = json_text_skip_ws(s: raw, i: after_item)
+                                if json_text_starts_with_at(s: raw, i: after, lit: ",")
+                                  || json_text_starts_with_at(s: raw, i: after, lit: "\}") {
+                                  Present {
+                                    value: raw.substring(start: item_value + 1, end: after_item - 1),
+                                  }
+                                } else {
+                                  none
+                                }
+                              }
+                            }
                         }
                     }
                 }
@@ -293,23 +331,45 @@ fn codex_line_item_type_is(raw: String, item_type: String) -> Bool {
   }
 }
 
-fn codex_item_activity(raw: String) -> CodexItemActivity {
-  if codex_line_item_type_is(raw: raw, item_type: "command_execution") {
-    CodexRunningCommand
-  } else if codex_line_item_type_is(raw: raw, item_type: "file_change") {
+fn harness_tool_item_activity(tool: HarnessTool) -> CodexItemActivity {
+  match tool {
+    RunCommandTool => CodexRunningCommand
+    ReadFileTool => HarnessReadingFile
+    WriteFileTool => HarnessWritingFile
+    EditFileTool => HarnessEditingFile
+  }
+}
+
+// The item types below are the Codex provider's own and the harness's agent_message. The kinds a
+// harness tool use is written as are not spelled here: they are read through
+// gunbc.harness.harness_tool_kind, which is also what wrote them.
+fn codex_provider_item_activity(item_type: String) -> CodexItemActivity {
+  if item_type == "file_change" {
     CodexEditingFiles
-  } else if codex_line_item_type_is(raw: raw, item_type: "mcp_tool_call") {
+  } else if item_type == "mcp_tool_call" {
     CodexUsingConnectedTool
-  } else if codex_line_item_type_is(raw: raw, item_type: "web_search") {
+  } else if item_type == "web_search" {
     CodexSearching
-  } else if codex_line_item_type_is(raw: raw, item_type: "plan_update") {
+  } else if item_type == "plan_update" {
     CodexUpdatingPlan
-  } else if codex_line_item_type_is(raw: raw, item_type: "reasoning") {
+  } else if item_type == "reasoning" {
     CodexReasoningItem
-  } else if codex_line_item_type_is(raw: raw, item_type: "agent_message") {
+  } else if item_type == "agent_message" {
     CodexReporting
   } else {
     CodexUnclassifiedItem
+  }
+}
+
+fn codex_item_activity(raw: String) -> CodexItemActivity {
+  match codex_line_item_type(raw: raw) {
+    Absent => CodexUnclassifiedItem
+    Present { value: item_type } =>
+      match harness_tool_item_read(item_type: item_type) {
+        ItemIsHarnessToolUse { tool: t } => harness_tool_item_activity(tool: t)
+        ItemIsUnrecognizedToolUse => HarnessRefusingUnrecognizedTool
+        ItemIsNotAHarnessToolUse => codex_provider_item_activity(item_type: item_type)
+      }
   }
 }
 
@@ -322,6 +382,10 @@ fn codex_item_activity_label(activity: CodexItemActivity) -> String {
     CodexUpdatingPlan => "updating plan"
     CodexReasoningItem => "reasoning"
     CodexReporting => "reporting"
+    HarnessReadingFile => "reading file"
+    HarnessWritingFile => "writing file"
+    HarnessEditingFile => "editing file"
+    HarnessRefusingUnrecognizedTool => "refusing an undeclared tool"
     CodexUnclassifiedItem => "provider item"
   }
 }
@@ -383,6 +447,12 @@ fn codex_event_from_complete_line(
       line_number: line_number,
       raw: raw,
       kind: HarnessAlignmentCheckpointDue,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.placement_waiting") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessPlacementWaiting,
     } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
     Present { value: CodexProviderEvent {
@@ -546,6 +616,32 @@ fn parse_codex_jsonl(text: String) -> CodexEventParse {
   )
 }
 
+// THE WAIT'S REASON, READ FROM ITS OWN LINE. The line is the harness's own construction, so a
+// line that does not decode is shown as itself rather than guessed at.
+fn harness_placement_waiting_detail(raw: String) -> String {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => join(["undecodable wait announcement: ", raw], "")
+    JsonDocumentParsed { value: v } => {
+      let reason = match json_field_string(obj: v, key: "reason") {
+        FieldRead { value: r } => r
+        FieldAbsent => "no reason recorded"
+        FieldMalformed { cause: c } => join(["reason unreadable: ", c], "")
+      }
+      let wait = match json_field_int(obj: v, key: "wait") {
+        FieldRead { value: n } => to_string(n)
+        FieldAbsent => "?"
+        FieldMalformed { cause: _ } => "?"
+      }
+      let cap = match json_field_int(obj: v, key: "wait_cap") {
+        FieldRead { value: n } => to_string(n)
+        FieldAbsent => "?"
+        FieldMalformed { cause: _ } => "?"
+      }
+      join(["placement pending, wait ", wait, " of ", cap, ", asking again each interval: ", reason], "")
+    }
+  }
+}
+
 fn provider_execution_fold_event(
   state: ProviderExecutionState,
   event: CodexProviderEvent,
@@ -561,6 +657,7 @@ fn provider_execution_fold_event(
         CodexTurnStarted => ProviderRunning { activity: "agent started" }
         HarnessRoundUsage => state
         HarnessWireLogUnwritable => state
+        HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
         HarnessAlignmentCheckpointDue =>
           ProviderBudgetSpent {
             activity: "Alignment checkpoint due · adjudication decides resume",
@@ -624,6 +721,8 @@ fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
           ProviderNotStarted => "event stream refused"
           ProviderStarting { activity } =>
             join(["last observed · ", activity], "")
+          ProviderAwaitingSeat { detail: _ } =>
+            "last observed · waiting for a serving seat"
           ProviderRunning { activity } =>
             join(["last observed · ", activity], "")
           ProviderCompleted { activity } =>
@@ -646,6 +745,7 @@ fn provider_execution_state_label(state: ProviderExecutionState) -> String {
   match state {
     ProviderNotStarted => "not_started"
     ProviderStarting { activity: _ } => "starting"
+    ProviderAwaitingSeat { detail: _ } => "awaiting_seat"
     ProviderRunning { activity: _ } => "running"
     ProviderCompleted { activity: _ } => "completed"
     ProviderFailed { activity: _, detail: _ } => "failed"
@@ -658,6 +758,7 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
   match state {
     ProviderNotStarted => "Agent waiting"
     ProviderStarting { activity: _ } => "Agent working"
+    ProviderAwaitingSeat { detail: _ } => "Agent waiting for a serving seat"
     ProviderRunning { activity } => activity
     ProviderCompleted { activity: _ } => "Agent complete"
     ProviderFailed { activity: _, detail: _ } => "Agent failed"
@@ -671,6 +772,7 @@ fn provider_execution_detail(state: ProviderExecutionState) -> String {
     ProviderFailed { activity: _, detail } => detail
     ProviderBudgetSpent { activity: _, detail } => detail
     ProviderEventsRefused { activity: _, detail } => detail
+    ProviderAwaitingSeat { detail } => detail
     _ => ""
   }
 }

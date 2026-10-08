@@ -1,5 +1,6 @@
 module gunbc.spark.v41_row_store_encode_run
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -7,7 +8,7 @@ import std.resources { Network }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.measure { ByteSize, byte_size, byte_size_count, Kibibyte, kibibyte }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -107,7 +108,7 @@ type V41DigestRead
 
 fn v41_store_digest(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41DigestRead {
   match spark_remote_run(ctx: ctx, argv: sha256sum_argv(path: out as String)) {
-    RemoteUnreachable { cause: c } => V41DigestReadFailed { cause: join(["the sha256sum leg did not run: ", c], "") as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => V41DigestReadFailed { cause: join(["the sha256sum leg did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: s, stderr: err } =>
       if code != 0 { V41DigestReadFailed { cause: join(["sha256sum exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
         match sha256sum_line_digest(line: s) {
@@ -137,7 +138,7 @@ fn v41_store_presence_of(exit_code: Int, stderr: String) -> V41StorePresence {
 
 fn v41_store_present(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41StorePresence {
   match spark_remote_run(ctx: ctx, argv: ["test", "-f", out as String]) {
-    RemoteUnreachable { cause: c } => V41StorePresenceUnread { cause: join(["the presence check did not run: ", c], "") as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => V41StorePresenceUnread { cause: join(["the presence check did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: _, stderr: err } => v41_store_presence_of(exit_code: code, stderr: err)
   }
 }
@@ -155,10 +156,10 @@ type V41SizeRead
 
 fn v41_store_size(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41SizeRead {
   match spark_remote_run(ctx: ctx, argv: ["stat", "-c", "%s", "--", out as String]) {
-    RemoteUnreachable { cause: c } => V41SizeReadFailed { cause: join(["the stat leg did not run: ", c], "") as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => V41SizeReadFailed { cause: join(["the stat leg did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: o, stderr: err } =>
       if code != 0 { V41SizeReadFailed { cause: join(["stat exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
-        match parse_int(s: trim(s: o)) {
+        match parse_int(s: remote_stdout_as_one_word(stdout: o)) {
           Absent => V41SizeReadFailed { cause: join(["stat answered a size that is not a number: ", o], "") as NonEmptyStr }
           Present { value: n } => if n < 0 { V41SizeReadFailed { cause: "stat answered a negative size" as NonEmptyStr } } else { V41SizeReadOk { size: byte_size(count: n) } }
         }
@@ -191,7 +192,7 @@ fn v41_run_store(ctx: SparkMaterializeContext, a: V41StoreEncodeArgs) -> V41Stor
     V41StoreFound => v41_digested(ctx: ctx, a: a, encoded: false, read: v41_store_digest(ctx: ctx, out: a.out))
     V41StoreAbsent =>
       match spark_remote_run(ctx: ctx, argv: v41_store_encode_argv(shard_directory: v41_checkpoint_directory, a: a)) {
-        RemoteUnreachable { cause: c } => V41StoreEncodeFailed { store: a, cause: join(["the encode leg did not run: ", c], "") as NonEmptyStr }
+        RemoteUnreachable { cause: c, reach: _ } => V41StoreEncodeFailed { store: a, cause: join(["the encode leg did not run: ", c], "") as NonEmptyStr }
         RemoteRan { exit_code: code, stdout: _, stderr: err } =>
           if code != 0 {
             V41StoreEncodeFailed { store: a, cause: join(["the host program exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr }
@@ -238,7 +239,7 @@ fn v41_encode_all(ctx: SparkMaterializeContext) -> V41EncodeRun {
             V41StoreEncodeUnplannable { defects: d } => V41EncodeRefusedBeforeRun { cause: join(["the encode plan refused: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
             V41StoreEncodePlanned { stores: st } =>
               match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", v41_row_store_output_directory() as String]) {
-                RemoteUnreachable { cause: c } => V41EncodeRefusedBeforeRun { cause: join(["the output directory could not be made: ", c], "") as NonEmptyStr }
+                RemoteUnreachable { cause: c, reach: _ } => V41EncodeRefusedBeforeRun { cause: join(["the output directory could not be made: ", c], "") as NonEmptyStr }
                 RemoteRan { exit_code: code, stdout: _, stderr: err } =>
                   if code != 0 { V41EncodeRefusedBeforeRun { cause: join(["mkdir of the output directory exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
                     V41EncodeRan { planned: st, stores: map(st, a => v41_run_store(ctx: ctx, a: a)) }

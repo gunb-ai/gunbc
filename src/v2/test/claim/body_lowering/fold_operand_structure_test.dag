@@ -8,9 +8,8 @@ import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_i
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Node, Symbol, Transform }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -209,56 +208,42 @@ fn fos_decision_holds(parsed: Optional<Node>) -> Bool {
   }
 }
 
-// ONE PARSE PER SOURCE, EVERY VERDICT READ OFF IT. Each claim below inspects one Bool of this value,
-// and each would otherwise pay its own tokenize, parse and lowering -- the ingest the claims are not
-// about. The producer is rostered in v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm, like v2.test.claim.fold_lowering flp_outcomes; the value is
-// six Bools, portable for that roster's reason.
-type FosOutcomes {
-  and_reader_over_loop: Bool
-  and_walker_over_loop: Bool
-  call_reader_over_loop: Bool
-  call_walker_over_loop: Bool
-  and_decision_holds: Bool
-  call_decision_holds: Bool
+// ONE PARSE PER SOURCE, read WHOLE by each of its three claims, so the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills it once; each claim then
+// computes its OWN verdict over it. The six verdicts were once one record whose claims each read a
+// different field: a bundle the share declines (BundleOfDisjointProjections), since sharing it
+// netted each claim's own route and decision out of its budget.
+fn fos_and_parsed() -> Optional<Node> {
+  fos_parsed(source: fos_and_fold_source)
 }
 
-fn fos_outcomes() -> FosOutcomes {
-  let and_parsed = fos_parsed(source: fos_and_fold_source)
-  let call_parsed = fos_parsed(source: fos_call_fold_source)
-  FosOutcomes {
-    and_reader_over_loop: fos_and_over_loop(v: fos_route_value(parsed: and_parsed, route: FosValueReader)),
-    and_walker_over_loop: fos_and_over_loop(v: fos_route_value(parsed: and_parsed, route: FosBodyWalker)),
-    call_reader_over_loop: fos_call_over_loop(v: fos_route_value(parsed: call_parsed, route: FosValueReader)),
-    call_walker_over_loop: fos_call_over_loop(v: fos_route_value(parsed: call_parsed, route: FosBodyWalker)),
-    and_decision_holds: fos_decision_holds(parsed: and_parsed),
-    call_decision_holds: fos_decision_holds(parsed: call_parsed)
-  }
+fn fos_call_parsed() -> Optional<Node> {
+  fos_parsed(source: fos_call_fold_source)
 }
 
 // POSITIVE CONTROLS: `fos_t && fold(..)` is Transform(&&, fos_t, Loop) and `fos_h(a: fold(..), b: fos_s)`
 // is Transform(fos_h, Loop, fos_s), on the value-reader and the body-walker route.
 test fn an_operand_beside_a_fold_lowers_as_the_operator_over_the_loop() -> Bool {
-  fos_outcomes().and_reader_over_loop
+  fos_and_over_loop(v: fos_route_value(parsed: fos_and_parsed(), route: FosValueReader))
 }
 
 test fn the_body_walker_lowers_an_operand_beside_a_fold_as_the_operator_over_the_loop() -> Bool {
-  fos_outcomes().and_walker_over_loop
+  fos_and_over_loop(v: fos_route_value(parsed: fos_and_parsed(), route: FosBodyWalker))
 }
 
 test fn a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop() -> Bool {
-  fos_outcomes().call_reader_over_loop
+  fos_call_over_loop(v: fos_route_value(parsed: fos_call_parsed(), route: FosValueReader))
 }
 
 test fn the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop() -> Bool {
-  fos_outcomes().call_walker_over_loop
+  fos_call_over_loop(v: fos_route_value(parsed: fos_call_parsed(), route: FosBodyWalker))
 }
 
 // THE DISCRIMINATING RED: re-adding the descent answers Present at an identity-less encloser.
 test fn no_identity_less_node_answers_an_enclosed_fold_beside_an_operator() -> Bool {
-  fos_outcomes().and_decision_holds
+  fos_decision_holds(parsed: fos_and_parsed())
 }
 
 test fn no_identity_less_node_answers_an_enclosed_fold_argument() -> Bool {
-  fos_outcomes().call_decision_holds
+  fos_decision_holds(parsed: fos_call_parsed())
 }

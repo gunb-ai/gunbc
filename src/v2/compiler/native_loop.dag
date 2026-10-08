@@ -1,11 +1,10 @@
 module v2.compiler.native_loop
 
 import std.algebra { FreeMonoid }
-import std.types { NonEmptyStr, String }
-import v2.std.collection { List }
+import std.types { NonEmptyStr, String, List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 import v2.std.diagnostic { NonEmptyDiagnostics }
 import gunbc.repository_census_observation { SourceRootIdentity }
 
