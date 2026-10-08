@@ -1480,13 +1480,19 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
-/// Empty caches over an already-indexed `source_files` map. Not a second index of that
-/// name set: `new_multi_entry_index_shell` records one construction per set, and a scratch
-/// that also recorded would refuse the floor (`MultiEntryIndexBuiltTwiceForOneNameSet`).
+/// Empty caches over an already-indexed `source_files` map. Recorded as
+/// `ScratchCachesOverExistingSet` so the sharing control can count it without treating it as a
+/// second `NameSetIndex` (`MultiEntryIndexBuiltTwiceForOneNameSet` remains two name-set indexes).
+#[track_caller]
 pub(crate) fn new_multi_entry_index_scratch_over(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
 ) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
+    );
     multi_entry_index_shell_body(source_files, source_roots)
 }
 
@@ -1495,7 +1501,11 @@ pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
 ) -> MultiEntryIndex {
-    record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
     multi_entry_index_shell_body(source_files, source_roots)
 }
 

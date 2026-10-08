@@ -3612,23 +3612,13 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 /// RFM `fixture_compile_retained_on_the_process_shared_index`.
 fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
-    match entry_resolve::try_process_shared_index(&layers) {
-        Ok(shared) => {
-            let scratch = entry_resolve::new_multi_entry_index_scratch_over(
-                shared.source_files.clone(),
-                &shared.source_roots,
-            );
-            seed_fixture_scratch_from_shared(&scratch, &shared);
-            Ok(scratch)
-        }
-        Err(_) => {
-            let roots = entry_resolve::canonical_shared_index_roots(&layers);
-            Ok(entry_resolve::new_multi_entry_index_shell(
-                try_build_module_index(&roots)?,
-                &roots,
-            ))
-        }
-    }
+    let shared = entry_resolve::try_process_shared_index(&layers)?;
+    let scratch = entry_resolve::new_multi_entry_index_scratch_over(
+        shared.source_files.clone(),
+        &shared.source_roots,
+    );
+    seed_fixture_scratch_from_shared(&scratch, &shared);
+    Ok(scratch)
 }
 
 fn seed_fixture_scratch_from_shared(scratch: &MultiEntryIndex, shared: &MultiEntryIndex) {
@@ -13012,11 +13002,20 @@ fn next_index_generation() -> u64 {
 /// One `MultiEntryIndex` construction: the module-name set it indexes (as a digest over the sorted
 /// module paths, with its size) and the first caller outside the `#[track_caller]` chain of index
 /// builders that demanded it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MultiEntryIndexBuildKind {
+    /// One demand for a module-name set. Two of these with one digest refuse.
+    NameSetIndex,
+    /// Isolated caches over an already-indexed name set. Countable, not a second index.
+    ScratchCachesOverExistingSet,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct MultiEntryIndexBuild {
     pub(crate) name_set_digest: u64,
     pub(crate) modules: usize,
     pub(crate) site: String,
+    pub(crate) kind: MultiEntryIndexBuildKind,
 }
 
 static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
@@ -13025,6 +13024,7 @@ static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
 pub(crate) fn record_multi_entry_index_site(
     site: &std::panic::Location<'_>,
     source_files: &ModuleSourceIndex,
+    kind: MultiEntryIndexBuildKind,
 ) {
     use std::hash::{Hash, Hasher};
     // The POOL, not only its names: two scratch pools declaring one module path at different
@@ -13041,6 +13041,7 @@ pub(crate) fn record_multi_entry_index_site(
             name_set_digest: hasher.finish(),
             modules: pool.len(),
             site: format!("{}:{}", site.file(), site.line()),
+            kind,
         });
     }
 }
@@ -13052,15 +13053,18 @@ pub(crate) fn multi_entry_index_builds() -> Vec<MultiEntryIndexBuild> {
         .unwrap_or_default()
 }
 
-/// ONE INDEX PER MODULE-NAME SET. An index is a pure function of the name set it covers, so two
-/// constructions over one set are one demand built twice, and every file each serves is parsed
-/// again per index. Refuses with the sites of every set built more than once; distinct sets are
-/// distinct demands and are not limited.
+/// ONE NAME-SET INDEX PER MODULE-NAME SET. Two `NameSetIndex` constructions over one set are one
+/// demand built twice. `ScratchCachesOverExistingSet` is recorded (countable) and is not a second
+/// index of that set. Refuses with the sites of every set indexed more than once; distinct sets
+/// are distinct demands and are not limited.
 pub(crate) fn multi_entry_index_sharing_control(
     builds: &[MultiEntryIndexBuild],
 ) -> Result<usize, String> {
     let mut by_set: BTreeMap<u64, Vec<&MultiEntryIndexBuild>> = BTreeMap::new();
     for build in builds {
+        if build.kind != MultiEntryIndexBuildKind::NameSetIndex {
+            continue;
+        }
         by_set.entry(build.name_set_digest).or_default().push(build);
     }
     let repeated: Vec<String> = by_set
@@ -42484,13 +42488,25 @@ mod reference_closure_single_parse_differential {
 
 #[cfg(test)]
 mod multi_entry_index_sharing_control_tests {
-    use super::{multi_entry_index_sharing_control, MultiEntryIndexBuild};
+    use super::{
+        multi_entry_index_sharing_control, MultiEntryIndexBuild, MultiEntryIndexBuildKind,
+    };
 
     fn build(digest: u64, site: &str) -> MultiEntryIndexBuild {
         MultiEntryIndexBuild {
             name_set_digest: digest,
             modules: 7,
             site: site.to_string(),
+            kind: MultiEntryIndexBuildKind::NameSetIndex,
+        }
+    }
+
+    fn scratch(digest: u64, site: &str) -> MultiEntryIndexBuild {
+        MultiEntryIndexBuild {
+            name_set_digest: digest,
+            modules: 7,
+            site: site.to_string(),
+            kind: MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
         }
     }
 
@@ -42516,6 +42532,18 @@ mod multi_entry_index_sharing_control_tests {
         assert!(
             err.contains("a:1") && err.contains("c:3") && !err.contains("b:2"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn scratch_kind_does_not_count_as_a_second_name_set_index() {
+        assert_eq!(
+            multi_entry_index_sharing_control(&[
+                build(1, "a:1"),
+                scratch(1, "s:1"),
+                scratch(1, "s:2"),
+            ]),
+            Ok(1)
         );
     }
 }

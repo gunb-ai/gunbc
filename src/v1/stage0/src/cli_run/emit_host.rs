@@ -4034,15 +4034,15 @@ mod fixture_closure_union_tests {
         );
     }
 
-    /// Scratch over an already-indexed name set must not register as a second
-    /// `MultiEntryIndex` of that set (`MultiEntryIndexBuiltTwiceForOneNameSet`).
+    /// Scratch over an already-indexed name set is recorded as `ScratchCachesOverExistingSet`
+    /// and must not refuse as a second `NameSetIndex`.
     #[test]
     fn fixture_scratch_shell_is_not_a_second_index_of_the_name_set() {
         let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let layers = crate::cli_run::witness_layer_roots();
         let shared = super::entry_resolve::try_process_shared_index(&layers)
             .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
-        let before = crate::cli_run::multi_entry_index_builds().len();
+        let before = crate::cli_run::multi_entry_index_builds();
         let _ = super::entry_resolve::new_multi_entry_index_scratch_over(
             shared.source_files.clone(),
             &shared.source_roots,
@@ -4051,11 +4051,15 @@ mod fixture_closure_union_tests {
             shared.source_files.clone(),
             &shared.source_roots,
         );
+        let after = crate::cli_run::multi_entry_index_builds();
         assert_eq!(
-            crate::cli_run::multi_entry_index_builds().len(),
-            before,
-            "a scratch shell is empty caches over an indexed name set, not another index"
+            after.len(),
+            before.len() + 2,
+            "scratches are countable constructions"
         );
+        crate::cli_run::multi_entry_index_sharing_control(&after).unwrap_or_else(|e| {
+            panic!("scratch kind must not refuse as a second name-set index: {e}")
+        });
     }
 
     #[test]
