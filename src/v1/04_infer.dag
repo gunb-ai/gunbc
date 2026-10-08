@@ -310,7 +310,7 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
                               last_type: last_type, typed_stmts: typed_stmts }
     Present { value: stmt } =>
       let is_last = remaining_count == 1
-      let stmt_expected = if is_last { expected } else { none }
+      let stmt_expected = if (is_last || stmt_carries_explicit_return(n: stmt)) { expected } else { none }
       let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
       let stmt_typed = stmt_result.typed
       let stmt_diags = stmt_result.diagnostics
@@ -1433,6 +1433,18 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
 // deleted at v2 self-host, at which point every row in this class goes with it; the same trigger
 // gunbc.compiler_diagnostic_seed_projection carries for the hand-Rust arms, because it is the same
 // seed and the same endpoint.
+
+// A NON-LAST BLOCK STATEMENT IS INFERRED WITH NO EXPECTED TYPE, so `if cond { return [] }`
+// in `-> List<String>` typed the empty list as the unsolved placeholder and the declared-return
+// wall then TypeMismatched List<> vs List<String>. An explicit return is a second exit of the
+// same declaration: it takes the body's expected type even when the statement is not last.
+fn stmt_carries_explicit_return(n: Node) -> Bool {
+  match n.expr_data {
+    ExprLambda => false
+    ExprReturn => true
+    _ => n.children |> any(c => stmt_carries_explicit_return(n: c))
+  }
+}
 
 fn collect_explicit_return_values(n: Node) -> List<Node> {
   match n.expr_data {

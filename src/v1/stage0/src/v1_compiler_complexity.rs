@@ -10139,7 +10139,7 @@ pub fn collect_call_evidence(
                     };
                 let from_children = body.children.clone().iter().cloned().fold(
                     Rc::new(vec![]),
-                    |acc: _, child: Rc<Node>| {
+                    |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| {
                         v1_rt::concat(
                             acc,
                             collect_call_evidence(child.clone(), target_set.clone(), si.clone()),
@@ -10467,101 +10467,112 @@ pub fn analyze_structural_bounds(
                     )
                     .iter()
                     .cloned()
-                    .fold(Rc::new(vec![]), |pacc: _, pair: (i64, Rc<Node>)| {
-                        let param_index = pair.0.clone();
-                        let param_node = pair.1.clone();
-                        let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
-                        match evidence.clone() {
-                            DescentEvidence::Strict => {
-                                let param_name = crate::v1_std_core::param_node_name_at(
-                                    param_node.clone(),
-                                    si.clone(),
-                                );
-                                let factor_opt =
-                                    extract_shrink_factor(all_calls.clone(), param_index.clone());
-                                match factor_opt.clone() {
-                                    Some(factor) => {
-                                        let branches = max_path_descending(
-                                            entry.body.clone(),
-                                            entry.name.clone(),
-                                            param_index.clone(),
-                                            si.clone(),
-                                        );
-                                        let recurrence = match (*factor.clone()).clone() {
-                                            ShrinkFactor::UnitShrink => {
-                                                let distinct_fields = distinct_descended_fields(
-                                                    all_calls.clone(),
-                                                    param_index.clone(),
-                                                );
-                                                if (branches.clone() <= distinct_fields.clone()) {
-                                                    crate::std_induction::catamorphism_bound(
-                                                        param_name.clone(),
-                                                        1,
-                                                    )
-                                                } else {
-                                                    crate::std_induction::derive_bound(
-                                                        param_name.clone(),
-                                                        branches.clone(),
-                                                        factor.clone(),
-                                                        0,
-                                                    )
+                    .fold(
+                        Rc::new(vec![]),
+                        |pacc: Rc<Vec<Rc<StructuralBoundResult>>>, pair: (i64, Rc<Node>)| {
+                            let param_index = pair.0.clone();
+                            let param_node = pair.1.clone();
+                            let evidence =
+                                merge_param_evidence(all_calls.clone(), param_index.clone());
+                            match evidence.clone() {
+                                DescentEvidence::Strict => {
+                                    let param_name = crate::v1_std_core::param_node_name_at(
+                                        param_node.clone(),
+                                        si.clone(),
+                                    );
+                                    let factor_opt = extract_shrink_factor(
+                                        all_calls.clone(),
+                                        param_index.clone(),
+                                    );
+                                    match factor_opt.clone() {
+                                        Some(factor) => {
+                                            let branches = max_path_descending(
+                                                entry.body.clone(),
+                                                entry.name.clone(),
+                                                param_index.clone(),
+                                                si.clone(),
+                                            );
+                                            let recurrence = match (*factor.clone()).clone() {
+                                                ShrinkFactor::UnitShrink => {
+                                                    let distinct_fields = distinct_descended_fields(
+                                                        all_calls.clone(),
+                                                        param_index.clone(),
+                                                    );
+                                                    if (branches.clone() <= distinct_fields.clone())
+                                                    {
+                                                        crate::std_induction::catamorphism_bound(
+                                                            param_name.clone(),
+                                                            1,
+                                                        )
+                                                    } else {
+                                                        crate::std_induction::derive_bound(
+                                                            param_name.clone(),
+                                                            branches.clone(),
+                                                            factor.clone(),
+                                                            0,
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                            ShrinkFactor::ConstantShrink { steps: _, .. } => {
-                                                let distinct_fields = distinct_descended_fields(
-                                                    all_calls.clone(),
-                                                    param_index.clone(),
-                                                );
-                                                if (branches.clone() <= distinct_fields.clone()) {
-                                                    crate::std_induction::catamorphism_bound(
-                                                        param_name.clone(),
-                                                        1,
-                                                    )
-                                                } else {
-                                                    crate::std_induction::derive_bound(
-                                                        param_name.clone(),
-                                                        branches.clone(),
-                                                        factor.clone(),
-                                                        0,
-                                                    )
+                                                ShrinkFactor::ConstantShrink {
+                                                    steps: _, ..
+                                                } => {
+                                                    let distinct_fields = distinct_descended_fields(
+                                                        all_calls.clone(),
+                                                        param_index.clone(),
+                                                    );
+                                                    if (branches.clone() <= distinct_fields.clone())
+                                                    {
+                                                        crate::std_induction::catamorphism_bound(
+                                                            param_name.clone(),
+                                                            1,
+                                                        )
+                                                    } else {
+                                                        crate::std_induction::derive_bound(
+                                                            param_name.clone(),
+                                                            branches.clone(),
+                                                            factor.clone(),
+                                                            0,
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                            ShrinkFactor::ProportionalShrink {
-                                                divisor: _, ..
-                                            } => crate::std_induction::derive_bound(
-                                                param_name.clone(),
-                                                branches.clone(),
-                                                factor.clone(),
-                                                0,
-                                            ),
-                                        };
-                                        let stack_bound = if entry.is_tail_recursive.clone() {
-                                            Rc::new(CostBound::ConstantBound)
-                                        } else {
-                                            crate::std_induction::derive_bound(
-                                                param_name.clone(),
-                                                1,
-                                                factor.clone(),
-                                                0,
+                                                ShrinkFactor::ProportionalShrink {
+                                                    divisor: _,
+                                                    ..
+                                                } => crate::std_induction::derive_bound(
+                                                    param_name.clone(),
+                                                    branches.clone(),
+                                                    factor.clone(),
+                                                    0,
+                                                ),
+                                            };
+                                            let stack_bound = if entry.is_tail_recursive.clone() {
+                                                Rc::new(CostBound::ConstantBound)
+                                            } else {
+                                                crate::std_induction::derive_bound(
+                                                    param_name.clone(),
+                                                    1,
+                                                    factor.clone(),
+                                                    0,
+                                                )
+                                            };
+                                            v1_rt::concat(
+                                                pacc.clone(),
+                                                Rc::new(vec![Rc::new(StructuralBoundResult {
+                                                    func_name: entry.name.clone(),
+                                                    param: param_name.clone(),
+                                                    recurrence_bound: recurrence.clone(),
+                                                    stack_bound: stack_bound.clone(),
+                                                    span: entry.span.clone(),
+                                                })]),
                                             )
-                                        };
-                                        v1_rt::concat(
-                                            pacc.clone(),
-                                            Rc::new(vec![Rc::new(StructuralBoundResult {
-                                                func_name: entry.name.clone(),
-                                                param: param_name.clone(),
-                                                recurrence_bound: recurrence.clone(),
-                                                stack_bound: stack_bound.clone(),
-                                                span: entry.span.clone(),
-                                            })]),
-                                        )
+                                        }
+                                        std::option::Option::None => pacc.clone(),
                                     }
-                                    std::option::Option::None => pacc.clone(),
                                 }
+                                _ => pacc.clone(),
                             }
-                            _ => pacc.clone(),
-                        }
-                    });
+                        },
+                    );
                     v1_rt::concat(acc.clone(), param_results.clone())
                 }
             }

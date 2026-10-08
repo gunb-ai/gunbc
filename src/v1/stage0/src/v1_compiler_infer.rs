@@ -469,11 +469,12 @@ pub fn infer_block_stmts(
             }
             Some(stmt) => {
                 let is_last = (remaining_count.clone() == 1);
-                let stmt_expected = if is_last.clone() {
-                    expected.clone()
-                } else {
-                    std::option::Option::None
-                };
+                let stmt_expected =
+                    if (is_last.clone() || stmt_carries_explicit_return(stmt.clone())) {
+                        expected.clone()
+                    } else {
+                        std::option::Option::None
+                    };
                 let stmt_result = infer_expr(stmt.clone(), scope.clone(), stmt_expected.clone());
                 let stmt_typed = stmt_result.typed.clone();
                 let stmt_diags = stmt_result.diagnostics.clone();
@@ -1984,6 +1985,25 @@ pub fn type_mismatch_error(
     )
 }
 
+pub fn stmt_carries_explicit_return(n: Rc<Node>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*n.expr_data.clone()).clone() {
+            ExprData::ExprLambda => false,
+            ExprData::ExprReturn => true,
+            _ => {
+                let mut __found = false;
+                for c in n.children.clone().iter().cloned() {
+                    if stmt_carries_explicit_return(c.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+    })
+}
+
 pub fn collect_explicit_return_values(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*n.expr_data.clone()).clone() {
@@ -3080,7 +3100,7 @@ pub fn empty_list_expected_element_is_unknown(
         || empty_list_expected_is_unbound_generic_name(
             expected.clone(),
             source_indices.clone(),
-            open_generic_names,
+            open_generic_names.clone(),
         ))
 }
 
@@ -3095,10 +3115,16 @@ pub fn empty_list_expected_is_unbound_generic_name(
             && (expected.connective.clone() == Connective::NoConnective))
             && !conformance_ground_type(expected.clone(), source_indices.clone()))
             && (label.clone() != "".to_string()))
-            && open_generic_names
-                .clone()
-                .iter()
-                .any(|g| g.clone() == label.clone()))
+            && {
+                let mut __found = false;
+                for g in open_generic_names.iter().cloned() {
+                    if (g.clone() == label.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
     }
 }
 
@@ -10013,62 +10039,80 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                 ),
                             })
                         }
-                    } else if func_name.clone() == "concat".to_string() {
-                        let left_ty = match typed_args.clone().first().cloned() {
-                            Some(a) => crate::v1_compiler_infer_types::resolved_type(
-                                crate::v1_std_core::arg_value(a.clone()),
-                            ),
-                            None => crate::v1_std_core::unit_type(),
-                        };
-                        let fallback_concat =
-                            crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                func_name.clone(),
-                            );
-                        let unified = match typed_args.clone().iter().cloned().skip(1).next() {
-                            Some(a) => concat_unify_operands(
-                                left_ty.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(
-                                    crate::v1_std_core::arg_value(a.clone()),
-                                ),
-                                fallback_concat.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ),
-                            None => ConcatUnify {
-                                result: fallback_concat,
-                                refuse: None,
-                            },
-                        };
-                        let refuse_diags = match unified.refuse.clone() {
-                            Some(_) => Rc::new(vec![type_mismatch_error(
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    left_ty.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                match typed_args.clone().iter().cloned().skip(1).next() {
-                                    Some(a) => crate::v1_compiler_infer_types::node_type_shape(
+                    } else {
+                        if (func_name.clone() == "concat".to_string()) {
+                            {
+                                let left_ty = match typed_args.clone().first().cloned() {
+                                    Some(a) => crate::v1_compiler_infer_types::resolved_type(
+                                        crate::v1_std_core::arg_value(a.clone()),
+                                    ),
+                                    std::option::Option::None => unit_type(),
+                                };
+                                let fallback_concat =
+                                    crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                        func_name.clone(),
+                                    );
+                                let unified = match typed_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .next()
+                                {
+                                    Some(a) => concat_unify_operands(
+                                        left_ty.clone(),
                                         crate::v1_compiler_infer_types::resolved_type(
-                                            crate::v1_std_core::arg_value(a),
+                                            crate::v1_std_core::arg_value(a.clone()),
                                         ),
+                                        fallback_concat.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     ),
-                                    None => "unknown".to_string(),
-                                },
-                                span.clone(),
-                                scope.module_name.clone(),
-                            )]),
-                            None => Rc::new(vec![]),
-                        };
-                        Rc::new(Tier2bBt {
-                            bt: unified.result,
-                            kernel_diags: refuse_diags,
-                        })
-                    } else {
-                        Rc::new(Tier2bBt {
-                            bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
-                                func_name.clone(),
-                            ),
-                            kernel_diags: Rc::new(vec![]),
-                        })
+                                    std::option::Option::None => Rc::new(ConcatUnify {
+                                        result: fallback_concat.clone(),
+                                        refuse: std::option::Option::None,
+                                    }),
+                                };
+                                let refuse_diags = match unified.refuse.clone() {
+                                    Some(_) => Rc::new(vec![type_mismatch_error(
+                                        crate::v1_compiler_infer_types::node_type_shape(
+                                            left_ty.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                        match typed_args
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .next()
+                                        {
+                                            Some(a) => {
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    crate::v1_compiler_infer_types::resolved_type(
+                                                        crate::v1_std_core::arg_value(a.clone()),
+                                                    ),
+                                                    scope.type_env.clone().source_indices.clone(),
+                                                )
+                                            }
+                                            std::option::Option::None => "unknown".to_string(),
+                                        },
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )]),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                };
+                                Rc::new(Tier2bBt {
+                                    bt: unified.result.clone(),
+                                    kernel_diags: refuse_diags.clone(),
+                                })
+                            }
+                        } else {
+                            Rc::new(Tier2bBt {
+                                bt: crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                    func_name.clone(),
+                                ),
+                                kernel_diags: Rc::new(vec![]),
+                            })
+                        }
                     }
                 }
             }
@@ -11357,6 +11401,366 @@ pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CollectionFoldRoles {
+    pub collection_formal_index: i64,
+    pub acc_formal_index: i64,
+    pub step_formal_index: i64,
+}
+
+pub fn formal_type_is_container_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
+    {
+        true
+    } else {
+        {
+            let leaf = crate::v1_std_core::qualified_last_segment(type_node_label(
+                n.clone(),
+                source_indices.clone(),
+            ));
+            match crate::std_types::container_template_algebra(leaf.clone()) {
+                Some(_) => true,
+                std::option::Option::None => {
+                    match crate::std_types::container_template_alias_algebra(leaf.clone()) {
+                        Some(_) => true,
+                        std::option::Option::None => false,
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn formal_type_is_unary_container(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (formal_type_is_container_name(n.clone(), source_indices.clone())
+        && ((n.children.clone().len() as i64) <= 1))
+}
+
+pub fn unary_container_element_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.children.clone().first().cloned() {
+        Some(c) => formal_type_key(c.clone(), source_indices.clone()),
+        std::option::Option::None => match n.params.clone().first().cloned() {
+            Some(p) => {
+                let from_ty = formal_type_key(
+                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                    source_indices.clone(),
+                );
+                if (from_ty.clone() != "".to_string()) {
+                    from_ty.clone()
+                } else {
+                    crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
+                }
+            }
+            std::option::Option::None => "".to_string(),
+        },
+    }
+}
+
+pub fn arrow_return_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let sig = callable_signature_view(n.clone());
+        let from_inferred = match sig.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: id, .. }) => id.clone(),
+            Some(InferredNode::Resolved { node: inner, .. }) => {
+                formal_type_key(inner.clone(), source_indices.clone())
+            }
+            _ => "".to_string(),
+        };
+        if (from_inferred.clone() != "".to_string()) {
+            from_inferred.clone()
+        } else {
+            formal_type_key(sig.clone(), source_indices.clone())
+        }
+    }
+}
+
+pub fn formal_type_is_fold_step(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let sig = callable_signature_view(n.clone());
+        (((sig.connective.clone() == Connective::Arrow) || type_node_is_callable(sig.clone()))
+            && ((callable_value_params(sig.clone(), source_indices.clone()).len() as i64) == 2))
+    }
+}
+
+pub fn formal_carries_unary_container(
+    f: Rc<ResolvedFormal>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (formal_type_is_unary_container(f.substitution_basis.clone(), source_indices.clone())
+        || formal_type_is_unary_container(f.declared_type.clone(), source_indices.clone()))
+}
+
+pub fn formal_carries_fold_step(
+    f: Rc<ResolvedFormal>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (formal_type_is_fold_step(f.substitution_basis.clone(), source_indices.clone())
+        || formal_type_is_fold_step(f.declared_type.clone(), source_indices.clone()))
+}
+
+pub fn formal_type_key(
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: id, .. }) => {
+                break id.clone();
+            }
+            Some(InferredNode::Resolved { node: inner, .. }) => {
+                let __tco_0 = inner.clone();
+                let __tco_1 = source_indices;
+                __tco_loop_n = __tco_0;
+                __tco_loop_source_indices = __tco_1;
+                continue;
+            }
+            _ => {
+                break crate::v1_std_core::qualified_last_segment(type_node_label(
+                    n.clone(),
+                    source_indices.clone(),
+                ));
+            }
+        }
+    }
+}
+
+pub fn collection_fold_step_binds_accumulator(
+    coll: Rc<ResolvedFormal>,
+    acc: Rc<ResolvedFormal>,
+    step: Rc<ResolvedFormal>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let step_ty =
+            if formal_type_is_fold_step(step.declared_type.clone(), source_indices.clone()) {
+                step.declared_type.clone()
+            } else {
+                step.substitution_basis.clone()
+            };
+        let acc_ty = if (formal_type_key(acc.declared_type.clone(), source_indices.clone())
+            != "".to_string())
+        {
+            acc.declared_type.clone()
+        } else {
+            acc.substitution_basis.clone()
+        };
+        let coll_ty =
+            if formal_type_is_unary_container(coll.declared_type.clone(), source_indices.clone()) {
+                coll.declared_type.clone()
+            } else {
+                coll.substitution_basis.clone()
+            };
+        let sig = callable_signature_view(step_ty.clone());
+        let params = callable_value_params(sig.clone(), source_indices.clone());
+        match params.clone().first().cloned() {
+            std::option::Option::None => false,
+            Some(p0) => match params.clone().iter().cloned().skip(1 as usize).next() {
+                std::option::Option::None => false,
+                Some(p1) => {
+                    let acc_key = formal_type_key(acc_ty.clone(), source_indices.clone());
+                    let step_acc =
+                        formal_type_key(callable_param_type(p0.clone()), source_indices.clone());
+                    let step_elem =
+                        formal_type_key(callable_param_type(p1.clone()), source_indices.clone());
+                    let step_ret = arrow_return_key(sig.clone(), source_indices.clone());
+                    let coll_elem =
+                        unary_container_element_key(coll_ty.clone(), source_indices.clone());
+                    ((((acc_key.clone() != "".to_string())
+                        && (acc_key.clone() == step_acc.clone()))
+                        && (acc_key.clone() == step_ret.clone()))
+                        && ((coll_elem.clone() == "".to_string())
+                            || (coll_elem.clone() == step_elem.clone())))
+                }
+            },
+        }
+    }
+}
+
+pub fn collection_fold_roles(
+    formals: Rc<Vec<Rc<ResolvedFormal>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<CollectionFoldRoles> {
+    {
+        let collections = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new(
+                formals
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if formal_carries_unary_container(p.1.clone(), source_indices.clone()) {
+                    __result.push(p);
+                }
+            }
+            __result
+        });
+        let steps = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new(
+                formals
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if (!formal_carries_unary_container(p.1.clone(), source_indices.clone())
+                    && formal_carries_fold_step(p.1.clone(), source_indices.clone()))
+                {
+                    __result.push(p);
+                }
+            }
+            __result
+        });
+        let accs = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new(
+                formals
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if (!formal_carries_unary_container(p.1.clone(), source_indices.clone())
+                    && !formal_carries_fold_step(p.1.clone(), source_indices.clone()))
+                {
+                    __result.push(p);
+                }
+            }
+            __result
+        });
+        if ((((collections.clone().len() as i64) == 1) && ((steps.clone().len() as i64) == 1))
+            && ((accs.clone().len() as i64) == 1))
+        {
+            match collections.clone().first().cloned() {
+                std::option::Option::None => std::option::Option::None,
+                Some(c) => match steps.clone().first().cloned() {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(s) => match accs.clone().first().cloned() {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(a) => {
+                            if collection_fold_step_binds_accumulator(
+                                c.1.clone(),
+                                a.1.clone(),
+                                s.1.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(CollectionFoldRoles {
+                                    collection_formal_index: c.0.clone(),
+                                    acc_formal_index: a.0.clone(),
+                                    step_formal_index: s.0.clone(),
+                                })
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    },
+                },
+            }
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn typed_arg_type_for_formal(
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    call_args: Rc<Vec<Rc<Node>>>,
+    value_params: Rc<Vec<Rc<Node>>>,
+    formal_index: i64,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    Rc::new(
+        call_args
+            .clone()
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, v)| (i as i64, v))
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .fold(
+        std::option::Option::None,
+        |found: _, pair: (i64, Rc<Node>)| {
+            if (found.clone() != std::option::Option::None) {
+                found.clone()
+            } else {
+                match (*select_formal_for_call_argument(
+                    pair.1.clone(),
+                    pair.0.clone(),
+                    call_args.clone(),
+                    value_params.clone(),
+                    source_indices.clone(),
+                ))
+                .clone()
+                {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal_index: fi,
+                        ..
+                    } => {
+                        if (fi.clone() == formal_index.clone()) {
+                            match results
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(pair.0.clone() as usize)
+                                .next()
+                            {
+                                Some(r) => Some(crate::v1_compiler_infer_types::resolved_type(
+                                    crate::v1_std_core::arg_value(r.typed_arg.clone()),
+                                )),
+                                std::option::Option::None => std::option::Option::None,
+                            }
+                        } else {
+                            std::option::Option::None
+                        }
+                    }
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        std::option::Option::None
+                    }
+                }
+            }
+        },
+    )
+}
+
 pub fn method_name_is_fold(opt: Option<String>) -> bool {
     method_name_is(opt.clone(), "fold".to_string())
 }
@@ -11390,7 +11794,7 @@ pub fn extract_fold_init_info(
                 let init_arg = match Rc::new({
                     let mut __result = Vec::new();
                     for a in method_args.iter().cloned() {
-                        if arg_has_name(
+                        if (arg_has_name(
                             a.clone(),
                             "init".to_string(),
                             scope.type_env.clone().source_indices.clone(),
@@ -11398,7 +11802,7 @@ pub fn extract_fold_init_info(
                             a.clone(),
                             "empty".to_string(),
                             scope.type_env.clone().source_indices.clone(),
-                        ) {
+                        )) {
                             __result.push(a);
                         }
                     }
@@ -11849,431 +12253,181 @@ pub fn bind_unbound_collection_element_generic(
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    let fnorm = crate::v1_compiler_infer_types::normalize_access_type_node(formal.clone());
-    if ((fnorm.children.clone().len() as i64) != 1) {
-        subst.clone()
-    } else {
-        match fnorm.children.clone().first().cloned() {
-            std::option::Option::None => subst.clone(),
-            Some(fc) => {
-                let slot = match fc.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::TypeVariable { id: _, .. }) => fc.clone(),
-                    _ => crate::v1_compiler_infer_types::child_type_node(fc.clone()),
-                };
-                let name = type_node_label(slot, source_indices.clone());
-                let in_names = {
-                    let mut __found = false;
-                    for g in generic_names.iter().cloned() {
-                        if (g.clone() == name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                };
-                if !in_names {
-                    subst.clone()
-                } else {
-                    let need = match v1_rt::map_get(&subst, name.clone()) {
-                        std::option::Option::None => true,
-                        Some(prev) => unify_binding_is_uninformative(prev),
+    {
+        let fnorm = crate::v1_compiler_infer_types::normalize_access_type_node(formal.clone());
+        if ((fnorm.children.clone().len() as i64) != 1) {
+            subst.clone()
+        } else {
+            match fnorm.children.clone().first().cloned() {
+                std::option::Option::None => subst.clone(),
+                Some(fc) => {
+                    let slot = match fc.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::TypeVariable { id: _, .. }) => fc.clone(),
+                        _ => crate::v1_compiler_infer_types::child_type_node(fc.clone()),
                     };
-                    if !need {
+                    let name = type_node_label(slot.clone(), source_indices.clone());
+                    if !{
+                        let mut __found = false;
+                        for g in generic_names.iter().cloned() {
+                            if (g.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
                         subst.clone()
                     } else {
-                        let el = crate::v1_compiler_infer_types::for_each_element_type_node(
-                            actual.clone(),
-                            source_indices.clone(),
-                        );
-                        if (type_node_label(el.clone(), source_indices.clone())
-                            != type_node_label(actual.clone(), source_indices.clone())
-                            || ((el.children.clone().len() as i64)
-                                != (actual.children.clone().len() as i64)))
                         {
-                            v1_rt::rc_map_insert(subst.clone(), name, el)
-                        } else {
-                            subst.clone()
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn formal_type_key(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match n.inferred.clone() {
-        Some(inf) => match (*inf).clone() {
-            InferredNode::TypeVariable { id } => id,
-            InferredNode::Resolved { node: inner } => formal_type_key(inner, source_indices),
-            _ => crate::v1_std_core::qualified_last_segment(type_node_label(n, source_indices)),
-        },
-        std::option::Option::None => {
-            crate::v1_std_core::qualified_last_segment(type_node_label(n, source_indices))
-        }
-    }
-}
-
-pub fn collection_fold_step_binds_accumulator(
-    coll: Rc<ResolvedFormal>,
-    acc: Rc<ResolvedFormal>,
-    step: Rc<ResolvedFormal>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    let step_ty = if formal_type_is_fold_step(step.declared_type.clone(), source_indices.clone()) {
-        step.declared_type.clone()
-    } else {
-        step.substitution_basis.clone()
-    };
-    let acc_ty = if formal_type_key(acc.declared_type.clone(), source_indices.clone()) != "" {
-        acc.declared_type.clone()
-    } else {
-        acc.substitution_basis.clone()
-    };
-    let coll_ty =
-        if formal_type_is_unary_container(coll.declared_type.clone(), source_indices.clone()) {
-            coll.declared_type.clone()
-        } else {
-            coll.substitution_basis.clone()
-        };
-    let sig = callable_signature_view(step_ty);
-    let params = callable_value_params(sig.clone(), source_indices.clone());
-    match params.clone().iter().cloned().next() {
-        std::option::Option::None => false,
-        Some(p0) => match params.clone().iter().cloned().skip(1).next() {
-            std::option::Option::None => false,
-            Some(p1) => {
-                let acc_key = formal_type_key(acc_ty, source_indices.clone());
-                let step_acc = formal_type_key(callable_param_type(p0), source_indices.clone());
-                let step_elem = formal_type_key(callable_param_type(p1), source_indices.clone());
-                let step_ret = arrow_return_key(sig, source_indices.clone());
-                let coll_elem = unary_container_element_key(coll_ty, source_indices.clone());
-                acc_key != ""
-                    && acc_key == step_acc
-                    && acc_key == step_ret
-                    && (coll_elem == "" || coll_elem == step_elem)
-            }
-        },
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CollectionFoldRoles {
-    pub collection_formal_index: i64,
-    pub acc_formal_index: i64,
-    pub step_formal_index: i64,
-}
-
-pub fn formal_type_is_container_name(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
-    {
-        true
-    } else {
-        let leaf = crate::v1_std_core::qualified_last_segment(type_node_label(n, source_indices));
-        match container_template_algebra(leaf.clone()) {
-            Some(_) => true,
-            std::option::Option::None => match container_template_alias_algebra(leaf.clone()) {
-                Some(_) => true,
-                std::option::Option::None => false,
-            },
-        }
-    }
-}
-
-pub fn formal_type_is_unary_container(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    formal_type_is_container_name(n.clone(), source_indices)
-        && ((n.children.clone().len() as i64) <= 1)
-}
-
-pub fn unary_container_element_key(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match n.children.clone().iter().cloned().next() {
-        Some(c) => formal_type_key(c, source_indices),
-        std::option::Option::None => match n.params.clone().iter().cloned().next() {
-            Some(p) => {
-                let from_ty = formal_type_key(
-                    crate::v1_std_core::param_node_type_expr(p.clone()),
-                    source_indices.clone(),
-                );
-                if from_ty != "" {
-                    from_ty
-                } else {
-                    crate::v1_std_core::param_node_name_at(p, source_indices)
-                }
-            }
-            std::option::Option::None => "".to_string(),
-        },
-    }
-}
-
-pub fn arrow_return_key(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    let sig = callable_signature_view(n);
-    let from_inferred = match sig.inferred.clone() {
-        Some(inf) => match (*inf).clone() {
-            InferredNode::TypeVariable { id } => id,
-            InferredNode::Resolved { node: inner } => {
-                formal_type_key(inner, source_indices.clone())
-            }
-            _ => "".to_string(),
-        },
-        std::option::Option::None => "".to_string(),
-    };
-    if from_inferred != "" {
-        from_inferred
-    } else {
-        formal_type_key(sig, source_indices)
-    }
-}
-
-pub fn formal_type_is_fold_step(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    let sig = callable_signature_view(n.clone());
-    (sig.connective.clone() == Connective::Arrow || type_node_is_callable(sig.clone()))
-        && ((callable_value_params(sig.clone(), source_indices.clone()).len() as i64) == 2)
-}
-
-pub fn formal_carries_unary_container(
-    f: Rc<ResolvedFormal>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    formal_type_is_unary_container(f.substitution_basis.clone(), source_indices.clone())
-        || formal_type_is_unary_container(f.declared_type.clone(), source_indices.clone())
-}
-
-pub fn formal_carries_fold_step(
-    f: Rc<ResolvedFormal>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    formal_type_is_fold_step(f.substitution_basis.clone(), source_indices.clone())
-        || formal_type_is_fold_step(f.declared_type.clone(), source_indices.clone())
-}
-
-pub fn collection_fold_roles(
-    formals: Rc<Vec<Rc<ResolvedFormal>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<CollectionFoldRoles>> {
-    let collections: Vec<i64> = formals
-        .clone()
-        .iter()
-        .cloned()
-        .enumerate()
-        .filter(|(_, f)| formal_carries_unary_container(f.clone(), source_indices.clone()))
-        .map(|(i, _)| i as i64)
-        .collect();
-    let steps: Vec<i64> = formals
-        .clone()
-        .iter()
-        .cloned()
-        .enumerate()
-        .filter(|(_, f)| {
-            !formal_carries_unary_container(f.clone(), source_indices.clone())
-                && formal_carries_fold_step(f.clone(), source_indices.clone())
-        })
-        .map(|(i, _)| i as i64)
-        .collect();
-    let accs: Vec<i64> = formals
-        .clone()
-        .iter()
-        .cloned()
-        .enumerate()
-        .filter(|(_, f)| {
-            !formal_carries_unary_container(f.clone(), source_indices.clone())
-                && !formal_carries_fold_step(f.clone(), source_indices.clone())
-        })
-        .map(|(i, _)| i as i64)
-        .collect();
-    if collections.len() == 1 && steps.len() == 1 && accs.len() == 1 {
-        match (
-            formals
-                .clone()
-                .iter()
-                .cloned()
-                .skip(collections[0] as usize)
-                .next(),
-            formals
-                .clone()
-                .iter()
-                .cloned()
-                .skip(accs[0] as usize)
-                .next(),
-            formals
-                .clone()
-                .iter()
-                .cloned()
-                .skip(steps[0] as usize)
-                .next(),
-        ) {
-            (Some(coll), Some(acc), Some(step)) => {
-                if collection_fold_step_binds_accumulator(coll, acc, step, source_indices.clone()) {
-                    Some(Rc::new(CollectionFoldRoles {
-                        collection_formal_index: collections[0],
-                        acc_formal_index: accs[0],
-                        step_formal_index: steps[0],
-                    }))
-                } else {
-                    std::option::Option::None
-                }
-            }
-            _ => std::option::Option::None,
-        }
-    } else {
-        std::option::Option::None
-    }
-}
-
-pub fn typed_arg_type_for_formal(
-    results: Rc<Vec<Rc<ArgInferResult>>>,
-    call_args: Rc<Vec<Rc<Node>>>,
-    value_params: Rc<Vec<Rc<Node>>>,
-    formal_index: i64,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    call_args.clone().iter().cloned().enumerate().fold(
-        std::option::Option::None,
-        |found, (i, arg)| {
-            if found.clone() != std::option::Option::None {
-                found
-            } else {
-                match (*select_formal_for_call_argument(
-                    arg.clone(),
-                    i as i64,
-                    call_args.clone(),
-                    value_params.clone(),
-                    source_indices.clone(),
-                ))
-                .clone()
-                {
-                    CallArgumentFormalSelection::CallArgumentFormalSelected {
-                        formal_index: fi,
-                        ..
-                    } => {
-                        if fi == formal_index {
-                            match results.clone().iter().cloned().skip(i).next() {
-                                Some(r) => Some(crate::v1_compiler_infer_types::resolved_type(
-                                    crate::v1_std_core::arg_value(r.typed_arg.clone()),
-                                )),
-                                std::option::Option::None => std::option::Option::None,
+                            let need = match v1_rt::map_get(&subst, name.clone()) {
+                                std::option::Option::None => true,
+                                Some(prev) => unify_binding_is_uninformative(prev.clone()),
+                            };
+                            if !need.clone() {
+                                subst.clone()
+                            } else {
+                                {
+                                    let el =
+                                        crate::v1_compiler_infer_types::for_each_element_type_node(
+                                            actual.clone(),
+                                            source_indices.clone(),
+                                        );
+                                    if ((type_node_label(el.clone(), source_indices.clone())
+                                        != type_node_label(actual.clone(), source_indices.clone()))
+                                        || ((el.children.clone().len() as i64)
+                                            != (actual.children.clone().len() as i64)))
+                                    {
+                                        v1_rt::rc_map_insert(
+                                            subst.clone(),
+                                            name.clone(),
+                                            el.clone(),
+                                        )
+                                    } else {
+                                        subst.clone()
+                                    }
+                                }
                             }
-                        } else {
-                            std::option::Option::None
                         }
-                    }
-                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                        std::option::Option::None
                     }
                 }
             }
-        },
-    )
+        }
+    }
 }
 
 pub fn type_is_bare_collection_carrier(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if ((n.connective.clone() == Connective::NoConnective)
-        && ((n.children.clone().len() as i64) == 0))
-        && (crate::v1_std_core::qualified_last_segment(type_node_label(
-            n.clone(),
-            source_indices.clone(),
-        )) == "String".to_string())
-    {
-        false
-    } else if (n.connective.clone() == Connective::Disj)
-        && formal_type_is_container_name(n.clone(), source_indices.clone())
-    {
-        true
-    } else if crate::v1_std_core::qualified_last_segment(type_node_label(
-        n.clone(),
-        source_indices.clone(),
-    )) == "Empty".to_string()
-    {
-        true
-    } else if formal_type_is_unary_container(n.clone(), source_indices.clone())
-        && ((n.children.clone().len() as i64) != 1)
-    {
-        true
-    } else if (n.children.clone().len() as i64) == 1 {
-        match n.children.clone().iter().cloned().next() {
-            Some(c) => type_is_bare_collection_carrier(
-                crate::v1_compiler_infer_types::child_type_node(c),
-                source_indices,
-            ),
-            std::option::Option::None => false,
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        if (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (crate::v1_std_core::qualified_last_segment(type_node_label(
+                n.clone(),
+                source_indices.clone(),
+            )) == "String".to_string()))
+        {
+            break false;
+        } else {
+            if ((n.connective.clone() == Connective::Disj)
+                && formal_type_is_container_name(n.clone(), source_indices.clone()))
+            {
+                break true;
+            } else {
+                if (crate::v1_std_core::qualified_last_segment(type_node_label(
+                    n.clone(),
+                    source_indices.clone(),
+                )) == "Empty".to_string())
+                {
+                    break true;
+                } else {
+                    if (formal_type_is_unary_container(n.clone(), source_indices.clone())
+                        && ((n.children.clone().len() as i64) != 1))
+                    {
+                        break true;
+                    } else {
+                        if ((n.children.clone().len() as i64) == 1) {
+                            match n.children.clone().first().cloned() {
+                                Some(c) => {
+                                    let __tco_0 =
+                                        crate::v1_compiler_infer_types::child_type_node(c.clone());
+                                    let __tco_1 = source_indices;
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_source_indices = __tco_1;
+                                    continue;
+                                }
+                                std::option::Option::None => {
+                                    break false;
+                                }
+                            }
+                        } else {
+                            break false;
+                        }
+                    }
+                }
+            }
         }
-    } else {
-        false
     }
 }
 
 pub fn fold_step_callable(acc_type: Rc<Node>, element_type: Rc<Node>) -> Rc<Node> {
-    let fold_params = Rc::new(vec![
-        crate::v1_std_core::make_param_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "acc".to_string(),
-            acc_type.clone(),
-            std::option::Option::None,
-            crate::v1_std_core::no_span(),
-            crate::v1_std_core::no_span(),
-        ),
-        crate::v1_std_core::make_param_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "elem".to_string(),
-            element_type.clone(),
-            std::option::Option::None,
-            crate::v1_std_core::no_span(),
-            crate::v1_std_core::no_span(),
-        ),
-    ]);
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "".to_string(),
-        span: crate::v1_std_core::no_span(),
-        ident_span: std::option::Option::None,
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: fold_params,
-        inferred: Some(Rc::new(InferredNode::Resolved {
-            node: acc_type.clone(),
-        })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        declaration: std::option::Option::None,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
+    {
+        let fold_params = Rc::new(vec![
+            crate::v1_std_core::make_param_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                "acc".to_string(),
+                acc_type.clone(),
+                std::option::Option::None,
+                crate::v1_std_core::no_span(),
+                crate::v1_std_core::no_span(),
+            ),
+            crate::v1_std_core::make_param_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                "elem".to_string(),
+                element_type.clone(),
+                std::option::Option::None,
+                crate::v1_std_core::no_span(),
+                crate::v1_std_core::no_span(),
+            ),
+        ]);
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "".to_string(),
+            span: crate::v1_std_core::no_span(),
+            ident_span: std::option::Option::None,
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: fold_params.clone(),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: acc_type.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
 }
 
 pub fn collection_fold_lambda_expected(
     results: Rc<Vec<Rc<ArgInferResult>>>,
     call_args: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
-    roles: Rc<CollectionFoldRoles>,
+    roles: CollectionFoldRoles,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match typed_arg_type_for_formal(
@@ -12289,14 +12443,13 @@ pub fn collection_fold_lambda_expected(
                 xs_ty.clone(),
                 source_indices.clone(),
             );
-            let peeled = type_node_label(elem.clone(), source_indices.clone())
-                != type_node_label(xs_ty.clone(), source_indices.clone())
-                || ((elem.children.clone().len() as i64) != (xs_ty.children.clone().len() as i64));
-            if !peeled
-                || unify_binding_is_uninformative(xs_ty.clone())
-                || unify_binding_is_uninformative(elem.clone())
-                || type_is_bare_collection_carrier(xs_ty.clone(), source_indices.clone())
-                || type_is_bare_collection_carrier(elem.clone(), source_indices.clone())
+            let peeled = ((type_node_label(elem.clone(), source_indices.clone())
+                != type_node_label(xs_ty.clone(), source_indices.clone()))
+                || ((elem.children.clone().len() as i64) != (xs_ty.children.clone().len() as i64)));
+            if ((((!peeled.clone() || unify_binding_is_uninformative(xs_ty.clone()))
+                || unify_binding_is_uninformative(elem.clone()))
+                || type_is_bare_collection_carrier(xs_ty.clone(), source_indices.clone()))
+                || type_is_bare_collection_carrier(elem.clone(), source_indices.clone()))
             {
                 std::option::Option::None
             } else {
@@ -12309,7 +12462,7 @@ pub fn collection_fold_lambda_expected(
                 ) {
                     std::option::Option::None => Some(fold_step_callable(
                         type_variable_node("FoldAccumulator".to_string()),
-                        elem,
+                        elem.clone(),
                     )),
                     Some(acc_ty) => {
                         let acc = if type_is_bare_collection_carrier(
@@ -12318,9 +12471,9 @@ pub fn collection_fold_lambda_expected(
                         ) {
                             type_variable_node("FoldAccumulator".to_string())
                         } else {
-                            acc_ty
+                            acc_ty.clone()
                         };
-                        Some(fold_step_callable(acc, elem))
+                        Some(fold_step_callable(acc.clone(), elem.clone()))
                     }
                 }
             }
@@ -12335,137 +12488,142 @@ pub fn infer_call_arguments_generic_pass(
     generic_names: Rc<Vec<String>>,
     init_subst: Rc<HashMap<String, Rc<Node>>>,
     scope: Rc<InferScope>,
-    fold_roles: Option<Rc<CollectionFoldRoles>>,
+    fold_roles: Option<CollectionFoldRoles>,
 ) -> Rc<ArgGenericFoldState> {
-    let arg_scope = Rc::new(InferScope {
-        type_env: scope.type_env.clone(),
-        func_env: scope.func_env.clone(),
-        locals: scope.locals.clone(),
-        body_locals: scope.body_locals.clone(),
-        match_bound_names: scope.match_bound_names.clone(),
-        module_name: scope.module_name.clone(),
-        service_registry: scope.service_registry.clone(),
-        item_registry: scope.item_registry.clone(),
-        lambda_param_provenance: scope.lambda_param_provenance.clone(),
-        caller_decl_name: scope.caller_decl_name.clone(),
-        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
-        enclosing_declared_type_param_names: v1_rt::concat(
-            scope.enclosing_declared_type_param_names.clone(),
-            generic_names.clone(),
-        ),
-    });
-    Rc::new(
-        call_args
-            .clone()
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(i, v)| (i as i64, v))
-            .collect::<Vec<_>>(),
-    )
-    .iter()
-    .cloned()
-    .fold(
-        Rc::new(ArgGenericFoldState {
-            results: Rc::new(vec![]),
-            subst: init_subst.clone(),
-        }),
-        |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
-            let a = pair.1.clone();
-            let formal_selection = select_formal_for_call_argument(
-                a.clone(),
-                pair.0.clone(),
-                call_args.clone(),
-                value_params.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            );
-            let formal_raw = match (*formal_selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected {
-                    formal_index, ..
-                } => match formals
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(formal_index.clone() as usize)
-                    .next()
-                {
-                    Some(carried) => carried.substitution_basis.clone(),
-                    std::option::Option::None => error_type(),
-                },
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                    type_variable_node("callable_param".to_string())
-                }
-            };
-            let formal_declared_context = match (*formal_selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected { formal: p, .. } => {
-                    crate::v1_std_core::param_node_type_expr(p.clone())
-                }
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                    type_variable_node("callable_param".to_string())
-                }
-            };
-            let has_formal = match (*formal_selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected { .. } => true,
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => false,
-            };
-            let formal_param_type = substitute_generics(
-                formal_declared_context.clone(),
-                st.subst.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            );
-            let formal_conformance_type = match (*formal_selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected {
-                    formal_index, ..
-                } => match formals
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(formal_index.clone() as usize)
-                    .next()
-                {
-                    Some(carried) => substitute_generics(
-                        carried.declaration_bound_conformance.clone(),
-                        st.subst.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ),
-                    std::option::Option::None => error_type(),
-                },
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                    type_variable_node("callable_param".to_string())
-                }
-            };
-            let formal_declaration_bound = match (*formal_selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected {
-                    formal_index, ..
-                } => match formals
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(formal_index.clone() as usize)
-                    .next()
-                {
-                    Some(carried) => {
-                        formal_code_point_view(carried.clone(), scope.type_env.clone())
+    {
+        let arg_scope = Rc::new(InferScope {
+            type_env: scope.type_env.clone(),
+            func_env: scope.func_env.clone(),
+            locals: scope.locals.clone(),
+            body_locals: scope.body_locals.clone(),
+            match_bound_names: scope.match_bound_names.clone(),
+            module_name: scope.module_name.clone(),
+            service_registry: scope.service_registry.clone(),
+            item_registry: scope.item_registry.clone(),
+            lambda_param_provenance: scope.lambda_param_provenance.clone(),
+            caller_decl_name: scope.caller_decl_name.clone(),
+            in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+            enclosing_declared_type_param_names: v1_rt::concat(
+                scope.enclosing_declared_type_param_names.clone(),
+                generic_names.clone(),
+            ),
+        });
+        Rc::new(
+            call_args
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(ArgGenericFoldState {
+                results: Rc::new(vec![]),
+                subst: init_subst.clone(),
+            }),
+            |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
+                let a = pair.1.clone();
+                let formal_selection = select_formal_for_call_argument(
+                    a.clone(),
+                    pair.0.clone(),
+                    call_args.clone(),
+                    value_params.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                let formal_raw = match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal_index,
+                        ..
+                    } => match formals
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(formal_index.clone() as usize)
+                        .next()
+                    {
+                        Some(carried) => carried.substitution_basis.clone(),
+                        std::option::Option::None => error_type(),
+                    },
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        type_variable_node("callable_param".to_string())
                     }
-                    std::option::Option::None => std::option::Option::None,
-                },
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                    std::option::Option::None
-                }
-            };
-            let formal_is_code_point_sequence =
-                (formal_declaration_bound.clone() != std::option::Option::None);
-            let code_point_formal = match formal_declaration_bound.clone() {
-                Some(bound) => bound.clone(),
-                std::option::Option::None => formal_conformance_type.clone(),
-            };
-            let argument_is_literal =
-                match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
-                    ExprData::ExprLiteral { value: _, .. } => true,
-                    _ => false,
                 };
-            let contextual_expected =
-                if (formal_is_code_point_sequence.clone() && argument_is_literal.clone()) {
+                let formal_declared_context = match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal: p, ..
+                    } => crate::v1_std_core::param_node_type_expr(p.clone()),
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        type_variable_node("callable_param".to_string())
+                    }
+                };
+                let has_formal = match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected { .. } => true,
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => false,
+                };
+                let formal_param_type = substitute_generics(
+                    formal_declared_context.clone(),
+                    st.subst.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                let formal_conformance_type = match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal_index,
+                        ..
+                    } => match formals
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(formal_index.clone() as usize)
+                        .next()
+                    {
+                        Some(carried) => substitute_generics(
+                            carried.declaration_bound_conformance.clone(),
+                            st.subst.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
+                        std::option::Option::None => error_type(),
+                    },
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        type_variable_node("callable_param".to_string())
+                    }
+                };
+                let formal_declaration_bound = match (*formal_selection.clone()).clone() {
+                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                        formal_index,
+                        ..
+                    } => match formals
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(formal_index.clone() as usize)
+                        .next()
+                    {
+                        Some(carried) => {
+                            formal_code_point_view(carried.clone(), scope.type_env.clone())
+                        }
+                        std::option::Option::None => std::option::Option::None,
+                    },
+                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                        std::option::Option::None
+                    }
+                };
+                let formal_is_code_point_sequence =
+                    (formal_declaration_bound.clone() != std::option::Option::None);
+                let code_point_formal = match formal_declaration_bound.clone() {
+                    Some(bound) => bound.clone(),
+                    std::option::Option::None => formal_conformance_type.clone(),
+                };
+                let argument_is_literal =
+                    match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
+                        ExprData::ExprLiteral { value: _, .. } => true,
+                        _ => false,
+                    };
+                let contextual_expected = if (formal_is_code_point_sequence.clone()
+                    && argument_is_literal.clone())
+                {
                     code_point_formal.clone()
                 } else {
                     match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
@@ -12485,162 +12643,168 @@ pub fn infer_call_arguments_generic_pass(
                         _ => formal_param_type.clone(),
                     }
                 };
-            let fold_step_expected = match fold_roles.clone() {
-                std::option::Option::None => std::option::Option::None,
-                Some(roles) => {
-                    if !is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
-                        std::option::Option::None
-                    } else {
-                        match (*formal_selection.clone()).clone() {
-                            CallArgumentFormalSelection::CallArgumentFormalSelected {
-                                formal_index: fi,
-                                ..
-                            } => {
-                                if fi == roles.step_formal_index.clone() {
-                                    collection_fold_lambda_expected(
-                                        st.results.clone(),
-                                        call_args.clone(),
-                                        value_params.clone(),
-                                        roles.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    )
-                                } else {
-                                    std::option::Option::None
-                                }
-                            }
-                            CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                                std::option::Option::None
-                            }
-                        }
-                    }
-                }
-            };
-            let expected = if !has_formal.clone() {
-                std::option::Option::None
-            } else if (fold_step_expected.clone() != std::option::Option::None) {
-                fold_step_expected.clone()
-            } else if (direct_call_formal_has_unbound_type_variable(formal_raw.clone())
-                && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
-                && !(formal_is_code_point_sequence.clone() && argument_is_literal.clone())
-                && match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
-                    ExprData::ExprRecordLit { parent_enum: _, .. } => false,
-                    _ => true,
-                })
-            {
-                std::option::Option::None
-            } else {
-                Some(contextual_expected.clone())
-            };
-            let ar_inferred = infer_expr(
-                crate::v1_std_core::arg_value(a.clone()),
-                arg_scope.clone(),
-                expected.clone(),
-            );
-            let ar = if formal_is_code_point_sequence.clone() {
-                Rc::new(InferResult {
-                    typed: host_text_unfolded_at_code_point_boundary(
-                        ar_inferred.typed.clone(),
-                        code_point_formal.clone(),
-                        scope.clone(),
-                    ),
-                    diagnostics: ar_inferred.diagnostics.clone(),
-                })
-            } else {
-                ar_inferred.clone()
-            };
-            let next_subst = if !has_formal.clone() {
-                st.subst.clone()
-            } else {
-                if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
-                    if v1_rt::map_is_empty(&init_subst) {
-                        unify_lambda_solves(
-                            unify_generics(
-                                formal_raw.clone(),
-                                lambda_callable_type(ar.typed.clone()),
-                                generic_names.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                                v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                            ),
-                            generic_names.clone(),
-                            st.subst.clone(),
-                        )
-                    } else {
-                        st.subst.clone()
-                    }
-                } else {
-                    if should_unify_record_lit_generics(
-                        formal_raw.clone(),
-                        crate::v1_std_core::arg_value(a.clone()),
-                        generic_names.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) {
-                        unify_record_lit_generics(
-                            formal_raw.clone(),
-                            ar.typed.clone(),
-                            generic_names.clone(),
-                            scope.clone(),
-                            st.subst.clone(),
-                        )
-                    } else {
-                        let skip_bare_fold_acc = match fold_roles.clone() {
-                            Some(roles) => match (*formal_selection.clone()).clone() {
+                let fold_step_expected = match fold_roles.clone() {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(roles) => {
+                        if !is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                            std::option::Option::None
+                        } else {
+                            match (*formal_selection.clone()).clone() {
                                 CallArgumentFormalSelection::CallArgumentFormalSelected {
                                     formal_index: fi,
                                     ..
                                 } => {
-                                    fi == roles.acc_formal_index.clone()
-                                        && type_is_bare_collection_carrier(
-                                            crate::v1_compiler_infer_types::resolved_type(
-                                                ar.typed.clone(),
-                                            ),
+                                    if (fi.clone() == roles.step_formal_index.clone()) {
+                                        collection_fold_lambda_expected(
+                                            st.results.clone(),
+                                            call_args.clone(),
+                                            value_params.clone(),
+                                            roles.clone(),
                                             scope.type_env.clone().source_indices.clone(),
                                         )
+                                    } else {
+                                        std::option::Option::None
+                                    }
                                 }
-                                CallArgumentFormalSelection::CallArgumentFormalUnavailable => false,
-                            },
-                            std::option::Option::None => false,
-                        };
-                        if skip_bare_fold_acc {
-                            st.subst.clone()
+                                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                                    std::option::Option::None
+                                }
+                            }
+                        }
+                    }
+                };
+                let expected = if !has_formal.clone() {
+                    std::option::Option::None
+                } else {
+                    if (fold_step_expected.clone() != std::option::Option::None) {
+                        fold_step_expected.clone()
+                    } else {
+                        if (((direct_call_formal_has_unbound_type_variable(formal_raw.clone())
+                            && !is_lambda_expr(crate::v1_std_core::arg_value(a.clone())))
+                            && !(formal_is_code_point_sequence.clone()
+                                && argument_is_literal.clone()))
+                            && match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone())
+                                .clone()
+                            {
+                                ExprData::ExprRecordLit { parent_enum: _, .. } => false,
+                                _ => true,
+                            })
+                        {
+                            std::option::Option::None
                         } else {
-                            bind_unbound_collection_element_generic(
-                                formal_raw.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
-                                generic_names.clone(),
+                            Some(contextual_expected.clone())
+                        }
+                    }
+                };
+                let ar_inferred = infer_expr(
+                    crate::v1_std_core::arg_value(a.clone()),
+                    arg_scope.clone(),
+                    expected.clone(),
+                );
+                let ar = if formal_is_code_point_sequence.clone() {
+                    Rc::new(InferResult {
+                        typed: host_text_unfolded_at_code_point_boundary(
+                            ar_inferred.typed.clone(),
+                            code_point_formal.clone(),
+                            scope.clone(),
+                        ),
+                        diagnostics: ar_inferred.diagnostics.clone(),
+                    })
+                } else {
+                    ar_inferred.clone()
+                };
+                let next_subst = if !has_formal.clone() {
+                    st.subst.clone()
+                } else {
+                    if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                        if v1_rt::map_is_empty(&init_subst) {
+                            unify_lambda_solves(
                                 unify_generics(
+                                    formal_raw.clone(),
+                                    lambda_callable_type(ar.typed.clone()),
+                                    generic_names.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                ),
+                                generic_names.clone(),
+                                st.subst.clone(),
+                            )
+                        } else {
+                            st.subst.clone()
+                        }
+                    } else {
+                        if should_unify_record_lit_generics(
+                            formal_raw.clone(),
+                            crate::v1_std_core::arg_value(a.clone()),
+                            generic_names.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) {
+                            unify_record_lit_generics(
+                                formal_raw.clone(),
+                                ar.typed.clone(),
+                                generic_names.clone(),
+                                scope.clone(),
+                                st.subst.clone(),
+                            )
+                        } else {
+                            if (match fold_roles.clone() {
+                                std::option::Option::None => false,
+                                Some(roles) => match (*formal_selection.clone()).clone() {
+                                    CallArgumentFormalSelection::CallArgumentFormalSelected {
+                                        formal_index: fi,
+                                        ..
+                                    } => (fi.clone() == roles.acc_formal_index.clone()),
+                                    CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                                        false
+                                    }
+                                },
+                            } && type_is_bare_collection_carrier(
+                                crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
+                                scope.type_env.clone().source_indices.clone(),
+                            )) {
+                                st.subst.clone()
+                            } else {
+                                bind_unbound_collection_element_generic(
                                     formal_raw.clone(),
                                     crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
                                     generic_names.clone(),
+                                    unify_generics(
+                                        formal_raw.clone(),
+                                        crate::v1_compiler_infer_types::resolved_type(
+                                            ar.typed.clone(),
+                                        ),
+                                        generic_names.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                        st.subst.clone(),
+                                    ),
                                     scope.type_env.clone().source_indices.clone(),
-                                    st.subst.clone(),
-                                ),
-                                scope.type_env.clone().source_indices.clone(),
-                            )
+                                )
+                            }
                         }
                     }
-                }
-            };
-            Rc::new(ArgGenericFoldState {
-                results: v1_rt::concat(
-                    st.results.clone(),
-                    Rc::new(vec![Rc::new(ArgInferResult {
-                        typed_arg: crate::v1_std_core::make_arg_node(
-                            a.occurrence_identity.clone(),
-                            crate::v1_std_core::arg_name_at(
-                                a.clone(),
-                                scope.type_env.clone().source_indices.clone(),
+                };
+                Rc::new(ArgGenericFoldState {
+                    results: v1_rt::concat(
+                        st.results.clone(),
+                        Rc::new(vec![Rc::new(ArgInferResult {
+                            typed_arg: crate::v1_std_core::make_arg_node(
+                                a.occurrence_identity.clone(),
+                                crate::v1_std_core::arg_name_at(
+                                    a.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                ar.typed.clone(),
+                                a.span.clone(),
+                                a.span.clone(),
                             ),
-                            ar.typed.clone(),
-                            a.span.clone(),
-                            a.span.clone(),
-                        ),
-                        diagnostics: ar.diagnostics.clone(),
-                    })]),
-                ),
-                subst: next_subst.clone(),
-            })
-        },
-    )
+                            diagnostics: ar.diagnostics.clone(),
+                        })]),
+                    ),
+                    subst: next_subst.clone(),
+                })
+            },
+        )
+    }
 }
 
 pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
@@ -13761,9 +13925,12 @@ Rc::new(InferResult {
                         );
                         let call_method_name = Some(func_name.clone());
                         let call_fold_seed_name = match (*call_target.clone()).clone() {
-                            CallTargetOutcome::BuiltinCallableResolved { primitive_name: n } => {
-                                if (n.clone() == "fold_list".to_string())
-                                    || (n.clone() == "fold_list_right".to_string())
+                            CallTargetOutcome::BuiltinCallableResolved {
+                                primitive_name: n,
+                                ..
+                            } => {
+                                if ((n.clone() == "fold_list".to_string())
+                                    || (n.clone() == "fold_list_right".to_string()))
                                 {
                                     Some("fold".to_string())
                                 } else {
@@ -13844,60 +14011,62 @@ Rc::new(InferResult {
                             if ((has_lambda.clone() && ((call_args.clone().len() as i64) >= 2))
                                 && (sig.clone() == std::option::Option::None))
                             {
-                                let fold_results = match call_args.clone().first().cloned() {
-                                    Some(first_arg) => {
-                                        let first_result = infer_expr(
-                                            crate::v1_std_core::arg_value(first_arg.clone()),
-                                            scope.clone(),
-                                            std::option::Option::None,
-                                        );
-                                        let first_type =
-                                            crate::v1_compiler_infer_types::resolved_type(
-                                                first_result.typed.clone(),
+                                {
+                                    let fold_results = match call_args.clone().first().cloned() {
+                                        Some(first_arg) => {
+                                            let first_result = infer_expr(
+                                                crate::v1_std_core::arg_value(first_arg.clone()),
+                                                scope.clone(),
+                                                std::option::Option::None,
                                             );
-                                        let elem_type = crate::v1_compiler_infer_types::for_each_element_type_node(first_type.clone(), scope.type_env.clone().source_indices.clone());
-                                        let call_elem_provenance = derive_element_provenance(
-                                            first_result.typed.clone(),
-                                            elem_type.clone(),
-                                            scope.clone(),
-                                        );
-                                        let remaining_results = infer_method_args_with_fold(
-                                            call_fold_seed_name.clone(),
-                                            call_method_args.clone(),
-                                            call_fold_info.clone(),
-                                            call_fold_acc_type.clone(),
-                                            elem_type.clone(),
-                                            call_elem_provenance.clone(),
-                                            Rc::new(DeclaredArgContract::MethodUnresolved),
-                                            scope.clone(),
-                                        );
-                                        v1_rt::concat(
-                                            Rc::new(vec![Rc::new(ArgInferResult {
-                                                typed_arg: crate::v1_std_core::make_arg_node(
-                                                    first_arg.occurrence_identity.clone(),
-                                                    crate::v1_std_core::arg_name_at(
-                                                        first_arg.clone(),
-                                                        scope
-                                                            .type_env
-                                                            .clone()
-                                                            .source_indices
-                                                            .clone(),
-                                                    ),
+                                            let first_type =
+                                                crate::v1_compiler_infer_types::resolved_type(
                                                     first_result.typed.clone(),
-                                                    first_arg.span.clone(),
-                                                    first_arg.span.clone(),
-                                                ),
-                                                diagnostics: first_result.diagnostics.clone(),
-                                            })]),
-                                            remaining_results.clone(),
-                                        )
-                                    }
-                                    std::option::Option::None => Rc::new(vec![]),
-                                };
-                                Rc::new(ArgGenericFoldState {
-                                    subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                                    results: fold_results,
-                                })
+                                                );
+                                            let elem_type = crate::v1_compiler_infer_types::for_each_element_type_node(first_type.clone(), scope.type_env.clone().source_indices.clone());
+                                            let call_elem_provenance = derive_element_provenance(
+                                                first_result.typed.clone(),
+                                                elem_type.clone(),
+                                                scope.clone(),
+                                            );
+                                            let remaining_results = infer_method_args_with_fold(
+                                                call_fold_seed_name.clone(),
+                                                call_method_args.clone(),
+                                                call_fold_info.clone(),
+                                                call_fold_acc_type.clone(),
+                                                elem_type.clone(),
+                                                call_elem_provenance.clone(),
+                                                Rc::new(DeclaredArgContract::MethodUnresolved),
+                                                scope.clone(),
+                                            );
+                                            v1_rt::concat(
+                                                Rc::new(vec![Rc::new(ArgInferResult {
+                                                    typed_arg: crate::v1_std_core::make_arg_node(
+                                                        first_arg.occurrence_identity.clone(),
+                                                        crate::v1_std_core::arg_name_at(
+                                                            first_arg.clone(),
+                                                            scope
+                                                                .type_env
+                                                                .clone()
+                                                                .source_indices
+                                                                .clone(),
+                                                        ),
+                                                        first_result.typed.clone(),
+                                                        first_arg.span.clone(),
+                                                        first_arg.span.clone(),
+                                                    ),
+                                                    diagnostics: first_result.diagnostics.clone(),
+                                                })]),
+                                                remaining_results.clone(),
+                                            )
+                                        }
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    };
+                                    Rc::new(ArgGenericFoldState {
+                                        subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                        results: fold_results.clone(),
+                                    })
+                                }
                             } else {
                                 {
                                     let value_params = call_sig_split.value_params.clone();
@@ -14261,10 +14430,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                                         };
-                                        let bridge_unified = if func_name.clone()
-                                            == "concat".to_string()
-                                        {
-                                            match remaining.clone().iter().cloned().next() {
+                                        let bridge_unified =
+                                            if (func_name.clone() == "concat".to_string()) {
+                                                match remaining.clone().first().cloned() {
                                                 Some(other) => concat_unify_operands(
                                                     first_arg_type.clone(),
                                                     crate::v1_compiler_infer_types::resolved_type(
@@ -14275,38 +14443,25 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     method_tv.ty.clone(),
                                                     scope.type_env.clone().source_indices.clone(),
                                                 ),
-                                                std::option::Option::None => ConcatUnify {
+                                                std::option::Option::None => Rc::new(ConcatUnify {
                                                     result: method_tv.ty.clone(),
-                                                    refuse: None,
-                                                },
+                                                    refuse: std::option::Option::None,
+                                                }),
                                             }
-                                        } else {
-                                            ConcatUnify {
-                                                result: method_tv.ty.clone(),
-                                                refuse: None,
-                                            }
-                                        };
+                                            } else {
+                                                Rc::new(ConcatUnify {
+                                                    result: method_tv.ty.clone(),
+                                                    refuse: std::option::Option::None,
+                                                })
+                                            };
                                         let bridge_result_type = bridge_unified.result.clone();
                                         let concat_refuse_diags = match bridge_unified.refuse.clone() {
-                                            Some(_) => Rc::new(vec![type_mismatch_error(
-                                                crate::v1_compiler_infer_types::node_type_shape(
-                                                    first_arg_type.clone(),
-                                                    scope.type_env.clone().source_indices.clone(),
-                                                ),
-                                                match remaining.clone().iter().cloned().next() {
-                                                    Some(other) => crate::v1_compiler_infer_types::node_type_shape(
-                                                        crate::v1_compiler_infer_types::resolved_type(
-                                                            crate::v1_std_core::arg_value(other),
-                                                        ),
-                                                        scope.type_env.clone().source_indices.clone(),
-                                                    ),
-                                                    None => "unknown".to_string(),
-                                                },
-                                                span.clone(),
-                                                scope.module_name.clone(),
-                                            )]),
-                                            None => Rc::new(vec![]),
-                                        };
+    Some(_) => Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(first_arg_type.clone(), scope.type_env.clone().source_indices.clone()), match remaining.clone().first().cloned() {
+    Some(other) => crate::v1_compiler_infer_types::node_type_shape(crate::v1_compiler_infer_types::resolved_type(crate::v1_std_core::arg_value(other.clone())), scope.type_env.clone().source_indices.clone()),
+    std::option::Option::None => "unknown".to_string(),
+}, span.clone(), scope.module_name.clone())]),
+    std::option::Option::None => Rc::new(vec![]),
+};
                                         let template_subst_diags = method_tv.diagnostics.clone();
                                         let returns_receiver_self = if (method_resolution
                                             .semantics
@@ -14939,8 +15094,8 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                     };
-                    let mc_concat = if method_name.clone() == "concat".to_string() {
-                        match typed_mc_args.clone().iter().cloned().next() {
+                    let mc_concat = if (method_name.clone() == "concat".to_string()) {
+                        match typed_mc_args.clone().first().cloned() {
                             Some(other) => concat_unify_operands(
                                 recv_rt.clone(),
                                 crate::v1_compiler_infer_types::resolved_type(
@@ -14949,16 +15104,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 method_tv_mc.ty.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             ),
-                            std::option::Option::None => ConcatUnify {
+                            std::option::Option::None => Rc::new(ConcatUnify {
                                 result: method_tv_mc.ty.clone(),
-                                refuse: None,
-                            },
+                                refuse: std::option::Option::None,
+                            }),
                         }
                     } else {
-                        ConcatUnify {
+                        Rc::new(ConcatUnify {
                             result: method_tv_mc.ty.clone(),
-                            refuse: None,
-                        }
+                            refuse: std::option::Option::None,
+                        })
                     };
                     let result_type = mc_concat.result.clone();
                     let mc_concat_refuse = match mc_concat.refuse.clone() {
@@ -14967,19 +15122,19 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 recv_rt.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             ),
-                            match typed_mc_args.clone().iter().cloned().next() {
+                            match typed_mc_args.clone().first().cloned() {
                                 Some(other) => crate::v1_compiler_infer_types::node_type_shape(
                                     crate::v1_compiler_infer_types::resolved_type(
-                                        crate::v1_std_core::arg_value(other),
+                                        crate::v1_std_core::arg_value(other.clone()),
                                     ),
                                     scope.type_env.clone().source_indices.clone(),
                                 ),
-                                None => "unknown".to_string(),
+                                std::option::Option::None => "unknown".to_string(),
                             },
                             span.clone(),
                             scope.module_name.clone(),
                         )]),
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     };
                     let mc_template_diags = method_tv_mc.diagnostics.clone();
                     let method_semantics =
@@ -15504,15 +15659,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         scope.type_env.clone().source_indices.clone(),
                     );
                     let else_is_informed_list =
-                        node_is_list_concat_operand(
+                        (node_is_list_concat_operand(
                             else_rt.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                        ) && !unify_binding_is_uninformative(else_rt.clone());
+                        ) && !unify_binding_is_uninformative(else_rt.clone()));
                     let then_is_informed_list =
-                        node_is_list_concat_operand(
+                        (node_is_list_concat_operand(
                             then_rt.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                        ) && !unify_binding_is_uninformative(then_rt.clone());
+                        ) && !unify_binding_is_uninformative(then_rt.clone()));
                     let expected_informed_list = match expected.clone() {
                         Some(exp) => concat_operand_is_informed_list(
                             exp.clone(),
@@ -15521,50 +15676,59 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         std::option::Option::None => false,
                     };
                     let expected_list = match expected.clone() {
-                        Some(exp) => exp,
+                        Some(exp) => exp.clone(),
                         std::option::Option::None => then_rt.clone(),
                     };
-                    let expected_text = Rc::new(TextJudgment::TextJudgedIn {
-                        env: scope.type_env.clone(),
-                    });
-                    let then_meets_expected = !expected_informed_list
+                    let then_meets_expected = (!expected_informed_list.clone()
                         || list_branch_meets_expected_list(
                             then_rt.clone(),
                             expected_list.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                            expected_text.clone(),
-                        );
-                    let else_meets_expected = !expected_informed_list
+                            Rc::new(TextJudgment::TextJudgedIn {
+                                env: scope.type_env.clone(),
+                            }),
+                        ));
+                    let else_meets_expected = (!expected_informed_list.clone()
                         || list_branch_meets_expected_list(
                             else_rt.clone(),
                             expected_list.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                            expected_text.clone(),
-                        );
-                    let unified =
-                        if expected_informed_list && then_meets_expected && else_meets_expected {
-                            expected_list.clone()
-                        } else if then_uninformed && else_is_informed_list {
+                            Rc::new(TextJudgment::TextJudgedIn {
+                                env: scope.type_env.clone(),
+                            }),
+                        ));
+                    let unified = if ((expected_informed_list.clone()
+                        && then_meets_expected.clone())
+                        && else_meets_expected.clone())
+                    {
+                        expected_list.clone()
+                    } else {
+                        if (then_uninformed.clone() && else_is_informed_list.clone()) {
                             else_rt.clone()
-                        } else if else_uninformed && then_is_informed_list {
-                            then_rt.clone()
                         } else {
-                            crate::v1_compiler_infer_types::prefer_specific_type(
-                                then_rt.clone(),
-                                else_rt.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            )
-                        };
-                    let branch_diags = if crate::v1_compiler_infer_types::node_type_compatible(
+                            if (else_uninformed.clone() && then_is_informed_list.clone()) {
+                                then_rt.clone()
+                            } else {
+                                crate::v1_compiler_infer_types::prefer_specific_type(
+                                    then_rt.clone(),
+                                    else_rt.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                )
+                            }
+                        }
+                    };
+                    let branch_diags = if (((crate::v1_compiler_infer_types::node_type_compatible(
                         then_rt.clone(),
                         else_rt.clone(),
                         scope.type_env.clone().source_indices.clone(),
                         Rc::new(TextJudgment::TextJudgedIn {
                             env: scope.type_env.clone(),
                         }),
-                    ) || (then_uninformed && else_is_informed_list)
-                        || (else_uninformed && then_is_informed_list)
-                        || (expected_informed_list && then_meets_expected && else_meets_expected)
+                    ) || (then_uninformed.clone()
+                        && else_is_informed_list.clone()))
+                        || (else_uninformed.clone() && then_is_informed_list.clone()))
+                        || ((expected_informed_list.clone() && then_meets_expected.clone())
+                            && else_meets_expected.clone()))
                     {
                         Rc::new(vec![])
                     } else {
@@ -15958,14 +16122,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.type_env.clone().source_indices.clone(),
                 scope.type_env.clone(),
             );
-            let add_unify = if (op.clone() == BinOp::Add)
+            let add_unify = if ((op.clone() == BinOp::Add)
                 && (node_is_list_concat_operand(
                     left_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 ) || node_is_list_concat_operand(
                     right_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                )) {
+                ))) {
                 concat_unify_operands(
                     left_rt.clone(),
                     right_rt.clone(),
@@ -15973,10 +16137,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     scope.type_env.clone().source_indices.clone(),
                 )
             } else {
-                ConcatUnify {
+                Rc::new(ConcatUnify {
                     result: binop_info.result_type.clone(),
-                    refuse: None,
-                }
+                    refuse: std::option::Option::None,
+                })
             };
             let binop_result = add_unify.result.clone();
             let add_concat_refuse = match add_unify.refuse.clone() {
@@ -15992,7 +16156,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     span.clone(),
                     scope.module_name.clone(),
                 )]),
-                None => Rc::new(vec![]),
+                std::option::Option::None => Rc::new(vec![]),
             };
             let eq_wall_diags = equality_admission_diags(
                 op.clone(),
@@ -24545,23 +24709,13 @@ pub fn param_is_generic_decl(
 }
 
 pub fn unify_generics(
-    mut __tco_loop_formal: Rc<Node>,
-    mut __tco_loop_actual: Rc<Node>,
-    mut __tco_loop_generic_names: Rc<Vec<String>>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut formal = __tco_loop_formal;
-        #[allow(unused_mut)]
-        let mut actual = __tco_loop_actual;
-        #[allow(unused_mut)]
-        let mut generic_names = __tco_loop_generic_names;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
@@ -24582,19 +24736,20 @@ pub fn unify_generics(
             })
         {
             if type_is_bare_collection_carrier(actual.clone(), source_indices.clone()) {
-                break acc;
-            }
-            match v1_rt::map_get(&acc, bind_name.clone()) {
-                std::option::Option::None => {
-                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
-                }
-                Some(prev) => {
-                    if (unify_binding_is_uninformative(prev.clone())
-                        && !unify_binding_is_uninformative(actual.clone()))
-                    {
-                        break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
-                    } else {
-                        break acc.clone();
+                acc.clone()
+            } else {
+                match v1_rt::map_get(&acc, bind_name.clone()) {
+                    std::option::Option::None => {
+                        v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
+                    }
+                    Some(prev) => {
+                        if (unify_binding_is_uninformative(prev.clone())
+                            && !unify_binding_is_uninformative(actual.clone()))
+                        {
+                            v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
+                        } else {
+                            acc.clone()
+                        }
                     }
                 }
             }
@@ -24602,85 +24757,72 @@ pub fn unify_generics(
             if ((formal.connective.clone() == Connective::Arrow)
                 && (actual.connective.clone() == Connective::Arrow))
             {
-                break unify_callable_generics(
+                unify_callable_generics(
                     formal.clone(),
                     actual.clone(),
                     generic_names.clone(),
                     source_indices.clone(),
                     acc.clone(),
-                );
+                )
             } else {
-                let fnorm =
-                    crate::v1_compiler_infer_types::normalize_access_type_node(formal.clone());
-                let anorm =
-                    crate::v1_compiler_infer_types::normalize_access_type_node(actual.clone());
-                if (((fnorm.children.clone().len() as i64) == 1)
-                    && ((anorm.children.clone().len() as i64) == 1))
                 {
-                    match fnorm.children.clone().first().cloned() {
-                        Some(fc) => match anorm.children.clone().first().cloned() {
-                            Some(ac) => {
-                                let after_raw = unify_generics(
-                                    fc.clone(),
-                                    ac.clone(),
+                    let fnorm =
+                        crate::v1_compiler_infer_types::normalize_access_type_node(formal.clone());
+                    let anorm =
+                        crate::v1_compiler_infer_types::normalize_access_type_node(actual.clone());
+                    if (((fnorm.children.clone().len() as i64) == 1)
+                        && ((anorm.children.clone().len() as i64) == 1))
+                    {
+                        match fnorm.children.clone().first().cloned() {
+                            Some(fc) => match anorm.children.clone().first().cloned() {
+                                Some(ac) => unify_generics(
+                                    crate::v1_compiler_infer_types::child_type_node(fc.clone()),
+                                    crate::v1_compiler_infer_types::child_type_node(ac.clone()),
+                                    generic_names.clone(),
+                                    source_indices.clone(),
+                                    unify_generics(
+                                        fc.clone(),
+                                        ac.clone(),
+                                        generic_names.clone(),
+                                        source_indices.clone(),
+                                        acc.clone(),
+                                    ),
+                                ),
+                                std::option::Option::None => acc.clone(),
+                            },
+                            std::option::Option::None => acc.clone(),
+                        }
+                    } else {
+                        {
+                            let f_el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                                fnorm.clone(),
+                                source_indices.clone(),
+                            );
+                            let a_el = crate::v1_compiler_infer_types::for_each_element_type_node(
+                                anorm.clone(),
+                                source_indices.clone(),
+                            );
+                            if ((type_node_label(f_el.clone(), source_indices.clone())
+                                != type_node_label(fnorm.clone(), source_indices.clone()))
+                                || ((f_el.children.clone().len() as i64)
+                                    != (fnorm.children.clone().len() as i64)))
+                            {
+                                unify_generics(
+                                    f_el.clone(),
+                                    a_el.clone(),
                                     generic_names.clone(),
                                     source_indices.clone(),
                                     acc.clone(),
-                                );
-                                let __tco_0 =
-                                    crate::v1_compiler_infer_types::child_type_node(fc.clone());
-                                let __tco_1 =
-                                    crate::v1_compiler_infer_types::child_type_node(ac.clone());
-                                let __tco_2 = generic_names;
-                                let __tco_3 = source_indices;
-                                let __tco_4 = after_raw;
-                                __tco_loop_formal = __tco_0;
-                                __tco_loop_actual = __tco_1;
-                                __tco_loop_generic_names = __tco_2;
-                                __tco_loop_source_indices = __tco_3;
-                                __tco_loop_acc = __tco_4;
-                                continue;
+                                )
+                            } else {
+                                acc.clone()
                             }
-                            std::option::Option::None => {
-                                break acc.clone();
-                            }
-                        },
-                        std::option::Option::None => {
-                            break acc.clone();
                         }
-                    }
-                } else {
-                    let f_el = crate::v1_compiler_infer_types::for_each_element_type_node(
-                        fnorm.clone(),
-                        source_indices.clone(),
-                    );
-                    let a_el = crate::v1_compiler_infer_types::for_each_element_type_node(
-                        anorm.clone(),
-                        source_indices.clone(),
-                    );
-                    if (type_node_label(f_el.clone(), source_indices.clone())
-                        != type_node_label(fnorm.clone(), source_indices.clone())
-                        || ((f_el.children.clone().len() as i64)
-                            != (fnorm.children.clone().len() as i64)))
-                    {
-                        let __tco_0 = f_el;
-                        let __tco_1 = a_el;
-                        let __tco_2 = generic_names;
-                        let __tco_3 = source_indices;
-                        let __tco_4 = acc;
-                        __tco_loop_formal = __tco_0;
-                        __tco_loop_actual = __tco_1;
-                        __tco_loop_generic_names = __tco_2;
-                        __tco_loop_source_indices = __tco_3;
-                        __tco_loop_acc = __tco_4;
-                        continue;
-                    } else {
-                        break acc.clone();
                     }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn unify_callable_generics(
@@ -24845,7 +24987,25 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
     }
 }
 
-#[derive(Clone)]
+pub fn type_node_is_uninformed_accumulator(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((unify_binding_is_uninformative(n.clone())
+        || produced_is_unsolved_generic_at_conformance(n.clone(), source_indices.clone()))
+        || is_type_variable_name(type_node_label(n.clone(), source_indices.clone())))
+}
+
+pub fn node_is_list_concat_operand(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
+        || ((n.connective.clone() == Connective::Disj)
+            && formal_type_is_container_name(n.clone(), source_indices.clone())))
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConcatUnify {
     pub result: Rc<Node>,
     pub refuse: Option<String>,
@@ -24855,72 +25015,29 @@ pub fn concat_operand_is_informed_list(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    node_is_list_concat_operand(n.clone(), source_indices) && !unify_binding_is_uninformative(n)
-}
-
-pub fn list_element_type_node(n: Rc<Node>) -> std::option::Option<Rc<Node>> {
-    n.children
-        .clone()
-        .first()
-        .cloned()
-        .map(crate::v1_compiler_infer_types::child_type_node)
-}
-
-pub fn list_element_ctor_name(el: Rc<Node>) -> String {
-    if !el.name.is_empty() {
-        el.name.clone()
-    } else {
-        crate::v1_compiler_infer_types::child_type_node(el).name.clone()
-    }
-}
-
-pub fn list_concat_elements_agree(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match (list_element_type_node(left.clone()), list_element_type_node(right.clone())) {
-        (Some(le), Some(re)) => {
-            let peeled_eq = type_node_label(le.clone(), source_indices.clone())
-                == type_node_label(re.clone(), source_indices.clone())
-                && ((le.children.clone().len() as i64) == (re.children.clone().len() as i64))
-                && (le.connective.clone() == re.connective.clone());
-            if !peeled_eq {
-                false
-            } else if type_node_label(le, source_indices.clone()) != "String" {
-                true
-            } else {
-                match (
-                    left.children.clone().first().cloned(),
-                    right.children.clone().first().cloned(),
-                ) {
-                    (Some(lraw), Some(rraw)) => {
-                        is_where_refinement_type(lraw.clone()) == is_where_refinement_type(rraw.clone())
-                            && list_element_ctor_name(lraw) == list_element_ctor_name(rraw)
-                    }
-                    _ => false,
-                }
-            }
-        }
-        _ => false,
-    }
+    (node_is_list_concat_operand(n.clone(), source_indices.clone())
+        && !unify_binding_is_uninformative(n.clone()))
 }
 
 pub fn list_element_is_kernel_string(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if !node_is_list_concat_operand(n.clone(), source_indices.clone()) {
-        return false;
-    }
-    match n.children.clone().first().cloned() {
-        Some(el) => {
-            let elem = crate::v1_compiler_infer_types::child_type_node(el);
-            type_node_label(elem.clone(), source_indices) == "String".to_string()
-                && ((elem.children.clone().len() as i64) == 0)
-        }
-        std::option::Option::None => false,
-    }
+    (node_is_list_concat_operand(n.clone(), source_indices.clone())
+        && match n.children.clone().first().cloned() {
+            Some(el) => {
+                ((type_node_label(
+                    crate::v1_compiler_infer_types::child_type_node(el.clone()),
+                    source_indices.clone(),
+                ) == "String".to_string())
+                    && ((crate::v1_compiler_infer_types::child_type_node(el.clone())
+                        .children
+                        .clone()
+                        .len() as i64)
+                        == 0))
+            }
+            std::option::Option::None => false,
+        })
 }
 
 pub fn list_branch_meets_expected_list(
@@ -24929,37 +25046,100 @@ pub fn list_branch_meets_expected_list(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
-    type_node_is_uninformed_accumulator(branch.clone(), source_indices.clone())
+    (type_node_is_uninformed_accumulator(branch.clone(), source_indices.clone())
         || (crate::v1_compiler_infer_types::node_type_compatible(
             branch.clone(),
             expected.clone(),
             source_indices.clone(),
-            text,
-        ) && list_concat_elements_agree(branch, expected, source_indices))
+            text.clone(),
+        ) && list_concat_elements_agree(
+            branch.clone(),
+            expected.clone(),
+            source_indices.clone(),
+        )))
+}
+
+pub fn list_element_type_node(n: Rc<Node>) -> Option<Rc<Node>> {
+    match n.children.clone().first().cloned() {
+        Some(el) => Some(crate::v1_compiler_infer_types::child_type_node(el.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn list_element_ctor_name(el: Rc<Node>) -> String {
+    if (el.name.clone() != "".to_string()) {
+        el.name.clone()
+    } else {
+        crate::v1_compiler_infer_types::child_type_node(el.clone())
+            .name
+            .clone()
+    }
+}
+
+pub fn list_concat_elements_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match list_element_type_node(left.clone()) {
+        std::option::Option::None => false,
+        Some(le) => match list_element_type_node(right.clone()) {
+            std::option::Option::None => false,
+            Some(re) => {
+                let peeled_eq = (((type_node_label(le.clone(), source_indices.clone())
+                    == type_node_label(re.clone(), source_indices.clone()))
+                    && ((le.children.clone().len() as i64) == (re.children.clone().len() as i64)))
+                    && (le.connective.clone() == re.connective.clone()));
+                if !peeled_eq.clone() {
+                    false
+                } else {
+                    if (type_node_label(le.clone(), source_indices.clone()) != "String".to_string())
+                    {
+                        true
+                    } else {
+                        match left.children.clone().first().cloned() {
+                            std::option::Option::None => false,
+                            Some(lraw) => match right.children.clone().first().cloned() {
+                                std::option::Option::None => false,
+                                Some(rraw) => {
+                                    ((is_where_refinement_type(lraw.clone())
+                                        == is_where_refinement_type(rraw.clone()))
+                                        && (list_element_ctor_name(lraw.clone())
+                                            == list_element_ctor_name(rraw.clone())))
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        },
+    }
 }
 
 pub fn concat_operand_is_open_generic(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let name = type_node_label(n.clone(), source_indices.clone());
-    is_type_variable_name(name.clone())
-        || produced_is_unsolved_generic_at_conformance(n.clone(), source_indices)
-        || (name.clone() == "A".to_string())
-        || (name.clone() == "R".to_string())
-        || matches!(
-            n.inferred.clone().as_deref().cloned(),
-            Some(InferredNode::TypeVariable { .. })
-        )
+    {
+        let name = type_node_label(n.clone(), source_indices.clone());
+        ((((is_type_variable_name(name.clone())
+            || produced_is_unsolved_generic_at_conformance(n.clone(), source_indices.clone()))
+            || (name.clone() == "A".to_string()))
+            || (name.clone() == "R".to_string()))
+            || match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            })
+    }
 }
 
 pub fn concat_operand_is_bare_unsolved(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (type_node_is_uninformed_accumulator(n.clone(), source_indices.clone())
+    ((type_node_is_uninformed_accumulator(n.clone(), source_indices.clone())
         || concat_operand_is_open_generic(n.clone(), source_indices.clone()))
-        && !node_is_list_concat_operand(n, source_indices)
+        && !node_is_list_concat_operand(n.clone(), source_indices.clone()))
 }
 
 pub fn concat_unify_operands(
@@ -24967,77 +25147,106 @@ pub fn concat_unify_operands(
     right: Rc<Node>,
     fallback: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> ConcatUnify {
-    let left_unsolved = concat_operand_is_bare_unsolved(left.clone(), source_indices.clone())
-        || (type_node_is_uninformed_accumulator(left.clone(), source_indices.clone())
-            && !concat_operand_is_informed_list(left.clone(), source_indices.clone()));
-    let right_unsolved = concat_operand_is_bare_unsolved(right.clone(), source_indices.clone())
-        || (type_node_is_uninformed_accumulator(right.clone(), source_indices.clone())
-            && !concat_operand_is_informed_list(right.clone(), source_indices.clone()));
-    let left_list = concat_operand_is_informed_list(left.clone(), source_indices.clone());
-    let right_list = concat_operand_is_informed_list(right.clone(), source_indices.clone());
-    if left_unsolved && right_list {
-        ConcatUnify {
-            result: right,
-            refuse: None,
-        }
-    } else if right_unsolved && left_list {
-        ConcatUnify {
-            result: left,
-            refuse: None,
-        }
-    } else if left_list && right_list {
-        if list_concat_elements_agree(left.clone(), right.clone(), source_indices.clone()) {
-            ConcatUnify {
-                result: left,
-                refuse: None,
-            }
-        } else if list_element_is_kernel_string(left.clone(), source_indices.clone())
-            && list_element_is_kernel_string(right.clone(), source_indices.clone())
-        {
-            ConcatUnify {
-                result: crate::v1_std_core::error_type(),
-                refuse: Some(v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "concat operands have incompatible element types: ".to_string(),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                left,
-                                source_indices.clone(),
-                            ),
-                        ),
-                        " vs ".to_string(),
-                    ),
-                    crate::v1_compiler_infer_types::node_type_shape(right, source_indices),
-                )),
-            }
+) -> Rc<ConcatUnify> {
+    {
+        let left_unsolved = (concat_operand_is_bare_unsolved(left.clone(), source_indices.clone())
+            || (type_node_is_uninformed_accumulator(left.clone(), source_indices.clone())
+                && !concat_operand_is_informed_list(left.clone(), source_indices.clone())));
+        let right_unsolved =
+            (concat_operand_is_bare_unsolved(right.clone(), source_indices.clone())
+                || (type_node_is_uninformed_accumulator(right.clone(), source_indices.clone())
+                    && !concat_operand_is_informed_list(right.clone(), source_indices.clone())));
+        let left_list = concat_operand_is_informed_list(left.clone(), source_indices.clone());
+        let right_list = concat_operand_is_informed_list(right.clone(), source_indices.clone());
+        if (left_unsolved.clone() && right_list.clone()) {
+            Rc::new(ConcatUnify {
+                result: right.clone(),
+                refuse: std::option::Option::None,
+            })
         } else {
-            ConcatUnify {
-                result: left,
-                refuse: None,
+            if (right_unsolved.clone() && left_list.clone()) {
+                Rc::new(ConcatUnify {
+                    result: left.clone(),
+                    refuse: std::option::Option::None,
+                })
+            } else {
+                if (left_list.clone() && right_list.clone()) {
+                    if list_concat_elements_agree(
+                        left.clone(),
+                        right.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Rc::new(ConcatUnify {
+                            result: left.clone(),
+                            refuse: std::option::Option::None,
+                        })
+                    } else {
+                        if (list_element_is_kernel_string(left.clone(), source_indices.clone())
+                            && list_element_is_kernel_string(right.clone(), source_indices.clone()))
+                        {
+                            Rc::new(ConcatUnify {
+                                result: error_type(),
+                                refuse: Some(v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "concat operands have incompatible element types: "
+                                                .to_string(),
+                                            crate::v1_compiler_infer_types::node_type_shape(
+                                                left.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        ),
+                                        " vs ".to_string(),
+                                    ),
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                )),
+                            })
+                        } else {
+                            Rc::new(ConcatUnify {
+                                result: left.clone(),
+                                refuse: std::option::Option::None,
+                            })
+                        }
+                    }
+                } else {
+                    if (left_unsolved.clone() && right_unsolved.clone()) {
+                        if concat_operand_is_open_generic(left.clone(), source_indices.clone()) {
+                            Rc::new(ConcatUnify {
+                                result: left.clone(),
+                                refuse: std::option::Option::None,
+                            })
+                        } else {
+                            if concat_operand_is_open_generic(right.clone(), source_indices.clone())
+                            {
+                                Rc::new(ConcatUnify {
+                                    result: right.clone(),
+                                    refuse: std::option::Option::None,
+                                })
+                            } else {
+                                Rc::new(ConcatUnify {
+                                    result: error_type(),
+                                    refuse: Some("cannot infer concat operands".to_string()),
+                                })
+                            }
+                        }
+                    } else {
+                        if (left_unsolved.clone() || right_unsolved.clone()) {
+                            Rc::new(ConcatUnify {
+                                result: fallback.clone(),
+                                refuse: std::option::Option::None,
+                            })
+                        } else {
+                            Rc::new(ConcatUnify {
+                                result: fallback.clone(),
+                                refuse: std::option::Option::None,
+                            })
+                        }
+                    }
+                }
             }
-        }
-    } else if left_unsolved && right_unsolved {
-        if concat_operand_is_open_generic(left.clone(), source_indices.clone()) {
-            ConcatUnify {
-                result: left,
-                refuse: None,
-            }
-        } else if concat_operand_is_open_generic(right.clone(), source_indices.clone()) {
-            ConcatUnify {
-                result: right,
-                refuse: None,
-            }
-        } else {
-            ConcatUnify {
-                result: crate::v1_std_core::error_type(),
-                refuse: Some("cannot infer concat operands".to_string()),
-            }
-        }
-    } else {
-        ConcatUnify {
-            result: fallback,
-            refuse: None,
         }
     }
 }
@@ -25049,30 +25258,13 @@ pub fn list_concat_result_from_other_value(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     concat_unify_operands(
-        left,
-        crate::v1_compiler_infer_types::resolved_type(other_value),
-        fallback,
-        source_indices,
+        left.clone(),
+        crate::v1_compiler_infer_types::resolved_type(other_value.clone()),
+        fallback.clone(),
+        source_indices.clone(),
     )
     .result
-}
-
-pub fn type_node_is_uninformed_accumulator(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    unify_binding_is_uninformative(n.clone())
-        || produced_is_unsolved_generic_at_conformance(n.clone(), source_indices.clone())
-        || is_type_variable_name(type_node_label(n.clone(), source_indices.clone()))
-}
-
-pub fn node_is_list_concat_operand(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
-        || (n.connective.clone() == Connective::Disj
-            && formal_type_is_container_name(n.clone(), source_indices.clone()))
+    .clone()
 }
 
 pub fn informative_list_concat_result(
@@ -25081,7 +25273,14 @@ pub fn informative_list_concat_result(
     fallback: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    concat_unify_operands(left, right, fallback, source_indices).result
+    concat_unify_operands(
+        left.clone(),
+        right.clone(),
+        fallback.clone(),
+        source_indices.clone(),
+    )
+    .result
+    .clone()
 }
 
 pub fn should_unify_record_lit_generics(

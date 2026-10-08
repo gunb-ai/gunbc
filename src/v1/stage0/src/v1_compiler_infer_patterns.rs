@@ -1140,7 +1140,7 @@ pub fn render_constructor_witness(
         .cloned()
         .fold(
             Rc::new(vec![]),
-            |acc: _, pair: (i64, Rc<ConstructorField>)| match cells
+            |acc: Rc<Vec<String>>, pair: (i64, Rc<ConstructorField>)| match cells
                 .clone()
                 .iter()
                 .cloned()
