@@ -1111,28 +1111,13 @@ fn collect_chain_lookup_index_seen(
                     }
                 },
             );
-            let one_hop = env.parents.iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                |acc, parent| last_wins_merge_bindings(acc, parent.str_bindings.clone()),
-            );
-            let with_one_hop = last_wins_merge_bindings(parent_st.acc, one_hop);
-            let with_local = last_wins_merge_bindings(with_one_hop, env.str_bindings.clone());
+            let with_local = last_wins_merge_bindings(parent_st.acc, env.str_bindings.clone());
             ChainIndexMemo {
                 acc: with_local.clone(),
                 memo: v1_rt::rc_map_insert(parent_st.memo, env.module_path.clone(), with_local),
             }
         }
     }
-}
-
-fn last_wins_parent_locals(parents: &Rc<Vec<Rc<TypeEnv>>>, name: &str) -> Option<Rc<TypeBinding>> {
-    parents.iter().cloned().fold(
-        std::option::Option::None,
-        |acc, parent| match v1_rt::map_get(&parent.str_bindings, name.to_string()) {
-            Some(binding) => Some(binding.clone()),
-            std::option::Option::None => acc,
-        },
-    )
 }
 
 fn lookup_binding_on_chain_seen(
@@ -1154,35 +1139,29 @@ fn lookup_binding_on_chain_seen(
                 },
                 std::option::Option::None => {
                     if env.ancestry_str_bindings.is_empty() {
-                        match last_wins_parent_locals(&env.parents, &name) {
-                            Some(binding) => ChainBindingWalk {
-                                binding: Some(binding),
-                                seen,
+                        env.parents.iter().cloned().fold(
+                            ChainBindingWalk {
+                                binding: std::option::Option::None,
+                                seen: seen.clone(),
                             },
-                            std::option::Option::None => env.parents.iter().cloned().fold(
-                                ChainBindingWalk {
-                                    binding: std::option::Option::None,
-                                    seen: seen.clone(),
-                                },
-                                |st, parent| {
-                                    let nxt = lookup_binding_on_chain_seen(
-                                        parent,
-                                        name.clone(),
-                                        seen.clone(),
-                                    );
-                                    match nxt.binding {
-                                        Some(binding) => ChainBindingWalk {
-                                            binding: Some(binding),
-                                            seen: seen.clone(),
-                                        },
-                                        std::option::Option::None => ChainBindingWalk {
-                                            binding: st.binding,
-                                            seen: seen.clone(),
-                                        },
-                                    }
-                                },
-                            ),
-                        }
+                            |st, parent| {
+                                let nxt = lookup_binding_on_chain_seen(
+                                    parent,
+                                    name.clone(),
+                                    seen.clone(),
+                                );
+                                match nxt.binding {
+                                    Some(binding) => ChainBindingWalk {
+                                        binding: Some(binding),
+                                        seen: seen.clone(),
+                                    },
+                                    std::option::Option::None => ChainBindingWalk {
+                                        binding: st.binding,
+                                        seen: seen.clone(),
+                                    },
+                                }
+                            },
+                        )
                     } else {
                         match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
                             Some(binding) => ChainBindingWalk {

@@ -4559,11 +4559,10 @@ mod fixture_closure_union_tests {
         assert_ne!(looked_field, first_field);
     }
 
-    /// Direct-selected export of an earlier import beats a homonym leaked through a later
-    /// import's ancestry (#6663 x #6686). Full last-wins flatten of the parent chain would
-    /// take the leak.
+    /// Empty-ancestry walk last-wins like the flatten (later parent's full chain, including
+    /// a transitive leak). Required-ci refused when direct-export-over-leak split String.
     #[test]
-    fn earlier_direct_export_beats_later_transitive_leak() {
+    fn empty_ancestry_walk_last_wins_like_flatten_including_later_leak() {
         let a = Rc::new(v1_compiler_compile::SourceFile {
             path: "chain_a.dag".to_string(),
             content: "module chain.a\ntype Foo = { a: Int }\n".to_string(),
@@ -4578,13 +4577,13 @@ mod fixture_closure_union_tests {
         });
         let user = Rc::new(v1_compiler_compile::SourceFile {
             path: "chain_user.dag".to_string(),
-            content: "module chain.user\nimport chain.a { Foo }\nimport chain.b { Bar }\nfn use_foo(x: Foo) -> Int { x.a }\n".to_string(),
+            content: "module chain.user\nimport chain.a { Foo }\nimport chain.b { Bar }\nfn use_foo(x: Foo) -> Int { x.c }\n".to_string(),
         });
         let resolved =
             v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![a, c, b, user]));
         assert!(
             resolved.diagnostics.is_empty(),
-            "direct-over-leak must typecheck: {:?}",
+            "flatten-equivalent last-wins must typecheck: {:?}",
             resolved.diagnostics
         );
         let graph = resolved.graph.clone().expect("resolved graph");
@@ -4606,18 +4605,15 @@ mod fixture_closure_union_tests {
             .map(|ch| ch.name.as_str())
             .expect("Foo field");
         assert_eq!(
-            field, "a",
-            "later leak through chain.b must not beat chain.a's Foo"
+            field, "c",
+            "walk must last-wins the later leak, as flatten does"
         );
         let leak_flatten = flatten_parent_chain(&user_mod.type_env, true);
         let leak_field = leak_flatten
             .get("Foo")
             .and_then(|b| b.resolved.children.iter().next().map(|ch| ch.name.as_str()))
             .expect("flatten Foo");
-        assert_eq!(
-            leak_field, "c",
-            "full last-wins flatten must be the leak (control that the overlay is doing work)"
-        );
+        assert_eq!(leak_field, field);
     }
 
     /// A diamond visited under an earlier parent must still last-wins under a later

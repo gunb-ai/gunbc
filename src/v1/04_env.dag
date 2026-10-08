@@ -669,21 +669,14 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 }
 
 // v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing).
-// SEMANTICS CHANGE, declared: production TypeEnvs now carry an empty ancestry overlay, so
-// bare-name lookup walks the parent Rc chain instead of reading a flattened last-wins map.
-// That flatten treated a later import's transitive leak as overlaying an earlier import's
-// own export; construction is local names, then last-wins of each direct import's own
-// str_bindings, then last-wins of the remaining chain (#6663 x #6686). Homonyms that the
-// overlay would have taken from a leak now resolve to the earlier export. Admitted because
-// the retained overlay is the required-floor Strict-prep pin (v2 self-host lane), not seed
-// growth. The class stays UNFIXED until prepared-subject-warm high is 0
-// (required_floor_strict_prep_sits_on_memory_high). A non-empty ancestry_str_bindings is
-// still a COMPLETE overlay (miss does not walk). Sibling parent walks do not share `seen`:
-// a diamond re-entered under a later parent still last-wins in that parent's order, matching
-// collect_chain_lookup_index_seen. `seen` only closes a cycle through the current module.
-// LOOKUP VS RETAINED INDEX (DESIGN 6b): the shared-state LCA of bare-name resolutions on
-// one module is that module's TypeEnv. The fork ledger builds a one-pass chain index and
-// drops it with the union.
+// Production TypeEnvs carry an empty ancestry overlay; a miss walks the parent Rc chain
+// with the SAME last-wins order the flatten used (later parent full chain overlays
+// earlier, including transitives). That is not a homonym-precedence change: required-ci
+// on the floor control refused when direct-export-over-leak made host String and
+// FreeMonoid<Char> String diverge in one `if`. The pin cut is not retaining the overlay.
+// A non-empty ancestry_str_bindings is still a COMPLETE overlay (miss does not walk).
+// Sibling parent walks do not share `seen`. The class stays UNFIXED until
+// prepared-subject-warm high is 0 (required_floor_strict_prep_sits_on_memory_high).
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map()).binding
 }
@@ -705,22 +698,9 @@ fn collect_chain_lookup_index_seen(env: TypeEnv, memo: Map<String, Map<String, T
         let nxt = collect_chain_lookup_index_seen(env: parent, memo: st.memo)
         ChainIndexMemo { acc: last_wins_merge_bindings(base: st.acc, overlay: nxt.acc), memo: nxt.memo }
       )
-      let one_hop = fold(env.parents, init: empty_map(), f: (acc, parent) =>
-        last_wins_merge_bindings(base: acc, overlay: parent.str_bindings)
-      )
-      let with_one_hop = last_wins_merge_bindings(base: parent_st.acc, overlay: one_hop)
-      let with_local = last_wins_merge_bindings(base: with_one_hop, overlay: env.str_bindings)
+      let with_local = last_wins_merge_bindings(base: parent_st.acc, overlay: env.str_bindings)
       ChainIndexMemo { acc: with_local, memo: map_insert(parent_st.memo, env.module_path, with_local) }
   }
-}
-
-fn last_wins_parent_locals(parents: List<TypeEnv>, name: String) -> TypeBinding? {
-  fold(parents, init: none, f: (acc, parent) =>
-    match map_get(parent.str_bindings, name) {
-      Present { value: binding } => Present { value: binding }
-      Absent => acc
-    }
-  )
 }
 
 fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bool>) -> ChainBindingWalk {
@@ -732,17 +712,13 @@ fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bo
         Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
         Absent =>
           if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
-            match last_wins_parent_locals(parents: env.parents, name: name) {
-              Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
-              Absent =>
-                fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen }, f: (st, parent) =>
-                  let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: seen)
-                  match nxt.binding {
-                    Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
-                    Absent => ChainBindingWalk { binding: st.binding, seen: seen }
-                  }
-                )
-            }
+            fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen }, f: (st, parent) =>
+              let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: seen)
+              match nxt.binding {
+                Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
+                Absent => ChainBindingWalk { binding: st.binding, seen: seen }
+              }
+            )
           } else {
             match map_get(env.ancestry_str_bindings, name) {
               Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
