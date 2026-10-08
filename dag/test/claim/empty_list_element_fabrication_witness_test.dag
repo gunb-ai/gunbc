@@ -43,12 +43,12 @@ test fn a_typed_branch_beside_an_empty_one_still_resolves() -> Bool {
 }
 
 // EVAL CONTROL for gunbc.recurring_failure_mode empty_list_evaluates_to_unit.
-// fold(init: [] as List<T>, concat(acc, [x])) must inhabit T at runtime, not Unit.
-// The empty init must stay ExprListLit so eval_expr_inner takes that arm ([]).
-// Dropping ExprListLit routes the collection through NoExprData, which TypeErrors
-// ("type node used as a value (empty list must remain ExprListLit)") and this
-// field read never sees EmptyListEvalFile. Non-collection NoExprData is still Unit;
-// there is no Unit-as-empty arm left to delete (review 77868 / 77899).
+// Discriminates the silent-wrongness class: concat from [] as List<T> must yield a T
+// record, not Unit. Reading .path would TypeError with "cannot access field 'path' on
+// Unit" if the empty init (or concat) fabricated Unit as an element — the generated-lane
+// specimen. This claim does not assert which eval_expr_inner arm ran (ExprListLit vs
+// NoExprData TypeError); a TypeError RED for the new refusal is not authorable as an
+// Accepted value claim without injecting typed IR (review 77955).
 type EmptyListEvalFile { path: String }
 
 data empty_list_eval_seed: List<EmptyListEvalFile> = [EmptyListEvalFile { path: "a" }]
