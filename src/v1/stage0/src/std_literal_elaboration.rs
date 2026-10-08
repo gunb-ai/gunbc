@@ -4,16 +4,16 @@
 use self::KernelGroundingLookup::*;
 use self::KernelMintDeclarationLookup::*;
 use self::KernelMintOwnership::*;
+use self::KernelNamedImportStanding::*;
 use self::LiteralElaborationOutcome::*;
 use self::LiteralElaborationRefusal::*;
 use self::LiteralHomomorphismLookup::*;
 use self::LiteralSourceKind::*;
 use self::LiteralUnfolding::*;
-pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
-pub use crate::std_types::range;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -266,12 +266,6 @@ pub fn elaborate_literal_at(
 pub struct KernelGrounding {
     pub source_kind: LiteralSourceKind,
     pub carrier: Rc<DeclarationRef>,
-    pub min: Option<i64>,
-    pub max: Option<i64>,
-}
-
-pub fn kernel_grounding_admits(row: Rc<KernelGrounding>, value: i64) -> bool {
-    crate::std_types::range(value.clone(), row.min.clone(), row.max.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -423,6 +417,48 @@ pub fn kernel_mint_ownership(
             Rc::new(KernelMintOwnership::KernelMintOwnershipAmbiguous {
                 row_count: n.clone(),
             })
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum KernelNamedImportStanding {
+    KernelNamedImportAdmitted,
+    KernelNamedImportCollides { kernel_declaration_module: String },
+    KernelNamedImportMintAmbiguous { row_count: i64 },
+}
+
+pub fn kernel_named_import_standing(
+    imported_name: String,
+    import_path: String,
+    module_declares_type: bool,
+    rows: Rc<Vec<Rc<KernelMintDeclaration>>>,
+) -> Rc<KernelNamedImportStanding> {
+    if (module_declares_type.clone() == false) {
+        Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
+    } else {
+        match (*kernel_mint_declaration_for(rows.clone(), imported_name.clone())).clone() {
+            KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+                if crate::std_decl_ref::declaration_ref_eq(
+                    d.clone(),
+                    crate::std_decl_ref::decl_ref(import_path.clone(), imported_name.clone()),
+                ) {
+                    Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
+                } else {
+                    Rc::new(KernelNamedImportStanding::KernelNamedImportCollides {
+                        kernel_declaration_module: d.module_path.clone(),
+                    })
+                }
+            }
+            KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
+                Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
+            }
+            KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
+                row_count: n, ..
+            } => Rc::new(KernelNamedImportStanding::KernelNamedImportMintAmbiguous {
+                row_count: n.clone(),
+            }),
         }
     }
 }
