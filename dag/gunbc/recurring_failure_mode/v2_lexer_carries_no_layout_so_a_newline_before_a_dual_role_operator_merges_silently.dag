@@ -19,8 +19,8 @@ data v2_lexer_carries_no_layout_so_a_newline_before_a_dual_role_operator_merges_
     DeclarationRef { module_path: "v2.test.parse.newline_dual_role_operator_parse", decl_name: "a_newline_minus_after_an_operand_refuses_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.parse.newline_dual_role_operator_parse", decl_name: "a_newline_minus_after_a_block_refuses_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.parse.newline_dual_role_operator_parse", decl_name: "a_same_line_minus_is_subtraction_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.parse.newline_dual_role_operator_mutation", decl_name: "witness_the_live_grammar_carries_the_newline_refusal", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.parse.newline_dual_role_operator_mutation", decl_name: "witness_without_the_refusal_a_next_line_minus_after_an_operand_merges_RED", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.parse.newline_dual_role_operator_mutation", decl_name: "witness_without_the_refusal_a_next_line_minus_after_a_block_merges_RED", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.parse_test_newline_dual_role_operator_mutation", decl_name: "witness_the_live_grammar_carries_the_newline_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.parse_test_newline_dual_role_operator_mutation", decl_name: "witness_without_the_refusal_a_next_line_minus_after_an_operand_merges_RED", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.parse_test_newline_dual_role_operator_mutation", decl_name: "witness_without_the_refusal_a_next_line_minus_after_a_block_merges_RED", field: WholeDeclaration },
   ],
 }

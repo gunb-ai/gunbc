@@ -32,12 +32,13 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 //   member names are read from the graph rather than restated in hand Rust. That retires
 //   gunbc.serve_liveness_seed_growth's hand-written document AT THIS DOOR; the seed's own
 //   branch keeps that row standing until the seed seam is cut over too.
+// - the per-request budget: each handler call runs on a worker the main stops waiting for at the
+//   contract's deadline, answering a typed 500 and serving on; workers that never return are
+//   bounded by a declared ceiling, past which the process refuses with a typed 503 and exits for its
+//   supervisor. The seed's budget holds the serial loop's evaluator; this one also keeps a stuck
+//   request from blocking every later one (native_serve_admission, native_serve_deadline_refused).
 //
 // WHAT THIS DOOR DOES NOT YET HAVE, DECLARED RATHER THAN SILENT:
-// - the evaluation budget: a compiled handler that does not return holds the serial loop, where the
-//   seed arms a CPU/wall deadline around each evaluation and answers a typed 500. That is the rung
-//   drop gunbc.rung_drop.native_serve_request_budget_unrealized, and the broker cut-over is gated
-//   on its restoration trigger;
 // - the unix-socket listener and its kernel-attested peer_user argument: TCP only. Declared
 //   frontier below.
 
@@ -55,6 +56,24 @@ data native_serve_head_limit: ByteSize = byte_size(count: 16384)
 data native_serve_body_limit: ByteSize = byte_size(count: 1048576)
 data native_serve_read_timeout: Millisecond = millisecond(count: 10000)
 
+// THE PER-REQUEST BUDGET: the capability gunbc.rung_drop.native_serve_request_budget_unrealized names as
+// its restoration trigger. That row retires when the native-serve instrument itself observes it
+// (see the row for what still blocks that run), not when this code exists. A compiled
+// handler has no evaluator to interrupt, so the rendered main runs each handler call on a worker and
+// stops waiting at this deadline; the request is then answered with native_serve_deadline_refused
+// and the loop serves on. The default is the seed's 30 s serve wall; a launch may narrow it with
+// --request-deadline-ms, parsed below like every other flag.
+data native_serve_request_deadline: Millisecond = millisecond(count: 30000)
+
+// A worker that missed its deadline cannot be killed in-process; it is abandoned and keeps its
+// thread until it returns. This ceiling bounds how many such workers one process will carry: at the
+// ceiling the next request is refused with native_serve_stuck_refused and the process exits with
+// native_serve_stuck_exit_code so its supervisor restarts it, rather than accumulating threads.
+data native_serve_stuck_worker_ceiling: Int = 4
+
+// EX_TEMPFAIL (sysexits.h 75): a temporary condition a restart is expected to clear.
+data native_serve_stuck_exit_code: Int = 75
+
 // The identity header is extdeps.tailscale.identity's fact (the header Tailscale Serve sets), read
 // from there rather than restated; Content-Length is RFC 9110 section 8.6's.
 data native_serve_content_length_header: String = "Content-Length"
@@ -69,6 +88,8 @@ type NativeServeContract {
   head_limit: ByteSize
   body_limit: ByteSize
   read_timeout: Millisecond
+  request_deadline: Millisecond
+  stuck_worker_ceiling: Int
 }
 
 // A refused start binds nothing: the main prints the reason and exits 2 before any listener exists,
@@ -80,18 +101,20 @@ type NativeServeStart
 // THE ARGV FOLD'S STATE IS A SUM, so "refused" and "still reading" cannot both hold, and a flag not
 // yet seen is Absent rather than an empty string standing for absence.
 type NativeServeArgs
-  = NativeServeArgsReading { host: String?, port: String?, release_revision: String? }
+  = NativeServeArgsReading { host: String?, port: String?, release_revision: String?, request_deadline: String? }
   | NativeServeArgsRefused { reason: String }
 
-data native_serve_args_empty: NativeServeArgs = NativeServeArgsReading { host: none, port: none, release_revision: none }
+data native_serve_args_empty: NativeServeArgs = NativeServeArgsReading { host: none, port: none, release_revision: none, request_deadline: none }
 
-fn native_serve_args_set(host: String?, port: String?, release_revision: String?, flag: String, value: String) -> NativeServeArgs {
+fn native_serve_args_set(host: String?, port: String?, release_revision: String?, request_deadline: String?, flag: String, value: String) -> NativeServeArgs {
   if flag == "--host" {
-    NativeServeArgsReading { host: value, port: port, release_revision: release_revision }
+    NativeServeArgsReading { host: value, port: port, release_revision: release_revision, request_deadline: request_deadline }
   } else if flag == "--port" {
-    NativeServeArgsReading { host: host, port: value, release_revision: release_revision }
+    NativeServeArgsReading { host: host, port: value, release_revision: release_revision, request_deadline: request_deadline }
   } else if flag == "--release-revision" {
-    NativeServeArgsReading { host: host, port: port, release_revision: value }
+    NativeServeArgsReading { host: host, port: port, release_revision: value, request_deadline: request_deadline }
+  } else if flag == "--request-deadline-ms" {
+    NativeServeArgsReading { host: host, port: port, release_revision: release_revision, request_deadline: value }
   } else {
     NativeServeArgsRefused { reason: concat("unknown flag ", flag) }
   }
@@ -100,28 +123,46 @@ fn native_serve_args_set(host: String?, port: String?, release_revision: String?
 fn native_serve_args_fold(argv: List<String>, acc: NativeServeArgs) -> NativeServeArgs {
   match acc {
     NativeServeArgsRefused { reason: _ } => acc
-    NativeServeArgsReading { host: host, port: port, release_revision: revision } =>
+    NativeServeArgsReading { host: host, port: port, release_revision: revision, request_deadline: deadline } =>
       match argv {
         Empty => acc
         Cons { head: flag, tail: rest } =>
           match rest {
             Empty => NativeServeArgsRefused { reason: concat("flag without a value: ", flag) }
             Cons { head: value, tail: more } =>
-              native_serve_args_fold(argv: more, acc: native_serve_args_set(host: host, port: port, release_revision: revision, flag: flag, value: value))
+              native_serve_args_fold(argv: more, acc: native_serve_args_set(host: host, port: port, release_revision: revision, request_deadline: deadline, flag: flag, value: value))
           }
       }
   }
 }
 
 fn native_serve_usage() -> String {
-  "usage: --host <addr> --port <0-65535> --release-revision <40 lowercase hex>"
+  "usage: --host <addr> --port <0-65535> --release-revision <40 lowercase hex> [--request-deadline-ms <positive integer>]"
 }
 
 fn native_serve_missing() -> NativeServeStart {
   NativeServeStartRefused { reason: concat("--host, --port and --release-revision are all required; ", native_serve_usage()) }
 }
 
-fn native_serve_start_with(host: String, port: String, revision: String) -> NativeServeStart {
+fn native_serve_deadline_of(text: String?) -> Millisecond? {
+  match text {
+    Absent => Present { value: native_serve_request_deadline }
+    Present { value: t } =>
+      match parse_int(s: t) {
+        Present { value: ms } => if ms > 0 { Present { value: millisecond(count: ms) } } else { none }
+        Absent => none
+      }
+  }
+}
+
+fn native_serve_start_with(host: String, port: String, revision: String, deadline_text: String?) -> NativeServeStart {
+  match native_serve_deadline_of(text: deadline_text) {
+    Absent => NativeServeStartRefused { reason: "--request-deadline-ms must be a positive integer" }
+    Present { value: deadline } => native_serve_start_checked(host: host, port: port, revision: revision, deadline: deadline)
+  }
+}
+
+fn native_serve_start_checked(host: String, port: String, revision: String, deadline: Millisecond) -> NativeServeStart {
   if !release_revision_text_valid(text: revision) {
     NativeServeStartRefused { reason: concat("--release-revision must be exactly 40 lowercase hex digits (a git object name); got [", concat(revision, "]")) }
   } else {
@@ -137,6 +178,8 @@ fn native_serve_start_with(host: String, port: String, revision: String) -> Nati
             head_limit: native_serve_head_limit,
             body_limit: native_serve_body_limit,
             read_timeout: native_serve_read_timeout,
+            request_deadline: deadline,
+            stuck_worker_ceiling: native_serve_stuck_worker_ceiling,
           } }
         }
       Absent => NativeServeStartRefused { reason: concat("--port is not an integer: ", port) }
@@ -147,7 +190,7 @@ fn native_serve_start_with(host: String, port: String, revision: String) -> Nati
 fn native_serve_start_from(a: NativeServeArgs) -> NativeServeStart {
   match a {
     NativeServeArgsRefused { reason: r } => NativeServeStartRefused { reason: concat(r, concat("; ", native_serve_usage())) }
-    NativeServeArgsReading { host: h, port: p, release_revision: r } =>
+    NativeServeArgsReading { host: h, port: p, release_revision: r, request_deadline: d } =>
       match h {
         Absent => native_serve_missing()
         Present { value: host } =>
@@ -156,7 +199,7 @@ fn native_serve_start_from(a: NativeServeArgs) -> NativeServeStart {
             Present { value: port } =>
               match r {
                 Absent => native_serve_missing()
-                Present { value: revision } => native_serve_start_with(host: host, port: port, revision: revision)
+                Present { value: revision } => native_serve_start_with(host: host, port: port, revision: revision, deadline_text: d)
               }
           }
       }
@@ -174,7 +217,9 @@ fn native_serve_announcement(c: NativeServeContract, bound_host: String, bound_p
     concat(" release_revision=", concat(c.release_revision as String,
       concat(" head_limit_bytes=", concat(to_string(value: byte_size_count(b: c.head_limit)),
         concat(" body_limit_bytes=", concat(to_string(value: byte_size_count(b: c.body_limit)),
-          concat(" read_timeout_ms=", to_string(value: millisecond_count(m: c.read_timeout)))))))))))))
+          concat(" read_timeout_ms=", concat(to_string(value: millisecond_count(m: c.read_timeout)),
+            concat(" request_deadline_ms=", concat(to_string(value: millisecond_count(m: c.request_deadline)),
+              concat(" stuck_worker_ceiling=", to_string(value: c.stuck_worker_ceiling))))))))))))))))
 }
 
 // ── FRAMING: THE HEAD THE MAIN READ, JUDGED HERE ─────────────────────────────────────────────
@@ -400,5 +445,51 @@ fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
       header_lines: r.headers |> map(h => native_serve_header_line(h: h)),
       body: r.body,
     }
+  }
+}
+
+// ── THE PER-REQUEST BUDGET, DECIDED HERE ──────────────────────────────────────────────────────
+// The rendered main asks native_serve_admission before handing a request to a worker, passing how
+// many earlier workers are still running past their deadline; it writes what this answers. It asks
+// native_serve_deadline_refused for the response when a worker misses the contract's deadline.
+type NativeServeAdmission
+  = NativeServeAdmitWorker
+  | NativeServeRefuseStuck { response: ServeWireResponse, exit_code: Int }
+
+fn native_serve_admission(contract: NativeServeContract, stuck_workers: Int) -> NativeServeAdmission {
+  if stuck_workers < contract.stuck_worker_ceiling {
+    NativeServeAdmitWorker
+  } else {
+    NativeServeRefuseStuck {
+      response: ServeWireResponse {
+        status: 503,
+        content_type_label: native_serve_text_plain,
+        body: concat("service unavailable: ", concat(to_string(value: stuck_workers), concat(" requests are still running past their deadline (ceiling ", concat(to_string(value: contract.stuck_worker_ceiling), "); this process exits for its supervisor to restart it\n")))),
+        headers: [],
+      },
+      exit_code: native_serve_stuck_exit_code,
+    }
+  }
+}
+
+// A WORKER THAT ENDS WITHOUT AN ANSWER -- the compiled handler panicked, so its result never reached
+// the loop -- is a handler failure, not a deadline: it is answered with this typed 500 and is never
+// counted as stuck, because nothing is still running. The rendered main runs the worker's cleanup
+// from a guard that also runs during a panic, so the stuck count stays exact either way.
+fn native_serve_handler_failed() -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: "the handler ended without an answer and was refused; nothing is left running for it\n",
+    headers: [],
+  }
+}
+
+fn native_serve_deadline_refused(contract: NativeServeContract) -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: concat("the request exceeded its ", concat(to_string(value: millisecond_count(m: contract.request_deadline)), " ms deadline and was refused; the handler did not return\n")),
+    headers: [],
   }
 }

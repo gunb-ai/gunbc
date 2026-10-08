@@ -1,5 +1,6 @@
 module std.orthogonal_topology
 
+import v2.std.algebra { length }
 import std.types { Bool, List }
 import std.integer { Int }
 import std.nat { Nat }
@@ -16,7 +17,7 @@ import std.checked_arithmetic {
   CheckedNat, CheckedNatReady, CheckedNatOverflow,
   checked_int_add, checked_int_subtract, checked_int_multiply, checked_int_magnitude,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.spatial_frame {
   SpatialFrameRegistry, FrameExtent, ExtentInFrame, ExtentFrameUnregistered,
   LengthProjected, LengthProjectionRefused, frame_length_as_millimeter,

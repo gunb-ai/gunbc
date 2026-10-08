@@ -10,7 +10,7 @@ import extdeps.uri { Https, Uri }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.types { Int, NonEmptyStr, String, List }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

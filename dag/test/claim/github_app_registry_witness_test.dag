@@ -21,6 +21,7 @@ import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
@@ -62,7 +63,8 @@ import gunbc.managed_host { ManagedHost, managed_hosts, managed_host_binding, Ma
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_argv }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_command }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotRefused, HostUnitSlotHostNotBound, host_unit_slot_for, host_unit_slot_listener_argv,
@@ -1375,7 +1377,10 @@ test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_ow
         (req.name.value as String) == (ephemeral_slot_unit(host: h.host, attempt: "q-1") as String)
           && req.runner_group_id.value == 3
           && runner_label_sets_equal(a: map(req.labels, l => l.value as String), b: ephemeral_slot_labels(host: h.host, attempt: "q-1"))
-          && u.argv == ephemeral_slot_argv(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv())
+          && match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
+               SystemdRunCommandReady { command: c } => u.argv == c
+               SystemdRunCommandRefused { cause: _ } => false
+             }
           && match u.runner.arch { ActionsRunnerLinuxArm64 => true _ => false }
       _ => false
     })

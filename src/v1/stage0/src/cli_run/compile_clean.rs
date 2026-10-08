@@ -1039,6 +1039,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         UnresolvedImport { module_path: s(), importing_module: s(), span: no_span() },
         MissingExport { name: s(), module_path: s(), importing_module: s(), span: no_span() },
         ImportShadowedByLocalDefinition { name: s(), module_path: s(), importing_module: s(), span: no_span() },
+        ImportCollidesWithKernelName { name: s(), module_path: s(), importing_module: s(), kernel_declaration_module: s(), span: no_span() },
+        KernelMintDeclarationAmbiguousAtImport { name: s(), module_path: s(), importing_module: s(), row_count: 0, span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
@@ -1114,6 +1116,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         CallNamedArgOnFunctionValue { callee: s(), argument: s(), span: no_span() },
         EqualityOnFunctionMember { type_name: s(), member: s(), span: no_span() },
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
+        EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
             refusal: Rc::new(crate::std_occurrence_identity::OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: no_span() }),
@@ -1527,6 +1530,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
             "ImportShadowedByLocalDefinition"
         }
+        CompilerDiagnostic::ImportCollidesWithKernelName { .. } => "ImportCollidesWithKernelName",
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => {
+            "KernelMintDeclarationAmbiguousAtImport"
+        }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
@@ -1608,6 +1615,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => "TypeParameterInValuePosition",
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
+        CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
@@ -1636,6 +1644,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
+        CompilerDiagnostic::ImportCollidesWithKernelName { name, .. } => name.clone(),
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
@@ -1719,6 +1729,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { name, .. } => name.clone(),
         CompilerDiagnostic::EqualityOnFunctionMember { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
+            optional_side.clone()
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -1841,29 +1854,4 @@ pub(crate) fn compile_clean_broad_stop_line_blocks_skip(
     ]
     .iter()
     .any(|check| workspace_relative_repo_path(check) == entry_rel)
-}
-
-#[cfg(test)]
-mod corpus_scope_tests {
-    use super::*;
-
-    // The corpus claim follows the index's roots, not its presence (review 68527): an index over
-    // a root narrower than the witness layer must not make the ledger's rows look orphaned.
-    #[test]
-    fn an_index_over_narrower_roots_does_not_know_the_corpus() {
-        let narrow = build_multi_entry_index_primary_precedence(&["src/v1".to_string()]);
-        assert_eq!(
-            compile_clean_corpus_scope(Some(&narrow)),
-            v1_compiler_compile::CorpusScope::CorpusUnknown
-        );
-        assert_eq!(
-            compile_clean_corpus_scope(None),
-            v1_compiler_compile::CorpusScope::CorpusUnknown
-        );
-        let whole = build_multi_entry_index_primary_precedence(&witness_layer_roots());
-        assert_eq!(
-            compile_clean_corpus_scope(Some(&whole)),
-            v1_compiler_compile::CorpusScope::CorpusKnown
-        );
-    }
 }

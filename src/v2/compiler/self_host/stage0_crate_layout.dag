@@ -62,6 +62,14 @@ type SeedRetainedSupportDirRegistration {
 // `--required-regen` reports as drifted -- so these declarations reach the built crate when the
 // seed is regenerated, not when this row merges.
 //
+// THE PREMISE ABOVE NO LONGER HOLDS (2026-10-04). No behavioral driver imports the seed any more:
+// the seed oracles were removed by gunbc#12316 and gunbc#12376, and gunbc#13185 deleted every
+// `self_host_*_shims/witness_main.rs` -- each roster row now names a .dag `contract_module` whose
+// driver is rendered beside the emitted subject. So the seed-import reason given for the nine
+// `has_pub_mod: true` flips is gone. Whether those rows are still needed for another reason is NOT
+// decided here: unflipping them is a two-generation change to the emitted lib.rs and owes its own
+// regenerated-seed receipt.
+//
 // ONE ROW DELETED (2026-08-20): `v1_compiler_expected_red_roster_join`. #8527 modelled that module
 // in `src/v1/expected_red_roster_join.dag` and deleted its hand-authored `.rs`, so it became
 // compiler-emitted -- but that commit RENAMED its registration row here (`expected_red_roster_join`

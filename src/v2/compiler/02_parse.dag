@@ -7,7 +7,7 @@ import v2.compiler.parse_diagnostic {
   parse_overlap_residue_stage_diagnostic_at,
   parse_stage_diagnostic_core
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -88,7 +88,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

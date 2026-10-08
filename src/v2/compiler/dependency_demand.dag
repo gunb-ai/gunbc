@@ -5,7 +5,7 @@ import v2.std.algebra { fold_list, length }
 import std.types { List }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 
 // DERIVED DEPENDENCY DEMAND (DESIGN D13; the carrier gunbc.rung_drop

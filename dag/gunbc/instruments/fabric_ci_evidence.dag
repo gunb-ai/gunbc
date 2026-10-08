@@ -2,7 +2,7 @@ module tools.fabric_ci_evidence
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_word_value }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }

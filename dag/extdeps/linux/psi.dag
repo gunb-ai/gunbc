@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
 import extdeps.linux.kernel { LinuxKernelRelease }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // Pressure Stall Information, Documentation/accounting/psi.rst. The interface first shipped in
 // Linux 4.20; the per-cgroup files (memory.pressure, io.pressure, cpu.pressure) in cgroup-v2 share

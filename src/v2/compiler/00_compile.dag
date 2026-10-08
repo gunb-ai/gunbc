@@ -64,6 +64,13 @@ import v2.std.demand_engine {
   DemandLeaseOffer,
   DemandNotAdmitted,
   DemandRefused,
+  DemandWaiting,
+  DemandReady,
+  DemandLeasePending,
+  DemandRunning,
+  DemandSuspended,
+  DemandCommitPending,
+  DemandBlocked,
   DemandState,
   DemandAdmission,
   demand_engine_completion_keys,
@@ -77,7 +84,7 @@ import v2.std.demand_engine {
   demand_identity_eq,
   demand_identity_key
 }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
 import v2.std.source_position { source_line_col_at_byte }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
@@ -239,7 +246,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
@@ -1338,6 +1345,13 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // COMPILE door's corpus invariants; the floor's seed-interpreter route does not run them per
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
+// THIS IS NOT A MISSING PER-MODULE ROOT-LENS WIRING. A CompileLensRoot registration runs once
+// at the compile subject's tree root, through that one door. native_test_infer_resolved is
+// the prepare half of NativeTest evaluation; it is not a compile subject. That mandatory_tag
+// therefore does not fire on every native-universe module is the layering, not a hole:
+// corpus coverage of modules that never enter the door lives on v2.lens.mandatory_tag's
+// parse-grain witness, and native compile-door coverage climbs when admitted subjects enter
+// validate_then_compile (gunbc.v2_compile_obligation_census native_door_entry_trigger).
 
 // The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
 // per ingest as admission inputs); a second copy here would be two authorities for one fact.
@@ -1855,6 +1869,17 @@ fn native_test_eval_body(
   }
 }
 
+fn native_test_eval_one_not_arrow(
+  prepared: NativeTestPreparedModule,
+  declaration: Symbol
+) -> NativeTestObservation {
+  native_test_entry_refused(
+    module: prepared.module,
+    declaration: declaration,
+    reason: ^native_test_entry_declaration_not_arrow
+  )
+}
+
 fn native_test_eval_one(
   prepared: NativeTestPreparedModule,
   declaration: Symbol
@@ -1896,12 +1921,12 @@ fn native_test_eval_one(
                     body: body
                   )
               }
-            _ =>
-              native_test_entry_refused(
-                module: prepared.module,
-                declaration: declaration,
-                reason: ^native_test_entry_declaration_not_arrow
-              )
+            TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Cardinality } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }
       }
   }

@@ -28,7 +28,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_entry_presence,
 }
 import extdeps.languages.json.emit {
-  serialize_json, json_object, json_kv, json_string, JsonValue,
+  serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
 }
 import extdeps.languages.json.parse {
   parse_json_document, json_field_string, json_document_gap_text,
@@ -104,7 +104,7 @@ fn authenticated_session_json(session: AuthenticatedSession) -> String {
 // THE OPTIONAL PICTURE MEMBER, emitted only when the login projected one: absence is the
 // member's ABSENCE on the wire, never an empty string standing in for none. The spelling is
 // the Uri wire form (https://… or http://…), the same claim the ID-token reader admitted.
-fn session_profile_picture_members(picture: Uri?) -> List<JsonValue> {
+fn session_profile_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
@@ -113,7 +113,7 @@ fn session_profile_picture_members(picture: Uri?) -> List<JsonValue> {
 
 // THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
 // never an empty string standing in for none.
-fn session_profile_name_members(name: String?) -> List<JsonValue> {
+fn session_profile_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
@@ -121,7 +121,7 @@ fn session_profile_name_members(name: String?) -> List<JsonValue> {
 }
 
 // THE OPTIONAL EMAIL MEMBER, the same law again.
-fn session_profile_email_members(email: Email?) -> List<JsonValue> {
+fn session_profile_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []

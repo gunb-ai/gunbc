@@ -3,7 +3,7 @@ module gunbc.spark.v41_runtime_image_converge
 import extdeps.crypto.hash { digest_shell_verify_line, sha256_digest }
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
