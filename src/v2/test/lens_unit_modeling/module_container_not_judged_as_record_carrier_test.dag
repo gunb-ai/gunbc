@@ -28,9 +28,9 @@ import v2.extdeps.languages.dag { dag_node_is_record_field_carrier }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// GREEN: a namespace Conj whose Authored member is a synthetic dag_surface_module — the exact
-// shape that used to refuse member_not_a_binder on the compile door before the carrier
-// predicate was narrowed. Door-grain mandatory_tag controls were blocked because these
+// GREEN: a namespace Conj whose Authored member is a synthetic dag_surface_module Atom.
+// The member is skipped because its TARGET is a module surface (atom identity), not because
+// the parent "looks like" a container. Door-grain mandatory_tag was blocked because these
 // subtree lenses ran first.
 data module_surface_atom: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^dag_surface_module } },

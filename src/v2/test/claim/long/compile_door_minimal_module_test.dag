@@ -1,0 +1,75 @@
+module v2.test.long.compile_door_minimal_module
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.compile { compile_source_root_ingest_with_admission }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject
+}
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
+import v2.extdeps.languages.dag { dag_target_model }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Door-grain inhabitance that a minimal extdeps module is ADMITTED past the whole required
+// lens roster (and translation) of compile_source_root_ingest_with_admission. This is the
+// executing proof that member_not_a_binder no longer fires on a module surface before
+// CompileLensRoot lenses such as mandatory_tag. It unblocks
+// gunbc.guarantee_stall member_kind_door_binding_executed_by_no_claim_stall (#13513).
+//
+// LONG-LANE: interpreted tokenize/parse/normalize/resolve/infer/lens/emit of even this
+// one-function module rebuilds the dag language model in the claim's evaluation frame, the
+// same class as v2.test.long.mandatory_tag_gate_witness (~5s+ per witness, over the 72300
+// new-witness eval-step budget). Discovery excludes test/claim/long/ at dir grain
+// (gunbc.ci_layer_roots long_lane_exclusion_note). Recipe: claim_batch --source-root dag
+// --source-root src/v2 --entry src/v2/test/claim/long/compile_door_minimal_module_test.dag
+// --functions a_minimal_extdeps_module_is_admitted_past_the_compile_door_roster --claim-run.
+
+data door_probe_source: String = "module extdeps.door_probe\n\nfn f() -> Int { 1 }\n"
+
+data door_probe_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^door_probe_artifact,
+  file_path: "src/v2/test/fixture/extdeps_door_probe.dag"
+}
+
+fn door_probe_ingest() -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: door_probe_source, fidelity: Lossless },
+      artifact: door_probe_artifact,
+      compilation_unit: ^door_probe_cu,
+      source_root: DagTree
+    },
+    tail: Empty
+  }
+}
+
+fn door_probe_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^extdeps, tail: Cons { head: ^door_probe, tail: Empty } }
+    },
+    imports: Empty
+  }
+}
+
+test fn a_minimal_extdeps_module_is_admitted_past_the_compile_door_roster() -> Bool {
+  match compile_source_root_ingest_with_admission(
+    ingest: door_probe_ingest(),
+    admission: door_probe_admission(),
+    target: dag_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -7610,10 +7610,10 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
-// A MODULE SURFACE, as opposed to a record or payload Conj: a dag_surface_module shell, a
-// graft-stamped module body, a header-carrying pre-graft module, or the synthetic Atom the
-// diagnosis names. Record-field lenses (unit_modeling, lifecycle_carrier) must not judge these
-// as carriers of binders; their Authored members are declarations or nested modules.
+// A MODULE SURFACE is identified by what the node IS, never by a guess from its children's
+// shapes: the parse/emit production identity dag_surface_module, the graft body's producer
+// stamp namespace_graft_module_body_identity, the dag_surface_module_header production edge,
+// or a synthetic Atom whose identity is dag_surface_module (the diagnosis's locus).
 fn dag_node_is_module_surface(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -7626,33 +7626,13 @@ fn dag_node_is_module_surface(node: Node) -> Bool {
   }
 }
 
-fn dag_authored_member_is_module_surface(e: Edge) -> Bool {
-  match e.label {
-    Authored { name: _ } => dag_node_is_module_surface(node: e.target)
-    StructuralLabel { label: _ } => false
-    Positional => false
-  }
-}
-
-fn dag_authored_members_include_module_surface(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      fold(node.children, init: false, f: fn(acc, e) {
-        acc || dag_authored_member_is_module_surface(e: e)
-      })
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-
 // THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
-// A payload Conj of binders is a carrier; a module shell, module body, or namespace Conj whose
-// Authored members are modules is not. Other connectives are not record payloads.
+// A Conj is a record-field carrier unless it IS a module surface (the facts above). Other
+// connectives are not record payloads. An Authored member whose TARGET is a module surface
+// is not a record field either — that is the member's kind, not a guess about the parent.
 fn dag_node_is_record_field_carrier(node: Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Conj } =>
-      !dag_node_is_module_surface(node: node)
-        && !dag_authored_members_include_module_surface(node: node)
+    TypeNode { connective: Conj } => !dag_node_is_module_surface(node: node)
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
   }
