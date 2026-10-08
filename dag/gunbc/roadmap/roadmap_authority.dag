@@ -2373,8 +2373,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: level_fields(
           headline: "Run programs through one demand engine, paying only for what changed",
-          boundary: "gunbc.plans.demand_engine_program milestones M1.b to M7 plus D13 (derived dependency demand and composition-root binding). Already landed: M0 (#11428), M1.a (#11447), D9 partition (Pkg7), M3a (#12401, inferred), D11/E2 (#12391), D12 (#11528). The plan is the design authority. These rows are its milestones as work.",
-          approach: "Serial replacement migrations in the plan's order. Each milestone lands with one production consumer switched and its displaced route deleted in the same change.",
+          boundary: "gunbc.plans.demand_engine_program milestones M1.b to M7, D13 (derived dependency demand and composition-root binding), and D15 (resumable native-memory outcomes). Already landed: M0 (#11428), M1.a (#11447), D9 partition (Pkg7), M3a (#12401, inferred), D11/E2 (#12391), D12 (#11528). The plan is the design authority. These rows are its milestones as work.",
+          approach: "Replacement migrations with one production consumer switched and its displaced route deleted in the same change. D15 memory work resumes one bounded slice at a time, without a calendar or continuous-staffing commitment; it follows its actual prerequisite edges rather than waiting for the whole M1-to-M5 sequence.",
           red_control: "A milestone that lands without deleting the route it replaces refuses in review, per the plan's own replacement-migration law. A cache without a derived identity is refused (§2, §6b).",
           displaced_cost: "Stage-wide folds recompute unchanged facts on every run, and hand-authored widths and schedulers sit where derived demand belongs.",
           handback: "The plan's own deletion condition: M7 exit holds and every milestone's deletions are census-verified."
@@ -2765,6 +2765,86 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The carrier landed with its refusals."
         ), on: "2026-09-30", note: "Not yet centered: carrier design.")),
       parent: in_project(project: "demand-engine", contribution: "D13 derives dependencies from bodies and binds them at the composition root, which native admission needs."),
+    ),
+    roadmap_node(
+      identity: "rn_TSN2XM9E9H3YT2STRR7XEN0RGX",
+      id: "native-memory-parse",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "Correct native parsing and delete the parse memo",
+          boundary: "D15 / R2. Deliver #13577 (Recompute) then #13582 (atomic parse-memo deletion, including seed hook, counters, carriers and provider row). Preserve backtracking provenance and the permanent colliding-grammar control. Compile-stage memo work is separate.",
+          displaced_cost: "The parse memo reuses abandoned-path occurrence ids, causing false census refusals and incorrect source spans; the supporting analysis records the dated comparison.",
+          first_slice: "Land #13577; in #13582 bind the expected source span to the selected terminal occurrence, then qualify the child on its final main-based head and land the deletion.",
+          red_control: "The selected terminal must resolve through its own occurrence id to its expected bytes; swapped terminal spans must fail while uniqueness and index coverage are retained. Old memo behavior makes the collision control fail.",
+          out_of_scope: "Compile-stage memo disposition, a worst-case parsing bound, and the unrelated remaining parse/lowering refusals.",
+          handback: "Both PRs landed, no parse-memo runtime/carrier/seed references, permanent regression control retained, and the native CLI logic.dag regression cleared. Stop here with the corrected parser; no envelope implementation is required to close this milestone."
+        ), on: "2026-10-08", note: "Review snapshot 2026-10-08: #13577 f0e5e776 is open, out of draft and CI-green; #13582 be39cab5 is draft and unmerged, with author-reported local checks and no PR CI yet. Review requests the terminal-specific span oracle and final-head CI. The red5 witness refusal also reproduced on the parent; its cause is unresolved.")),
+      parent: in_project(project: "demand-engine", contribution: "Closes R2 with a corrected parser and deletion, independently of later memory governance."),
+    ),
+    roadmap_node(
+      identity: "rn_SM07R1DFVFX2MCRZ7T8QQJ8APB",
+      id: "native-memory-envelope",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "Native invocations obey one memory grant",
+          boundary: "D15 / R5 and scoped R4/R3. Both emitted native mains resolve an observed or default ceiling, narrowable only. One allocator counter charges execution and retention, with a non-allocating wall, reserved refusal headroom, safe-point typed refusal and an OS backstop. Declare the governed process scope; spawned work cannot silently escape it.",
+          displaced_cost: "Native runs have no enforced shared execution/retention grant, so the host can kill work without a typed result.",
+          first_slice: "Select and record one exact native invocation, inputs, expected successful output, 1 GiB target, process scope and separate tiny-grant refusal case; implement the accounting/wall for its native main, then cover the other native main.",
+          red_control: "A planted insufficient grant yields a typed located refusal without partial stdout; a bypass or widening attempt fails. OOM, abort and timeout never count as a typed refusal. Measure allocator overhead and peak.",
+          out_of_scope: "Proving useful success at 1 GiB, a new CI job, and making M1.c or all scheduler migrations prerequisites.",
+          handback: "Both native-main routes account their declared process scopes under one grant, with refusal/adherence controls and overhead receipts. Record the selected workload and next retention cut, then pause. Useful completion has its own milestone."
+        ), on: "2026-10-08", note: "Planned, not started or dispatch-ready. No must-complete workload, person assignment or successful 1 GiB result is asserted. R11 is resolved only if CI placement changes; R9 applies when store and execution occupancy are combined.")),
+      parent: in_project(project: "demand-engine", contribution: "Establishes the resource contract that a useful governed run consumes."),
+    ),
+    roadmap_node(
+      identity: "rn_83H7W6AFH0KN06RSP0HDXXQESZ",
+      id: "native-memory-cli-retention",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "The native CLI releases unnecessary per-file state",
+          boundary: "D15 / R1. Keep the NamespaceOnlyY census total while replacing retained trees and the merged span index with the compact declaration/source-interval information real later consumers require. Preserve resolution, ordered diagnostics and provenance.",
+          displaced_cost: "The dated retention-off experiment attributes most of the sampled CLI peak to cross-file state; it is not a semantics-preserving implementation.",
+          first_slice: "Name the post-census consumers and their required declaration/span information; replace one retained population with its sufficient projection and run the same bounded native invocation before and after.",
+          red_control: "A missing required declaration, resolution fact or source location fails the semantic comparison; dropping an outer handle without releasing the backing allocation does not pass the memory receipt.",
+          out_of_scope: "Closure-only census, append-only spans without a monotone allocator, a disk tier and the unrelated v1 floor-memory task.",
+          handback: "One complete CLI retention cut lands with equal required results and an allocator receipt showing released backing storage. Record the remaining peak owner and next cut, then pause/re-estimate."
+        ), on: "2026-10-08", note: "Planned, not dispatch-ready. Historical 4.81-to-1.40 GiB retention-off readings are attribution only. This cut does not inherit the full demand-m1b-to-demand-m5 prerequisite chain.")),
+      parent: in_project(project: "demand-engine", contribution: "Makes the native CLI cheaper by removing dead state while preserving its total census contract."),
+    ),
+    roadmap_node(
+      identity: "rn_M9D4VKEEXT6P1CF4PSEA50VS5Y",
+      id: "native-memory-driver-retention",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "The native driver releases a payload after its real last reader",
+          boundary: "D15 / R1 and scoped reader-move exception. Carry the existing resolution context rather than recreating it. Distinguish settled metadata from resident payload; move all readers of the selected payload family into the dependency relation before last-consumer release, and make absent payload a typed fault.",
+          displaced_cost: "The driver drops reusable context and retains settled payloads for the whole run; another shared owner can keep backing storage alive after a handle is dropped.",
+          first_slice: "Choose one retained payload/context family, identify its real producer and every reader, and bind the closed reader relation before implementing and measuring its release.",
+          red_control: "An omitted reader or read of absent payload fails typed rather than silently changing results; a remaining shared owner prevents the reclaimability control from passing. Preserve full judgment and ordered driver results.",
+          out_of_scope: "Migrating every scheduler, deciding ready order by a memory shortcut, and requiring the whole M1.c cross-run protocol.",
+          handback: "One named native driver payload family has a closed reader relation, preserved results and measured backing-storage release. Record coverage and the next live retained population, then pause/re-estimate."
+        ), on: "2026-10-08", note: "Planned, not dispatch-ready. R6 share restoration, R7 ready order and R8 NativeTestContext derivation remain open only where this cut needs them. Stage0 regeneration is serialized with other edits, not represented as a semantic dependency.")),
+      parent: in_project(project: "demand-engine", contribution: "Uses the existing native-fold engine boundary to release one measured retained population safely."),
+    ),
+    roadmap_node(
+      identity: "rn_Q1V7QJRNECAAYSDB2XR49K33QR",
+      id: "native-memory-useful-run",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "One useful native workload completes within 1 GiB",
+          boundary: "D15 / practical R1. The exact workload selected with native-memory-envelope completes successfully within 1 GiB under the default policy, with in-run reuse and memory pressure. Execution and retained allocations share accounting; cache admission uses the existing ladder, with a census control against private caches and no module-local capacity tuning.",
+          displaced_cost: "Adhering to a grant by refusing every useful workload would leave the native route unusable.",
+          first_slice: "Run the selected workload under its recorded grant and semantic contract. If it does not fit, name the remaining retained or live population and add only the retention or legal spill/recompute prerequisite this run demonstrates.",
+          red_control: "The expected semantic result and successful exit are required; prompt typed refusal does not pass. A private cache or capacity bypass makes the census fail; forced miss/eviction where applicable preserves the result, and separate tiny-grant cases exercise typed refusal.",
+          out_of_scope: "Claiming every native workload fits 1 GiB, automatic spill of every internal value, or committing to the full tier/identity program.",
+          handback: "Publish the exact invocation/input/grant/output receipt, peak and accounting/census evidence for one successful governed run. State its coverage and remaining cost, then choose or park the next family. This is the first useful end-to-end stopping point."
+        ), on: "2026-10-08", note: "Planned, not dispatch-ready. Hard prerequisite: native-memory-envelope. The workload is not yet selected; neither CLI nor driver retention is a blanket prerequisite. Add the actual dependency after measurement. Advanced continuation triggers and R6-R12 stay in D15.")),
+      parent: in_project(project: "demand-engine", contribution: "Proves a complete useful outcome under the resource contract, with honest scope and a clear stopping point."),
     ),
     roadmap_node(
       identity: "rn_KQ7EP7P290B24W2FHFW9Y4K1F4",
@@ -4196,6 +4276,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "demand-m5", parent: "demand-m4"),
     edge(child: "demand-m6", parent: "demand-m5"),
     edge(child: "demand-m7", parent: "demand-m6"),
+    edge(child: "native-memory-useful-run", parent: "native-memory-envelope"),
     edge(child: "v1-checker-gaps", parent: "guarantee-baseline-prevalence"),
     edge(child: "serve-held-open-response", parent: "fabric-worker-event-log"),
   ], guarantee_ladder_edges())
