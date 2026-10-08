@@ -25,7 +25,7 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head, list_reverse, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, list_head, skip }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
@@ -491,23 +491,18 @@ type SourceRootArgumentAdmission
   = SourceRootArgumentAdmitted { tree: SourceRootRef }
   | SourceRootArgumentUnrecognized { argument: String }
 
-fn source_root_argument_trim(argument: String) -> String {
-  if argument.ends_with(suffix: "/") && (length(xs: argument) > 1) {
-    source_root_argument_trim(
-      argument: list_reverse(xs: skip(xs: list_reverse(xs: argument), n: 1))
-    )
-  } else if starts_with(s: argument, prefix: "./") {
-    source_root_argument_trim(argument: skip(xs: argument, n: 2))
-  } else {
-    argument
-  }
-}
-
 fn admit_source_root_argument(argument: String) -> SourceRootArgumentAdmission {
-  let a = source_root_argument_trim(argument: argument)
-  if (a == "src/v2") || a.ends_with(suffix: "/src/v2") {
+  if (argument == "src/v2")
+    || (argument == "./src/v2")
+    || (argument == "src/v2/")
+    || argument.ends_with(suffix: "/src/v2")
+    || argument.ends_with(suffix: "/src/v2/") {
     SourceRootArgumentAdmitted { tree: V2Tree }
-  } else if (a == "dag") || a.ends_with(suffix: "/dag") {
+  } else if (argument == "dag")
+    || (argument == "./dag")
+    || (argument == "dag/")
+    || argument.ends_with(suffix: "/dag")
+    || argument.ends_with(suffix: "/dag/") {
     SourceRootArgumentAdmitted { tree: DagTree }
   } else {
     SourceRootArgumentUnrecognized { argument: argument }
