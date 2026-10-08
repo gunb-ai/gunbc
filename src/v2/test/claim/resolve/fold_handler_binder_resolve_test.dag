@@ -30,10 +30,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE SUBJECT IS v2.compiler.resolve on the native ingest route (native_test_context_from_ingest,
 // then native_census_module_resolution). gunbc.recurring_failure_mode
-// fold_cons_handler_binder_unbound_on_the_native_resolver: a `f: fn(acc, item)` / `cons: fn(acc, item)`
-// handler's binders were unbound at prepare (resolve_reason_unbound_symbol), while the interpreted
-// floor bound the same spelling. The interpreter scopes a lambda's parameters over its body; the
-// native resolver owes that same frame once fold_lowering has placed the step as an ordinary Arrow.
+// fold_cons_handler_binder_unbound_on_the_native_resolver recorded a 2026-10-02 native prepare
+// refusal at `candidate.path` in a cons handler; the exact prepare-refusal cause is unestablished.
+// These claims are today's inhabitance at that boundary, not a replay of that revision.
 //
 // THREE MODULES, ONE VARIABLE EACH. `fold` is the specimen: the item binder is used in the handler
 // body. `lambda` is the already-binding control: the same two-parameter fn literal as a call
