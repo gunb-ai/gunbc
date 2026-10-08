@@ -10,13 +10,11 @@ import std.optional { Present, Absent }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation, DurableHoldReleaseRefusal,
   HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
-  HoldReleaseNamedWindowHeadMoved,
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal,
   HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable, HoldRecoverySlotMoved,
-  HoldRecoveryNamedWindowHeadMoved,
   HoldRecoveryReportForAnotherHolder, HoldRecoverySlotUndecodable, HoldRecoveryObservationUnavailable,
 }
 import std.nat { Nat }
@@ -450,7 +448,6 @@ fn recovery_refusal_text(key: NonEmptyStr, r: DurableHoldRecoveryRefusal) -> Non
     HoldRecoveryHolderLive { generation: _, holder: h, evidence: e } => join(["is held by '", h as String, "', which is alive (", e as String, "); no BMC actuation until it is released"], "")
     HoldRecoveryHolderUnobservable { generation: _, holder: h, cause: c } => join(["is held by '", h as String, "', whose liveness could not be observed (", c as String, "); an unobserved holder is not a dead one, so the hold stands"], "")
     HoldRecoverySlotMoved { reported: _, observed: _ } => "moved while its holder was being observed; re-run"
-    HoldRecoveryNamedWindowHeadMoved { named: _ } => "named window head moved; the current head was not observed; re-run"
     HoldRecoveryReportForAnotherHolder { holder: h, reported: _ } => join(["changed hands to '", h as String, "' while its holder was being observed; re-run"], "")
     HoldRecoverySlotUndecodable { generation: _, detail: d } => concat("became undecodable: ", d as String)
     HoldRecoveryObservationUnavailable { cause: _ } => "could not be re-read for recovery; an unreadable interlock is not a released one"
@@ -645,7 +642,6 @@ fn probe_hold_release_refused(refusal: DurableHoldReleaseRefusal) -> ProbeHoldRe
     HoldReleaseAlreadyFree { generation: _, released_by: _ } => ProbeHoldAlreadyFree
     HoldReleaseHeldByAnotherOwner { generation: _, holder: h } => ProbeHoldNotOurs { holder: h as String }
     HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } => ProbeHoldStale { detail: "the slot moved to another generation after it was observed" }
-    HoldReleaseNamedWindowHeadMoved { named: _ } => ProbeHoldStale { detail: "the named window head moved; the current head was not observed" }
     HoldReleaseSlotUndecodable { generation: _, detail: d } => ProbeHoldUnreleased { cause: concat("slot undecodable: ", d as String) }
     HoldReleaseObservationUnavailable { cause: _ } => ProbeHoldUnreleased { cause: "the store could not be read" }
   }

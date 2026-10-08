@@ -148,6 +148,11 @@ type CasUnreadableSlot
   | CasUnreadableReadRefused { detail: NonEmptyStr }
   | CasUnreadableObservationBoundExceeded { bound: Int }
 
+// `bound` is the exhausted observation-attempt budget (pass count), never a
+// generation. A windowed list that ran eight verifies against a live head at
+// generation 1500 reports bound 8. Rendering it as a generation is a meaning
+// fork of the field and a fabricated diagnostic.
+
 // THE ONE RENDERING OF AN UNREADABLE CAUSE, so a consumer that must report "the slot could not be
 // read" carries the kind it was refused with rather than a fixed sentence: the first approval
 // redemption on srv1 (2026-09-17) was followed by a poll that answered unreadable, and the cause
@@ -157,7 +162,7 @@ fn cas_unreadable_slot_detail(cause: CasUnreadableSlot) -> String {
     CasUnreadableMalformed { detail: d } => concat("malformed: ", d as String)
     CasUnreadableContentMissing { referenced: h } => concat("content missing: ", serialize_content_hash(hash: h))
     CasUnreadableReadRefused { detail: d } => concat("read refused: ", d as String)
-    CasUnreadableObservationBoundExceeded { bound: b } => concat("observation bound exceeded at generation ", to_string(b))
+    CasUnreadableObservationBoundExceeded { bound: b } => concat("observation bound exceeded after ", concat(to_string(b), " attempts"))
   }
 }
 

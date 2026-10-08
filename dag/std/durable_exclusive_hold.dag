@@ -132,7 +132,6 @@ type DurableHoldReleaseRefusal
   | HoldReleaseAlreadyFree { generation: CasGeneration, released_by: DurableHoldReleaseRef }
   | HoldReleaseHeldByAnotherOwner { generation: CasGeneration, holder: DurableHoldOwnerRef }
   | HoldReleaseAgainstAnotherGeneration { acquired: CasGeneration, observed: CasGeneration }
-  | HoldReleaseNamedWindowHeadMoved { named: CasGeneration }
   | HoldReleaseSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | HoldReleaseObservationUnavailable { cause: CasUnreadableSlot }
 
@@ -203,7 +202,6 @@ type DurableHoldRecoveryRefusal
   | HoldRecoveryHolderLive { generation: CasGeneration, holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
   | HoldRecoveryHolderUnobservable { generation: CasGeneration, holder: DurableHoldOwnerRef, cause: NonEmptyStr }
   | HoldRecoverySlotMoved { reported: CasGeneration, observed: CasGeneration }
-  | HoldRecoveryNamedWindowHeadMoved { named: CasGeneration }
   | HoldRecoveryReportForAnotherHolder { holder: DurableHoldOwnerRef, reported: DurableHoldOwnerRef }
   | HoldRecoverySlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | HoldRecoveryObservationUnavailable { cause: CasUnreadableSlot }

@@ -20,19 +20,19 @@ import std.durable_exclusive_hold {
   DurableHoldReleaseAssessment, HoldReleaseEligible, HoldReleaseRefused,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
   HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
-  HoldReleaseNamedWindowHeadMoved,
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   durable_hold_acquire_assess, durable_hold_release_assess, durable_hold_owner_equal,
   DurableHoldHolderReport, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
   DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
   HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable, HoldRecoverySlotMoved,
-  HoldRecoveryNamedWindowHeadMoved,
   HoldRecoveryReportForAnotherHolder, durable_hold_recovery_assess,
 }
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecode, HoldPayloadDecoded, HoldPayloadUndecodable,
   hold_slot_payload, decode_hold_slot_payload, hold_observation_of_cas,
   windowed_hold_release_from_verify, windowed_hold_recovery_from_verify,
+  WindowedHoldReleaseNamedHeadMoved, WindowedHoldReleaseProtocol,
+  WindowedHoldRecoveryNamedHeadMoved, WindowedHoldRecoveryProtocol,
 }
 import gunbc.durable_cas_file_store { NamedWindowHeadMoved }
 
@@ -252,7 +252,6 @@ fn eh_release_refusal_label(a: DurableHoldReleaseAssessment) -> String {
         HoldReleaseAlreadyFree { generation: _, released_by: _ } => "already-free"
         HoldReleaseHeldByAnotherOwner { generation: _, holder: _ } => "another-owner"
         HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } => "another-generation"
-        HoldReleaseNamedWindowHeadMoved { named: _ } => "named-head-moved"
         HoldReleaseSlotUndecodable { generation: _, detail: _ } => "undecodable"
         HoldReleaseObservationUnavailable { cause: _ } => "unavailable"
       }
@@ -379,9 +378,9 @@ test fn named_window_head_moved_release_does_not_claim_an_observed_current_gener
     owner: eh_owner(text: "demand-7|offer-1"),
     acquired_generation: 3,
   ) {
-    HoldReleaseRefused { refusal: HoldReleaseNamedWindowHeadMoved { named: n } } =>
+    WindowedHoldReleaseNamedHeadMoved { named: n } =>
       cas_generation_count(g: n) == 3
-    HoldReleaseRefused { refusal: HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } } => false
+    WindowedHoldReleaseProtocol { assessment: _ } => false
     _ => false
   }
 }
@@ -389,9 +388,9 @@ test fn named_window_head_moved_release_does_not_claim_an_observed_current_gener
 test fn named_window_head_moved_recovery_does_not_claim_an_observed_current_generation() -> Bool {
   let dead = eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 1)
   match windowed_hold_recovery_from_verify(verify: NamedWindowHeadMoved { named_generation: 3 }, report: dead) {
-    HoldRecoveryRefused { refusal: HoldRecoveryNamedWindowHeadMoved { named: n } } =>
+    WindowedHoldRecoveryNamedHeadMoved { named: n } =>
       cas_generation_count(g: n) == 3
-    HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: _, observed: _ } } => false
+    WindowedHoldRecoveryProtocol { assessment: _ } => false
     _ => false
   }
 }

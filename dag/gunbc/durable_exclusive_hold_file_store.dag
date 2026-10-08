@@ -37,10 +37,9 @@ import std.durable_exclusive_hold {
   HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldAcquireRefusal, HoldAcquireEligible, HoldAcquireRefused,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
-  HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseAssessment, DurableHoldReleaseRefusal, HoldReleaseNamedWindowHeadMoved,
+  HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseAssessment, DurableHoldReleaseRefusal,
   durable_hold_acquire_assess, durable_hold_release_assess,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
-  HoldRecoveryNamedWindowHeadMoved,
   durable_hold_recovery_assess,
 }
 import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, CasSlotRetention,
@@ -157,11 +156,22 @@ fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservat
   observe_file_hold_retained(root: root, key: key, retention: KeepAllGenerations)
 }
 
+// Named-window head movement is a file/window realization outcome, not a
+// protocol refusal. Keep-all consumers of DurableHoldReleaseAssessment never
+// see it; only windowed named verify mints these arms.
+type WindowedHoldReleaseFromVerify
+  = WindowedHoldReleaseProtocol { assessment: DurableHoldReleaseAssessment }
+  | WindowedHoldReleaseNamedHeadMoved { named: CasGeneration }
+
+type WindowedHoldRecoveryFromVerify
+  = WindowedHoldRecoveryProtocol { assessment: DurableHoldRecoveryAssessment }
+  | WindowedHoldRecoveryNamedHeadMoved { named: CasGeneration }
+
 fn windowed_hold_release_from_verify(
   verify: CasNamedWindowVerify,
   owner: DurableHoldOwnerRef,
   acquired_generation: CasGeneration,
-) -> DurableHoldReleaseAssessment
+) -> WindowedHoldReleaseFromVerify
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
     decl_ref(module_path: "test.claim.durable_exclusive_hold_witness", decl_name: "named_window_head_moved_release_does_not_claim_an_observed_current_generation"),
@@ -169,16 +179,18 @@ fn windowed_hold_release_from_verify(
 {
   match verify {
     NamedWindowHeadMoved { named_generation: n } =>
-      HoldReleaseRefused { refusal: HoldReleaseNamedWindowHeadMoved { named: n } }
+      WindowedHoldReleaseNamedHeadMoved { named: n }
     NamedWindowHeadCurrent { observation: o } =>
-      durable_hold_release_assess(observed: hold_observation_of_cas(observed: o), owner: owner, acquired_generation: acquired_generation)
+      WindowedHoldReleaseProtocol {
+        assessment: durable_hold_release_assess(observed: hold_observation_of_cas(observed: o), owner: owner, acquired_generation: acquired_generation),
+      }
   }
 }
 
 fn windowed_hold_recovery_from_verify(
   verify: CasNamedWindowVerify,
   report: DurableHoldHolderReport,
-) -> DurableHoldRecoveryAssessment
+) -> WindowedHoldRecoveryFromVerify
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
     decl_ref(module_path: "test.claim.durable_exclusive_hold_witness", decl_name: "named_window_head_moved_recovery_does_not_claim_an_observed_current_generation"),
@@ -186,9 +198,11 @@ fn windowed_hold_recovery_from_verify(
 {
   match verify {
     NamedWindowHeadMoved { named_generation: n } =>
-      HoldRecoveryRefused { refusal: HoldRecoveryNamedWindowHeadMoved { named: n } }
+      WindowedHoldRecoveryNamedHeadMoved { named: n }
     NamedWindowHeadCurrent { observation: o } =>
-      durable_hold_recovery_assess(observed: hold_observation_of_cas(observed: o), report: report)
+      WindowedHoldRecoveryProtocol {
+        assessment: durable_hold_recovery_assess(observed: hold_observation_of_cas(observed: o), report: report),
+      }
   }
 }
 
@@ -354,6 +368,11 @@ type FileHoldReleaseAssessment
   = FileHoldReleasePlanned { plan: FileHoldReleasePlan }
   | FileHoldReleaseNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldReleaseRefusal }
 
+type FileHoldWindowedReleaseAssessment
+  = FileHoldWindowedReleasePlanned { plan: FileHoldReleasePlan }
+  | FileHoldWindowedReleaseNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldReleaseRefusal }
+  | FileHoldWindowedReleaseNamedHeadMoved { slot_key: NonEmptyStr, named: CasGeneration }
+
 // THE ONLY MINT OF A RELEASE PLAN READS THE SLOT ITSELF. There is deliberately
 // no variant over a supplied observation: a synthetic "held by A at N" handed to
 // such a mint would produce a plan that frees a real hold of B's at N, and the
@@ -395,7 +414,7 @@ fn file_hold_release_assess(root: NonEmptyStr, slot_key: NonEmptyStr, owner: Dur
   file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepAllGenerations)
 }
 
-fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment
+fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldWindowedReleaseAssessment
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
   ]
@@ -405,17 +424,22 @@ fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr
     owner: owner,
     acquired_generation: acquired_generation,
   ) {
-    HoldReleaseRefused { refusal: r } => FileHoldReleaseNotEligible { slot_key: slot_key, refusal: r }
-    HoldReleaseEligible { generation: g } =>
-      FileHoldReleasePlanned {
-        plan: FileHoldReleasePlan {
-          root: root,
-          slot_key: slot_key,
-          owner: owner,
-          generation: g,
-          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
-          retention: KeepGenerationWindow { window: window },
-        },
+    WindowedHoldReleaseNamedHeadMoved { named: n } =>
+      FileHoldWindowedReleaseNamedHeadMoved { slot_key: slot_key, named: n }
+    WindowedHoldReleaseProtocol { assessment: a } =>
+      match a {
+        HoldReleaseRefused { refusal: r } => FileHoldWindowedReleaseNotEligible { slot_key: slot_key, refusal: r }
+        HoldReleaseEligible { generation: g } =>
+          FileHoldWindowedReleasePlanned {
+            plan: FileHoldReleasePlan {
+              root: root,
+              slot_key: slot_key,
+              owner: owner,
+              generation: g,
+              free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+              retention: KeepGenerationWindow { window: window },
+            },
+          }
       }
   }
 }
@@ -461,6 +485,11 @@ type FileHoldRecoveryAssessment
   = FileHoldRecoveryPlanned { plan: FileHoldReleasePlan, dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
   | FileHoldRecoveryNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldRecoveryRefusal }
 
+type FileHoldWindowedRecoveryAssessment
+  = FileHoldWindowedRecoveryPlanned { plan: FileHoldReleasePlan, dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | FileHoldWindowedRecoveryNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldRecoveryRefusal }
+  | FileHoldWindowedRecoveryNamedHeadMoved { slot_key: NonEmptyStr, named: CasGeneration }
+
 fn file_hold_recovery_assess_retained(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
@@ -498,7 +527,7 @@ fn file_hold_recovery_assess(root: NonEmptyStr, slot_key: NonEmptyStr, report: D
   file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepAllGenerations)
 }
 
-fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldRecoveryAssessment
+fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldWindowedRecoveryAssessment
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
   ]
@@ -507,19 +536,24 @@ fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, 
     verify: cas_verify_named_window_head(root: root, key: slot_key, generation: report.generation),
     report: report,
   ) {
-    HoldRecoveryRefused { refusal: r } => FileHoldRecoveryNotEligible { slot_key: slot_key, refusal: r }
-    HoldRecoveryEligible { generation: g, dead_holder: h, evidence: e } =>
-      FileHoldRecoveryPlanned {
-        plan: FileHoldReleasePlan {
-          root: root,
-          slot_key: slot_key,
-          owner: h,
-          generation: g,
-          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
-          retention: KeepGenerationWindow { window: window },
-        },
-        dead_holder: h,
-        evidence: e,
+    WindowedHoldRecoveryNamedHeadMoved { named: n } =>
+      FileHoldWindowedRecoveryNamedHeadMoved { slot_key: slot_key, named: n }
+    WindowedHoldRecoveryProtocol { assessment: a } =>
+      match a {
+        HoldRecoveryRefused { refusal: r } => FileHoldWindowedRecoveryNotEligible { slot_key: slot_key, refusal: r }
+        HoldRecoveryEligible { generation: g, dead_holder: h, evidence: e } =>
+          FileHoldWindowedRecoveryPlanned {
+            plan: FileHoldReleasePlan {
+              root: root,
+              slot_key: slot_key,
+              owner: h,
+              generation: g,
+              free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+              retention: KeepGenerationWindow { window: window },
+            },
+            dead_holder: h,
+            evidence: e,
+          }
       }
   }
 }

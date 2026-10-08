@@ -92,9 +92,9 @@ import std.durable_exclusive_hold {
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire_windowed, FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
-  file_hold_release_assess_windowed_at, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  file_hold_release_assess_windowed_at, FileHoldWindowedReleasePlanned, FileHoldWindowedReleaseNotEligible, FileHoldWindowedReleaseNamedHeadMoved,
   file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
-  file_hold_recovery_assess_windowed, FileHoldRecoveryPlanned, FileHoldRecoveryNotEligible,
+  file_hold_recovery_assess_windowed, FileHoldWindowedRecoveryPlanned, FileHoldWindowedRecoveryNotEligible, FileHoldWindowedRecoveryNamedHeadMoved,
   hold_observation_of_cas,
 }
 import gunbc.process_hold_identity {
@@ -1183,8 +1183,9 @@ fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId,
             LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
           } else {
             match file_hold_recovery_assess_windowed(root: root_path as NonEmptyStr, slot_key: key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }, released_by: local_store_hold_recovery_ref, window: window) {
-              FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => LocalStoreHoldRefused { refusal: LocalStoreHoldRecoveryRefused { refusal: r } }
-              FileHoldRecoveryPlanned { plan: pl, dead_holder: _, evidence: _ } =>
+              FileHoldWindowedRecoveryNotEligible { slot_key: _, refusal: r } => LocalStoreHoldRefused { refusal: LocalStoreHoldRecoveryRefused { refusal: r } }
+              FileHoldWindowedRecoveryNamedHeadMoved { slot_key: _, named: n } => LocalStoreHoldRefused { refusal: LocalStoreHoldNamedWindowHeadMoved { named: n } }
+              FileHoldWindowedRecoveryPlanned { plan: pl, dead_holder: _, evidence: _ } =>
                 match file_hold_release_commit(plan: pl) {
                   FileHoldReleased { slot_key: _, generation: _ } => local_store_acquire_family_hold(binding: binding, family: family, recovered: true)
                   FileHoldReleaseLost { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
@@ -1300,6 +1301,7 @@ fn local_store_held_session<T>(capability: LocalStoreCapability, family: Artifac
 type LocalStoreHoldRelease
   = LocalStoreHoldReleased
   | LocalStoreHoldReleaseNotEligible { refusal: DurableHoldReleaseRefusal }
+  | LocalStoreHoldReleaseNamedWindowHeadMoved { named: CasGeneration }
   | LocalStoreHoldReleaseLost
   | LocalStoreHoldReleaseStoreUnavailable { cause: CasStoreFailure }
   | LocalStoreHoldReleaseKeyNotAddressable
@@ -1312,8 +1314,9 @@ fn local_store_release_family_hold(held: LocalStoreFamilyHeld) -> LocalStoreHold
   ]
 {
   match file_hold_release_assess_windowed_at(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, window: held.window) {
-    FileHoldReleaseNotEligible { slot_key: _, refusal: r } => LocalStoreHoldReleaseNotEligible { refusal: r }
-    FileHoldReleasePlanned { plan: pl } =>
+    FileHoldWindowedReleaseNotEligible { slot_key: _, refusal: r } => LocalStoreHoldReleaseNotEligible { refusal: r }
+    FileHoldWindowedReleaseNamedHeadMoved { slot_key: _, named: n } => LocalStoreHoldReleaseNamedWindowHeadMoved { named: n }
+    FileHoldWindowedReleasePlanned { plan: pl } =>
       match file_hold_release_commit(plan: pl) {
         FileHoldReleased { slot_key: _, generation: _ } => LocalStoreHoldReleased
         FileHoldReleaseLost { slot_key: _ } => LocalStoreHoldReleaseLost
