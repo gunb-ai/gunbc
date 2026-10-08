@@ -12,14 +12,6 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, RequiredGateBankrupt
 // population from the change over the whole corpus. The roster header records the measured
 // import-closure, strict-preparation, and per-claim wall-clock price from run 33899564106.
 
-// INCIDENT RECEIPT (2026-10-07, gunbc#13179 -> #13549): the EqualityOptionalityMismatch wall (`T? == T`
-// refuses) landed with its consumers outside the required gate, which resolves only the gate closure,
-// so 124 test and production sites across 45 files stayed silently unresolvable with every required lane
-// green until a whole-population emit census found them (#13549 repaired them by matching on the
-// optional). This is the population this drop's loss sentence describes, observed once; it does not
-// change the drop's standing, the required-gate prefixes, or its restoration trigger. The census was a
-// scratch script and is not an instrument.
-
 data required_gate_bankruptcy: RungDrop = RungDrop {
   identity: "required_gate_bankruptcy" as NonEmptyStr,
 
