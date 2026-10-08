@@ -8,10 +8,14 @@ data regen_round_cost_instrument_seed_growth_justification: SeedGrowthJustificat
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_regen_round_cost_instrument", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "REGEN_ROUND_COST_PROBE_MIRROR", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "run_regen_one_mirror_emit_probe", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "run_regen_one_mirror_emit_probe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "SeedHandoff", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "SeedHandoffRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "decide_seed_handoff", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "compose_seed_build_cost", field: WholeDeclaration }
   ],
 
-  reason: "The producer arm for gunbc.target_binding RegenRoundCostProducer, so the existing priced regen round (claim_executor --regen-round-cost, gunbc.regen_round_cost) can run by label on a memory-bounded fleet slot through instrument-dispatch. It adds no second emit path: the round is the existing run_regen_round_cost, and the one-mirror discriminator is the existing run_required_regen_scoped with an Affected scope of one member, its trace ledger drained and printed. Both callees are host Rust in the seed, so their caller is too. It adds no flag and no mode that skips a check; it is on-demand only and no required job reaches it.",
+  reason: "ALSO the single re-exec handoff in run_regen_round_cost (SeedHandoff, SeedHandoffRefusal, decide_seed_handoff, compose_seed_build_cost): the seed build replaces the running claim_executor, so the built image is handed the pre-handoff seed-build cost and tree identity and composes them into the receipt once; it dissolves when the seed build is modeled in .dag with an output path distinct from the running image (gunbc.recurring_failure_mode a_build_replaces_the_executable_that_is_running_it). The producer arm for gunbc.target_binding RegenRoundCostProducer, so the existing priced regen round (claim_executor --regen-round-cost, gunbc.regen_round_cost) can run by label on a memory-bounded fleet slot through instrument-dispatch. It adds no second emit path: the round is the existing run_regen_round_cost, and the one-mirror discriminator is the existing run_required_regen_scoped with an Affected scope of one member, its trace ledger drained and printed. Both callees are host Rust in the seed, so their caller is too. It adds no flag and no mode that skips a check; it is on-demand only and no required job reaches it.",
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 
