@@ -1,0 +1,5 @@
+module extdeps.fixture.door_probe
+
+import std.integer { Int }
+
+fn f() -> Int { 1 }
