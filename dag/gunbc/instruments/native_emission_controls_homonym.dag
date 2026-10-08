@@ -33,10 +33,13 @@ fn narrow_slots_equal(left: String, right: String) -> Bool {
   narrow_slot(value: left) == narrow_slot(value: right)
 }
 
-// A `length` that is NOT `v2.std.algebra` `length`. Its body is a constant, so a leaf-name rewrite
-// to `v1_rt::string_length` would return 3 for "abc" and this control would go red.
-fn length(xs: String) -> Int { 99 }
+// A String-in, Int-out body that is NOT `v2.std.algebra` `length`. A second corpus declaration
+// named `length` makes every bare `length` an unimported two-declarer (floor). The identity
+// gate on the algebra call is what keeps a leaf-name rewrite from eating this body; if emit
+// rewrote every host-String call to `v1_rt::string_length`, "abc" would answer 3 and the
+// control would go red.
+fn length_constant_ninety_nine(xs: String) -> Int { 99 }
 
 fn homonym_length_of(s: String) -> Int {
-  length(xs: s)
+  length_constant_ninety_nine(xs: s)
 }
