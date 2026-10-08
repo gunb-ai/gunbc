@@ -55,7 +55,13 @@ import gunbc.process_hold_identity { self_process_identity, SelfIdentified, Self
 import gunbc.build_cache_instance { ProcessIdentity }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire_windowed, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
 import gunbc.durable_cas_file_store { cas_file_slot_path }
-import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import std.durable_compare_and_set {
+  CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
+}
 import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
 import gunbc.materialization_store_budgets {
@@ -665,6 +671,38 @@ test fn a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_exe
   verdict && removed.success
 }
 
+fn hold_refusal_is_named_window_unsettled(r: LocalStoreHoldRefusal?) -> Bool {
+  match r {
+    Present { value: x } => match x {
+      LocalStoreHoldStale { observed: o } => match o {
+        HoldObservationUnavailable { cause: c } => match c {
+          CasUnreadableReadRefused { detail: d } =>
+            d as String == "the window head moved during 1 observations and was not settled; a head is never guessed"
+          CasUnreadableMalformed { detail: _ } => false
+          CasUnreadableContentMissing { referenced: _ } => false
+          CasUnreadableObservationBoundExceeded { bound: _ } => false
+        }
+        HoldSlotAbsent => false
+        HoldSlotFree { generation: _, released_by: _ } => false
+        HoldSlotHeld { generation: _, owner: _ } => false
+        HoldSlotUndecodable { generation: _, detail: _ } => false
+      }
+      LocalStoreFamilyBusy { holder: _, evidence: _ } => false
+      LocalStoreHolderUnobservable { holder: _, cause: _ } => false
+      LocalStoreHoldRecoveryRefused { refusal: _ } => false
+      LocalStoreHoldContended => false
+      LocalStoreHoldStoreUnavailable { cause: _ } => false
+      LocalStoreHoldSlotUndecodable { detail: _ } => false
+      LocalStoreHoldKeyNotAddressable => false
+      LocalStoreHoldSelfUnidentified { cause: _ } => false
+      LocalStoreHoldWindowTooNarrow { k: _ } => false
+      LocalStoreHoldUnsettled { settlement: _ } => false
+      LocalStoreHoldWrongFamily { held: _, requested: _ } => false
+    }
+    Absent => false
+  }
+}
+
 fn hold_refusal_is_stale(r: LocalStoreHoldRefusal?) -> Bool {
   match r {
     Present { value: x } => match x {
@@ -717,8 +755,11 @@ fn pin_generation_unlink(path: String, on: Bool) -> Bool {
 
 // PARTIAL RECLAIM MUST NOT RE-AUTHORIZE A LEAKED HOLD. Independent deletes could remove G+1 while
 // G survived, so named verify would treat leaked G as head. Pin G against unlink, run another
-// acquire/release (the reclaim that used to punch that hole), then reuse G: check must refuse
-// stale and write nothing.
+// acquire/release (the reclaim that used to punch that hole), then reuse G. commit_under observes
+// the hold first: named verify must answer Unsettled (G present, G+1 still there), mapped to
+// HoldStale via HoldObservationUnavailable, before any occupancy write. occupancy_unavailable on
+// that path is the hold-refuse wrapper, not an occupancy fault from the pin. ioctl-set IMMUTABLE
+// must succeed (CAP_LINUX_IMMUTABLE); without it this claim is false, not vacuously green.
 test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
@@ -738,7 +779,8 @@ test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_r
           let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
           let _unlock = pin_generation_unlink(path: pinned, on: false)
           immutable && advanced
-            && commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_stale(r: c.hold_refusal)
+            && commit_tag(c: c.commit) == "occupancy_unavailable"
+            && hold_refusal_is_named_window_unsettled(r: c.hold_refusal)
             && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
             && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
         }
