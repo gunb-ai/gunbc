@@ -305,7 +305,7 @@ fn repository_convert_write(
   expected: RepositoryGenerationExpectation,
 ) -> RepositoryConvert {
   match save_repository_sharded_guarded(path: path, repo: envelope, expected: expected) {
-    RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written }) =>
+    RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written, generation: _ }) =>
       RepositoryConverted {
         path: path,
         from_format: from_format,

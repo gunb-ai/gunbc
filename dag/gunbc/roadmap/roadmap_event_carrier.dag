@@ -38,7 +38,7 @@ import extdeps.git {
   shape_git_add_path_args, shape_git_commit_message_args, shape_git_ls_remote_heads_args,
 }
 import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_roadmap_events_worktree, dashboard_instance_roadmap_events_worktree_under }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
 import gunbc.roadmap.roadmap_event_log {
@@ -72,7 +72,7 @@ fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) ->
   RoadmapEventCarrierLayout {
     remote: if instance.instance_id == srv2_dashboard_preview_id { concat(instance.instance_root as String, "/ui-preview-events.git") } else { roadmap_events_remote },
     repo_root: instance.repo_root,
-    worktree: join([instance.instance_root as String, "/roadmap-events"], "") as FilePath,
+    worktree: dashboard_instance_roadmap_events_worktree(instance: instance),
     git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
     directory_program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
   }
@@ -82,7 +82,7 @@ fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, gi
   RoadmapEventCarrierLayout {
     remote: roadmap_events_remote,
     repo_root: repo_root,
-    worktree: join([instance_root as String, "/roadmap-events"], "") as FilePath,
+    worktree: dashboard_instance_roadmap_events_worktree_under(instance_root: instance_root),
     git_program: git_program,
     directory_program: directory_program,
   }
