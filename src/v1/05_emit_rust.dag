@@ -9808,7 +9808,7 @@ fn emit_func_def(
     Absent => []
   }
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_indices: scope.type_env.source_indices, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
-  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: with(scope, { caller_decl_name: name }), params: params)
   let si = scope.type_env.source_indices
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
@@ -9897,8 +9897,16 @@ fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<St
   all_params |> join(separator: ", ")
 }
 
-fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
+// AN EFFECTFUL FUNCTION'S RETURN IS RENDERED BY THE SAME AUTHORITY AS A PURE ONE'S, against the
+// module's own type environment. This rendered through render_rust_type with an empty emit info, so
+// every type argument was judged against an empty, UNOBSERVED unit-variant index and refused:
+// gunbc.durable_cas_file_store's `-> CasOutcome<NonEmptyStr>` became `CasOutcome<compile_error!(
+// "unit-variant marker identity evidence unavailable for NonEmptyStr ..")>`, and the body that
+// rendered the same argument through the observed env disagreed with it (E0308 `CasOutcome<()>` vs
+// `CasOutcome<String>`). Generic parameters are not threaded here, exactly as emit_func_def's own
+// parameter rendering does not thread them.
+fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  concat(" -> Result<", render_rust_fn_sig_type(n: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ", Box<dyn std::error::Error>>")
 }
 
 fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {

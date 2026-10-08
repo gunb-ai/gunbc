@@ -1,0 +1,34 @@
+module gunbc.floor_annotation_erased_attribution_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust gunbc#13393 added so the required floor's changed-witness
+// attribution reads the annotation-erased projection DESIGN section 4c defines (follow-up node
+// adhoc-d15fcf28-123). gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, so each ADDED declaration is enumerated below.
+// Modified items keep their names and are not netted (ExistingSeedItemModified):
+// declaration_own_text (now drops every `//` line) and declaration_text_attribution (the
+// pre-declaration comparison uses the same projection).
+//
+// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
+// v1_seed_standing admits a change when it serves the v2 self-host program. The required floor
+// guards that program, and before this change it refused semantics-free annotation corrections
+// (gunbc.recurring_failure_mode annotation_only_edit_selects_a_changed_witness), leaving stale
+// annotations in the corpus to land.
+data floor_annotation_erased_attribution_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "annotation_line_mask", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "NOTE_HEAD", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "note_diff", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "a_leading_annotation_edit_charges_no_witness", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "a_body_edit_beside_an_annotation_still_charges_it", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "a_slash_slash_line_inside_a_multi_line_string_still_charges_it", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "a_moved_annotation_block_charges_neither_declaration", field: WholeDeclaration },
+  ],
+  reason: "The required floor's changed-witness attribution must decide 'edited' on each declaration's annotation-erased projection (DESIGN section 4c), so a `//`-only edit charges no witness while a body edit still does; annotation_line_mask is the lexical mask that erases `//` lines outside string literals. The unit tests are the discriminating pair and its positive controls; they are not merge-gated while gunbc.rung_drop rust_unit_tests_off_the_merge_path stands.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "The changed-witness attribution has no .dag authority yet: when the floor-cut replacement (docs/plans/floor-cut-replacement-plan.md) evaluates changed-witness selection from a .dag fold over the annotation-erased projection the dag annotation channel already produces, rather than from host line masking, annotation_line_mask and these tests delete.",
+  current_boundary: "Reachable only from declaration_text_attribution in the required floor's changed-witness selection (witnesses lane); masks nothing outside that comparison and changes no compiled program.",
+}
