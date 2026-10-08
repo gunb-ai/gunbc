@@ -82,7 +82,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   MatchPattern, Bind, VariantPattern, Wildcard, LitPattern, StringPart, variant_node_fields,
   make_field_binding_node, field_binding_name_at, field_binding_pattern,
   let_value, let_body, lambda_body,
-  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  foreach_collection, foreach_body, method_receiver, expr_child_at, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
@@ -3522,11 +3522,24 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
 // as T?, the interpreter returns the bare element, so `read == Present { .. }` is false or a
 // cross-representation error there and true on the emitted route (failure modes
 // optional_equality_answers_by_representation, list_index_typed_optional_but_realized_as_the_bare_element).
-fn equality_operand_list_read_name(n: Node) -> String {
+fn equality_operand_list_read_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.expr_data {
-    ExprMethodCall { method_semantics: _ } => equality_list_read_leaf(name: n.name)
-    ExprCall { call_semantics: _, descent_evidence: _ } => equality_list_read_leaf(name: n.name)
+    ExprMethodCall { method_semantics: _ } =>
+      if equality_receiver_is_list(receiver: method_receiver(texpr: n), source_indices: source_indices) { equality_list_read_leaf(name: n.name) } else { "" }
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if equality_receiver_is_list(receiver: arg_value(n: expr_child_at(texpr: n, index: 0, role: "call argument")), source_indices: source_indices) { equality_list_read_leaf(name: n.name) } else { "" }
     _ => ""
+  }
+}
+
+// The wall is about the LIST read, so the receiver's resolved type decides, not the call's spelling: a
+// user fn or a Map/other-type method named `get` that returns a real T? has one meaning and stays admitted.
+fn equality_receiver_is_list(receiver: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match receiver.inferred {
+    Present { value: Resolved { node: rt } } =>
+      node_is_element_collection(n: rt, source_indices: source_indices)
+        && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt)) == "List"
+    _ => false
   }
 }
 
@@ -3542,9 +3555,9 @@ fn equality_operand_is_present_literal(n: Node) -> Bool {
   }
 }
 
-fn equality_present_on_list_read(left: Node, right: Node) -> String {
-  if equality_operand_is_present_literal(n: right) { equality_operand_list_read_name(n: left) }
-  else if equality_operand_is_present_literal(n: left) { equality_operand_list_read_name(n: right) }
+fn equality_present_on_list_read(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  if equality_operand_is_present_literal(n: right) { equality_operand_list_read_name(n: left, source_indices: source_indices) }
+  else if equality_operand_is_present_literal(n: left) { equality_operand_list_read_name(n: right, source_indices: source_indices) }
   else { "" }
 }
 
@@ -3588,8 +3601,8 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       || (lt.inferred != none && is_compiler_error(inferred: lt.inferred.value))
       || (rt.inferred != none && is_compiler_error(inferred: rt.inferred.value)) {
       []
-    } else if equality_present_on_list_read(left: left_typed, right: right_typed) != "" {
-      [make_error_node(diagnostic: EqualityAgainstPresentOnListRead { list_read: equality_present_on_list_read(left: left_typed, right: right_typed), span: span }, module_name: scope.module_name)]
+    } else if equality_present_on_list_read(left: left_typed, right: right_typed, source_indices: source_indices) != "" {
+      [make_error_node(diagnostic: EqualityAgainstPresentOnListRead { list_read: equality_present_on_list_read(left: left_typed, right: right_typed, source_indices: source_indices), span: span }, module_name: scope.module_name)]
     } else if equality_operand_is_optional(n: left_typed, source_indices: source_indices) != equality_operand_is_optional(n: right_typed, source_indices: source_indices) {
       let side = if equality_operand_is_optional(n: left_typed, source_indices: source_indices) { "left" } else { "right" }
       [make_error_node(diagnostic: EqualityOptionalityMismatch { optional_side: side, span: span }, module_name: scope.module_name)]

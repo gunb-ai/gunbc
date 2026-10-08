@@ -176,6 +176,14 @@ test fn list_read_match_stays_admitted() -> Bool {
   eq_admitted(source: list_read_match_green_source)
 }
 
+// Review 77880: the wall keys on the List receiver, not the spelling `get`. A user fn named `get`
+// that returns a real Int? has one meaning on every route and must not be refused as a list read.
+data user_get_present_green_source: String = "module eq_probe_user_get\nfn get(n: Int) -> Int? { Present { value: n } }\nfn r() -> Bool { get(n: 1) == Present { value: 1 } }\n"
+
+test fn user_fn_named_get_stays_unwalled() -> Bool {
+  eq_blocking_count(source: user_get_present_green_source, wanted: "EqualityAgainstPresentOnListRead") == 0
+}
+
 // C5 (gunbc.recurring_failure_mode bare_value_admitted_where_optional_is_declared), AT THE DECLARED RETURN: a fn declared `-> T?` whose body produces a bare T. No
 // declared coercion lifts T into T?, and the Rust emission refused it (E0308, gunbc.running_release_
 // identity running_release_member_string). The red is a bare-Int body under `-> Int?`; the controls
