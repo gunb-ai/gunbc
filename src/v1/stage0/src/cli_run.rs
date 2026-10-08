@@ -77,9 +77,9 @@ use crate::v1_std_core::{
     has_child_named, inferred_to_node, intern, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, LeafOwner, MatchPattern,
-    NewlineIndex, Node,
+    param_node_name_at, param_node_type_expr, type_reference_identity, Cardinality,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
+    LeafOwner, MatchPattern, NewlineIndex, Node, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
 use serde::Serialize;
 
@@ -3243,7 +3243,7 @@ mod cli_run_arg_channel_tests {
         CliArgAdmission,
     };
     use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
-    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use crate::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
     use std::rc::Rc;
 
     fn spec(items: &[&str]) -> Vec<String> {
@@ -3436,22 +3436,12 @@ mod cli_run_arg_channel_tests {
         assert!(err.contains("true") && err.contains("false"), "{err}");
     }
 
-    /// Resolve a small entry whose params are `Int` and `NonEmptyStr = String where
-    /// string_non_empty`, then bind through [`bind_run_args_for_entry`]. Deleting that
-    /// function, or the where-chain peel it calls, must fail these controls.
-    fn resolved_bind_probe_ctx() -> InterpContext {
-        let files = vec![Rc::new(SourceFile {
-            path: "probe_cli_arg_bind.dag".to_string(),
-            content: "module probe.cli_arg_bind\n\
-                      type NonEmptyStr = String where string_non_empty\n\
-                      fn bind_probe(n: Int, token: NonEmptyStr) -> Int { n }\n"
-                .to_string(),
-        })];
+    fn compile_ctx(files: Vec<Rc<SourceFile>>) -> InterpContext {
         let result = compile_to_resolved(Rc::new(files.into()));
         let graph = result
             .graph
             .as_ref()
-            .unwrap_or_else(|| panic!("bind_probe fixture must resolve: {:?}", result.diagnostics));
+            .unwrap_or_else(|| panic!("fixture must resolve: {:?}", result.diagnostics));
         InterpContext::new(
             graph,
             result.source_indices.clone(),
@@ -3459,49 +3449,112 @@ mod cli_run_arg_channel_tests {
         )
     }
 
-    #[test]
-    fn bind_run_args_for_entry_int_and_nonemptystr_inhabit() {
-        let ctx = resolved_bind_probe_ctx();
-        let got = bind_run_args_for_entry(
-            &ctx,
-            "bind_probe",
-            &[
-                ("n".to_string(), "2".to_string()),
-                ("token".to_string(), "none".to_string()),
-            ],
-        )
-        .expect("resolved Int and NonEmptyStr must inhabit through bind_run_args_for_entry");
-        assert!(
-            matches!(got[0].1, Value::Int(2)),
-            "Int param must bind as Int 2, not Str: {:?}",
-            got[0].1
-        );
-        assert!(matches!(&got[1].1, Value::Str(s) if s.as_ref() == "none"));
+    fn source(path: &str, content: &str) -> Rc<SourceFile> {
+        Rc::new(SourceFile {
+            path: path.to_string(),
+            content: content.to_string(),
+        })
+    }
+
+    fn kernel_int_entry_ctx() -> InterpContext {
+        compile_ctx(vec![source(
+            "probe_cli_arg_int.dag",
+            "module probe.cli_arg_int\nfn bind_probe(n: Int) -> Int { n }\n",
+        )])
+    }
+
+    fn std_types_nonempty_entry_ctx() -> InterpContext {
+        compile_ctx(vec![
+            source(
+                "std_types.dag",
+                "module std.types\n\
+                 type NonEmptyStr = String where string_non_empty\n\
+                 fn string_non_empty(value: String) -> Bool { value.length() > 0 }\n",
+            ),
+            source(
+                "probe_cli_arg_nes.dag",
+                "module probe.cli_arg_nes\n\
+                 import std.types { NonEmptyStr }\n\
+                 fn bind_token(token: NonEmptyStr) -> String { token }\n",
+            ),
+        ])
     }
 
     #[test]
-    fn bind_run_args_for_entry_empty_nonemptystr_refuses() {
-        let ctx = resolved_bind_probe_ctx();
-        let err = bind_run_args_for_entry(
+    fn bind_run_args_for_entry_int_executes_as_int_two() {
+        let ctx = kernel_int_entry_ctx();
+        let bound =
+            bind_run_args_for_entry(&ctx, "bind_probe", &[("n".to_string(), "2".to_string())])
+                .expect("kernel Int --arg n=2 must bind");
+        let got = run_in_context_with_args(&ctx, "bind_probe", &bound, false)
+            .expect("bound Int 2 must execute");
+        assert!(
+            matches!(got, Value::Int(2)),
+            "specimen: execute bind_probe after --arg n=2 must yield Int 2, got {got:?}"
+        );
+    }
+
+    #[test]
+    fn bind_run_args_for_entry_std_types_nonemptystr_inhabits_and_empty_refuses() {
+        let ctx = std_types_nonempty_entry_ctx();
+        let got = bind_run_args_for_entry(
             &ctx,
-            "bind_probe",
-            &[
-                ("n".to_string(), "2".to_string()),
-                ("token".to_string(), "".to_string()),
-            ],
+            "bind_token",
+            &[("token".to_string(), "none".to_string())],
         )
-        .expect_err("empty NonEmptyStr must refuse on the resolved path");
+        .expect("std.types NonEmptyStr must inhabit through its declaration");
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "none"));
+        let err =
+            bind_run_args_for_entry(&ctx, "bind_token", &[("token".to_string(), "".to_string())])
+                .expect_err("empty std.types NonEmptyStr must refuse");
         assert!(
             err.contains("token")
                 && err.contains("NonEmptyStr")
                 && err.contains("string_non_empty"),
-            "diagnostic names parameter, resolved type, and declared predicate: {err}"
+            "diagnostic names parameter, std.types alias, and declared predicate: {err}"
+        );
+    }
+
+    #[test]
+    fn same_spelling_user_int_or_nonemptystr_refuses() {
+        let int_ctx = compile_ctx(vec![source(
+            "probe_shadow_int.dag",
+            "module probe.shadow_int\n\
+             type Int = String\n\
+             fn shadow_int(n: Int) -> String { n }\n",
+        )]);
+        let int_err = bind_run_args_for_entry(
+            &int_ctx,
+            "shadow_int",
+            &[("n".to_string(), "2".to_string())],
+        )
+        .expect_err("a user type spelled Int must not bind as kernel Int");
+        assert!(
+            int_err.contains("cannot inhabit"),
+            "user Int must refuse inhabitance: {int_err}"
+        );
+
+        let nes_ctx = compile_ctx(vec![source(
+            "probe_shadow_nes.dag",
+            "module probe.shadow_nes\n\
+             type NonEmptyStr = String where string_non_empty\n\
+             fn shadow_nes(token: NonEmptyStr) -> String { token }\n",
+        )]);
+        let nes_err = bind_run_args_for_entry(
+            &nes_ctx,
+            "shadow_nes",
+            &[("token".to_string(), "none".to_string())],
+        )
+        .expect_err("a user type spelled NonEmptyStr must not bind as std.types");
+        assert!(
+            nes_err.contains("cannot inhabit"),
+            "user NonEmptyStr must refuse inhabitance: {nes_err}"
         );
     }
 
     #[test]
     fn bind_run_args_for_entry_duplicate_or_unknown_name_refuses() {
-        let ctx = resolved_bind_probe_ctx();
+        let ctx = kernel_int_entry_ctx();
         let dup = bind_run_args_for_entry(
             &ctx,
             "bind_probe",
@@ -20017,8 +20070,8 @@ pub enum CliArgAdmission {
 fn cli_arg_no_inhabitance_route(function: &str, param: &str, type_label: &str) -> String {
     format!(
         "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
-         which `gunbc run --arg` cannot inhabit; only String, Int, Bool, and \
-         decidable where-refinements of String or Int are admitted"
+         which `gunbc run --arg` cannot inhabit; only kernel String, Int, Bool, \
+         and std.types NonEmptyStr are admitted"
     )
 }
 
@@ -20118,73 +20171,128 @@ fn bind_cli_int(
     }
 }
 
-/// Walk a parameter type expr to kernel String/Int/Bool plus `where` predicates
-/// taken from the resolved alias chain (`std.types` NonEmptyStr is
-/// `String where string_non_empty` on that chain — not a CLI-side table).
+fn cli_arg_resolved_type_node(type_expr: Rc<Node>) -> Rc<Node> {
+    match type_expr.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => node.clone(),
+        _ => type_expr,
+    }
+}
+
+fn type_nodes_name_the_same_declaration(a: &Rc<Node>, b: &Rc<Node>) -> bool {
+    Rc::ptr_eq(a, b)
+        || match (&a.ident_span, &b.ident_span) {
+            (Some(left), Some(right)) => left.file == right.file && left.start == right.start,
+            _ => false,
+        }
+}
+
+fn std_types_nonempty_str_item(ctx: &v1_interpreter::InterpContext) -> Option<Rc<Node>> {
+    let tm = ctx.typed_module_for_authored_path("std.types")?;
+    tm.items
+        .iter()
+        .find(|item| authored_name_at(ctx.source_indices.clone(), (*item).clone()) == "NonEmptyStr")
+        .cloned()
+}
+
+fn nonempty_str_predicates_from_decl(
+    ctx: &v1_interpreter::InterpContext,
+    decl: &Rc<Node>,
+) -> Option<Vec<String>> {
+    let mut ty = v1_interpreter::type_declaration_rhs(decl)?;
+    let mut preds = Vec::new();
+    for _ in 0..8 {
+        if !v1_compiler_infer::is_where_refinement_type(ty.clone()) {
+            break;
+        }
+        for pred in v1_compiler_infer::type_expr_where_refinement_predicates(ty.clone())
+            .iter()
+            .cloned()
+        {
+            let pname = v1_compiler_infer::where_predicate_name_at(
+                pred.clone(),
+                ctx.source_indices.clone(),
+            );
+            if v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone()) {
+                continue;
+            }
+            if !v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone()) {
+                return None;
+            }
+            preds.push(pname);
+        }
+        ty = ty.children.iter().next().cloned()?;
+    }
+    let ground = v1_compiler_infer::type_node_label(ty, ctx.source_indices.clone());
+    if ground == "String" && preds == ["string_non_empty".to_string()] {
+        Some(preds)
+    } else {
+        None
+    }
+}
+
+/// Admission from the parameter's resolved type identity (DESIGN §4): kernel
+/// String/Int/Bool, or the exact `std.types` `NonEmptyStr` declaration and its
+/// `string_non_empty` refinement. Leaf names do not authorize conversion.
 fn cli_arg_admission_from_type_expr(
     ctx: &v1_interpreter::InterpContext,
     type_expr: Rc<Node>,
 ) -> CliArgAdmission {
     let display = v1_compiler_infer::type_node_label(type_expr.clone(), ctx.source_indices.clone());
-    let mut ty = match type_expr.inferred.as_deref() {
-        Some(InferredNode::Resolved { node }) => node.clone(),
-        _ => type_expr.clone(),
-    };
-    let mut string_preds: Vec<String> = Vec::new();
-    let mut int_preds: Vec<(String, Rc<Node>)> = Vec::new();
-    let mut seen = HashSet::new();
-    for _ in 0..32 {
-        if v1_compiler_infer::is_where_refinement_type(ty.clone()) {
-            for pred in v1_compiler_infer::type_expr_where_refinement_predicates(ty.clone())
-                .iter()
-                .cloned()
-            {
-                let pname = v1_compiler_infer::where_predicate_name_at(
-                    pred.clone(),
-                    ctx.source_indices.clone(),
-                );
-                if v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone()) {
-                    continue;
+    match type_reference_identity(type_expr.clone()).as_ref() {
+        TypeReferenceIdentity::ReferenceResolvedToDeclaration { provenance }
+        | TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance } => {
+            match provenance.as_ref() {
+                TypeDeclarationProvenance::KernelMinted { minted_name } => {
+                    return cli_arg_admission_for_kernel(
+                        minted_name,
+                        display,
+                        Vec::new(),
+                        Vec::new(),
+                    );
                 }
-                if v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone()) {
-                    string_preds.push(pname);
-                } else if v1_compiler_infer::where_refinement_is_int_literal_predicate(
-                    pname.clone(),
-                ) {
-                    int_preds.push((pname, pred));
-                } else {
-                    return CliArgAdmission::Unsupported {
-                        display: display.clone(),
-                    };
-                }
-            }
-            match ty.children.iter().next().cloned() {
-                Some(base) => {
-                    ty = base;
-                    continue;
-                }
-                None => break,
+                TypeDeclarationProvenance::CorpusDeclared { .. }
+                | TypeDeclarationProvenance::DeclarationIdentityAbsent => {}
             }
         }
-        let name = v1_compiler_infer::type_node_label(ty.clone(), ctx.source_indices.clone());
-        if name.is_empty() || !seen.insert(name.clone()) {
-            break;
-        }
-        if is_kernel_type(name.clone()) {
-            return cli_arg_admission_for_kernel(&name, display, string_preds, int_preds);
-        }
-        if let Some(item) = v1_interpreter::lookup_type_item(ctx, &name) {
-            if let Some(rhs) = v1_interpreter::type_declaration_rhs(&item) {
-                if Rc::ptr_eq(&rhs, &ty) {
-                    break;
-                }
-                ty = rhs;
-                continue;
-            }
-        }
-        return cli_arg_admission_for_kernel(&name, display, string_preds, int_preds);
+        TypeReferenceIdentity::ReferenceIsTypeVariableBinder { .. }
+        | TypeReferenceIdentity::ReferenceIdentityUnavailable { .. } => {}
     }
-    CliArgAdmission::Unsupported { display }
+    std_types_nonempty_str_admission(ctx, type_expr, display)
+}
+
+fn refers_to_std_types_nonempty_str(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+    decl: &Rc<Node>,
+) -> bool {
+    let resolved = cli_arg_resolved_type_node(type_expr.clone());
+    if type_nodes_name_the_same_declaration(&resolved, decl) {
+        return true;
+    }
+    let decl_id =
+        v1_compiler_infer::node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
+    !decl_id.is_empty() && ref_id == decl_id
+}
+
+fn std_types_nonempty_str_admission(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+    display: String,
+) -> CliArgAdmission {
+    let Some(decl) = std_types_nonempty_str_item(ctx) else {
+        return CliArgAdmission::Unsupported { display };
+    };
+    if !refers_to_std_types_nonempty_str(ctx, type_expr, &decl) {
+        return CliArgAdmission::Unsupported { display };
+    }
+    match nonempty_str_predicates_from_decl(ctx, &decl) {
+        Some(predicates) => CliArgAdmission::RefinedString {
+            display,
+            predicates,
+        },
+        None => CliArgAdmission::Unsupported { display },
+    }
 }
 
 fn cli_arg_admission_for_kernel(

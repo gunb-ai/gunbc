@@ -62,7 +62,7 @@ pub enum Commands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Bound against the resolved parameter type: String, Int, Bool, and decidable where-refinements of those (e.g. NonEmptyStr); others refuse.
+        /// Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },
