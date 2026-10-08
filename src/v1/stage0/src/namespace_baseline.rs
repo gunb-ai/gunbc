@@ -2264,13 +2264,7 @@ pub fn environment_agreement_supplied(
     live: &LiveDagIndex,
     supply: impl FnOnce() -> Result<super::base_facts::BaseCompilerSupply, EnvironmentLoadRefusal>,
 ) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
-    let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
-    let mut differing = Vec::new();
-    for path in &closure {
-        if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
-            differing.push(path.clone());
-        }
-    }
+    let differing = environment_differing_paths(repo, base, head, live)?;
     if differing.is_empty() {
         return Ok(EnvironmentAgreement::Identical);
     }
@@ -2278,6 +2272,27 @@ pub fn environment_agreement_supplied(
         base_environment: base_parse_environment(repo, base, &supply()?)?,
         differing_paths: differing,
     })
+}
+
+/// THE ENVIRONMENT READER'S DEMAND: the parse-environment closure's files whose content differs
+/// between the two revisions. Empty means the reader answers `Identical` without the base compiler;
+/// non-empty is exactly when it asks for one. `base_facts::base_compiler_demand` consumes this same
+/// function, so the job's fetch decision and the reader cannot disagree about when a base answer is
+/// needed.
+pub fn environment_differing_paths(
+    repo: &std::path::Path,
+    base: &str,
+    head: &str,
+    live: &LiveDagIndex,
+) -> Result<Vec<String>, EnvironmentLoadRefusal> {
+    let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
+    let mut differing = Vec::new();
+    for path in &closure {
+        if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
+            differing.push(path.clone());
+        }
+    }
+    Ok(differing)
 }
 
 /// The path whose declarations the kernel-name set is derived from.
@@ -2307,13 +2322,14 @@ pub fn kernel_set_serves_both(
     kernel_set_serves_both_supplied(repo, base, head, &base_compiler_supply(base)?)
 }
 
-/// `kernel_set_serves_both` with the base compiler named by the caller rather than by the floor
-/// job's environment -- the route controls take, so they drive the same comparison.
-pub fn kernel_set_serves_both_supplied(
+/// THE KERNEL READER'S DEMAND: whether `kernel_set_serves_both` must ask the base compiler. Equal
+/// CONTENT of the declaring file is the free answer (false); an absent base is not equal to anything
+/// and goes on to the base read, which refuses it. `base_facts::base_compiler_demand` consumes this
+/// same function.
+pub fn kernel_set_read_demands_base(
     repo: &std::path::Path,
     base: &str,
     head: &str,
-    supply: &super::base_facts::BaseCompilerSupply,
 ) -> Result<bool, EnvironmentLoadRefusal> {
     let base_blob =
         blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
@@ -2326,9 +2342,18 @@ pub fn kernel_set_serves_both_supplied(
             revision: head.to_string(),
             cause: format!("{KERNEL_TYPES_PATH} does not exist at this revision"),
         })?;
-    // Equal CONTENT is the free answer; an absent base is not equal to anything and goes on to the
-    // base read, which refuses it.
-    if base_blob.as_deref() == Some(head_blob.as_str()) {
+    Ok(base_blob.as_deref() != Some(head_blob.as_str()))
+}
+
+/// `kernel_set_serves_both` with the base compiler named by the caller rather than by the floor
+/// job's environment -- the route controls take, so they drive the same comparison.
+pub fn kernel_set_serves_both_supplied(
+    repo: &std::path::Path,
+    base: &str,
+    head: &str,
+    supply: &super::base_facts::BaseCompilerSupply,
+) -> Result<bool, EnvironmentLoadRefusal> {
+    if !kernel_set_read_demands_base(repo, base, head)? {
         return Ok(true);
     }
     let head_names: BTreeSet<String> = crate::std_types::kernel_type_set()

@@ -77,6 +77,13 @@ pub enum BaseFactRefusal {
         run: String,
         waited: String,
     },
+    /// The job's demand decision (`base_compiler_demand`) said no base fact would be read, so it
+    /// fetched nothing, and a reader asked for one anyway: the decision and the readers disagree.
+    /// A defect in the decision, refused rather than answered with the head's compiler.
+    BaseCompilerNotDemanded {
+        revision: String,
+        fact: &'static str,
+    },
     /// The floor job supplied a compiler for a revision other than the base this binary decided.
     BaseCompilerRevisionMismatch { decided: String, supplied: String },
     /// The base compiler ran and did not answer: it refused the fact, lacks the verb (a base older
@@ -111,6 +118,12 @@ pub fn base_fact_refusal_text(refusal: &BaseFactRefusal) -> String {
             "cause=BaseCompilerPending revision={revision} run={run} waited={waited} -- the base revision's \
              merge-queue run is still in flight, so its compiler does not exist yet; this is an \
              ordering miss, judgeable once that run completes"
+        ),
+        BaseFactRefusal::BaseCompilerNotDemanded { revision, fact } => format!(
+            "cause=BaseCompilerNotDemanded revision={revision} fact={fact} -- the job's \
+             --base-compiler-demand decision said no base fact would be read, so no base compiler \
+             was fetched, and the {fact} reader asked for one: the decision and its readers \
+             disagree"
         ),
         BaseFactRefusal::BaseCompilerRevisionMismatch { decided, supplied } => format!(
             "cause=BaseCompilerRevisionMismatch decided={decided} supplied={supplied} -- the \
@@ -147,6 +160,10 @@ pub fn base_fact_refusal_text(refusal: &BaseFactRefusal) -> String {
 pub enum BaseCompilerSupply {
     /// The job ran no fetch at all (a local run, or a job that does not supply one).
     NotSupplied,
+    /// The job decided no base fact is demanded at `revision` and fetched nothing.
+    NotDemanded {
+        revision: String,
+    },
     Absent {
         revision: String,
         why: String,
@@ -178,6 +195,7 @@ pub fn base_compiler_supply_from_env() -> Result<BaseCompilerSupply, String> {
     })?;
     let detail = var(BASE_COMPILER_DETAIL_ENV).unwrap_or_default();
     match standing.as_str() {
+        "not-demanded" => Ok(BaseCompilerSupply::NotDemanded { revision }),
         "absent" => Ok(BaseCompilerSupply::Absent { revision, why: detail }),
         "pending" => {
             // The fetch step writes `run=<id> waited=<n>s`; both halves are named in the refusal.
@@ -201,9 +219,34 @@ pub fn base_compiler_supply_from_env() -> Result<BaseCompilerSupply, String> {
             })?,
         }),
         other => Err(format!(
-            "{BASE_COMPILER_STANDING_ENV}={other:?} is not one of present, absent, pending"
+            "{BASE_COMPILER_STANDING_ENV}={other:?} is not one of present, absent, pending, not-demanded"
         )),
     }
+}
+
+/// The job's decision, printed by `--base-compiler-demand` as `key=value` lines for the workflow's
+/// step outputs: the revision to fetch a compiler for, and which base facts the floor will read
+/// there. No fact demanded means no fetch, and the job states `not-demanded` for that revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseCompilerDemand {
+    pub revision: String,
+    pub facts: Vec<&'static str>,
+}
+
+pub fn base_compiler_demand_lines(demand: &BaseCompilerDemand) -> String {
+    format!(
+        "revision={}\ndemanded={}\nfacts={}\n",
+        demand.revision,
+        !demand.facts.is_empty(),
+        demand.facts.join(",")
+    )
+}
+
+/// `claim_executor --base-compiler-demand`: the decision, or a refusal that stops the job.
+pub fn emit_base_compiler_demand() -> Result<String, String> {
+    super::required_floor_runner::base_compiler_demand_decision()
+        .map(|d| base_compiler_demand_lines(&d))
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause=BaseCompilerDemandUndecided -- {e}"))
 }
 
 /// THE HEAD SIDE: `kind` at `revision`, answered by the base revision's own compiler, run in `repo`.
@@ -223,7 +266,8 @@ pub fn base_fact_from_base_compiler(
                 ),
             })
         }
-        BaseCompilerSupply::Absent { revision: r, .. }
+        BaseCompilerSupply::NotDemanded { revision: r }
+        | BaseCompilerSupply::Absent { revision: r, .. }
         | BaseCompilerSupply::Pending { revision: r, .. }
         | BaseCompilerSupply::Present { revision: r, .. }
             if r != revision =>
@@ -231,6 +275,12 @@ pub fn base_fact_from_base_compiler(
             return Err(BaseFactRefusal::BaseCompilerRevisionMismatch {
                 decided: revision.to_string(),
                 supplied: r.clone(),
+            })
+        }
+        BaseCompilerSupply::NotDemanded { .. } => {
+            return Err(BaseFactRefusal::BaseCompilerNotDemanded {
+                revision: revision.to_string(),
+                fact,
             })
         }
         BaseCompilerSupply::Absent { why, .. } => {
@@ -440,6 +490,16 @@ mod tests {
             }),
             BaseFactRefusal::BaseCompilerRevisionMismatch { .. }
         ));
+        // A reader asking where the job decided no fact is read: the decision and reader disagree.
+        assert_eq!(
+            ask(&BaseCompilerSupply::NotDemanded {
+                revision: "base".into()
+            }),
+            BaseFactRefusal::BaseCompilerNotDemanded {
+                revision: "base".into(),
+                fact: "kernel_names"
+            }
+        );
     }
 
     #[test]

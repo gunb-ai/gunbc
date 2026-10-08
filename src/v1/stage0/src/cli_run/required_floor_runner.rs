@@ -3243,10 +3243,7 @@ pub(crate) fn changed_with_cost_debt_admissions(
     // So the question is asked whenever the diff touches the roster OR any file its head closure
     // loads -- never by whether the roster's own path is in the diff (review on gunbc#13332). A
     // closure that cannot be read refuses rather than answering "untouched".
-    let touched = changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER) || {
-        let closure = roster_closure()?;
-        changed_paths.iter().any(|p| closure.contains(p))
-    };
+    let touched = cost_debt_roster_touched(changed_paths, roster_closure)?;
     let admitted = if added_paths.contains(FLOOR_COST_DEBT_ROSTER) {
         read_added()?
     } else if touched {
@@ -3262,6 +3259,89 @@ pub(crate) fn changed_with_cost_debt_admissions(
     }
     merge_cost_debt_admissions(&mut changed, &admitted);
     Ok((changed, admitted))
+}
+
+/// Whether the diff touches the roster or any file its head closure loads.
+fn cost_debt_roster_touched(
+    changed_paths: &[String],
+    roster_closure: impl FnOnce() -> Result<HashSet<String>, String>,
+) -> Result<bool, String> {
+    Ok(
+        changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER) || {
+            let closure = roster_closure()?;
+            changed_paths.iter().any(|p| closure.contains(p))
+        },
+    )
+}
+
+/// THE COST-DEBT READER'S DEMAND: exactly the arm of `changed_with_cost_debt_admissions` that reads
+/// the base roster (`read_modified`) -- the roster or its closure touched, and the roster not added
+/// by this change (an added roster has no base). `base_facts::base_compiler_demand` consumes it, so
+/// the job's fetch decision is this reader's own.
+pub(crate) fn cost_debt_base_read_demanded(
+    changed_paths: &[String],
+    added_paths: &HashSet<String>,
+    roster_closure: impl FnOnce() -> Result<HashSet<String>, String>,
+) -> Result<bool, String> {
+    Ok(!added_paths.contains(FLOOR_COST_DEBT_ROSTER)
+        && cost_debt_roster_touched(changed_paths, roster_closure)?)
+}
+
+/// WHICH BASE THE FLOOR WILL JUDGE AGAINST, AND WHETHER ANY BASE FACT WILL BE READ -- decided by
+/// this binary before the floor runs, so the job fetches the base compiler only when a reader will
+/// ask for it, and only for the revision this binary will name. The base is `FloorBaseTree`'s, the
+/// same resolver the floor's readers take (`gunbc.diff_baseline` through
+/// `floor_diff_comparison_readout`: pull_request, merge_group, workflow_dispatch, exact replay,
+/// operator override), never a second base-selection policy in the workflow. Each fact's demand is
+/// its reader's own predicate, called here and in the reader.
+pub(crate) fn base_compiler_demand_decision(
+) -> Result<super::base_facts::BaseCompilerDemand, String> {
+    let base_tree = FloorBaseTree::unresolved();
+    base_compiler_demand_at(
+        &base_tree,
+        &process_workspace_root(),
+        || {
+            let diff_text = floor_git_diff_range()?;
+            let (changed_paths, _) = floor_git_diff_name_status_range()?;
+            Ok((changed_paths, parse_unified_diff_added_paths(&diff_text)))
+        },
+        cost_debt_roster_head_closure,
+    )
+}
+
+/// The decision over a supplied window, diff and roster closure -- the route controls take.
+pub(crate) fn base_compiler_demand_at(
+    base_tree: &FloorBaseTree,
+    workspace: &Path,
+    observe_diff: impl FnOnce() -> Result<(Vec<String>, HashSet<String>), String>,
+    roster_closure: impl FnOnce() -> Result<HashSet<String>, String>,
+) -> Result<super::base_facts::BaseCompilerDemand, String> {
+    use super::base_facts::{base_fact_kind_name, BaseFactKind};
+    use crate::cli_run::namespace_baseline as nb;
+    let base = base_tree.commit()?.as_str().to_string();
+    let head = base_tree.head()?.to_string();
+    let mut facts = Vec::new();
+    if base != head {
+        let (changed_paths, added_paths) = observe_diff()?;
+        if cost_debt_base_read_demanded(&changed_paths, &added_paths, roster_closure)? {
+            facts.push(base_fact_kind_name(BaseFactKind::CostDebtRoster));
+        }
+        let text = |e: nb::EnvironmentLoadRefusal| nb::environment_load_refusal_text(&e);
+        let live = nb::LiveDagIndex::new();
+        if !nb::environment_differing_paths(workspace, &base, &head, &live)
+            .map_err(text)?
+            .is_empty()
+        {
+            facts.push(base_fact_kind_name(BaseFactKind::ParseEnvironment));
+        }
+        if nb::kernel_set_read_demands_base(workspace, &base, &head).map_err(text)? {
+            facts.push(base_fact_kind_name(BaseFactKind::KernelNames));
+        }
+    }
+    Ok(super::base_facts::BaseCompilerDemand {
+        revision: base,
+        facts,
+    })
 }
 
 /// THE FINALIZATION STEP: the wall's refusals written onto the floor's outcome, where
@@ -19344,6 +19424,89 @@ mod floor_base_tree_tests {
             tree(false, &orphan).commit().is_ok(),
             "two-dot needs no ancestor"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// THE BASE COMPILER DEMAND UNDER workflow_dispatch (gunbc#13453 finding A). The workflow used to
+    /// name the base itself from `pull_request.base.sha || merge_group.base_sha`, which is empty on
+    /// workflow_dispatch, so its `git merge-base` exited 128 before the floor ran. The decision is
+    /// now the binary's, over the comparison `gunbc.diff_baseline` resolves for that event
+    /// (`PushParent` on the policy base, under the policy's merge-base mode): it names the departure
+    /// point, demands nothing for a change touching no base-fact input, demands the kernel names
+    /// exactly when the kernel's declaring file differs, and the cost-debt roster exactly when the
+    /// roster is touched.
+    #[test]
+    fn base_compiler_demand_names_the_resolved_base_under_workflow_dispatch() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-base-compiler-demand-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("dag/std")).expect("mkdir");
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commit = |msg: &str| {
+            git(&["add", "-A"]);
+            git(&["commit", "--quiet", "--allow-empty", "-m", msg]);
+            git(&["rev-parse", "HEAD"])
+        };
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+        std::fs::write(dir.join("dag/std/types.dag"), "module std.types\n").expect("write");
+        let departure = commit("P");
+        git(&["update-ref", "refs/remotes/origin/main", &departure]);
+        git(&["checkout", "--quiet", "-b", "subject"]);
+        std::fs::write(dir.join("unrelated.txt"), "x").expect("write");
+        let plain = commit("H: touches no base-fact input");
+        std::fs::write(
+            dir.join("dag/std/types.dag"),
+            "module std.types\n// edited\n",
+        )
+        .expect("write");
+        let kernel = commit("K: edits the kernel's declaring file");
+        let dispatch = |head: &str| {
+            FloorBaseTree::for_comparison(
+                FreezeBaselineComparison::MergeBase {
+                    base: "origin/main".to_string(),
+                    head: head.to_string(),
+                    kind: "PushParentBaseline".to_string(),
+                },
+                dir.clone(),
+            )
+        };
+        let no_diff = || Ok((Vec::new(), HashSet::new()));
+        let no_closure = || Ok(HashSet::new());
+        let d =
+            base_compiler_demand_at(&dispatch(&plain), &dir, no_diff, no_closure).expect("decided");
+        assert_eq!(d.revision, departure);
+        assert!(d.facts.is_empty(), "{:?}", d.facts);
+        assert_eq!(
+            crate::cli_run::base_facts::base_compiler_demand_lines(&d),
+            format!("revision={departure}\ndemanded=false\nfacts=\n")
+        );
+        let d = base_compiler_demand_at(&dispatch(&kernel), &dir, no_diff, no_closure)
+            .expect("decided");
+        assert_eq!(d.revision, departure);
+        assert_eq!(d.facts, vec!["kernel_names"]);
+        let roster = || Ok((vec![FLOOR_COST_DEBT_ROSTER.to_string()], HashSet::new()));
+        let d =
+            base_compiler_demand_at(&dispatch(&plain), &dir, roster, no_closure).expect("decided");
+        assert_eq!(d.facts, vec!["cost_debt_roster"]);
         std::fs::remove_dir_all(&dir).ok();
     }
 

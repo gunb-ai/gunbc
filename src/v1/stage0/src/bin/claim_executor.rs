@@ -234,6 +234,20 @@ fn run() -> Result<ExitCode, ExitCode> {
     if args.get(1).map(String::as_str) == Some("--base-fact") {
         return base_fact_mode(&args);
     }
+    // THE HEAD SIDE'S DECISION, before the floor runs: which base, and whether any base fact will be
+    // read there. The floor job fetches a base compiler only on `demanded=true`.
+    if args.len() == 2 && args[1] == "--base-compiler-demand" {
+        return match v1_compiler::cli_run::base_facts::emit_base_compiler_demand() {
+            Ok(lines) => {
+                print!("{lines}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;

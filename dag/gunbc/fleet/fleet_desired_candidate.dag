@@ -183,7 +183,12 @@ fn artifact_query_statements() -> List<Node> {
 }
 
 // ONE POLL, UNROLLED: a bounded, forward sequence rather than a loop, so the wait's bound is the
-// statement count. A run that has COMPLETED with no artifact will never have one: that is absence.
+// statement count. A run that has COMPLETED with no artifact will never have one: that is absence --
+// but only once the artifacts are read AFTER completion was observed. The artifact query and the
+// status read are two observations, and a run can upload between them: empty, then completed, then
+// present is an ordinary interleaving, and concluding absence from the earlier empty read would
+// refuse a base compiler that exists. So completion triggers one more artifact read, and only that
+// read's emptiness is absence.
 fn poll_statements(interval: Second, export: CandidateStandingExport) -> List<Node> {
   [
     bash_build_if(
@@ -197,12 +202,20 @@ fn poll_statements(interval: Second, export: CandidateStandingExport) -> List<No
           name: "RunUnreadable", message: "the Actions API did not answer the candidate run's status; that is not absence",
         ),
         assign_sub(name: "RUN_STATUS", body: cmd(ws: [lit(t: "jq"), lit(t: "-r"), lit(t: ".status"), dir(file: "run.json")])),
-        bash_build_if(
+        bash_build_if_else(
           cond: test_words(ws: [var(n: "RUN_STATUS"), lit(t: "="), lit(t: "completed")]),
-          body: stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export),
+          then_body: bash_build_stmt_list_from_nodes(stmts: concat(artifact_query_statements(), [
+            bash_build_if(
+              cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
+              body: stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export),
+            ),
+          ])),
+          else_body: bash_build_stmt_list_from_nodes(stmts: concat(
+            [cmd(ws: [lit(t: "sleep"), lit(t: to_string(second_count(s: interval)))])],
+            artifact_query_statements(),
+          )),
         ),
-        cmd(ws: [lit(t: "sleep"), lit(t: to_string(second_count(s: interval)))]),
-      ], artifact_query_statements())),
+      ])),
     ),
   ]
 }
@@ -301,4 +314,46 @@ fn compiler_pair_candidate_fetch_script(statements: List<Node>) -> String {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } => ""
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE FLOOR'S DEMAND, DECIDED BY THE HEAD BINARY. `program` is the head's claim_executor; its
+// `--base-compiler-demand` resolves the base through the floor's own resolver (gunbc.diff_baseline,
+// every event the workflow runs on) and asks each base-fact reader its own predicate, printing
+// `revision=`, `demanded=` and `facts=` lines. The step writes them as its outputs. The workflow
+// selects no base and decides no demand of its own: it fetches only on demanded=true, for that
+// revision, and on demanded=false states not-demanded for it so a reader that asks anyway refuses
+// typed (BaseCompilerNotDemanded) rather than reading as never supplied.
+data base_compiler_demand_out: String = "base-compiler-demand.out"
+data base_compiler_demanded_revision_env: String = "GUNBC_BASE_COMPILER_DEMANDED_REVISION"
+
+fn base_compiler_demand_statements(program: String) -> List<Node> {
+  let out = words(ws: [var(n: "RUNNER_TEMP"), lit(t: join(["/", base_compiler_demand_out], ""))])
+  [
+    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: program), lit(t: "--base-compiler-demand")]), path: out),
+    bash_build_with_redir_to_file(
+      inner: bash_build_pipe(left: cmd(ws: [lit(t: "cat"), out]), right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_OUTPUT")])),
+      path: lit(t: "/dev/stderr"),
+    ),
+  ]
+}
+
+fn base_compiler_not_demanded_statements() -> List<Node> {
+  concat([
+    bash_build_assign(name: "CHECKED_OUT", value: var(n: base_compiler_demanded_revision_env)),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "pair-candidate: not demanded (no base fact is read at "), var(n: "CHECKED_OUT"), lit(t: "; nothing fetched)")])]),
+  ], standing_statements(standing: "not-demanded", detail: lit(t: "no base fact demanded"), export: CandidateStandingToBaseCompilerEnv))
+}
+
+// The floor's fetch reads the decided revision from the demand step, never from git.
+fn base_compiler_demanded_revision() -> Node {
+  cmd(ws: [lit(t: "printf"), lit(t: "%s"), var(n: base_compiler_demanded_revision_env)])
+}
+
+fn base_compiler_demand_script(program: String) -> String {
+  compiler_pair_candidate_fetch_script(statements: base_compiler_demand_statements(program: program))
+}
+
+fn base_compiler_not_demanded_script() -> String {
+  compiler_pair_candidate_fetch_script(statements: base_compiler_not_demanded_statements())
 }
