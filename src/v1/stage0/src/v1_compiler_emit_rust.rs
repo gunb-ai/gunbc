@@ -26746,13 +26746,6 @@ pub fn rust_call_target_declared_length(
     }
 }
 
-pub fn rust_algebra_length_lowers_on_host_text(
-    e: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    is_host_text_typed_expr(e.clone(), source_indices.clone())
-}
-
 pub fn rust_emit_length_on_host_string(
     call_target: Rc<CallTargetIdentity>,
     func: String,
@@ -26777,7 +26770,7 @@ pub fn rust_emit_length_on_host_string(
             match length_args.clone().first().cloned() {
                 std::option::Option::None => std::option::Option::None,
                 Some(xs_arg) => {
-                    if rust_algebra_length_lowers_on_host_text(
+                    if is_host_text_typed_expr(
                         crate::v1_std_core::arg_value(xs_arg.clone()),
                         scope.type_env.clone().source_indices.clone(),
                     ) {
@@ -30147,7 +30140,7 @@ pub fn emit_typed_method_call(
                     method_def.clone(),
                 );
                 let method_name = if (method_name_raw.clone() == "length".to_string()) {
-                    if rust_algebra_length_lowers_on_host_text(
+                    if is_host_text_typed_expr(
                         receiver.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ) {

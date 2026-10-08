@@ -12658,17 +12658,13 @@ fn rust_call_target_declared_length(target: CallTargetIdentity) -> DeclaredCalla
   }
 }
 
-fn rust_algebra_length_lowers_on_host_text(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_host_text_typed_expr(e: e, source_indices: source_indices)
-}
-
 fn rust_emit_length_on_host_string(call_target: CallTargetIdentity, func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
   if rust_call_target_is_v2_algebra_length(target: call_target) == false { none } else {
     let length_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     match length_args |> first {
       Absent => none
       Present { value: xs_arg } =>
-        if rust_algebra_length_lowers_on_host_text(e: arg_value(n: xs_arg), source_indices: scope.type_env.source_indices) {
+        if is_host_text_typed_expr(e: arg_value(n: xs_arg), source_indices: scope.type_env.source_indices) {
           Present { value: concat(
             "v1_rt::string_length(&",
             emit_typed_expr_base(texpr: arg_value(n: xs_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
@@ -13749,7 +13745,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
 
       let method_name_raw = authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
       let method_name = if method_name_raw == "length" {
-        if rust_algebra_length_lowers_on_host_text(e: receiver, source_indices: scope.type_env.source_indices) { "string_length" } else { "count" }
+        if is_host_text_typed_expr(e: receiver, source_indices: scope.type_env.source_indices) { "string_length" } else { "count" }
       } else { method_name_raw }
       let algebra_field_call = rust_callable_field_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       if algebra_field_call != none {
