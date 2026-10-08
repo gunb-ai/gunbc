@@ -516,13 +516,6 @@ fn cas_window_max_generation(generations: List<CasGeneration>) -> CasGeneration?
   })
 }
 
-fn cas_window_min_generation(generations: List<CasGeneration>) -> CasGeneration? {
-  fold(generations, init: none, f: (best, g) => match best {
-    Absent => Present { value: g }
-    Present { value: b } => if cas_generation_count(g: g) < cas_generation_count(g: b) { Present { value: g } } else { best }
-  })
-}
-
 data cas_window_observation_attempts: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8]
 
 // ONE LIST-AND-VERIFY PASS. Recursion here was the unbounded arm: a window whose listed max is
@@ -1106,7 +1099,6 @@ type CasFileWrite {
 }
 
 type CasReclaimProgress {
-  remaining: List<CasGeneration>
   removed: List<CasGeneration>
   failed: List<CasGenerationReclaimFailure>
   stopped: Bool
@@ -1115,9 +1107,8 @@ type CasReclaimProgress {
 // ASCENDING, AND STOP AT THE FIRST HOST REFUSAL. Independent deletes of every generation at or
 // below the floor could remove G+1 while G survived, which punches a hole: named window verify
 // (G present and G+1 absent) would then report G as head while a later generation was live.
-// Deleting in generation order and leaving every later eligible generation in place when one
-// delete fails keeps the surviving prefix contiguous, so that two-read proof cannot mint a
-// stale head.
+// One sort_by of the eligible set, then one walk that leaves every later generation in place when
+// a delete fails, keeps that prefix contiguous without a min-and-filter per step.
 fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, head: CasGeneration) -> CasWindowReclamation
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
@@ -1129,24 +1120,17 @@ fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationW
     CasWindowGenerationsUnlisted { cause: c } => CasReclamationUnlisted { cause: c }
     CasWindowGenerationsListed { generations: gs } => {
       let floor = cas_generation_count(g: head) - window.k
-      let eligible = gs |> filter(g => cas_generation_count(g: g) <= floor)
-      let walk = fold(eligible, init: CasReclaimProgress { remaining: eligible, removed: [], failed: [], stopped: false }, f: (acc, _) =>
+      let ordered = gs |> filter(g => cas_generation_count(g: g) <= floor) |> sort_by(g => cas_generation_count(g: g))
+      let walk = fold(ordered, init: CasReclaimProgress { removed: [], failed: [], stopped: false }, f: (acc, g) =>
         if acc.stopped { acc } else {
-          match cas_window_min_generation(generations: acc.remaining) {
-            Absent => acc
-            Present { value: g } => {
-              let rest = acc.remaining |> filter(x => cas_generation_count(g: x) != cas_generation_count(g: g))
-              let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
-              if d.success {
-                CasReclaimProgress { remaining: rest, removed: acc.removed |> list_push(g), failed: acc.failed, stopped: false }
-              } else {
-                CasReclaimProgress {
-                  remaining: rest,
-                  removed: acc.removed,
-                  failed: [CasGenerationReclaimFailure { generation: g, host_error: d.error }],
-                  stopped: true,
-                }
-              }
+          let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
+          if d.success {
+            CasReclaimProgress { removed: acc.removed |> list_push(g), failed: acc.failed, stopped: false }
+          } else {
+            CasReclaimProgress {
+              removed: acc.removed,
+              failed: [CasGenerationReclaimFailure { generation: g, host_error: d.error }],
+              stopped: true,
             }
           }
         }
