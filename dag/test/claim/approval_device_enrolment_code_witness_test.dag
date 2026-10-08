@@ -20,7 +20,8 @@ import gunbc.auth.approval_ntfy_publish { hermetic_ntfy_publish_message_id }
 import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
 import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
-import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_argv, enrolment_code_issue_refuses_off_broker_host, enrolment_code_issue_placement_under, EnrolmentCodeIssuePlaced, EnrolmentCodeIssueUnplaced }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_command, sudo_elevate_words, enrolment_code_issue_refuses_off_broker_host, enrolment_code_issue_placement_under, EnrolmentCodeIssuePlaced, EnrolmentCodeIssueUnplaced }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
@@ -78,15 +79,34 @@ test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_neve
 // verb could not read the group-gated ntfy publisher token (run 37098981121); restoring them turns
 // this claim red.
 test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
-  let argv = enrolment_code_issue_remote_argv(revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }, base_url: "https://srv1.example.ts.net" as NonEmptyStr)
-  let joined = join(argv, " ")
   let op = fleet_posix_operator_user.name as String
-  string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max))
-    + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high))
-    + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567 " + (approval_broker_base_url_env_name as String) + "=https://srv1.example.ts.net /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
-    && !string_contains(s: joined, pattern: "--uid=")
-    && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
-    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_enrolment_code.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
+  let rev = "0123456789abcdef0123456789abcdef01234567"
+  the_remote_verb_words_carry_the_release_shape(
+    reading: enrolment_code_issue_remote_command(revision: RevisionBoundAtEmission { revision: rev }, base_url: "https://srv1.example.ts.net" as NonEmptyStr),
+    rev: rev,
+    op: op,
+    base_url: "https://srv1.example.ts.net",
+  )
+}
+
+// POSITIVE CONTROL FOR THE TYPED CUTOVER: the words the projection renders are the words the
+// string-built form rendered for the same arguments -- non-interactive sudo, a system-manager scope
+// bounded by the broker's slice rows, the account entered through setpriv --init-groups (never
+// systemd-run's --uid/--gid; run 37098981121), the release directory as the seed's checkout root
+// inside the elevation, the broker base URL the placement resolved, and the verb naming its module and function. The projection's rejected-word
+// refusals are unreachable for these compile-time shapes; the claim's red depends on the words, not
+// on a refusal arm.
+fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReading, rev: String, op: String, base_url: String) -> Bool {
+  match reading {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let joined = join(sudo_elevate_words(command: command), " ")
+      string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max)) + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high)) + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/" + rev + " " + (approval_broker_base_url_env_name as String) + "=" + base_url + " /opt/gunbc/approval-broker/releases/" + rev + "/gunbc run ")
+        && !string_contains(s: joined, pattern: "--uid=")
+        && string_contains(s: joined, pattern: "/releases/" + rev + "/gunbc run ")
+        && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/" + rev + "/dag/gunbc/auth/approval_device_enrolment_code.dag --function issue_device_enrolment_code --arg revision=" + rev)
+    }
+  }
 }
 
 // The step runs on the broker's placed host and nowhere else -- srv1 under today's selection, srv2

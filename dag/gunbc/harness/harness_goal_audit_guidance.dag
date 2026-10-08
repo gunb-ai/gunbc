@@ -2,7 +2,7 @@ module gunbc.harness.harness_goal_audit_guidance
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, harness_tool_wire_name }
 
 // THE AUDITOR IS THE THIRD ROLE AND ITS OWN SYLLOGISM. The worker changes the tree to satisfy a brief;
 // the reviewers judge the diff against the design's criteria; the auditor judges the OUTCOME against

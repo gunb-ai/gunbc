@@ -1,0 +1,48 @@
+module gunbc.fixture_closure_union_emit_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that restores fixture-closure emit coverage on the
+// required floor (gunbc#13195; retires gunbc.rung_drop
+// fixture_closure_corpus_emit_refusals_lost_as_passenger). Reviewers of that landing flagged the
+// missing SeedGrowthJustification. Same owner and shape as
+// gunbc.fixture_render_selection_seed_growth, which is the C1 narrowing this phase restores the
+// other half of.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing): it serves the v2 self-host program.
+// Floor C1 stopped rendering every closure module per fixture compile, so a corpus module's own
+// emit refusal no longer reached any required gate unless a v1 seed mirror happened to cover it.
+// This phase records each fixture instrument's resolved closure and, once per required run,
+// renders the union through the rust emitter with RenderEveryModule, refusing on conflict,
+// uncompilable, empty, or per-module emit refusal.
+//
+// WHAT IS SEED AND WHY. The recording seam sits on two host builtins
+// (compile_dag_rust_emit_check / compile_dag_diagnostic_census) that call the seed compile
+// synchronously. The union is a process-lived host set of (path, bytes) plus a memo-replay table
+// so a later run in the same process whose fixture calls all hit still has a population. A .dag
+// fold cannot name that compile or that thread-local recorder.
+//
+// THE PHASE CALL in v1_compiler.cli_run.required_floor_runner is not a new declaration: it
+// invokes the items below. Tests under cfg(test) mod fixture_closure_union_tests are not
+// enumerated; they are not production surface.
+data fixture_closure_union_emit_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "FixtureClosureUnion", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "FixtureClosureUnionObserved", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "begin_fixture_closure_fill", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "finish_fixture_closure_fill", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "record_fixture_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "record_fixture_closure_memo_hit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "take_fixture_closure_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "fixture_closure_union_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "fixture_closure_union_emit_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "fixture_closure_union_control_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "fixture_closure_union_controls", field: WholeDeclaration }
+  ],
+  reason: "The required floor's fixture-closure-union-emit phase must record every source a fixture compile resolved (except the fixture itself), union those closures by path and bytes, and render the union once. Recording and memo replay are host process state around seed compiles no .dag fold can name. FixtureClosureUnion / FixtureClosureUnionObserved are the population and the receipt. begin/finish_fixture_closure_fill plus record_fixture_closure_memo_hit keep the union complete on a later run whose fixture calls all hit. record_fixture_closure is the fill seam both instruments share. take_fixture_closure_union is the once-per-run take. fixture_closure_union_digest is the identity printed on the floor line. fixture_closure_union_emit_receipt is the render-and-refuse. fixture_closure_union_controls are the enrolled red and positive control the floor runs before the live union.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when compile_dag_rust_emit_check and compile_dag_diagnostic_census are modeled operations rather than host builtins, so the fixture closure is a demand the substrate already carries and the union render is a modeled emit over that demand. The floor phase migrates with those instruments or is deleted with them.",
+  current_boundary: "Runs inside the required floor after claims and after prepared-graph teardown. Writes no tree path except the union compile's ephemeral emit. Every failure is a typed floor refusal (empty, conflict, uncompilable, emit refused). The population is exactly the closures those two instruments recorded on that run, including memo replay."
+}

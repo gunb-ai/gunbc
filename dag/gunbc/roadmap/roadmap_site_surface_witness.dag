@@ -38,10 +38,10 @@ fn fresh_surface_read_grounds_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bo
   )
 }
 
-fn witness_stale_roadmap_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapSiteSurfaceArtifact {
+fn witness_stale_dispatch_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapSiteSurfaceArtifact {
   RoadmapSiteSurfaceArtifact {
-    url_path: bundle.roadmap_md.url_path,
-    body: bundle.roadmap_md.body,
+    url_path: bundle.dispatch_json.url_path,
+    body: bundle.dispatch_json.body,
     digest: Fnv1a64Structural { digest: witness_stale_artifact_digest_hex as NonEmptyStr },
   }
 }
@@ -65,10 +65,8 @@ fn witness_stale_healthz_body_for_bundle(
   release_revision: CommitSha,
 ) -> String {
   healthz_body_with_release_identity(
-    roadmap: witness_stale_roadmap_artifact(bundle: bundle),
-    dispatch: bundle.dispatch_json,
+    dispatch: witness_stale_dispatch_artifact(bundle: bundle),
     daily: bundle.daily_html,
-    full: bundle.full_html,
     dispatch_js: bundle.dispatch_js,
     release_revision: release_revision,
     surface_bundle_identity: bundle.bundle_identity,

@@ -3,9 +3,11 @@ module extdeps.version.semver
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
-import std.types { List }
+import std.types { List, Int }
 import std.nat { nat_compare }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
+import std.algebra { trim }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -94,6 +96,56 @@ fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
         other => other
       }
     other => other
+  }
+}
+
+// A NUMERIC RELEASE "M.m" OR "M.m.p" AS A SemVerVersion CORE, the form tools that are not themselves
+// semver-governed (curl, among them) print and pin. A missing patch reads as 0, which is what "M.m"
+// means as a release floor; any other shape -- a fourth part, a non-digit, a negative -- is absent,
+// never coerced.
+fn semver_core_of_dotted(text: String) -> SemVerVersion? {
+  let parts = split(s: trim(s: text), delimiter: ".")
+  if length(parts) < 2 || length(parts) > 3 {
+    none
+  } else {
+    match semver_dotted_part(parts: parts, index: 0) {
+      Absent => none
+      Present { value: major } =>
+        match semver_dotted_part(parts: parts, index: 1) {
+          Absent => none
+          Present { value: minor } =>
+            if length(parts) == 2 {
+              Present { value: SemVerVersion { major: major, minor: minor, patch: 0, pre_release: [], build: [] } }
+            } else {
+              match semver_dotted_part(parts: parts, index: 2) {
+                Absent => none
+                Present { value: patch } => Present { value: SemVerVersion { major: major, minor: minor, patch: patch, pre_release: [], build: [] } }
+              }
+            }
+        }
+    }
+  }
+}
+
+fn semver_dotted_part(parts: List<String>, index: Int) -> NonNegativeInt? {
+  match parts.skip(n: index).first() {
+    Absent => none
+    Present { value: w } =>
+      match parse_int(s: w) {
+        Absent => none
+        Present { value: n } => checked_int_to_nat(n: n)
+      }
+  }
+}
+
+// THE FLOOR A ">= M.m[.p]" CONSTRAINT NAMES. Only the lower-bound form is admitted: every other
+// constraint shape is absent, so a caller gating on it refuses rather than reading a range as a floor.
+fn semver_minimum_of_constraint(constraint: VersionConstraint) -> SemVerVersion? {
+  let c = trim(s: constraint as String)
+  if starts_with(s: c, prefix: ">=") {
+    semver_core_of_dotted(text: substring(s: c, start: 2, end: string_length(s: c)))
+  } else {
+    none
   }
 }
 
