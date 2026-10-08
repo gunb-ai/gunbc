@@ -92,9 +92,9 @@ pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named,
     is_interpreter_blocking_diagnostic, param_node_name_at, param_node_type_expr,
-    compose_optional_cardinality_onto_node, preserve_outer_optional_cardinality,
-    qualified_last_segment, with_optional_cardinality, with_required_cardinality,
-    without_optional_cardinality,
+    compose_optional_cardinality_onto_node, lift_once_optional_cardinality,
+    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
+    with_required_cardinality, without_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -975,10 +975,16 @@ pub fn lookup_field_type_node(
                         source_indices.clone(),
                     ) {
                         Some(inner_result) => Some(
-                            crate::v1_std_core::compose_optional_cardinality_onto_node(
-                                n.clone(),
-                                inner_result.clone(),
-                            ),
+                            if crate::v1_std_core::cardinality_is_optional(
+                                inner_result.return_cardinality.clone(),
+                            ) {
+                                inner_result.clone()
+                            } else {
+                                crate::v1_std_core::compose_optional_cardinality_onto_node(
+                                    n.clone(),
+                                    inner_result.clone(),
+                                )
+                            },
                         ),
                         std::option::Option::None => std::option::Option::None,
                     }
@@ -1022,7 +1028,7 @@ pub fn lookup_field_type_node(
                                                     )
                                                 }
                                             };
-                                            Some(crate::v1_std_core::with_optional_cardinality(
+                                            Some(crate::v1_std_core::lift_once_optional_cardinality(
                                                 value_child.clone(),
                                             ))
                                         }
@@ -1514,10 +1520,16 @@ pub fn lookup_structural_method(
             Some(mfr) => Rc::new(StructuralMethodLookup {
                 resolution: Some(Rc::new(MethodFieldResult {
                     field_node: mfr.field_node.clone(),
-                    result_type: crate::v1_std_core::compose_optional_cardinality_onto_node(
-                        receiver_type.clone(),
-                        mfr.result_type.clone(),
-                    ),
+                    result_type: if crate::v1_std_core::cardinality_is_optional(
+                        mfr.result_type.return_cardinality.clone(),
+                    ) {
+                        mfr.result_type.clone()
+                    } else {
+                        crate::v1_std_core::compose_optional_cardinality_onto_node(
+                            receiver_type.clone(),
+                            mfr.result_type.clone(),
+                        )
+                    },
                     size_effect: mfr.size_effect.clone(),
                     cost_shape: mfr.cost_shape.clone(),
                     algebra_template: mfr.algebra_template.clone(),

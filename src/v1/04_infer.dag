@@ -88,7 +88,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   binop_left, binop_right,
   make_transport_node, local_transport_node,
   Text, Interpolation,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
+  with_optional_cardinality, lift_once_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -6814,7 +6814,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
             Present { value: Resolved { node: receiver_type } } =>
               match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
                 Present { value: value_type } =>
-                  with_optional_cardinality(n: value_type)
+                  lift_once_optional_cardinality(n: value_type)
                 Absent => resolve_builtin_call_type(name: func_name)
               }
             _ => resolve_builtin_call_type(name: func_name)

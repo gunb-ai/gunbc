@@ -5362,6 +5362,14 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     )
 }
 
+pub fn lift_once_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
+    if crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()) {
+        n
+    } else {
+        with_optional_cardinality(n)
+    }
+}
+
 pub fn without_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     node_with_cardinality(n.clone(), Cardinality::Required)
 }

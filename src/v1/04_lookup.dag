@@ -23,7 +23,7 @@ import v1.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_optional_cardinality, with_required_cardinality, without_optional_cardinality, compose_optional_cardinality_onto_node, preserve_outer_optional_cardinality, cardinality_is_optional,
+  with_optional_cardinality, lift_once_optional_cardinality, with_required_cardinality, without_optional_cardinality, compose_optional_cardinality_onto_node, preserve_outer_optional_cardinality, cardinality_is_optional,
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
@@ -790,7 +790,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
       Present { value: with_required_cardinality(n: n) }
     } else {
       match lookup_field_type_node(n: without_optional_cardinality(n: n), field_name: field_name, source_indices: source_indices) {
-        Present { value: inner_result } => Present { value: compose_optional_cardinality_onto_node(outer: n, inner: inner_result) }
+        Present { value: inner_result } => Present { value: if cardinality_is_optional(c: inner_result.return_cardinality) { inner_result } else { compose_optional_cardinality_onto_node(outer: n, inner: inner_result) } }
         Absent => none
       }
     }
@@ -806,7 +806,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
                 Present { value: child } => child_type_node(ch: child)
                 Absent => nominal_type_ref(name: "V")
               }
-              Present { value: with_optional_cardinality(n: value_child) }
+              Present { value: lift_once_optional_cardinality(n: value_child) }
             } else {
               Present { value: child_type_node(ch: field_child) }
             }
@@ -1043,7 +1043,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     match inner_lookup.resolution {
       Present { value: mfr } =>
         StructuralMethodLookup {
-          resolution: Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: compose_optional_cardinality_onto_node(outer: receiver_type, inner: mfr.result_type), size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template } },
+          resolution: Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: if cardinality_is_optional(c: mfr.result_type.return_cardinality) { mfr.result_type } else { compose_optional_cardinality_onto_node(outer: receiver_type, inner: mfr.result_type) }, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template } },
           kernel_diagnostics: inner_lookup.kernel_diagnostics
         }
       Absent => inner_lookup

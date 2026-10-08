@@ -2905,6 +2905,10 @@ fn with_optional_cardinality(n: Node) -> Node {
   node_with_cardinality(n: n, c: compose_optional_layers(outer: CardOptional { layers: 1 }, inner: n.return_cardinality))
 }
 
+fn lift_once_optional_cardinality(n: Node) -> Node {
+  if cardinality_is_optional(c: n.return_cardinality) { n } else { with_optional_cardinality(n: n) }
+}
+
 fn with_required_cardinality(n: Node) -> Node {
   node_with_cardinality(n: n, c: peel_optional_layer_cardinality(c: n.return_cardinality))
 }

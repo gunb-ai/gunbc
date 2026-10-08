@@ -9597,7 +9597,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         scope.type_env.clone(),
                     ) {
                         Some(value_type) => {
-                            crate::v1_std_core::with_optional_cardinality(value_type.clone())
+                            crate::v1_std_core::lift_once_optional_cardinality(value_type.clone())
                         }
                         std::option::Option::None => {
                             crate::v1_compiler_infer_method::resolve_builtin_call_type(
