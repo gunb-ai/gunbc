@@ -2163,7 +2163,7 @@ type RedfishGet
   = RedfishGot { body: String, left: Int }
   | RedfishGetFailed { cause: BmcReadCause, left: Int }
 
-fn redfish_get(netrc: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: String) -> RedfishGet
+fn redfish_get(username: NonEmptyStr, password: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: String) -> RedfishGet
 {
   let at = clock_now_probed_at_or_unknown()
   match redfish_budget_refusal(url: mtcollins1_redfish_url(path: path as String), at: at, left: left, not_reached: not_reached) {
@@ -2172,13 +2172,13 @@ fn redfish_get(netrc: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: St
   }
   let r = redfish.Http.GetResourceByPath(
     bmc_host: mtcollins1_endpoint.host,
-    netrc_file: netrc,
+    username: username,
+    password: password,
     odata_path: path,
-    max_seconds: to_string(second_count(s: mtcollins1_boot_redfish_read_deadline)) as NonEmptyStr,
   )
   return match r {
-    RestAnswered { body: body } => RedfishGot { body: body, left: left - 1 }
-    RestRefusal { cause } => RedfishGetFailed { cause: concat("GetResourceByPath failed: ", cause), left: left - 1 }
+    RestAnswered { answer: body } => RedfishGot { body: body, left: left - 1 }
+    RestRefused { refusal: refusal } => RedfishGetFailed { cause: concat("GetResourceByPath failed: ", refusal.body), left: left - 1 }
   }
 }
 
@@ -2187,7 +2187,8 @@ type CollectionFetch
   | CollectionFetchFailed { cause: BmcReadCause, left: Int }
 
 fn fetch_collection_pages(
-  netrc: NonEmptyStr,
+  username: NonEmptyStr,
+  password: NonEmptyStr,
   collection: NonEmptyStr,
   page: NonEmptyStr,
   pages_left: Int,
@@ -2199,7 +2200,7 @@ fn fetch_collection_pages(
   if pages_left <= 0 {
     return CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: concat("page bound ", to_string(mtcollins1_boot_collection_page_bound), " reached with Members@odata.nextLink still pending") }, left: left }
   }
-  match redfish_get(netrc: netrc, path: page, left: left, not_reached: concat("the rest of ", collection as String, " and every member of it")) {
+  match redfish_get(username: username, password: password, path: page, left: left, not_reached: concat("the rest of ", collection as String, " and every member of it")) {
     RedfishGetFailed { cause: c, left: l } => CollectionFetchFailed { cause: c, left: l }
     RedfishGot { body: body, left: l } =>
       match redfish_collection_page_of(body: body) {
@@ -2210,7 +2211,7 @@ fn fetch_collection_pages(
             Present { value: next } =>
               match redfish_same_origin_link(link: next) {
                 RedfishLinkRefused { cause: why } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: page as String), at: at, detail: concat("Members@odata.nextLink not followed: ", why as String) }, left: l }
-                RedfishLinkSameOrigin { path: next_path } => fetch_collection_pages(netrc: netrc, collection: collection, page: next_path, pages_left: pages_left - 1, left: l, read: pages)
+                RedfishLinkSameOrigin { path: next_path } => fetch_collection_pages(username: username, password: password, collection: collection, page: next_path, pages_left: pages_left - 1, left: l, read: pages)
               }
             Absent =>
               match redfish_collection_assembly(pages: pages, member_bound: mtcollins1_boot_collection_member_bound) {
@@ -2223,9 +2224,9 @@ fn fetch_collection_pages(
   }
 }
 
-fn fetch_collection(netrc: NonEmptyStr, collection: NonEmptyStr, left: Int) -> CollectionFetch
+fn fetch_collection(username: NonEmptyStr, password: NonEmptyStr, collection: NonEmptyStr, left: Int) -> CollectionFetch
 {
-  fetch_collection_pages(netrc: netrc, collection: collection, page: collection, pages_left: mtcollins1_boot_collection_page_bound, left: left, read: [])
+  fetch_collection_pages(username: username, password: password, collection: collection, page: collection, pages_left: mtcollins1_boot_collection_page_bound, left: left, read: [])
 }
 
 type MemoryFold { reading: MembersReading<RedfishMemoryMember>, left: Int }
@@ -2240,12 +2241,12 @@ type MemberBodiesFetch
   = MemberBodiesFetched { bodies: List<MemberBody>, left: Int }
   | MemberBodiesFailed { cause: BmcReadCause, left: Int }
 
-fn fetch_member_bodies(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemberBodiesFetch
+fn fetch_member_bodies(username: NonEmptyStr, password: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemberBodiesFetch
 {
   let empty: List<MemberBody> = []
   fold(links, init: MemberBodiesFetched { bodies: empty, left: left }, f: (acc, link) => match acc {
     MemberBodiesFetched { bodies: bs, left: l } =>
-      match redfish_get(netrc: netrc, path: link, left: l, not_reached: member_not_reached(total: count(links), read: count(bs))) {
+      match redfish_get(username: username, password: password, path: link, left: l, not_reached: member_not_reached(total: count(links), read: count(bs))) {
         RedfishGetFailed { cause: c, left: l2 } => MemberBodiesFailed { cause: c, left: l2 }
         RedfishGot { body: body, left: l2 } => MemberBodiesFetched { bodies: concat(bs, [MemberBody { link: link, body: body }]), left: l2 }
       }
@@ -2253,17 +2254,17 @@ fn fetch_member_bodies(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) 
   })
 }
 
-fn read_memory_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
+fn read_memory_members(username: NonEmptyStr, password: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
 {
-  match fetch_member_bodies(netrc: netrc, links: links, left: left) {
+  match fetch_member_bodies(username: username, password: password, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
     MemberBodiesFetched { bodies: bs, left: l } => MemoryFold { reading: assemble_memory_members(collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
   }
 }
 
-fn read_processor_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
+fn read_processor_members(username: NonEmptyStr, password: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
 {
-  match fetch_member_bodies(netrc: netrc, links: links, left: left) {
+  match fetch_member_bodies(username: username, password: password, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
     MemberBodiesFetched { bodies: bs, left: l } => ProcessorFold { reading: assemble_processor_members(collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
   }
@@ -2283,26 +2284,26 @@ fn same_origin_or_none(link: String?) -> NonEmptyStr? {
   }
 }
 
-fn read_processors(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> ProcessorFold
+fn read_processors(username: NonEmptyStr, password: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> ProcessorFold
 {
   match same_origin_or_none(link: link) {
     Absent => ProcessorFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Processors") }, left: left }
     Present { value: path } =>
-      match fetch_collection(netrc: netrc, collection: path, left: left) {
+      match fetch_collection(username: username, password: password, collection: path, left: left) {
         CollectionFetchFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
-        CollectionFetched { links: links, left: l } => read_processor_members(netrc: netrc, collection: path, links: links, left: l)
+        CollectionFetched { links: links, left: l } => read_processor_members(username: username, password: password, collection: path, links: links, left: l)
       }
   }
 }
 
-fn read_memory(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> MemoryFold
+fn read_memory(username: NonEmptyStr, password: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> MemoryFold
 {
   match same_origin_or_none(link: link) {
     Absent => MemoryFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Memory") }, left: left }
     Present { value: path } =>
-      match fetch_collection(netrc: netrc, collection: path, left: left) {
+      match fetch_collection(username: username, password: password, collection: path, left: left) {
         CollectionFetchFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
-        CollectionFetched { links: links, left: l } => read_memory_members(netrc: netrc, collection: path, links: links, left: l)
+        CollectionFetched { links: links, left: l } => read_memory_members(username: username, password: password, collection: path, links: links, left: l)
       }
   }
 }
@@ -2350,22 +2351,22 @@ fn mtcollins1_systems_link(root_body: String, at: NonEmptyStr) -> ObservationAtt
 // THE SYSTEM IS READ, NOT ASSUMED: the Systems collection must name exactly one member, whose own
 // Memory and Processors links name the collections read next. Zero or several systems is a typed
 // reading, since picking one would be a guess about which system the attempt booted.
-fn read_inventory_with_netrc(netrc: NonEmptyStr) -> InventoryReading
+fn read_inventory(username: NonEmptyStr, password: NonEmptyStr) -> InventoryReading
 {
   let at = clock_now_probed_at_or_unknown()
-  match redfish_get(netrc: netrc, path: mtcollins1_redfish_service_root_path, left: mtcollins1_boot_redfish_read_budget, not_reached: "the service root and every inventory read after it") {
+  match redfish_get(username: username, password: password, path: mtcollins1_redfish_service_root_path, left: mtcollins1_boot_redfish_read_budget, not_reached: "the service root and every inventory read after it") {
     RedfishGetFailed { cause: c, left: _ } => inventory_unread(cause: c)
     RedfishGot { body: root_body, left: after_root } =>
       match mtcollins1_systems_link(root_body: root_body, at: at) {
         ObservationRefused { cause: c } => inventory_unread(cause: c)
-        ObservationEstablished { observed: systems_path } => read_inventory_from_systems(netrc: netrc, systems_path: systems_path, left: after_root, at: at)
+        ObservationEstablished { observed: systems_path } => read_inventory_from_systems(username: username, password: password, systems_path: systems_path, left: after_root, at: at)
       }
   }
 }
 
-fn read_inventory_from_systems(netrc: NonEmptyStr, systems_path: NonEmptyStr, left: Int, at: NonEmptyStr) -> InventoryReading
+fn read_inventory_from_systems(username: NonEmptyStr, password: NonEmptyStr, systems_path: NonEmptyStr, left: Int, at: NonEmptyStr) -> InventoryReading
 {
-  match fetch_collection(netrc: netrc, collection: systems_path, left: left) {
+  match fetch_collection(username: username, password: password, collection: systems_path, left: left) {
     CollectionFetchFailed { cause: c, left: _ } => inventory_unread(cause: c)
     CollectionFetched { links: systems, left: left } =>
       if count(systems) != 1 {
@@ -2374,14 +2375,14 @@ fn read_inventory_from_systems(netrc: NonEmptyStr, systems_path: NonEmptyStr, le
         match systems.first() {
           Absent => inventory_not_taken(reason: "Systems collection member vanished between count and read")
           Present { value: system } =>
-            match redfish_get(netrc: netrc, path: system, left: left, not_reached: "the system resource and every inventory read after it") {
+            match redfish_get(username: username, password: password, path: system, left: left, not_reached: "the system resource and every inventory read after it") {
               RedfishGetFailed { cause: c, left: _ } => inventory_unread(cause: c)
               RedfishGot { body: body, left: l } =>
                 match mtcollins1_system_inventory_links(requested: system, body: body) {
                   ObservationRefused { cause: c } => inventory_unread(cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: system as String), at: at, detail: c as String })
                   ObservationEstablished { observed: links } => {
-                    let processors = read_processors(netrc: netrc, system: system, link: links.processors, left: l)
-                    let memory = read_memory(netrc: netrc, system: system, link: links.memory, left: processors.left)
+                    let processors = read_processors(username: username, password: password, system: system, link: links.processors, left: l)
+                    let memory = read_memory(username: username, password: password, system: system, link: links.memory, left: processors.left)
                     InventoryReading { system_id: system as String, memory: memory.reading, processors: processors.reading, credential_removed: true }
                   }
                 }
@@ -2402,7 +2403,7 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
       InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: false }
     }
     NetrcBindingPlaced { binding: binding } => {
-      let read = read_inventory_with_netrc(netrc: binding.path as NonEmptyStr)
+      let read = read_inventory(username: username, password: trim(s: password) as NonEmptyStr)
       let removed = shred_netrc_binding(binding: binding)
       InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: removed }
     }

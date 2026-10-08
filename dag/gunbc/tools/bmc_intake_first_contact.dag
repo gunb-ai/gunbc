@@ -53,7 +53,7 @@ fn bmc_intake_first_contact() -> CliWireResponse
   let bmc = bmc_first_contact_host(value: host.value)
   probe_result = redfish.Http.ProbeServiceRoot(bmc_host: bmc)
   return match probe_result {
-    RestAnswered { body: blob } => {
+    RestAnswered { answer: blob } => {
       // The body contains the HTTP status as the last line (from curl write-out)
       match classify_curl_http_code_after_newline(stdout: blob) {
         CurlWroteHttpStatus { status: _ } =>
@@ -62,10 +62,10 @@ fn bmc_intake_first_contact() -> CliWireResponse
           CliWirePrintable { bytes: blob, exit: exit_failure(reason: cause as String) }
       }
     }
-    RestRefusal { cause } =>
+    RestRefused { refusal: refusal } =>
       CliWirePrintable {
-        bytes: cause,
-        exit: exit_failure(reason: concat("host unreachable: ", cause) as String),
+        bytes: concat("host unreachable: ", refusal.body),
+        exit: exit_failure(reason: concat("host unreachable: ", refusal.body) as String),
       }
   }
 }

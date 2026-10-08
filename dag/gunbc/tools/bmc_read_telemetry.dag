@@ -22,21 +22,24 @@ fn bmc_read_telemetry() -> ProcessExit
               let bmc = host_v as NonEmptyStr
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
+              let username = "root" as NonEmptyStr
+              let password = "0penBmc#" as NonEmptyStr
 
-              system_result = redfish.Http.GetSystem(bmc_host: bmc, netrc_file: netrc_file)
+              system_result = redfish.Http.GetSystem(bmc_host: bmc, username: username, password: password)
               return match system_result {
-                RestAnswered { body: system_body } => {
+                RestAnswered { answer: system_body } => {
                   sensors_result = redfish.Http.GetChassisSensors(
                     bmc_host: bmc,
                     chassis_id: chassis,
-                    netrc_file: netrc_file
+                    username: username,
+                    password: password
                   )
                   return match sensors_result {
-                    RestAnswered { body: sensors_body } => ExitSuccess
-                    RestRefusal { cause } => exit_failure(reason: sensors_body)
+                    RestAnswered { answer: sensors_body } => ExitSuccess
+                    RestRefused { refusal: refusal } => exit_failure(reason: refusal.body)
                   }
                 }
-                RestRefusal { cause } => exit_failure(reason: cause)
+                RestRefused { refusal: refusal } => exit_failure(reason: refusal.body)
               }
             }
         }

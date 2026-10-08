@@ -107,12 +107,12 @@ fn reader_login_exit(attempt: BmcLoginAttempt, rejected_prefix: String) -> Proce
   }
 }
 
-// Reads run under the administrator netrc, which the caller has already written.
-fn observe_reader_account(host: NonEmptyStr) -> ReaderAccountObservation
+// Reads run under the administrator credentials, which the caller has already written.
+fn observe_reader_account(host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr) -> ReaderAccountObservation
 {
-  accounts_result = redfish.Http.GetAccounts(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
+  accounts_result = redfish.Http.GetAccounts(bmc_host: host, username: username, password: password)
   return match accounts_result {
-    RestAnswered { body: accounts_body } => {
+    RestAnswered { answer: accounts_body } => {
       if accounts_body == "" {
         ReaderAccountUnreadable { cause: "the accounts collection returned empty body" as NonEmptyStr }
       } else {
@@ -120,16 +120,16 @@ fn observe_reader_account(host: NonEmptyStr) -> ReaderAccountObservation
           ReaderListingUnreadable { cause: c } => ReaderAccountUnreadable { cause: c }
           ReaderNotListed => ReaderAccountAbsent
           ReaderListed => {
-            account_result = redfish.Http.GetAccount(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr, account_id: bmc_health_reader_username)
+            account_result = redfish.Http.GetAccount(bmc_host: host, username: username, password: password, account_id: bmc_health_reader_username)
             return match account_result {
-              RestAnswered { body: account_body } => reader_account_from_json(body: account_body)
-              RestRefusal { cause: account_cause } => ReaderAccountUnreadable { cause: concat("the listed reader account could not be read: ", account_cause) as NonEmptyStr }
+              RestAnswered { answer: account_body } => reader_account_from_json(body: account_body)
+              RestRefused { refusal: refusal } => ReaderAccountUnreadable { cause: concat("the listed reader account could not be read: ", refusal.body) as NonEmptyStr }
             }
           }
         }
       }
     }
-    RestRefusal { cause: accounts_cause } => ReaderAccountUnreadable { cause: concat("the accounts collection could not be read: ", accounts_cause) as NonEmptyStr }
+    RestRefused { refusal: refusal } => ReaderAccountUnreadable { cause: concat("the accounts collection could not be read: ", refusal.body) as NonEmptyStr }
   }
 }
 
@@ -159,7 +159,7 @@ fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, a
   if netrc_write_succeeded(outcome: admin_w) == false {
     return exit_failure(reason: netrc_failure_reason(outcome: admin_w, stage: "reader administrator"))
   }
-  match plan_reader_account(observation: observe_reader_account(host: host)) {
+  match plan_reader_account(observation: observe_reader_account(host: host, username: plan.factory_login.username, password: admin_password)) {
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: ", c as String))
     ReaderAccountConverged =>
       match bmc_custody_credential(secret_id: reader_secret, token: token) {
@@ -191,7 +191,7 @@ fn bmc_health_reader_create(plan: BmcOnboardingPlan, credential: Secret) -> Proc
   if body.success == false {
     return exit_failure(reason: concat("reader: create body write failed: ", body.error))
   }
-  created = redfish.Http.CreateAccount(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr, request_body_file: body_path)
+  created = redfish.Http.CreateAccount(bmc_host: host, username: plan.factory_login.username, password: admin_password, request_body_file: body_path)
   let body_removed = shell.Remove.FileForce(path: body_path).success
   if body_removed == false {
     return exit_failure(reason: concat("reader: the request body holding the reader password could not be removed: ", body_path as String))
@@ -199,7 +199,7 @@ fn bmc_health_reader_create(plan: BmcOnboardingPlan, credential: Secret) -> Proc
   if created is RestRefusal { cause: created_cause } {
     return exit_failure(reason: concat("reader: account POST refused: ", created_cause))
   }
-  match plan_reader_account(observation: observe_reader_account(host: host)) {
+  match plan_reader_account(observation: observe_reader_account(host: host, username: plan.factory_login.username, password: admin_password)) {
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: created, but read back as: ", c as String))
     CreateReaderAccount => return exit_failure(reason: "reader: created, but the accounts collection does not list it")
     ReaderAccountConverged =>

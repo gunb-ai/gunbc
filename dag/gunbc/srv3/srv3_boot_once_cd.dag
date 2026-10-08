@@ -199,12 +199,13 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
       }
       let patch = redfish.Http.SetBootSourceOverride(
         bmc_host: host,
-        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        username: resolved_cred.username,
+        password: resolved_cred.password,
         system_id: asrock_altrad8ud_redfish_system_id,
         request_body_file: srv3_boot_cd_body_path as NonEmptyStr
       )
-      if patch is RestRefusal { cause: patch_cause } {
-        return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch_cause))
+      if patch is RestRefused { refusal: patch_refusal } {
+        return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch_refusal.body))
       }
 
       let rst_body = reset_body(reset_type: redfish_reset_type_wire(r: srv3_boot_cd_reset_type))
@@ -215,14 +216,15 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
 
       let rst = redfish.Http.ResetSystem(
         bmc_host: host,
-        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        username: resolved_cred.username,
+        password: resolved_cred.password,
         system_id: asrock_altrad8ud_redfish_system_id,
         request_body_file: srv3_reset_body_path as NonEmptyStr
       )
-      return if rst is RestAnswered { body: _ } {
+      return if rst is RestAnswered { answer: _ } {
         ExitSuccess
       } else {
-        exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.cause))
+        exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.refusal.body))
       }
   }
 }

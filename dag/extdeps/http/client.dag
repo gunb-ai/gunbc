@@ -198,8 +198,7 @@ service http.Client {
     transport rest {
       method: GET,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      tls: InsecureAcceptAnyCert
     }
     response {
       2xx => String
@@ -223,8 +222,7 @@ service http.Client {
     transport rest {
       method: POST,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      tls: InsecureAcceptAnyCert
     }
     response {
       2xx => String
@@ -248,8 +246,7 @@ service http.Client {
     transport rest {
       method: POST,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      tls: InsecureAcceptAnyCert
     }
     response {
       2xx => String
@@ -270,7 +267,6 @@ service http.Client {
       method: POST,
       path: "{url}",
       tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds,
       body: { from_file: request_body_file }
     }
     response {
@@ -288,7 +284,6 @@ service http.Client {
       method: POST,
       path: "{url}",
       tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds,
       body: { from_file: request_body_file }
     }
     response {

@@ -72,8 +72,13 @@ data harness_front_door_probe_bound: Second = second(count: 10)
 fn harness_bounded_get(url: String) -> HarnessBoundedRead {
   let read = http.Client.GetWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
   return match read {
-    RestAnswered { body: body } => HarnessBoundedRead { body: body, success: true }
-    RestRefusal { cause: _ } => HarnessBoundedRead { body: "", success: false }
+    RestAnswered { answer: body } => HarnessBoundedRead { body: body, success: true }
+    RestRefused { refusal: refusal } =>
+      match refusal {
+        RestTransportRefused { cause: _ } => HarnessBoundedRead { body: "", success: false }
+        RestStatusRefused { status: status, body: _ } => HarnessBoundedRead { body: "", success: false }
+        RestBodyUndecodable { status: status, cause: _ } => HarnessBoundedRead { body: "", success: false }
+      }
   }
 }
 
@@ -96,21 +101,15 @@ type HarnessBoundedPresence
 fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
   let read = http.Client.StatusWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
   return match read {
-    RestAnswered { status: status } => HarnessResponded { status: trim(s: status) }
-    RestRefusal { cause: _ } => HarnessTransportUnread { url: url, curl_exit: 0 }
+    RestAnswered { answer: status } => HarnessResponded { status: trim(s: status) }
+    RestRefused { refusal: refusal } =>
+      match refusal {
+        RestTransportRefused { cause: _ } => HarnessTransportUnread { url: url, curl_exit: 0 }
+        RestStatusRefused { status: status, body: _ } => HarnessResponded { status: trim(s: status) }
+        RestBodyUndecodable { status: status, cause: _ } => HarnessTransportUnread { url: url, curl_exit: 0 }
+      }
   }
 }
-    match curl_exit_outcome(code: read.exit_code) {
-      CurlCouldNotConnect => HarnessConnectFailed { url: url, curl_exit: read.exit_code }
-      CurlOperationTimedOut => HarnessDeadline { url: url }
-      CurlTransferCompleted => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-      CurlCouldNotResolveHost => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-      CurlTlsHandshakeFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-      CurlEmptyReply => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-      CurlReceiveFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-      CurlExitUnnamed { code: _ } => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-    }
-  }
 }
 
 type HarnessBoundedRead {
