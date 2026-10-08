@@ -162,21 +162,14 @@ pub enum Connective {
     Arrow,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum OptionalLayers {
-    OneLayer,
-    MoreLayers {
-        inner: Rc<OptionalLayers>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Cardinality {
     Required,
     CardOptional {
-        layers: Rc<OptionalLayers>,
+        layers: i64,
     },
 }
 
@@ -5291,26 +5284,12 @@ pub fn exact_optional_layers(left: Cardinality, right: Cardinality) -> bool {
     left == right
 }
 
-pub fn wrap_optional_layers_around(
-    outer: Rc<OptionalLayers>,
-    inner: Rc<OptionalLayers>,
-) -> Rc<OptionalLayers> {
-    match &*outer {
-        OptionalLayers::OneLayer => Rc::new(OptionalLayers::MoreLayers { inner }),
-        OptionalLayers::MoreLayers { inner: rest } => Rc::new(OptionalLayers::MoreLayers {
-            inner: wrap_optional_layers_around(rest.clone(), inner),
-        }),
-    }
-}
-
 pub fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinality {
     match outer {
         Cardinality::Required => inner,
         Cardinality::CardOptional { layers: o } => match inner {
             Cardinality::Required => Cardinality::CardOptional { layers: o },
-            Cardinality::CardOptional { layers: i } => Cardinality::CardOptional {
-                layers: wrap_optional_layers_around(o, i),
-            },
+            Cardinality::CardOptional { layers: i } => Cardinality::CardOptional { layers: o + i },
         },
     }
 }
@@ -5328,12 +5307,13 @@ pub fn preserve_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardi
 pub fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
     match c {
         Cardinality::Required => Cardinality::Required,
-        Cardinality::CardOptional { layers } => match &*layers {
-            OptionalLayers::OneLayer => Cardinality::Required,
-            OptionalLayers::MoreLayers { inner: rest } => Cardinality::CardOptional {
-                layers: rest.clone(),
-            },
-        },
+        Cardinality::CardOptional { layers: n } => {
+            if n <= 1 {
+                Cardinality::Required
+            } else {
+                Cardinality::CardOptional { layers: n - 1 }
+            }
+        }
     }
 }
 
@@ -5371,9 +5351,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     node_with_cardinality(
         n.clone(),
         compose_optional_layers(
-            Cardinality::CardOptional {
-                layers: Rc::new(OptionalLayers::OneLayer),
-            },
+            Cardinality::CardOptional { layers: 1 },
             n.return_cardinality.clone(),
         ),
     )

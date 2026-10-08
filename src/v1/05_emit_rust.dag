@@ -71,7 +71,7 @@ import v1.std.core { Unmarked,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
-  NoConnective, Arrow, Cardinality, Required, CardOptional, OptionalLayers, OneLayer, MoreLayers, cardinality_is_optional, is_rest_transport,
+  NoConnective, Arrow, Cardinality, Required, CardOptional, cardinality_is_optional, is_rest_transport,
   transport_base_path, empty_intern_table,
   LeafOwner, SingleOwner, LeafAmbiguous
 }
@@ -1755,10 +1755,11 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
   }
 }
 
-fn rust_wrap_optional_layers(layers: OptionalLayers, rendered: String) -> String {
-  match layers {
-    OneLayer => concat("Option<", rendered, ">")
-    MoreLayers { inner: rest } => concat("Option<", rust_wrap_optional_layers(layers: rest, rendered: rendered), ">")
+fn rust_wrap_optional_layers(layers: Int, rendered: String) -> String {
+  if layers <= 1 {
+    concat("Option<", rendered, ">")
+  } else {
+    concat("Option<", rust_wrap_optional_layers(layers: layers - 1, rendered: rendered), ">")
   }
 }
 

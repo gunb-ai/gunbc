@@ -332,7 +332,6 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
-use crate::v1_std_core::OptionalLayers::{MoreLayers, OneLayer};
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
@@ -2955,22 +2954,20 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
     }
 }
 
-pub fn rust_wrap_optional_layers(
-    layers: Rc<crate::v1_std_core::OptionalLayers>,
-    rendered: String,
-) -> String {
-    match &*layers {
-        OneLayer => v1_rt::concat(
+pub fn rust_wrap_optional_layers(layers: i64, rendered: String) -> String {
+    if layers <= 1 {
+        v1_rt::concat(
             v1_rt::concat("Option<".to_string(), rendered.clone()),
             ">".to_string(),
-        ),
-        MoreLayers { inner: rest } => v1_rt::concat(
+        )
+    } else {
+        v1_rt::concat(
             v1_rt::concat(
                 "Option<".to_string(),
-                rust_wrap_optional_layers(rest.clone(), rendered.clone()),
+                rust_wrap_optional_layers(layers - 1, rendered.clone()),
             ),
             ">".to_string(),
-        ),
+        )
     }
 }
 

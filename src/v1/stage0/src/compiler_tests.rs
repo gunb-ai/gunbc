@@ -4798,9 +4798,7 @@ mod compiler_tests {
     fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
         let optional_type = shaped_type_node("Node", Vec::new());
         let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
-            return_cardinality: crate::v1_std_core::Cardinality::CardOptional {
-                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
-            },
+            return_cardinality: crate::v1_std_core::Cardinality::CardOptional { layers: 1 },
             ..(*optional_type).clone()
         });
         let arg = named_type_node("child");

@@ -7168,7 +7168,7 @@ pub fn maybe_optional(
                 connective: te.connective.clone(),
                 params: te.params.clone(),
                 inferred: te.inferred.clone(),
-                return_cardinality: Cardinality::CardOptional { layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer) },
+                return_cardinality: Cardinality::CardOptional { layers: 1 },
                 uses: te.uses.clone(),
                 body: te.body.clone(),
                 transport: te.transport.clone(),

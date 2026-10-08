@@ -27798,9 +27798,7 @@ mod map_shell_outputs_optional_stream_tests {
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             from_key.to_string(),
             str_type,
-            Cardinality::CardOptional {
-                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
-            },
+            Cardinality::CardOptional { layers: 1 },
             None,
             Rc::new(vec![].into()),
             span.clone(),

@@ -61,13 +61,9 @@ type TokenShape
 
 type Connective = Conj | Disj | NoConnective | Arrow
 
-type OptionalLayers
-  = OneLayer
-  | MoreLayers { inner: OptionalLayers }
-
 type Cardinality
   = Required
-  | CardOptional { layers: OptionalLayers }
+  | CardOptional { layers: Int }
 
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 
@@ -2861,20 +2857,13 @@ fn exact_optional_layers(left: Cardinality, right: Cardinality) -> Bool {
   left == right
 }
 
-fn wrap_optional_layers_around(outer: OptionalLayers, inner: OptionalLayers) -> OptionalLayers {
-  match outer {
-    OneLayer => MoreLayers { inner: inner }
-    MoreLayers { inner: rest } => MoreLayers { inner: wrap_optional_layers_around(outer: rest, inner: inner) }
-  }
-}
-
 fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinality {
   match outer {
     Required => inner
     CardOptional { layers: o } =>
       match inner {
         Required => CardOptional { layers: o }
-        CardOptional { layers: i } => CardOptional { layers: wrap_optional_layers_around(outer: o, inner: i) }
+        CardOptional { layers: i } => CardOptional { layers: o + i }
       }
   }
 }
@@ -2895,8 +2884,8 @@ fn preserve_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinali
 fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
   match c {
     Required => Required
-    CardOptional { layers: OneLayer } => Required
-    CardOptional { layers: MoreLayers { inner: rest } } => CardOptional { layers: rest }
+    CardOptional { layers: n } =>
+      if n <= 1 { Required } else { CardOptional { layers: n - 1 } }
   }
 }
 
@@ -2911,7 +2900,7 @@ fn node_with_cardinality(n: Node, c: Cardinality) -> Node {
 }
 
 fn with_optional_cardinality(n: Node) -> Node {
-  node_with_cardinality(n: n, c: compose_optional_layers(outer: CardOptional { layers: OneLayer }, inner: n.return_cardinality))
+  node_with_cardinality(n: n, c: compose_optional_layers(outer: CardOptional { layers: 1 }, inner: n.return_cardinality))
 }
 
 fn with_required_cardinality(n: Node) -> Node {

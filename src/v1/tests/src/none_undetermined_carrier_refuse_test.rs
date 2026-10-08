@@ -19,7 +19,6 @@ use v1_compiler::v1_compiler_emit::emit_keyword;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;
 use v1_compiler::v1_std_core::{
     no_span, Cardinality, Connective, ExprData, InferredNode, Node, NodeOccurrenceIdentity,
-    OptionalLayers,
 };
 
 fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
@@ -69,9 +68,7 @@ fn undetermined_carrier_refuses_not_null_default() {
 
 #[test]
 fn card_optional_emits_none() {
-    let rt = node_with_cardinality(Cardinality::CardOptional {
-        layers: Rc::new(OptionalLayers::OneLayer),
-    });
+    let rt = node_with_cardinality(Cardinality::CardOptional { layers: 1 });
     let resolved = Some(Rc::new(InferredNode::Resolved { node: rt }));
     let out = emit_none_keyword_for_resolved_type(resolved);
     // The spelling is the Rust keyword row's (`extdeps.languages.rust.emit`, key `null`), read

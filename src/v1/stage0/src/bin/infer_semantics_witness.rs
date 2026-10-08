@@ -32,7 +32,7 @@ use v1_compiler::v1_std_core::{
     authored_container_spelling_verdict, build_newline_index, cardinality_is_optional,
     default_ident_span, leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality,
     Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode,
-    MatchPattern, Node, OptionalLayers, SourceSpan,
+    MatchPattern, Node, SourceSpan,
 };
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
@@ -911,9 +911,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         connective: Connective::Disj,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::CardOptional {
-            layers: Rc::new(OptionalLayers::OneLayer),
-        },
+        return_cardinality: Cardinality::CardOptional { layers: 1 },
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -1115,9 +1113,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             leaf_node("Absent".to_string()),
             leaf_node("Present".to_string()),
         ],
-        Cardinality::CardOptional {
-            layers: Rc::new(OptionalLayers::OneLayer),
-        },
+        Cardinality::CardOptional { layers: 1 },
     );
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
 
