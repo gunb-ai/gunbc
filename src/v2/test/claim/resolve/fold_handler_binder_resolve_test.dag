@@ -147,34 +147,27 @@ fn fhb_undeclared_is_sole_unbound_at_its_atom(v: FhbVerdict) -> Bool {
   }
 }
 
-// ONE INGEST, THREE CONJUNCTS. Splitting these into three `test fn`s each calling fhb_outcomes
-// re-paid native_test_context_from_ingest in full (review 77993). The floor discovers test fns;
-// local `--function` of the three names below still works without a second ingest in CI.
-test fn fold_handler_binders_resolve_on_native_ingest() -> Bool {
-  match fhb_outcomes() {
-    FhbOutcomesDecided { fold: fold_v, lambda: lambda_v, undeclared: undeclared_v } =>
-      fhb_is_resolved(v: fold_v)
-        && fhb_is_resolved(v: lambda_v)
-        && fhb_undeclared_is_sole_unbound_at_its_atom(v: undeclared_v)
-    FhbContextRefused => false
-  }
-}
-
-fn a_fold_handler_item_binder_resolves() -> Bool {
+// ONE FRONT END FOR EVERY CLAIM. Native ingest of even three tiny modules is ~1.1M eval steps,
+// over the new-witness enrolment margin (~72k). A single `test fn` therefore blocks the floor
+// (enrolment_measured_over_margin on fold_handler_binders_resolve_on_native_ingest, required-ci
+// run 37776210394). Three planned claims reaching this nullary producer admit it to
+// v2.workflow.floor_pure_producer_share: the fill is netted from the first claim and later claims
+// are served. Local `--function` of one name still pays ingest in that process.
+test fn a_fold_handler_item_binder_resolves() -> Bool {
   match fhb_outcomes() {
     FhbOutcomesDecided { fold: v, lambda: _, undeclared: _ } => fhb_is_resolved(v: v)
     FhbContextRefused => false
   }
 }
 
-fn a_non_fold_lambda_argument_still_resolves() -> Bool {
+test fn a_non_fold_lambda_argument_still_resolves() -> Bool {
   match fhb_outcomes() {
     FhbOutcomesDecided { fold: _, lambda: v, undeclared: _ } => fhb_is_resolved(v: v)
     FhbContextRefused => false
   }
 }
 
-fn an_undeclared_name_in_a_fold_handler_is_the_sole_refusal_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_fold_handler_is_the_sole_refusal_at_its_atom() -> Bool {
   match fhb_outcomes() {
     FhbOutcomesDecided { fold: _, lambda: _, undeclared: v } =>
       fhb_undeclared_is_sole_unbound_at_its_atom(v: v)
