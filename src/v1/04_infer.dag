@@ -3534,6 +3534,8 @@ fn equality_operand_list_read_name(n: Node, source_indices: Map<String, NewlineI
           }
         _ => ""
       }
+    ExprIndex =>
+      if equality_receiver_is_list(receiver: index_base(texpr: n), source_indices: source_indices) { "index" } else { "" }
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       match call_semantics_target(cs: cs) {
         RuntimePrimitiveCall { primitive_name: pn, projected_from: _ } =>

@@ -195,6 +195,18 @@ test fn list_read_not_equal_present_refuses_blocking() -> Bool {
   eq_blocking_count(source: list_read_present_ne_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
 }
 
+data bracket_index_present_red_source: String = "module eq_probe_bracket\ndata ints: List<Int> = [1, 2]\nfn r() -> Bool { ints[0] == Present { value: 1 } }\n"
+
+test fn bracket_index_equal_present_refuses_blocking() -> Bool {
+  eq_blocking_count(source: bracket_index_present_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
+}
+
+data map_index_present_green_source: String = "module eq_probe_map_index\ndata m: Map<String, Int> = \{ \"a\": 1 }\nfn r() -> Bool { m[\"a\"] == Present { value: 1 } }\n"
+
+test fn map_bracket_index_stays_unwalled() -> Bool {
+  eq_blocking_count(source: map_index_present_green_source, wanted: "EqualityAgainstPresentOnListRead") == 0
+}
+
 test fn user_fn_named_get_stays_unwalled() -> Bool {
   eq_blocking_count(source: user_get_present_green_source, wanted: "EqualityAgainstPresentOnListRead") == 0
 }
