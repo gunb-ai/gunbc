@@ -86,7 +86,7 @@ import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
   BmcAccountPlanned, BmcAccountPlanRefused, PublishedAccountRetired, ManagedCredentialReference,
   BmcSecurePhaseNoop, BmcSecurePhaseApplied, ControllerClockReading,
-  observation_with_controller_clock, apply_with_diverged_controller_clock,
+  observation_with_controller_clock, apply_with_diverged_controller_clock, controller_clock_reading_same,
   admit_stored_generation, admit_fetched_generation, dry_bmc_account_instant,
   GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused, ManagedCredentialGenerationFetched,
 }
@@ -1279,6 +1279,11 @@ fn mtjade1_controller_clock(millis: EpochMs, label: String) -> ControllerClockRe
     reported_millis: millis,
     evidence: EvidenceRef { label: label as NonEmptyStr, digest: content_hash_of_value(value: label) },
   }
+}
+
+test fn w_matching_present_controller_clocks_compare_equal() -> Bool {
+  let clock = mtjade1_controller_clock(millis: mtjade1_controller_clock_x_millis, label: "controller-clock-x")
+  controller_clock_reading_same(left: Present { value: clock }, right: Present { value: clock })
 }
 
 test fn w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused() -> Bool {
