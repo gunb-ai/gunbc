@@ -550,7 +550,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           arity: CliRepeated,
           doc: [
             "Named argument for the entry function, repeatable: `--arg name=value`.",
-            "Bound against the declared parameter type (String, Int, Bool); others refuse."
+            "Bound against the declared parameter type (String, Int, Bool, and String/Int refinements such as NonEmptyStr); others refuse."
           ],
           emission: CarriedByGeneratedDispatch
         }

@@ -73,7 +73,7 @@ enum RetainedCommands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Bound against the declared parameter type (String, Int, Bool); others refuse.
+        /// Bound against the declared parameter type (String, Int, Bool, and String/Int refinements such as NonEmptyStr); others refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },

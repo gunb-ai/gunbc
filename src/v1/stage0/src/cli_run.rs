@@ -3364,7 +3364,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn qualified_or_branded_int_label_refuses_rather_than_matching_the_leaf() {
-        for label in ["foo.Int", "std.integer.Int", "NonEmptyStr"] {
+        for label in ["foo.Int", "std.integer.Int"] {
             let err = bind_run_arg_specs_against_declared_types(
                 "entry",
                 &declared(&[("source", label)]),
@@ -3376,6 +3376,33 @@ mod cli_run_arg_channel_tests {
                 "diagnostic names the authored type {label}: {err}"
             );
         }
+    }
+
+    #[test]
+    fn nonemptystr_non_empty_binds_as_string() {
+        let got = bind_run_arg_specs_against_declared_types(
+            "fci1_assert_checkpoint_token",
+            &declared(&[("token", "NonEmptyStr")]),
+            &[("token".into(), "none".into())],
+        )
+        .expect("non-empty NonEmptyStr inhabits");
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "none"));
+    }
+
+    #[test]
+    fn nonemptystr_empty_refuses_naming_the_parameter() {
+        let err = bind_run_arg_specs_against_declared_types(
+            "fci1_assert_checkpoint_token",
+            &declared(&[("token", "NonEmptyStr")]),
+            &[("token".into(), "".into())],
+        )
+        .expect_err("empty NonEmptyStr must refuse");
+        assert!(
+            err.contains("token")
+                && err.contains("NonEmptyStr")
+                && err.contains("string_non_empty"),
+            "diagnostic names parameter, type, and admission: {err}"
+        );
     }
 
     #[test]
@@ -19872,11 +19899,13 @@ fn parse_cli_decimal_int(text: &str) -> Option<i64> {
 
 /// Bind one `--arg` text value against the parameter's authored type label.
 ///
-/// Admitted labels are exactly `String`, `Int`, and `Bool` as written on the
-/// parameter — not the last path segment of some other type (DESIGN §4: type
-/// compatibility keys on the declaration, never a leaf name). `foo.Int`,
-/// `std.integer.Int`, and `NonEmptyStr` refuse rather than inheriting a host
-/// `Int`/`Str`.
+/// Kernel labels `String`, `Int`, and `Bool` inhabit as themselves. A type that
+/// is a `where`-refinement of `String` or `Int` inhabits through that
+/// refinement's own admission (`decidable_where_*` in v1.compiler.infer) —
+/// `NonEmptyStr` is `String where string_non_empty`. Qualified or branded
+/// spellings with no such route refuse (DESIGN §4: leaf-name agreement is not
+/// inhabitance; DESIGN §4d: refusing a refinement that already has an
+/// admission is over-prohibition).
 pub fn bind_cli_arg_text(
     function: &str,
     param: &str,
@@ -19885,13 +19914,7 @@ pub fn bind_cli_arg_text(
 ) -> Result<v1_interpreter::Value, String> {
     match type_label {
         "String" => Ok(str_value(text)),
-        "Int" => match parse_cli_decimal_int(text) {
-            Some(n) => Ok(Value::Int(n)),
-            None => Err(format!(
-                "--arg `{param}`: function `{function}` declares `{param}: Int`, \
-                 but `{text}` is not a decimal integer"
-            )),
-        },
+        "Int" => bind_cli_int(function, param, type_label, text),
         "Bool" => match text {
             "true" => Ok(Value::Bool(true)),
             "false" => Ok(Value::Bool(false)),
@@ -19900,10 +19923,64 @@ pub fn bind_cli_arg_text(
                  but `{text}` is not `true` or `false`"
             )),
         },
-        _ => Err(format!(
+        _ => {
+            if let Some(pred) = cli_arg_string_refinement_predicate(type_label) {
+                bind_cli_string_refinement(function, param, type_label, pred, text)
+            } else {
+                Err(cli_arg_no_inhabitance_route(function, param, type_label))
+            }
+        }
+    }
+}
+
+fn cli_arg_no_inhabitance_route(function: &str, param: &str, type_label: &str) -> String {
+    format!(
+        "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+         which `gunbc run --arg` cannot inhabit; only String, Int, Bool, and \
+         refinements of String or Int with a declared admission are admitted"
+    )
+}
+
+/// Authored labels that are `String where …` in `std.types` (and nowhere else).
+fn cli_arg_string_refinement_predicate(type_label: &str) -> Option<&'static str> {
+    match type_label {
+        "NonEmptyStr" => Some("string_non_empty"),
+        _ => None,
+    }
+}
+
+fn bind_cli_int(
+    function: &str,
+    param: &str,
+    type_label: &str,
+    text: &str,
+) -> Result<v1_interpreter::Value, String> {
+    match parse_cli_decimal_int(text) {
+        Some(n) => Ok(Value::Int(n)),
+        None => Err(format!(
             "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
-             which `gunbc run --arg` cannot inhabit; only String, Int, and Bool are admitted"
+             but `{text}` is not a decimal integer"
         )),
+    }
+}
+
+fn bind_cli_string_refinement(
+    function: &str,
+    param: &str,
+    type_label: &str,
+    pred: &str,
+    text: &str,
+) -> Result<v1_interpreter::Value, String> {
+    match v1_compiler_infer::decidable_where_string_predicate_holds(
+        pred.to_string(),
+        text.to_string(),
+    ) {
+        Some(true) => Ok(str_value(text)),
+        Some(false) => Err(format!(
+            "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+             but the value fails `{pred}`"
+        )),
+        None => Err(cli_arg_no_inhabitance_route(function, param, type_label)),
     }
 }
 
