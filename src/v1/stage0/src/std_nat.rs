@@ -391,16 +391,14 @@ pub fn nat_decimal_split_advance(s: Rc<NatDecimalSplit>) -> Rc<NatDecimalSplit> 
 
 pub fn nat_to_decimal_string(value: Nat) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let s = nat_decimal_split(value.clone());
+        let q = nat_div_rem_by_succ(value.clone(), 9);
+        let digit = decimal_digit_glyph(nat_decimal_split(q.remainder.clone()).units.clone());
         {
-            let __kernel_grounded_subject = s.quotient.clone();
+            let __kernel_grounded_subject = q.quotient.clone();
             if (__kernel_grounded_subject.clone() == 0) {
-                decimal_digit_glyph(s.units.clone())
+                digit.clone()
             } else {
-                v1_rt::concat(
-                    nat_to_decimal_string(s.quotient.clone()),
-                    decimal_digit_glyph(s.units.clone()),
-                )
+                v1_rt::concat(nat_to_decimal_string(q.quotient.clone()), digit.clone())
             }
         }
     })
