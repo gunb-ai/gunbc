@@ -422,6 +422,7 @@ type LexicalBinding {
   binder_site: NodeOccurrenceIdentity
   declared: Optional<Node>
   value: Optional<Node>
+  owed_formal: Optional<Node>
 }
 
 // One answered lexical reference: the reference's own minted occurrence and the binding that
@@ -833,7 +834,8 @@ fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
                       binding: LexicalBinding {
                         binder_site: n.occurrence_id,
                         declared: member_edge_type_node(e: e),
-                        value: optional_absent()
+                        value: optional_absent(),
+                        owed_formal: optional_absent()
                       }
                     )
                   Absent => fb
@@ -862,7 +864,8 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
                   binding: LexicalBinding {
                     binder_site: e0.target.occurrence_id,
                     declared: optional_absent(),
-                    value: list_at_optional(xs: node_positional_child_targets(node: n), index: 1)
+                    value: list_at_optional(xs: node_positional_child_targets(node: n), index: 1),
+                    owed_formal: optional_absent()
                   }
                 )
               _ => frame_binders_empty()
@@ -2692,9 +2695,18 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOu
                   m
                 } else {
                   match resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e) {
-                    PatternBinderFormal { at: at } =>
-                      PatternBindersRefused {
-                        diagnostic: pattern_payload_formal_uninstantiated_diagnostic(at: at)
+                    PatternBinderFormal { at: _, field_type: ft } =>
+                      PatternBindersAdmitted {
+                        binders: frame_binders_add(
+                          fb: fb,
+                          name: id,
+                          binding: LexicalBinding {
+                            binder_site: e.target.occurrence_id,
+                            declared: optional_absent(),
+                            value: optional_absent(),
+                            owed_formal: optional_present(value: ft)
+                          }
+                        )
                       }
                     PatternBinderTyped { node: t } =>
                       PatternBindersAdmitted {
@@ -2704,7 +2716,8 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOu
                           binding: LexicalBinding {
                             binder_site: e.target.occurrence_id,
                             declared: optional_present(value: t),
-                            value: optional_absent()
+                            value: optional_absent(),
+                            owed_formal: optional_absent()
                           }
                         )
                       }
@@ -2716,7 +2729,8 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOu
                           binding: LexicalBinding {
                             binder_site: e.target.occurrence_id,
                             declared: optional_absent(),
-                            value: optional_absent()
+                            value: optional_absent(),
+                            owed_formal: optional_absent()
                           }
                         )
                       }
@@ -2737,33 +2751,20 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOu
 // field the arm does not declare, leaves the binder untyped exactly as before: the match row judges
 // the pattern against the scrutinee's coproduct and refuses the mismatch at the arm row.
 //
-// A field whose type names the DECLARING TYPE's formal is neither of those: the type node exists
-// but names a type nothing instantiates at this stage (the scrutinee's arguments flow into the arm
-// frame only with central deep substitution -- the derivation follow-up). Minting the formal
-// fabricates a type the binder does not have (DESIGN 5), and leaving the binder untyped lets the
-// match frontier ACCEPT the arm as an advisory frontier -- the module prepares and the native lane
-// reports a prepared module whose binder has no type. Both fail open. The binders fold therefore
-// refuses the arm walk here, with the payload field as the location
-// (^resolve_reason_pattern_payload_formal_uninstantiated), and the deep-instantiation follow-up
-// flips this refusal to grounding by installing the scrutinee's arguments.
+// A field whose type names the DECLARING TYPE's formal is neither typed nor untyped: minting the
+// formal fabricates a type the binder does not have (DESIGN 5), and declared Absent lets the match
+// frontier accept the arm as an advisory. Resolve therefore admits the walk under a distinct
+// obligation (LexicalBinding.owed_formal carries the field type). Infer discharges it by
+// instantiating that field from the scrutinee's actual coproduct arguments (direct-T) before
+// gathering the arm body, and refuses located if it cannot.
 type PatternBinderDeclared
   = PatternBinderTyped { node: Node }
   | PatternBinderUntyped
-  | PatternBinderFormal { at: Node }
+  | PatternBinderFormal { at: Node, field_type: Node }
 
-// The binders fold carries the mint's outcome so a formal-typed payload field refuses the walk
-// before any binder is admitted under an invented scope.
 type PatternBindersOutcome
   = PatternBindersAdmitted { binders: FrameBinders }
   | PatternBindersRefused { diagnostic: Diagnostic }
-
-fn pattern_payload_formal_uninstantiated_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^resolve_reason_pattern_payload_formal_uninstantiated,
-    at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 
 // A payload field whose type still names the declaring type's formal is detected against the
 // declaring type's OWN parameter list -- `symbol_index_declared_type_params_at` at the arm's
@@ -2815,7 +2816,7 @@ fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: E
                     arm_path: arm_path,
                     t: f.type_node
                   ) {
-                    PatternBinderFormal { at: field.target }
+                    PatternBinderFormal { at: field.target, field_type: f.type_node }
                   } else {
                     PatternBinderTyped { node: f.type_node }
                   }

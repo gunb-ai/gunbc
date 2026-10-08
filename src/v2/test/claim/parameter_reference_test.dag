@@ -293,7 +293,7 @@ test fn pr_lambda_reference_grounds_through_recorded_binding_holds() -> Bool {
 data pr_binder_site: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 41 } }
 
 data pr_lexical_binders: Map<Symbol, LexicalBinding> = map_insert(empty_map(), ^pr_x, LexicalBinding { binder_site: pr_binder_site, declared: Absent,
- value: optional_absent() })
+ value: optional_absent(), owed_formal: optional_absent() })
 
 fn pr_ctx(kind: FrameKind) -> ResolveContext {
   let namespace = Namespace {

@@ -819,6 +819,16 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
 // their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
 // has no other demander, so derived sharing cannot cover it.
+// gunbc#13558 (N7 payload-binder derived fact): the ONE assembled-route inhabitance claim
+// vfp_the_n7_shape_construct_field_binder_infers_holds (DESIGN section 3: one real path; the
+// lookup rows supply infer_payload_binder_derived_type). Re-measure with
+// claim_batch --hermetic --source-root dag --source-root src/v2 --entry
+// src/v2/test/claim/variant_field_infer_probe_test.dag --function
+// vfp_the_n7_shape_construct_field_binder_infers_holds
+// at PINNED 4ec0c7b195 (BuildBuddy 4bb6fc22): eval_steps=730093 vs the 72,300 new-witness
+// ceiling. Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
+// (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
+
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
 // Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
@@ -846,6 +856,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_nested_reference_is_residual_after_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.variant_field_infer_probe",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "vfp_the_n7_shape_construct_field_binder_infers_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
