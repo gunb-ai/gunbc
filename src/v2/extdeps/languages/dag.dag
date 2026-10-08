@@ -6774,6 +6774,30 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+// Parse identities that inhabit a module as Authored members and are not record binders:
+// the module surface, the graft-body stamp, and every declaration production the grammar
+// emits as a top-level item. Identity only — a missing stamp is false, never a Conj-shape
+// guess (DESIGN §5: refuse the member, never widen to the container).
+fn dag_surface_identity_is_module_member(id: Symbol) -> Bool {
+  (id == ^dag_surface_module)
+    || (id == ^namespace_graft_module_body)
+    || (id == ^dag_surface_fn_decl)
+    || (id == ^dag_surface_test_fn_decl)
+    || (id == ^dag_surface_data_decl)
+    || (id == ^dag_surface_type_decl)
+    || (id == ^dag_surface_alias_decl)
+    || (id == ^dag_surface_service_decl)
+    || (id == ^dag_surface_resource_decl)
+    || (id == ^dag_surface_import_decl)
+}
+
+fn dag_node_is_module_member_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => dag_surface_identity_is_module_member(id: id)
+    Absent => false
+  }
+}
+
 fn dag_node_is_fn_decl(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } => id == ^dag_surface_fn_decl

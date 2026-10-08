@@ -257,6 +257,21 @@ fn module_container_with_surface_members() -> Node {
       dag_surface_edge(edge: ^dag_surface_module_header, target: atom(identity: ^dag_surface_module_header)),
       Edge { label: Authored { name: ^bit }, target: identity_stamped(id: ^dag_surface_fn_decl) },
       Edge { label: Authored { name: ^nested }, target: identity_stamped(id: ^dag_surface_module) },
+      Edge { label: Authored { name: ^probe }, target: identity_stamped(id: ^dag_surface_test_fn_decl) },
+      Edge { label: Authored { name: ^Flag }, target: identity_stamped(id: ^dag_surface_data_decl) },
+      Edge { label: Authored { name: ^Wrapper }, target: identity_stamped(id: ^dag_surface_type_decl) },
+      Edge { label: Authored { name: ^Alias }, target: identity_stamped(id: ^dag_surface_alias_decl) },
+    ],
+    occurrence_id: OccurrenceSynthetic,
+  }
+}
+
+fn mixed_declaration_and_hand_built_field() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^Flag }, target: identity_stamped(id: ^dag_surface_data_decl) },
+      Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) },
     ],
     occurrence_id: OccurrenceSynthetic,
   }
@@ -306,6 +321,15 @@ test fn a_hand_built_record_field_still_reports_member_not_a_binder() -> Bool {
 test fn a_header_edge_on_a_conj_does_not_skip_a_hand_built_field() -> Bool {
   readability_is_member_not_a_binder(
     r: reading_of(decl_name: "HeaderAndField", decl: conj_with_header_edge_and_hand_built_field()),
+    expected: ^trees,
+  )
+}
+
+// A DATA DECLARATION SIBLING DOES NOT WIDEN THE SKIP. The identity-stamped member is skipped;
+// the hand-built field on the same Conj is still CarrierMemberNotABinder.
+test fn a_data_decl_member_does_not_skip_a_hand_built_sibling() -> Bool {
+  readability_is_member_not_a_binder(
+    r: reading_of(decl_name: "Mixed", decl: mixed_declaration_and_hand_built_field()),
     expected: ^trees,
   )
 }
